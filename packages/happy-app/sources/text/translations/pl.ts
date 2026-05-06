@@ -101,6 +101,7 @@ export const pl: TranslationStructure = {
         justNow: 'teraz',
         minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'minuta', few: 'minuty', many: 'minut' })} temu`,
         hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'godzina', few: 'godziny', many: 'godzin' })} temu`,
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'dzień', few: 'dni', many: 'dni' })} temu`,
     },
 
     connect: {
@@ -307,6 +308,23 @@ export const pl: TranslationStructure = {
         inactiveArchived: 'Ta sesja jest nieaktywna.',
         resumeFromTerminal: 'Aby wznowić ją z terminala:',
         newChat: 'Nowy czat',
+        forkAction: 'Rozwidl sesję',
+        forkSubtitle: 'Kontynuuj w nowej sesji z tym samym kontekstem',
+        duplicateAction: 'Duplikuj od wiadomości…',
+        duplicateSubtitle: 'Cofnij się do wybranego punktu i spróbuj inaczej',
+        forkFromHere: 'Rozwidl od tego miejsca',
+        duplicateSheetTitle: 'Wybierz punkt cofnięcia',
+        duplicateSheetSubtitle: 'Nowa sesja zachowa wybraną turę w całości (twoja wiadomość i odpowiedź agenta) i odrzuci wszystkie kolejne wiadomości.',
+        duplicateSheetConfirm: 'Duplikuj',
+        duplicateSheetEmpty: 'W tej sesji nie ma jeszcze wiadomości, do których można się cofnąć.',
+        duplicateRowDisabled: 'Tej wiadomości nie można użyć jako punktu cofnięcia.',
+        forkedFromLabel: 'Rozwidlone z',
+        forkedFromSubtitle: 'Otwórz sesję, z której powstało rozwidlenie',
+        forkErrorOffline: 'Maszyna jest offline. Rozwidlenie jest dostępne tylko gdy maszyna sesji jest online.',
+        forkErrorMissingUuid: 'Wybrany punkt cofnięcia nie istnieje już w sesji źródłowej — spróbuj rozwidlić bez przycinania.',
+        forkErrorMissingMetadata: 'Brak metadanych sesji wymaganych do rozwidlenia.',
+        forkErrorGeneric: 'Nie udało się rozwidlić sesji.',
+        forkClaudeOnly: 'Rozwidlenie jest obecnie obsługiwane tylko dla sesji Claude.',
     },
 
     commandPalette: {

@@ -1,6 +1,18 @@
 {
   "entries": [
     {
+      "version": 10,
+      "date": "2026-05-06",
+      "summary": "Branch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.",
+      "changes": [
+        "Added — Fork a session to continue with the same context in a fresh session row, on the same machine.",
+        "Added — Duplicate from message: pick a user message as the rewind point and start a new session truncated to everything before it. Works from a bottom-sheet picker on the session-info screen, and via long-press on any user message in chat.",
+        "Added — Forked-from link on session-info, so you can jump back to the parent session of any branch.",
+        "Hard-fail when the chosen rewind point is no longer present on disk — no more silent untruncated copies pretending to honour the cut."
+      ],
+      "rawMarkdown": "## Version 10 - 2026-05-06\n\n\nBranch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.\n\n- Added — Fork a session to continue with the same context in a fresh session row, on the same machine.\n- Added — Duplicate from message: pick a user message as the rewind point and start a new session truncated to everything before it. Works from a bottom-sheet picker on the session-info screen, and via long-press on any user message in chat.\n- Added — Forked-from link on session-info, so you can jump back to the parent session of any branch.\n- Hard-fail when the chosen rewind point is no longer present on disk — no more silent untruncated copies pretending to honour the cut."
+    },
+    {
       "version": 9,
       "date": "2026-04-26",
       "summary": "Voice reliability, better content rendering, and a new diff viewer.",
@@ -113,5 +125,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 9
+  "latestVersion": 10
 }

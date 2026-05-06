@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 10 - 2026-05-06
+
+Branch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.
+
+- Added — Fork a session to continue with the same context in a fresh session row, on the same machine.
+- Added — Duplicate from message: pick a user message as the rewind point and start a new session truncated to everything before it. Works from a bottom-sheet picker on the session-info screen, and via long-press on any user message in chat.
+- Added — Forked-from link on session-info, so you can jump back to the parent session of any branch.
+- Hard-fail when the chosen rewind point is no longer present on disk — no more silent untruncated copies pretending to honour the cut.
+
 ## Version 9 - 2026-04-26
 
 Voice reliability, better content rendering, and a new diff viewer.

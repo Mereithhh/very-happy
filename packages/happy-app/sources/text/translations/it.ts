@@ -89,6 +89,7 @@ export const it: TranslationStructure = {
         justNow: 'proprio ora',
         minutesAgo: ({ count }: { count: number }) => `${count} ${count === 1 ? 'minuto' : 'minuti'} fa`,
         hoursAgo: ({ count }: { count: number }) => `${count} ${count === 1 ? 'ora' : 'ore'} fa`,
+        daysAgo: ({ count }: { count: number }) => `${count} ${count === 1 ? 'giorno' : 'giorni'} fa`,
     },
 
     connect: {
@@ -288,6 +289,23 @@ export const it: TranslationStructure = {
         inactiveArchived: 'Questa sessione è inattiva.',
         resumeFromTerminal: 'Per riprenderla dal terminale:',
         newChat: 'Nuova chat',
+        forkAction: 'Biforca sessione',
+        forkSubtitle: 'Continua in una nuova sessione con lo stesso contesto',
+        duplicateAction: 'Duplica da un messaggio…',
+        duplicateSubtitle: 'Torna a un punto scelto e riprova',
+        forkFromHere: 'Biforca da qui',
+        duplicateSheetTitle: 'Scegli un punto di ritorno',
+        duplicateSheetSubtitle: 'La nuova sessione manterrà il turno scelto completo (il tuo messaggio e la risposta dell\'agente) e scarterà i messaggi successivi.',
+        duplicateSheetConfirm: 'Duplica',
+        duplicateSheetEmpty: 'Nessun messaggio idoneo per il ritorno in questa sessione.',
+        duplicateRowDisabled: 'Questo messaggio non può essere usato come punto di ritorno.',
+        forkedFromLabel: 'Biforcato da',
+        forkedFromSubtitle: 'Apri la sessione da cui è stata creata la biforcazione',
+        forkErrorOffline: 'La macchina è offline. La biforcazione è disponibile solo mentre la macchina della sessione è online.',
+        forkErrorMissingUuid: 'Il punto di ritorno scelto non esiste più nella sessione di origine — prova a biforcare senza troncare.',
+        forkErrorMissingMetadata: 'Mancano i metadati della sessione necessari per biforcare.',
+        forkErrorGeneric: 'Impossibile biforcare la sessione.',
+        forkClaudeOnly: 'La biforcazione è attualmente supportata solo per le sessioni Claude.',
     },
 
     commandPalette: {

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, forkAndSpawn, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -14,6 +14,7 @@ import { useSessionStatus } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useRouter } from 'expo-router';
 import { useSession } from '@/sync/storage';
+import { DuplicateSheet } from '@/components/DuplicateSheet';
 
 export interface SessionActionItem {
     id: string;
@@ -115,6 +116,22 @@ export function useSessionQuickActions(
         [machine, session, sessionStatus.isConnected, expResumeSession],
     );
 
+    // Fork eligibility — separate from resume because fork works on both
+    // active AND inactive Claude sessions (the on-disk JSONL exists either
+    // way; copyFile is atomic). The user-facing toggle is the same
+    // expResumeSession experiment so all three flows (resume / fork /
+    // duplicate) ride a single switch on settings/features.
+    const claudeFlavor = !session.metadata?.flavor || session.metadata.flavor === 'claude';
+    const claudeSessionId = session.metadata?.claudeSessionId;
+    const canFork = Boolean(
+        expResumeSession
+        && claudeFlavor
+        && claudeSessionId
+        && machineId
+        && machine
+        && isMachineOnline(machine),
+    );
+
     const openDetails = React.useCallback(() => {
         router.push(`/session/${session.id}/info`);
     }, [router, session.id]);
@@ -195,6 +212,37 @@ export function useSessionQuickActions(
         performResume();
     }, [performResume]);
 
+    // Fork the session (no truncation) — copies the on-disk Claude JSONL
+    // and spawns a fresh Happy session on the same machine. Works for
+    // both active and inactive sessions; the source row stays untouched.
+    const [forking, performFork] = useHappyAction(async () => {
+        if (!canFork) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const directory = session.metadata?.path;
+        if (!machineId || !directory || !claudeSessionId) {
+            throw new HappyError(t('session.forkErrorMissingMetadata'), false);
+        }
+        const source: ForkSource = { sessionId: session.id, machineId, directory, claudeSessionId };
+        const result = await forkAndSpawn(source);
+        if (result.type !== 'success') {
+            throw new HappyError(result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'), false);
+        }
+        navigateToSession(result.sessionId);
+    });
+
+    const forkSession = React.useCallback(() => {
+        performFork();
+    }, [performFork]);
+
+    const openDuplicateSheet = React.useCallback(() => {
+        if (!canFork) return;
+        Modal.show({
+            component: DuplicateSheet,
+            props: { sessionId: session.id },
+        } as any);
+    }, [canFork, session.id]);
+
     const canCopySessionMetadata = __DEV__ || devModeEnabled;
 
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
@@ -204,6 +252,11 @@ export function useSessionQuickActions(
 
         if (resumeAvailability.canShowResume) {
             items.push({ id: 'resume', icon: 'play-circle-outline', label: t('sessionInfo.resumeSession'), onPress: resumeSession });
+        }
+
+        if (canFork) {
+            items.push({ id: 'fork', icon: 'git-branch-outline', label: t('session.forkAction'), onPress: forkSession });
+            items.push({ id: 'duplicate', icon: 'time-outline', label: t('session.duplicateAction'), onPress: openDuplicateSheet });
         }
 
         if (canCopySessionMetadata) {
@@ -217,9 +270,12 @@ export function useSessionQuickActions(
     }, [
         archiveSession,
         canCopySessionMetadata,
+        canFork,
         copySessionMetadata,
         copySessionMetadataAndLogs,
+        forkSession,
         openDetails,
+        openDuplicateSheet,
         resumeAvailability.canShowResume,
         resumeSession,
     ]);
@@ -243,9 +299,13 @@ export function useSessionQuickActions(
         canCopySessionMetadata,
         canResume: resumeAvailability.canResume,
         canShowResume: resumeAvailability.canShowResume,
+        canFork,
         copySessionMetadata,
         copySessionMetadataAndLogs,
+        forkSession,
+        forking,
         openDetails,
+        openDuplicateSheet,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,

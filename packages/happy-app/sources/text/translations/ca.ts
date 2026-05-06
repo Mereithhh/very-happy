@@ -90,6 +90,7 @@ export const ca: TranslationStructure = {
         justNow: 'ara mateix',
         minutesAgo: ({ count }: { count: number }) => `fa ${count} minut${count !== 1 ? 's' : ''}`,
         hoursAgo: ({ count }: { count: number }) => `fa ${count} hora${count !== 1 ? 'es' : ''}`,
+        daysAgo: ({ count }: { count: number }) => `fa ${count} dia${count !== 1 ? 's' : ''}`,
     },
 
     connect: {
@@ -290,6 +291,23 @@ export const ca: TranslationStructure = {
         inactiveArchived: 'Aquesta sessió està inactiva.',
         resumeFromTerminal: 'Per reprendre-la des del terminal:',
         newChat: 'Nou xat',
+        forkAction: 'Bifurca la sessió',
+        forkSubtitle: 'Continua en una nova sessió amb el mateix context',
+        duplicateAction: 'Duplica des d\'un missatge…',
+        duplicateSubtitle: 'Torna a un punt escollit i prova de nou',
+        forkFromHere: 'Bifurca des d\'aquí',
+        duplicateSheetTitle: 'Tria un punt de retrocés',
+        duplicateSheetSubtitle: 'La nova sessió conservarà el torn escollit complet (el teu missatge i la resposta de l\'agent) i descartarà els missatges següents.',
+        duplicateSheetConfirm: 'Duplica',
+        duplicateSheetEmpty: 'Encara no hi ha missatges per retrocedir en aquesta sessió.',
+        duplicateRowDisabled: 'Aquest missatge no es pot usar com a punt de retrocés.',
+        forkedFromLabel: 'Bifurcat de',
+        forkedFromSubtitle: 'Obre la sessió de la qual prové la bifurcació',
+        forkErrorOffline: 'La màquina està fora de línia. La bifurcació només està disponible mentre la màquina de la sessió estigui en línia.',
+        forkErrorMissingUuid: 'El punt de retrocés escollit ja no existeix a la sessió origen — prova a bifurcar sense truncar.',
+        forkErrorMissingMetadata: 'Falten metadades de la sessió necessàries per bifurcar.',
+        forkErrorGeneric: 'No s\'ha pogut bifurcar la sessió.',
+        forkClaudeOnly: 'La bifurcació només està disponible per a sessions de Claude.',
     },
 
     commandPalette: {

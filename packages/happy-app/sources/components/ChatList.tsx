@@ -5,11 +5,14 @@ import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
+import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Modal } from '@/modal';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -47,9 +50,33 @@ const ChatListInternal = React.memo((props: {
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const isNearBottom = React.useRef(true);
     const keyExtractor = useCallback((item: any) => item.id, []);
+
+    // Long-press → fork-from-this-message. Uses the same canFork gate as
+    // the rest of the fork affordances: ridden by the expResumeSession
+    // experiments toggle, requires a Claude session with claudeSessionId
+    // and a machine that's online. Active OR inactive — fork works either
+    // way (the on-disk JSONL exists in both cases).
+    const session = useSession(props.sessionId);
+    const { canFork } = useSessionQuickActions(session!, {});
+
+    const handleForkFromMessage = useCallback((_messageId: string, claudeUuid: string) => {
+        Modal.show({
+            component: DuplicateSheet,
+            props: {
+                sessionId: props.sessionId,
+                initialClaudeUuid: claudeUuid,
+            },
+        } as any);
+    }, [props.sessionId]);
+
     const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
-    ), [props.metadata, props.sessionId]);
+        <MessageView
+            message={item}
+            metadata={props.metadata}
+            sessionId={props.sessionId}
+            onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
+        />
+    ), [props.metadata, props.sessionId, canFork, handleForkFromMessage]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.

@@ -359,9 +359,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const experiments = useSetting('experiments');
     const expResumeSession = useSetting('expResumeSession');
     const { canResume, resumeSession, resumingSession } = useSessionQuickActions(session);
-    const isArchivedSession = session.metadata?.lifecycleState === 'archived';
     const isDisconnected = !sessionStatus.isConnected;
-    const isInactiveArchivedSession = isArchivedSession && isDisconnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
 
     // Use draft hook for auto-saving message drafts
@@ -557,7 +555,14 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         />
     );
 
-    const archivedHint = isInactiveArchivedSession ? (
+    // Disconnected sessions get the full Resume affordance regardless of
+    // whether they were explicitly archived or just lost their CLI (e.g.
+    // Ctrl-C in terminal — lifecycleState stays 'running', server flips
+    // active=false). InactiveArchivedHint handles both cases: shows the
+    // Resume button when canResume is true, falls back to the
+    // copy-this-command hint when the experiments toggle is off or the
+    // machine isn't reachable.
+    const inactiveHint = isDisconnected ? (
         <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
             <InactiveArchivedHint
                 resumeCommandBlock={expResumeSession ? resumeCommandBlock : null}
@@ -568,18 +573,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
-    const input = isInactiveArchivedSession ? (
+    const input = (
         <>
-            {archivedHint}
-            {composer}
-        </>
-    ) : (
-        <>
-            {expResumeSession && isDisconnected && resumeCommandBlock && (
-                <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
-                    <ResumeCommandHint resumeCommandBlock={resumeCommandBlock} />
-                </CenteredInputWidth>
-            )}
+            {inactiveHint}
             {composer}
         </>
     );
@@ -669,27 +665,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }
         </>
     )
-}
-
-function ResumeCommandHint({ resumeCommandBlock }: {
-    resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>>;
-}) {
-    const { theme } = useUnistyles();
-
-    return (
-        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
-            <ResumeCommandCopyBlock resumeCommandBlock={resumeCommandBlock} />
-            <Text style={{
-                color: theme.colors.textSecondary,
-                fontSize: 12,
-                lineHeight: 16,
-                textAlign: 'center',
-                paddingHorizontal: 8,
-            }}>
-                Run this command in your terminal to resume this session
-            </Text>
-        </View>
-    );
 }
 
 function InactiveArchivedHint(props: {

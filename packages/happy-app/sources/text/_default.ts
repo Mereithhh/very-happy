@@ -89,6 +89,7 @@ export const en = {
         justNow: 'just now',
         minutesAgo: ({ count }: { count: number }) => `${count} minute${count !== 1 ? 's' : ''} ago`,
         hoursAgo: ({ count }: { count: number }) => `${count} hour${count !== 1 ? 's' : ''} ago`,
+        daysAgo: ({ count }: { count: number }) => `${count} day${count !== 1 ? 's' : ''} ago`,
     },
 
     connect: {
@@ -303,6 +304,24 @@ export const en = {
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
         newChat: 'New chat',
+        // Fork / duplicate / rewind flow (Claude only)
+        forkAction: 'Fork session',
+        forkSubtitle: 'Continue in a new session with the same context',
+        duplicateAction: 'Duplicate from message…',
+        duplicateSubtitle: 'Rewind to a chosen point and try again',
+        forkFromHere: 'Fork from here',
+        duplicateSheetTitle: 'Choose a rewind point',
+        duplicateSheetSubtitle: 'The new session keeps the chosen turn complete (your message and the agent’s response) and drops every prompt after it.',
+        duplicateSheetConfirm: 'Duplicate',
+        duplicateSheetEmpty: 'No messages eligible for rewind in this session yet.',
+        duplicateRowDisabled: "This message can't be used as a rewind point.",
+        forkedFromLabel: 'Forked from',
+        forkedFromSubtitle: 'Open the session this fork was branched from',
+        forkErrorOffline: 'This machine is offline. Fork is only available while the machine that owns the session is online.',
+        forkErrorMissingUuid: 'The chosen rewind point is no longer present in the source session — try forking without truncation.',
+        forkErrorMissingMetadata: 'Missing session metadata required to fork.',
+        forkErrorGeneric: 'Failed to fork the session.',
+        forkClaudeOnly: 'Fork is currently only supported for Claude sessions.',
     },
 
     commandPalette: {

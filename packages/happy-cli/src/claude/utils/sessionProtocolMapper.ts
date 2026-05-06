@@ -444,6 +444,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     state: ClaudeSessionProtocolState,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
+    const claudeUuid = pickUuid(message);
     const providerSubagent = resolveProviderSubagent(message, state);
     const subagent = providerSubagent
         ? getSessionSubagentIdForProviderSubagent(state, providerSubagent)
@@ -479,12 +480,12 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
 
         for (const block of blocks) {
             if (block.type === 'text' && typeof block.text === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid }));
                 continue;
             }
 
@@ -542,10 +543,10 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             if (message.isSidechain) {
                 const turnId = ensureTurn(state, envelopes);
                 maybeEmitSubagentStart(state, turnId, subagent, envelopes);
-                envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent, claudeUuid }));
             } else {
                 closeTurn(state, 'completed', envelopes);
-                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }));
+                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { claudeUuid }));
             }
 
             return {
@@ -589,7 +590,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             }
 
             if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid }));
             }
         }
 

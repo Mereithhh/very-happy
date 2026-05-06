@@ -92,6 +92,7 @@ export const ja: TranslationStructure = {
         justNow: 'たった今',
         minutesAgo: ({ count }: { count: number }) => `${count}分前`,
         hoursAgo: ({ count }: { count: number }) => `${count}時間前`,
+        daysAgo: ({ count }: { count: number }) => `${count}日前`,
     },
 
     connect: {
@@ -291,6 +292,23 @@ export const ja: TranslationStructure = {
         inactiveArchived: 'このセッションは非アクティブです。',
         resumeFromTerminal: 'ターミナルから再開するには:',
         newChat: '新規チャット',
+        forkAction: 'セッションをフォーク',
+        forkSubtitle: '同じコンテキストで新しいセッションを続行',
+        duplicateAction: 'メッセージから複製…',
+        duplicateSubtitle: '選んだ地点まで巻き戻してやり直す',
+        forkFromHere: 'ここからフォーク',
+        duplicateSheetTitle: '巻き戻しポイントを選択',
+        duplicateSheetSubtitle: '新しいセッションは選んだターン全体（あなたのメッセージとエージェントの応答）を保持し、それ以降のメッセージは破棄します。',
+        duplicateSheetConfirm: '複製',
+        duplicateSheetEmpty: 'このセッションには巻き戻し可能なメッセージがまだありません。',
+        duplicateRowDisabled: 'このメッセージは巻き戻しポイントに使えません。',
+        forkedFromLabel: 'フォーク元',
+        forkedFromSubtitle: 'フォーク元のセッションを開く',
+        forkErrorOffline: 'マシンがオフラインです。セッションのマシンがオンラインの間のみフォークできます。',
+        forkErrorMissingUuid: '選んだ巻き戻しポイントがソースセッションに存在しません — 切り詰めなしのフォークをお試しください。',
+        forkErrorMissingMetadata: 'フォークに必要なセッションのメタデータがありません。',
+        forkErrorGeneric: 'セッションのフォークに失敗しました。',
+        forkClaudeOnly: 'フォークは現在 Claude セッションのみ対応しています。',
     },
 
     commandPalette: {

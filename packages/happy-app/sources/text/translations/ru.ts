@@ -396,6 +396,7 @@ export const ru: TranslationStructure = {
         justNow: 'только что',
         minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'минуту', few: 'минуты', many: 'минут' })} назад`,
         hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'час', few: 'часа', many: 'часов' })} назад`,
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'день', few: 'дня', many: 'дней' })} назад`,
     },
 
     session: {
@@ -403,6 +404,23 @@ export const ru: TranslationStructure = {
         inactiveArchived: 'Эта сессия неактивна.',
         resumeFromTerminal: 'Чтобы возобновить её из терминала:',
         newChat: 'Новый чат',
+        forkAction: 'Форкнуть сессию',
+        forkSubtitle: 'Продолжить в новой сессии с тем же контекстом',
+        duplicateAction: 'Откатиться к сообщению…',
+        duplicateSubtitle: 'Вернуться к выбранной точке и попробовать иначе',
+        forkFromHere: 'Форкнуть отсюда',
+        duplicateSheetTitle: 'Выберите точку отката',
+        duplicateSheetSubtitle: 'Новая сессия сохранит выбранный ход целиком (ваше сообщение и ответ агента) и отбросит все следующие запросы.',
+        duplicateSheetConfirm: 'Откатить',
+        duplicateSheetEmpty: 'В этой сессии пока нет сообщений, к которым можно откатиться.',
+        duplicateRowDisabled: 'К этому сообщению нельзя откатиться.',
+        forkedFromLabel: 'Форкнуто из',
+        forkedFromSubtitle: 'Открыть исходную сессию, из которой сделан форк',
+        forkErrorOffline: 'Машина оффлайн. Форк доступен, только пока машина с сессией онлайн.',
+        forkErrorMissingUuid: 'Выбранная точка отката больше не существует в исходной сессии — попробуйте форк без обрезки.',
+        forkErrorMissingMetadata: 'Не хватает метаданных сессии для форка.',
+        forkErrorGeneric: 'Не удалось форкнуть сессию.',
+        forkClaudeOnly: 'Форк сейчас поддерживается только для Claude-сессий.',
     },
 
     commandPalette: {
