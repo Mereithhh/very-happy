@@ -14,6 +14,13 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
+import { getProjectPath } from '@/claude/utils/path';
+import {
+    forkSession as claudeForkSession,
+    forkAndTruncateSession as claudeForkAndTruncateSession,
+    ForkTruncateUuidNotFoundError,
+    ForkSourceMissingError,
+} from '@/claude/utils/claudeSessionFork';
 
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
@@ -113,14 +120,14 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = params || {};
             logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
             if (!directory) {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token });
+            const result = await spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, parentSessionId, forkedFromMessageId });
 
             switch (result.type) {
                 case 'success':
@@ -153,6 +160,63 @@ export class ApiMachineClient {
 
             logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
             return { message: 'Session stopped' };
+        });
+
+        // Register Claude session fork handlers (used by app-side fork /
+        // duplicate flows). These take the source session's working
+        // directory and underlying Claude UUID, copy the on-disk JSONL
+        // — optionally truncated at a chosen message — and return the new
+        // Claude UUID. The caller then spawns a fresh Happy session with
+        // `resumeClaudeSessionId` set so `claude --resume <newUuid>`
+        // continues the conversation.
+        this.rpcHandlerManager.registerHandler('claude-fork-session', async (params: any) => {
+            const { directory, claudeSessionId } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
+                throw new Error('claudeSessionId is required');
+            }
+            try {
+                const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
+                return { type: 'success', newClaudeSessionId };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                throw error;
+            }
+        });
+
+        this.rpcHandlerManager.registerHandler('claude-duplicate-session', async (params: any) => {
+            const { directory, claudeSessionId, truncateBeforeUuid } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
+                throw new Error('claudeSessionId is required');
+            }
+            if (typeof truncateBeforeUuid !== 'string' || truncateBeforeUuid.length === 0) {
+                throw new Error('truncateBeforeUuid is required');
+            }
+            try {
+                const newClaudeSessionId = await claudeForkAndTruncateSession(
+                    getProjectPath(directory),
+                    claudeSessionId,
+                    truncateBeforeUuid,
+                );
+                return { type: 'success', newClaudeSessionId };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                if (error instanceof ForkTruncateUuidNotFoundError) {
+                    throw new Error(
+                        'The chosen rewind point is no longer present in the source session — try forking without truncation',
+                    );
+                }
+                throw error;
+            }
         });
 
         // Register stop daemon handler

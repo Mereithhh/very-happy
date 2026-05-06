@@ -96,6 +96,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         metadata: initialMachineMetadata
     });
 
+    // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
+    const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
+    const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -115,6 +119,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
