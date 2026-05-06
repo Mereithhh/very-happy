@@ -14,11 +14,17 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFile, rename, unlink } from "node:fs/promises";
+import { copyFile, rename, readFile, unlink } from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { logger } from "@/ui/logger";
+
+export type ClaudeRewindPoint = {
+    uuid: string;
+    text: string;
+    timestamp: number;
+};
 
 export class ForkTruncateUuidNotFoundError extends Error {
     constructor(public readonly truncateBeforeUuid: string, public readonly sourcePath: string) {
@@ -135,4 +141,53 @@ export async function forkAndTruncateSession(
     await rename(tempDst, finalDst);
     logger.debug(`[CLAUDE FORK] Forked+truncated ${sourceClaudeSessionId} -> ${newId} before ${truncateBeforeUuid}`);
     return newId;
+}
+
+/**
+ * List user-text messages from a Claude JSONL — used by the app's
+ * DuplicateSheet picker to populate a list of valid rewind points
+ * directly from disk. The on-disk file is the source of truth: it
+ * contains every message in the conversation including ones that
+ * went through the legacy `sentFrom: 'web'` path on the server,
+ * which never carry a claudeUuid in their session-protocol envelope.
+ */
+export async function listClaudeRewindPoints(
+    projectDir: string,
+    claudeSessionId: string,
+): Promise<ClaudeRewindPoint[]> {
+    const path = jsonlPath(projectDir, claudeSessionId);
+    let raw: string;
+    try {
+        raw = await readFile(path, 'utf-8');
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new ForkSourceMissingError(path);
+        }
+        throw error;
+    }
+
+    const points: ClaudeRewindPoint[] = [];
+    for (const line of raw.split('\n')) {
+        if (line.length === 0) continue;
+        let parsed: any;
+        try { parsed = JSON.parse(line); } catch { continue; }
+        if (parsed?.type !== 'user') continue;
+        if (parsed.isSidechain) continue;
+        if (typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
+        const content = parsed.message?.content;
+        if (typeof content !== 'string') continue;
+        const trimmed = content.trim();
+        if (trimmed.length === 0) continue;
+        const timestampRaw = parsed.timestamp;
+        const timestamp = typeof timestampRaw === 'string'
+            ? Date.parse(timestampRaw)
+            : (typeof timestampRaw === 'number' ? timestampRaw : Date.now());
+        points.push({
+            uuid: parsed.uuid,
+            text: content,
+            timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+        });
+    }
+
+    return points;
 }

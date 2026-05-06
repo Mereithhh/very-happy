@@ -165,6 +165,16 @@ export type ClaudeForkSessionResult =
     | { type: 'success'; newClaudeSessionId: string }
     | { type: 'error'; errorMessage: string };
 
+export interface ClaudeRewindPoint {
+    uuid: string;
+    text: string;
+    timestamp: number;
+}
+
+export type ClaudeListRewindPointsResult =
+    | { type: 'success'; points: ClaudeRewindPoint[] }
+    | { type: 'error'; errorMessage: string };
+
 export interface ResumeSessionOptions {
     machineId: string;
     sessionId: string;
@@ -226,6 +236,35 @@ export async function claudeForkSession(options: ClaudeForkSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to fork session',
+        };
+    }
+}
+
+/**
+ * Read the on-disk Claude JSONL on the daemon machine and return user-text
+ * messages with their underlying claudeUuid + timestamp. Disk is the
+ * source of truth for the rewind picker — server-side envelopes miss
+ * claudeUuid for any user message that travelled via the legacy
+ * `sentFrom: 'web'` path.
+ */
+export async function claudeListRewindPoints(
+    options: ClaudeForkSessionOptions,
+): Promise<ClaudeListRewindPointsResult> {
+    const { machineId, directory, claudeSessionId } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeListRewindPointsResult, {
+            directory: string;
+            claudeSessionId: string;
+        }>(
+            machineId,
+            'claude-list-rewind-points',
+            { directory, claudeSessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to list rewind points',
         };
     }
 }

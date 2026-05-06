@@ -18,6 +18,7 @@ import { getProjectPath } from '@/claude/utils/path';
 import {
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
+    listClaudeRewindPoints,
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
@@ -180,6 +181,29 @@ export class ApiMachineClient {
             try {
                 const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
                 return { type: 'success', newClaudeSessionId };
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                throw error;
+            }
+        });
+
+        // List user-text rewind points directly from the on-disk JSONL.
+        // The server-side session log misses claudeUuid for messages typed
+        // live in the app (legacy `sentFrom: 'web'` path); disk is the
+        // source of truth and carries the right uuids for every message.
+        this.rpcHandlerManager.registerHandler('claude-list-rewind-points', async (params: any) => {
+            const { directory, claudeSessionId } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
+                throw new Error('claudeSessionId is required');
+            }
+            try {
+                const points = await listClaudeRewindPoints(getProjectPath(directory), claudeSessionId);
+                return { type: 'success', points };
             } catch (error) {
                 if (error instanceof ForkSourceMissingError) {
                     throw new Error('Claude session file not found on this machine');

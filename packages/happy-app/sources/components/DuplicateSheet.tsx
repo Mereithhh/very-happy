@@ -1,53 +1,35 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useSession } from '@/sync/storage';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { forkAndSpawn, type ForkSource } from '@/sync/ops';
-import type { Message } from '@/sync/typesMessage';
+import { forkAndSpawn, claudeListRewindPoints, type ForkSource, type ClaudeRewindPoint } from '@/sync/ops';
 
 export interface DuplicateSheetProps {
     sessionId: string;
-    /** Pre-select this message id when the sheet opens (long-press entry). */
-    initialMessageId?: string;
+    /** Pre-select this rewind uuid when the sheet opens (long-press entry). */
+    initialClaudeUuid?: string;
     /** Injected by the modal infra. */
     onClose?: () => void;
 }
 
 /**
- * Picker for "duplicate session from message N". Shows the user-text
- * messages in reverse order; tap to choose the rewind point, confirm to
- * fork and spawn a new Happy session truncated at that message.
+ * Picker for "duplicate session from message N". Pulls user-text rewind
+ * points directly from the on-disk Claude JSONL via RPC — disk is the
+ * source of truth, since live-typed user messages travel through the
+ * legacy `sentFrom: 'web'` server path and never carry a claudeUuid in
+ * their session-protocol envelope.
  *
- * Older messages without an attached `claudeUuid` are visibly disabled —
- * we cannot guarantee a precise on-disk truncation point for them.
+ * Tap to choose a point, confirm to fork-and-spawn a new Happy session
+ * truncated to everything before that uuid.
  */
 export const DuplicateSheet = React.memo(function DuplicateSheet(props: DuplicateSheetProps) {
-    const { sessionId, initialMessageId, onClose } = props;
+    const { sessionId, initialClaudeUuid, onClose } = props;
     const session = useSession(sessionId);
-    const { messages } = useSessionMessages(sessionId);
     const router = useRouter();
-
-    const userMessages = React.useMemo(() => {
-        const filtered = messages.filter((m): m is Extract<Message, { kind: 'user-text' }> =>
-            m.kind === 'user-text' && (m.text ?? '').trim().length > 0,
-        );
-        // Newest first — easier to find a recent rewind point.
-        return [...filtered].reverse();
-    }, [messages]);
-
-    const [selectedId, setSelectedId] = React.useState<string | null>(initialMessageId ?? null);
-
-    // If the initial message id was provided but isn't in the eligible list,
-    // clear the selection so the user is forced to pick a valid one.
-    React.useEffect(() => {
-        if (selectedId && !userMessages.some((m) => m.id === selectedId)) {
-            setSelectedId(null);
-        }
-    }, [selectedId, userMessages]);
 
     const machineId = session?.metadata?.machineId;
     const directory = session?.metadata?.path;
@@ -61,28 +43,58 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
         session?.metadata?.flavor !== 'codex' &&
         session?.metadata?.flavor !== 'gemini';
 
-    const selected = selectedId ? userMessages.find((m) => m.id === selectedId) ?? null : null;
-    const selectedClaudeUuid = selected?.claudeUuid;
+    const [points, setPoints] = React.useState<ClaudeRewindPoint[] | null>(null);
+    const [pointsError, setPointsError] = React.useState<string | null>(null);
+    const [selectedUuid, setSelectedUuid] = React.useState<string | null>(initialClaudeUuid ?? null);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            if (!canFork || !machineId || !directory || !claudeSessionId) {
+                if (!cancelled) {
+                    setPointsError(t('session.forkErrorMissingMetadata'));
+                    setPoints([]);
+                }
+                return;
+            }
+            const result = await claudeListRewindPoints({ machineId, directory, claudeSessionId });
+            if (cancelled) return;
+            if (result.type === 'success') {
+                // Newest first — easier to find a recent rewind point.
+                setPoints([...result.points].reverse());
+                setPointsError(null);
+            } else {
+                setPoints([]);
+                setPointsError(result.errorMessage);
+            }
+        }
+        void load();
+        return () => { cancelled = true; };
+    }, [canFork, machineId, directory, claudeSessionId]);
+
+    React.useEffect(() => {
+        if (points && selectedUuid && !points.some((p) => p.uuid === selectedUuid)) {
+            setSelectedUuid(null);
+        }
+    }, [points, selectedUuid]);
+
+    const selected = (points && selectedUuid)
+        ? points.find((p) => p.uuid === selectedUuid) ?? null
+        : null;
 
     const [loading, doDuplicate] = useHappyAction(async () => {
         if (!canFork || !machineId || !directory || !claudeSessionId) {
             Modal.alert(t('common.error'), t('session.forkErrorMissingMetadata'));
             return;
         }
-        if (!selected || !selectedClaudeUuid) {
+        if (!selected) {
             Modal.alert(t('common.error'), t('session.duplicateRowDisabled'));
             return;
         }
 
-        const source: ForkSource = {
-            sessionId,
-            machineId,
-            directory,
-            claudeSessionId,
-        };
+        const source: ForkSource = { sessionId, machineId, directory, claudeSessionId };
         const result = await forkAndSpawn(source, {
-            truncateBeforeUuid: selectedClaudeUuid,
-            forkedFromMessageId: selected.id,
+            truncateBeforeUuid: selected.uuid,
         });
 
         if (result.type === 'success') {
@@ -103,38 +115,35 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
             </View>
 
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-                {userMessages.length === 0 ? (
+                {points === null ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator />
+                    </View>
+                ) : pointsError ? (
+                    <Text style={styles.emptyText}>{pointsError}</Text>
+                ) : points.length === 0 ? (
                     <Text style={styles.emptyText}>{t('session.duplicateSheetEmpty')}</Text>
                 ) : (
-                    userMessages.map((msg) => {
-                        const hasUuid = Boolean(msg.claudeUuid);
-                        const isSelected = msg.id === selectedId;
-                        const preview = (msg.displayText ?? msg.text).trim().replace(/\s+/g, ' ');
+                    points.map((p) => {
+                        const isSelected = p.uuid === selectedUuid;
+                        const preview = p.text.trim().replace(/\s+/g, ' ');
                         const truncated = preview.length > 140 ? `${preview.slice(0, 140)}…` : preview;
-                        const subtitleText = hasUuid
-                            ? formatRelativeTime(msg.createdAt)
-                            : t('session.duplicateRowDisabled');
 
                         return (
                             <Pressable
-                                key={msg.id}
-                                onPress={hasUuid ? () => setSelectedId(msg.id) : undefined}
+                                key={p.uuid}
+                                onPress={() => setSelectedUuid(p.uuid)}
                                 style={({ pressed }) => [
                                     styles.row,
                                     isSelected && styles.rowSelected,
-                                    !hasUuid && styles.rowDisabled,
-                                    pressed && hasUuid && styles.rowPressed,
+                                    pressed && styles.rowPressed,
                                 ]}
-                                disabled={!hasUuid}
                             >
-                                <Text
-                                    style={[styles.rowText, !hasUuid && styles.rowTextDisabled]}
-                                    numberOfLines={3}
-                                >
+                                <Text style={styles.rowText} numberOfLines={3}>
                                     {truncated}
                                 </Text>
-                                <Text style={[styles.rowMeta, !hasUuid && styles.rowMetaDisabled]}>
-                                    {subtitleText}
+                                <Text style={styles.rowMeta}>
+                                    {formatRelativeTime(p.timestamp)}
                                 </Text>
                             </Pressable>
                         );
@@ -151,11 +160,11 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
                 </Pressable>
                 <Pressable
                     onPress={doDuplicate}
-                    disabled={loading || !selected || !selectedClaudeUuid || !canFork}
+                    disabled={loading || !selected || !canFork}
                     style={({ pressed }) => [
                         styles.button,
                         styles.buttonPrimary,
-                        (loading || !selected || !selectedClaudeUuid || !canFork) && styles.buttonDisabled,
+                        (loading || !selected || !canFork) && styles.buttonDisabled,
                         pressed && styles.buttonPressed,
                     ]}
                 >
@@ -232,24 +241,20 @@ const styles = StyleSheet.create((theme) => ({
     rowPressed: {
         backgroundColor: theme.colors.surfaceHigh,
     },
-    rowDisabled: {
-        opacity: 0.5,
-    },
     rowText: {
         fontSize: 14,
         color: theme.colors.text,
         lineHeight: 19,
-    },
-    rowTextDisabled: {
-        color: theme.colors.textSecondary,
     },
     rowMeta: {
         marginTop: 4,
         fontSize: 12,
         color: theme.colors.textSecondary,
     },
-    rowMetaDisabled: {
-        color: theme.colors.textSecondary,
+    loadingContainer: {
+        paddingVertical: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     actions: {
         flexDirection: 'row',
