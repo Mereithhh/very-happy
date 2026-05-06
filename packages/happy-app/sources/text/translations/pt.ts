@@ -90,6 +90,7 @@ export const pt: TranslationStructure = {
         justNow: 'agora mesmo',
         minutesAgo: ({ count }: { count: number }) => `há ${count} minuto${count !== 1 ? 's' : ''}`,
         hoursAgo: ({ count }: { count: number }) => `há ${count} hora${count !== 1 ? 's' : ''}`,
+        daysAgo: ({ count }: { count: number }) => `há ${count} dia${count !== 1 ? 's' : ''}`,
     },
 
     connect: {
@@ -289,6 +290,23 @@ export const pt: TranslationStructure = {
         inactiveArchived: 'Esta sessão está inativa.',
         resumeFromTerminal: 'Para retomá-la pelo terminal:',
         newChat: 'Novo chat',
+        forkAction: 'Bifurcar sessão',
+        forkSubtitle: 'Continuar em uma nova sessão com o mesmo contexto',
+        duplicateAction: 'Duplicar a partir da mensagem…',
+        duplicateSubtitle: 'Voltar a um ponto escolhido e tentar de novo',
+        forkFromHere: 'Bifurcar daqui',
+        duplicateSheetTitle: 'Escolha um ponto de retrocesso',
+        duplicateSheetSubtitle: 'A nova sessão começará com tudo até (sem incluir) a mensagem escolhida.',
+        duplicateSheetConfirm: 'Duplicar',
+        duplicateSheetEmpty: 'Ainda não há mensagens elegíveis para retrocesso nesta sessão.',
+        duplicateRowDisabled: 'Esta mensagem não pode ser usada como ponto de retrocesso.',
+        forkedFromLabel: 'Bifurcado de',
+        forkedFromSubtitle: 'Abrir a sessão da qual foi bifurcada',
+        forkErrorOffline: 'Esta máquina está offline. A bifurcação só está disponível enquanto a máquina da sessão estiver online.',
+        forkErrorMissingUuid: 'O ponto de retrocesso escolhido não existe mais na sessão de origem — tente bifurcar sem truncar.',
+        forkErrorMissingMetadata: 'Faltam metadados da sessão necessários para bifurcar.',
+        forkErrorGeneric: 'Não foi possível bifurcar a sessão.',
+        forkClaudeOnly: 'A bifurcação atualmente só é suportada para sessões Claude.',
     },
 
     commandPalette: {

@@ -92,6 +92,7 @@ export const zhHans: TranslationStructure = {
         justNow: '刚刚',
         minutesAgo: ({ count }: { count: number }) => `${count} 分钟前`,
         hoursAgo: ({ count }: { count: number }) => `${count} 小时前`,
+        daysAgo: ({ count }: { count: number }) => `${count} 天前`,
     },
 
     connect: {
@@ -291,6 +292,23 @@ export const zhHans: TranslationStructure = {
         inactiveArchived: '此会话处于非活动状态。',
         resumeFromTerminal: '要从终端恢复它：',
         newChat: '新对话',
+        forkAction: '分叉会话',
+        forkSubtitle: '在相同上下文中开启新会话继续',
+        duplicateAction: '从消息处复制…',
+        duplicateSubtitle: '回到选定位置重新尝试',
+        forkFromHere: '从此处分叉',
+        duplicateSheetTitle: '选择回退点',
+        duplicateSheetSubtitle: '新会话将以所选消息之前的所有内容开始(不包括该消息)。',
+        duplicateSheetConfirm: '复制',
+        duplicateSheetEmpty: '此会话还没有可回退的消息。',
+        duplicateRowDisabled: '此消息不能作为回退点。',
+        forkedFromLabel: '分叉自',
+        forkedFromSubtitle: '打开分叉来源的会话',
+        forkErrorOffline: '机器离线。仅当会话所在的机器在线时才能分叉。',
+        forkErrorMissingUuid: '选定的回退点已不存在于源会话中 — 请尝试不截断地分叉。',
+        forkErrorMissingMetadata: '缺少分叉所需的会话元数据。',
+        forkErrorGeneric: '分叉会话失败。',
+        forkClaudeOnly: '目前仅支持 Claude 会话的分叉。',
     },
 
     commandPalette: {
