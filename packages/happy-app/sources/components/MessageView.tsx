@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -17,6 +17,11 @@ export const MessageView = (props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  /**
+   * Long-press handler for user-text bubbles. Wired by ChatList from
+   * the active session screen and used by the fork-from-message flow.
+   */
+  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) => {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
@@ -26,6 +31,7 @@ export const MessageView = (props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          onForkFromUserMessage={props.onForkFromUserMessage}
         />
       </View>
     </View>
@@ -38,10 +44,17 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
+      return (
+        <UserTextBlock
+          message={props.message}
+          sessionId={props.sessionId}
+          onForkFromUserMessage={props.onForkFromUserMessage}
+        />
+      );
 
     case 'agent-text':
       return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
@@ -68,19 +81,29 @@ function RenderBlock(props: {
 function UserTextBlock(props: {
   message: UserTextMessage;
   sessionId: string;
+  onForkFromUserMessage?: (messageId: string, claudeUuid: string) => void;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
+  const claudeUuid = props.message.claudeUuid;
+  const canFork = Boolean(claudeUuid) && Boolean(props.onForkFromUserMessage);
+  const handleLongPress = React.useCallback(() => {
+    if (claudeUuid && props.onForkFromUserMessage) {
+      props.onForkFromUserMessage(props.message.id, claudeUuid);
+    }
+  }, [claudeUuid, props.message.id, props.onForkFromUserMessage]);
+
   return (
     <View style={styles.userMessageContainer}>
-      <View style={styles.userMessageBubble}>
+      <Pressable
+        onLongPress={canFork ? handleLongPress : undefined}
+        delayLongPress={400}
+        style={styles.userMessageBubble}
+      >
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
-      </View>
+      </Pressable>
     </View>
   );
 }

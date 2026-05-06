@@ -5,11 +5,13 @@ import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageView } from './MessageView';
+import { DuplicateSheet } from './DuplicateSheet';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Modal } from '@/modal';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -47,9 +49,30 @@ const ChatListInternal = React.memo((props: {
     const [showScrollButton, setShowScrollButton] = React.useState(false);
     const isNearBottom = React.useRef(true);
     const keyExtractor = useCallback((item: any) => item.id, []);
+
+    // Long-press → fork-from-this-message. Only available on Claude
+    // sessions and only for messages whose envelope carries a claudeUuid.
+    const handleForkFromMessage = useCallback((messageId: string, _claudeUuid: string) => {
+        if (props.metadata?.flavor === 'codex' || props.metadata?.flavor === 'gemini') {
+            return;
+        }
+        Modal.show({
+            component: DuplicateSheet,
+            props: {
+                sessionId: props.sessionId,
+                initialMessageId: messageId,
+            },
+        } as any);
+    }, [props.metadata?.flavor, props.sessionId]);
+
     const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
-    ), [props.metadata, props.sessionId]);
+        <MessageView
+            message={item}
+            metadata={props.metadata}
+            sessionId={props.sessionId}
+            onForkFromUserMessage={handleForkFromMessage}
+        />
+    ), [props.metadata, props.sessionId, handleForkFromMessage]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
