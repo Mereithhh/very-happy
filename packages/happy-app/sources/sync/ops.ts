@@ -140,7 +140,30 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    /**
+     * If set, the daemon spawns the agent with `--resume <id>` so the new
+     * Happy session attaches to a pre-existing on-disk Claude conversation
+     * file. Used by the session fork / duplicate flow.
+     */
+    resumeClaudeSessionId?: string;
+    /** Happy session id this fork was branched from (lineage). */
+    parentSessionId?: string;
+    /** Happy message id used as the rewind point (only set for "duplicate"). */
+    forkedFromMessageId?: string;
 }
+
+// Options for forking a Claude session on a machine
+export interface ClaudeForkSessionOptions {
+    machineId: string;
+    /** Working directory of the source session — used to derive the Claude project dir. */
+    directory: string;
+    /** Source Claude session UUID (Session.metadata.claudeSessionId on the parent). */
+    claudeSessionId: string;
+}
+
+export type ClaudeForkSessionResult =
+    | { type: 'success'; newClaudeSessionId: string }
+    | { type: 'error'; errorMessage: string };
 
 export interface ResumeSessionOptions {
     machineId: string;
@@ -154,7 +177,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -163,10 +186,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            resumeClaudeSessionId?: string,
+            parentSessionId?: string,
+            forkedFromMessageId?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, parentSessionId, forkedFromMessageId }
         );
         return result;
     } catch (error) {
@@ -174,6 +200,61 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         return {
             type: 'error',
             errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
+}
+
+/**
+ * Copy the source session's Claude JSONL on the daemon machine and return
+ * the new Claude session UUID. Caller then spawns a fresh Happy session
+ * with `resumeClaudeSessionId` set to that UUID to attach a new Happy
+ * session row to the copied conversation.
+ */
+export async function claudeForkSession(options: ClaudeForkSessionOptions): Promise<ClaudeForkSessionResult> {
+    const { machineId, directory, claudeSessionId } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+        }>(
+            machineId,
+            'claude-fork-session',
+            { directory, claudeSessionId },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to fork session',
+        };
+    }
+}
+
+/**
+ * Same as claudeForkSession, but truncates the copied JSONL just before the
+ * line with `truncateBeforeUuid`. Use this for "rewind to message N and
+ * try again" flows. Daemon hard-fails if the UUID isn't present in the
+ * source — never silently produces a non-truncated copy.
+ */
+export async function claudeDuplicateSession(
+    options: ClaudeForkSessionOptions & { truncateBeforeUuid: string },
+): Promise<ClaudeForkSessionResult> {
+    const { machineId, directory, claudeSessionId, truncateBeforeUuid } = options;
+    try {
+        const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+            truncateBeforeUuid: string;
+        }>(
+            machineId,
+            'claude-duplicate-session',
+            { directory, claudeSessionId, truncateBeforeUuid },
+        );
+        return result;
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to duplicate session',
         };
     }
 }
@@ -570,6 +651,58 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
             message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
+}
+
+// Forking source description used by forkAndSpawn.
+export interface ForkSource {
+    sessionId: string;
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+}
+
+/**
+ * Two-step orchestrator for the session fork / duplicate flow:
+ *   1. Ask the daemon to copy (and optionally truncate) the source Claude
+ *      JSONL — returns a fresh Claude session UUID.
+ *   2. Spawn a new Happy session on the same machine with
+ *      `resumeClaudeSessionId` set to that UUID so `claude --resume` picks
+ *      up the copied conversation.
+ *
+ * Lineage (parentSessionId, forkedFromMessageId) rides through the spawn
+ * RPC into env vars, then into the new Happy session's metadata at start
+ * — so the parent link survives without any server-side schema change.
+ */
+export async function forkAndSpawn(
+    source: ForkSource,
+    opts: { truncateBeforeUuid?: string; forkedFromMessageId?: string } = {},
+): Promise<SpawnSessionResult> {
+    const forkResult = opts.truncateBeforeUuid
+        ? await claudeDuplicateSession({
+            machineId: source.machineId,
+            directory: source.directory,
+            claudeSessionId: source.claudeSessionId,
+            truncateBeforeUuid: opts.truncateBeforeUuid,
+        })
+        : await claudeForkSession({
+            machineId: source.machineId,
+            directory: source.directory,
+            claudeSessionId: source.claudeSessionId,
+        });
+
+    if (forkResult.type !== 'success') {
+        return { type: 'error', errorMessage: forkResult.errorMessage };
+    }
+
+    return machineSpawnNewSession({
+        machineId: source.machineId,
+        directory: source.directory,
+        agent: 'claude',
+        approvedNewDirectoryCreation: false,
+        resumeClaudeSessionId: forkResult.newClaudeSessionId,
+        parentSessionId: source.sessionId,
+        forkedFromMessageId: opts.forkedFromMessageId,
+    });
 }
 
 // Export types for external use

@@ -109,6 +109,10 @@ const sessionEnvelopeSchema = z.object({
     subagent: z.string().refine((value) => isCuid(value), {
         message: 'subagent must be a cuid2 value',
     }).optional(),
+    // Underlying agent-protocol message id (Claude's `uuid` in the JSONL)
+    // — used as the rewind point for fork / duplicate. Optional for back-
+    // compat with envelopes emitted before this field was wired through.
+    claudeUuid: z.string().min(1).optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -522,6 +526,12 @@ export type NormalizedMessage = ({
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,
+    /**
+     * Underlying Claude `uuid` for this message — used as the rewind point
+     * for the session fork / duplicate flow. Optional because some message
+     * sources (legacy events, server-emitted control messages) have none.
+     */
+    claudeUuid?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -596,7 +606,8 @@ function normalizeSessionEnvelope(
                     type: 'text',
                     text: envelope.ev.text
                 },
-                meta
+                meta,
+                claudeUuid: envelope.claudeUuid,
             } satisfies NormalizedMessage;
         }
 
@@ -619,7 +630,8 @@ function normalizeSessionEnvelope(
                     parentUUID
                 }
             ],
-            meta
+            meta,
+            claudeUuid: envelope.claudeUuid,
         } satisfies NormalizedMessage;
     }
 
@@ -858,7 +870,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         content: {
                             type: 'text',
                             text: raw.content.data.message.content
-                        }
+                        },
+                        claudeUuid: raw.content.data.uuid,
                     };
                 }
 
