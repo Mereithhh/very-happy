@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useSession, useSessionMessages, useSetting } from "@/sync/storage";
+import { useSession, useSessionMessages } from "@/sync/storage";
 import { FlatList, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, View } from 'react-native';
 import { useCallback } from 'react';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -12,6 +12,7 @@ import { Message } from '@/sync/typesMessage';
 import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -50,14 +51,13 @@ const ChatListInternal = React.memo((props: {
     const isNearBottom = React.useRef(true);
     const keyExtractor = useCallback((item: any) => item.id, []);
 
-    // Long-press → fork-from-this-message. Gated by the same experiments
-    // toggle that controls "Resume Session" in settings/features (and
-    // restricted to Claude sessions). When the toggle is off we don't
-    // pass a handler at all, so MessageView's UserTextBlock skips
-    // wiring the long-press gesture entirely.
-    const expResumeSession = useSetting('expResumeSession');
-    const isClaudeSession = props.metadata?.flavor !== 'codex' && props.metadata?.flavor !== 'gemini';
-    const forkEnabled = expResumeSession && isClaudeSession;
+    // Long-press → fork-from-this-message. Uses the same canFork gate as
+    // the rest of the fork affordances: ridden by the expResumeSession
+    // experiments toggle, requires a Claude session with claudeSessionId
+    // and a machine that's online. Active OR inactive — fork works either
+    // way (the on-disk JSONL exists in both cases).
+    const session = useSession(props.sessionId);
+    const { canFork } = useSessionQuickActions(session!, {});
 
     const handleForkFromMessage = useCallback((messageId: string, _claudeUuid: string) => {
         Modal.show({
@@ -74,9 +74,9 @@ const ChatListInternal = React.memo((props: {
             message={item}
             metadata={props.metadata}
             sessionId={props.sessionId}
-            onForkFromUserMessage={forkEnabled ? handleForkFromMessage : undefined}
+            onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
         />
-    ), [props.metadata, props.sessionId, forkEnabled, handleForkFromMessage]);
+    ), [props.metadata, props.sessionId, canFork, handleForkFromMessage]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.

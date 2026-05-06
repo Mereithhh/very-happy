@@ -11,8 +11,7 @@ import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId, getResumeCommand } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionKill, sessionDelete, forkAndSpawn, type ForkSource } from '@/sync/ops';
-import { DuplicateSheet } from '@/components/DuplicateSheet';
+import { sessionArchive, sessionKill, sessionDelete } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -132,40 +131,13 @@ function SessionInfoContent({ session }: { session: Session }) {
     const sessionStatus = useSessionStatus(session);
     const {
         canShowResume,
+        canFork,
+        forking,
+        forkSession,
+        openDuplicateSheet,
         resumeSession,
         resumeSessionSubtitle,
     } = useSessionQuickActions(session);
-
-    // Fork / duplicate are Claude-only and need a machine that's online
-    // plus a known claudeSessionId. We piggy-back on the existing resume
-    // gating so users see consistent affordances across "Resume", "Fork",
-    // and "Duplicate from message".
-    const isClaude = !session.metadata?.flavor || session.metadata.flavor === 'claude';
-    const canShowFork = canShowResume && isClaude && Boolean(session.metadata?.claudeSessionId);
-    const machineId = session.metadata?.machineId;
-    const directory = session.metadata?.path;
-    const claudeSessionId = session.metadata?.claudeSessionId;
-
-    const [forking, doFork] = useHappyAction(async () => {
-        if (!canShowFork || !machineId || !directory || !claudeSessionId) {
-            Modal.alert(t('common.error'), t('session.forkErrorMissingMetadata'));
-            return;
-        }
-        const source: ForkSource = { sessionId: session.id, machineId, directory, claudeSessionId };
-        const result = await forkAndSpawn(source);
-        if (result.type === 'success') {
-            router.replace(`/session/${result.sessionId}`);
-            return;
-        }
-        Modal.alert(t('common.error'), result.type === 'error' ? result.errorMessage : t('session.forkErrorGeneric'));
-    });
-
-    const handleOpenDuplicateSheet = useCallback(() => {
-        Modal.show({
-            component: DuplicateSheet,
-            props: { sessionId: session.id },
-        } as any);
-    }, [session.id]);
 
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -392,21 +364,21 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={resumeSession}
                         />
                     )}
-                    {canShowFork && (
+                    {canFork && (
                         <Item
                             title={t('session.forkAction')}
                             subtitle={t('session.forkSubtitle')}
                             icon={<Ionicons name="git-branch-outline" size={29} color="#007AFF" />}
-                            onPress={doFork}
+                            onPress={forkSession}
                             loading={forking}
                         />
                     )}
-                    {canShowFork && (
+                    {canFork && (
                         <Item
                             title={t('session.duplicateAction')}
                             subtitle={t('session.duplicateSubtitle')}
                             icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
-                            onPress={handleOpenDuplicateSheet}
+                            onPress={openDuplicateSheet}
                         />
                     )}
                     {session.metadata?.parentSessionId && (
