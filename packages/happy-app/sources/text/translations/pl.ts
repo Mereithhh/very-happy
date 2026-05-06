@@ -314,7 +314,7 @@ export const pl: TranslationStructure = {
         duplicateSubtitle: 'Cofnij się do wybranego punktu i spróbuj inaczej',
         forkFromHere: 'Rozwidl od tego miejsca',
         duplicateSheetTitle: 'Wybierz punkt cofnięcia',
-        duplicateSheetSubtitle: 'Nowa sesja będzie zawierać wszystko aż do wybranej wiadomości włącznie. Agent wygeneruje świeżą odpowiedź.',
+        duplicateSheetSubtitle: 'Nowa sesja zachowa wybraną turę w całości (twoja wiadomość i odpowiedź agenta) i odrzuci wszystkie kolejne wiadomości.',
         duplicateSheetConfirm: 'Duplikuj',
         duplicateSheetEmpty: 'W tej sesji nie ma jeszcze wiadomości, do których można się cofnąć.',
         duplicateRowDisabled: 'Tej wiadomości nie można użyć jako punktu cofnięcia.',

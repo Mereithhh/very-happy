@@ -45,6 +45,18 @@ function jsonlPath(projectDir: string, sessionId: string): string {
 }
 
 /**
+ * True for non-sidechain user-typed prompts — string content, top-level
+ * conversation. Tool_result follow-ups (also `type: 'user'` but with array
+ * content) and sidechain entries don't count.
+ */
+function isUserPrompt(parsed: any): boolean {
+    if (!parsed || parsed.type !== 'user') return false;
+    if (parsed.isSidechain) return false;
+    const content = parsed.message?.content;
+    return typeof content === 'string';
+}
+
+/**
  * Copy the source JSONL to a new file under the same project dir.
  * Returns the new Claude session UUID. The file copy is atomic at the FS
  * level (single copyFile call), so concurrent writes by Claude to the
@@ -69,16 +81,17 @@ export async function forkSession(projectDir: string, sourceClaudeSessionId: str
 }
 
 /**
- * Stream-copy the source JSONL into a new file, keeping every line up to
- * AND including the one whose `.uuid` matches `cutAfterUuid`, and dropping
- * everything after. Atomic rename at the end so partial writes are never
- * visible.
+ * Stream-copy the source JSONL into a new file, keeping the line whose
+ * `.uuid` matches `cutAfterUuid` AND every line that follows it up to —
+ * but not including — the next user prompt (a non-sidechain user message
+ * whose content is a plain string). Atomic rename at the end so partial
+ * writes are never visible.
  *
- * Semantics: the chosen message stays in the forked session as the last
- * entry in the conversation. Anything that came after — including the
- * agent's response to it — is gone. When the user opens the fork they
- * see their own message as the last turn, and the agent regenerates a
- * fresh response on the next interaction.
+ * Semantics: the chosen turn stays in the forked session — the user
+ * message, the agent's response to it, plus any tool_use / tool_result
+ * cycles that belong to that turn — and the next prompt the user typed
+ * (and everything after) is dropped. The user opens the fork on a
+ * complete turn and continues the conversation from there.
  *
  * Throws `ForkTruncateUuidNotFoundError` if the marker is not found in
  * the source — we refuse to silently produce a full copy when truncation
@@ -106,7 +119,7 @@ export async function forkAndTruncateSession(
                 continue;
             }
 
-            let parsed: { uuid?: unknown } | null = null;
+            let parsed: any = null;
             try {
                 parsed = JSON.parse(line);
             } catch {
@@ -115,16 +128,19 @@ export async function forkAndTruncateSession(
                 logger.debug(`[CLAUDE FORK] Skipped malformed JSON line during truncation copy`);
             }
 
-            // Always write this line. If it's the cut marker, write it AND
-            // stop — the chosen message stays as the last entry, anything
-            // after is dropped.
+            // Once we're past the marker, the next non-sidechain user-typed
+            // prompt (string content) is the cut point — that line and
+            // everything after it stay out of the fork.
+            if (foundMarker && parsed && isUserPrompt(parsed)) {
+                break;
+            }
+
             await new Promise<void>((resolve, reject) => {
                 writeStream.write(`${line}\n`, (err) => (err ? reject(err) : resolve()));
             });
 
-            if (parsed && typeof parsed.uuid === 'string' && parsed.uuid === cutAfterUuid) {
+            if (!foundMarker && parsed && typeof parsed.uuid === 'string' && parsed.uuid === cutAfterUuid) {
                 foundMarker = true;
-                break;
             }
         }
     } catch (e) {

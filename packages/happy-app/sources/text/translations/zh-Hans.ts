@@ -298,7 +298,7 @@ export const zhHans: TranslationStructure = {
         duplicateSubtitle: '回到选定位置重新尝试',
         forkFromHere: '从此处分叉',
         duplicateSheetTitle: '选择回退点',
-        duplicateSheetSubtitle: '新会话将包含所选消息及之前的所有内容。智能体会重新生成回复。',
+        duplicateSheetSubtitle: '新会话将保留所选轮次完整内容（你的消息与智能体的回复），并丢弃其后的所有消息。',
         duplicateSheetConfirm: '复制',
         duplicateSheetEmpty: '此会话还没有可回退的消息。',
         duplicateRowDisabled: '此消息不能作为回退点。',

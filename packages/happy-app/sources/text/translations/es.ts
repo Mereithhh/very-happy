@@ -297,7 +297,7 @@ export const es: TranslationStructure = {
         duplicateSubtitle: 'Volver a un punto elegido e intentarlo de nuevo',
         forkFromHere: 'Bifurcar desde aquí',
         duplicateSheetTitle: 'Elige un punto de retroceso',
-        duplicateSheetSubtitle: 'La nueva sesión incluirá todo hasta el mensaje elegido. El agente generará una nueva respuesta.',
+        duplicateSheetSubtitle: 'La nueva sesión conservará el turno elegido completo (tu mensaje y la respuesta del agente) y descartará los siguientes mensajes.',
         duplicateSheetConfirm: 'Duplicar',
         duplicateSheetEmpty: 'Aún no hay mensajes elegibles para retroceder en esta sesión.',
         duplicateRowDisabled: 'Este mensaje no se puede usar como punto de retroceso.',
