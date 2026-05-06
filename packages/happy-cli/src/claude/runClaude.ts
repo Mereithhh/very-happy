@@ -28,6 +28,10 @@ import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
+import { getProjectPath } from './utils/path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { RawJSONLinesSchema, type RawJSONLines } from './types';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -228,6 +232,49 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             lifecycleState: 'running',
             archivedBy: undefined,
         }));
+    }
+
+    // Fork backfill: when this Happy session was just spawned as a fork
+    // of another (HAPPY_FORK_CLAUDE_SESSION_ID is set by the daemon at
+    // spawn time), the fresh server-side message log is empty but the
+    // copied Claude JSONL on disk has the full prior conversation. The
+    // SDK with `resume:` reads that JSONL silently — it never re-emits
+    // historical messages back to the Happy client — so without an
+    // explicit backfill the user lands in an empty chat.
+    //
+    // Read the JSONL once before any SDK invocation and push every line
+    // through sendClaudeSessionMessage so the protocol mapper produces
+    // proper user/agent envelopes. SDK messages from later turns then
+    // continue from the same mapper state.
+    //
+    // Skipped on reconnect (HAPPY_RECONNECT_*) — that path reattaches
+    // to the existing Happy session, where the server already has every
+    // message it needs.
+    const forkClaudeSessionId = process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
+    if (!reconnectSessionId && forkClaudeSessionId) {
+        const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+        try {
+            const file = await readFile(jsonlPath, 'utf-8');
+            const lines = file.split('\n');
+            let backfilled = 0;
+            for (const line of lines) {
+                if (line.trim().length === 0) continue;
+                let parsed: unknown;
+                try { parsed = JSON.parse(line); } catch { continue; }
+                const result = RawJSONLinesSchema.safeParse(parsed);
+                if (!result.success) continue;
+                session.sendClaudeSessionMessage(result.data as RawJSONLines);
+                backfilled += 1;
+            }
+            logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
+            // Bind the new Happy session to the forked Claude UUID up
+            // front so the metadata is consistent the moment the app
+            // opens this session — even before the SDK's hook callback
+            // fires.
+            session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
+        } catch (error) {
+            logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
+        }
     }
 
     // Start Happy MCP server

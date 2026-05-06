@@ -321,6 +321,13 @@ export async function startDaemon(): Promise<void> {
         if (options.forkedFromMessageId) {
           extraEnv.HAPPY_FORKED_FROM_MESSAGE_ID = options.forkedFromMessageId;
         }
+        // For fork: spawned Happy CLI needs to know which Claude JSONL to
+        // backfill into the fresh Happy session row. Without this, the
+        // SDK reads the JSONL silently as context but never re-emits the
+        // historical messages, so the app shows an empty chat.
+        if (options.resumeClaudeSessionId) {
+          extraEnv.HAPPY_FORK_CLAUDE_SESSION_ID = options.resumeClaudeSessionId;
+        }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env
