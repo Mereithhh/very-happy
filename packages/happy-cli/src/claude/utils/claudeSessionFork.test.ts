@@ -64,7 +64,7 @@ describe('claudeSessionFork', () => {
     });
 
     describe('forkAndTruncateSession', () => {
-        it('truncates at the matching uuid (excludes it and everything after)', async () => {
+        it('keeps the chosen message and drops everything after', async () => {
             await writeSource([
                 { type: 'user', uuid: 'u1', message: { role: 'user', content: 'first' } },
                 { type: 'assistant', uuid: 'a1', message: { role: 'assistant', content: 'reply' } },
@@ -75,12 +75,15 @@ describe('claudeSessionFork', () => {
             const newId = await forkAndTruncateSession(projectDir, sourceId, 'u2');
             const out = await readJsonl(newId);
 
-            expect(out).toHaveLength(2);
+            // u2 stays as the last message; the assistant turn that
+            // followed it is dropped so the agent regenerates fresh.
+            expect(out).toHaveLength(3);
             expect(out[0]).toMatchObject({ uuid: 'u1' });
             expect(out[1]).toMatchObject({ uuid: 'a1' });
+            expect(out[2]).toMatchObject({ uuid: 'u2' });
         });
 
-        it('truncates at the first message (produces empty file)', async () => {
+        it('cut at the first message keeps just that message', async () => {
             await writeSource([
                 { type: 'user', uuid: 'u1', message: { role: 'user', content: 'first' } },
                 { type: 'assistant', uuid: 'a1', message: { role: 'assistant', content: 'reply' } },
@@ -88,7 +91,8 @@ describe('claudeSessionFork', () => {
 
             const newId = await forkAndTruncateSession(projectDir, sourceId, 'u1');
             const out = await readJsonl(newId);
-            expect(out).toEqual([]);
+            expect(out).toHaveLength(1);
+            expect(out[0]).toMatchObject({ uuid: 'u1' });
         });
 
         it('hard-fails with ForkTruncateUuidNotFoundError when uuid is absent', async () => {
@@ -114,9 +118,10 @@ describe('claudeSessionFork', () => {
             const newId = await forkAndTruncateSession(projectDir, sourceId, 'u2');
             const out = await readJsonl(newId);
 
-            expect(out).toHaveLength(2);
+            expect(out).toHaveLength(3);
             expect(out[0]).toMatchObject({ type: 'summary', leafUuid: 'u0' });
             expect(out[1]).toMatchObject({ uuid: 'u1' });
+            expect(out[2]).toMatchObject({ uuid: 'u2' });
         });
 
         it('skips malformed JSON lines but still finds the cut uuid', async () => {
@@ -132,12 +137,13 @@ describe('claudeSessionFork', () => {
             const raw = await readFile(join(projectDir, `${newId}.jsonl`), 'utf-8');
             const lines = raw.split('\n').filter((l) => l.length > 0);
 
-            // Both the valid u1 AND the malformed line are carried through —
-            // claude --resume tolerates the malformed line just like it would
-            // have in the original file.
-            expect(lines).toHaveLength(2);
+            // u1, the malformed line, AND the cut marker u2 all land in
+            // the fork — u2 is kept, claude --resume tolerates the malformed
+            // line just like it would have in the original file.
+            expect(lines).toHaveLength(3);
             expect(JSON.parse(lines[0])).toMatchObject({ uuid: 'u1' });
             expect(lines[1]).toBe('{this is not valid JSON');
+            expect(JSON.parse(lines[2])).toMatchObject({ uuid: 'u2' });
         });
 
         it('throws ForkSourceMissingError when source jsonl is absent', async () => {

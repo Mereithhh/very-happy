@@ -295,7 +295,7 @@ export const it: TranslationStructure = {
         duplicateSubtitle: 'Torna a un punto scelto e riprova',
         forkFromHere: 'Biforca da qui',
         duplicateSheetTitle: 'Scegli un punto di ritorno',
-        duplicateSheetSubtitle: 'La nuova sessione partirà con tutto fino a (escluso) il messaggio scelto.',
+        duplicateSheetSubtitle: 'La nuova sessione includerà tutto fino al messaggio scelto. L\'agente rigenererà la risposta.',
         duplicateSheetConfirm: 'Duplica',
         duplicateSheetEmpty: 'Nessun messaggio idoneo per il ritorno in questa sessione.',
         duplicateRowDisabled: 'Questo messaggio non può essere usato come punto di ritorno.',

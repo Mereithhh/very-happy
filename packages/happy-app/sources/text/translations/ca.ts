@@ -297,7 +297,7 @@ export const ca: TranslationStructure = {
         duplicateSubtitle: 'Torna a un punt escollit i prova de nou',
         forkFromHere: 'Bifurca des d\'aquí',
         duplicateSheetTitle: 'Tria un punt de retrocés',
-        duplicateSheetSubtitle: 'La nova sessió començarà amb tot fins (sense incloure) el missatge escollit.',
+        duplicateSheetSubtitle: 'La nova sessió inclourà tot fins al missatge escollit. L\'agent generarà una nova resposta.',
         duplicateSheetConfirm: 'Duplica',
         duplicateSheetEmpty: 'Encara no hi ha missatges per retrocedir en aquesta sessió.',
         duplicateRowDisabled: 'Aquest missatge no es pot usar com a punt de retrocés.',

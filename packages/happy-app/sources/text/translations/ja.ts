@@ -298,7 +298,7 @@ export const ja: TranslationStructure = {
         duplicateSubtitle: '選んだ地点まで巻き戻してやり直す',
         forkFromHere: 'ここからフォーク',
         duplicateSheetTitle: '巻き戻しポイントを選択',
-        duplicateSheetSubtitle: '選んだメッセージの直前までを引き継いだ新しいセッションが始まります。',
+        duplicateSheetSubtitle: '選んだメッセージまで（含む）を引き継いだ新しいセッションが始まります。エージェントは応答を再生成します。',
         duplicateSheetConfirm: '複製',
         duplicateSheetEmpty: 'このセッションには巻き戻し可能なメッセージがまだありません。',
         duplicateRowDisabled: 'このメッセージは巻き戻しポイントに使えません。',

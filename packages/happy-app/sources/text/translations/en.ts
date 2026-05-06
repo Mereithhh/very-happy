@@ -311,7 +311,7 @@ export const en: TranslationStructure = {
         duplicateSubtitle: 'Rewind to a chosen point and try again',
         forkFromHere: 'Fork from here',
         duplicateSheetTitle: 'Choose a rewind point',
-        duplicateSheetSubtitle: 'A new session will start with everything up to (but not including) the chosen message.',
+        duplicateSheetSubtitle: 'A new session will start with everything up to and including the chosen message. The agent regenerates a fresh response.',
         duplicateSheetConfirm: 'Duplicate',
         duplicateSheetEmpty: 'No messages eligible for rewind in this session yet.',
         duplicateRowDisabled: "This message can't be used as a rewind point.",

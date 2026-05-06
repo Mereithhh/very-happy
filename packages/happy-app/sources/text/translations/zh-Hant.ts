@@ -297,7 +297,7 @@ export const zhHant: TranslationStructure = {
         duplicateSubtitle: '回到選定位置重新嘗試',
         forkFromHere: '從此處分叉',
         duplicateSheetTitle: '選擇回退點',
-        duplicateSheetSubtitle: '新會話將以所選訊息之前的所有內容開始(不包括該訊息)。',
+        duplicateSheetSubtitle: '新會話將包含所選訊息及之前的所有內容。智能體會重新生成回覆。',
         duplicateSheetConfirm: '複製',
         duplicateSheetEmpty: '此會話還沒有可回退的訊息。',
         duplicateRowDisabled: '此訊息不能作為回退點。',

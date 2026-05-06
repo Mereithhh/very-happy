@@ -270,24 +270,26 @@ export async function claudeListRewindPoints(
 }
 
 /**
- * Same as claudeForkSession, but truncates the copied JSONL just before the
- * line with `truncateBeforeUuid`. Use this for "rewind to message N and
- * try again" flows. Daemon hard-fails if the UUID isn't present in the
- * source — never silently produces a non-truncated copy.
+ * Same as claudeForkSession, but truncates the copied JSONL right after the
+ * line with `cutAfterUuid` (keeping the chosen message as the last entry,
+ * dropping every line after — including the agent's response). Use this
+ * for "rewind to message N and try again" flows. Daemon hard-fails if the
+ * UUID isn't present in the source — never silently produces a
+ * non-truncated copy.
  */
 export async function claudeDuplicateSession(
-    options: ClaudeForkSessionOptions & { truncateBeforeUuid: string },
+    options: ClaudeForkSessionOptions & { cutAfterUuid: string },
 ): Promise<ClaudeForkSessionResult> {
-    const { machineId, directory, claudeSessionId, truncateBeforeUuid } = options;
+    const { machineId, directory, claudeSessionId, cutAfterUuid } = options;
     try {
         const result = await apiSocket.machineRPC<ClaudeForkSessionResult, {
             directory: string;
             claudeSessionId: string;
-            truncateBeforeUuid: string;
+            cutAfterUuid: string;
         }>(
             machineId,
             'claude-duplicate-session',
-            { directory, claudeSessionId, truncateBeforeUuid },
+            { directory, claudeSessionId, cutAfterUuid },
         );
         return result;
     } catch (error) {
@@ -714,14 +716,14 @@ export interface ForkSource {
  */
 export async function forkAndSpawn(
     source: ForkSource,
-    opts: { truncateBeforeUuid?: string; forkedFromMessageId?: string } = {},
+    opts: { cutAfterUuid?: string; forkedFromMessageId?: string } = {},
 ): Promise<SpawnSessionResult> {
-    const forkResult = opts.truncateBeforeUuid
+    const forkResult = opts.cutAfterUuid
         ? await claudeDuplicateSession({
             machineId: source.machineId,
             directory: source.directory,
             claudeSessionId: source.claudeSessionId,
-            truncateBeforeUuid: opts.truncateBeforeUuid,
+            cutAfterUuid: opts.cutAfterUuid,
         })
         : await claudeForkSession({
             machineId: source.machineId,
@@ -733,7 +735,7 @@ export async function forkAndSpawn(
         return { type: 'error', errorMessage: forkResult.errorMessage };
     }
 
-    return machineSpawnNewSession({
+    const spawnResult = await machineSpawnNewSession({
         machineId: source.machineId,
         directory: source.directory,
         agent: 'claude',
@@ -742,6 +744,21 @@ export async function forkAndSpawn(
         parentSessionId: source.sessionId,
         forkedFromMessageId: opts.forkedFromMessageId,
     });
+
+    // Pull the newly-created session row into local sync state before we
+    // hand control back to the caller — otherwise router.replace into the
+    // new session id races the broadcast and the app screams
+    // "Session X not found" until the next sync tick lands.
+    if (spawnResult.type === 'success') {
+        try {
+            await sync.refreshSessions();
+        } catch {
+            // Refresh is best-effort; the broadcast will still hydrate the
+            // session shortly even if this fetch flaked.
+        }
+    }
+
+    return spawnResult;
 }
 
 // Export types for external use

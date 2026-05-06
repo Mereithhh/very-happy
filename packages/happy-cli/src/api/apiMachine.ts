@@ -213,21 +213,21 @@ export class ApiMachineClient {
         });
 
         this.rpcHandlerManager.registerHandler('claude-duplicate-session', async (params: any) => {
-            const { directory, claudeSessionId, truncateBeforeUuid } = params || {};
+            const { directory, claudeSessionId, cutAfterUuid } = params || {};
             if (typeof directory !== 'string' || directory.length === 0) {
                 throw new Error('directory is required');
             }
             if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
                 throw new Error('claudeSessionId is required');
             }
-            if (typeof truncateBeforeUuid !== 'string' || truncateBeforeUuid.length === 0) {
-                throw new Error('truncateBeforeUuid is required');
+            if (typeof cutAfterUuid !== 'string' || cutAfterUuid.length === 0) {
+                throw new Error('cutAfterUuid is required');
             }
             try {
                 const newClaudeSessionId = await claudeForkAndTruncateSession(
                     getProjectPath(directory),
                     claudeSessionId,
-                    truncateBeforeUuid,
+                    cutAfterUuid,
                 );
                 return { type: 'success', newClaudeSessionId };
             } catch (error) {

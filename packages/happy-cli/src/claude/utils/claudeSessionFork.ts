@@ -27,8 +27,8 @@ export type ClaudeRewindPoint = {
 };
 
 export class ForkTruncateUuidNotFoundError extends Error {
-    constructor(public readonly truncateBeforeUuid: string, public readonly sourcePath: string) {
-        super(`Truncation UUID ${truncateBeforeUuid} not found in ${sourcePath}`);
+    constructor(public readonly cutAfterUuid: string, public readonly sourcePath: string) {
+        super(`Truncation UUID ${cutAfterUuid} not found in ${sourcePath}`);
         this.name = 'ForkTruncateUuidNotFoundError';
     }
 }
@@ -69,9 +69,16 @@ export async function forkSession(projectDir: string, sourceClaudeSessionId: str
 }
 
 /**
- * Stream-copy the source JSONL into a new file, stopping just before the
- * line whose `.uuid` matches `truncateBeforeUuid`. Atomic rename at the
- * end so partial writes are never visible.
+ * Stream-copy the source JSONL into a new file, keeping every line up to
+ * AND including the one whose `.uuid` matches `cutAfterUuid`, and dropping
+ * everything after. Atomic rename at the end so partial writes are never
+ * visible.
+ *
+ * Semantics: the chosen message stays in the forked session as the last
+ * entry in the conversation. Anything that came after — including the
+ * agent's response to it — is gone. When the user opens the fork they
+ * see their own message as the last turn, and the agent regenerates a
+ * fresh response on the next interaction.
  *
  * Throws `ForkTruncateUuidNotFoundError` if the marker is not found in
  * the source — we refuse to silently produce a full copy when truncation
@@ -80,7 +87,7 @@ export async function forkSession(projectDir: string, sourceClaudeSessionId: str
 export async function forkAndTruncateSession(
     projectDir: string,
     sourceClaudeSessionId: string,
-    truncateBeforeUuid: string,
+    cutAfterUuid: string,
 ): Promise<string> {
     const newId = randomUUID();
     const src = jsonlPath(projectDir, sourceClaudeSessionId);
@@ -108,14 +115,17 @@ export async function forkAndTruncateSession(
                 logger.debug(`[CLAUDE FORK] Skipped malformed JSON line during truncation copy`);
             }
 
-            if (parsed && typeof parsed.uuid === 'string' && parsed.uuid === truncateBeforeUuid) {
-                foundMarker = true;
-                break;
-            }
-
+            // Always write this line. If it's the cut marker, write it AND
+            // stop — the chosen message stays as the last entry, anything
+            // after is dropped.
             await new Promise<void>((resolve, reject) => {
                 writeStream.write(`${line}\n`, (err) => (err ? reject(err) : resolve()));
             });
+
+            if (parsed && typeof parsed.uuid === 'string' && parsed.uuid === cutAfterUuid) {
+                foundMarker = true;
+                break;
+            }
         }
     } catch (e) {
         iterationError = e;
@@ -135,11 +145,11 @@ export async function forkAndTruncateSession(
 
     if (!foundMarker) {
         await unlink(tempDst).catch(() => undefined);
-        throw new ForkTruncateUuidNotFoundError(truncateBeforeUuid, src);
+        throw new ForkTruncateUuidNotFoundError(cutAfterUuid, src);
     }
 
     await rename(tempDst, finalDst);
-    logger.debug(`[CLAUDE FORK] Forked+truncated ${sourceClaudeSessionId} -> ${newId} before ${truncateBeforeUuid}`);
+    logger.debug(`[CLAUDE FORK] Forked ${sourceClaudeSessionId} -> ${newId}, cut after ${cutAfterUuid}`);
     return newId;
 }
 

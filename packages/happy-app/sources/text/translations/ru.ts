@@ -410,7 +410,7 @@ export const ru: TranslationStructure = {
         duplicateSubtitle: 'Вернуться к выбранной точке и попробовать иначе',
         forkFromHere: 'Форкнуть отсюда',
         duplicateSheetTitle: 'Выберите точку отката',
-        duplicateSheetSubtitle: 'Новая сессия начнётся со всем, что было до выбранного сообщения (само сообщение не включается).',
+        duplicateSheetSubtitle: 'Новая сессия будет содержать всё до выбранного сообщения включительно. Агент сгенерирует ответ заново.',
         duplicateSheetConfirm: 'Откатить',
         duplicateSheetEmpty: 'В этой сессии пока нет сообщений, к которым можно откатиться.',
         duplicateRowDisabled: 'К этому сообщению нельзя откатиться.',

@@ -94,7 +94,7 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
 
         const source: ForkSource = { sessionId, machineId, directory, claudeSessionId };
         const result = await forkAndSpawn(source, {
-            truncateBeforeUuid: selected.uuid,
+            cutAfterUuid: selected.uuid,
         });
 
         if (result.type === 'success') {
