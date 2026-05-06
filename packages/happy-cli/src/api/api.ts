@@ -402,4 +402,35 @@ export class ApiClient {
       return null;
     }
   }
+
+  /**
+   * Mark a session as inactive on the server (active=false). Does NOT
+   * change `lifecycleState`, so the session remains visible in the app
+   * and resumable — same effect as the in-app "Archive" button hitting
+   * the /archive endpoint, but without the extra metadata.
+   *
+   * Used during graceful shutdown (Ctrl-C / SIGTERM) as a synchronous
+   * fallback for the socket-based session-end signal: even if the
+   * socket emit doesn't drain before the process exits, the HTTP
+   * response confirms the deactivate landed.
+   */
+  async deactivateSession(sessionId: string): Promise<boolean> {
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/sessions/${sessionId}/archive`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
+          },
+          timeout: 3000,
+        },
+      );
+      return response.status >= 200 && response.status < 300;
+    } catch (error) {
+      logger.debug('[API] deactivateSession failed:', error);
+      return false;
+    }
+  }
 }
