@@ -635,20 +635,41 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     });
 
     // Setup signal handlers for graceful shutdown
-    const cleanup = async () => {
-        logger.debug('[START] Received termination signal, cleaning up...');
+    //
+    // `archive`: whether to stamp lifecycleState='archived' on the way
+    // out. Two reasons we'd want to skip it:
+    //   - The user pressed Ctrl-C in their terminal. They almost
+    //     certainly want to come back to this session later — pinning
+    //     it as `archived` would hide it from the active sessions list
+    //     and force them to dig it up by URL just to hit Resume.
+    //   - Same for SIGTERM (e.g. the system shutting us down).
+    //
+    // Browser-side "Archive" is intentionally explicit and DOES want
+    // the metadata stamped — it routes through the killSession RPC
+    // handler which calls cleanup({ archive: true }).
+    //
+    // Crashes (uncaughtException / unhandledRejection) keep archiving
+    // because the session is genuinely toast at that point.
+    const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
+        logger.debug(`[START] Received termination signal, cleaning up (archive=${opts.archive ?? true})...`);
 
         try {
-            // Update lifecycle state to archived before closing
+            // Update lifecycle state to archived before closing — only
+            // when explicitly archiving. On Ctrl-C / SIGTERM we leave
+            // lifecycleState alone so the server treats this exactly
+            // like a network blip: active=false via missed keepalives,
+            // but the session stays visible and resumable in the app.
             if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
+                if (opts.archive ?? true) {
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        lifecycleState: 'archived',
+                        lifecycleStateSince: Date.now(),
+                        archivedBy: 'cli',
+                        archiveReason: 'User terminated'
+                    }));
+                }
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
@@ -676,22 +697,28 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     };
 
-    // Handle termination signals
-    process.on('SIGTERM', cleanup);
-    process.on('SIGINT', cleanup);
+    // Handle termination signals — Ctrl-C / SIGTERM are user-initiated
+    // exits, treat as "I'll come back to this session later" rather than
+    // "archive forever".
+    process.on('SIGTERM', () => { void cleanup({ archive: false }); });
+    process.on('SIGINT', () => { void cleanup({ archive: false }); });
 
-    // Handle uncaught exceptions and rejections
+    // Crashes archive on the way out so the session shows up correctly
+    // in the app rather than masquerading as live.
     process.on('uncaughtException', (error) => {
         logger.debug('[START] Uncaught exception:', error);
-        cleanup();
+        void cleanup({ archive: true });
     });
 
     process.on('unhandledRejection', (reason) => {
         logger.debug('[START] Unhandled rejection:', reason);
-        cleanup();
+        void cleanup({ archive: true });
     });
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    // Browser-side "Archive" button routes through this RPC and DOES
+    // want the metadata stamped — it's the user explicitly choosing to
+    // retire the session, not just disconnecting.
+    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
 
     // Create claude loop
     const exitCode = await loop({
