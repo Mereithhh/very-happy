@@ -202,6 +202,8 @@ export const ru: TranslationStructure = {
         disableAnalytics: 'Отключить аналитику',
         analyticsDisabled: 'Вся аналитика и телеметрия отключены',
         analyticsEnabled: 'Анонимная аналитика использования активна',
+        imageUpload: 'Загрузка изображений',
+        imageUploadSubtitle: 'Прикрепляйте изображения к сообщениям для анализа Claude',
     },
 
     errors: {
@@ -387,18 +389,38 @@ export const ru: TranslationStructure = {
         permissionRequired: 'требуется разрешение',
         activeNow: 'Активен сейчас',
         unknown: 'неизвестно',
+        unread: 'новые результаты',
     },
 
     time: {
         justNow: 'только что',
         minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'минуту', few: 'минуты', many: 'минут' })} назад`,
         hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'час', few: 'часа', many: 'часов' })} назад`,
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'день', few: 'дня', many: 'дней' })} назад`,
     },
 
     session: {
         inputPlaceholder: 'Введите сообщение...',
         inactiveArchived: 'Эта сессия неактивна.',
         resumeFromTerminal: 'Чтобы возобновить её из терминала:',
+        newChat: 'Новый чат',
+        forkAction: 'Форкнуть сессию',
+        forkSubtitle: 'Продолжить в новой сессии с тем же контекстом',
+        duplicateAction: 'Откатиться к сообщению…',
+        duplicateSubtitle: 'Вернуться к выбранной точке и попробовать иначе',
+        forkFromHere: 'Форкнуть отсюда',
+        duplicateSheetTitle: 'Выберите точку отката',
+        duplicateSheetSubtitle: 'Новая сессия сохранит выбранный ход целиком (ваше сообщение и ответ агента) и отбросит все следующие запросы.',
+        duplicateSheetConfirm: 'Откатить',
+        duplicateSheetEmpty: 'В этой сессии пока нет сообщений, к которым можно откатиться.',
+        duplicateRowDisabled: 'К этому сообщению нельзя откатиться.',
+        forkedFromLabel: 'Форкнуто из',
+        forkedFromSubtitle: 'Открыть исходную сессию, из которой сделан форк',
+        forkErrorOffline: 'Машина оффлайн. Форк доступен, только пока машина с сессией онлайн.',
+        forkErrorMissingUuid: 'Выбранная точка отката больше не существует в исходной сессии — попробуйте форк без обрезки.',
+        forkErrorMissingMetadata: 'Не хватает метаданных сессии для форка.',
+        forkErrorGeneric: 'Не удалось форкнуть сессию.',
+        forkClaudeOnly: 'Форк сейчас поддерживается только для Claude-сессий.',
     },
 
     commandPalette: {
@@ -481,6 +503,11 @@ export const ru: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Показать архив',
         hideArchived: 'Скрыть архив',
+        newSession: 'Новая сессия',
+    },
+
+    zen: {
+        toggle: 'Дзен-режим',
     },
 
     toolView: {
@@ -580,6 +607,16 @@ export const ru: TranslationStructure = {
         noChangesTitle: 'Нет изменений',
         noChangesSubtitle: 'Рабочее дерево чистое',
         deleted: 'Удалён',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'изменённый файл' : count < 5 ? 'изменённых файла' : 'изменённых файлов'}`,
+        allFiles: 'Все файлы',
+        editFile: 'Редактировать',
+        saveFile: 'Сохранить',
+        failedToRead: 'Не удалось прочитать файл',
+        failedToSave: 'Не удалось сохранить файл',
+        fileConflict: 'Конфликт файла',
+        fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
+        reload: 'Перезагрузить',
+        overwrite: 'Перезаписать',
     },
 
     settingsVoice: {
@@ -944,6 +981,21 @@ export const ru: TranslationStructure = {
         usageOverTime: 'Использование во времени',
         byModel: 'По модели',
         noData: 'Данные об использовании недоступны',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Доступ к библиотеке фото',
+        permissionMessage: 'Разрешите доступ к вашей библиотеке фото, чтобы прикреплять изображения к сообщениям.',
+        limitTitle: 'Достигнут лимит изображений',
+        limitMessage: ({ max }: { max: number }) => `Можно прикрепить не более ${max} изображений на сообщение.`,
+        fileTooLargeTitle: 'Файл слишком большой',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" превышает лимит ${maxMb}МБ и не был добавлен.`,
+        uploadFailedTitle: 'Ошибка загрузки',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'Одно изображение не удалось загрузить — оно не было отправлено.'
+            : `${count} изображений не удалось загрузить — они не были отправлены.`,
+        notSupportedTitle: 'Изображения не поддерживаются',
+        notSupportedMessage: 'Этот агент не поддерживает изображения. Отправлен только текст.',
     },
 
     feed: {

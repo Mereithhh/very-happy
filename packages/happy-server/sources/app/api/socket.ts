@@ -131,26 +131,30 @@ export function startSocket(app: Fastify) {
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
+        const happyClient = socket.data.happyClient as string | undefined;
         let connection: ClientConnection;
         if (metadata.clientType === 'session-scoped' && sessionId) {
             connection = {
                 connectionType: 'session-scoped',
                 socket,
                 userId,
-                sessionId
+                sessionId,
+                happyClient
             };
         } else if (metadata.clientType === 'machine-scoped' && machineId) {
             connection = {
                 connectionType: 'machine-scoped',
                 socket,
                 userId,
-                machineId
+                machineId,
+                happyClient
             };
         } else {
             connection = {
                 connectionType: 'user-scoped',
                 socket,
-                userId
+                userId,
+                happyClient
             };
         }
         eventRouter.addConnection(userId, connection);
@@ -166,6 +170,19 @@ export function startSocket(app: Fastify) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
         }
+
+        // Track app focus state for push notification routing.
+        // State lives on socket.data — no external storage needed.
+        // Read initial state from handshake to close the race window between
+        // connect and the first async app-state event.
+        const initialAppState = socket.handshake.auth.appState as string | undefined;
+        if (initialAppState) {
+            socket.data.appState = initialAppState === 'active' ? 'active' : 'background';
+        }
+
+        socket.on('app-state', (data: { state: string }) => {
+            socket.data.appState = data?.state === 'active' ? 'active' : 'background';
+        });
 
         socket.on('disconnect', () => {
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });

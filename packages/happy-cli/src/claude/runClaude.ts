@@ -28,6 +28,10 @@ import { Session } from './session';
 import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
+import { getProjectPath } from './utils/path';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { RawJSONLinesSchema, type RawJSONLines } from './types';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -96,6 +100,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         metadata: initialMachineMetadata
     });
 
+    // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
+    const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
+    const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -115,6 +123,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
+        ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -224,6 +234,110 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }));
     }
 
+    // Fork backfill: when this Happy session was just spawned as a fork
+    // of another (HAPPY_FORK_CLAUDE_SESSION_ID is set by the daemon at
+    // spawn time), the fresh server-side message log is empty but the
+    // copied Claude JSONL on disk has the full prior conversation. The
+    // SDK with `resume:` reads that JSONL silently — it never re-emits
+    // historical messages back to the Happy client — so without an
+    // explicit backfill the user lands in an empty chat.
+    //
+    // Read the JSONL once before any SDK invocation and push every line
+    // through sendClaudeSessionMessage so the protocol mapper produces
+    // proper user/agent envelopes. SDK messages from later turns then
+    // continue from the same mapper state.
+    //
+    // Skipped on reconnect (HAPPY_RECONNECT_*) — that path reattaches
+    // to the existing Happy session, where the server already has every
+    // message it needs.
+    const forkClaudeSessionId = process.env.HAPPY_FORK_CLAUDE_SESSION_ID;
+    if (!reconnectSessionId && forkClaudeSessionId) {
+        const jsonlPath = join(getProjectPath(workingDirectory), `${forkClaudeSessionId}.jsonl`);
+        try {
+            const file = await readFile(jsonlPath, 'utf-8');
+            const lines = file.split('\n');
+            let backfilled = 0;
+            for (const line of lines) {
+                if (line.trim().length === 0) continue;
+                let parsed: unknown;
+                try { parsed = JSON.parse(line); } catch { continue; }
+                const result = RawJSONLinesSchema.safeParse(parsed);
+                if (!result.success) continue;
+                session.sendClaudeSessionMessage(result.data as RawJSONLines);
+                backfilled += 1;
+            }
+            logger.debug(`[FORK BACKFILL] Replayed ${backfilled} historical messages from ${jsonlPath}`);
+            // Bind the new Happy session to the forked Claude UUID up
+            // front so the metadata is consistent the moment the app
+            // opens this session — even before the SDK's hook callback
+            // fires.
+            session.updateMetadata((meta) => ({ ...meta, claudeSessionId: forkClaudeSessionId }));
+        } catch (error) {
+            logger.debug(`[FORK BACKFILL] Failed to read ${jsonlPath}:`, error);
+        }
+    }
+
+    // Ring buffer of user prompts that just arrived from the app via the
+    // legacy `sentFrom: 'web'` channel. The remote-mode session scanner
+    // (started below) walks the on-disk Claude JSONL looking for prompts
+    // that landed in the file but never reached the server — i.e. the
+    // ones the user typed in a `claude --resume <id>` terminal sitting
+    // alongside this Happy session. App-sent prompts also land in the
+    // JSONL once the SDK writes them, so we'd double-forward them
+    // without this dedupe. Match by content within a short time window;
+    // entries older than 5 minutes roll off so unrelated future prompts
+    // with identical text still get through from the terminal side.
+    const recentAppPromptsMaxAgeMs = 5 * 60 * 1000;
+    const recentAppPrompts: Array<{ text: string; addedAt: number }> = [];
+    const recordAppPrompt = (text: string) => {
+        const now = Date.now();
+        recentAppPrompts.push({ text, addedAt: now });
+        const cutoff = now - recentAppPromptsMaxAgeMs;
+        while (recentAppPrompts.length > 0 && recentAppPrompts[0].addedAt < cutoff) {
+            recentAppPrompts.shift();
+        }
+    };
+    const consumeAppPrompt = (text: string): boolean => {
+        const cutoff = Date.now() - recentAppPromptsMaxAgeMs;
+        for (let i = 0; i < recentAppPrompts.length; i++) {
+            const entry = recentAppPrompts[i];
+            if (entry.addedAt < cutoff) continue;
+            if (entry.text === text) {
+                recentAppPrompts.splice(i, 1);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Remote-mode session scanner: catches user-typed prompts that
+    // appeared in the Claude JSONL while we weren't looking — typically
+    // because the user opened `claude --resume <id>` in a terminal next
+    // to the running Happy session. SDK-emitted assistant + tool_result
+    // user messages keep flowing through the existing sdkToLogConverter
+    // pipeline; the scanner here only forwards things that pipeline
+    // can't see.
+    const initialScannerSessionId = forkClaudeSessionId
+        ?? (metadata.claudeSessionId ?? null);
+    const remoteScanner = await createSessionScanner({
+        sessionId: initialScannerSessionId,
+        workingDirectory,
+        onMessage: (raw) => {
+            // Only user-typed prompts. SDK pipeline owns assistant and
+            // tool_result-bearing user messages.
+            if (raw.type !== 'user') return;
+            if ((raw as any).isSidechain) return;
+            const content = (raw as any).message?.content;
+            if (typeof content !== 'string') return;
+            // Drop empty / whitespace-only lines.
+            if (content.trim().length === 0) return;
+            // App-sent prompts will show up here because the SDK
+            // writes them to the JSONL — dedupe by content.
+            if (consumeAppPrompt(content)) return;
+            session.sendClaudeSessionMessage(raw);
+        },
+    });
+
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
@@ -236,7 +350,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
+
+            // Tell the remote scanner about this sessionId so it knows
+            // which JSONL to watch (and so it can fire onNewSession for
+            // claude --resume hand-offs that mint a fresh session id).
+            remoteScanner.onNewSession(sessionId);
+
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
@@ -284,6 +403,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current Claude effort (thinking depth)
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     // Exit when session is archived from web/mobile
     session.on('archived', () => {
@@ -291,7 +411,42 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         cleanup();
     });
 
-    session.onUserMessage((message) => {
+    // Handle file events — each download promise resolves to its own decoded
+    // attachment (or null). drainAttachmentsForUserMessage on the next text
+    // claims the in-flight set atomically; later file events go into a fresh
+    // bucket bound to the next message — no shared push-array between batches.
+    session.onFileEvent((fileEvent) => {
+        const ev = fileEvent.content.data.ev;
+        logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);
+        const downloadPromise = (async (): Promise<{ data: Uint8Array; mimeType: string; name: string } | null> => {
+            try {
+                const decrypted = await session.downloadAndDecryptAttachment(ev.ref);
+                if (!decrypted) {
+                    logger.debug(`[loop] Failed to decrypt attachment: ${ev.name}`);
+                    return null;
+                }
+                logger.debug(`[loop] Attachment decrypted: ${ev.name} (${decrypted.length} bytes)`);
+                return { data: decrypted, mimeType: ev.mimeType ?? 'image/jpeg', name: ev.name };
+            } catch (error) {
+                logger.debug(`[loop] Failed to download attachment: ${ev.name}`, { error });
+                return null;
+            }
+        })();
+        session.trackAttachmentDownload(downloadPromise);
+    });
+
+    session.onUserMessage(async (message) => {
+
+        // Stamp the prompt so the remote-mode JSONL scanner can dedupe
+        // it later — the SDK is about to write this same text to disk
+        // with a real Claude uuid, and we don't want to re-forward it.
+        if (message?.content?.text) {
+            recordAppPrompt(message.content.text);
+        }
+
+        // Claim every file attachment that arrived strictly before this text.
+        // New file events from this point on belong to the next user message.
+        const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
@@ -363,6 +518,28 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
+        // Resolve effort — pass through to Claude SDK as the `effort` option.
+        // Validate against the SDK's accepted set so a stale/garbage value
+        // from the wire doesn't poison the session.
+        let messageEffort = currentEffort;
+        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'max']);
+        if (message.meta?.hasOwnProperty('effort')) {
+            const incoming = (message.meta as Record<string, unknown>).effort;
+            if (incoming === null || incoming === undefined) {
+                messageEffort = undefined;
+                currentEffort = undefined;
+                logger.debug(`[loop] Effort reset to default`);
+            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
+                messageEffort = incoming as 'low' | 'medium' | 'high' | 'max';
+                currentEffort = messageEffort;
+                logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
+            } else {
+                logger.debug(`[loop] Ignoring invalid effort from user message: ${String(incoming)}`);
+            }
+        } else {
+            logger.debug(`[loop] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+        }
+
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
 
@@ -375,9 +552,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -391,9 +569,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 customSystemPrompt: messageCustomSystemPrompt,
                 appendSystemPrompt: messageAppendSystemPrompt,
                 allowedTools: messageAllowedTools,
-                disallowedTools: messageDisallowedTools
+                disallowedTools: messageDisallowedTools,
+                effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -448,32 +627,68 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             customSystemPrompt: messageCustomSystemPrompt,
             appendSystemPrompt: messageAppendSystemPrompt,
             allowedTools: messageAllowedTools,
-            disallowedTools: messageDisallowedTools
+            disallowedTools: messageDisallowedTools,
+            effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 
     // Setup signal handlers for graceful shutdown
-    const cleanup = async () => {
-        logger.debug('[START] Received termination signal, cleaning up...');
+    //
+    // `archive`: whether to stamp lifecycleState='archived' on the way
+    // out. Two reasons we'd want to skip it:
+    //   - The user pressed Ctrl-C in their terminal. They almost
+    //     certainly want to come back to this session later — pinning
+    //     it as `archived` would hide it from the active sessions list
+    //     and force them to dig it up by URL just to hit Resume.
+    //   - Same for SIGTERM (e.g. the system shutting us down).
+    //
+    // Browser-side "Archive" is intentionally explicit and DOES want
+    // the metadata stamped — it routes through the killSession RPC
+    // handler which calls cleanup({ archive: true }).
+    //
+    // Crashes (uncaughtException / unhandledRejection) keep archiving
+    // because the session is genuinely toast at that point.
+    const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
+        logger.debug(`[START] Received termination signal, cleaning up (archive=${opts.archive ?? true})...`);
 
         try {
-            // Update lifecycle state to archived before closing
+            // Update lifecycle state to archived before closing — only
+            // when explicitly archiving. On Ctrl-C / SIGTERM we leave
+            // lifecycleState alone so the server treats this exactly
+            // like a network blip: active=false via missed keepalives,
+            // but the session stays visible and resumable in the app.
             if (session) {
-                session.updateMetadata((currentMetadata) => ({
-                    ...currentMetadata,
-                    lifecycleState: 'archived',
-                    lifecycleStateSince: Date.now(),
-                    archivedBy: 'cli',
-                    archiveReason: 'User terminated'
-                }));
-                
+                if (opts.archive ?? true) {
+                    session.updateMetadata((currentMetadata) => ({
+                        ...currentMetadata,
+                        lifecycleState: 'archived',
+                        lifecycleStateSince: Date.now(),
+                        archivedBy: 'cli',
+                        archiveReason: 'User terminated'
+                    }));
+                }
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
                 // Send session death message
                 session.sendSessionDeath();
+
+                // Belt-and-braces: also POST /v1/sessions/<id>/archive so
+                // the server flips active=false even if the socket emit
+                // didn't drain before close. The HTTP endpoint touches
+                // only `active` and `lastActiveAt` — it doesn't write
+                // archive metadata — so this is safe in the archive=false
+                // case too, and matches the "session goes inactive but
+                // stays resumable" semantics we want for Ctrl-C.
+                try {
+                    await api.deactivateSession(session.sessionId);
+                } catch (err) {
+                    logger.debug('[START] deactivateSession during cleanup failed:', err);
+                }
+
                 await session.flush();
                 await session.close();
             }
@@ -485,6 +700,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             hookServer.stop();
             cleanupHookSettingsFile(hookSettingsPath);
 
+            // Stop the remote JSONL scanner (file watchers + intervals).
+            await remoteScanner.cleanup();
+
             logger.debug('[START] Cleanup complete, exiting');
             process.exit(0);
         } catch (error) {
@@ -493,22 +711,28 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     };
 
-    // Handle termination signals
-    process.on('SIGTERM', cleanup);
-    process.on('SIGINT', cleanup);
+    // Handle termination signals — Ctrl-C / SIGTERM are user-initiated
+    // exits, treat as "I'll come back to this session later" rather than
+    // "archive forever".
+    process.on('SIGTERM', () => { void cleanup({ archive: false }); });
+    process.on('SIGINT', () => { void cleanup({ archive: false }); });
 
-    // Handle uncaught exceptions and rejections
+    // Crashes archive on the way out so the session shows up correctly
+    // in the app rather than masquerading as live.
     process.on('uncaughtException', (error) => {
         logger.debug('[START] Uncaught exception:', error);
-        cleanup();
+        void cleanup({ archive: true });
     });
 
     process.on('unhandledRejection', (reason) => {
         logger.debug('[START] Unhandled rejection:', reason);
-        cleanup();
+        void cleanup({ archive: true });
     });
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    // Browser-side "Archive" button routes through this RPC and DOES
+    // want the metadata stamped — it's the user explicitly choosing to
+    // retire the session, not just disconnecting.
+    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
 
     // Create claude loop
     const exitCode = await loop({

@@ -83,12 +83,14 @@ export const pt: TranslationStructure = {
         permissionRequired: 'permissão necessária',
         activeNow: 'Ativo agora',
         unknown: 'desconhecido',
+        unread: 'novos resultados',
     },
 
     time: {
         justNow: 'agora mesmo',
         minutesAgo: ({ count }: { count: number }) => `há ${count} minuto${count !== 1 ? 's' : ''}`,
         hoursAgo: ({ count }: { count: number }) => `há ${count} hora${count !== 1 ? 's' : ''}`,
+        daysAgo: ({ count }: { count: number }) => `há ${count} dia${count !== 1 ? 's' : ''}`,
     },
 
     connect: {
@@ -213,6 +215,8 @@ export const pt: TranslationStructure = {
         disableAnalytics: 'Desativar análises',
         analyticsDisabled: 'Todo rastreamento e telemetria desativados',
         analyticsEnabled: 'Análises anônimas de uso ativas',
+        imageUpload: 'Upload de imagens',
+        imageUploadSubtitle: 'Anexe imagens às mensagens para Claude analisar',
     },
 
     errors: {
@@ -285,6 +289,24 @@ export const pt: TranslationStructure = {
         inputPlaceholder: 'Digite uma mensagem ...',
         inactiveArchived: 'Esta sessão está inativa.',
         resumeFromTerminal: 'Para retomá-la pelo terminal:',
+        newChat: 'Novo chat',
+        forkAction: 'Bifurcar sessão',
+        forkSubtitle: 'Continuar em uma nova sessão com o mesmo contexto',
+        duplicateAction: 'Duplicar a partir da mensagem…',
+        duplicateSubtitle: 'Voltar a um ponto escolhido e tentar de novo',
+        forkFromHere: 'Bifurcar daqui',
+        duplicateSheetTitle: 'Escolha um ponto de retrocesso',
+        duplicateSheetSubtitle: 'A nova sessão manterá o turno escolhido completo (sua mensagem e a resposta do agente) e descartará as mensagens seguintes.',
+        duplicateSheetConfirm: 'Duplicar',
+        duplicateSheetEmpty: 'Ainda não há mensagens elegíveis para retrocesso nesta sessão.',
+        duplicateRowDisabled: 'Esta mensagem não pode ser usada como ponto de retrocesso.',
+        forkedFromLabel: 'Bifurcado de',
+        forkedFromSubtitle: 'Abrir a sessão da qual foi bifurcada',
+        forkErrorOffline: 'Esta máquina está offline. A bifurcação só está disponível enquanto a máquina da sessão estiver online.',
+        forkErrorMissingUuid: 'O ponto de retrocesso escolhido não existe mais na sessão de origem — tente bifurcar sem truncar.',
+        forkErrorMissingMetadata: 'Faltam metadados da sessão necessários para bifurcar.',
+        forkErrorGeneric: 'Não foi possível bifurcar a sessão.',
+        forkClaudeOnly: 'A bifurcação atualmente só é suportada para sessões Claude.',
     },
 
     commandPalette: {
@@ -464,6 +486,11 @@ export const pt: TranslationStructure = {
         sessionsTitle: 'Happy',
         showArchived: 'Mostrar arquivadas',
         hideArchived: 'Ocultar arquivadas',
+        newSession: 'Nova sessão',
+    },
+
+    zen: {
+        toggle: 'Modo zen',
     },
 
     toolView: {
@@ -563,6 +590,16 @@ export const pt: TranslationStructure = {
         noChangesTitle: 'Sem alterações',
         noChangesSubtitle: 'A árvore de trabalho está limpa',
         deleted: 'Excluído',
+        changedFiles: ({ count }: { count: number }) => `${count} ${count === 1 ? 'arquivo modificado' : 'arquivos modificados'}`,
+        allFiles: 'Todos os arquivos',
+        editFile: 'Editar',
+        saveFile: 'Salvar',
+        failedToRead: 'Falha ao ler arquivo',
+        failedToSave: 'Falha ao salvar arquivo',
+        fileConflict: 'Conflito de arquivo',
+        fileConflictDescription: 'Este arquivo foi modificado no dispositivo enquanto você o editava. Recarregue para ver a versão mais recente.',
+        reload: 'Recarregar',
+        overwrite: 'Sobrescrever',
     },
 
     settingsVoice: {
@@ -914,6 +951,21 @@ export const pt: TranslationStructure = {
         usageOverTime: 'Uso ao longo do tempo',
         byModel: 'Por modelo',
         noData: 'Nenhum dado de uso disponível',
+    },
+
+    imageUpload: {
+        permissionTitle: 'Acesso à biblioteca de fotos',
+        permissionMessage: 'Permita o acesso à sua biblioteca de fotos para anexar imagens às mensagens.',
+        limitTitle: 'Limite de imagens atingido',
+        limitMessage: ({ max }: { max: number }) => `Você pode anexar até ${max} imagens por mensagem.`,
+        fileTooLargeTitle: 'Arquivo muito grande',
+        fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" excede o limite de ${maxMb}MB e não foi adicionado.`,
+        uploadFailedTitle: 'Falha no envio',
+        uploadFailedMessage: ({ count }: { count: number }) => count === 1
+            ? 'Não foi possível enviar uma imagem e não foi enviada.'
+            : `Não foi possível enviar ${count} imagens e não foram enviadas.`,
+        notSupportedTitle: 'Imagens não suportadas',
+        notSupportedMessage: 'Este agente não suporta anexos de imagem. Apenas o texto foi enviado.',
     },
 
     feed: {

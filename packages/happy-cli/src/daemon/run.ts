@@ -29,6 +29,11 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 
+/** Shell-escape a string for safe interpolation into tmux commands. */
+function shellescape(s: string): string {
+    return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -311,10 +316,23 @@ export async function startDaemon(): Promise<void> {
           }
         }
 
-        let extraEnv = {
+        let extraEnv: Record<string, string> = {
           ...authEnv,
           ...(options.environmentVariables ?? {}),
         };
+        if (options.parentSessionId) {
+          extraEnv.HAPPY_FORKED_FROM_SESSION_ID = options.parentSessionId;
+        }
+        if (options.forkedFromMessageId) {
+          extraEnv.HAPPY_FORKED_FROM_MESSAGE_ID = options.forkedFromMessageId;
+        }
+        // For fork: spawned Happy CLI needs to know which Claude JSONL to
+        // backfill into the fresh Happy session row. Without this, the
+        // SDK reads the JSONL silently as context but never re-emits the
+        // historical messages, so the app shows an empty chat.
+        if (options.resumeClaudeSessionId) {
+          extraEnv.HAPPY_FORK_CLAUDE_SESSION_ID = options.resumeClaudeSessionId;
+        }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env
@@ -382,7 +400,12 @@ export async function startDaemon(): Promise<void> {
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
           const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          // Restrict resume to Claude — Codex/Gemini don't honour the
+          // happy-pass-through `--resume <id>` argument the same way.
+          const resumeFragment = options.resumeClaudeSessionId && agent === 'claude'
+            ? ` --resume ${shellescape(options.resumeClaudeSessionId)}`
+            : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -491,6 +514,13 @@ export async function startDaemon(): Promise<void> {
             '--happy-starting-mode', 'remote',
             '--started-by', 'daemon'
           ];
+
+          // resumeClaudeSessionId attaches the new Happy session to a pre-existing
+          // Claude conversation file (used by the fork / duplicate flow). We pass
+          // it through `--resume <id>` as Happy's existing pass-through to claude.
+          if (options.resumeClaudeSessionId && agentCommand === 'claude') {
+            args.push('--resume', options.resumeClaudeSessionId);
+          }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions
           // For now, we ignore it - each spawn creates a new session
