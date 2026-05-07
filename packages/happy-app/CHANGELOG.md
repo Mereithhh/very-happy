@@ -1,5 +1,25 @@
 # Changelog
 
+## Version 11 - 2026-05-07
+
+A major desktop refresh, built-in file editing, and the ability to fork or rewind any Claude session.
+
+- Added — Codex-style sidebar with persistent header, logo, navigation buttons, and settings at the bottom. Chat header simplified with clickable title and folder name.
+- Added — Zen mode: hide all sidebars for a distraction-free view. Press Escape to exit on desktop.
+- Added — All Files tab in the sidebar — browse your project's file tree, search files, and open them inline.
+- Added — Built-in file viewer and editor with syntax highlighting for 22 languages. Detects on-disk conflicts while you edit and shows a diff before overwriting.
+- Added — All-files diff view: see every changed file's diff at a glance from the sidebar.
+- Added — Unread session indicators — a blue dot appears when a session finishes while you're looking elsewhere.
+- Added — Image attachments: paste or pick images to attach to Claude messages. End-to-end encrypted upload, inline rendering in chat. Enable in Settings → Experiments. (Off by default.)
+- Added — Session fork and duplicate: branch an active or disconnected session into a fresh conversation with the same context, or rewind to any earlier message and try again. Long-press a user message for a shortcut. Enable in Settings → Experiments. (Off by default.)
+- Added — Effort selector now actually changes how the model thinks — previously it was a UI-only knob.
+- Added — Smarter push notifications: suppressed when you're actively using the desktop or mobile app.
+- Fixed — Old sessions that refused to load due to a sync deadlock.
+- Fixed — Blank screen on launch when machine sync hangs.
+- Fixed — "Two cursors" bug when switching from remote to local mode in the terminal.
+- Fixed — `claude --resume` picker now shows sessions launched from Happy.
+- Fixed — Ctrl-C in the terminal keeps the session visible and resumable instead of archiving it.
+
 ## Version 10 - 2026-05-06
 
 Branch a Claude session, rewind to any earlier message, and never lose context to a flaky session again.
