@@ -72,7 +72,6 @@ async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<st
         console.warn(`[attachment-image] decrypt returned null for ${ref} (encrypted.length=${encrypted.length})`);
         return null;
     }
-    console.log(`[attachment-image] decrypted ${decrypted.length} bytes for ${ref}`);
     const mime = detectImageMime(decrypted);
     return `data:${mime};base64,${encodeBase64(decrypted)}`;
 }
