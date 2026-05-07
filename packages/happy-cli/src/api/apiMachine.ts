@@ -23,6 +23,8 @@ import {
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface ServerToDaemonEvents {
     update: (data: Update) => void;
     'rpc-request': (data: { method: string, params: string }, callback: (response: string) => void) => void;
@@ -175,8 +177,8 @@ export class ApiMachineClient {
             if (typeof directory !== 'string' || directory.length === 0) {
                 throw new Error('directory is required');
             }
-            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
-                throw new Error('claudeSessionId is required');
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
             }
             try {
                 const newClaudeSessionId = await claudeForkSession(getProjectPath(directory), claudeSessionId);
@@ -198,8 +200,8 @@ export class ApiMachineClient {
             if (typeof directory !== 'string' || directory.length === 0) {
                 throw new Error('directory is required');
             }
-            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
-                throw new Error('claudeSessionId is required');
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
             }
             try {
                 const points = await listClaudeRewindPoints(getProjectPath(directory), claudeSessionId);
@@ -217,11 +219,11 @@ export class ApiMachineClient {
             if (typeof directory !== 'string' || directory.length === 0) {
                 throw new Error('directory is required');
             }
-            if (typeof claudeSessionId !== 'string' || claudeSessionId.length === 0) {
-                throw new Error('claudeSessionId is required');
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
             }
-            if (typeof cutAfterUuid !== 'string' || cutAfterUuid.length === 0) {
-                throw new Error('cutAfterUuid is required');
+            if (typeof cutAfterUuid !== 'string' || !UUID_RE.test(cutAfterUuid)) {
+                throw new Error('cutAfterUuid must be a valid UUID');
             }
             try {
                 const newClaudeSessionId = await claudeForkAndTruncateSession(

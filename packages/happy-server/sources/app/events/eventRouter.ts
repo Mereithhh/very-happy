@@ -281,32 +281,20 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns socketIds of every web/desktop connection (whether focused or not).
-     * Caller decides whether to filter by focus state.
+     * Returns true if the user has any non-machine socket that hasn't
+     * reported `app-state: background`.  Old clients that never send
+     * `app-state` are treated as active (connected = present).
+     *
      * Uses fetchSockets() which works cross-replica via Redis streams adapter.
      */
-    async getNonMobileSocketIds(userId: string): Promise<string[]> {
+    async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
-        return sockets
-            .filter(s => {
-                const client = s.data.happyClient as string | undefined;
-                return client?.startsWith('web/') || client?.startsWith('desktop/');
-            })
-            .map(s => s.id);
-    }
-
-    /**
-     * Returns socket IDs of all mobile connections for the user.
-     * Uses fetchSockets() which works cross-replica via Redis streams adapter.
-     */
-    async getMobileSocketIds(userId: string): Promise<string[]> {
-        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
-        return sockets
-            .filter(s => {
-                const client = s.data.happyClient as string | undefined;
-                return client?.startsWith('ios/') || client?.startsWith('android/');
-            })
-            .map(s => s.id);
+        return sockets.some(s => {
+            if (s.data.clientType === 'machine-scoped') return false;
+            // No app-state yet → old client or just connected; assume active
+            const appState = s.data.appState as string | undefined;
+            return appState !== 'background';
+        });
     }
 
     // === PRIVATE ROUTING LOGIC ===

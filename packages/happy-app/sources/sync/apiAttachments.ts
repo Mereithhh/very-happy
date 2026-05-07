@@ -143,7 +143,6 @@ export async function uploadEncryptedBlob(
     // is then guaranteed safe to send directly.
     const standalone = new Uint8Array(encryptedData);
     const body = standalone.buffer;
-    console.log(`[attachments] PUT ${standalone.length} bytes (origBuf=${encryptedData.buffer.byteLength}, origOff=${encryptedData.byteOffset}, origLen=${encryptedData.length}) → ${upload.uploadUrl}`);
 
     let response: Response;
     try {

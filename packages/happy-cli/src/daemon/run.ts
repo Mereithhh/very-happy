@@ -29,6 +29,11 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 
+/** Shell-escape a string for safe interpolation into tmux commands. */
+function shellescape(s: string): string {
+    return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -398,7 +403,7 @@ export async function startDaemon(): Promise<void> {
           // Restrict resume to Claude — Codex/Gemini don't honour the
           // happy-pass-through `--resume <id>` argument the same way.
           const resumeFragment = options.resumeClaudeSessionId && agent === 'claude'
-            ? ` --resume ${options.resumeClaudeSessionId}`
+            ? ` --resume ${shellescape(options.resumeClaudeSessionId)}`
             : '';
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
 

@@ -67,7 +67,6 @@ async function loadAttachmentDataUri(sessionId: string, ref: string): Promise<st
         console.warn(`[attachment-image] download failed for ${ref}: ${message}`);
         return null;
     }
-    console.log(`[attachment-image] downloaded ${encrypted.length} bytes for ${ref} (key.length=${blobKey.length}, key.buf=${blobKey.buffer.byteLength}, key.off=${blobKey.byteOffset})`);
     const decrypted = decryptBlob(encrypted, blobKey);
     if (!decrypted) {
         console.warn(`[attachment-image] decrypt returned null for ${ref} (encrypted.length=${encrypted.length})`);
