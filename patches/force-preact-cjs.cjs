@@ -13,8 +13,8 @@ const path = require('path');
 
 const pkgPath = path.resolve(__dirname, '..', 'node_modules', 'preact', 'package.json');
 if (!fs.existsSync(pkgPath)) {
-    console.error('[force-preact-cjs] preact package.json not found at', pkgPath);
-    process.exit(1);
+    console.warn('[force-preact-cjs] preact package.json not found at', pkgPath, '— skipping (not needed for web builds)');
+    return;
 }
 
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
