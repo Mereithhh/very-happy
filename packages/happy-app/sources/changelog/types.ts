@@ -1,5 +1,6 @@
 export interface ChangelogEntry {
     title: string;
+    summary: string;
     markdown: string;
 }
 

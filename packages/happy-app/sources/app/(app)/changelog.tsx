@@ -51,7 +51,14 @@ export default function ChangelogScreen() {
                         <Text style={styles.titleText}>
                             {entry.title}
                         </Text>
-                        <MarkdownView markdown={entry.markdown} />
+                        {entry.summary ? (
+                            <Text style={styles.summaryText}>
+                                {entry.summary}
+                            </Text>
+                        ) : null}
+                        <View style={styles.card}>
+                            <MarkdownView markdown={entry.markdown} />
+                        </View>
                     </View>
                 ))}
             </ScrollView>
@@ -73,10 +80,22 @@ const styles = StyleSheet.create((theme) => ({
     },
     titleText: {
         ...Typography.default('semiBold'),
-        fontSize: 18,
-        lineHeight: 26,
+        fontSize: 20,
+        lineHeight: 28,
         color: theme.colors.text,
-        marginBottom: 12,
+        marginBottom: 8,
+    },
+    summaryText: {
+        ...Typography.default('regular'),
+        fontSize: 15,
+        lineHeight: 22,
+        color: theme.colors.textSecondary,
+        marginBottom: 16,
+    },
+    card: {
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 12,
+        padding: 16,
     },
     emptyState: {
         flex: 1,

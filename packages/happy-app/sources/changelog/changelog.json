@@ -2,38 +2,47 @@
   "entries": [
     {
       "title": "May 7 — New sidebar, code editor, session branching",
-      "markdown": "- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\n**Experimental** — enable in Settings → Features:\n- File diffs sidebar — see git changes next to chat on desktop.\n- Image attachments — paste images into chat, E2E encrypted.\n- Session fork & rewind — branch off any session or roll back to any message."
+      "summary": "Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.",
+      "markdown": "- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\nExperimental — enable in Settings → Features:\n- File diffs sidebar — see git changes next to chat on desktop.\n- Image attachments — paste images into chat, E2E encrypted.\n- Session fork & rewind — branch off any session or roll back to any message."
     },
     {
       "title": "April 26 — Voice fixes, diffs, scroll",
+      "summary": "Voice actually works reliably now, plus better content rendering.",
       "markdown": "- Voice calls no longer break on second session.\n- Tables and code blocks scroll horizontally.\n- New diff viewer with syntax highlighting and unified/split toggle.\n- Model and effort choices persist on mobile.\n- Permission prompts no longer get lost.\n- Settings stop randomly resetting during sync.\n- Scroll-to-bottom button in chat.\n- Delete machines from settings."
     },
     {
       "title": "April 8 — Gemini models, voice onboarding, CLI fixes",
+      "summary": "New models, smoother onboarding, fewer CLI hangs.",
       "markdown": "- Latest Gemini models in the picker.\n- Better voice onboarding — clearer first-run prompts.\n- CLI plan approval buttons actually show up now.\n- CLI background tasks and Codex turns no longer hang."
     },
     {
       "title": "March 19 — New session screen, git worktrees, more agents",
+      "summary": "Completely new way to start sessions, plus worktree support and more agents.",
       "markdown": "- New session composer — pick machine, worktree, draft persists.\n- Git worktree management from the app. Auto-cleanup on delete.\n- Auto plan mode when your agent enters planning.\n- OpenClaw as a selectable agent.\n- Session quick actions, resume, delete from info screen.\n- \"Bypass\" renamed to \"yolo\"."
     },
     {
       "title": "December 22 — Agent updates, voice changes, tables",
+      "summary": "Agent config changes and voice pricing heads-up.",
       "markdown": "- Gemini support coming via ACP.\n- Model config removed from app — use CLI defaults.\n- Voice going subscription after 3 free trials.\n- Markdown tables render properly now."
     },
     {
       "title": "September 12 — Codex, daemon mode, one-tap launch",
+      "summary": "Sessions start instantly now. No more manual CLI startup.",
       "markdown": "- Codex support for code completion and generation.\n- Daemon mode — sessions start instantly without manual CLI startup.\n- One-tap launch from mobile.\n- Connect Anthropic and GPT accounts."
     },
     {
       "title": "August 29 — GitHub integration",
+      "summary": "Your GitHub identity in Happy.",
       "markdown": "- Connect your GitHub account via OAuth.\n- Avatar, name, and bio sync to the app.\n- Encrypted token storage."
     },
     {
       "title": "June 26 — QR login, dark mode, voice",
+      "summary": "Link devices instantly, look good doing it.",
       "markdown": "- QR code auth for instant device linking.\n- Dark theme with system preference detection.\n- Faster voice responses.\n- Modified file indicators in session list.\n- 15+ languages for voice."
     },
     {
       "title": "May 12 — Hello world",
+      "summary": "First release. Everything is new.",
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],

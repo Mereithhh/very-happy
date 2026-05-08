@@ -5,6 +5,7 @@ import * as path from 'path';
 
 interface ChangelogEntry {
     title: string;
+    summary: string;
     markdown: string;
 }
 
@@ -32,10 +33,29 @@ function parseChangelog(): ChangelogData {
         if (newlineIndex === -1) continue;
 
         const title = section.slice(0, newlineIndex).trim();
-        const markdown = section.slice(newlineIndex + 1).trim();
-        if (!markdown) continue;
+        const body = section.slice(newlineIndex + 1).trim();
+        if (!body) continue;
 
-        entries.push({ title, markdown });
+        // First non-empty line is the summary, rest is markdown
+        const lines = body.split('\n');
+        let summary = '';
+        let markdownStart = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const trimmed = lines[i].trim();
+            if (trimmed && !trimmed.startsWith('-')) {
+                summary = trimmed;
+                markdownStart = i + 1;
+                break;
+            } else if (trimmed.startsWith('-')) {
+                // No summary, starts with bullets
+                markdownStart = i;
+                break;
+            }
+        }
+
+        const markdown = lines.slice(markdownStart).join('\n').trim();
+        entries.push({ title, summary, markdown });
     }
 
     const latestTitle = entries.length > 0 ? entries[0].title : '';
