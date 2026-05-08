@@ -1,11 +1,6 @@
 {
   "entries": [
     {
-      "title": "TEST — List rendering examples",
-      "summary": "Testing bullets, nesting, and numbered lists.",
-      "markdown": "- Top level item one\n- Top level item two\n  - Nested child\n  - Another nested child\n    - Deep nested\n  - Back to second level\n- Top level again\n\n1. First thing\n2. Second thing\n  1. Sub-step one\n  2. Sub-step two\n3. Third thing\n\n- Mix of **bold** and `code` in lists\n  - Nested with *italic* text\n- Back to top"
-    },
-    {
       "title": "May 7 — New sidebar, code editor, session branching",
       "summary": "Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.",
       "markdown": "- Thinking effort selection bug fixed.\n- Smarter push notifications — suppressed when you're already in the app.\n- Unread dots persist on sessions until you open them.\n- Redesigned sidebar with file browser, code editor, and zen mode.\n- Fixed stale sessions refusing to load, blank screen on launch, dual cursors in remote mode, `claude --resume` not finding Happy sessions.\n\nExperimental — enable in Settings → Features:\n- File diffs sidebar — see git changes next to chat on desktop.\n- Session fork & rewind — branch off any session or roll back to any message."
@@ -51,5 +46,5 @@
       "markdown": "- E2E encrypted sessions.\n- Voice assistant.\n- File manager with syntax highlighting.\n- Real-time sync across devices."
     }
   ],
-  "latestTitle": "TEST — List rendering examples"
+  "latestTitle": "May 7 — New sidebar, code editor, session branching"
 }
