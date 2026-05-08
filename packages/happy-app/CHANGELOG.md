@@ -1,3 +1,25 @@
+# TEST — List rendering examples
+
+Testing bullets, nesting, and numbered lists.
+
+- Top level item one
+- Top level item two
+  - Nested child
+  - Another nested child
+    - Deep nested
+  - Back to second level
+- Top level again
+
+1. First thing
+2. Second thing
+  1. Sub-step one
+  2. Sub-step two
+3. Third thing
+
+- Mix of **bold** and `code` in lists
+  - Nested with *italic* text
+- Back to top
+
 # May 7 — New sidebar, code editor, session branching
 
 Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.
