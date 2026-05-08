@@ -1,36 +1,35 @@
 import { useState, useCallback } from 'react';
 import {
-    getLastViewedVersion,
-    setLastViewedVersion,
-    getLatestVersion
+    getLastViewedTitle,
+    setLastViewedTitle,
+    getLatestTitle
 } from '@/changelog';
 
 export function useChangelog() {
-    // MMKV reads are synchronous - no need for useEffect
-    const latestVersion = getLatestVersion();
+    const latestTitle = getLatestTitle();
 
     const [hasUnread, setHasUnread] = useState(() => {
-        const lastViewed = getLastViewedVersion();
+        const lastViewed = getLastViewedTitle();
 
         // On first install, mark as read so user doesn't see old entries
-        if (lastViewed === 0 && latestVersion > 0) {
-            setLastViewedVersion(latestVersion);
+        if (!lastViewed && latestTitle) {
+            setLastViewedTitle(latestTitle);
             return false;
         }
 
-        return latestVersion > lastViewed;
+        return latestTitle !== lastViewed;
     });
 
     const markAsRead = useCallback(() => {
-        if (latestVersion > 0) {
-            setLastViewedVersion(latestVersion);
+        if (latestTitle) {
+            setLastViewedTitle(latestTitle);
             setHasUnread(false);
         }
-    }, [latestVersion]);
+    }, [latestTitle]);
 
     return {
         hasUnread,
-        latestVersion,
+        latestTitle,
         markAsRead
     };
 }
