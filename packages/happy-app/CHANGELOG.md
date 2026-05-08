@@ -10,7 +10,6 @@ Desktop got a full refresh with a file browser, built-in editor, and zen mode. S
 
 Experimental — enable in Settings → Features:
 - File diffs sidebar — see git changes next to chat on desktop.
-- Image attachments — paste images into chat, E2E encrypted.
 - Session fork & rewind — branch off any session or roll back to any message.
 
 # April 26 — Voice fixes, diffs, scroll
