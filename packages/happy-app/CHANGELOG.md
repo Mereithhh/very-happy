@@ -1,3 +1,10 @@
+# May 13 — Faster long chats
+
+Long sessions open instantly. Messages load latest-first with older history streaming in on scroll.
+
+- Parallel decryption — no more freezing on sessions with thousands of messages.
+- Backward pagination — scroll up to load history on demand.
+
 # May 7 — Session retention, new sidebar, code editor, session branching
 
 Desktop got a full refresh with a file browser, built-in editor, and zen mode. Sessions can now be branched or rewound.
