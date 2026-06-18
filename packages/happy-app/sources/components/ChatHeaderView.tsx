@@ -6,6 +6,9 @@ import { Typography } from '@/constants/Typography';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { layout } from '@/components/layout';
 import { useUnistyles } from 'react-native-unistyles';
+import { Modal } from '@/modal';
+import { sessionUpdateTitle } from '@/sync/ops';
+import { t } from '@/text';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -20,6 +23,18 @@ interface ChatHeaderViewProps {
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
+    /**
+     * When set, a rename affordance is shown next to the title. Tapping it
+     * opens a prompt and writes the new title directly via the session
+     * `update-metadata` op (bypasses the change_title MCP tool).
+     */
+    sessionId?: string;
+    /**
+     * The session's current summary text (raw `metadata.summary?.text`), used
+     * to prefill the rename input and to drive the "no title" placeholder.
+     * Undefined/empty means the session has no title yet.
+     */
+    summaryText?: string;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -30,6 +45,8 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onTitlePress,
     onBackPress,
     isConnected = true,
+    sessionId,
+    summaryText,
 }) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
@@ -37,6 +54,39 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     const isTablet = useIsTablet();
     const showBackButton = !isTablet && !!onBackPress;
     const hasExtra = !!extraPathSegment;
+    const canRename = !!sessionId && !hasExtra;
+    const hasTitle = !!(summaryText && summaryText.trim().length > 0);
+
+    const handleRename = React.useCallback(async () => {
+        if (!sessionId) return;
+        const next = await Modal.prompt(
+            t('session.renameTitle'),
+            undefined,
+            {
+                defaultValue: summaryText ?? '',
+                placeholder: t('session.renamePlaceholder'),
+                cancelText: t('common.cancel'),
+                confirmText: t('common.save'),
+            },
+        );
+        // null = cancelled. Empty string is treated as "no change" here to
+        // avoid accidentally clearing the title from the prompt.
+        if (next === null) return;
+        const trimmed = next.trim();
+        if (trimmed.length === 0 || trimmed === (summaryText ?? '').trim()) return;
+        try {
+            await sessionUpdateTitle(sessionId, trimmed);
+        } catch (error) {
+            Modal.alert(t('common.error'), String(error instanceof Error ? error.message : error));
+        }
+    }, [sessionId, summaryText]);
+
+    // When the session has no title yet, surface a tappable "Set title"
+    // affordance in place of the (fallback) title text.
+    const displayTitle = canRename && !hasTitle ? t('session.setTitle') : title;
+    const titlePlaceholderStyle = canRename && !hasTitle
+        ? { color: theme.colors.textSecondary }
+        : { color: theme.colors.header.tint };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
@@ -64,7 +114,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                 >
                                     {folderName}
                                 </Text>
-                                {title && title !== folderName && (
+                                {(displayTitle && displayTitle !== folderName) && (
                                     <>
                                         <Text style={[styles.separator, { color: theme.colors.textSecondary, ...Typography.default() }]}>/</Text>
                                         <Text
@@ -73,10 +123,10 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                                             style={[
                                                 styles.title,
                                                 hasExtra && styles.titleWithExtra,
-                                                { color: theme.colors.header.tint, ...Typography.default() },
+                                                { ...titlePlaceholderStyle, ...Typography.default() },
                                             ]}
                                         >
-                                            {title}
+                                            {displayTitle}
                                         </Text>
                                     </>
                                 )}
@@ -97,12 +147,27 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={[styles.title, { color: theme.colors.header.tint, ...Typography.default() }]}
+                                style={[styles.title, { ...titlePlaceholderStyle, ...Typography.default() }]}
                             >
-                                {title}
+                                {displayTitle}
                             </Text>
                         )}
                     </Pressable>
+                    {canRename && (
+                        <Pressable
+                            onPress={handleRename}
+                            hitSlop={12}
+                            style={({ pressed }) => [styles.renameButton, { opacity: pressed ? 0.5 : 1 }]}
+                            accessibilityLabel={t('session.renameTitle')}
+                            accessibilityRole="button"
+                        >
+                            <Ionicons
+                                name="pencil"
+                                size={16}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    )}
                     {rightSlot ? (
                         <View style={styles.rightSlot}>
                             {rightSlot}
@@ -176,5 +241,13 @@ const styles = StyleSheet.create({
     backButton: {
         paddingHorizontal: 8,
         paddingVertical: 4,
+    },
+    renameButton: {
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        marginLeft: 4,
+        flexShrink: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

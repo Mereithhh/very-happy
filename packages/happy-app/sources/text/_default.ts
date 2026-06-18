@@ -336,6 +336,9 @@ export const en = {
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
         newChat: 'New chat',
+        setTitle: 'Set title',
+        renameTitle: 'Rename session',
+        renamePlaceholder: 'Session title',
         // Fork / duplicate / rewind flow (Claude only)
         forkAction: 'Fork session',
         forkSubtitle: 'Continue in a new session with the same context',

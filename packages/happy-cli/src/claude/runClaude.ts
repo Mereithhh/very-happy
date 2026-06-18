@@ -32,6 +32,7 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
+import { TitleGenerator } from './utils/titleGenerator';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -316,6 +317,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
 
+    // Auto-title generator (LLM bypass — independent of the change_title MCP
+    // tool). Self-gates so only the first user message of a title-less session
+    // triggers a one-shot `claude -p --model haiku` call; fire-and-forget.
+    const titleGenerator = new TitleGenerator(session);
+
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
     // because the user opened `claude --resume <id>` in a terminal next
@@ -341,6 +347,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // App-sent prompts will show up here because the SDK
             // writes them to the JSONL — dedupe by content.
             if (consumeAppPrompt(content)) return;
+            // Local path (user-typed prompt in `claude --resume <id>`):
+            // attempt auto-title on the first such prompt.
+            titleGenerator.maybeGenerate(content);
             session.sendClaudeSessionMessage(raw);
         },
     });
@@ -472,6 +481,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // with a real Claude uuid, and we don't want to re-forward it.
         if (message?.content?.text) {
             recordAppPrompt(message.content.text);
+            // Remote path (prompt sent from the app/web): attempt auto-title
+            // on the first message of a title-less session. Fire-and-forget.
+            titleGenerator.maybeGenerate(message.content.text);
         }
 
         // Claim every file attachment that arrived strictly before this text.

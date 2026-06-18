@@ -234,6 +234,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                         rightSlot={(diffViewOpen || !!fileViewPath) ? headerRightSlot : null}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onBackPress={() => router.back()}
+                        sessionId={session ? sessionId : undefined}
+                        summaryText={session?.metadata?.summary?.text}
                     />
                     {/* Voice status bar below header - not on tablet (shown in sidebar) */}
                     {!isTablet && realtimeStatus !== 'disconnected' && (
