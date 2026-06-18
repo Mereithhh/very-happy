@@ -19,7 +19,6 @@ import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { t } from '@/text';
 import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
-import { useRouter } from 'expo-router';
 import { formatMCPTitle } from './tools/views/MCPToolView';
 
 interface ToolGroupViewProps {
@@ -34,7 +33,6 @@ interface ToolGroupViewProps {
 
 export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
-    const router = useRouter();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
     const stats = React.useMemo(() => generateGroupStats(group.messages), [group.messages]);
@@ -43,20 +41,9 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const singleToolMessage = suppressChildren && group.messages[0]?.kind === 'tool-call'
         ? group.messages[0]
         : null;
-    const handleSingleToolPress = React.useCallback(() => {
-        if (!singleToolMessage) {
-            onToggle();
-            return;
-        }
-        const filePath = isFileEditTool(singleToolMessage.tool.name) && typeof singleToolMessage.tool.input?.file_path === 'string'
-            ? singleToolMessage.tool.input.file_path
-            : null;
-        if (filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
-            return;
-        }
-        router.push(`/session/${sessionId}/message/${singleToolMessage.id}`);
-    }, [onToggle, router, sessionId, singleToolMessage]);
+    // Single-tool groups expand inline (full tool body below the header)
+    // instead of navigating to a dedicated full-screen page.
+    const handleSingleToolPress = onToggle;
     const renderGroupMessage = React.useCallback((msg: Message) => (
         <ToolGroupMessageRow
             key={msg.id}
@@ -78,9 +65,19 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
                 stats={singleToolMessage ? undefined : stats}
                 iconCategories={singleToolMessage ? undefined : iconCategories}
             />
-            {expanded && !suppressChildren && (
+            {expanded && (
                 <View style={styles.content}>
-                    {group.messages.map(renderGroupMessage)}
+                    {singleToolMessage ? (
+                        // The header already is the single tool's summary, so
+                        // expand straight to its full body (no nested summary row).
+                        <MessageView
+                            message={singleToolMessage}
+                            metadata={metadata}
+                            sessionId={sessionId}
+                        />
+                    ) : (
+                        group.messages.map(renderGroupMessage)
+                    )}
                 </View>
             )}
         </View>
@@ -324,6 +321,7 @@ function ToolGroupMessageRow(props: {
     return (
         <ToolSummaryRow
             message={props.message}
+            metadata={props.metadata}
             sessionId={props.sessionId}
         />
     );
@@ -331,26 +329,24 @@ function ToolGroupMessageRow(props: {
 
 function ToolSummaryRow(props: {
     message: ToolCallMessage;
+    metadata: Metadata | null;
     sessionId: string;
 }) {
     const { theme } = useUnistyles();
-    const router = useRouter();
     const { tool } = props.message;
     const category = getToolSummaryCategory(tool.name);
     const detail = getToolSummaryDetail(tool);
     const title = getToolRowTitle(category, tool.name);
     const durationLabel = getToolDurationLabel(tool);
-    const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
-        ? tool.input.file_path
-        : null;
     const isPressable = Boolean(props.sessionId);
+
+    // Inline expansion: tapping the compact summary row reveals the full tool
+    // (input/output/diff) in place via the regular ToolView, instead of jumping
+    // to a dedicated full-screen page.
+    const [expanded, setExpanded] = React.useState(false);
     const handlePress = React.useCallback(() => {
-        if (filePath) {
-            router.push(`/session/${props.sessionId}/file?path=${btoa(filePath)}`);
-            return;
-        }
-        router.push(`/session/${props.sessionId}/message/${props.message.id}`);
-    }, [filePath, props.message.id, props.sessionId, router]);
+        setExpanded((e) => !e);
+    }, []);
 
     const content = (
         <>
@@ -374,6 +370,13 @@ function ToolSummaryRow(props: {
                     </Text>
                 ) : null}
                 <ToolStatusIndicator state={tool.state} />
+                {isPressable ? (
+                    <Ionicons
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={13}
+                        color={theme.colors.textSecondary}
+                    />
+                ) : null}
             </View>
         </>
     );
@@ -387,15 +390,26 @@ function ToolSummaryRow(props: {
     }
 
     return (
-        <Pressable
-            onPress={handlePress}
-            style={({ pressed }) => [
-                styles.toolSummaryRow,
-                pressed && styles.toolSummaryRowPressed,
-            ]}
-        >
-            {content}
-        </Pressable>
+        <View>
+            <Pressable
+                onPress={handlePress}
+                style={({ pressed }) => [
+                    styles.toolSummaryRow,
+                    pressed && styles.toolSummaryRowPressed,
+                ]}
+            >
+                {content}
+            </Pressable>
+            {expanded ? (
+                <View style={styles.toolSummaryExpanded}>
+                    <MessageView
+                        message={props.message}
+                        metadata={props.metadata}
+                        sessionId={props.sessionId}
+                    />
+                </View>
+            ) : null}
+        </View>
     );
 }
 
@@ -532,10 +546,6 @@ function getToolRowTitle(category: ToolSummaryCategory, toolName: string): strin
     }
 }
 
-function isFileEditTool(toolName: string): boolean {
-    return toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write';
-}
-
 const styles = StyleSheet.create((theme) => ({
     outerContainer: {
         flexDirection: 'row',
@@ -632,6 +642,9 @@ const styles = StyleSheet.create((theme) => ({
     },
     toolSummaryRowPressed: {
         opacity: 0.65,
+    },
+    toolSummaryExpanded: {
+        marginHorizontal: 8,
     },
     toolSummaryIcon: {
         width: 14,

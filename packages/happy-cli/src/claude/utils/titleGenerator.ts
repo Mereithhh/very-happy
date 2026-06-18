@@ -50,8 +50,15 @@ function resolveClaudeBinary(): string {
 
 function buildPrompt(firstUserMessage: string): string {
     const sample = firstUserMessage.slice(0, MAX_PROMPT_SAMPLE_CHARS);
-    return `Generate a concise chat title (≤6 words, no quotes, no punctuation at end) for a conversation that starts with: "${sample}". Reply with only the title.`;
+    return `Summarize the SPECIFIC topic/request of this message into a 3-6 word title (match the message's language). Be concrete — name the actual task/subject. Do NOT output generic placeholders like "新对话"/"New chat"/"Conversation"/"Untitled". No quotes, no trailing punctuation. Reply with ONLY the title.\n\nMessage: "${sample}"`;
 }
+
+// Generic/placeholder titles we'd rather drop than display (they look identical
+// to the app's default "new chat" label, making auto-titling seem broken).
+const GENERIC_TITLES = new Set([
+    'new chat', 'new conversation', 'conversation', 'chat', 'untitled', 'new session',
+    '新对话', '新会话', '对话', '会话', '聊天', '未命名',
+]);
 
 /**
  * Strip quotes / newlines / wrapping markdown, collapse whitespace, drop a
@@ -73,7 +80,11 @@ function sanitizeTitle(raw: string): string | null {
     if (title.length > MAX_TITLE_CHARS) {
         title = title.slice(0, MAX_TITLE_CHARS).trim();
     }
-    return title.length > 0 ? title : null;
+    if (!title) return null;
+    // Drop generic placeholders — better to leave the default than set a title
+    // indistinguishable from "new chat".
+    if (GENERIC_TITLES.has(title.toLowerCase().replace(/\s+/g, ' ').trim())) return null;
+    return title;
 }
 
 /**

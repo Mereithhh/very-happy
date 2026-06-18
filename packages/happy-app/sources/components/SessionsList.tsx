@@ -362,7 +362,9 @@ export function SessionsList() {
     }, [hideInactiveSessions, setHideInactiveSessions]);
 
     const [searchQuery, setSearchQuery] = React.useState('');
-    const [statusFilter, setStatusFilter] = React.useState<SessionStatusFilter>('all');
+    // Default the sidebar to the "Active" segment so opening it surfaces live
+    // sessions first; users can switch to All / Archived from the control.
+    const [statusFilter, setStatusFilter] = React.useState<SessionStatusFilter>('active');
     const isFiltering = searchQuery.trim().length > 0 || statusFilter !== 'all';
 
     // While filtering we work off the raw list (so archived sessions can be
