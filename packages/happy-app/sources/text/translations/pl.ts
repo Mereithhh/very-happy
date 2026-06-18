@@ -669,6 +669,8 @@ export const pl: TranslationStructure = {
         fileConflictDescription: 'Ten plik został zmodyfikowany na urządzeniu podczas edycji. Załaduj ponownie aby zobaczyć najnowszą wersję.',
         reload: 'Załaduj ponownie',
         overwrite: 'Nadpisz',
+        collapseSidebar: 'Zwiń panel boczny',
+        expandSidebar: 'Rozwiń panel boczny',
     },
 
     settingsVoice: {

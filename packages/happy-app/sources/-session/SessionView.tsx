@@ -22,7 +22,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -32,6 +32,8 @@ import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
+import { FileTabBar } from '@/components/FileTabBar';
+import { useFileTabs, useSessionFileTabs } from '@/-session/fileTabs';
 import { AllFilesDiffView } from '@/components/AllFilesDiffView';
 import { FileViewPanel } from '@/components/FileViewPanel';
 import { prefetchPierreDiff } from '@/components/diff/PierreDiffView';
@@ -67,6 +69,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const { width: windowWidth } = useWindowDimensions();
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    // Persisted desktop sidebar collapse preference (device-local). When
+    // collapsed, the sidebar shrinks to a thin rail with a re-expand button.
+    const [sidebarCollapsed, setSidebarCollapsed] = useLocalSettingMutable('filesSidebarCollapsed');
+    const toggleSidebarCollapsed = React.useCallback(() => {
+        setSidebarCollapsed(!sidebarCollapsed);
+    }, [sidebarCollapsed, setSidebarCollapsed]);
 
     // Base condition: can we show the diff sidebar at all?
     const canShowSidebar = fileDiffsSidebarEnabled
@@ -76,8 +84,12 @@ export const SessionView = React.memo((props: { id: string }) => {
 
     const showSidebar = canShowSidebar && !zenMode;
 
+    // Collapsed rail width vs. full panel width. The rail keeps a single
+    // re-expand affordance visible so the sidebar can always be brought back.
+    const SIDEBAR_RAIL_WIDTH = 44;
     // Match left sidebar width: 30% of window, clamped to 250–360px
-    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+    const sidebarFullWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+    const sidebarWidth = sidebarCollapsed ? SIDEBAR_RAIL_WIDTH : sidebarFullWidth;
 
     // Animate diff sidebar width.
     //
@@ -108,15 +120,24 @@ export const SessionView = React.memo((props: { id: string }) => {
     // of state so functional updates stay coordinated.
     type OverlayEntry =
         | { kind: 'none' }
-        | { kind: 'diff'; file: string }
-        | { kind: 'file'; path: string };
+        | { kind: 'diff'; file: string };
     const [overlayHistory, setOverlayHistory] = React.useState<{ stack: OverlayEntry[]; cursor: number }>(
         { stack: [{ kind: 'none' }], cursor: 0 }
     );
     const overlayCurrent = overlayHistory.stack[overlayHistory.cursor] ?? { kind: 'none' };
     const diffViewOpen = overlayCurrent.kind === 'diff';
-    const fileViewPath = overlayCurrent.kind === 'file' ? overlayCurrent.path : null;
     const scrollToFile = overlayCurrent.kind === 'diff' ? overlayCurrent.file : null;
+
+    // Multi-file viewer: open files live in a per-session tab store. The active
+    // tab drives the FileViewPanel overlay; the diff view (above) keeps its own
+    // back/forward history. The file overlay takes precedence over diff when a
+    // tab is active so picking a file from "All Files" surfaces it immediately.
+    const { tabs: fileTabs, activePath: activeFileTab } = useSessionFileTabs(sessionId);
+    const openFileTab = useFileTabs((s) => s.openTab);
+    const closeFileTab = useFileTabs((s) => s.closeTab);
+    const activateFileTab = useFileTabs((s) => s.activateTab);
+    const clearFileTabs = useFileTabs((s) => s.clearSession);
+    const fileViewPath = activeFileTab;
 
     const pushOverlay = React.useCallback((entry: OverlayEntry) => {
         setOverlayHistory((prev) => {
@@ -131,16 +152,25 @@ export const SessionView = React.memo((props: { id: string }) => {
         pushOverlay({ kind: 'diff', file: file.fullPath });
     }, [pushOverlay]);
     const handleAllFilesFilePress = React.useCallback((filePath: string) => {
-        pushOverlay({ kind: 'file', path: filePath });
-    }, [pushOverlay]);
+        // Opening a file always surfaces it as the active tab; this also pulls
+        // focus away from any diff overlay (file overlay renders on top).
+        openFileTab(sessionId, filePath);
+    }, [openFileTab, sessionId]);
 
     // When sidebar capability is lost (screen too narrow, disabled), close views.
     // Don't close on zen mode toggle — keep the view visible.
     React.useEffect(() => {
         if (!canShowSidebar) {
             setOverlayHistory({ stack: [{ kind: 'none' }], cursor: 0 });
+            clearFileTabs(sessionId);
         }
-    }, [canShowSidebar]);
+    }, [canShowSidebar, clearFileTabs, sessionId]);
+
+    // Drop open file tabs when leaving the session so they don't leak across
+    // sessions (the store is keyed by id, but this keeps memory tidy).
+    React.useEffect(() => {
+        return () => clearFileTabs(sessionId);
+    }, [sessionId, clearFileTabs]);
 
     // Right-side header content published by the active overlay (diff toggle / save button).
     const [headerRightSlot, setHeaderRightSlot] = React.useState<React.ReactNode>(null);
@@ -284,7 +314,9 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }}
             >
                 {mainContent}
-                {diffViewOpen && canShowSidebar && (
+                {/* Diff overlay yields to the file viewer: when a file tab is
+                    active the FileViewPanel renders on top. */}
+                {diffViewOpen && !fileViewPath && canShowSidebar && (
                     <View
                         pointerEvents="box-none"
                         style={{
@@ -315,7 +347,14 @@ export const SessionView = React.memo((props: { id: string }) => {
                             backgroundColor: theme.colors.surface,
                         }}
                     >
+                        <FileTabBar
+                            tabs={fileTabs}
+                            activePath={activeFileTab}
+                            onSelect={(path) => activateFileTab(sessionId, path)}
+                            onClose={(path) => closeFileTab(sessionId, path)}
+                        />
                         <FileViewPanel
+                            key={fileViewPath}
                             sessionId={sessionId}
                             filePath={fileViewPath}
                             onHeaderRightSlotChange={setHeaderRightSlot}
@@ -325,14 +364,23 @@ export const SessionView = React.memo((props: { id: string }) => {
             </View>
             <Animated.View style={[{ minWidth: 0, alignSelf: 'stretch' }, animatedSidebarStyle]}>
                 <View style={{ width: sidebarWidth, flex: 1 }}>
-                    <FilesSidebar
-                        sessionId={sessionId}
-                        selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
-                        onFilePress={handleSidebarFilePress}
-                        mode={sidebarMode}
-                        onModeChange={setSidebarMode}
-                        onAllFilesFilePress={handleAllFilesFilePress}
-                    />
+                    {sidebarCollapsed ? (
+                        <CollapsedSidebarRail
+                            onExpand={toggleSidebarCollapsed}
+                            hasOpenFile={!!fileViewPath}
+                        />
+                    ) : (
+                        <FilesSidebar
+                            sessionId={sessionId}
+                            selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                            onFilePress={handleSidebarFilePress}
+                            mode={sidebarMode}
+                            onModeChange={setSidebarMode}
+                            onAllFilesFilePress={handleAllFilesFilePress}
+                            collapsed={sidebarCollapsed}
+                            onToggleCollapsed={toggleSidebarCollapsed}
+                        />
+                    )}
                 </View>
             </Animated.View>
         </View>
@@ -340,6 +388,54 @@ export const SessionView = React.memo((props: { id: string }) => {
 });
 
 const SIDEBAR_MIN_WINDOW_WIDTH = 1100;
+
+/**
+ * Thin rail shown in place of the files sidebar when it's collapsed. Keeps a
+ * single re-expand button visible so the user can always bring the panel back.
+ */
+const CollapsedSidebarRail = React.memo(function CollapsedSidebarRail({
+    onExpand,
+    hasOpenFile,
+}: {
+    onExpand: () => void;
+    hasOpenFile: boolean;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <View
+            style={{
+                flex: 1,
+                alignItems: 'center',
+                paddingTop: 12,
+                gap: 12,
+                backgroundColor: theme.colors.groupped.background,
+                borderLeftWidth: 0.5,
+                borderLeftColor: theme.colors.divider,
+            }}
+        >
+            <Pressable
+                onPress={onExpand}
+                hitSlop={8}
+                accessibilityLabel={t('files.expandSidebar')}
+                style={({ pressed }) => ({
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: pressed ? theme.colors.surfaceSelected : 'transparent',
+                })}
+            >
+                <Ionicons name="chevron-back" size={18} color={theme.colors.textSecondary} />
+            </Pressable>
+            <Ionicons
+                name={hasOpenFile ? 'document-text-outline' : 'folder-outline'}
+                size={18}
+                color={theme.colors.textSecondary}
+            />
+        </View>
+    );
+});
 
 // Hoisted so AgentInput's React.memo doesn't see a new array ref on every keystroke
 const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from 'react-native';
-import { Octicons } from '@expo/vector-icons';
+import { Octicons, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, {
     useAnimatedStyle,
@@ -25,6 +25,10 @@ interface FilesSidebarProps {
     mode?: SidebarMode;
     onModeChange?: (mode: SidebarMode) => void;
     onAllFilesFilePress?: (filePath: string) => void;
+    /** Current collapse state (desktop). When true the parent renders a rail instead. */
+    collapsed?: boolean;
+    /** Toggle collapse — when provided a collapse button is shown in the header. */
+    onToggleCollapsed?: () => void;
 }
 
 type FileNode<T = GitFileStatus> = {
@@ -152,6 +156,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     mode = 'changes',
     onModeChange,
     onAllFilesFilePress,
+    onToggleCollapsed,
 }) => {
     const router = useRouter();
     const { theme } = useUnistyles();
@@ -208,6 +213,16 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
         <View style={styles.container}>
             {/* Tab selector */}
             <View style={styles.header}>
+                {onToggleCollapsed ? (
+                    <Pressable
+                        onPress={onToggleCollapsed}
+                        hitSlop={8}
+                        accessibilityLabel={t('files.collapseSidebar')}
+                        style={({ pressed }) => [styles.collapseBtn, pressed && styles.collapseBtnPressed]}
+                    >
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                ) : null}
                 {onModeChange ? (
                     <View style={styles.tabRow}>
                         <Pressable
@@ -557,9 +572,20 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 8,
         paddingHorizontal: 16,
         paddingTop: 14,
         paddingBottom: 8,
+    },
+    collapseBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    collapseBtnPressed: {
+        backgroundColor: theme.colors.surfaceSelected,
     },
     headerTitle: {
         flex: 1,

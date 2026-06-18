@@ -204,6 +204,10 @@ interface StorageState {
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortLevel: (sessionId: string, level: string | null) => void;
     resetSessionAgentOverrides: (sessionId: string) => void;
+    // Optimistically flip a session's active state locally (e.g. archive UX) so
+    // it leaves the active-sessions group immediately. The next server sync
+    // (applySessions) is authoritative and will correct/confirm this.
+    setSessionActiveLocal: (sessionId: string, active: boolean) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -1123,6 +1127,38 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        setSessionActiveLocal: (sessionId: string, active: boolean) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session || session.active === active) return state;
+
+            // Keep activeAt / presence consistent with how applySessions derives
+            // them so the optimistic row matches a real inactive session: when we
+            // deactivate, stamp "last seen" = now and flip presence to a timestamp.
+            const now = Date.now();
+            const updatedSession: Session = {
+                ...session,
+                active,
+                activeAt: active ? session.activeAt : now,
+                presence: active ? 'online' : now,
+            };
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: updatedSession,
+            };
+
+            // active flag drives the active/inactive grouping, so the list view
+            // must be rebuilt for the change to show immediately.
+            const sessionListViewData = buildSessionListViewData(
+                updatedSessions,
+                state.unreadSessionIds,
+            );
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData,
             };
         }),
         getSessionPathKey: (sessionId: string): string | null => {
