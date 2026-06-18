@@ -523,6 +523,11 @@ export const zhHant: TranslationStructure = {
         showArchived: '顯示已封存',
         hideArchived: '隱藏已封存',
         newSession: '新建對話',
+        searchPlaceholder: '搜尋對話',
+        filterAll: '全部',
+        filterActive: '活躍',
+        filterArchived: '已封存',
+        noResults: '沒有符合的對話',
     },
 
     zen: {

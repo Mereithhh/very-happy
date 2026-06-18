@@ -33,17 +33,19 @@ const GENERATION_TIMEOUT_MS = 30_000;
  * (HAPPY_CLAUDE_PATH → PATH → npm/bun global → homebrew → native installer).
  * Returns null if it cannot be located, so callers can simply skip.
  */
-function resolveClaudeBinary(): string | null {
+function resolveClaudeBinary(): string {
     try {
         const require = createRequire(import.meta.url);
         const utilsPath = resolve(join(projectPath(), 'scripts', 'claude_version_utils.cjs'));
         const { getClaudeCliPath } = require(utilsPath) as { getClaudeCliPath: () => string };
         const path = getClaudeCliPath();
-        return typeof path === 'string' && path.length > 0 ? path : null;
+        if (typeof path === 'string' && path.length > 0) return path;
     } catch (error) {
-        logger.debug('[titleGenerator] Failed to resolve claude binary', { error: String(error) });
-        return null;
+        logger.debug('[titleGenerator] getClaudeCliPath failed; falling back to PATH', { error: String(error) });
     }
+    // Fallback: spawn `claude` from PATH (or HAPPY_CLAUDE_PATH). The daemon has
+    // ~/.local/bin on PATH, so this resolves even if the cjs util can't be required.
+    return process.env.HAPPY_CLAUDE_PATH || 'claude';
 }
 
 function buildPrompt(firstUserMessage: string): string {

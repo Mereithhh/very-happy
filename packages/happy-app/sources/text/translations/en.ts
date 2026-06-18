@@ -537,6 +537,11 @@ export const en: TranslationStructure = {
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
+        searchPlaceholder: 'Search sessions',
+        filterAll: 'All',
+        filterActive: 'Active',
+        filterArchived: 'Archived',
+        noResults: 'No matching sessions',
     },
 
     zen: {

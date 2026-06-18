@@ -237,6 +237,15 @@ function ThinkingBlock(props: {
   const { theme } = useUnistyles();
   const [expanded, setExpanded] = React.useState(false);
 
+  // Strip the reducer's `*...*` italic wrapper; if there's no real thinking
+  // text (common in remote/SDK mode where thinking content isn't emitted),
+  // render nothing instead of an empty expandable card.
+  const content = React.useMemo(() => {
+    let t = (props.text ?? '').trim();
+    if (t.startsWith('*') && t.endsWith('*')) t = t.slice(1, -1).trim();
+    return t;
+  }, [props.text]);
+
   // Duration label: only shown when we could derive a positive duration.
   const durationLabel = React.useMemo(() => {
     if (typeof props.durationMs !== 'number' || props.durationMs <= 0) return null;
@@ -247,6 +256,8 @@ function ThinkingBlock(props: {
     const rem = seconds % 60;
     return `Thought for ${minutes}m${rem.toString().padStart(2, '0')}s`;
   }, [props.durationMs]);
+
+  if (!content) return null;
 
   return (
     <Animated.View style={styles.thinkingContainer} layout={LinearTransition.duration(200)}>
@@ -271,7 +282,7 @@ function ThinkingBlock(props: {
           exiting={FadeOut.duration(120)}
           style={styles.thinkingContent}
         >
-          <MarkdownView markdown={props.text} sessionId={props.sessionId} />
+          <MarkdownView markdown={content} sessionId={props.sessionId} />
         </Animated.View>
       ) : null}
     </Animated.View>

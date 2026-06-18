@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, Platform, TextInput } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
-import { SessionListViewItem, SessionRowData } from '@/sync/storage';
+import { SessionListViewItem, SessionRowData, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
@@ -21,6 +21,82 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+
+type SessionStatusFilter = 'all' | 'active' | 'archived';
+
+/**
+ * Filter the session list view by free-text query and status. Operates on the
+ * raw view items so it can show/hide archived sessions independently of the
+ * persisted hideInactiveSessions setting. Headers / project groups that end up
+ * with no sessions beneath them are dropped so the list stays clean.
+ */
+function filterSessionListData(
+    data: SessionListViewItem[],
+    query: string,
+    statusFilter: SessionStatusFilter,
+): SessionListViewItem[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    const hasQuery = normalizedQuery.length > 0;
+
+    const matchesSession = (session: SessionRowData): boolean => {
+        if (statusFilter === 'active' && !session.active) return false;
+        if (statusFilter === 'archived' && session.active) return false;
+        if (!hasQuery) return true;
+        const haystacks = [
+            session.name,
+            session.subtitle,
+            session.path ?? '',
+        ];
+        return haystacks.some((value) => value.toLowerCase().includes(normalizedQuery));
+    };
+
+    const result: SessionListViewItem[] = [];
+    // Defer headers / project groups until we know a session follows them.
+    let pendingHeader: SessionListViewItem | null = null;
+    let pendingProjectGroup: SessionListViewItem | null = null;
+
+    const flushPending = () => {
+        if (pendingHeader) {
+            result.push(pendingHeader);
+            pendingHeader = null;
+        }
+        if (pendingProjectGroup) {
+            result.push(pendingProjectGroup);
+            pendingProjectGroup = null;
+        }
+    };
+
+    for (const item of data) {
+        switch (item.type) {
+            case 'header':
+                pendingHeader = item;
+                pendingProjectGroup = null;
+                break;
+            case 'project-group':
+                pendingProjectGroup = item;
+                break;
+            case 'active-sessions': {
+                const sessions = item.sessions.filter(matchesSession);
+                if (sessions.length > 0) {
+                    result.push({ type: 'active-sessions', sessions });
+                }
+                break;
+            }
+            case 'archive-toggle':
+                // The status segmented control supersedes the inline toggle while
+                // filtering, so drop it here.
+                break;
+            case 'session':
+                if (matchesSession(item.session)) {
+                    flushPending();
+                    result.push(item);
+                }
+                break;
+        }
+    }
+
+    return result;
+}
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -176,6 +252,82 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 12,
         backgroundColor: theme.colors.groupped.background,
     },
+    filterBar: {
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 8,
+        gap: 8,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    searchField: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 36,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    searchIcon: {
+        marginRight: 6,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        paddingVertical: 0,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    searchClear: {
+        marginLeft: 6,
+    },
+    segmentedControl: {
+        flexDirection: 'row',
+        borderRadius: 9,
+        padding: 2,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    segment: {
+        flex: 1,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 7,
+    },
+    segmentActive: {
+        backgroundColor: theme.colors.surface,
+        shadowColor: theme.colors.shadow.color,
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 3,
+        shadowOffset: { width: 0, height: 1 },
+        elevation: 1,
+    },
+    segmentText: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    segmentTextActive: {
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    emptyResults: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+        paddingBottom: 48,
+        gap: 10,
+    },
+    emptyResultsText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
     archiveToggle: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -198,14 +350,35 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 export function SessionsList() {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
-    const data = useVisibleSessionListViewData();
+    const visibleData = useVisibleSessionListViewData();
+    const rawData = useSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const toggleArchived = React.useCallback(() => {
         setHideInactiveSessions(!hideInactiveSessions);
     }, [hideInactiveSessions, setHideInactiveSessions]);
+
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [statusFilter, setStatusFilter] = React.useState<SessionStatusFilter>('all');
+    const isFiltering = searchQuery.trim().length > 0 || statusFilter !== 'all';
+
+    // While filtering we work off the raw list (so archived sessions can be
+    // shown regardless of the persisted toggle); otherwise keep the existing
+    // hideInactiveSessions-driven view untouched.
+    const data = React.useMemo(() => {
+        if (!isFiltering) return visibleData;
+        if (!rawData) return rawData;
+        return filterSessionListData(rawData, searchQuery, statusFilter);
+    }, [isFiltering, visibleData, rawData, searchQuery, statusFilter]);
+
+    const statusFilterOptions = React.useMemo(() => ([
+        { value: 'all' as const, label: t('sidebar.filterAll') },
+        { value: 'active' as const, label: t('sidebar.filterActive') },
+        { value: 'archived' as const, label: t('sidebar.filterArchived') },
+    ]), []);
     // Selection is derived once from pathname so the data array stays stable
     // across navigations. This keeps FlatList virtualization intact: only
     // the previously- and newly-selected rows re-render, instead of the
@@ -319,17 +492,80 @@ export function SessionsList() {
     return (
         <View style={styles.container}>
             <View style={styles.contentContainer}>
-                <FlatList
-                    data={data}
-                    renderItem={renderItem}
-                    keyExtractor={keyExtractor}
-                    extraData={selectedSessionId}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
-                    ListHeaderComponent={HeaderComponent}
-                    windowSize={5}
-                    maxToRenderPerBatch={8}
-                    initialNumToRender={12}
-                />
+                <View style={styles.filterBar}>
+                    <View style={styles.searchField}>
+                        <Ionicons
+                            name="search"
+                            size={16}
+                            color={theme.colors.textSecondary}
+                            style={styles.searchIcon}
+                        />
+                        <TextInput
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder={t('sidebar.searchPlaceholder')}
+                            placeholderTextColor={theme.colors.textSecondary}
+                            style={styles.searchInput}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            returnKeyType="search"
+                            clearButtonMode="while-editing"
+                        />
+                        {searchQuery.length > 0 && Platform.OS !== 'ios' && (
+                            <Pressable
+                                onPress={() => setSearchQuery('')}
+                                hitSlop={8}
+                                style={styles.searchClear}
+                            >
+                                <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
+                            </Pressable>
+                        )}
+                    </View>
+                    <View style={styles.segmentedControl}>
+                        {statusFilterOptions.map((option) => {
+                            const active = statusFilter === option.value;
+                            return (
+                                <Pressable
+                                    key={option.value}
+                                    onPress={() => setStatusFilter(option.value)}
+                                    style={[
+                                        styles.segment,
+                                        active && styles.segmentActive,
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.segmentText,
+                                            active && styles.segmentTextActive,
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {option.label}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </View>
+                {data.length === 0 && isFiltering ? (
+                    <View style={styles.emptyResults}>
+                        <Ionicons name="search-outline" size={28} color={theme.colors.textSecondary} />
+                        <Text style={styles.emptyResultsText}>{t('sidebar.noResults')}</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={data}
+                        renderItem={renderItem}
+                        keyExtractor={keyExtractor}
+                        extraData={selectedSessionId}
+                        contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                        ListHeaderComponent={HeaderComponent}
+                        keyboardShouldPersistTaps="handled"
+                        windowSize={5}
+                        maxToRenderPerBatch={8}
+                        initialNumToRender={12}
+                    />
+                )}
             </View>
         </View>
     );

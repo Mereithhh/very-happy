@@ -539,6 +539,11 @@ export const ru: TranslationStructure = {
         showArchived: 'Показать архив',
         hideArchived: 'Скрыть архив',
         newSession: 'Новая сессия',
+        searchPlaceholder: 'Поиск сессий',
+        filterAll: 'Все',
+        filterActive: 'Активные',
+        filterArchived: 'Архив',
+        noResults: 'Нет подходящих сессий',
     },
 
     zen: {

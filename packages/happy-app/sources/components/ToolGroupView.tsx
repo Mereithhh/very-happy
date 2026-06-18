@@ -6,7 +6,9 @@ import {
     AgentWorkGroupItem,
     ToolGroupItem,
     ToolDisplayItem,
+    ToolGroupStats,
     formatWorkDuration,
+    generateGroupStats,
     generateGroupSummary,
     groupToolCallsForDisplay,
 } from '@/hooks/useGroupedMessages';
@@ -35,6 +37,8 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const router = useRouter();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
+    const stats = React.useMemo(() => generateGroupStats(group.messages), [group.messages]);
+    const iconCategories = React.useMemo(() => getGroupIconCategories(group.messages), [group.messages]);
     const suppressChildren = hideSingleToolChildren && group.messages.length === 1 && group.messages[0]?.kind === 'tool-call';
     const singleToolMessage = suppressChildren && group.messages[0]?.kind === 'tool-call'
         ? group.messages[0]
@@ -71,6 +75,8 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
                 onPress={singleToolMessage ? handleSingleToolPress : onToggle}
                 category={summaryCategory}
                 showChevron
+                stats={singleToolMessage ? undefined : stats}
+                iconCategories={singleToolMessage ? undefined : iconCategories}
             />
             {expanded && !suppressChildren && (
                 <View style={styles.content}>
@@ -218,12 +224,28 @@ function CollapseHeader(props: {
     category?: ToolSummaryCategory | null;
     showChevron?: boolean;
     disabled?: boolean;
+    stats?: ToolGroupStats;
+    iconCategories?: ToolSummaryCategory[];
 }) {
     const { theme } = useUnistyles();
     const showChevron = props.showChevron ?? true;
+    // The leading per-category icon strip replaces the single summary icon when
+    // a group spans multiple distinct tool categories, giving an at-a-glance
+    // sense of what ran without expanding.
+    const iconStrip = props.iconCategories && props.iconCategories.length > 1
+        ? props.iconCategories
+        : null;
     const content = (
         <>
-            {props.category ? (
+            {iconStrip ? (
+                <View style={styles.headerIconStrip}>
+                    {iconStrip.map((category, index) => (
+                        <View key={`${category}-${index}`} style={styles.headerIconStripItem}>
+                            <ToolSummaryIcon category={category} color={theme.colors.textSecondary} />
+                        </View>
+                    ))}
+                </View>
+            ) : props.category ? (
                 <View style={styles.headerIcon}>
                     <ToolSummaryIcon category={props.category} color={theme.colors.textSecondary} />
                 </View>
@@ -231,6 +253,9 @@ function CollapseHeader(props: {
             <Text style={styles.summaryText} numberOfLines={1}>
                 {props.label}
             </Text>
+            {props.stats ? (
+                <GroupStatusPills stats={props.stats} />
+            ) : null}
             {props.hasRunning && (
                 <ActivityIndicator
                     size="small"
@@ -314,6 +339,7 @@ function ToolSummaryRow(props: {
     const category = getToolSummaryCategory(tool.name);
     const detail = getToolSummaryDetail(tool);
     const title = getToolRowTitle(category, tool.name);
+    const durationLabel = getToolDurationLabel(tool);
     const filePath = isFileEditTool(tool.name) && typeof tool.input?.file_path === 'string'
         ? tool.input.file_path
         : null;
@@ -341,6 +367,14 @@ function ToolSummaryRow(props: {
                     </Text>
                 </View>
             ) : null}
+            <View style={styles.toolSummaryTrailing}>
+                {durationLabel ? (
+                    <Text style={styles.toolSummaryDuration} numberOfLines={1}>
+                        {durationLabel}
+                    </Text>
+                ) : null}
+                <ToolStatusIndicator state={tool.state} />
+            </View>
         </>
     );
 
@@ -385,6 +419,81 @@ function ToolSummaryIcon(props: {
         default:
             return <Ionicons name="construct-outline" size={13} color={props.color} />;
     }
+}
+
+/**
+ * Distinct tool categories in the group, in first-seen order. Drives the
+ * collapsed header icon strip. Capped so the header never overflows; the
+ * remainder is implied by the summary count.
+ */
+const MAX_HEADER_ICONS = 5;
+function getGroupIconCategories(messages: Message[]): ToolSummaryCategory[] {
+    const seen = new Set<ToolSummaryCategory>();
+    const result: ToolSummaryCategory[] = [];
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        const category = getToolSummaryCategory(message.tool.name);
+        if (seen.has(category)) continue;
+        seen.add(category);
+        result.push(category);
+        if (result.length >= MAX_HEADER_ICONS) break;
+    }
+    return result;
+}
+
+/**
+ * Language-free outcome summary for the collapsed header: a coloured dot per
+ * non-zero state with its count (e.g. ● 5  ● 1). Running is omitted here since
+ * the header already shows a live spinner.
+ */
+function GroupStatusPills(props: { stats: ToolGroupStats }) {
+    const { theme } = useUnistyles();
+    const { completed, error } = props.stats;
+    if (error === 0) {
+        // All-success groups stay quiet — the summary line already conveys it.
+        return null;
+    }
+    return (
+        <View style={styles.statusPills}>
+            {completed > 0 ? (
+                <View style={styles.statusPill}>
+                    <View style={[styles.statusPillDot, { backgroundColor: theme.colors.success }]} />
+                    <Text style={styles.statusPillText}>{completed}</Text>
+                </View>
+            ) : null}
+            {error > 0 ? (
+                <View style={styles.statusPill}>
+                    <View style={[styles.statusPillDot, { backgroundColor: theme.colors.textDestructive }]} />
+                    <Text style={[styles.statusPillText, { color: theme.colors.textDestructive }]}>{error}</Text>
+                </View>
+            ) : null}
+        </View>
+    );
+}
+
+function ToolStatusIndicator(props: { state: 'running' | 'completed' | 'error' }) {
+    const { theme } = useUnistyles();
+    if (props.state === 'running') {
+        return (
+            <ActivityIndicator
+                size="small"
+                color={theme.colors.textSecondary}
+                style={{ transform: [{ scaleX: 0.6 }, { scaleY: 0.6 }] }}
+            />
+        );
+    }
+    const color = props.state === 'error' ? theme.colors.textDestructive : theme.colors.success;
+    return (
+        <View style={[styles.toolStatusDot, { backgroundColor: color }]} />
+    );
+}
+
+function getToolDurationLabel(tool: ToolCallMessage['tool']): string | null {
+    if (tool.state === 'running') return null;
+    if (typeof tool.startedAt !== 'number' || typeof tool.completedAt !== 'number') return null;
+    const durationMs = tool.completedAt - tool.startedAt;
+    if (durationMs <= 0) return null;
+    return formatWorkDuration(durationMs);
 }
 
 function getGroupSummaryCategory(messages: Message[]): ToolSummaryCategory | null {
@@ -467,6 +576,39 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         flexShrink: 0,
     },
+    headerIconStrip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 18,
+        gap: 4,
+        flexShrink: 0,
+    },
+    headerIconStripItem: {
+        width: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statusPills: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexShrink: 0,
+    },
+    statusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    statusPillDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    statusPillText: {
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.textSecondary,
+    },
     summaryText: {
         flexShrink: 1,
         minWidth: 0,
@@ -518,5 +660,24 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 16,
         color: theme.colors.textSecondary,
         fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    },
+    toolSummaryTrailing: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginLeft: 'auto',
+        paddingLeft: 4,
+        flexShrink: 0,
+    },
+    toolSummaryDuration: {
+        fontSize: 11,
+        lineHeight: 16,
+        color: theme.colors.textSecondary,
+        fontVariant: ['tabular-nums'],
+    },
+    toolStatusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
     },
 }));

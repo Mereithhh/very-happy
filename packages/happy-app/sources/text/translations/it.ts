@@ -521,6 +521,11 @@ export const it: TranslationStructure = {
         showArchived: 'Mostra archiviate',
         hideArchived: 'Nascondi archiviate',
         newSession: 'Nuova sessione',
+        searchPlaceholder: 'Cerca sessioni',
+        filterAll: 'Tutte',
+        filterActive: 'Attive',
+        filterArchived: 'Archiviate',
+        noResults: 'Nessuna sessione corrispondente',
     },
 
     zen: {
