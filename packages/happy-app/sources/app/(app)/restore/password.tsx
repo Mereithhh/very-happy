@@ -6,7 +6,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { unlockWithPassword, PasswordUnlockError } from '@/auth/passwordUnlock';
+import { loginWithPassword, AccountAuthError } from '@/auth/passwordUnlock';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
@@ -115,13 +115,13 @@ export default function PasswordLogin() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleUnlock = async () => {
-        const value = password;
-        if (!value) {
+        if (!username.trim() || !password) {
             setError(t('passwordLogin.errorEmpty'));
             return;
         }
@@ -129,7 +129,7 @@ export default function PasswordLogin() {
         setError(null);
         try {
             // 本地解回 account key → 派生 token；密码永不发服务端。
-            const credentials = await unlockWithPassword(value);
+            const credentials = await loginWithPassword(username, password);
             // 复用标准 bootstrap：写凭据 + syncCreate（与扫码配对完全等价）。
             await auth.login(credentials.token, credentials.secret);
             // login 成功后 AuthContext 切换 isAuthenticated，根路由自动进主界面。
@@ -137,10 +137,8 @@ export default function PasswordLogin() {
                 router.back();
             }
         } catch (e) {
-            if (e instanceof PasswordUnlockError) {
-                if (e.code === 'no-password') {
-                    setError(t('passwordLogin.errorNoPassword'));
-                } else if (e.code === 'wrong-password') {
+            if (e instanceof AccountAuthError) {
+                if (e.code === 'invalid-credentials') {
                     setError(t('passwordLogin.errorWrongPassword'));
                 } else {
                     setError(t('passwordLogin.errorNetwork'));
@@ -170,6 +168,24 @@ export default function PasswordLogin() {
 
                     <View style={styles.inputWrapper}>
                         <TextInput
+                            style={[styles.input, styles.inputDefault]}
+                            placeholder="Username"
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={username}
+                            onChangeText={(text) => {
+                                setUsername(text);
+                                if (error) setError(null);
+                            }}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!loading}
+                            returnKeyType="next"
+                            autoFocus
+                        />
+                    </View>
+
+                    <View style={styles.inputWrapper}>
+                        <TextInput
                             style={[styles.input, error ? styles.inputError : styles.inputDefault]}
                             placeholder={t('passwordLogin.passwordPlaceholder')}
                             placeholderTextColor={theme.colors.input.placeholder}
@@ -184,7 +200,6 @@ export default function PasswordLogin() {
                             editable={!loading}
                             onSubmitEditing={handleUnlock}
                             returnKeyType="go"
-                            autoFocus
                         />
                         {error && (
                             <Animated.View entering={FadeIn.duration(200)} style={styles.errorRow}>

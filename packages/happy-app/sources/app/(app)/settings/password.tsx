@@ -5,8 +5,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
-import { decodeBase64 } from '@/encryption/base64';
-import { setAccountPassword, PasswordUnlockError } from '@/auth/passwordUnlock';
+import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Modal } from '@/modal';
@@ -101,12 +100,17 @@ export default function SetPassword() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleSave = async () => {
+        if (!username.trim()) {
+            setError('Please enter a username.');
+            return;
+        }
         if (password.length < MIN_PASSWORD_LENGTH) {
             setError(t('setPassword.errorTooShort', { count: MIN_PASSWORD_LENGTH }));
             return;
@@ -125,8 +129,7 @@ export default function SetPassword() {
         setError(null);
         try {
             // credentials.secret = base64url(32B account secret key)；createPasswordBlob 全在本地。
-            const accountSecretKey = decodeBase64(credentials.secret, 'base64url');
-            await setAccountPassword(password, accountSecretKey, credentials);
+            await setAccountCredentials(username, password, credentials.secret, credentials);
             setPassword('');
             setConfirm('');
             Modal.alert(t('common.success'), t('setPassword.success'));
@@ -134,8 +137,8 @@ export default function SetPassword() {
                 router.back();
             }
         } catch (e) {
-            if (e instanceof PasswordUnlockError) {
-                setError(t('setPassword.errorSaveFailed'));
+            if (e instanceof AccountAuthError && e.code === 'username-taken') {
+                setError('That username is taken.');
             } else {
                 setError(t('setPassword.errorSaveFailed'));
             }
@@ -149,6 +152,21 @@ export default function SetPassword() {
             <View style={styles.container}>
                 <View style={styles.card}>
                     <Text style={styles.intro}>{t('setPassword.intro')}</Text>
+
+                    <Text style={styles.label}>Username</Text>
+                    <TextInput
+                        style={[styles.input, error ? styles.inputError : styles.inputDefault]}
+                        placeholder="username"
+                        placeholderTextColor={theme.colors.input.placeholder}
+                        value={username}
+                        onChangeText={(text) => {
+                            setUsername(text);
+                            if (error) setError(null);
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        editable={!loading}
+                    />
 
                     <Text style={styles.label}>{t('setPassword.passwordLabel')}</Text>
                     <TextInput
