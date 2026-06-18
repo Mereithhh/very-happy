@@ -32,6 +32,36 @@ export const ja: TranslationStructure = {
         updates: '更新',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'キャンセル',
@@ -661,6 +691,9 @@ export const ja: TranslationStructure = {
         notAvailable: '利用不可',
         linkNewDevice: '新しいデバイスをリンク',
         linkNewDeviceSubtitle: 'QRコードをスキャンしてデバイスをリンク',
+        password: 'パスワード',
+        passwordSet: 'ウェブでログインするためのパスワードを設定',
+        passwordChange: 'アカウントのパスワードを変更',
         profile: 'プロフィール',
         name: '名前',
         github: 'GitHub',
@@ -773,6 +806,8 @@ export const ja: TranslationStructure = {
         restoreWithSecretKey: 'シークレットキーで復元',
         whatsNew: "新機能",
         friends: '友達',
+        loginWithPassword: 'パスワードでログイン',
+        setPassword: 'パスワードを設定',
     },
 
     welcome: {
@@ -782,6 +817,34 @@ export const ja: TranslationStructure = {
         createAccount: 'アカウントを作成',
         linkOrRestoreAccount: 'アカウントをリンクまたは復元',
         loginWithMobileApp: 'モバイルアプリでログイン',
+        loginWithPassword: 'パスワードでログイン',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'おかえりなさい',
+        subtitle: 'パスワードを入力して、この端末でアカウントのロックを解除してください。',
+        passwordPlaceholder: 'パスワード',
+        unlock: 'ロック解除',
+        errorEmpty: 'パスワードを入力してください。',
+        errorWrongPassword: 'パスワードが正しくありません。もう一度お試しください。',
+        errorNoPassword: 'このアカウントにはまだパスワードが設定されていません。スマートフォンからこの端末をリンクし、設定でパスワードを設定してください。',
+        errorNetwork: 'サーバーに接続できませんでした。接続を確認して、もう一度お試しください。',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'パスワードを設定すると、QRコードをスキャンせずに新しい端末でログインできます。パスワードがこの端末の外に出ることはなく、アカウントキーの暗号化にのみ使用されます。',
+        passwordLabel: '新しいパスワード',
+        passwordPlaceholder: '8文字以上',
+        confirmLabel: 'パスワードの確認',
+        confirmPlaceholder: 'パスワードを再入力',
+        save: 'パスワードを保存',
+        success: 'パスワードを保存しました。',
+        errorTooShort: ({ count }: { count: number }) => `パスワードは${count}文字以上で設定してください。`,
+        errorMismatch: 'パスワードが一致しません。',
+        errorNotAuthenticated: 'パスワードを設定するにはログインが必要です。',
+        errorSaveFailed: 'パスワードを保存できませんでした。もう一度お試しください。',
     },
 
     review: {

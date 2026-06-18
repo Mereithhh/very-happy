@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Typography } from '@/constants/Typography';
@@ -7,6 +7,7 @@ import { Platform, TouchableOpacity, Text } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { registerNotificationNavigator } from '@/sync/webNotifications';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -16,6 +17,15 @@ export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
     const { theme } = useUnistyles();
+    const router = useRouter();
+
+    // Web: let clicks on foreground browser notifications navigate via the
+    // router (no full page reload). Falls back to window.location otherwise.
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+        registerNotificationNavigator((sessionId: string) => router.push(`/session/${sessionId}`));
+        return () => registerNotificationNavigator(null);
+    }, [router]);
 
     return (
         <Stack
@@ -124,6 +134,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/notifications"
+                options={{
+                    headerTitle: t('notifications.title'),
+                }}
+            />
+            <Stack.Screen
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
@@ -148,6 +164,22 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('navigation.restoreWithSecretKey'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="restore/password"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('navigation.loginWithPassword'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="settings/password"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('navigation.setPassword'),
                     headerBackTitle: t('common.back'),
                 }}
             />

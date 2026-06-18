@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { useNotificationFeed } from '@/sync/useNotificationFeed';
+import { NotificationSessionGroupView } from './NotificationSessionGroup';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -107,9 +109,17 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const { theme } = useUnistyles();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
+    const notifications = useNotificationFeed();
+
+    // Notification items are rendered in their own session-grouped section;
+    // keep the generic "Updates" list to friend/text feed kinds only.
+    const otherFeedItems = React.useMemo(
+        () => feedItems.filter((item) => item.body?.kind !== 'notification'),
+        [feedItems]
+    );
 
     const isLoading = !feedLoaded || !friendsLoaded;
-    const isEmpty = !isLoading && friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
+    const isEmpty = !isLoading && friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && otherFeedItems.length === 0 && notifications.isEmpty;
 
     if (isLoading) {
         return (
@@ -190,11 +200,22 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 width: '100%'
             }}>
                 <UpdateBanner />
-                
-                {feedItems.length > 0 && (
+
+                {notifications.groups.length > 0 && (
+                    <>
+                        {notifications.groups.map((group) => (
+                            <NotificationSessionGroupView
+                                key={group.sessionId}
+                                group={group}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {otherFeedItems.length > 0 && (
                     <>
                         <ItemGroup title={t('inbox.updates')}>
-                            {feedItems.map((item) => (
+                            {otherFeedItems.map((item) => (
                                 <FeedItemCard
                                     key={item.id}
                                     item={item}

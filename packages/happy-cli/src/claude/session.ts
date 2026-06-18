@@ -4,6 +4,7 @@ import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
+import { NotificationProducer } from "./notificationProducer";
 
 export class Session {
     readonly path: string;
@@ -26,7 +27,23 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
-    
+
+    /**
+     * Account-encrypted notification producer. Set lazily once we have a
+     * server session id (notifications are addressed per session). May be
+     * null in offline/degraded paths — all call sites must null-check.
+     */
+    notificationProducer: NotificationProducer | null = null;
+
+    /**
+     * Whether Claude produced assistant text output during the current turn.
+     * Used at turn end to distinguish `reply_done` (Claude replied) from
+     * `input_needed` (turn ended idle without a reply, e.g. after an abort).
+     */
+    private hadAssistantOutputThisTurn = false;
+    /** Last assistant text snippet seen this turn, used as the reply_done body. */
+    private lastAssistantSnippet: string | undefined;
+
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
     
@@ -68,6 +85,20 @@ export class Session {
         this.hookSettingsPath = opts.hookSettingsPath;
         this.jsRuntime = opts.jsRuntime ?? 'node';
 
+        // Set up the account-encrypted notification producer. Bound to the
+        // server session id (client.sessionId) — the id notifications reference
+        // and that the app uses to route a notification back to its session.
+        try {
+            this.notificationProducer = opts.api.notificationProducer(
+                opts.client.sessionId,
+                () => opts.client.getMetadata(),
+            );
+        } catch (err) {
+            // Never let notification setup break a session.
+            logger.debug('[Session] Failed to create notification producer:', err);
+            this.notificationProducer = null;
+        }
+
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
         this.keepAliveInterval = setInterval(() => {
@@ -85,8 +116,66 @@ export class Session {
     }
 
     onThinkingChange = (thinking: boolean) => {
+        // A fresh thinking phase begins a new turn — reset per-turn tracking so
+        // turn-end can correctly classify reply_done vs input_needed.
+        if (thinking && !this.thinking) {
+            this.hadAssistantOutputThisTurn = false;
+            this.lastAssistantSnippet = undefined;
+        }
         this.thinking = thinking;
         this.client.keepAlive(thinking, this.mode);
+    }
+
+    /**
+     * Record that Claude emitted an assistant text reply during this turn.
+     * Called from the message stream so turn-end can fire `reply_done` with a
+     * meaningful snippet.
+     */
+    noteAssistantOutput = (snippet?: string) => {
+        this.hadAssistantOutputThisTurn = true;
+        if (snippet) {
+            this.lastAssistantSnippet = snippet;
+        }
+    }
+
+    /**
+     * A turn has ended (the agent yielded control back, e.g. SDK `result`).
+     * Produces the appropriate notification:
+     *   - `reply_done` when Claude produced output this turn,
+     *   - `input_needed` when the session is now idle awaiting user input
+     *     (not controlled by user, no pending permission requests, not thinking).
+     *
+     * `idle` is true when there are no pending/queued messages — the producer
+     * caller (launcher) knows this. The pending-requests / controlledByUser
+     * checks are made here against the latest agent state.
+     */
+    onTurnEnd = (idle: boolean) => {
+        const producer = this.notificationProducer;
+        if (!producer) return;
+
+        if (this.hadAssistantOutputThisTurn) {
+            producer.replyDone(this.lastAssistantSnippet);
+            this.hadAssistantOutputThisTurn = false;
+            this.lastAssistantSnippet = undefined;
+            return;
+        }
+
+        if (!idle) {
+            // More work queued — not actually waiting on the user.
+            return;
+        }
+
+        const state = this.client.getAgentState();
+        const hasPendingRequests = !!state?.requests && Object.keys(state.requests).length > 0;
+        const controlledByUser = state?.controlledByUser === true;
+        if (!hasPendingRequests && !controlledByUser && !this.thinking) {
+            producer.inputNeeded();
+        }
+    }
+
+    /** Produce an `error` notification for an unexpected session failure. */
+    onSessionError = (message?: string) => {
+        this.notificationProducer?.error(message);
     }
 
     onModeChange = (mode: 'local' | 'remote') => {

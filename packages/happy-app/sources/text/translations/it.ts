@@ -29,6 +29,36 @@ export const it: TranslationStructure = {
         updates: 'Aggiornamenti',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Annulla',
@@ -658,6 +688,9 @@ export const it: TranslationStructure = {
         notAvailable: 'Non disponibile',
         linkNewDevice: 'Collega nuovo dispositivo',
         linkNewDeviceSubtitle: 'Scansiona il codice QR per collegare il dispositivo',
+        password: 'Password',
+        passwordSet: 'Imposta una password per accedere dal web',
+        passwordChange: 'Cambia la password del tuo account',
         profile: 'Profilo',
         name: 'Nome',
         github: 'GitHub',
@@ -770,6 +803,8 @@ export const it: TranslationStructure = {
         restoreWithSecretKey: 'Ripristina con chiave segreta',
         whatsNew: 'Novità',
         friends: 'Amici',
+        loginWithPassword: 'Accedi con password',
+        setPassword: 'Imposta password',
     },
 
     welcome: {
@@ -779,6 +814,34 @@ export const it: TranslationStructure = {
         createAccount: 'Crea account',
         linkOrRestoreAccount: 'Collega o ripristina account',
         loginWithMobileApp: 'Accedi con l\'app mobile',
+        loginWithPassword: 'Accedi con password',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Bentornato',
+        subtitle: 'Inserisci la password per sbloccare il tuo account su questo dispositivo.',
+        passwordPlaceholder: 'Password',
+        unlock: 'Sblocca',
+        errorEmpty: 'Inserisci la password.',
+        errorWrongPassword: 'Password errata. Riprova.',
+        errorNoPassword: 'Per questo account non è ancora stata impostata una password. Collega questo dispositivo dal telefono, quindi imposta una password nelle Impostazioni.',
+        errorNetwork: 'Impossibile raggiungere il server. Controlla la connessione e riprova.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Imposta una password per accedere su nuovi dispositivi senza scansionare un codice QR. La tua password non lascia mai questo dispositivo: serve solo a cifrare la chiave del tuo account.',
+        passwordLabel: 'Nuova password',
+        passwordPlaceholder: 'Almeno 8 caratteri',
+        confirmLabel: 'Conferma password',
+        confirmPlaceholder: 'Reinserisci la password',
+        save: 'Salva password',
+        success: 'La tua password è stata salvata.',
+        errorTooShort: ({ count }: { count: number }) => `La password deve contenere almeno ${count} caratteri.`,
+        errorMismatch: 'Le password non corrispondono.',
+        errorNotAuthenticated: 'Devi aver effettuato l\'accesso per impostare una password.',
+        errorSaveFailed: 'Impossibile salvare la password. Riprova.',
     },
 
     review: {

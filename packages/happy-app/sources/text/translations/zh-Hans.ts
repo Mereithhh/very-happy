@@ -31,6 +31,36 @@ export const zhHans: TranslationStructure = {
         updates: '更新',
     },
 
+    notifications: {
+        title: '通知',
+        settingsSubtitle: '会话事件的浏览器提醒（网页版）',
+        webOnly: '仅网页版',
+        webOnlyDescription: '浏览器通知仅在网页版可用。',
+        browserNotifications: '浏览器通知',
+        masterDescription: '当此标签页在后台时，会话需要你关注会发出提醒。',
+        enable: '开启通知',
+        enabledOn: '已开启 —— 标签页失焦时会提醒',
+        enabledOff: '已关闭',
+        unsupported: '此浏览器不支持',
+        permissionDeniedHint: '通知已被拦截。请在浏览器设置中为本站点开启。',
+        types: '提醒类型',
+        typesDescription: '选择哪些会话事件触发通知。',
+        type_permission_request: '权限请求',
+        type_permission_request_desc: '会话正在请求运行某个工具',
+        type_reply_done: '回复完成',
+        type_reply_done_desc: '智能体回复结束',
+        type_input_needed: '需要输入',
+        type_input_needed_desc: '会话正在等待你的输入',
+        type_error: '错误',
+        type_error_desc: '会话遇到错误',
+        quietHours: '勿扰',
+        quietHoursDescription: '在设定的时间段内静音通知。',
+        quietHoursEnable: '开启勿扰时段',
+        quietHoursStart: '从',
+        quietHoursEnd: '到',
+        unknownSession: '会话',
+    },
+
     common: {
         // Simple string constants
         cancel: '取消',
@@ -661,6 +691,9 @@ export const zhHans: TranslationStructure = {
         notAvailable: '不可用',
         linkNewDevice: '链接新设备',
         linkNewDeviceSubtitle: '扫描二维码来链接设备',
+        password: '密码',
+        passwordSet: '设置密码以在网页端登录',
+        passwordChange: '修改您的账户密码',
         profile: '个人资料',
         name: '姓名',
         github: 'GitHub',
@@ -773,6 +806,8 @@ export const zhHans: TranslationStructure = {
         restoreWithSecretKey: '通过密钥恢复',
         whatsNew: "更新日志",
         friends: '好友',
+        loginWithPassword: '使用密码登录',
+        setPassword: '设置密码',
     },
 
     welcome: {
@@ -782,6 +817,34 @@ export const zhHans: TranslationStructure = {
         createAccount: '创建账户',
         linkOrRestoreAccount: '链接或恢复账户',
         loginWithMobileApp: '使用移动应用登录',
+        loginWithPassword: '使用密码登录',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: '欢迎回来',
+        subtitle: '输入密码以在此设备上解锁您的账户。',
+        passwordPlaceholder: '密码',
+        unlock: '解锁',
+        errorEmpty: '请输入您的密码。',
+        errorWrongPassword: '密码不正确，请重试。',
+        errorNoPassword: '此账户尚未设置密码。请先从手机链接此设备，然后在设置中设置密码。',
+        errorNetwork: '无法连接到服务器。请检查您的网络连接后重试。',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: '设置密码后，您无需扫描二维码即可在新设备上登录。您的密码绝不会离开此设备——它仅用于加密您的账户密钥。',
+        passwordLabel: '新密码',
+        passwordPlaceholder: '至少 8 个字符',
+        confirmLabel: '确认密码',
+        confirmPlaceholder: '再次输入密码',
+        save: '保存密码',
+        success: '您的密码已保存。',
+        errorTooShort: ({ count }: { count: number }) => `密码长度至少为 ${count} 个字符。`,
+        errorMismatch: '两次输入的密码不一致。',
+        errorNotAuthenticated: '您必须登录后才能设置密码。',
+        errorSaveFailed: '无法保存您的密码，请重试。',
     },
 
     review: {

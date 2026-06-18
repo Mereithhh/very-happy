@@ -92,6 +92,17 @@ declare global {
         type GitHubProfile = GitHubProfileType;
         type GitHubOrg = GitHubOrgType;
         type ImageRef = ImageRefType;
+
+        // Encrypted password-unlock blob. The server stores it opaquely;
+        // only password-holding clients can derive the account key from it.
+        type PasswordBlob = {
+            v: number;
+            kdf: string;
+            iterations: number;
+            salt: string; // base64
+            iv: string;   // base64
+            ct: string;   // base64
+        };
     }
 }
 

@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { Item } from '@/components/Item';
@@ -103,6 +104,7 @@ function buildPushTokenSubtitle(pushToken: PushToken, options: {
 export default React.memo(() => {
     const { theme } = useUnistyles();
     const auth = useAuth();
+    const router = useRouter();
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
@@ -340,6 +342,12 @@ export default React.memo(() => {
                             showChevron={false}
                         />
                     )}
+                    <Item
+                        title={t('settingsAccount.password')}
+                        subtitle={t('settingsAccount.passwordSet')}
+                        icon={<Ionicons name="key-outline" size={29} color="#5856D6" />}
+                        onPress={() => router.push('/settings/password')}
+                    />
                 </ItemGroup>
 
                 {/* Profile Section */}

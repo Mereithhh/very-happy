@@ -9,6 +9,7 @@ import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+import { NotificationProducer } from '@/claude/notificationProducer';
 
 export class ApiClient {
 
@@ -285,6 +286,21 @@ export class ApiClient {
 
   push(): PushNotificationClient {
     return this.pushClient;
+  }
+
+  /**
+   * Create an account-encrypted notification producer bound to a session.
+   * The producer derives the account box public key from the stored
+   * credentials (no raw secret seed needed for the dataKey credential shape)
+   * and posts encrypted notifications to the server feed. Best-effort:
+   * failures never propagate into the session loop.
+   */
+  notificationProducer(sessionId: string, getMetadata: () => Metadata | null): NotificationProducer {
+    return new NotificationProducer({
+      credential: this.credential,
+      sessionId,
+      getMetadata,
+    });
   }
 
   /**
