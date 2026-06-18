@@ -5,7 +5,8 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
-import type { MachineMetadata } from './storageTypes';
+import { storage } from './storage';
+import type { MachineMetadata, Metadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -546,6 +547,77 @@ export async function machineUpdateMetadata(
     }
 
     throw new Error('Unexpected error in machineUpdateMetadata');
+}
+
+/**
+ * Set a session's title by writing `metadata.summary` directly via the
+ * session `update-metadata` socket op (the same server op the CLI uses).
+ *
+ * This is the manual-rename write path: it bypasses the Happy `change_title`
+ * MCP tool entirely (no agent round-trip). The server validates `accountId`
+ * ownership and broadcasts an `update-session` to all interested clients,
+ * so the CLI and other devices pick up the new title automatically.
+ *
+ * Pass an empty/whitespace title to clear the summary back to "no title".
+ * Optimistic concurrency with bounded retry on version-mismatch.
+ */
+export async function sessionUpdateTitle(
+    sessionId: string,
+    title: string,
+    maxRetries: number = 3
+): Promise<void> {
+    const trimmed = title.trim();
+    const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+        throw new Error(`Session encryption not found for ${sessionId}`);
+    }
+
+    let retryCount = 0;
+    while (retryCount <= maxRetries) {
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            throw new Error(`Session not found: ${sessionId}`);
+        }
+
+        const currentMetadata: Metadata | null = session.metadata;
+        if (!currentMetadata) {
+            throw new Error(`Session metadata not loaded for ${sessionId}`);
+        }
+
+        const nextMetadata: Metadata = { ...currentMetadata };
+        if (trimmed.length === 0) {
+            delete nextMetadata.summary;
+        } else {
+            nextMetadata.summary = { text: trimmed, updatedAt: Date.now() };
+        }
+
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(nextMetadata);
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            metadata: encryptedMetadata,
+            expectedVersion: session.metadataVersion
+        });
+
+        if (result.result === 'success') {
+            // The server broadcasts an `update-session` which the sync reducer
+            // applies to storage; no manual local write needed.
+            return;
+        } else if (result.result === 'version-mismatch') {
+            // Pull the latest sessions so storage reflects the server version,
+            // then retry against the fresh metadata/version.
+            await sync.refreshSessions();
+            retryCount++;
+            continue;
+        } else {
+            throw new Error('Failed to update session metadata');
+        }
+    }
+
+    throw new Error(`Failed to update session title after ${maxRetries} retries due to version conflicts`);
 }
 
 /**
