@@ -115,6 +115,11 @@ export const ca: TranslationStructure = {
         unknown: 'desconegut',
         unread: 'nous resultats',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `Pensant ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: 'Esperant permís',
+    },
 
     time: {
         justNow: 'ara mateix',
@@ -503,6 +508,8 @@ export const ca: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
+            used: ({ percent }: { percent: number }) => `${percent}% de context`,
+            compact: 'Compacta',
         },
         suggestion: {
             fileLabel: 'FITXER',
@@ -924,11 +931,19 @@ export const ca: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: 'Aprova',
+            deny: 'Rebutja',
             yesAllowAllEdits: 'Sí, permet totes les edicions durant aquesta sessió',
             yesAllowEverything: 'Sí, permet-ho tot durant aquesta sessió',
             yesForTool: 'Sí, no tornis a preguntar per aquesta eina',
             noTellClaude: 'No, proporciona comentaris',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} permisos pendents`,
+        approveAll: 'Aprova-ho tot',
+        denyAll: 'Rebutja-ho tot',
     },
 
     textSelection: {

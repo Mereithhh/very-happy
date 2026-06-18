@@ -432,6 +432,20 @@ export const storage = create<StorageState>()((set, get) => {
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;
 
+                // Track when the agent started thinking so the status bar can show
+                // an "elapsed" counter. We stamp it on the false→true edge and keep
+                // it stable while thinking stays true; clear it when thinking ends.
+                // This lives here (not in sync.ts) so it covers every path that
+                // toggles `thinking` — activity flush + task lifecycle events.
+                const prevThinking = state.sessions[session.id]?.thinking ?? false;
+                const prevThinkingStartedAt = state.sessions[session.id]?.thinkingStartedAt ?? null;
+                let thinkingStartedAt: number | null;
+                if (session.thinking) {
+                    thinkingStartedAt = prevThinking ? (prevThinkingStartedAt ?? Date.now()) : Date.now();
+                } else {
+                    thinkingStartedAt = null;
+                }
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
@@ -439,6 +453,7 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: resolvedPermissionMode,
                     modelMode: resolvedModelMode,
                     effortLevel: resolvedEffortLevel,
+                    thinkingStartedAt,
                 };
             });
 
@@ -1479,6 +1494,31 @@ export function useMessage(sessionId: string, messageId: string): Message | null
     return storage(useShallow((state) => {
         const session = state.sessionMessages[sessionId];
         return session?.messagesMap[messageId] ?? null;
+    }));
+}
+
+/**
+ * Returns the currently-running tool for a session (name + startedAt) so the
+ * status bar can show "Running Bash · 8s". Picks the most recently started
+ * running tool. Returns null when nothing is running. Subscribes only to the
+ * derived {name, startedAt} so per-second elapsed ticks happen in the UI, not
+ * here (avoids re-subscribing on every message change).
+ */
+export function useSessionRunningTool(sessionId: string): { name: string; startedAt: number } | null {
+    return storage(useShallow((state) => {
+        const session = state.sessionMessages[sessionId];
+        if (!session) return null;
+        let best: { name: string; startedAt: number } | null = null;
+        for (const message of session.messages) {
+            if (message.kind !== 'tool-call') continue;
+            const tool = message.tool;
+            if (tool.state !== 'running') continue;
+            const startedAt = tool.startedAt ?? tool.createdAt;
+            if (!best || startedAt > best.startedAt) {
+                best = { name: tool.name, startedAt };
+            }
+        }
+        return best;
     }));
 }
 

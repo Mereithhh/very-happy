@@ -423,6 +423,11 @@ export const ru: TranslationStructure = {
         unknown: 'неизвестно',
         unread: 'новые результаты',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `Думаю ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: 'Ожидание разрешения',
+    },
 
     time: {
         justNow: 'только что',
@@ -519,6 +524,8 @@ export const ru: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
+            used: ({ percent }: { percent: number }) => `${percent}% контекста`,
+            compact: 'Сжать',
         },
         suggestion: {
             fileLabel: 'ФАЙЛ',
@@ -928,11 +935,19 @@ export const ru: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: 'Одобрить',
+            deny: 'Отклонить',
             yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
             yesAllowEverything: 'Да, разрешить всё в этой сессии',
             yesForTool: 'Да, больше не спрашивать для этого инструмента',
             noTellClaude: 'Нет, дать обратную связь',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} запросов прав ожидают`,
+        approveAll: 'Одобрить все',
+        denyAll: 'Отклонить все',
     },
 
     settingsLanguage: {

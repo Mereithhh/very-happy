@@ -110,6 +110,11 @@ export interface Session {
     agentStateVersion: number,
     thinking: boolean,
     thinkingAt: number,
+    // Local (device-only, not synced) timestamp marking when `thinking` last
+    // flipped false→true. Used by the session status bar to show "Thinking 12s".
+    // Cleared (set to null/undefined) when thinking flips back to false. Set in
+    // storage.applySessions so every code path that toggles thinking is covered.
+    thinkingStartedAt?: number | null,
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server

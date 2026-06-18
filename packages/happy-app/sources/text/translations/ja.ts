@@ -117,6 +117,11 @@ export const ja: TranslationStructure = {
         unknown: '不明',
         unread: '新しい結果',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: '権限を待機中',
+    },
 
     time: {
         justNow: 'たった今',
@@ -504,6 +509,8 @@ export const ja: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
+            used: ({ percent }: { percent: number }) => `${percent}% コンテキスト`,
+            compact: '圧縮',
         },
         suggestion: {
             fileLabel: 'ファイル',
@@ -925,11 +932,19 @@ export const ja: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: '承認',
+            deny: '拒否',
             yesAllowAllEdits: 'はい、このセッション中のすべての編集を許可',
             yesAllowEverything: 'はい、このセッション中のすべてを許可',
             yesForTool: "はい、このツールについては確認しない",
             noTellClaude: 'いいえ、フィードバックを提供',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} 件の権限リクエスト待ち`,
+        approveAll: 'すべて承認',
+        denyAll: 'すべて拒否',
     },
 
     textSelection: {

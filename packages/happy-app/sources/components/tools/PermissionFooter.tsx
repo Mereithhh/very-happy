@@ -177,32 +177,85 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const isCodexApprovedForSession = isCodex && isApproved && permission.decision === 'approved_for_session';
     const isCodexAborted = isCodex && isDenied && permission.decision === 'abort';
 
+    // Primary accent used for the prominent Approve button — reuse the theme's
+    // dedicated allow-button colours so it matches the rest of the app.
+    const accent = (theme.colors as any).permissionButton?.allow?.background
+        ?? (theme.colors as any).permission?.approve
+        ?? theme.colors.success
+        ?? theme.colors.text;
+    const accentText = (theme.colors as any).permissionButton?.allow?.text ?? '#FFFFFF';
+
     const styles = StyleSheet.create({
         container: {
             paddingHorizontal: 4,
-            paddingTop: 2,
+            paddingTop: 6,
             paddingBottom: 6,
             justifyContent: 'center',
+            gap: 8,
         },
-        buttonContainer: {
+        // Prominent primary row: the big Approve button is the obvious action.
+        primaryRow: {
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            gap: 8,
+        },
+        // Secondary options wrap below (Allow all edits / for tool / bypass / deny).
+        secondaryRow: {
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: 6,
             alignItems: 'center',
         },
-        button: {
-            paddingHorizontal: 9,
-            paddingVertical: 5,
-            borderRadius: 6,
+        // Big, filled, hard-to-miss approve button.
+        primaryButton: {
+            flexGrow: 1,
+            flexShrink: 1,
+            minHeight: 44,
+            borderRadius: 10,
+            backgroundColor: accent,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            borderWidth: 1,
+            borderColor: accent,
+        },
+        primaryButtonText: {
+            fontSize: 16,
+            fontWeight: '700',
+            color: accentText,
+        },
+        // Compact deny sits next to approve on the primary row.
+        denyButton: {
+            flexShrink: 0,
+            minHeight: 44,
+            minWidth: 88,
+            borderRadius: 10,
             backgroundColor: 'transparent',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: 28,
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: theme.colors.textSecondary,
+        },
+        denyButtonText: {
+            fontSize: 15,
+            fontWeight: '600',
+            color: theme.colors.text,
+        },
+        // Legacy-style small secondary options.
+        button: {
+            paddingHorizontal: 10,
+            paddingVertical: 7,
+            borderRadius: 8,
+            backgroundColor: 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 34,
             maxWidth: '100%',
             borderWidth: 1,
             borderColor: theme.colors.textSecondary,
             flexShrink: 1,
-            opacity: 0.62,
+            opacity: 0.78,
         },
         buttonAllow: {
             borderColor: theme.colors.textSecondary,
@@ -219,7 +272,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             opacity: 1,
         },
         buttonInactive: {
-            opacity: 0.62,
+            opacity: 0.5,
         },
         buttonContent: {
             flexDirection: 'row',
@@ -259,6 +312,17 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             color: theme.colors.text,
             fontWeight: '500',
         },
+        // Selected/inactive states for the prominent primary + deny buttons.
+        primaryButtonInactive: {
+            opacity: 0.45,
+        },
+        primaryButtonSelected: {
+            opacity: 1,
+        },
+        denyButtonSelected: {
+            borderColor: theme.colors.textDestructive ?? theme.colors.text,
+            opacity: 1,
+        },
         loadingIndicatorAllow: {
             color: theme.colors.text,
         },
@@ -283,37 +347,49 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     if (isCodex) {
         return (
             <View style={styles.container}>
-                <View style={styles.buttonContainer}>
-                    {/* Codex: Yes button */}
+                {/* Prominent primary row: big Yes + compact Stop */}
+                <View style={styles.primaryRow}>
                     <TouchableOpacity
                         style={[
-                            styles.button,
-                            isPending && styles.buttonAllow,
-                            isCodexApproved && styles.buttonSelected,
-                            (isCodexAborted || isCodexApprovedForSession) && styles.buttonInactive
+                            styles.primaryButton,
+                            isCodexApproved && styles.primaryButtonSelected,
+                            (isCodexAborted || isCodexApprovedForSession) && styles.primaryButtonInactive
                         ]}
                         onPress={handleCodexApprove}
                         disabled={!isPending || loadingButton !== null || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
+                        activeOpacity={isPending ? 0.85 : 1}
                     >
                         {loadingButton === 'allow' && isPending ? (
-                            <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
-                                <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorAllow.color} />
-                            </View>
+                            <ActivityIndicator size="small" color={accentText} />
                         ) : (
-                            <View style={styles.buttonContent}>
-                                <Text style={[
-                                    styles.buttonText,
-                                    isPending && styles.buttonTextAllow,
-                                    isCodexApproved && styles.buttonTextSelected
-                                ]} numberOfLines={1} ellipsizeMode="tail">
-                                    {t('common.yes')}
-                                </Text>
-                            </View>
+                            <Text style={styles.primaryButtonText} numberOfLines={1} ellipsizeMode="tail">
+                                {t('common.yes')}
+                            </Text>
                         )}
                     </TouchableOpacity>
 
-                    {/* Codex: Yes, and don't ask for a session button */}
+                    <TouchableOpacity
+                        style={[
+                            styles.denyButton,
+                            isCodexAborted && styles.denyButtonSelected,
+                            (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
+                        ]}
+                        onPress={handleCodexAbort}
+                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        activeOpacity={isPending ? 0.7 : 1}
+                    >
+                        {loadingButton === 'abort' && isPending ? (
+                            <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
+                        ) : (
+                            <Text style={styles.denyButtonText} numberOfLines={1} ellipsizeMode="tail">
+                                {t('codex.permissions.stopAndExplain')}
+                            </Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
+                {/* Secondary option: yes for the whole session */}
+                <View style={styles.secondaryRow}>
                     <TouchableOpacity
                         style={[
                             styles.button,
@@ -341,35 +417,6 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             </View>
                         )}
                     </TouchableOpacity>
-
-                    {/* Codex: Stop, and explain what to do button */}
-                    <TouchableOpacity
-                        style={[
-                            styles.button,
-                            isPending && styles.buttonDeny,
-                            isCodexAborted && styles.buttonSelected,
-                            (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
-                        ]}
-                        onPress={handleCodexAbort}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
-                        activeOpacity={isPending ? 0.7 : 1}
-                    >
-                        {loadingButton === 'abort' && isPending ? (
-                            <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
-                                <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorDeny.color} />
-                            </View>
-                        ) : (
-                            <View style={styles.buttonContent}>
-                                <Text style={[
-                                    styles.buttonText,
-                                    isPending && styles.buttonTextDeny,
-                                    isCodexAborted && styles.buttonTextSelected
-                                ]} numberOfLines={1} ellipsizeMode="tail">
-                                    {t('codex.permissions.stopAndExplain')}
-                                </Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
                 </View>
             </View>
         );
@@ -378,35 +425,50 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Render Claude buttons (existing behavior)
     return (
         <View style={styles.container}>
-            <View style={styles.buttonContainer}>
+            {/* Prominent primary row: big Approve + compact Deny. This is the
+                fast-path one-tap action for remote/mobile approvals. */}
+            <View style={styles.primaryRow}>
                 <TouchableOpacity
                     style={[
-                        styles.button,
-                        isPending && styles.buttonAllow,
-                        isApprovedViaAllow && styles.buttonSelected,
-                        (isDenied || isApprovedViaAllEdits || isApprovedViaBypass || isApprovedForSession) && styles.buttonInactive
+                        styles.primaryButton,
+                        isApprovedViaAllow && styles.primaryButtonSelected,
+                        (isDenied || isApprovedViaAllEdits || isApprovedViaBypass || isApprovedForSession) && styles.primaryButtonInactive
                     ]}
                     onPress={handleApprove}
                     disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                    activeOpacity={isPending ? 0.7 : 1}
+                    activeOpacity={isPending ? 0.85 : 1}
                 >
                     {loadingButton === 'allow' && isPending ? (
-                        <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
-                            <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorAllow.color} />
-                        </View>
+                        <ActivityIndicator size="small" color={accentText} />
                     ) : (
-                        <View style={styles.buttonContent}>
-                            <Text style={[
-                                styles.buttonText,
-                                isPending && styles.buttonTextAllow,
-                                isApprovedViaAllow && styles.buttonTextSelected
-                            ]} numberOfLines={1} ellipsizeMode="tail">
-                                {t('common.yes')}
-                            </Text>
-                        </View>
+                        <Text style={styles.primaryButtonText} numberOfLines={1} ellipsizeMode="tail">
+                            {t('claude.permissions.approve')}
+                        </Text>
                     )}
                 </TouchableOpacity>
 
+                <TouchableOpacity
+                    style={[
+                        styles.denyButton,
+                        isDenied && styles.denyButtonSelected,
+                        isApproved && styles.buttonInactive
+                    ]}
+                    onPress={handleDeny}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
+                    activeOpacity={isPending ? 0.7 : 1}
+                >
+                    {loadingButton === 'deny' && isPending ? (
+                        <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
+                    ) : (
+                        <Text style={styles.denyButtonText} numberOfLines={1} ellipsizeMode="tail">
+                            {t('claude.permissions.deny')}
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+
+            {/* Secondary options: broader-scope approvals + "no, with feedback". */}
+            <View style={styles.secondaryRow}>
                 {/* Allow All Edits button - only show for Edit and MultiEdit tools */}
                 {(toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit' || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
                     <TouchableOpacity
@@ -499,34 +561,6 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         )}
                     </TouchableOpacity>
                 )}
-
-                <TouchableOpacity
-                    style={[
-                        styles.button,
-                        isPending && styles.buttonDeny,
-                        isDenied && styles.buttonSelected,
-                        (isApproved) && styles.buttonInactive
-                    ]}
-                    onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingBypass || loadingForSession}
-                    activeOpacity={isPending ? 0.7 : 1}
-                >
-                    {loadingButton === 'deny' && isPending ? (
-                        <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
-                            <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorDeny.color} />
-                        </View>
-                    ) : (
-                        <View style={styles.buttonContent}>
-                            <Text style={[
-                                styles.buttonText,
-                                isPending && styles.buttonTextDeny,
-                                isDenied && styles.buttonTextSelected
-                            ]} numberOfLines={1} ellipsizeMode="tail">
-                                {t('claude.permissions.noTellClaude')}
-                            </Text>
-                        </View>
-                    )}
-                </TouchableOpacity>
             </View>
         </View>
     );
