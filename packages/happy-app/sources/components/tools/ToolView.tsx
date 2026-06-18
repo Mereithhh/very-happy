@@ -1,17 +1,17 @@
 import * as React from 'react';
-import { Text, View, TouchableOpacity, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { Text, View, TouchableOpacity, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
+import { CommandView } from '../CommandView';
 import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
-import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
@@ -28,44 +28,30 @@ interface ToolViewProps {
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, onPress, sessionId, messageId } = props;
-    const router = useRouter();
+    const { tool, onPress, sessionId } = props;
     const { theme } = useUnistyles();
 
     // Inline expand state. Tapping the header reveals the full tool detail in
     // place (input / output / error) instead of pushing a full-screen route.
     const [expanded, setExpanded] = React.useState(false);
 
-    // For file-editing tools, navigate to the dedicated file route instead of
-    // expanding inline — the file diff view is a better experience there.
-    const fileEditTools = ['Edit', 'MultiEdit', 'Write'];
-    const isFileEditTool = fileEditTools.includes(tool.name);
-    const filePath = isFileEditTool && typeof tool.input?.file_path === 'string' ? tool.input.file_path : null;
-
-    // Default header press: explicit onPress wins; file-edit tools navigate;
-    // everything else toggles inline expansion.
+    // Default header press: explicit onPress wins; otherwise every tool toggles
+    // inline expansion. File-editing tools (Edit/Write/MultiEdit) no longer
+    // navigate to a dedicated full-screen route — their diff renders inline via
+    // the specialized tool view, and the raw input/output lives in the expanded
+    // region below, identical to every other tool.
     const handlePress = React.useCallback(() => {
         if (onPress) {
             onPress();
-        } else if (sessionId && filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
         } else {
             setExpanded((e) => !e);
         }
-    }, [onPress, sessionId, filePath, router]);
+    }, [onPress]);
 
-    // Optional escape hatch to the full-screen detail page from the expanded
-    // region (kept for deep-linking / sharing).
-    const openFullPage = React.useCallback(() => {
-        if (sessionId && messageId) {
-            router.push(`/session/${sessionId}/message/${messageId}`);
-        }
-    }, [sessionId, messageId, router]);
-
-    // Header is pressable when it has any action: custom onPress, file
-    // navigation, or (the common case) inline expansion.
-    const canExpandInline = !onPress && !filePath;
-    const isPressable = !!(onPress || (sessionId && filePath) || canExpandInline);
+    // Header is pressable when it has any action: custom onPress, or (the common
+    // case) inline expansion. There is no longer a navigation path.
+    const canExpandInline = !onPress;
+    const isPressable = !!(onPress || canExpandInline);
 
     let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
@@ -183,6 +169,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const terminalCommand = getTerminalToolCommand(tool);
     const isCompactTerminalTool = terminalCommand !== null;
+    // Full, untruncated command for the expanded terminal view. Prefer the raw
+    // input.command (preserves multi-line / newlines) and fall back to the
+    // collapsed single-line preview.
+    const fullTerminalCommand = typeof tool.input?.command === 'string' && tool.input.command.trim().length > 0
+        ? tool.input.command
+        : terminalCommand;
     const isInlineCodexPatch = Platform.OS === 'web' && tool.name === 'CodexPatch';
     const renderCardHeader = shouldRenderToolCardHeader(tool.name, Platform.OS);
     const renderPermissionFooter = () => (
@@ -198,6 +190,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             : null
     );
     const showInlineExpandChevron = canExpandInline && !minimal && !isCompactTerminalTool;
+    // Compact terminal tools (Bash/shell/etc.) also expand inline to reveal the
+    // full command + stdout/stderr/exit result.
+    const canExpandTerminal = isCompactTerminalTool && canExpandInline;
 
     const renderHeaderContent = () => {
         if (isCompactTerminalTool) {
@@ -221,6 +216,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                         </View>
                     ) : null}
                     {statusIcon}
+                    {canExpandTerminal && (
+                        <Ionicons
+                            name={expanded ? 'chevron-up' : 'chevron-down'}
+                            size={14}
+                            color={theme.colors.textSecondary}
+                            style={styles.compactExpandChevron}
+                        />
+                    )}
                 </View>
             );
         }
@@ -346,8 +349,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Inline expanded detail — replaces the old full-screen push.
                 Renders the raw tool input / output / error in place (the
-                specialized summary already shows above), with an escape hatch
-                to the full-screen page for deep-linking / sharing. */}
+                specialized summary already shows above). No navigation. */}
             {canExpandInline && expanded && !isCompactTerminalTool && (
                 <Animated.View
                     entering={FadeIn.duration(160)}
@@ -366,12 +368,19 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             />
                         </ToolSectionView>
                     )}
-                    {sessionId && messageId ? (
-                        <Pressable onPress={openFullPage} hitSlop={6} style={styles.openFullPageRow}>
-                            <Ionicons name="open-outline" size={14} color={theme.colors.textLink} />
-                            <Text style={styles.openFullPageText}>Open full view</Text>
-                        </Pressable>
-                    ) : null}
+                </Animated.View>
+            )}
+
+            {/* Expanded detail for compact terminal tools (Bash/shell/etc.):
+                full command (multi-line, not truncated) + stdout / stderr /
+                exit result rendered in a terminal-styled, scrollable view. */}
+            {canExpandTerminal && expanded && (
+                <Animated.View
+                    entering={FadeIn.duration(160)}
+                    exiting={FadeOut.duration(120)}
+                    style={styles.terminalExpandedDetail}
+                >
+                    <TerminalExpandedView command={fullTerminalCommand ?? terminalCommand ?? ''} result={tool.result} state={tool.state} />
                 </Animated.View>
             )}
 
@@ -395,6 +404,67 @@ function ElapsedView(props: { from: number }) {
     const { from } = props;
     const elapsed = useElapsedTime(from);
     return <Text style={styles.elapsedText}>{elapsed.toFixed(1)}s</Text>;
+}
+
+/**
+ * Best-effort extraction of stdout / stderr / error from a terminal tool's
+ * result. Handles the structured `{ stdout, stderr }` shape used by Bash and
+ * friends, raw strings, and arbitrary JSON fallbacks.
+ */
+function parseTerminalResult(result: unknown, state: ToolCall['state']): {
+    stdout: string | null;
+    stderr: string | null;
+    error: string | null;
+} {
+    if (result == null) {
+        return { stdout: null, stderr: null, error: null };
+    }
+    if (typeof result === 'string') {
+        return state === 'error'
+            ? { stdout: null, stderr: null, error: result }
+            : { stdout: result, stderr: null, error: null };
+    }
+    if (typeof result === 'object') {
+        const obj = result as Record<string, unknown>;
+        const stdout = typeof obj.stdout === 'string' ? obj.stdout : null;
+        const stderr = typeof obj.stderr === 'string' ? obj.stderr : null;
+        if (stdout !== null || stderr !== null) {
+            return { stdout, stderr, error: null };
+        }
+        // Unknown object shape — stringify so the user still sees the result.
+        const dumped = JSON.stringify(result, null, 2);
+        return state === 'error'
+            ? { stdout: null, stderr: null, error: dumped }
+            : { stdout: dumped, stderr: null, error: null };
+    }
+    return { stdout: String(result), stderr: null, error: null };
+}
+
+function TerminalExpandedView(props: { command: string; result: unknown; state: ToolCall['state'] }) {
+    const { command, result, state } = props;
+    const running = state === 'running';
+    const { stdout, stderr, error } = parseTerminalResult(result, state);
+    return (
+        <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.terminalScrollContent}
+        >
+            <View style={styles.terminalCommandWrapper}>
+                <CommandView
+                    command={command}
+                    stdout={stdout}
+                    stderr={stderr}
+                    error={error}
+                    // While running there's no result yet — don't show the
+                    // "[no output]" placeholder, the running spinner/elapsed in
+                    // the header already signals progress.
+                    hideEmptyOutput={running}
+                    fullWidth
+                />
+            </View>
+        </ScrollView>
+    );
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -519,15 +589,21 @@ const styles = StyleSheet.create((theme) => ({
         borderTopColor: theme.colors.divider,
         overflow: 'visible',
     },
-    openFullPageRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingVertical: 6,
+    compactExpandChevron: {
+        marginLeft: 2,
     },
-    openFullPageText: {
-        fontSize: 13,
-        color: theme.colors.textLink,
-        fontWeight: '500',
+    terminalExpandedDetail: {
+        marginTop: 4,
+        marginBottom: 4,
+        marginHorizontal: 4,
+        borderRadius: 8,
+        overflow: 'hidden',
+    },
+    terminalScrollContent: {
+        flexGrow: 1,
+    },
+    terminalCommandWrapper: {
+        flexGrow: 1,
+        minWidth: '100%',
     },
 }));

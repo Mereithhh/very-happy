@@ -945,7 +945,12 @@ function NewSessionScreen() {
 
             switch (result.type) {
                 case 'success':
-                    await sync.refreshSessions();
+                    // NOTE: do NOT block entering the conversation on a full
+                    // refreshSessions() — that awaits a whole session-list sync
+                    // (can take tens of seconds) and was the cause of the long
+                    // spinner after creating a new chat. The new session arrives
+                    // via the realtime socket; we kick a refresh in the
+                    // background after navigating.
 
                     // Store only per-session overrides. Matching the effective
                     // default stays null so future code default changes apply.
@@ -977,6 +982,9 @@ function NewSessionScreen() {
 
                     router.back();
                     navigateToSession(result.sessionId);
+                    // Background refresh — keep the new session/list in sync
+                    // without blocking the user from entering the conversation.
+                    void sync.refreshSessions();
                     break;
                 case 'requestToApproveDirectoryCreation': {
                     const approved = await Modal.confirm(

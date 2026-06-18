@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineResumeSession, sessionArchive, sessionKill, forkAndSpawn, type ForkSource } from '@/sync/ops';
+import { machineResumeSession, sessionArchive, sessionKill, forkAndSpawn, sessionUpdateTitle, type ForkSource } from '@/sync/ops';
 import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { storage, useLocalSetting, useMachine, useSetting } from '@/sync/storage';
 import { Machine, Session } from '@/sync/storageTypes';
@@ -141,6 +141,35 @@ export function useSessionQuickActions(
         router.push(`/session/${session.id}/info`);
     }, [router, session.id]);
 
+    // Manual rename — available for ANY session (including active / connected
+    // ones). Uses the same prompt + sessionUpdateTitle write path as the chat
+    // header rename affordance (bypasses the agent round-trip).
+    const renameSession = React.useCallback(() => {
+        void (async () => {
+            const current = session.metadata?.summary?.text ?? '';
+            const next = await Modal.prompt(
+                t('session.renameTitle'),
+                undefined,
+                {
+                    defaultValue: current,
+                    placeholder: t('session.renamePlaceholder'),
+                    cancelText: t('common.cancel'),
+                    confirmText: t('common.save'),
+                },
+            );
+            // null = cancelled. Empty string is treated as "no change" so we
+            // don't accidentally clear the title from the quick-action prompt.
+            if (next === null) return;
+            const trimmed = next.trim();
+            if (trimmed.length === 0 || trimmed === current.trim()) return;
+            try {
+                await sessionUpdateTitle(session.id, trimmed);
+            } catch (error) {
+                Modal.alert(t('common.error'), String(error instanceof Error ? error.message : error));
+            }
+        })();
+    }, [session.id, session.metadata?.summary?.text]);
+
     const copySessionMetadata = React.useCallback(() => {
         void (async () => {
             const copied = await copySessionMetadataToClipboard(session);
@@ -252,6 +281,9 @@ export function useSessionQuickActions(
     const actionItems = React.useMemo<SessionActionItem[]>(() => {
         const items: SessionActionItem[] = [
             { id: 'details', icon: 'information-circle-outline', label: t('profile.details'), onPress: openDetails },
+            // Rename is available for every session, active or not — it writes
+            // metadata.summary directly without an agent round-trip.
+            { id: 'rename', icon: 'pencil-outline', label: t('session.renameTitle'), onPress: renameSession },
         ];
 
         if (resumeAvailability.canShowResume) {
@@ -281,6 +313,7 @@ export function useSessionQuickActions(
         forkSession,
         openDetails,
         openDuplicateSheet,
+        renameSession,
         resumeAvailability.canShowResume,
         resumeSession,
     ]);
@@ -311,6 +344,7 @@ export function useSessionQuickActions(
         forking,
         openDetails,
         openDuplicateSheet,
+        renameSession,
         resumeSession,
         resumeSessionSubtitle: resumeAvailability.subtitle,
         resumingSession,
