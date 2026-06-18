@@ -116,6 +116,11 @@ export const zhHant: TranslationStructure = {
         unknown: '未知',
         unread: '新結果',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: '等待授權',
+    },
 
     time: {
         justNow: '剛剛',
@@ -503,6 +508,8 @@ export const zhHant: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
+            used: ({ percent }: { percent: number }) => `${percent}% 上下文`,
+            compact: '壓縮',
         },
         suggestion: {
             fileLabel: '檔案',
@@ -924,11 +931,19 @@ export const zhHant: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: '核准',
+            deny: '拒絕',
             yesAllowAllEdits: '是，允許本次工作階段的所有編輯',
             yesAllowEverything: '是，允許本次工作階段的所有操作',
             yesForTool: '是，不再詢問此工具',
             noTellClaude: '否，並告訴 Claude 該如何不同地操作',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} 個待批准權限`,
+        approveAll: '全部核准',
+        denyAll: '全部拒絕',
     },
 
     textSelection: {

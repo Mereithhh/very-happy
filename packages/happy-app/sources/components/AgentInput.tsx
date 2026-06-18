@@ -74,6 +74,8 @@ interface AgentInputProps {
         contextSize: number;
     };
     alwaysShowContextSize?: boolean;
+    /** Triggers a context compaction (/compact). Shown next to the context meter. */
+    onCompact?: () => void;
     onFileViewerPress?: () => void;
     agentType?: 'claude' | 'codex' | 'gemini' | 'openclaw';
     onAgentClick?: () => void;
@@ -300,19 +302,45 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
-    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
+type ContextUsage = {
+    percentUsed: number;       // 0–100, clamped
+    percentRemaining: number;  // 0–100, clamped
+    color: string;             // bar / text color (escalates near the limit)
+    text: string;              // "12% left"
+    /** True once we're close enough to the limit to surface a warning tint. */
+    isNearLimit: boolean;
+};
 
-    if (percentageRemaining <= 5) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
-    } else if (percentageRemaining <= 10) {
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
+// Derives the context-usage visualization data from the raw token count.
+// `alwaysShow` (a user setting) forces visibility even when far from the limit;
+// otherwise the caller hides the bar unless we're near the cap.
+const getContextUsage = (contextSize: number, alwaysShow: boolean, theme: Theme): ContextUsage | null => {
+    const percentUsed = Math.max(0, Math.min(100, (contextSize / MAX_CONTEXT_SIZE) * 100));
+    const percentRemaining = Math.max(0, Math.min(100, 100 - percentUsed));
+
+    let color: string;
+    let isNearLimit = false;
+    if (percentRemaining <= 5) {
+        color = theme.colors.warningCritical;
+        isNearLimit = true;
+    } else if (percentRemaining <= 10) {
+        color = theme.colors.warning;
+        isNearLimit = true;
+    } else {
+        color = theme.colors.warning;
     }
-    return null; // No display needed
+
+    if (!isNearLimit && !alwaysShow) {
+        return null; // Far from limit and user hasn't opted into always-on display.
+    }
+
+    return {
+        percentUsed,
+        percentRemaining,
+        color,
+        text: t('agentInput.context.remaining', { percent: Math.round(percentRemaining) }),
+        isNearLimit,
+    };
 };
 
 // Stable sub-trees extracted from AgentInput so they don't reconcile when
@@ -322,7 +350,8 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
 
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
-    contextWarning: { text: string; color: string } | null;
+    contextUsage: ContextUsage | null;
+    onCompact?: () => void;
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
     isSandboxedYoloMode: boolean;
@@ -330,13 +359,81 @@ type StatusRowProps = {
     zenMode?: boolean;
 };
 
+/**
+ * Compact, low-profile context-usage meter: a thin progress bar plus a percent
+ * label, with an inline "Compact" affordance to trigger `/compact`. Colour
+ * escalates (neutral → warning → critical) as the window fills. Sits in the
+ * status row above the input so it never steals vertical space from typing.
+ */
+const ContextUsageMeter = React.memo(function ContextUsageMeter(p: {
+    usage: ContextUsage;
+    onCompact?: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const { usage } = p;
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+            <View
+                style={{
+                    width: 48,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: theme.colors.divider,
+                    overflow: 'hidden',
+                }}
+            >
+                <View
+                    style={{
+                        width: `${usage.percentUsed}%`,
+                        height: '100%',
+                        borderRadius: 2,
+                        backgroundColor: usage.color,
+                    }}
+                />
+            </View>
+            <Text
+                style={{
+                    fontSize: 11,
+                    color: usage.color,
+                    fontVariant: ['tabular-nums'],
+                    ...Typography.default(),
+                }}
+                numberOfLines={1}
+            >
+                {usage.text}
+            </Text>
+            {p.onCompact && (
+                <Pressable
+                    onPress={() => {
+                        hapticsLight();
+                        p.onCompact?.();
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                    accessibilityLabel={t('agentInput.context.compact')}
+                    style={(s) => ({
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 3,
+                        opacity: s.pressed ? 0.6 : 1,
+                    })}
+                >
+                    <Ionicons name="contract-outline" size={11} color={theme.colors.textLink} />
+                    <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                        {t('agentInput.context.compact')}
+                    </Text>
+                </Pressable>
+            )}
+        </View>
+    );
+});
+
 const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRowProps) {
     const { theme } = useUnistyles();
     const showPermissionBadge = !!p.displayPermissionMode
         && p.permissionModeKey !== 'default'
         && !p.zenMode
         && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextWarning && !showPermissionBadge) {
+    if (!p.connectionStatus && !p.contextUsage && !showPermissionBadge) {
         return null;
     }
     return (
@@ -421,15 +518,8 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                         )}
                     </>
                 )}
-                {p.contextWarning && (
-                    <Text style={{
-                        fontSize: 11,
-                        color: p.contextWarning.color,
-                        marginLeft: p.connectionStatus ? 8 : 0,
-                        ...Typography.default()
-                    }}>
-                        {p.connectionStatus ? '• ' : ''}{p.contextWarning.text}
-                    </Text>
+                {p.contextUsage && (
+                    <ContextUsageMeter usage={p.contextUsage} onCompact={p.onCompact} />
                 )}
             </View>
             {showPermissionBadge && (() => {
@@ -596,9 +686,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return label;
     }, [isSandboxEnabled]);
 
-    // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
+    // Calculate context usage for the inline meter
+    const contextUsage = props.usageData?.contextSize
+        ? getContextUsage(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
@@ -1178,7 +1268,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 <AgentInputStatusRow
                     connectionStatus={props.connectionStatus}
-                    contextWarning={contextWarning}
+                    contextUsage={contextUsage}
+                    onCompact={props.onCompact}
                     displayPermissionMode={displayPermissionMode}
                     permissionModeKey={permissionModeKey}
                     isSandboxedYoloMode={isSandboxedYoloMode}

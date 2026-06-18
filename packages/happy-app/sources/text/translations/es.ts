@@ -115,6 +115,11 @@ export const es: TranslationStructure = {
         unknown: 'desconocido',
         unread: 'nuevos resultados',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `Pensando ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: 'Esperando permiso',
+    },
 
     time: {
         justNow: 'ahora mismo',
@@ -503,6 +508,8 @@ export const es: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
+            used: ({ percent }: { percent: number }) => `${percent}% de contexto`,
+            compact: 'Compactar',
         },
         suggestion: {
             fileLabel: 'ARCHIVO',
@@ -924,11 +931,19 @@ export const es: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: 'Aprobar',
+            deny: 'Rechazar',
             yesAllowAllEdits: 'Sí, permitir todas las ediciones durante esta sesión',
             yesAllowEverything: 'Sí, permitir todo durante esta sesión',
             yesForTool: 'Sí, no volver a preguntar para esta herramienta',
             noTellClaude: 'No, proporcionar comentarios',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} permisos pendientes`,
+        approveAll: 'Aprobar todo',
+        denyAll: 'Rechazar todo',
     },
 
     textSelection: {

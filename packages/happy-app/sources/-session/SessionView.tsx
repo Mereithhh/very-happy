@@ -12,6 +12,7 @@ import {
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
+import { SessionLiveStatusBar } from '@/components/SessionLiveStatusBar';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
@@ -635,6 +636,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         sessionAbort(sessionId);
     }, [sessionId]);
 
+    // One-tap context compaction — sends the /compact slash command to the
+    // agent, same as typing it in the terminal.
+    const handleCompact = React.useCallback(() => {
+        sync.sendMessage(sessionId, '/compact', { source: 'chat' });
+    }, [sessionId]);
+
     const handleFileViewerPress = React.useCallback(() => {
         router.push(`/session/${sessionId}/files`);
     }, [router, sessionId]);
@@ -783,6 +790,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             autocompleteSuggestions={handleAutocompleteSuggestions}
             usageData={usageData}
             alwaysShowContextSize={alwaysShowContextSize}
+            onCompact={isDisconnected ? undefined : handleCompact}
             zenMode={zenMode}
         />
     );
@@ -805,9 +813,19 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </CenteredInputWidth>
     ) : null;
 
+    // Low-profile "what's the agent doing right now" bar. Self-hides when the
+    // session is idle, so it only ever appears while work is in progress and
+    // never competes with the input area. Sits just above the composer.
+    const liveStatusBar = !isDisconnected ? (
+        <View style={{ paddingBottom: 6 }}>
+            <SessionLiveStatusBar sessionId={sessionId} />
+        </View>
+    ) : null;
+
     const input = (
         <>
             {inactiveHint}
+            {liveStatusBar}
             {composer}
         </>
     );

@@ -194,6 +194,15 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     // full command + stdout/stderr/exit result.
     const canExpandTerminal = isCompactTerminalTool && canExpandInline;
 
+    // When a compact terminal tool (Bash/shell) is waiting for approval, the
+    // collapsed header only shows a single-line, truncated command — not nearly
+    // enough to decide whether to approve from a phone. Surface the FULL,
+    // untruncated command in a scrollable terminal-styled block right above the
+    // approval footer so the reviewer always sees exactly what will run.
+    const isPendingPermission = tool.permission?.status === 'pending';
+    const showPendingTerminalCommand =
+        isPendingPermission && isCompactTerminalTool && !!(fullTerminalCommand && fullTerminalCommand.trim().length > 0);
+
     const renderHeaderContent = () => {
         if (isCompactTerminalTool) {
             return (
@@ -382,6 +391,20 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 >
                     <TerminalExpandedView command={fullTerminalCommand ?? terminalCommand ?? ''} result={tool.result} state={tool.state} />
                 </Animated.View>
+            )}
+
+            {/* Pending-approval context for compact terminal tools: show the full
+                command (multi-line, scrollable) so the reviewer can decide. The
+                regular expanded terminal view is only shown on tap; while waiting
+                for approval we always reveal the command. */}
+            {showPendingTerminalCommand && !expanded && (
+                <View style={styles.pendingTerminalContext}>
+                    <TerminalExpandedView
+                        command={fullTerminalCommand ?? terminalCommand ?? ''}
+                        result={undefined}
+                        state="running"
+                    />
+                </View>
             )}
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
@@ -595,6 +618,13 @@ const styles = StyleSheet.create((theme) => ({
     terminalExpandedDetail: {
         marginTop: 4,
         marginBottom: 4,
+        marginHorizontal: 4,
+        borderRadius: 8,
+        overflow: 'hidden',
+    },
+    pendingTerminalContext: {
+        marginTop: 4,
+        marginBottom: 2,
         marginHorizontal: 4,
         borderRadius: 8,
         overflow: 'hidden',

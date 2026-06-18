@@ -16,6 +16,7 @@ import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
+import { PendingPermissionsBar } from './tools/PendingPermissionsBar';
 
 const SCROLL_THRESHOLD = 300;
 
@@ -82,6 +83,15 @@ const ChatListInternal = React.memo((props: {
         session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0,
     );
     const collapseCurrentTurn = session?.thinking !== true && !hasPendingPermission;
+
+    // When a permission request appears (e.g. after navigating in from a
+    // permission_request notification), bring it into view. The pending tool is
+    // the newest activity, so in this inverted list it lives at the visual
+    // bottom (offset 0). ChatList already auto-expands the pending group; this
+    // just scrolls to it so the reviewer lands directly on the approval card.
+    // Initialised to false so a session that ALREADY has a pending request on
+    // mount (the notification-click case) still triggers the scroll.
+    const prevHasPendingRef = React.useRef(false);
     const groupingOptions = React.useMemo(
         () => ({ collapseCurrentTurn }),
         [collapseCurrentTurn],
@@ -325,6 +335,19 @@ const ChatListInternal = React.memo((props: {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     }, []);
 
+    // Bring a newly-arrived pending permission into view (see ref comment above).
+    React.useEffect(() => {
+        if (hasPendingPermission && !prevHasPendingRef.current) {
+            // Defer a tick so the auto-expanded group has been laid out.
+            const id = setTimeout(() => {
+                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }, 120);
+            prevHasPendingRef.current = hasPendingPermission;
+            return () => clearTimeout(id);
+        }
+        prevHasPendingRef.current = hasPendingPermission;
+    }, [hasPendingPermission]);
+
     // In an inverted FlatList, `onEndReached` fires when the user scrolls
     // past the visual top — i.e. when they want to see older history.
     // Initial fetch only loads the latest 100 messages (see
@@ -384,7 +407,7 @@ const ChatListInternal = React.memo((props: {
                 onEndReachedThreshold={0.5}
             />
             {showScrollButton && (
-                <View style={styles.scrollButtonContainer}>
+                <View style={[styles.scrollButtonContainer, hasPendingPermission && styles.scrollButtonContainerRaised]}>
                     <Pressable
                         style={({ pressed }) => [
                             styles.scrollButton,
@@ -394,6 +417,13 @@ const ChatListInternal = React.memo((props: {
                     >
                         <Octicons name="arrow-down" size={14} color={theme.colors.text} />
                     </Pressable>
+                </View>
+            )}
+            {/* Batch approve/deny bar — only renders when 2+ requests are
+                pending (the bar self-hides below that threshold). */}
+            {hasPendingPermission && (
+                <View style={styles.pendingBarContainer} pointerEvents="box-none">
+                    <PendingPermissionsBar sessionId={props.sessionId} />
                 </View>
             )}
         </View>
@@ -413,6 +443,18 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
         pointerEvents: 'box-none',
+    },
+    scrollButtonContainerRaised: {
+        // Lift the scroll-to-bottom button above the batch permission bar.
+        bottom: 68,
+    },
+    pendingBarContainer: {
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        bottom: 12,
+        alignItems: 'stretch',
+        justifyContent: 'center',
     },
     scrollButton: {
         borderRadius: 16,

@@ -138,6 +138,7 @@ export const lightTheme = {
         // Permission mode colors
         permission: {
             default: '#8E8E93',
+            approve: '#34C759',
             acceptEdits: '#007AFF',
             bypass: '#FF9500',
             plan: '#34C759',
@@ -348,6 +349,7 @@ export const darkTheme = {
         // Permission mode colors
         permission: {
             default: '#8E8E93',
+            approve: '#32D74B',
             acceptEdits: '#0A84FF',
             bypass: '#FF9F0A',
             plan: '#32D74B',

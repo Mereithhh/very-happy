@@ -117,6 +117,11 @@ export const zhHans: TranslationStructure = {
         unknown: '未知',
         unread: '新结果',
     },
+    liveStatus: {
+        thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
+        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
+        waitingPermission: '等待授权',
+    },
 
     time: {
         justNow: '刚刚',
@@ -504,6 +509,8 @@ export const zhHans: TranslationStructure = {
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
+            used: ({ percent }: { percent: number }) => `${percent}% 上下文`,
+            compact: '压缩',
         },
         suggestion: {
             fileLabel: '文件',
@@ -925,11 +932,19 @@ export const zhHans: TranslationStructure = {
     claude: {
         // Claude permission dialog buttons
         permissions: {
+            approve: '批准',
+            deny: '拒绝',
             yesAllowAllEdits: '是，允许本次会话的所有编辑',
             yesAllowEverything: '是，允许本次会话的所有操作',
             yesForTool: '是，不再询问此工具',
             noTellClaude: '否，提供反馈',
         }
+    },
+
+    permissions: {
+        pendingCount: ({ count }: { count: number }) => `${count} 个待批权限`,
+        approveAll: '全部批准',
+        denyAll: '全部拒绝',
     },
 
     textSelection: {
