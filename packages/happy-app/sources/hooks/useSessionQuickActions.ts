@@ -229,14 +229,35 @@ export function useSessionQuickActions(
     });
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
-        await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
-
-        // Try to kill the CLI process; if it's already dead, force-archive via server
-        const killResult = await sessionKill(session.id);
-        if (!killResult.success) {
-            await sessionArchive(session.id);
+        // Optimistic update: immediately flip the session to inactive locally so
+        // it leaves the "active" group right away — the heavy server round-trip
+        // (worktree cleanup + kill / archive) then runs in the background. If the
+        // session was already inactive this is a no-op. The next sync is
+        // authoritative; on failure we roll the local flag back.
+        const wasActive = session.active;
+        if (wasActive) {
+            storage.getState().setSessionActiveLocal(session.id, false);
         }
+        // Fire the navigation/close callback right after the optimistic flip so
+        // the UI reacts instantly instead of waiting on the network.
         onAfterArchive?.();
+
+        try {
+            await maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId);
+
+            // Try to kill the CLI process; if it's already dead, force-archive via server
+            const killResult = await sessionKill(session.id);
+            if (!killResult.success) {
+                await sessionArchive(session.id);
+            }
+        } catch (error) {
+            // Roll back the optimistic state so the session reappears in the
+            // active list and the user can retry.
+            if (wasActive) {
+                storage.getState().setSessionActiveLocal(session.id, true);
+            }
+            throw error;
+        }
     });
 
     const archiveSession = React.useCallback(() => {

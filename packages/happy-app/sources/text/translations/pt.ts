@@ -652,6 +652,8 @@ export const pt: TranslationStructure = {
         fileConflictDescription: 'Este arquivo foi modificado no dispositivo enquanto você o editava. Recarregue para ver a versão mais recente.',
         reload: 'Recarregar',
         overwrite: 'Sobrescrever',
+        collapseSidebar: 'Recolher barra lateral',
+        expandSidebar: 'Expandir barra lateral',
     },
 
     settingsVoice: {

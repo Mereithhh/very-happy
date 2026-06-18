@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
@@ -83,7 +84,18 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 
 export default React.memo(function FileScreen() {
     const { theme } = useUnistyles();
+    const router = useRouter();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
+    // Explicit in-content return affordance: close the file view and go back to
+    // the previous screen (file list / chat). Mirrors the native header back but
+    // is always visible, including on web where the system header is subtle.
+    const handleBack = React.useCallback(() => {
+        if (router.canGoBack()) {
+            router.back();
+        } else if (sessionId) {
+            router.replace(`/session/${sessionId}/files`);
+        }
+    }, [router, sessionId]);
     const searchParams = useLocalSearchParams();
     const encodedPath = searchParams.path as string;
     const lineParam = searchParams.line as string | undefined;
@@ -413,6 +425,22 @@ export default React.memo(function FileScreen() {
                 flexDirection: 'row',
                 alignItems: 'center'
             }}>
+                <Pressable
+                    onPress={handleBack}
+                    hitSlop={8}
+                    accessibilityLabel={t('common.back')}
+                    style={({ pressed }) => ({
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 6,
+                        backgroundColor: pressed ? theme.colors.surfaceSelected : 'transparent',
+                    })}
+                >
+                    <Ionicons name="chevron-back" size={20} color={theme.colors.textLink} />
+                </Pressable>
                 <FileIcon fileName={fileName} size={20} />
                 <Text style={{
                     fontSize: 14,

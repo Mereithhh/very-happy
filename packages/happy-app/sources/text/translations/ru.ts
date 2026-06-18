@@ -669,6 +669,8 @@ export const ru: TranslationStructure = {
         fileConflictDescription: 'Файл был изменён на устройстве пока вы его редактировали. Перезагрузите чтобы увидеть актуальную версию.',
         reload: 'Перезагрузить',
         overwrite: 'Перезаписать',
+        collapseSidebar: 'Свернуть панель',
+        expandSidebar: 'Развернуть панель',
     },
 
     settingsVoice: {
