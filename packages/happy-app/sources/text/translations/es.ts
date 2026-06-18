@@ -523,6 +523,11 @@ export const es: TranslationStructure = {
         showArchived: 'Mostrar archivadas',
         hideArchived: 'Ocultar archivadas',
         newSession: 'Nueva sesión',
+        searchPlaceholder: 'Buscar sesiones',
+        filterAll: 'Todas',
+        filterActive: 'Activas',
+        filterArchived: 'Archivadas',
+        noResults: 'No hay sesiones coincidentes',
     },
 
     zen: {

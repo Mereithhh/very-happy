@@ -366,6 +366,46 @@ export function generateGroupSummary(messages: Message[]): string {
     return parts.join(', ') || t('toolGroup.usedTools', { count: messages.length });
 }
 
+export type ToolGroupStatus = 'running' | 'completed' | 'error';
+
+export interface ToolGroupStats {
+    /** Total number of tool calls in the group */
+    total: number;
+    running: number;
+    completed: number;
+    error: number;
+}
+
+/**
+ * Aggregate per-tool state counts for a group. Drives the collapsed header
+ * status pill (e.g. "5 done · 1 failed") so the user sees outcome at a glance
+ * without expanding. Only tool-call messages are counted.
+ */
+export function generateGroupStats(messages: Message[]): ToolGroupStats {
+    let total = 0;
+    let running = 0;
+    let completed = 0;
+    let error = 0;
+
+    for (const msg of messages) {
+        if (msg.kind !== 'tool-call') continue;
+        total += 1;
+        switch (msg.tool.state) {
+            case 'running':
+                running += 1;
+                break;
+            case 'error':
+                error += 1;
+                break;
+            default:
+                completed += 1;
+                break;
+        }
+    }
+
+    return { total, running, completed, error };
+}
+
 export function formatWorkDuration(durationMs: number): string {
     const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
     const hours = Math.floor(totalSeconds / 3600);

@@ -522,6 +522,11 @@ export const pt: TranslationStructure = {
         showArchived: 'Mostrar arquivadas',
         hideArchived: 'Ocultar arquivadas',
         newSession: 'Nova sessão',
+        searchPlaceholder: 'Buscar sessões',
+        filterAll: 'Todas',
+        filterActive: 'Ativas',
+        filterArchived: 'Arquivadas',
+        noResults: 'Nenhuma sessão correspondente',
     },
 
     zen: {

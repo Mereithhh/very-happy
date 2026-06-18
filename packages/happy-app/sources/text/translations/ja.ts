@@ -524,6 +524,11 @@ export const ja: TranslationStructure = {
         showArchived: 'アーカイブを表示',
         hideArchived: 'アーカイブを非表示',
         newSession: '新しいセッション',
+        searchPlaceholder: 'セッションを検索',
+        filterAll: 'すべて',
+        filterActive: 'アクティブ',
+        filterArchived: 'アーカイブ',
+        noResults: '一致するセッションがありません',
     },
 
     zen: {

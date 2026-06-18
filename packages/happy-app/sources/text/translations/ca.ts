@@ -523,6 +523,11 @@ export const ca: TranslationStructure = {
         showArchived: 'Mostra arxivades',
         hideArchived: 'Amaga arxivades',
         newSession: 'Nova sessió',
+        searchPlaceholder: 'Cerca sessions',
+        filterAll: 'Totes',
+        filterActive: 'Actives',
+        filterArchived: 'Arxivades',
+        noResults: 'Cap sessió coincident',
     },
 
     zen: {

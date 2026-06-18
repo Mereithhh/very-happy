@@ -524,6 +524,11 @@ export const zhHans: TranslationStructure = {
         showArchived: '显示已归档',
         hideArchived: '隐藏已归档',
         newSession: '新建会话',
+        searchPlaceholder: '搜索会话',
+        filterAll: '全部',
+        filterActive: '活跃',
+        filterArchived: '已归档',
+        noResults: '没有匹配的会话',
     },
 
     zen: {
