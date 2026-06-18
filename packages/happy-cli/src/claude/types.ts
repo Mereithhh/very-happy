@@ -52,6 +52,19 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("system"),
     uuid: z.string() // Used in getMessageKey()
+  }).passthrough(),
+
+  // Result message - SDK turn-completion summary. Carries per-turn cost,
+  // duration, turn count and cumulative usage so the app can render them.
+  z.object({
+    type: z.literal("result"),
+    subtype: z.string().optional(),
+    is_error: z.boolean().optional(),
+    result: z.string().optional(),
+    total_cost_usd: z.number().optional(),
+    duration_ms: z.number().optional(),
+    num_turns: z.number().optional(),
+    usage: UsageSchema.optional(),
   }).passthrough()
 ]);
 

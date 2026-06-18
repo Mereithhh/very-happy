@@ -1,6 +1,8 @@
 import * as React from "react";
 import { View, Text, Pressable, Platform } from "react-native";
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -11,6 +13,7 @@ import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
+import { MessageMetaRow, MessageMetaUsage } from './MessageMetaRow';
 
 
 export const MessageView = React.memo((props: {
@@ -18,6 +21,19 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  /**
+   * Approximate thinking duration in ms for thinking blocks, derived by
+   * ChatList from message timestamps (thinking createdAt → next output
+   * createdAt). Undefined when it can't be computed reliably.
+   */
+  thinkingDurationMs?: number;
+  /**
+   * When true, this agent-text message is the latest assistant answer in the
+   * session, so we render the metadata row (model + token usage) beneath it.
+   */
+  showMetaRow?: boolean;
+  /** Session-level latest usage snapshot, for the metadata row. */
+  latestUsage?: MessageMetaUsage | null;
   /**
    * Long-press handler for user-text bubbles. Wired by ChatList from
    * the active session screen and used by the fork-from-message flow.
@@ -35,6 +51,9 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          thinkingDurationMs={props.thinkingDurationMs}
+          showMetaRow={props.showMetaRow}
+          latestUsage={props.latestUsage}
           onForkFromUserMessage={props.onForkFromUserMessage}
         />
       </View>
@@ -48,6 +67,9 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  thinkingDurationMs?: number;
+  showMetaRow?: boolean;
+  latestUsage?: MessageMetaUsage | null;
   onForkFromUserMessage?: (messageId: string, rewindPointId: string | undefined, messageText: string) => void;
 }): React.ReactElement {
   switch (props.message.kind) {
@@ -62,7 +84,16 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return (
+        <AgentTextBlock
+          message={props.message}
+          metadata={props.metadata}
+          sessionId={props.sessionId}
+          thinkingDurationMs={props.thinkingDurationMs}
+          showMetaRow={props.showMetaRow}
+          latestUsage={props.latestUsage}
+        />
+      );
 
     case 'tool-call':
       return <ToolCallBlock
@@ -148,21 +179,102 @@ function UserTextBlock(props: {
 
 function AgentTextBlock(props: {
   message: AgentTextMessage;
+  metadata: Metadata | null;
   sessionId: string;
+  thinkingDurationMs?: number;
+  showMetaRow?: boolean;
+  latestUsage?: MessageMetaUsage | null;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId]);
 
-  // Hide thinking messages
+  // Thinking blocks render as a collapsed, subdued "Thinking" card.
   if (props.message.isThinking) {
-    return null;
+    return (
+      <ThinkingBlock
+        text={props.message.text}
+        durationMs={props.thinkingDurationMs}
+        sessionId={props.sessionId}
+      />
+    );
   }
+
+  // Per-turn metadata stamped from the SDK result message. When present this
+  // message is the final answer of a completed turn — show its own accurate
+  // usage / cost / duration / turns. Otherwise fall back to the session-level
+  // latest-usage snapshot, but only on the latest answer (showMetaRow), which
+  // covers the in-flight turn that has no result yet.
+  const m = props.message;
+  const hasOwnMeta =
+    m.usage !== undefined ||
+    typeof m.costUsd === 'number' ||
+    typeof m.totalDurationMs === 'number' ||
+    typeof m.numTurns === 'number';
+  const renderMeta = hasOwnMeta || props.showMetaRow;
 
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {renderMeta ? (
+        <MessageMetaRow
+          model={m.meta?.model ?? undefined}
+          usage={m.usage ?? (props.showMetaRow ? props.latestUsage : undefined)}
+          costUsd={m.costUsd}
+          totalDurationMs={m.totalDurationMs}
+          numTurns={m.numTurns}
+        />
+      ) : null}
     </View>
+  );
+}
+
+function ThinkingBlock(props: {
+  text: string;
+  durationMs?: number;
+  sessionId: string;
+}) {
+  const { theme } = useUnistyles();
+  const [expanded, setExpanded] = React.useState(false);
+
+  // Duration label: only shown when we could derive a positive duration.
+  const durationLabel = React.useMemo(() => {
+    if (typeof props.durationMs !== 'number' || props.durationMs <= 0) return null;
+    const seconds = Math.round(props.durationMs / 1000);
+    if (seconds < 1) return null;
+    if (seconds < 60) return `Thought for ${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const rem = seconds % 60;
+    return `Thought for ${minutes}m${rem.toString().padStart(2, '0')}s`;
+  }, [props.durationMs]);
+
+  return (
+    <Animated.View style={styles.thinkingContainer} layout={LinearTransition.duration(200)}>
+      <Pressable
+        style={styles.thinkingHeader}
+        onPress={() => setExpanded((e) => !e)}
+        hitSlop={6}
+      >
+        <Text style={styles.thinkingEmoji}>💭</Text>
+        <Text style={styles.thinkingTitle} numberOfLines={1}>
+          {durationLabel ?? 'Thinking'}
+        </Text>
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-forward'}
+          size={14}
+          color={theme.colors.textSecondary}
+        />
+      </Pressable>
+      {expanded ? (
+        <Animated.View
+          entering={FadeIn.duration(160)}
+          exiting={FadeOut.duration(120)}
+          style={styles.thinkingContent}
+        >
+          <MarkdownView markdown={props.text} sessionId={props.sessionId} />
+        </Animated.View>
+      ) : null}
+    </Animated.View>
   );
 }
 
@@ -278,6 +390,37 @@ const styles = StyleSheet.create((theme) => ({
     marginBottom: 12,
     borderRadius: 16,
     maxWidth: '100%',
+  },
+  thinkingContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceHigh,
+    overflow: 'hidden',
+    maxWidth: '100%',
+  },
+  thinkingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  thinkingEmoji: {
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  thinkingTitle: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.colors.textSecondary,
+  },
+  thinkingContent: {
+    paddingHorizontal: 10,
+    paddingBottom: 6,
+    opacity: 0.8,
   },
   agentEventContainer: {
     marginHorizontal: 8,

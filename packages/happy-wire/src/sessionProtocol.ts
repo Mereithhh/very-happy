@@ -70,9 +70,25 @@ export const sessionStartEventSchema = z.object({
 export const sessionTurnEndStatusSchema = z.enum(['completed', 'failed', 'cancelled']);
 export type SessionTurnEndStatus = z.infer<typeof sessionTurnEndStatusSchema>;
 
+// Per-turn usage snapshot, mirrors the Claude Code SDK result `usage` shape
+// (snake_case, cumulative for the turn).
+export const sessionTurnUsageSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_input_tokens: z.number().optional(),
+  cache_read_input_tokens: z.number().optional(),
+});
+export type SessionTurnUsage = z.infer<typeof sessionTurnUsageSchema>;
+
 export const sessionTurnEndEventSchema = z.object({
   t: z.literal('turn-end'),
   status: sessionTurnEndStatusSchema,
+  // Optional per-turn metadata sourced from the SDK result message. Present
+  // only on turns ended by a result event; absent on lazily-closed turns.
+  costUsd: z.number().optional(),
+  durationMs: z.number().optional(),
+  numTurns: z.number().optional(),
+  usage: sessionTurnUsageSchema.optional(),
 });
 
 export const sessionStopEventSchema = z.object({

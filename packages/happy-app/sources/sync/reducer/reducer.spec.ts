@@ -229,6 +229,81 @@ describe('reducer', () => {
         });
     });
 
+    describe('per-turn result metadata', () => {
+        it('attaches per-message usage to agent text', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'agent1',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{ type: 'text', text: 'Answer', uuid: 'u1', parentUUID: null }],
+                usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 10 }
+            } as NormalizedMessage]);
+
+            expect(result.messages).toHaveLength(1);
+            const msg = result.messages[0];
+            expect(msg.kind).toBe('agent-text');
+            if (msg.kind === 'agent-text') {
+                expect(msg.usage).toEqual({ inputTokens: 100, outputTokens: 50, cacheRead: 10 });
+            }
+        });
+
+        it('stamps cost/duration/turns onto the final agent text of the turn via ready event', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent1', localId: null, createdAt: 1000, role: 'agent', isSidechain: false,
+                    content: [{ type: 'text', text: 'Final answer', uuid: 'u1', parentUUID: null }],
+                    usage: { input_tokens: 200, output_tokens: 80 }
+                } as NormalizedMessage,
+                {
+                    id: 'ready1', localId: null, createdAt: 2000, role: 'event', isSidechain: false,
+                    content: {
+                        type: 'ready',
+                        turnMeta: {
+                            costUsd: 0.0234,
+                            totalDurationMs: 4200,
+                            numTurns: 3,
+                            usage: { inputTokens: 200, outputTokens: 80, cacheRead: 5 }
+                        }
+                    }
+                } as NormalizedMessage
+            ];
+
+            const result = reducer(state, messages);
+            const textMsg = result.messages.find(m => m.kind === 'agent-text');
+            expect(textMsg).toBeDefined();
+            if (textMsg && textMsg.kind === 'agent-text') {
+                expect(textMsg.costUsd).toBe(0.0234);
+                expect(textMsg.totalDurationMs).toBe(4200);
+                expect(textMsg.numTurns).toBe(3);
+                expect(textMsg.usage).toEqual({ inputTokens: 200, outputTokens: 80, cacheRead: 5 });
+            }
+        });
+
+        it('associates ready metadata across reducer calls (streaming)', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'agent1', localId: null, createdAt: 1000, role: 'agent', isSidechain: false,
+                content: [{ type: 'text', text: 'Streamed answer', uuid: 'u1', parentUUID: null }]
+            } as NormalizedMessage]);
+
+            const result = reducer(state, [{
+                id: 'ready1', localId: null, createdAt: 2000, role: 'event', isSidechain: false,
+                content: { type: 'ready', turnMeta: { costUsd: 0.5, numTurns: 1 } }
+            } as NormalizedMessage]);
+
+            const textMsg = result.messages.find(m => m.kind === 'agent-text');
+            expect(textMsg).toBeDefined();
+            if (textMsg && textMsg.kind === 'agent-text') {
+                expect(textMsg.costUsd).toBe(0.5);
+                expect(textMsg.numTurns).toBe(1);
+            }
+        });
+    });
+
     describe('mixed message processing', () => {
         it('should handle interleaved user and agent messages', () => {
             const state = createReducer();
