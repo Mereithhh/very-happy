@@ -86,15 +86,18 @@ export function unlockRoutes(app: Fastify) {
             return reply.send({ exists: false as const });
         }
 
-        const unlock = await db.accountUnlock.findUnique({
-            where: { accountId: account.id },
-            select: { blob: true }
-        });
-        if (!unlock) {
+        // Raw SQL (not the Prisma model accessor) so the deploy can bind-mount
+        // updated source without regenerating the Prisma client for the new table.
+        const rows = await db.$queryRawUnsafe<{ blob: unknown }[]>(
+            'SELECT "blob" FROM "AccountUnlock" WHERE "accountId" = $1 LIMIT 1',
+            account.id
+        );
+        const raw = rows[0]?.blob;
+        if (raw === undefined || raw === null) {
             return reply.send({ exists: false as const });
         }
-
-        return reply.send({ exists: true as const, blob: unlock.blob as z.infer<typeof PasswordBlobSchema> });
+        const blob = (typeof raw === 'string' ? JSON.parse(raw) : raw) as z.infer<typeof PasswordBlobSchema>;
+        return reply.send({ exists: true as const, blob });
     });
 
     // PUT /v1/account/unlock — AUTHENTICATED. Set/replace the unlock blob (set/change password).
@@ -114,11 +117,13 @@ export function unlockRoutes(app: Fastify) {
         const { blob } = request.body;
 
         try {
-            await db.accountUnlock.upsert({
-                where: { accountId },
-                create: { accountId, blob },
-                update: { blob }
-            });
+            await db.$executeRawUnsafe(
+                `INSERT INTO "AccountUnlock" ("accountId", "blob", "updatedAt")
+                 VALUES ($1, $2::jsonb, now())
+                 ON CONFLICT ("accountId") DO UPDATE SET "blob" = EXCLUDED."blob", "updatedAt" = now()`,
+                accountId,
+                JSON.stringify(blob)
+            );
             return reply.send({ success: true as const });
         } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to upsert account unlock blob: ${error}`);
