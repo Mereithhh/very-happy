@@ -386,16 +386,36 @@ function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelop
     return turnId;
 }
 
+type TurnEndMeta = {
+    costUsd?: number;
+    durationMs?: number;
+    numTurns?: number;
+    usage?: {
+        input_tokens: number;
+        output_tokens: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+    };
+};
+
 function closeTurn(
     state: ClaudeSessionProtocolState,
     status: SessionTurnEndStatus,
     envelopes: SessionEnvelope[],
+    meta?: TurnEndMeta,
 ): void {
     if (!state.currentTurnId) {
         return;
     }
 
-    envelopes.push(createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId }));
+    envelopes.push(createEnvelope('agent', {
+        t: 'turn-end',
+        status,
+        ...(typeof meta?.costUsd === 'number' ? { costUsd: meta.costUsd } : {}),
+        ...(typeof meta?.durationMs === 'number' ? { durationMs: meta.durationMs } : {}),
+        ...(typeof meta?.numTurns === 'number' ? { numTurns: meta.numTurns } : {}),
+        ...(meta?.usage ? { usage: meta.usage } : {}),
+    }, { turn: state.currentTurnId }));
     state.currentTurnId = null;
     clearSubagentTracking(state);
 }
@@ -613,6 +633,45 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             }
         }
 
+        return {
+            currentTurnId: state.currentTurnId,
+            envelopes,
+        };
+    }
+
+    if (message.type === 'result') {
+        // The SDK result message marks turn completion and carries the
+        // per-turn cost / duration / turn count / usage. Close the current
+        // turn and stamp the metadata onto the turn-end envelope so the app
+        // can render it at the end of the turn.
+        const raw = message as RawJSONLines & {
+            subtype?: string;
+            is_error?: boolean;
+            total_cost_usd?: number;
+            duration_ms?: number;
+            num_turns?: number;
+            usage?: {
+                input_tokens?: number;
+                output_tokens?: number;
+                cache_creation_input_tokens?: number;
+                cache_read_input_tokens?: number;
+            };
+        };
+        const status: SessionTurnEndStatus = raw.is_error === true ? 'failed' : 'completed';
+        const usage = raw.usage && typeof raw.usage.input_tokens === 'number' && typeof raw.usage.output_tokens === 'number'
+            ? {
+                input_tokens: raw.usage.input_tokens,
+                output_tokens: raw.usage.output_tokens,
+                ...(typeof raw.usage.cache_creation_input_tokens === 'number' ? { cache_creation_input_tokens: raw.usage.cache_creation_input_tokens } : {}),
+                ...(typeof raw.usage.cache_read_input_tokens === 'number' ? { cache_read_input_tokens: raw.usage.cache_read_input_tokens } : {}),
+            }
+            : undefined;
+        closeTurn(state, status, envelopes, {
+            costUsd: typeof raw.total_cost_usd === 'number' ? raw.total_cost_usd : undefined,
+            durationMs: typeof raw.duration_ms === 'number' ? raw.duration_ms : undefined,
+            numTurns: typeof raw.num_turns === 'number' ? raw.num_turns : undefined,
+            usage,
+        });
         return {
             currentTurnId: state.currentTurnId,
             envelopes,

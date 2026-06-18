@@ -117,6 +117,13 @@ import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
 
+type TurnUsage = {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+};
+
 type ReducerMessage = {
     id: string;
     realID: string | null;
@@ -129,6 +136,13 @@ type ReducerMessage = {
     meta?: MessageMeta;
     claudeUuid?: string;
     codexItemId?: string;
+    // Per-turn metadata. `usage` is the per-message usage from the assistant
+    // message itself; cost/duration/numTurns are stamped from the SDK result
+    // (turn-end) onto the turn's final agent-text message.
+    usage?: TurnUsage;
+    costUsd?: number;
+    totalDurationMs?: number;
+    numTurns?: number;
 }
 
 type StoredPermission = {
@@ -272,6 +286,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     let newMessages: Message[] = [];
     let changed: Set<string> = new Set();
     let hasReadyEvent = false;
+    // Turn-end metadata (cost/duration/turns/usage) from ready events, applied
+    // after Phase 1 so it lands on the turn's final agent-text message.
+    const pendingTurnMeta: { createdAt: number; turnMeta: NonNullable<Extract<AgentEvent, { type: 'ready' }>['turnMeta']> }[] = [];
 
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
@@ -306,6 +323,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Mark as processed to prevent duplication but don't add to messages
             state.messageIds.set(msg.id, msg.id);
             hasReadyEvent = true;
+            // A ready event carrying turn metadata marks turn completion. Defer
+            // stamping until after Phase 1 (which creates the agent-text
+            // messages) so bulk history loads — where all events are handled
+            // before any text is created — still associate correctly. Resolve
+            // by createdAt against the turn's final agent-text message.
+            if (msg.content.turnMeta) {
+                pendingTurnMeta.push({ createdAt: msg.createdAt, turnMeta: msg.content.turnMeta });
+            }
             continue;
         }
 
@@ -692,6 +717,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 processUsageData(state, msg.usage, msg.createdAt);
             }
 
+            // Per-message usage snapshot (camelCase) for per-turn display.
+            const msgUsage: TurnUsage | undefined = msg.usage ? {
+                inputTokens: msg.usage.input_tokens,
+                outputTokens: msg.usage.output_tokens,
+                ...(typeof msg.usage.cache_creation_input_tokens === 'number' ? { cacheCreation: msg.usage.cache_creation_input_tokens } : {}),
+                ...(typeof msg.usage.cache_read_input_tokens === 'number' ? { cacheRead: msg.usage.cache_read_input_tokens } : {}),
+            } : undefined;
+
             // Process text and thinking content (tool calls handled in Phase 2)
             for (let c of msg.content) {
                 if (c.type === 'text' || c.type === 'thinking') {
@@ -707,6 +740,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         tool: null,
                         event: null,
                         meta: msg.meta,
+                        usage: msgUsage,
                     });
                     changed.add(mid);
                 }
@@ -1101,6 +1135,41 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     }
 
     //
+    // Phase 6: Apply per-turn result metadata (cost / duration / turns / usage)
+    //
+    // A ready event marks turn completion. Associate its metadata with the
+    // turn's final agent-text message: the non-thinking agent text with the
+    // greatest createdAt at or before the turn-end time. Resolving by
+    // createdAt (rather than processing order) is robust to bulk history
+    // loads where all ready events are seen before any text is created.
+    //
+    for (const entry of pendingTurnMeta) {
+        let target: ReducerMessage | null = null;
+        for (const message of state.messages.values()) {
+            if (message.role !== 'agent' || message.isThinking || message.text === null || message.tool !== null || message.event !== null) {
+                continue;
+            }
+            if (message.text.trim().length === 0) {
+                continue;
+            }
+            if (message.createdAt > entry.createdAt) {
+                continue;
+            }
+            if (!target || message.createdAt > target.createdAt) {
+                target = message;
+            }
+        }
+        if (target) {
+            const { turnMeta } = entry;
+            if (typeof turnMeta.costUsd === 'number') target.costUsd = turnMeta.costUsd;
+            if (typeof turnMeta.totalDurationMs === 'number') target.totalDurationMs = turnMeta.totalDurationMs;
+            if (typeof turnMeta.numTurns === 'number') target.numTurns = turnMeta.numTurns;
+            if (turnMeta.usage) target.usage = turnMeta.usage;
+            changed.add(target.id);
+        }
+    }
+
+    //
     // Collect changed messages (only root-level messages)
     //
 
@@ -1181,6 +1250,10 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'agent-text',
             text: reducerMsg.text,
             ...(reducerMsg.isThinking && { isThinking: true }),
+            ...(reducerMsg.usage && { usage: reducerMsg.usage }),
+            ...(typeof reducerMsg.costUsd === 'number' && { costUsd: reducerMsg.costUsd }),
+            ...(typeof reducerMsg.totalDurationMs === 'number' && { totalDurationMs: reducerMsg.totalDurationMs }),
+            ...(typeof reducerMsg.numTurns === 'number' && { numTurns: reducerMsg.numTurns }),
             meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {

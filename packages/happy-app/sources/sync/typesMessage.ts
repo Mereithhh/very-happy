@@ -51,6 +51,17 @@ export type ModeSwitchMessage = {
     meta?: MessageMeta;
 }
 
+/**
+ * Per-turn token usage carried on an agent text message. Mirrors
+ * `MessageMetaUsage` (camelCase) so it can be passed straight to MessageMetaRow.
+ */
+export type MessageUsage = {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+}
+
 export type AgentTextMessage = {
     kind: 'agent-text';
     id: string;
@@ -59,6 +70,16 @@ export type AgentTextMessage = {
     text: string;
     isThinking?: boolean;
     meta?: MessageMeta;
+    /**
+     * Per-turn metadata, populated on the final agent-text message of a
+     * completed turn from the Claude Code SDK result message:
+     * - `usage`: per-message token usage from the assistant message itself.
+     * - `costUsd` / `totalDurationMs` / `numTurns`: from the turn's result.
+     */
+    usage?: MessageUsage;
+    costUsd?: number;
+    totalDurationMs?: number;
+    numTurns?: number;
 }
 
 export type ToolCallMessage = {

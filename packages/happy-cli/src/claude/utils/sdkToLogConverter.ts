@@ -186,9 +186,22 @@ export class SDKToLogConverter {
             }
 
             case 'result': {
-                // Result messages are not converted to log messages
-                // They're SDK-specific messages that indicate session completion
-                // Not part of the actual conversation log
+                // Result messages mark turn completion. We forward the
+                // per-turn metadata (cost / duration / turn count / cumulative
+                // usage) so the app can render it at the end of the turn.
+                // SDKResultSuccess additionally carries a `result` string.
+                const resultMsg = sdkMessage as SDKResultMessage
+                logMessage = {
+                    ...baseFields,
+                    type: 'result',
+                    subtype: resultMsg.subtype,
+                    is_error: resultMsg.is_error,
+                    ...(('result' in resultMsg && typeof resultMsg.result === 'string') ? { result: resultMsg.result } : {}),
+                    total_cost_usd: resultMsg.total_cost_usd,
+                    duration_ms: resultMsg.duration_ms,
+                    num_turns: resultMsg.num_turns,
+                    usage: resultMsg.usage as any,
+                } as any
                 break
             }
 
@@ -201,8 +214,10 @@ export class SDKToLogConverter {
                 } as any
         }
 
-        // Update last UUID for parent tracking
-        if (logMessage && logMessage.type !== 'summary') {
+        // Update last UUID for parent tracking. Skip summary and result
+        // messages — they are terminal/meta records, not conversation content,
+        // and should not become the parent of the next message.
+        if (logMessage && logMessage.type !== 'summary' && logMessage.type !== 'result') {
             this.lastUuid = uuid
         }
 

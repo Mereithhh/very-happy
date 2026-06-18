@@ -309,9 +309,10 @@ function isInvisibleMessage(msg: Message): boolean {
         const known = knownTools[msg.tool.name as keyof typeof knownTools] as any;
         return known?.hidden === true;
     }
-    // Thinking messages render as null in MessageView
+    // Thinking blocks now render as a collapsible card (no longer hidden).
+    // Still drop empty agent text.
     if (msg.kind === 'agent-text') {
-        if (msg.isThinking) return true;
+        if (msg.isThinking) return msg.text.trim().length === 0;
         if (msg.text.trim().length === 0) return true;
     }
     return false;

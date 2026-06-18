@@ -176,7 +176,7 @@ describe('SDKToLogConverter', () => {
     })
 
     describe('Result messages', () => {
-        it('should not convert result messages', () => {
+        it('should convert result messages with per-turn metadata', () => {
             const sdkMessage = {
                 type: 'result',
                 subtype: 'success',
@@ -193,12 +193,20 @@ describe('SDKToLogConverter', () => {
                 session_id: 'result-session'
             } as unknown as SDKResultMessage
 
-            const logMessage = converter.convert(sdkMessage)
+            const logMessage = converter.convert(sdkMessage) as any
 
-            expect(logMessage).toBeNull()
+            expect(logMessage).not.toBeNull()
+            expect(logMessage.type).toBe('result')
+            expect(logMessage.subtype).toBe('success')
+            expect(logMessage.is_error).toBe(false)
+            expect(logMessage.result).toBe('Task completed')
+            expect(logMessage.total_cost_usd).toBe(0.05)
+            expect(logMessage.duration_ms).toBe(3000)
+            expect(logMessage.num_turns).toBe(5)
+            expect(logMessage.usage).toEqual({ input_tokens: 100, output_tokens: 200 })
         })
 
-        it('should not convert error results', () => {
+        it('should convert error results with metadata', () => {
             const sdkMessage = {
                 type: 'result',
                 subtype: 'error_max_turns',
@@ -210,10 +218,13 @@ describe('SDKToLogConverter', () => {
                 session_id: 'error-session'
             } as unknown as SDKResultMessage
 
-            const logMessage = converter.convert(sdkMessage)
+            const logMessage = converter.convert(sdkMessage) as any
 
-            // Error results are not converted to summaries
-            expect(logMessage).toBeFalsy()
+            expect(logMessage).not.toBeNull()
+            expect(logMessage.type).toBe('result')
+            expect(logMessage.is_error).toBe(true)
+            expect(logMessage.total_cost_usd).toBe(0.1)
+            expect(logMessage.num_turns).toBe(10)
         })
     })
 

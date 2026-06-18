@@ -28,6 +28,20 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     endsAt: z.number(),
 }), z.object({
     type: z.literal('ready'),
+    // Optional per-turn metadata carried from the SDK result message (via the
+    // session-protocol turn-end envelope). Lets the app render cost / duration
+    // / turn count / cumulative usage at the end of the completed turn.
+    turnMeta: z.object({
+        costUsd: z.number().optional(),
+        totalDurationMs: z.number().optional(),
+        numTurns: z.number().optional(),
+        usage: z.object({
+            inputTokens: z.number(),
+            outputTokens: z.number(),
+            cacheCreation: z.number().optional(),
+            cacheRead: z.number().optional(),
+        }).optional(),
+    }).optional(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -80,9 +94,22 @@ const sessionStartEventSchema = z.object({
     title: z.string().optional(),
 });
 
+const sessionTurnUsageSchema = z.object({
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_creation_input_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+});
+
 const sessionTurnEndEventSchema = z.object({
     t: z.literal('turn-end'),
     status: z.enum(['completed', 'failed', 'cancelled']),
+    // Optional per-turn metadata sourced from the Claude Code SDK result
+    // message. Present only on turns ended by a result event.
+    costUsd: z.number().optional(),
+    durationMs: z.number().optional(),
+    numTurns: z.number().optional(),
+    usage: sessionTurnUsageSchema.optional(),
 });
 
 const sessionStopEventSchema = z.object({
@@ -276,7 +303,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('output'),
     data: z.intersection(z.discriminatedUnion('type', [
         z.object({ type: z.literal('system') }),
-        z.object({ type: z.literal('result'), result: z.string().nullish(), subtype: z.string().nullish(), is_error: z.boolean().nullish() }),
+        z.object({ type: z.literal('result'), result: z.string().nullish(), subtype: z.string().nullish(), is_error: z.boolean().nullish(), total_cost_usd: z.number().nullish(), duration_ms: z.number().nullish(), num_turns: z.number().nullish(), usage: usageDataSchema.nullish() }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
@@ -565,13 +592,31 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'turn-end') {
+        const ev = envelope.ev;
+        const hasMeta = typeof ev.costUsd === 'number'
+            || typeof ev.durationMs === 'number'
+            || typeof ev.numTurns === 'number'
+            || ev.usage !== undefined;
+        const turnMeta = hasMeta ? {
+            ...(typeof ev.costUsd === 'number' ? { costUsd: ev.costUsd } : {}),
+            ...(typeof ev.durationMs === 'number' ? { totalDurationMs: ev.durationMs } : {}),
+            ...(typeof ev.numTurns === 'number' ? { numTurns: ev.numTurns } : {}),
+            ...(ev.usage ? {
+                usage: {
+                    inputTokens: ev.usage.input_tokens,
+                    outputTokens: ev.usage.output_tokens,
+                    ...(typeof ev.usage.cache_creation_input_tokens === 'number' ? { cacheCreation: ev.usage.cache_creation_input_tokens } : {}),
+                    ...(typeof ev.usage.cache_read_input_tokens === 'number' ? { cacheRead: ev.usage.cache_read_input_tokens } : {}),
+                }
+            } : {}),
+        } : undefined;
         return {
             id: messageId,
             localId,
             createdAt: messageCreatedAt,
             role: 'event',
             isSidechain: false,
-            content: { type: 'ready' },
+            content: turnMeta ? { type: 'ready', turnMeta } : { type: 'ready' },
             meta
         } satisfies NormalizedMessage;
     }

@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, TouchableOpacity, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
@@ -31,24 +32,40 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const router = useRouter();
     const { theme } = useUnistyles();
 
-    // For file-editing tools, navigate to file route instead of message detail
+    // Inline expand state. Tapping the header reveals the full tool detail in
+    // place (input / output / error) instead of pushing a full-screen route.
+    const [expanded, setExpanded] = React.useState(false);
+
+    // For file-editing tools, navigate to the dedicated file route instead of
+    // expanding inline — the file diff view is a better experience there.
     const fileEditTools = ['Edit', 'MultiEdit', 'Write'];
     const isFileEditTool = fileEditTools.includes(tool.name);
     const filePath = isFileEditTool && typeof tool.input?.file_path === 'string' ? tool.input.file_path : null;
 
-    // Create default onPress handler for navigation
+    // Default header press: explicit onPress wins; file-edit tools navigate;
+    // everything else toggles inline expansion.
     const handlePress = React.useCallback(() => {
         if (onPress) {
             onPress();
         } else if (sessionId && filePath) {
             router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
-        } else if (sessionId && messageId) {
+        } else {
+            setExpanded((e) => !e);
+        }
+    }, [onPress, sessionId, filePath, router]);
+
+    // Optional escape hatch to the full-screen detail page from the expanded
+    // region (kept for deep-linking / sharing).
+    const openFullPage = React.useCallback(() => {
+        if (sessionId && messageId) {
             router.push(`/session/${sessionId}/message/${messageId}`);
         }
-    }, [onPress, sessionId, messageId, filePath, router]);
+    }, [sessionId, messageId, router]);
 
-    // Enable pressable if either onPress is provided or we have navigation params
-    const isPressable = !!(onPress || (sessionId && filePath) || (sessionId && messageId));
+    // Header is pressable when it has any action: custom onPress, file
+    // navigation, or (the common case) inline expansion.
+    const canExpandInline = !onPress && !filePath;
+    const isPressable = !!(onPress || (sessionId && filePath) || canExpandInline);
 
     let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
@@ -174,6 +191,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             : null
     );
 
+    // Total duration for a finished tool: completedAt - (startedAt|createdAt).
+    const completedDurationMs = (
+        tool.state !== 'running' && tool.completedAt
+            ? tool.completedAt - (tool.startedAt ?? tool.createdAt)
+            : null
+    );
+    const showInlineExpandChevron = canExpandInline && !minimal && !isCompactTerminalTool;
+
     const renderHeaderContent = () => {
         if (isCompactTerminalTool) {
             return (
@@ -186,11 +211,15 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     <Text style={styles.compactCommandText} numberOfLines={1}>
                         {terminalCommand}
                     </Text>
-                    {tool.state === 'running' && (
+                    {tool.state === 'running' ? (
                         <View style={styles.elapsedContainer}>
                             <ElapsedView from={tool.createdAt} />
                         </View>
-                    )}
+                    ) : completedDurationMs !== null ? (
+                        <View style={styles.elapsedContainer}>
+                            <Text style={styles.elapsedText}>{formatDurationBadge(completedDurationMs)}</Text>
+                        </View>
+                    ) : null}
                     {statusIcon}
                 </View>
             );
@@ -209,18 +238,33 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                         </Text>
                     )}
                 </View>
-                {tool.state === 'running' && (
+                {tool.state === 'running' ? (
                     <View style={styles.elapsedContainer}>
                         <ElapsedView from={tool.createdAt} />
                     </View>
-                )}
+                ) : completedDurationMs !== null ? (
+                    <View style={styles.elapsedContainer}>
+                        <Text style={styles.elapsedText}>{formatDurationBadge(completedDurationMs)}</Text>
+                    </View>
+                ) : null}
                 {statusIcon}
+                {showInlineExpandChevron && (
+                    <Ionicons
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={theme.colors.textSecondary}
+                        style={styles.expandChevron}
+                    />
+                )}
             </View>
         );
     };
 
     return (
-        <View style={isCompactTerminalTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}>
+        <Animated.View
+            layout={LinearTransition.duration(200)}
+            style={isCompactTerminalTool ? styles.compactContainer : isInlineCodexPatch ? styles.inlineContainer : styles.container}
+        >
             {renderCardHeader ? (
                 isPressable ? (
                     <TouchableOpacity style={isCompactTerminalTool ? styles.compactHeader : styles.header} onPress={handlePress} activeOpacity={0.8}>
@@ -272,6 +316,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     );
                 }
 
+                // For inline-expandable tools, the verbose input/output is
+                // owned by the expanded region below — keep the collapsed card
+                // clean and avoid duplicating it here.
+                if (canExpandInline) {
+                    return null;
+                }
+
                 // Fall back to default view
                 return (
                     <View style={styles.content}>
@@ -293,12 +344,52 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 );
             })()}
 
+            {/* Inline expanded detail — replaces the old full-screen push.
+                Renders the raw tool input / output / error in place (the
+                specialized summary already shows above), with an escape hatch
+                to the full-screen page for deep-linking / sharing. */}
+            {canExpandInline && expanded && !isCompactTerminalTool && (
+                <Animated.View
+                    entering={FadeIn.duration(160)}
+                    exiting={FadeOut.duration(120)}
+                    style={styles.expandedDetail}
+                >
+                    {tool.input && (
+                        <ToolSectionView title={t('toolView.input')}>
+                            <CodeView code={JSON.stringify(tool.input, null, 2)} />
+                        </ToolSectionView>
+                    )}
+                    {tool.result != null && (
+                        <ToolSectionView title={t('toolView.output')}>
+                            <CodeView
+                                code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
+                            />
+                        </ToolSectionView>
+                    )}
+                    {sessionId && messageId ? (
+                        <Pressable onPress={openFullPage} hitSlop={6} style={styles.openFullPageRow}>
+                            <Ionicons name="open-outline" size={14} color={theme.colors.textLink} />
+                            <Text style={styles.openFullPageText}>Open full view</Text>
+                        </Pressable>
+                    ) : null}
+                </Animated.View>
+            )}
+
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
             {!isInlineCodexPatch ? renderPermissionFooter() : null}
-        </View>
+        </Animated.View>
     );
 });
+
+function formatDurationBadge(ms: number): string {
+    const seconds = ms / 1000;
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const totalSeconds = Math.round(seconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const rem = totalSeconds % 60;
+    return `${minutes}m${rem.toString().padStart(2, '0')}s`;
+}
 
 function ElapsedView(props: { from: number }) {
     const { from } = props;
@@ -416,5 +507,27 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingTop: 8,
         overflow: 'visible'
+    },
+    expandChevron: {
+        marginLeft: 4,
+    },
+    expandedDetail: {
+        paddingHorizontal: 12,
+        paddingTop: 8,
+        paddingBottom: 4,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.divider,
+        overflow: 'visible',
+    },
+    openFullPageRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 6,
+    },
+    openFullPageText: {
+        fontSize: 13,
+        color: theme.colors.textLink,
+        fontWeight: '500',
     },
 }));

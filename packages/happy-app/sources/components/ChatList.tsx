@@ -88,6 +88,50 @@ const ChatListInternal = React.memo((props: {
     );
     const displayItems = useGroupedMessages(props.messages, groupToolCalls, groupingOptions);
 
+    // Approximate thinking duration for each thinking block: time from the
+    // thinking block's createdAt to the next real output (assistant text or
+    // tool call) in the same turn. messages is newest-first, so the "next"
+    // output sits at a LOWER index (it arrived later in wall-clock time).
+    // createdAt values are reliable server/SDK timestamps (reducer never
+    // mutates them), so the delta is meaningful.
+    const thinkingDurations = React.useMemo(() => {
+        const map = new Map<string, number>();
+        const msgs = props.messages;
+        for (let i = 0; i < msgs.length; i++) {
+            const msg = msgs[i];
+            if (msg.kind !== 'agent-text' || !msg.isThinking) continue;
+            // Walk towards newer messages (decreasing index) for the next
+            // real output. Stop at a user-text (turn boundary).
+            for (let j = i - 1; j >= 0; j--) {
+                const cand = msgs[j];
+                if (cand.kind === 'user-text') break;
+                const isRealOutput =
+                    (cand.kind === 'agent-text' && !cand.isThinking && cand.text.trim().length > 0) ||
+                    cand.kind === 'tool-call';
+                if (isRealOutput) {
+                    const delta = cand.createdAt - msg.createdAt;
+                    if (delta > 0) map.set(msg.id, delta);
+                    break;
+                }
+            }
+        }
+        return map;
+    }, [props.messages]);
+
+    // Id of the most recent assistant text answer; we attach the metadata
+    // row (model + token usage) only to it, since latestUsage is a
+    // session-level snapshot and would be misleading on older turns.
+    const latestAgentTextId = React.useMemo(() => {
+        for (const msg of props.messages) {
+            if (msg.kind === 'agent-text' && !msg.isThinking && msg.text.trim().length > 0) {
+                return msg.id;
+            }
+        }
+        return null;
+    }, [props.messages]);
+
+    const latestUsage = session?.latestUsage ?? null;
+
     // Tracks which groups are explicitly collapsed. Groups start collapsed;
     // pending approval groups are the only ones we auto-expand.
     const [collapsedGroups, setCollapsedGroups] = React.useState<Set<string>>(() => {
@@ -247,15 +291,20 @@ const ChatListInternal = React.memo((props: {
                 />
             );
         }
+        const isThinking = item.message.kind === 'agent-text' && item.message.isThinking;
+        const isLatestAgentText = item.message.kind === 'agent-text' && item.message.id === latestAgentTextId;
         return (
             <MessageView
                 message={item.message}
                 metadata={props.metadata}
                 sessionId={props.sessionId}
+                thinkingDurationMs={isThinking ? thinkingDurations.get(item.message.id) : undefined}
+                showMetaRow={isLatestAgentText}
+                latestUsage={isLatestAgentText ? latestUsage : undefined}
                 onForkFromUserMessage={canFork ? handleForkFromMessage : undefined}
             />
         );
-    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, collapsedGroups, handleToggleGroup]);
+    }, [props.metadata, props.sessionId, canFork, handleForkFromMessage, collapsedGroups, handleToggleGroup, thinkingDurations, latestAgentTextId, latestUsage]);
 
     // In inverted FlatList, offset 0 = latest messages (visual bottom).
     // Offset increases as user scrolls up to see older messages.
