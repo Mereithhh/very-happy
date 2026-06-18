@@ -1,10 +1,28 @@
 import { z } from 'zod';
 
+// Notification feed types (must mirror server feed body schema + daemon producer)
+export const NotifTypeSchema = z.enum([
+    'permission_request',
+    'reply_done',
+    'input_needed',
+    'error',
+]);
+export type NotifType = z.infer<typeof NotifTypeSchema>;
+
 // Feed body schema matching backend exactly
 export const FeedBodySchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('friend_request'), uid: z.string() }),
     z.object({ kind: z.literal('friend_accepted'), uid: z.string() }),
-    z.object({ kind: z.literal('text'), text: z.string() })
+    z.object({ kind: z.literal('text'), text: z.string() }),
+    // Session notification produced by the daemon. `enc` is a base64 libsodium
+    // box bundle ([ephPub32|nonce24|ct]) of the plaintext body — see
+    // notificationDecrypt.ts. Only the holder of the account secret key can read it.
+    z.object({
+        kind: z.literal('notification'),
+        notifType: NotifTypeSchema,
+        sessionId: z.string(),
+        enc: z.string(),
+    }),
 ]);
 
 export type FeedBody = z.infer<typeof FeedBodySchema>;

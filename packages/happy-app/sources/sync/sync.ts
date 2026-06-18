@@ -47,7 +47,9 @@ import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateReque
 import { ArtifactEncryption } from './encryption/artifactEncryption';
 import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
-import { FeedItem } from './feedTypes';
+import { FeedItem, FeedBody } from './feedTypes';
+import { decryptNotificationEnc } from './encryption/notificationDecrypt';
+import { maybeShowNotification } from './webNotifications';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
@@ -2625,6 +2627,38 @@ class Sync {
             
             // Apply to storage (will handle repeatKey replacement)
             storage.getState().applyFeedItems([feedItem]);
+
+            // Web: surface incoming session notifications in the tab title and,
+            // when permitted + the tab is unfocused, as a browser Notification.
+            if (feedItem.body && feedItem.body.kind === 'notification') {
+                notifyUnreadMessage();
+                this.maybeRaiseWebNotification(feedItem.body);
+            }
+        }
+    }
+
+    /**
+     * Web-only: decrypt an incoming notification feed body and (subject to user
+     * prefs / focus) raise a foreground browser Notification. Best-effort —
+     * decryption failures are swallowed so a foreign/corrupt item never breaks
+     * the socket update loop.
+     */
+    private maybeRaiseWebNotification(body: Extract<FeedBody, { kind: 'notification' }>) {
+        if (Platform.OS !== 'web') return;
+        try {
+            const credentials = this.getCredentials();
+            if (!credentials) return;
+            const seed = decodeBase64(credentials.secret, 'base64url');
+            const payload = decryptNotificationEnc(body.enc, seed);
+            if (!payload) return;
+            maybeShowNotification({
+                type: body.notifType,
+                sessionId: body.sessionId,
+                title: payload.title,
+                body: payload.snippet,
+            });
+        } catch (e) {
+            log.log(`🔔 maybeRaiseWebNotification failed: ${e}`);
         }
     }
 

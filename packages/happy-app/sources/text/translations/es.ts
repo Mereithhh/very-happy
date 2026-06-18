@@ -29,6 +29,36 @@ export const es: TranslationStructure = {
         updates: 'Actualizaciones',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancelar',
@@ -660,6 +690,9 @@ export const es: TranslationStructure = {
         notAvailable: 'No disponible',
         linkNewDevice: 'Vincular nuevo dispositivo',
         linkNewDeviceSubtitle: 'Escanear código QR para vincular dispositivo',
+        password: 'Contraseña',
+        passwordSet: 'Establece una contraseña para iniciar sesión en la web',
+        passwordChange: 'Cambia la contraseña de tu cuenta',
         profile: 'Perfil',
         name: 'Nombre',
         github: 'GitHub',
@@ -772,6 +805,8 @@ export const es: TranslationStructure = {
         restoreWithSecretKey: 'Restaurar con clave secreta',
         whatsNew: 'Novedades',
         friends: 'Amigos',
+        loginWithPassword: 'Iniciar sesión con contraseña',
+        setPassword: 'Establecer contraseña',
     },
 
     welcome: {
@@ -781,6 +816,34 @@ export const es: TranslationStructure = {
         createAccount: 'Crear cuenta',
         linkOrRestoreAccount: 'Vincular o restaurar cuenta',
         loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
+        loginWithPassword: 'Iniciar sesión con contraseña',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Bienvenido de nuevo',
+        subtitle: 'Introduce tu contraseña para desbloquear tu cuenta en este dispositivo.',
+        passwordPlaceholder: 'Contraseña',
+        unlock: 'Desbloquear',
+        errorEmpty: 'Introduce tu contraseña.',
+        errorWrongPassword: 'Contraseña incorrecta. Inténtalo de nuevo.',
+        errorNoPassword: 'Aún no se ha establecido ninguna contraseña para esta cuenta. Vincula este dispositivo desde tu teléfono y luego establece una contraseña en Ajustes.',
+        errorNetwork: 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Establece una contraseña para iniciar sesión en nuevos dispositivos sin escanear un código QR. Tu contraseña nunca sale de este dispositivo: solo cifra la clave de tu cuenta.',
+        passwordLabel: 'Nueva contraseña',
+        passwordPlaceholder: 'Al menos 8 caracteres',
+        confirmLabel: 'Confirmar contraseña',
+        confirmPlaceholder: 'Vuelve a introducir la contraseña',
+        save: 'Guardar contraseña',
+        success: 'Tu contraseña se ha guardado.',
+        errorTooShort: ({ count }: { count: number }) => `La contraseña debe tener al menos ${count} caracteres.`,
+        errorMismatch: 'Las contraseñas no coinciden.',
+        errorNotAuthenticated: 'Debes haber iniciado sesión para establecer una contraseña.',
+        errorSaveFailed: 'No se pudo guardar tu contraseña. Inténtalo de nuevo.',
     },
 
     review: {

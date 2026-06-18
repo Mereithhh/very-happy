@@ -31,6 +31,36 @@ export const zhHant: TranslationStructure = {
         updates: '更新',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: '取消',
@@ -660,6 +690,9 @@ export const zhHant: TranslationStructure = {
         notAvailable: '不可用',
         linkNewDevice: '連結新裝置',
         linkNewDeviceSubtitle: '掃描 QR Code 來連結裝置',
+        password: '密碼',
+        passwordSet: '設定密碼以在網頁端登入',
+        passwordChange: '變更您的帳戶密碼',
         profile: '個人資料',
         name: '姓名',
         github: 'GitHub',
@@ -772,6 +805,8 @@ export const zhHant: TranslationStructure = {
         restoreWithSecretKey: '透過金鑰恢復',
         whatsNew: "更新日誌",
         friends: '好友',
+        loginWithPassword: '使用密碼登入',
+        setPassword: '設定密碼',
     },
 
     welcome: {
@@ -781,6 +816,34 @@ export const zhHant: TranslationStructure = {
         createAccount: '建立帳戶',
         linkOrRestoreAccount: '連結或恢復帳戶',
         loginWithMobileApp: '使用行動應用程式登入',
+        loginWithPassword: '使用密碼登入',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: '歡迎回來',
+        subtitle: '輸入密碼以在此裝置上解鎖您的帳戶。',
+        passwordPlaceholder: '密碼',
+        unlock: '解鎖',
+        errorEmpty: '請輸入您的密碼。',
+        errorWrongPassword: '密碼不正確，請重試。',
+        errorNoPassword: '此帳戶尚未設定密碼。請先從手機連結此裝置，然後在設定中設定密碼。',
+        errorNetwork: '無法連線到伺服器。請檢查您的網路連線後重試。',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: '設定密碼後，您無需掃描 QR Code 即可在新裝置上登入。您的密碼絕不會離開此裝置——它僅用於加密您的帳戶金鑰。',
+        passwordLabel: '新密碼',
+        passwordPlaceholder: '至少 8 個字元',
+        confirmLabel: '確認密碼',
+        confirmPlaceholder: '再次輸入密碼',
+        save: '儲存密碼',
+        success: '您的密碼已儲存。',
+        errorTooShort: ({ count }: { count: number }) => `密碼長度至少為 ${count} 個字元。`,
+        errorMismatch: '兩次輸入的密碼不一致。',
+        errorNotAuthenticated: '您必須登入後才能設定密碼。',
+        errorSaveFailed: '無法儲存您的密碼，請重試。',
     },
 
     review: {

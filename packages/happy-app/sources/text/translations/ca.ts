@@ -29,6 +29,36 @@ export const ca: TranslationStructure = {
         updates: 'Actualitzacions',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancel·la',
@@ -660,6 +690,9 @@ export const ca: TranslationStructure = {
         notAvailable: 'No disponible',
         linkNewDevice: 'Enllaça un nou dispositiu',
         linkNewDeviceSubtitle: 'Escaneja el codi QR per enllaçar el dispositiu',
+        password: 'Contrasenya',
+        passwordSet: 'Estableix una contrasenya per iniciar sessió al web',
+        passwordChange: 'Canvia la contrasenya del teu compte',
         profile: 'Perfil',
         name: 'Nom',
         github: 'GitHub',
@@ -772,6 +805,8 @@ export const ca: TranslationStructure = {
         restoreWithSecretKey: 'Restaura amb clau secreta',
         whatsNew: 'Novetats',
         friends: 'Amics',
+        loginWithPassword: 'Inicia sessió amb contrasenya',
+        setPassword: 'Estableix una contrasenya',
     },
 
     welcome: {
@@ -781,6 +816,34 @@ export const ca: TranslationStructure = {
         createAccount: 'Crea un compte',
         linkOrRestoreAccount: 'Enllaça o restaura un compte',
         loginWithMobileApp: 'Inicia sessió amb l\'aplicació mòbil',
+        loginWithPassword: 'Inicia sessió amb contrasenya',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Benvingut de nou',
+        subtitle: 'Introdueix la teva contrasenya per desbloquejar el teu compte en aquest dispositiu.',
+        passwordPlaceholder: 'Contrasenya',
+        unlock: 'Desbloqueja',
+        errorEmpty: 'Introdueix la teva contrasenya.',
+        errorWrongPassword: 'Contrasenya incorrecta. Torna-ho a provar.',
+        errorNoPassword: 'Encara no s\'ha establert cap contrasenya per a aquest compte. Enllaça aquest dispositiu des del teu telèfon i després estableix una contrasenya a Configuració.',
+        errorNetwork: 'No s\'ha pogut connectar amb el servidor. Comprova la connexió i torna-ho a provar.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Estableix una contrasenya per iniciar sessió en dispositius nous sense escanejar un codi QR. La teva contrasenya mai no surt d\'aquest dispositiu: només xifra la clau del teu compte.',
+        passwordLabel: 'Contrasenya nova',
+        passwordPlaceholder: 'Com a mínim 8 caràcters',
+        confirmLabel: 'Confirma la contrasenya',
+        confirmPlaceholder: 'Torna a introduir la contrasenya',
+        save: 'Desa la contrasenya',
+        success: 'La teva contrasenya s\'ha desat.',
+        errorTooShort: ({ count }: { count: number }) => `La contrasenya ha de tenir com a mínim ${count} caràcters.`,
+        errorMismatch: 'Les contrasenyes no coincideixen.',
+        errorNotAuthenticated: 'Has d\'haver iniciat sessió per establir una contrasenya.',
+        errorSaveFailed: 'No s\'ha pogut desar la teva contrasenya. Torna-ho a provar.',
     },
 
     review: {

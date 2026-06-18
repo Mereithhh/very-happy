@@ -38,13 +38,13 @@ function ub64(s: string): Uint8Array {
 async function deriveKEK(password: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
     const baseKey = await crypto.subtle.importKey(
         'raw',
-        new TextEncoder().encode(password),
+        new TextEncoder().encode(password) as BufferSource,
         'PBKDF2',
         false,
         ['deriveKey'],
     );
     return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
         baseKey,
         { name: 'AES-GCM', length: 256 },
         false,
@@ -57,7 +57,7 @@ export async function createPasswordBlob(password: string, accountSecretKey: Uin
     const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
     const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
     const kek = await deriveKEK(password, salt, PBKDF2_ITERATIONS);
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, kek, accountSecretKey));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, kek, accountSecretKey as BufferSource));
     return { v: 1, kdf: 'PBKDF2-SHA256', iterations: PBKDF2_ITERATIONS, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
 }
 
@@ -68,7 +68,7 @@ export async function recoverAccountKey(password: string, blob: PasswordBlob): P
     const ct = ub64(blob.ct);
     const kek = await deriveKEK(password, salt, blob.iterations);
     try {
-        return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, kek, ct));
+        return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, kek, ct as BufferSource));
     } catch {
         return null; // 错密码 / blob 损坏
     }

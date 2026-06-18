@@ -29,6 +29,36 @@ export const pt: TranslationStructure = {
         updates: 'Atualizações',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancelar',
@@ -659,6 +689,9 @@ export const pt: TranslationStructure = {
         notAvailable: 'Não disponível',
         linkNewDevice: 'Vincular novo dispositivo',
         linkNewDeviceSubtitle: 'Escanear código QR para vincular dispositivo',
+        password: 'Senha',
+        passwordSet: 'Defina uma senha para entrar na web',
+        passwordChange: 'Altere a senha da sua conta',
         profile: 'Perfil',
         name: 'Nome',
         github: 'GitHub',
@@ -771,6 +804,8 @@ export const pt: TranslationStructure = {
         restoreWithSecretKey: 'Restaurar com chave secreta',
         whatsNew: 'Novidades',
         friends: 'Amigos',
+        loginWithPassword: 'Entrar com senha',
+        setPassword: 'Definir senha',
     },
 
     welcome: {
@@ -780,6 +815,34 @@ export const pt: TranslationStructure = {
         createAccount: 'Criar conta',
         linkOrRestoreAccount: 'Vincular ou restaurar conta',
         loginWithMobileApp: 'Fazer login com aplicativo móvel',
+        loginWithPassword: 'Entrar com senha',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Bem-vindo de volta',
+        subtitle: 'Digite sua senha para desbloquear sua conta neste dispositivo.',
+        passwordPlaceholder: 'Senha',
+        unlock: 'Desbloquear',
+        errorEmpty: 'Digite sua senha.',
+        errorWrongPassword: 'Senha incorreta. Tente novamente.',
+        errorNoPassword: 'Ainda não há senha definida para esta conta. Vincule este dispositivo pelo seu telefone e depois defina uma senha nas Configurações.',
+        errorNetwork: 'Não foi possível acessar o servidor. Verifique sua conexão e tente novamente.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Defina uma senha para fazer login em novos dispositivos sem escanear um código QR. Sua senha nunca sai deste dispositivo — ela apenas criptografa a chave da sua conta.',
+        passwordLabel: 'Nova senha',
+        passwordPlaceholder: 'Pelo menos 8 caracteres',
+        confirmLabel: 'Confirmar senha',
+        confirmPlaceholder: 'Digite a senha novamente',
+        save: 'Salvar senha',
+        success: 'Sua senha foi salva.',
+        errorTooShort: ({ count }: { count: number }) => `A senha deve ter pelo menos ${count} caracteres.`,
+        errorMismatch: 'As senhas não coincidem.',
+        errorNotAuthenticated: 'Você precisa estar conectado para definir uma senha.',
+        errorSaveFailed: 'Não foi possível salvar sua senha. Tente novamente.',
     },
 
     review: {

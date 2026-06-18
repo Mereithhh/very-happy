@@ -148,6 +148,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
                         ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
                     }
+                    // Record top-level assistant text so turn-end can fire a
+                    // `reply_done` notification with a meaningful snippet.
+                    // Ignore sidechain (sub-agent) output — only the main reply.
+                    if (c.type === 'text' && (umessage.parent_tool_use_id ?? null) === null) {
+                        session.noteAssistantOutput(typeof c.text === 'string' ? c.text : undefined);
+                    }
                 }
             }
         }
@@ -420,7 +426,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     onReady: () => {
                         session.client.closeClaudeSessionTurn('completed');
-                        if (!pending && session.queue.size() === 0) {
+                        const idle = !pending && session.queue.size() === 0;
+                        // Account-encrypted feed notification on turn end:
+                        // reply_done if Claude produced output, else input_needed
+                        // when the session is idle awaiting the user (best-effort).
+                        session.onTurnEnd(idle);
+                        if (idle) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),
@@ -447,6 +458,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 if (!exitReason) {
                     session.client.closeClaudeSessionTurn('failed');
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    // Account-encrypted feed notification (best-effort).
+                    session.onSessionError(e instanceof Error ? e.message : 'Process exited unexpectedly');
                     continue;
                 }
             } finally {

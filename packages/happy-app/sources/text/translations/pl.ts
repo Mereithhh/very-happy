@@ -40,6 +40,36 @@ export const pl: TranslationStructure = {
         updates: 'Aktualizacje',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Anuluj',
@@ -676,6 +706,9 @@ export const pl: TranslationStructure = {
         notAvailable: 'Niedostępne',
         linkNewDevice: 'Połącz nowe urządzenie',
         linkNewDeviceSubtitle: 'Zeskanuj kod QR, aby połączyć urządzenie',
+        password: 'Hasło',
+        passwordSet: 'Ustaw hasło, aby logować się w przeglądarce',
+        passwordChange: 'Zmień hasło swojego konta',
         profile: 'Profil',
         name: 'Nazwa',
         github: 'GitHub',
@@ -788,6 +821,8 @@ export const pl: TranslationStructure = {
         restoreWithSecretKey: 'Przywróć kluczem tajnym',
         whatsNew: 'Co nowego',
         friends: 'Przyjaciele',
+        loginWithPassword: 'Logowanie hasłem',
+        setPassword: 'Ustaw hasło',
     },
 
     welcome: {
@@ -797,6 +832,34 @@ export const pl: TranslationStructure = {
         createAccount: 'Utwórz konto',
         linkOrRestoreAccount: 'Połącz lub przywróć konto',
         loginWithMobileApp: 'Zaloguj się przez aplikację mobilną',
+        loginWithPassword: 'Zaloguj się hasłem',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Witaj ponownie',
+        subtitle: 'Wprowadź hasło, aby odblokować konto na tym urządzeniu.',
+        passwordPlaceholder: 'Hasło',
+        unlock: 'Odblokuj',
+        errorEmpty: 'Wprowadź hasło.',
+        errorWrongPassword: 'Nieprawidłowe hasło. Spróbuj ponownie.',
+        errorNoPassword: 'Dla tego konta nie ustawiono jeszcze hasła. Połącz to urządzenie z telefonu, a następnie ustaw hasło w Ustawieniach.',
+        errorNetwork: 'Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Ustaw hasło, aby logować się na nowych urządzeniach bez skanowania kodu QR. Twoje hasło nigdy nie opuszcza tego urządzenia — służy jedynie do zaszyfrowania klucza Twojego konta.',
+        passwordLabel: 'Nowe hasło',
+        passwordPlaceholder: 'Co najmniej 8 znaków',
+        confirmLabel: 'Potwierdź hasło',
+        confirmPlaceholder: 'Wprowadź hasło ponownie',
+        save: 'Zapisz hasło',
+        success: 'Twoje hasło zostało zapisane.',
+        errorTooShort: ({ count }: { count: number }) => `Hasło musi mieć co najmniej ${count} znaków.`,
+        errorMismatch: 'Hasła nie są zgodne.',
+        errorNotAuthenticated: 'Aby ustawić hasło, musisz być zalogowany.',
+        errorSaveFailed: 'Nie można zapisać hasła. Spróbuj ponownie.',
     },
 
     review: {

@@ -53,6 +53,15 @@ model Account {
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
     VoiceConversation   VoiceConversation[]
+    AccountUnlock       AccountUnlock?
+}
+
+model AccountUnlock {
+    accountId String   @id
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    /// [PasswordBlob]
+    blob      Json
+    updatedAt DateTime @updatedAt
 }
 
 model TerminalAuthRequest {

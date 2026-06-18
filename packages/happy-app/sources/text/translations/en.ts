@@ -44,6 +44,36 @@ export const en: TranslationStructure = {
         updates: 'Updates',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancel',
@@ -674,6 +704,9 @@ export const en: TranslationStructure = {
         notAvailable: 'Not available',
         linkNewDevice: 'Link New Device',
         linkNewDeviceSubtitle: 'Scan QR code to link device',
+        password: 'Password',
+        passwordSet: 'Set a password to sign in on the web',
+        passwordChange: 'Change your account password',
         profile: 'Profile',
         name: 'Name',
         github: 'GitHub',
@@ -786,6 +819,8 @@ export const en: TranslationStructure = {
         restoreWithSecretKey: 'Restore with Secret Key',
         whatsNew: "What's New",
         friends: 'Friends',
+        loginWithPassword: 'Login with Password',
+        setPassword: 'Set Password',
     },
 
     welcome: {
@@ -795,6 +830,34 @@ export const en: TranslationStructure = {
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',
         loginWithMobileApp: 'Login with mobile app',
+        loginWithPassword: 'Login with password',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'Welcome back',
+        subtitle: 'Enter your password to unlock your account on this device.',
+        passwordPlaceholder: 'Password',
+        unlock: 'Unlock',
+        errorEmpty: 'Please enter your password.',
+        errorWrongPassword: 'Incorrect password. Please try again.',
+        errorNoPassword: 'No password is set for this account yet. Link this device from your phone, then set a password in Settings.',
+        errorNetwork: 'Could not reach the server. Check your connection and try again.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Set a password to sign in on new devices without scanning a QR code. Your password never leaves this device — it only encrypts your account key.',
+        passwordLabel: 'New password',
+        passwordPlaceholder: 'At least 8 characters',
+        confirmLabel: 'Confirm password',
+        confirmPlaceholder: 'Re-enter password',
+        save: 'Save password',
+        success: 'Your password has been saved.',
+        errorTooShort: ({ count }: { count: number }) => `Password must be at least ${count} characters.`,
+        errorMismatch: 'Passwords do not match.',
+        errorNotAuthenticated: 'You must be signed in to set a password.',
+        errorSaveFailed: 'Could not save your password. Please try again.',
     },
 
     review: {

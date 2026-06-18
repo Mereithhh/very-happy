@@ -40,6 +40,36 @@ export const ru: TranslationStructure = {
         updates: 'Обновления',
     },
 
+    notifications: {
+        title: 'Notifications',
+        settingsSubtitle: 'Browser alerts for session events (web)',
+        webOnly: 'Web only',
+        webOnlyDescription: 'Browser notifications are only available on the web app.',
+        browserNotifications: 'Browser Notifications',
+        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
+        enable: 'Enable Notifications',
+        enabledOn: 'On — alerts will show when this tab is unfocused',
+        enabledOff: 'Off',
+        unsupported: 'Not supported in this browser',
+        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
+        types: 'Alert Types',
+        typesDescription: 'Choose which session events trigger a notification.',
+        type_permission_request: 'Permission requests',
+        type_permission_request_desc: 'A session is asking to run a tool',
+        type_reply_done: 'Reply finished',
+        type_reply_done_desc: 'The agent finished responding',
+        type_input_needed: 'Input needed',
+        type_input_needed_desc: 'A session is waiting for your input',
+        type_error: 'Errors',
+        type_error_desc: 'A session ran into an error',
+        quietHours: 'Do Not Disturb',
+        quietHoursDescription: 'Silence notifications during a set time window.',
+        quietHoursEnable: 'Enable quiet hours',
+        quietHoursStart: 'From',
+        quietHoursEnd: 'To',
+        unknownSession: 'Session',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Отмена',
@@ -676,6 +706,9 @@ export const ru: TranslationStructure = {
         notAvailable: 'Недоступно',
         linkNewDevice: 'Привязать новое устройство',
         linkNewDeviceSubtitle: 'Отсканируйте QR-код для привязки устройства',
+        password: 'Пароль',
+        passwordSet: 'Установите пароль для входа в вебе',
+        passwordChange: 'Измените пароль вашего аккаунта',
         profile: 'Профиль',
         name: 'Имя',
         github: 'GitHub',
@@ -776,6 +809,8 @@ export const ru: TranslationStructure = {
         restoreWithSecretKey: 'Восстановить секретным ключом',
         whatsNew: 'Что нового',
         friends: 'Друзья',
+        loginWithPassword: 'Вход по паролю',
+        setPassword: 'Установить пароль',
     },
 
     welcome: {
@@ -785,6 +820,34 @@ export const ru: TranslationStructure = {
         createAccount: 'Создать аккаунт',
         linkOrRestoreAccount: 'Связать или восстановить аккаунт',
         loginWithMobileApp: 'Войти через мобильное приложение',
+        loginWithPassword: 'Вход по паролю',
+    },
+
+    passwordLogin: {
+        // Password login screen (web)
+        title: 'С возвращением',
+        subtitle: 'Введите пароль, чтобы разблокировать аккаунт на этом устройстве.',
+        passwordPlaceholder: 'Пароль',
+        unlock: 'Разблокировать',
+        errorEmpty: 'Пожалуйста, введите пароль.',
+        errorWrongPassword: 'Неверный пароль. Попробуйте ещё раз.',
+        errorNoPassword: 'Для этого аккаунта пароль ещё не установлен. Свяжите это устройство с телефона, затем установите пароль в настройках.',
+        errorNetwork: 'Не удалось связаться с сервером. Проверьте подключение и попробуйте снова.',
+    },
+
+    setPassword: {
+        // Set / change account password (from Settings, while logged in)
+        intro: 'Установите пароль, чтобы входить на новых устройствах без сканирования QR-кода. Ваш пароль никогда не покидает это устройство — он лишь шифрует ключ вашего аккаунта.',
+        passwordLabel: 'Новый пароль',
+        passwordPlaceholder: 'Не менее 8 символов',
+        confirmLabel: 'Подтвердите пароль',
+        confirmPlaceholder: 'Введите пароль повторно',
+        save: 'Сохранить пароль',
+        success: 'Ваш пароль сохранён.',
+        errorTooShort: ({ count }: { count: number }) => `Пароль должен содержать не менее ${count} символов.`,
+        errorMismatch: 'Пароли не совпадают.',
+        errorNotAuthenticated: 'Чтобы установить пароль, необходимо войти в аккаунт.',
+        errorSaveFailed: 'Не удалось сохранить пароль. Попробуйте ещё раз.',
     },
 
     review: {

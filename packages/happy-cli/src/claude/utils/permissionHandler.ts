@@ -252,6 +252,9 @@ export class PermissionHandler {
                 }
             }));
 
+            // Account-encrypted feed notification (best-effort).
+            this.session.notificationProducer?.permissionRequest(toolName);
+
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });
     }

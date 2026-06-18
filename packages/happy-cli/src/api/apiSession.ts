@@ -677,6 +677,15 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Returns the latest agent state known to the client (requests,
+     * controlledByUser, etc.). Used by the notification producer to classify
+     * turn-end events.
+     */
+    getAgentState(): AgentState | null {
+        return this.agentState;
+    }
+
+    /**
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
      */
