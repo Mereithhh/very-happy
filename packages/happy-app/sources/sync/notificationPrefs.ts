@@ -78,8 +78,19 @@ function parsePrefs(raw: string | undefined): NotificationPrefs {
     }
 }
 
+// Cached snapshot so useSyncExternalStore's getSnapshot returns a STABLE
+// reference when the underlying value is unchanged. Returning a fresh object
+// every call caused an infinite render loop (React error #185).
+let _cachedRaw: string | undefined | null = null; // null = never read
+let _cachedPrefs: NotificationPrefs = DEFAULT_PREFS;
+
 export function getNotificationPrefs(): NotificationPrefs {
-    return parsePrefs(store.getString(KEY));
+    const raw = store.getString(KEY);
+    if (raw !== _cachedRaw) {
+        _cachedRaw = raw;
+        _cachedPrefs = parsePrefs(raw);
+    }
+    return _cachedPrefs;
 }
 
 // --- Lightweight subscription so React + the notifier stay in sync ---
