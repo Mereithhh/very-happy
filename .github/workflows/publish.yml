@@ -36,6 +36,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The git tag is the single source of truth for the published version:
+      # `git tag v0.1.1 && git push origin v0.1.1` publishes 0.1.1. On
+      # workflow_dispatch (no tag) we keep whatever is in package.json.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Publishing version $VERSION (from tag $GITHUB_REF_NAME)"
+          cd packages/happy-cli
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
       - name: Build very-happy-cli
         run: pnpm --filter very-happy-cli build
 
