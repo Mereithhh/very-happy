@@ -20,6 +20,8 @@ import {
     requestNotificationPermission,
     getNotificationPermission,
 } from '@/sync/webNotifications';
+import { enableWebPush, disableWebPush, isWebPushSupported } from '@/sync/webPush';
+import { useAuth } from '@/auth/AuthContext';
 import type { NotifType } from '@/sync/feedTypes';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -69,6 +71,7 @@ export default function NotificationsSettingsScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const prefs = useNotificationPrefs();
+    const auth = useAuth();
     const [permission, setPermission] = React.useState<NotificationPermission | 'unsupported'>(getNotificationPermission());
 
     const supported = permission !== 'unsupported';
@@ -82,11 +85,21 @@ export default function NotificationsSettingsScreen() {
             // requestNotificationPermission flips the master flag on grant.
             if (result !== 'granted') {
                 setNotificationPrefs({ ...getNotificationPrefs(), enabled: false });
+                return;
+            }
+            // Also opt into background push (Service Worker + Web Push) so
+            // notifications arrive when no tab is open. Best-effort — foreground
+            // notifications still work even if this can't subscribe.
+            if (isWebPushSupported() && auth.credentials) {
+                void enableWebPush(auth.credentials);
             }
         } else {
             setNotificationPrefs({ ...getNotificationPrefs(), enabled: false });
+            if (auth.credentials) {
+                void disableWebPush(auth.credentials);
+            }
         }
-    }, []);
+    }, [auth.credentials]);
 
     // Non-web platforms: feature is web-only.
     if (Platform.OS !== 'web') {

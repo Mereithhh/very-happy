@@ -6,6 +6,7 @@ import { useHeaderHeight } from '@/utils/responsive';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
+import { AttentionBar } from './AttentionBar';
 import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
@@ -87,6 +88,9 @@ export const SidebarView = React.memo(() => {
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="sidebar" />
             )}
+
+            {/* "Needs attention" queue — sessions blocked on a permission request */}
+            <AttentionBar />
 
             {/* Sessions list */}
             <MainView variant="sidebar" />
