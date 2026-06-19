@@ -397,6 +397,12 @@ export const SettingsView = React.memo(function SettingsView() {
                     />
                 )}
                 <Item
+                    title="Diagnostics"
+                    subtitle="Relay, machines & daemon health"
+                    icon={<Ionicons name="pulse-outline" size={29} color="#34C759" />}
+                    onPress={() => router.push('/settings/diagnostics' as any)}
+                />
+                <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}

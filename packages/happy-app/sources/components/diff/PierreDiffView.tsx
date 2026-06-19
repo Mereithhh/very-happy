@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, ScrollView, Text, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { DiffView } from '@/components/diff/DiffView';
 import { Typography } from '@/constants/Typography';
@@ -198,8 +198,8 @@ function PlainPatchView({ patch, wrapLines }: { patch: string; wrapLines: boolea
 
     const lines = React.useMemo(() => patch.split('\n'), [patch]);
 
-    return (
-        <View style={{ backgroundColor: theme.colors.surface, flex: 1, overflow: 'hidden' }}>
+    const rows = (
+        <>
             {lines.map((line, i) => {
                 const first = line.charAt(0);
                 const isFileHeader =
@@ -242,12 +242,40 @@ function PlainPatchView({ patch, wrapLines }: { patch: string; wrapLines: boolea
                             backgroundColor: bg,
                             color: fg,
                             paddingHorizontal: 8,
+                            // In horizontal-scroll mode let each line size to its
+                            // content so the full text is reachable; in wrap mode
+                            // let it fill the column so it wraps.
+                            alignSelf: wrapLines ? 'stretch' : 'flex-start',
                         }}
                     >
                         {line.length === 0 ? ' ' : line}
                     </Text>
                 );
             })}
-        </View>
+        </>
+    );
+
+    // wrap mode: lines wrap within the column (no truncation, no horizontal scroll).
+    if (wrapLines) {
+        return (
+            <View style={{ backgroundColor: theme.colors.surface, flex: 1 }}>
+                {rows}
+            </View>
+        );
+    }
+
+    // scroll mode: previously `overflow:hidden` + numberOfLines=1 silently
+    // truncated long lines. Wrap in a horizontal ScrollView so the full line is
+    // actually reachable (the dedicated mobile fix is ToolDiffView defaulting
+    // narrow screens to wrap).
+    return (
+        <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            style={{ backgroundColor: theme.colors.surface, flex: 1 }}
+            contentContainerStyle={{ flexDirection: 'column', minWidth: '100%' }}
+        >
+            {rows}
+        </ScrollView>
     );
 }

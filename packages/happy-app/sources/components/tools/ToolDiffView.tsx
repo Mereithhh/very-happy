@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { useSetting } from '@/sync/storage';
 
@@ -28,13 +28,19 @@ export const ToolDiffView = React.memo<ToolDiffViewProps>(({
 }) => {
     const wrapLines = useSetting('wrapLinesInDiffs');
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
+    const { width } = useWindowDimensions();
 
     const effectiveFileName = fileName ?? 'file.txt';
+
+    // On narrow (phone) screens, default to wrapping regardless of the setting:
+    // horizontal-scrolling a diff inside the vertically-scrolling chat is fiddly
+    // on touch, and the old non-wrap path truncated long lines outright.
+    const effectiveWrap = wrapLines || width < 768;
 
     // Chat tool diffs are always inline unified — the split view lives on the
     // dedicated InlineFileDiff pane (controlled via the diffStyle setting).
     const common = {
-        overflow: wrapLines ? ('wrap' as const) : ('scroll' as const),
+        overflow: effectiveWrap ? ('wrap' as const) : ('scroll' as const),
         disableLineNumbers: !(showLineNumbers ?? showLineNumbersInToolViews),
         disableFileHeader: true,
         diffStyle: 'unified' as const,
