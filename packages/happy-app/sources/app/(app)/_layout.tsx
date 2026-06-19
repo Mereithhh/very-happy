@@ -182,6 +182,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="restore/signup"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Create account',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="settings/password"
                 options={{
                     headerShown: true,
