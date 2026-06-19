@@ -76,3 +76,6 @@ happy-workspaces/
 
 # third party tools
 .supervibe/
+
+# local pnpm store (from filtered installs)
+.pnpm-store/
