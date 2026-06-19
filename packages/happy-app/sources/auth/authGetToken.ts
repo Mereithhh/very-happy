@@ -4,10 +4,18 @@ import { encodeBase64 } from "../encryption/base64";
 import { getServerUrl } from "@/sync/serverConfig";
 import { getHappyClientId } from "@/sync/apiSocket";
 
-export async function authGetToken(secret: Uint8Array) {
+export async function authGetToken(secret: Uint8Array, inviteCode?: string) {
     const API_ENDPOINT = getServerUrl();
     const { challenge, signature, publicKey } = authChallenge(secret);
-    const response = await axios.post(`${API_ENDPOINT}/v1/auth`, { challenge: encodeBase64(challenge), signature: encodeBase64(signature), publicKey: encodeBase64(publicKey) }, {
+    const body: Record<string, string> = {
+        challenge: encodeBase64(challenge),
+        signature: encodeBase64(signature),
+        publicKey: encodeBase64(publicKey),
+    };
+    // Only sent on signup; the server requires it when creating a NEW account
+    // under invite-only mode, and ignores it for existing accounts.
+    if (inviteCode) body.inviteCode = inviteCode;
+    const response = await axios.post(`${API_ENDPOINT}/v1/auth`, body, {
         headers: {
             'X-Happy-Client': getHappyClientId(),
         }
