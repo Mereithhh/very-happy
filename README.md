@@ -1,86 +1,79 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="/.github/logotype-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="/.github/logotype-light.png">
-    <img src="/.github/logotype-dark.png" width="400" alt="Happy">
+    <source media="(prefers-color-scheme: dark)" srcset="/.github/logotype-light.png">
+    <source media="(prefers-color-scheme: light)" srcset="/.github/logotype-dark.png">
+    <img src="/.github/logotype-dark.png" width="360" alt="Very Happy">
   </picture>
 </div>
 
 <h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
+  Drive Claude Code from any browser
 </h1>
 
 <h4 align="center">
-Use Claude Code or Codex from anywhere with end-to-end encryption.
+Sign in with a password, pick up your coding sessions on any device — no app store, no QR code.
 </h4>
 
-<div align="center">
-  
-[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+---
 
-</div>
+**Very Happy** is a friendly fork of [slopus/happy](https://github.com/slopus/happy) (MIT) — a web + mobile client and relay that lets you watch and steer [Claude Code](https://www.anthropic.com/claude-code) from your phone or any browser. The upstream project is excellent; Very Happy reworks it around a different trade-off — **convenience over end-to-end encryption** — and adds a heavily polished web UI.
 
-<img width="5178" height="2364" alt="github" src="/.github/header.png" />
+## What's different from Happy
 
+Upstream Happy is end-to-end encrypted and pairs devices by scanning a QR code. Very Happy deliberately takes the opposite stance to make self-hosting for a small, trusted group effortless:
 
-<h3 align="center">
-Step 1: Download App
-</h3>
+- 🔑 **Password accounts, no pairing** — create an account with a username + password and sign in on any device. No QR code, no re-linking. Your sessions follow you everywhere.
+- 🔁 **Multi-device sync** — start on your laptop, keep going on your phone, finish in a browser tab. Same session, instantly.
+- 🌐 **Web-first** — runs entirely in the browser. Install it to your home screen as a PWA if you want; you never need an app store.
+- 🔔 **Web push notifications** — get notified when your agent needs permission or finishes, even with the tab closed (iOS 16.4+ as an installed PWA).
+- 🧠 **Reworked session UI** — inline thinking, per-turn model / token usage / cost / duration, tool calls that expand to the full command and output, automatic session titles (with manual rename), a file sidebar, live status bar, context-usage % with one-tap compact, and rich permission cards with command/diff context and batch approve.
+- ⚡ **Latest models** — bumped to a current Claude Agent SDK so remote sessions run the newest models (e.g. Opus 4.8), not whatever an app-store build happened to ship.
+- 🏠 **Self-hostable & invite-gated** — bring your own relay and gate signups with invite codes.
 
-<div align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
-</div>
+Everything else — the CLI wrapper, the agent runtime, the two execution paths (interactive vs. SDK) — comes from upstream Happy and keeps working.
 
-<h3 align="center">
-Step 2: Install CLI on your computer
-</h3>
+> [!IMPORTANT]
+> **Very Happy is server-trusted, not end-to-end encrypted.** Your sessions are relayed through the server, and its operator can decrypt and read their contents. This is an intentional trade-off for password-based multi-device sync. Only sign up on an instance run by someone you trust, and only host an instance for people who trust you. If you need true end-to-end encryption, use [upstream Happy](https://github.com/slopus/happy) instead.
 
-```bash
-npm install -g happy
-```
+## Getting started
 
-> Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
+**Step 1 — Install Claude Code** so the `claude` command is on your `PATH`.
 
-<h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
-</h3>
+**Step 2 — Install the Very Happy CLI** on the machine you want to control:
 
 ```bash
-# Instead of claude, use:
-happy claude
-# or
-happy codex
+npm install -g very-happy-cli
 ```
 
-## How does it work?
+**Step 3 — Run it** (it's pre-configured to connect to the default server):
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+```bash
+very-happy
+```
 
-## 🔥 Why Happy Coder?
+Then open the web app, create an account, and your machine shows up. To point the CLI at your own relay, set `HAPPY_SERVER_URL`.
 
-- 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
-- ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
-- 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
-- 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
+## How it works
 
-## 📦 Project Components
+```
+web client ──▶ relay server ──socket──▶ very-happy CLI daemon ──spawn──▶ claude (Claude Code)
+```
 
-- **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
-- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
-- **[Happy Agent](https://github.com/slopus/happy/tree/main/packages/happy-agent)** - Remote agent control CLI (create, send, monitor sessions)
-- **[Happy Server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
+On your computer you run `very-happy` instead of `claude`. When you take control from your phone or a browser, the daemon runs Claude Code via the Claude Agent SDK in remote mode and streams everything back to you. Same engine, tools, skills, subagents, hooks and MCP as the real CLI.
 
-## 🏠 Who We Are
+## Project components
 
-We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
+- **happy-app** — web + mobile client (Expo)
+- **happy-cli** — the `very-happy` command-line wrapper for Claude Code
+- **happy-server** — relay + sync backend, and it also hosts the web app
+- **happy-agent** / **happy-wire** — remote agent control + shared protocol
 
-## 📚 Documentation & Contributing
+## Self-hosting & releases
 
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute, PR guidelines, and development setup
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
+See [`RELEASING.md`](RELEASING.md) for the npm + CI release runbook (tag-driven publish, manual server/web deploy).
 
-## License
+## Credits & license
 
-MIT License - see [LICENSE](LICENSE) for details.
+Very Happy is a fork of [**slopus/happy**](https://github.com/slopus/happy) — huge thanks to the Happy authors and contributors for the foundation. Licensed under the MIT License; see [LICENSE](LICENSE).
+</content>
+</invoke>

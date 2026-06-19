@@ -1,20 +1,30 @@
 /**
- * WelcomeInstall — the "how to use it on your computer" landing block shown on
- * the unauthenticated welcome screen (web only).
+ * WelcomeInstall — the landing block shown on the unauthenticated welcome
+ * screen (web only).
  *
- * Explains the model in three steps: install Claude Code, install the
- * very-happy CLI from npm (pre-configured to this server), run it. Includes an
- * honest disclosure that this is a server-trusted relay.
+ * Tells the very-happy story (a friendly fork of Happy, with what it adds),
+ * then explains how to get going on your computer in three steps: install
+ * Claude Code, install the very-happy CLI from npm (pre-configured to this
+ * server), run it. Closes with an honest server-trusted disclosure.
  */
 
 import * as React from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
 const CLI_INSTALL = 'npm i -g very-happy-cli';
 const CLI_RUN = 'very-happy';
+const REPO_URL = 'https://github.com/Mereithhh/very-happy';
+const UPSTREAM_URL = 'https://github.com/slopus/happy';
+
+const FEATURES: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
+    { icon: 'key-outline', text: 'Password sign-in — no QR pairing, on any device' },
+    { icon: 'sync-outline', text: 'Multi-device sync — your sessions follow you' },
+    { icon: 'notifications-outline', text: 'Web push when your agent needs you' },
+    { icon: 'sparkles-outline', text: 'Reworked Claude Code UI + the latest models' },
+];
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -27,6 +37,43 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
+    },
+    introTitle: {
+        fontSize: 15,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+        marginBottom: 6,
+    },
+    introText: {
+        fontSize: 13,
+        lineHeight: 19,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    link: {
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    features: {
+        marginTop: 14,
+        gap: 9,
+    },
+    featureRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 9,
+    },
+    featureText: {
+        flex: 1,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.text,
+        ...Typography.default(),
+    },
+    divider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
+        marginVertical: 18,
     },
     heading: {
         fontSize: 15,
@@ -77,11 +124,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.text,
         ...Typography.mono(),
-    },
-    cmdHint: {
-        fontSize: 11,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
     },
     note: {
         flexDirection: 'row',
@@ -137,6 +179,25 @@ export function WelcomeInstall() {
 
     return (
         <View style={styles.container}>
+            <Text style={styles.introTitle}>A friendly fork of Happy</Text>
+            <Text style={styles.introText}>
+                <Text style={styles.link} onPress={() => Linking.openURL(REPO_URL)}>Very Happy</Text>
+                {' builds on '}
+                <Text style={styles.link} onPress={() => Linking.openURL(UPSTREAM_URL)}>Happy</Text>
+                {' and trades end-to-end encryption for password-based, multi-device convenience.'}
+            </Text>
+
+            <View style={styles.features}>
+                {FEATURES.map((f) => (
+                    <View key={f.text} style={styles.featureRow}>
+                        <Ionicons name={f.icon} size={16} color={theme.colors.textSecondary} />
+                        <Text style={styles.featureText}>{f.text}</Text>
+                    </View>
+                ))}
+            </View>
+
+            <View style={styles.divider} />
+
             <Text style={styles.heading}>Use it on your own computer</Text>
 
             <View style={styles.step}>

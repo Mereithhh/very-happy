@@ -2,9 +2,9 @@ const { execFileSync } = require('node:child_process');
 
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
+    development: "Very Happy (dev)",
+    preview: "Very Happy (preview)",
+    production: "Very Happy"
 }[variant];
 const bundleId = {
     development: "com.slopus.happy.dev",

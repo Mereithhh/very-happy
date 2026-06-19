@@ -459,7 +459,7 @@ export const en = {
         emptyMainScreen: {
             // Used by EmptyMainScreen component
             readyToCode: 'Ready to code?',
-            installCli: 'Install the Happy CLI',
+            installCli: 'Install the Very Happy CLI',
             runIt: 'Run it',
             scanQrCode: 'Scan the QR code',
             openCamera: 'Open Camera',
@@ -844,8 +844,8 @@ export const en = {
 
     welcome: {
         // Main welcome screen for unauthenticated users
-        title: 'Very Happy',
-        subtitle: 'Sign in with your password to pick up your sessions from any device.',
+        title: 'Claude Code, from any browser',
+        subtitle: 'Sign in with your password to pick up your coding sessions on any device — no app store, no QR code.',
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',
         loginWithMobileApp: 'Login with mobile app',
