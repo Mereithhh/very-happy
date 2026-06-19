@@ -34,8 +34,8 @@ const stylesheet = StyleSheet.create(() => ({
         paddingVertical: 22,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: CYBER.cardBorder,
-        backgroundColor: CYBER.cardBg,
+        borderColor: CYBER.border,
+        backgroundColor: CYBER.panel,
     },
     introTitle: {
         fontSize: 15,
@@ -50,7 +50,7 @@ const stylesheet = StyleSheet.create(() => ({
         ...Typography.default(),
     },
     link: {
-        color: CYBER.cyan,
+        color: CYBER.accent,
         ...Typography.default('semiBold'),
     },
     features: {
@@ -71,7 +71,7 @@ const stylesheet = StyleSheet.create(() => ({
     },
     divider: {
         height: 1,
-        backgroundColor: CYBER.cardBorder,
+        backgroundColor: CYBER.border,
         marginVertical: 20,
         opacity: 0.6,
     },
@@ -92,15 +92,15 @@ const stylesheet = StyleSheet.create(() => ({
         height: 22,
         borderRadius: 11,
         borderWidth: 1,
-        borderColor: CYBER.cardBorder,
-        backgroundColor: 'rgba(34,211,238,0.08)',
+        borderColor: CYBER.border,
+        backgroundColor: CYBER.accentDim,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 1,
     },
     stepNumText: {
         fontSize: 11,
-        color: CYBER.cyan,
+        color: CYBER.accent,
         ...Typography.default('semiBold'),
     },
     stepBody: {
@@ -121,13 +121,13 @@ const stylesheet = StyleSheet.create(() => ({
         paddingVertical: 10,
         borderRadius: 9,
         borderWidth: 1,
-        borderColor: CYBER.cardBorder,
+        borderColor: CYBER.border,
         backgroundColor: 'rgba(0,0,0,0.35)',
     },
     cmd: {
         flex: 1,
         fontSize: 13,
-        color: CYBER.cyan,
+        color: CYBER.accent,
         ...Typography.mono(),
     },
     note: {
@@ -136,7 +136,7 @@ const stylesheet = StyleSheet.create(() => ({
         marginTop: 8,
         paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: CYBER.cardBorder,
+        borderTopColor: CYBER.border,
     },
     noteText: {
         flex: 1,
@@ -167,7 +167,7 @@ function CommandRow({ cmd }: { cmd: string }) {
         <Pressable style={styles.cmdRow} onPress={copy}>
             <Text style={styles.cmd} selectable>{`$ ${cmd}`}</Text>
             {copied ? (
-                <Ionicons name="checkmark" size={15} color={CYBER.cyan} />
+                <Ionicons name="checkmark" size={15} color={CYBER.accent} />
             ) : (
                 <Ionicons name="copy-outline" size={15} color={CYBER.textDim} />
             )}
@@ -193,7 +193,7 @@ export function WelcomeInstall() {
             <View style={styles.features}>
                 {FEATURES.map((f) => (
                     <View key={f.text} style={styles.featureRow}>
-                        <Ionicons name={f.icon} size={16} color={CYBER.cyan} />
+                        <Ionicons name={f.icon} size={16} color={CYBER.accent} />
                         <Text style={styles.featureText}>{f.text}</Text>
                     </View>
                 ))}

@@ -1,7 +1,6 @@
 import { useAuth } from "@/auth/AuthContext";
 import { Text, View, Platform, ScrollView, Pressable, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
@@ -14,6 +13,7 @@ import { MainView } from "@/components/MainView";
 import { WelcomeInstall } from "@/components/WelcomeInstall";
 import { CyberBackdrop, CYBER } from "@/components/CyberBackdrop";
 import { CyberMark } from "@/components/CyberMark";
+import { SessionConsole } from "@/components/SessionConsole";
 import { t } from '@/text';
 
 export default function Home() {
@@ -30,50 +30,37 @@ function Authenticated() {
     return <MainView variant="phone" />;
 }
 
-/** Cyber-styled CTA button (web + native safe). */
-function CyberButton({ label, onPress, variant = 'primary' }: {
+/** Single-accent CTA. Solid accent for primary, hairline outline for secondary. */
+function CyberButton({ label, onPress, variant = 'primary', loading }: {
     label: string;
     onPress: () => void;
     variant?: 'primary' | 'secondary';
+    loading?: boolean;
 }) {
     const [hovered, setHovered] = React.useState(false);
     const webHover = Platform.OS === 'web'
         ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
         : {};
+    const isPrimary = variant === 'primary';
 
-    if (variant === 'primary') {
-        return (
-            <Pressable
-                onPress={onPress}
-                {...webHover}
-                style={({ pressed }) => [
-                    styles.btnBase,
-                    Platform.OS === 'web' ? ({ filter: hovered ? `drop-shadow(0 0 16px ${CYBER.cyan}cc)` : `drop-shadow(0 0 8px ${CYBER.cyan}66)` } as any) : null,
-                    { opacity: pressed ? 0.85 : 1 },
-                ]}
-            >
-                <LinearGradient
-                    colors={[CYBER.cyan, CYBER.violet]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.btnFill}
-                >
-                    <Text style={styles.btnPrimaryText}>{label}</Text>
-                </LinearGradient>
-            </Pressable>
-        );
-    }
     return (
         <Pressable
-            onPress={onPress}
+            onPress={loading ? undefined : onPress}
+            disabled={loading}
             {...webHover}
             style={({ pressed }) => [
-                styles.btnBase,
-                styles.btnSecondary,
-                { borderColor: hovered ? CYBER.cyan : CYBER.cardBorder, opacity: pressed ? 0.85 : 1 },
+                styles.btn,
+                isPrimary ? styles.btnPrimary : styles.btnSecondary,
+                !isPrimary && { borderColor: hovered ? CYBER.accent : CYBER.border },
+                Platform.OS === 'web' && isPrimary
+                    ? ({ filter: hovered ? `drop-shadow(0 0 18px ${CYBER.accent}aa)` : `drop-shadow(0 0 8px ${CYBER.accent}55)` } as any)
+                    : null,
+                { opacity: pressed || loading ? 0.7 : 1 },
             ]}
         >
-            <Text style={styles.btnSecondaryText}>{label}</Text>
+            <Text style={isPrimary ? styles.btnPrimaryText : styles.btnSecondaryText}>
+                {loading ? '…' : label}
+            </Text>
         </Pressable>
     );
 }
@@ -83,9 +70,11 @@ function NotAuthenticated() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { width } = useWindowDimensions();
-    const isWide = width >= 880;
+    const isWide = width >= 980;
+    const [creating, setCreating] = React.useState(false);
 
     const createAccount = async () => {
+        setCreating(true);
         try {
             const secret = await getRandomBytesAsync(32);
             const token = await authGetToken(secret);
@@ -95,10 +84,42 @@ function NotAuthenticated() {
             }
         } catch (error) {
             console.error('Error creating account', error);
+        } finally {
+            setCreating(false);
         }
     };
 
     const isWebClient = Platform.OS !== 'android' && Platform.OS !== 'ios';
+
+    const brand = (
+        <View style={[styles.brand, isWide && styles.brandWide]}>
+            <Text style={styles.kicker}>SELF-HOSTED · CLAUDE CODE</Text>
+            <View style={[styles.markRow, isWide && { alignSelf: 'flex-start' }]}>
+                <CyberMark size={44} />
+                <Text style={[styles.wordmark, { fontSize: isWide ? 44 : 36 }]}>Very Happy</Text>
+            </View>
+            <Text style={[styles.tagline, isWide && styles.taglineWide]}>{t('welcome.title')}</Text>
+            <Text style={[styles.subtitle, isWide && styles.subtitleWide]}>{t('welcome.subtitle')}</Text>
+
+            <View style={[styles.buttons, isWide && styles.buttonsWide]}>
+                {isWebClient ? (
+                    <>
+                        <CyberButton label={t('welcome.loginWithPassword')} onPress={() => router.push('/restore/password')} />
+                        <CyberButton label={t('welcome.createAccount')} variant="secondary" onPress={() => router.push('/restore/signup')} />
+                    </>
+                ) : (
+                    <>
+                        <CyberButton label={t('welcome.createAccount')} loading={creating} onPress={createAccount} />
+                        <CyberButton
+                            label={t('welcome.linkOrRestoreAccount')}
+                            variant="secondary"
+                            onPress={() => { trackAccountRestored(); router.push('/restore'); }}
+                        />
+                    </>
+                )}
+            </View>
+        </View>
+    );
 
     return (
         <View style={styles.root}>
@@ -107,43 +128,23 @@ function NotAuthenticated() {
                 style={{ flex: 1 }}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 48 },
+                    { paddingTop: insets.top + 44, paddingBottom: insets.bottom + 56 },
                 ]}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
-                <View style={[styles.hero, { maxWidth: isWide ? 600 : 460 }]}>
-                    <Text style={styles.kicker}>SELF-HOSTED · CLAUDE CODE</Text>
-
-                    <CyberMark size={isWide ? 84 : 72} />
-
-                    <Text style={[styles.title, { fontSize: isWide ? 56 : 42 }]}>Very Happy</Text>
-
-                    <Text style={[styles.tagline, { fontSize: isWide ? 20 : 17 }]}>
-                        {t('welcome.title')}
-                    </Text>
-                    <Text style={styles.subtitle}>
-                        {t('welcome.subtitle')}
-                    </Text>
-
-                    <View style={styles.buttons}>
-                        {isWebClient ? (
-                            <>
-                                <CyberButton label={t('welcome.loginWithPassword')} onPress={() => router.push('/restore/password')} />
-                                <CyberButton label={t('welcome.createAccount')} variant="secondary" onPress={() => router.push('/restore/signup')} />
-                            </>
-                        ) : (
-                            <>
-                                <CyberButton label={t('welcome.createAccount')} onPress={createAccount} />
-                                <CyberButton
-                                    label={t('welcome.linkOrRestoreAccount')}
-                                    variant="secondary"
-                                    onPress={() => { trackAccountRestored(); router.push('/restore'); }}
-                                />
-                            </>
-                        )}
-                    </View>
-
+                <View style={[styles.stage, { maxWidth: isWide ? 960 : 460 }]}>
+                    {isWide ? (
+                        <View style={styles.heroRow}>
+                            <View style={styles.heroCol}>{brand}</View>
+                            <View style={styles.heroColRight}><SessionConsole /></View>
+                        </View>
+                    ) : (
+                        <>
+                            {brand}
+                            <View style={styles.consoleNarrow}><SessionConsole /></View>
+                        </>
+                    )}
                     <WelcomeInstall />
                 </View>
             </ScrollView>
@@ -152,41 +153,45 @@ function NotAuthenticated() {
 }
 
 const styles = StyleSheet.create(() => ({
-    root: {
-        flex: 1,
-        backgroundColor: CYBER.bg0,
-    },
+    root: { flex: 1, backgroundColor: CYBER.bg0 },
     scrollContent: {
         flexGrow: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: 22,
     },
-    hero: {
-        width: '100%',
-        alignItems: 'center',
-    },
+    stage: { width: '100%', alignItems: 'center' },
+
+    heroRow: { flexDirection: 'row', alignItems: 'center', gap: 56, width: '100%' },
+    heroCol: { flex: 1 },
+    heroColRight: { flex: 1, alignItems: 'flex-end' },
+
+    brand: { width: '100%', alignItems: 'center' },
+    brandWide: { alignItems: 'flex-start' },
+
     kicker: {
         ...Typography.mono(),
         fontSize: 12,
         letterSpacing: 3,
-        color: CYBER.cyan,
-        marginBottom: 22,
+        color: CYBER.accent,
+        marginBottom: 20,
     },
-    title: {
-        ...Typography.default('semiBold'),
+    markRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    wordmark: {
+        ...Typography.mono(),
         color: CYBER.text,
-        letterSpacing: 0.5,
-        textAlign: 'center',
-        marginTop: 18,
+        letterSpacing: -0.5,
     },
     tagline: {
         ...Typography.default('semiBold'),
+        fontSize: 22,
+        lineHeight: 30,
         color: CYBER.text,
         textAlign: 'center',
-        marginTop: 14,
-        opacity: 0.92,
+        marginTop: 18,
+        opacity: 0.95,
     },
+    taglineWide: { textAlign: 'left', fontSize: 26, lineHeight: 34 },
     subtitle: {
         ...Typography.default(),
         fontSize: 15,
@@ -194,35 +199,28 @@ const styles = StyleSheet.create(() => ({
         color: CYBER.textDim,
         textAlign: 'center',
         marginTop: 12,
-        marginHorizontal: 8,
-        maxWidth: 440,
+        maxWidth: 420,
     },
-    buttons: {
-        width: '100%',
-        maxWidth: 320,
-        marginTop: 34,
-        gap: 12,
-    },
-    btnBase: {
-        width: '100%',
-        borderRadius: 14,
-        overflow: 'hidden',
-    },
-    btnFill: {
+    subtitleWide: { textAlign: 'left' },
+
+    buttons: { width: '100%', maxWidth: 340, marginTop: 30, gap: 12 },
+    buttonsWide: { flexDirection: 'row', maxWidth: 420 },
+
+    btn: {
+        flex: 1,
         height: 52,
+        borderRadius: 13,
         alignItems: 'center',
         justifyContent: 'center',
     },
+    btnPrimary: { backgroundColor: CYBER.accent },
     btnPrimaryText: {
         ...Typography.default('semiBold'),
         fontSize: 16,
-        color: '#06080F',
+        color: CYBER.accentText,
         letterSpacing: 0.3,
     },
     btnSecondary: {
-        height: 52,
-        alignItems: 'center',
-        justifyContent: 'center',
         borderWidth: 1,
         backgroundColor: 'rgba(255,255,255,0.02)',
     },
@@ -232,4 +230,6 @@ const styles = StyleSheet.create(() => ({
         color: CYBER.text,
         letterSpacing: 0.3,
     },
+
+    consoleNarrow: { width: '100%', alignItems: 'center', marginTop: 36 },
 }));
