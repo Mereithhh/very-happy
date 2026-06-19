@@ -1,0 +1,65 @@
+name: Deploy to hw-sg
+
+# Manual (deliberate) production deploy of the web app and/or self-host server
+# to hw-sg over SSH. Never runs automatically — you trigger it from the Actions
+# tab or `gh workflow run deploy-hwsg.yml -f target=all`.
+#
+# Requires repo secrets: HWSG_SSH_KEY (private key), HWSG_HOST, HWSG_PORT,
+# HWSG_USER. The matching public key is in hw-sg's authorized_keys.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy
+        type: choice
+        options: [all, web, server]
+        default: all
+
+concurrency:
+  group: deploy-hwsg
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.HWSG_SSH_KEY }}" > ~/.ssh/hwsg_key
+          chmod 600 ~/.ssh/hwsg_key
+          ssh-keyscan -p "${{ secrets.HWSG_PORT }}" -H "${{ secrets.HWSG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy
+        env:
+          HWSG_HOST: ${{ secrets.HWSG_HOST }}
+          HWSG_PORT: ${{ secrets.HWSG_PORT }}
+          HWSG_USER: ${{ secrets.HWSG_USER }}
+          SSH_KEY: /home/runner/.ssh/hwsg_key
+        run: |
+          chmod +x scripts/ci/deploy-hwsg.sh
+          ./scripts/ci/deploy-hwsg.sh "${{ inputs.target }}"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/hwsg_key
