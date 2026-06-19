@@ -8,14 +8,12 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
 import { UsageBar } from '@/components/usage/UsageBar';
-import { useSettingMutable, useEntitlement, useLocalSetting, useLocalSettingMutable, useSetting } from '@/sync/storage';
+import { useSettingMutable, useLocalSetting, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { useAuth } from '@/auth/AuthContext';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
 import { fetchVoiceUsage, type VoiceUsageResponse } from '@/sync/apiVoice';
 import { t } from '@/text';
 import { Modal } from '@/modal';
-import { sync } from '@/sync/sync';
-import { trackPaywallButtonClicked } from '@/track';
 import { getVoiceExperimentStatus, getVoiceUpsellVariantLabel } from '@/realtime/voiceExperiment';
 import { getVoiceLocalCounters, resetVoiceLocalCounters } from '@/sync/persistence';
 
@@ -35,8 +33,6 @@ export default React.memo(function VoiceSettingsScreen() {
     const experiments = useSetting('experiments');
     const devModeEnabled = __DEV__ || useLocalSetting('devModeEnabled');
 
-    const hasPro = useEntitlement('pro');
-
     const [usage, setUsage] = React.useState<VoiceUsageResponse | null>(null);
     const [usageLoading, setUsageLoading] = React.useState(true);
     const [voiceLocalCounters, setVoiceLocalCounters] = React.useState(() => getVoiceLocalCounters());
@@ -51,11 +47,6 @@ export default React.memo(function VoiceSettingsScreen() {
 
     // Find current language or default to first option
     const currentLanguage = findLanguageByCode(voiceAssistantLanguage) || LANGUAGES[0];
-
-    const handleSupportUs = React.useCallback(async () => {
-        trackPaywallButtonClicked('voluntary_support');
-        await sync.presentPaywall('voluntary_support');
-    }, []);
 
     const handleCustomAgentId = React.useCallback(async () => {
         const value = await Modal.prompt(
@@ -176,18 +167,6 @@ export default React.memo(function VoiceSettingsScreen() {
                     </View>
                 </ItemGroup>
             ) : null}
-
-            {/* Support / Upgrade */}
-            {!hasPro && (
-                <ItemGroup>
-                    <Item
-                        title={t('settingsVoice.supportTitle')}
-                        subtitle={t('settingsVoice.supportSubtitle')}
-                        icon={<Ionicons name="heart-outline" size={29} color="#FF2D55" />}
-                        onPress={handleSupportUs}
-                    />
-                </ItemGroup>
-            )}
 
             {devModeEnabled && (
                 <ItemGroup
