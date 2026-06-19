@@ -12,7 +12,7 @@ import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
-import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
+import { parseLocalCommandMessage, isUserSlashCommandEcho, stripHarnessBlocks } from './parseLocalCommandMessage';
 import { MessageMetaRow, MessageMetaUsage } from './MessageMetaRow';
 
 
@@ -150,7 +150,12 @@ function UserTextBlock(props: {
     return null;
   }
 
-  const parsed = parseLocalCommandMessage(props.message.displayText || props.message.text);
+  const cleaned = stripHarnessBlocks(props.message.displayText || props.message.text);
+  // Pure harness/system block (e.g. a relayed task-notification) — hide it.
+  if (cleaned.length === 0) {
+    return null;
+  }
+  const parsed = parseLocalCommandMessage(cleaned);
   if (parsed.kind === 'caveat') {
     return null;
   }
@@ -213,9 +218,18 @@ function AgentTextBlock(props: {
     typeof m.numTurns === 'number';
   const renderMeta = hasOwnMeta || props.showMetaRow;
 
+  const text = stripHarnessBlocks(props.message.text);
+  // A turn that was nothing but harness blocks leaves no content — don't render
+  // an empty bubble (but still show a meta row if this turn carries one).
+  if (text.length === 0 && !renderMeta) {
+    return null;
+  }
+
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      {text.length > 0 ? (
+        <MarkdownView markdown={text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
+      ) : null}
       {renderMeta ? (
         <MessageMetaRow
           model={m.meta?.model ?? undefined}

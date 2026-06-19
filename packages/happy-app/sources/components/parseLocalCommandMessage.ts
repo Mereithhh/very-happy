@@ -23,6 +23,19 @@ export type LocalCommandMessage =
     | { kind: 'command-run'; commandName: string; args?: string }
     | { kind: 'text'; text: string };
 
+// Harness/system blocks the Claude Code runtime injects into the conversation
+// (background-task notifications, system reminders, captured local-command
+// output). They are machine-facing context, not chat content — rendered
+// through markdown they leak into the stream as raw `<tag>…</tag>` text. Strip
+// the whole block wherever it appears (agent or user turns).
+const HARNESS_BLOCK_RE =
+    /<(task-notification|system-reminder|local-command-stdout|local-command-caveat)>[\s\S]*?<\/\1>/gi;
+
+export function stripHarnessBlocks(text: string): string {
+    if (!text || text.indexOf('<') === -1) return text;
+    return text.replace(HARNESS_BLOCK_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 const CAVEAT_RE = /^\s*<local-command-caveat>[\s\S]*?<\/local-command-caveat>\s*$/;
 const COMMAND_NAME_RE = /<command-name>\s*\/?([^<]+?)\s*<\/command-name>/;
 const COMMAND_ARGS_RE = /<command-args>\s*([\s\S]*?)\s*<\/command-args>/;
