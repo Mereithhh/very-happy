@@ -1,19 +1,19 @@
-import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Text, View, Image, Platform, ScrollView } from "react-native";
+import { Text, View, Platform, ScrollView, Pressable, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { router, useRouter } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { useRouter } from "expo-router";
+import { StyleSheet } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
-import { useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
-import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
 import { WelcomeInstall } from "@/components/WelcomeInstall";
+import { CyberBackdrop, CYBER } from "@/components/CyberBackdrop";
+import { CyberMark } from "@/components/CyberMark";
 import { t } from '@/text';
 
 export default function Home() {
@@ -30,12 +30,60 @@ function Authenticated() {
     return <MainView variant="phone" />;
 }
 
+/** Cyber-styled CTA button (web + native safe). */
+function CyberButton({ label, onPress, variant = 'primary' }: {
+    label: string;
+    onPress: () => void;
+    variant?: 'primary' | 'secondary';
+}) {
+    const [hovered, setHovered] = React.useState(false);
+    const webHover = Platform.OS === 'web'
+        ? { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) }
+        : {};
+
+    if (variant === 'primary') {
+        return (
+            <Pressable
+                onPress={onPress}
+                {...webHover}
+                style={({ pressed }) => [
+                    styles.btnBase,
+                    Platform.OS === 'web' ? ({ filter: hovered ? `drop-shadow(0 0 16px ${CYBER.cyan}cc)` : `drop-shadow(0 0 8px ${CYBER.cyan}66)` } as any) : null,
+                    { opacity: pressed ? 0.85 : 1 },
+                ]}
+            >
+                <LinearGradient
+                    colors={[CYBER.cyan, CYBER.violet]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.btnFill}
+                >
+                    <Text style={styles.btnPrimaryText}>{label}</Text>
+                </LinearGradient>
+            </Pressable>
+        );
+    }
+    return (
+        <Pressable
+            onPress={onPress}
+            {...webHover}
+            style={({ pressed }) => [
+                styles.btnBase,
+                styles.btnSecondary,
+                { borderColor: hovered ? CYBER.cyan : CYBER.cardBorder, opacity: pressed ? 0.85 : 1 },
+            ]}
+        >
+            <Text style={styles.btnSecondaryText}>{label}</Text>
+        </Pressable>
+    );
+}
+
 function NotAuthenticated() {
-    const { theme } = useUnistyles();
     const auth = useAuth();
     const router = useRouter();
-    const isLandscape = useIsLandscape();
     const insets = useSafeAreaInsets();
+    const { width } = useWindowDimensions();
+    const isWide = width >= 880;
 
     const createAccount = async () => {
         try {
@@ -48,220 +96,140 @@ function NotAuthenticated() {
         } catch (error) {
             console.error('Error creating account', error);
         }
-    }
+    };
 
-    const portraitLayout = (
-        <View style={styles.portraitContainer}>
-            <Image
-                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                resizeMode="contain"
-                style={styles.logo}
-            />
-            <Text style={styles.title}>
-                {t('welcome.title')}
-            </Text>
-            <Text style={styles.subtitle}>
-                {t('welcome.subtitle')}
-            </Text>
-            {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.loginWithPassword')}
-                            onPress={() => router.push('/restore/password')}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.createAccount')}
-                            onPress={() => router.push('/restore/signup')}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            ) : (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            )}
-            <WelcomeInstall />
-        </View>
-    );
-
-    const landscapeLayout = (
-        <View style={[styles.landscapeContainer, { paddingBottom: insets.bottom + 24 }]}>
-            <View style={styles.landscapeInner}>
-                <View style={styles.landscapeLogoSection}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                        resizeMode="contain"
-                        style={styles.logo}
-                    />
-                </View>
-                <View style={styles.landscapeContentSection}>
-                    <Text style={styles.landscapeTitle}>
-                        {t('welcome.title')}
-                    </Text>
-                    <Text style={styles.landscapeSubtitle}>
-                        {t('welcome.subtitle')}
-                    </Text>
-                    {Platform.OS !== 'android' && Platform.OS !== 'ios'
-                        ? (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.loginWithPassword')}
-                                    onPress={() => router.push('/restore/password')}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.createAccount')}
-                                    onPress={() => router.push('/restore/signup')}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                        : (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                    }
-                    <WelcomeInstall />
-                </View>
-            </View>
-        </View>
-    );
+    const isWebClient = Platform.OS !== 'android' && Platform.OS !== 'ios';
 
     return (
-        <>
-            <HomeHeaderNotAuth />
+        <View style={styles.root}>
+            <CyberBackdrop />
             <ScrollView
                 style={{ flex: 1 }}
-                contentContainerStyle={{ flexGrow: 1 }}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 48 },
+                ]}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
             >
-                {isLandscape ? landscapeLayout : portraitLayout}
+                <View style={[styles.hero, { maxWidth: isWide ? 600 : 460 }]}>
+                    <Text style={styles.kicker}>SELF-HOSTED · CLAUDE CODE</Text>
+
+                    <CyberMark size={isWide ? 84 : 72} />
+
+                    <Text style={[styles.title, { fontSize: isWide ? 56 : 42 }]}>Very Happy</Text>
+
+                    <Text style={[styles.tagline, { fontSize: isWide ? 20 : 17 }]}>
+                        {t('welcome.title')}
+                    </Text>
+                    <Text style={styles.subtitle}>
+                        {t('welcome.subtitle')}
+                    </Text>
+
+                    <View style={styles.buttons}>
+                        {isWebClient ? (
+                            <>
+                                <CyberButton label={t('welcome.loginWithPassword')} onPress={() => router.push('/restore/password')} />
+                                <CyberButton label={t('welcome.createAccount')} variant="secondary" onPress={() => router.push('/restore/signup')} />
+                            </>
+                        ) : (
+                            <>
+                                <CyberButton label={t('welcome.createAccount')} onPress={createAccount} />
+                                <CyberButton
+                                    label={t('welcome.linkOrRestoreAccount')}
+                                    variant="secondary"
+                                    onPress={() => { trackAccountRestored(); router.push('/restore'); }}
+                                />
+                            </>
+                        )}
+                    </View>
+
+                    <WelcomeInstall />
+                </View>
             </ScrollView>
-        </>
-    )
+        </View>
+    );
 }
 
-const styles = StyleSheet.create((theme) => ({
-    // NotAuthenticated styles
-    portraitContainer: {
+const styles = StyleSheet.create(() => ({
+    root: {
         flex: 1,
+        backgroundColor: CYBER.bg0,
+    },
+    scrollContent: {
+        flexGrow: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        paddingHorizontal: 20,
     },
-    logo: {
-        width: 300,
-        height: 90,
+    hero: {
+        width: '100%',
+        alignItems: 'center',
+    },
+    kicker: {
+        ...Typography.mono(),
+        fontSize: 12,
+        letterSpacing: 3,
+        color: CYBER.cyan,
+        marginBottom: 22,
     },
     title: {
-        marginTop: 16,
-        textAlign: 'center',
-        fontSize: 24,
         ...Typography.default('semiBold'),
-        color: theme.colors.text,
+        color: CYBER.text,
+        letterSpacing: 0.5,
+        textAlign: 'center',
+        marginTop: 18,
+    },
+    tagline: {
+        ...Typography.default('semiBold'),
+        color: CYBER.text,
+        textAlign: 'center',
+        marginTop: 14,
+        opacity: 0.92,
     },
     subtitle: {
         ...Typography.default(),
-        fontSize: 18,
-        color: theme.colors.textSecondary,
-        marginTop: 16,
+        fontSize: 15,
+        lineHeight: 22,
+        color: CYBER.textDim,
         textAlign: 'center',
-        marginHorizontal: 24,
-        marginBottom: 64,
+        marginTop: 12,
+        marginHorizontal: 8,
+        maxWidth: 440,
     },
-    buttonContainer: {
-        maxWidth: 280,
+    buttons: {
         width: '100%',
-        marginBottom: 16,
+        maxWidth: 320,
+        marginTop: 34,
+        gap: 12,
     },
-    buttonContainerSecondary: {
+    btnBase: {
+        width: '100%',
+        borderRadius: 14,
+        overflow: 'hidden',
     },
-    // Landscape styles
-    landscapeContainer: {
-        flexBasis: 0,
-        flexGrow: 1,
-        flexDirection: 'row',
+    btnFill: {
+        height: 52,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 48,
     },
-    landscapeInner: {
-        flexGrow: 1,
-        flexBasis: 0,
-        maxWidth: 800,
-        flexDirection: 'row',
-    },
-    landscapeLogoSection: {
-        flexBasis: 0,
-        flexGrow: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingRight: 24,
-    },
-    landscapeContentSection: {
-        flexBasis: 0,
-        flexGrow: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingLeft: 24,
-    },
-    landscapeTitle: {
-        textAlign: 'center',
-        fontSize: 24,
+    btnPrimaryText: {
         ...Typography.default('semiBold'),
-        color: theme.colors.text,
+        fontSize: 16,
+        color: '#06080F',
+        letterSpacing: 0.3,
     },
-    landscapeSubtitle: {
-        ...Typography.default(),
-        fontSize: 18,
-        color: theme.colors.textSecondary,
-        marginTop: 16,
-        textAlign: 'center',
-        marginBottom: 32,
-        paddingHorizontal: 16,
+    btnSecondary: {
+        height: 52,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.02)',
     },
-    landscapeButtonContainer: {
-        width: 280,
-        marginBottom: 16,
-    },
-    landscapeButtonContainerSecondary: {
-        width: 280,
+    btnSecondaryText: {
+        ...Typography.default('semiBold'),
+        fontSize: 16,
+        color: CYBER.text,
+        letterSpacing: 0.3,
     },
 }));

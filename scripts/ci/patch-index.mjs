@@ -47,12 +47,16 @@ if (!s.includes('id="happy-pwa"')) {
 // matches the app's light/dark shell instead of flashing white.
 if (!s.includes('id="vh-splash"')) {
     const splashStyle = '<style id="vh-splash-style">'
-        + '#vh-splash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;'
-        + 'background:#fff;color:#18171C;z-index:2147483647;transition:opacity .35s ease}'
+        + '#vh-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;'
+        + 'justify-content:center;gap:26px;background:#06080F;color:#22D3EE;z-index:2147483647;'
+        + 'transition:opacity .4s ease}'
         + '#vh-splash.vh-hide{opacity:0;pointer-events:none}'
-        + '#vh-splash svg{width:76px;height:76px;animation:vhpulse 1.4s ease-in-out infinite}'
-        + '@keyframes vhpulse{0%,100%{opacity:.5;transform:scale(.92)}50%{opacity:1;transform:scale(1)}}'
-        + '@media (prefers-color-scheme:dark){#vh-splash{background:#18171C;color:#fff}}'
+        + '#vh-splash svg{width:74px;height:74px;filter:drop-shadow(0 0 16px rgba(34,211,238,.66));'
+        + 'animation:vhpulse 1.6s ease-in-out infinite}'
+        + '@keyframes vhpulse{0%,100%{opacity:.55;transform:scale(.94)}50%{opacity:1;transform:scale(1)}}'
+        + '#vh-bar-track{width:184px;height:3px;border-radius:3px;background:rgba(120,200,255,.14);overflow:hidden}'
+        + '#vh-bar{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#22D3EE,#7C5CFF);'
+        + 'box-shadow:0 0 10px rgba(34,211,238,.5);transition:width .2s ease}'
         + '</style>';
     s = s.replace('</head>', splashStyle + '</head>');
 
@@ -61,12 +65,15 @@ if (!s.includes('id="vh-splash"')) {
         + '<circle cx="35.5" cy="40" r="7.5" fill="currentColor"/>'
         + '<circle cx="64.5" cy="40" r="7.5" fill="currentColor"/>'
         + '<path d="M28 52 Q50 80 72 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>'
-        + '</svg></div>'
-        + '<script>(function(){var r=document.getElementById("root"),s=document.getElementById("vh-splash");'
-        + 'if(!r||!s)return;function hide(){if(!s)return;s.classList.add("vh-hide");'
-        + 'var el=s;setTimeout(function(){el&&el.remove()},400);s=null}'
+        + '</svg><div id="vh-bar-track"><div id="vh-bar"></div></div></div>'
+        + '<script>(function(){var r=document.getElementById("root"),s=document.getElementById("vh-splash"),'
+        + 'bar=document.getElementById("vh-bar");if(!r||!s)return;'
+        + 'var p=8,timer=setInterval(function(){p+=(92-p)*0.04;if(bar)bar.style.width=p.toFixed(1)+"%"},120);'
+        + 'function hide(){if(!s)return;clearInterval(timer);if(bar)bar.style.width="100%";'
+        + 'var el=s;setTimeout(function(){el.classList.add("vh-hide")},140);'
+        + 'setTimeout(function(){el&&el.remove()},560);s=null}'
         + 'var mo=new MutationObserver(function(){if(r.childNodes.length>0){hide();mo.disconnect()}});'
-        + 'mo.observe(r,{childList:true});setTimeout(hide,8000)})();</script>';
+        + 'mo.observe(r,{childList:true});setTimeout(hide,12000)})();</script>';
     s = s.replace('<div id="root"></div>', '<div id="root"></div>' + splash);
 }
 
