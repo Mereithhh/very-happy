@@ -1,0 +1,59 @@
+name: Publish very-happy-cli
+
+# Publishes the very-happy-cli package to npm when a tag matching v* is pushed.
+# Requires repo secret NPM_TOKEN (an npm automation token with publish rights).
+#
+# This is a monorepo: we only build and publish packages/happy-cli
+# (package name: very-happy-cli) via pnpm --filter.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build very-happy-cli
+        run: pnpm --filter very-happy-cli build
+
+      # Verify the built artifact is self-contained: the bundled wire package
+      # must NOT appear as an external import/require in dist. (String literals
+      # such as the inlined package.json are fine; we only fail on real module
+      # specifiers in import/require/from statements.)
+      - name: Verify wire is bundled (no external @slopus/happy-wire import)
+        run: |
+          if grep -rnE "(import|require|from)[^\n]*['\"]@slopus/happy-wire['\"]" packages/happy-cli/dist; then
+            echo "ERROR: dist still imports @slopus/happy-wire externally; bundle failed." >&2
+            exit 1
+          fi
+          echo "OK: @slopus/happy-wire is inlined into dist (no external import)."
+
+      - name: Publish to npm
+        # --no-git-checks because publishing from a tagged, detached state.
+        # Provenance is optional; drop it if your org disallows it.
+        run: pnpm --filter very-happy-cli publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
