@@ -1,18 +1,17 @@
 /**
- * WelcomeInstall — the landing block shown on the unauthenticated welcome
- * screen (web only).
- *
- * Tells the very-happy story (a friendly fork of Happy, with what it adds),
- * then explains how to get going on your computer in three steps: install
- * Claude Code, install the very-happy CLI from npm (pre-configured to this
- * server), run it. Closes with an honest server-trusted disclosure.
+ * WelcomeInstall — the cyber landing card on the unauthenticated welcome
+ * screen (web only). Tells the very-happy story (a friendly fork of Happy,
+ * with what it adds), the three-step install, and an honest server-trusted
+ * disclosure. Styled to sit inside the dark cyber hero (explicit palette, not
+ * theme-driven, since the landing is art-directed dark).
  */
 
 import * as React from 'react';
 import { View, Text, Pressable, Platform, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { CYBER } from '@/components/CyberBackdrop';
 
 const CLI_INSTALL = 'npm i -g very-happy-cli';
 const CLI_RUN = 'very-happy';
@@ -26,78 +25,82 @@ const FEATURES: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
     { icon: 'sparkles-outline', text: 'Reworked Claude Code UI + the latest models' },
 ];
 
-const stylesheet = StyleSheet.create((theme) => ({
+const stylesheet = StyleSheet.create(() => ({
     container: {
         width: '100%',
         maxWidth: 460,
-        marginTop: 36,
-        paddingHorizontal: 20,
-        paddingVertical: 20,
-        borderRadius: 16,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        marginTop: 40,
+        paddingHorizontal: 22,
+        paddingVertical: 22,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: CYBER.cardBorder,
+        backgroundColor: CYBER.cardBg,
     },
     introTitle: {
         fontSize: 15,
-        color: theme.colors.text,
+        color: CYBER.text,
         ...Typography.default('semiBold'),
         marginBottom: 6,
     },
     introText: {
         fontSize: 13,
         lineHeight: 19,
-        color: theme.colors.textSecondary,
+        color: CYBER.textDim,
         ...Typography.default(),
     },
     link: {
-        color: theme.colors.text,
+        color: CYBER.cyan,
         ...Typography.default('semiBold'),
     },
     features: {
-        marginTop: 14,
-        gap: 9,
+        marginTop: 16,
+        gap: 10,
     },
     featureRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 9,
+        gap: 10,
     },
     featureText: {
         flex: 1,
         fontSize: 13,
         lineHeight: 18,
-        color: theme.colors.text,
+        color: CYBER.text,
         ...Typography.default(),
     },
     divider: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
-        marginVertical: 18,
+        height: 1,
+        backgroundColor: CYBER.cardBorder,
+        marginVertical: 20,
+        opacity: 0.6,
     },
     heading: {
-        fontSize: 15,
-        color: theme.colors.text,
+        fontSize: 13,
+        color: CYBER.textDim,
+        letterSpacing: 1.5,
         ...Typography.default('semiBold'),
-        marginBottom: 14,
+        marginBottom: 16,
     },
     step: {
         flexDirection: 'row',
-        gap: 10,
-        marginBottom: 12,
+        gap: 11,
+        marginBottom: 13,
     },
     stepNum: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: theme.colors.groupped.background,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 1,
+        borderColor: CYBER.cardBorder,
+        backgroundColor: 'rgba(34,211,238,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 1,
     },
     stepNumText: {
         fontSize: 11,
-        color: theme.colors.textSecondary,
+        color: CYBER.cyan,
         ...Typography.default('semiBold'),
     },
     stepBody: {
@@ -106,45 +109,46 @@ const stylesheet = StyleSheet.create((theme) => ({
     stepText: {
         fontSize: 14,
         lineHeight: 20,
-        color: theme.colors.text,
+        color: CYBER.text,
         ...Typography.default(),
     },
     cmdRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginTop: 6,
+        marginTop: 7,
         paddingHorizontal: 12,
-        paddingVertical: 9,
-        borderRadius: 8,
-        backgroundColor: theme.colors.groupped.background,
+        paddingVertical: 10,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: CYBER.cardBorder,
+        backgroundColor: 'rgba(0,0,0,0.35)',
     },
     cmd: {
         flex: 1,
         fontSize: 13,
-        color: theme.colors.text,
+        color: CYBER.cyan,
         ...Typography.mono(),
     },
     note: {
         flexDirection: 'row',
         gap: 8,
         marginTop: 8,
-        paddingTop: 14,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: theme.colors.divider,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: CYBER.cardBorder,
     },
     noteText: {
         flex: 1,
         fontSize: 12,
         lineHeight: 17,
-        color: theme.colors.textSecondary,
+        color: CYBER.textDim,
         ...Typography.default(),
     },
 }));
 
 function CommandRow({ cmd }: { cmd: string }) {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
     const [copied, setCopied] = React.useState(false);
 
     const copy = React.useCallback(() => {
@@ -163,9 +167,9 @@ function CommandRow({ cmd }: { cmd: string }) {
         <Pressable style={styles.cmdRow} onPress={copy}>
             <Text style={styles.cmd} selectable>{`$ ${cmd}`}</Text>
             {copied ? (
-                <Ionicons name="checkmark" size={15} color={theme.colors.success} />
+                <Ionicons name="checkmark" size={15} color={CYBER.cyan} />
             ) : (
-                <Ionicons name="copy-outline" size={15} color={theme.colors.textSecondary} />
+                <Ionicons name="copy-outline" size={15} color={CYBER.textDim} />
             )}
         </Pressable>
     );
@@ -173,7 +177,6 @@ function CommandRow({ cmd }: { cmd: string }) {
 
 export function WelcomeInstall() {
     const styles = stylesheet;
-    const { theme } = useUnistyles();
 
     if (Platform.OS !== 'web') return null;
 
@@ -190,7 +193,7 @@ export function WelcomeInstall() {
             <View style={styles.features}>
                 {FEATURES.map((f) => (
                     <View key={f.text} style={styles.featureRow}>
-                        <Ionicons name={f.icon} size={16} color={theme.colors.textSecondary} />
+                        <Ionicons name={f.icon} size={16} color={CYBER.cyan} />
                         <Text style={styles.featureText}>{f.text}</Text>
                     </View>
                 ))}
@@ -198,7 +201,7 @@ export function WelcomeInstall() {
 
             <View style={styles.divider} />
 
-            <Text style={styles.heading}>Use it on your own computer</Text>
+            <Text style={styles.heading}>USE IT ON YOUR OWN COMPUTER</Text>
 
             <View style={styles.step}>
                 <View style={styles.stepNum}><Text style={styles.stepNumText}>1</Text></View>
@@ -228,7 +231,7 @@ export function WelcomeInstall() {
             </View>
 
             <View style={styles.note}>
-                <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
+                <Ionicons name="information-circle-outline" size={16} color={CYBER.textDim} />
                 <Text style={styles.noteText}>
                     Your sessions are relayed through this server, whose operator can read their
                     contents. Only sign up if you trust them.
