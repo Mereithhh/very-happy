@@ -1471,6 +1471,22 @@ export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
+/**
+ * Sessions that need the user's attention right now: online and blocked on a
+ * pending permission request. Drives the "needs attention" queue in the sidebar
+ * so the user can jump straight to whatever is waiting on them.
+ */
+export function useAttentionSessions(): Session[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [] as Session[];
+        return Object.values(state.sessions).filter((s) =>
+            s.presence === 'online' &&
+            !!s.agentState?.requests &&
+            Object.keys(s.agentState!.requests!).length > 0
+        );
+    }));
+}
+
 const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): {

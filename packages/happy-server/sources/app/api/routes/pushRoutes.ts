@@ -2,10 +2,20 @@ import { z } from "zod";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { dispatchSessionEventPush } from "@/app/push/pushDispatch";
+import { getVapidPublicKey, webPushConfigured } from "@/app/push/webPush";
 import { buildSessionEventEphemeral, eventRouter } from "@/app/events/eventRouter";
 
 export function pushRoutes(app: Fastify) {
-    
+
+    // Web Push VAPID public key — the browser needs this as applicationServerKey
+    // before it can subscribe. Public by definition; no auth required.
+    app.get('/v1/web-push/vapid-public-key', async (_request, reply) => {
+        return reply.send({
+            configured: webPushConfigured(),
+            publicKey: getVapidPublicKey() || null,
+        });
+    });
+
     // Push Token Registration API
     app.post('/v1/push-tokens', {
         schema: {

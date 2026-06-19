@@ -13,6 +13,8 @@ import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { syncCurrentPushToken } from './pushRegistration';
+import { syncWebPush } from './webPush';
+import { getNotificationPrefs } from './notificationPrefs';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
@@ -2064,6 +2066,14 @@ class Sync {
 
     private registerPushToken = async () => {
         log.log('registerPushToken');
+        // Web: background push goes through Service Worker + Web Push, not Expo.
+        // Reconcile the subscription on authenticated startup if the user opted in.
+        if (Platform.OS === 'web') {
+            if (getNotificationPrefs().enabled) {
+                void syncWebPush(this.credentials);
+            }
+            return;
+        }
         try {
             const result = await syncCurrentPushToken(this.credentials);
             log.log('Push token sync result: ' + JSON.stringify({

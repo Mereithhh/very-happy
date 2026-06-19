@@ -1,0 +1,13 @@
+{
+    "name": "Happy",
+    "short_name": "Happy",
+    "description": "Happy Coder — control Claude Code from your phone",
+    "display": "standalone",
+    "scope": "/",
+    "start_url": "/",
+    "background_color": "#000000",
+    "theme_color": "#000000",
+    "icons": [
+        { "src": "/favicon-active.ico", "sizes": "any", "type": "image/x-icon" }
+    ]
+}
