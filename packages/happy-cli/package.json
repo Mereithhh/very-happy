@@ -1,6 +1,6 @@
 {
   "name": "very-happy-cli",
-  "version": "1.1.10-beta.10",
+  "version": "0.1.0",
   "description": "Self-hosted remote client for Claude Code (CLI). Fork of slopus/happy that defaults to https://happy.mereith.com.",
   "author": "Kirill Dubovitskiy",
   "contributors": [
