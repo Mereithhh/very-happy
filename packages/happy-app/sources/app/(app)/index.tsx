@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Text, View, Image, Platform } from "react-native";
+import { Text, View, Image, Platform, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
@@ -13,6 +13,7 @@ import { Typography } from "@/constants/Typography";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
+import { WelcomeInstall } from "@/components/WelcomeInstall";
 import { t } from '@/text';
 
 export default function Home() {
@@ -100,6 +101,7 @@ function NotAuthenticated() {
                     </View>
                 </>
             )}
+            <WelcomeInstall />
         </View>
     );
 
@@ -157,6 +159,7 @@ function NotAuthenticated() {
                             </View>
                         </>)
                     }
+                    <WelcomeInstall />
                 </View>
             </View>
         </View>
@@ -165,7 +168,13 @@ function NotAuthenticated() {
     return (
         <>
             <HomeHeaderNotAuth />
-            {isLandscape ? landscapeLayout : portraitLayout}
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ flexGrow: 1 }}
+                keyboardShouldPersistTaps="handled"
+            >
+                {isLandscape ? landscapeLayout : portraitLayout}
+            </ScrollView>
         </>
     )
 }

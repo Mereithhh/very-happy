@@ -541,7 +541,7 @@ export const en: TranslationStructure = {
     },
 
     sidebar: {
-        sessionsTitle: 'Happy',
+        sessionsTitle: 'Very Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
         newSession: 'New session',
@@ -843,7 +843,7 @@ export const en: TranslationStructure = {
 
     welcome: {
         // Main welcome screen for unauthenticated users
-        title: 'Codex and Claude Code mobile client',
+        title: 'Very Happy',
         subtitle: 'Sign in with your password to pick up your sessions from any device.',
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',

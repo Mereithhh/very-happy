@@ -1,7 +1,7 @@
 {
-    "name": "Happy",
-    "short_name": "Happy",
-    "description": "Happy Coder — control Claude Code from your phone",
+    "name": "Very Happy",
+    "short_name": "Very Happy",
+    "description": "Very Happy — control Claude Code from your phone or browser",
     "display": "standalone",
     "scope": "/",
     "start_url": "/",
