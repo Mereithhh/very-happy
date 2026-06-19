@@ -41,11 +41,20 @@ jobs:
       # workflow_dispatch (no tag) we keep whatever is in package.json.
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Publishing version $VERSION (from tag $GITHUB_REF_NAME)"
-          cd packages/happy-cli
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # Strip leading "v"; write package.json directly with node. We avoid
+          # `npm version` here because npm can't parse the `workspace:*` spec
+          # that pnpm uses for the bundled wire devDependency (EUNSUPPORTEDPROTOCOL).
+          node -e '
+            const fs = require("fs");
+            const f = "packages/happy-cli/package.json";
+            const p = JSON.parse(fs.readFileSync(f, "utf8"));
+            p.version = process.env.VERSION.replace(/^v/, "");
+            fs.writeFileSync(f, JSON.stringify(p, null, 2) + "\n");
+            console.log("Set version to", p.version);
+          '
 
       - name: Build very-happy-cli
         run: pnpm --filter very-happy-cli build
