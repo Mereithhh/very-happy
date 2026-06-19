@@ -6,6 +6,9 @@
 //   - viewport-fit=cover           (iOS safe-area)
 //   - #root height:100dvh          (Chrome toolbar obscuring the bottom input)
 //   - PWA manifest + apple meta     (iOS Add-to-Home-Screen + Web Push)
+//   - brand loading splash          (the JS bundle is large; show a pulsing
+//                                     smiley immediately instead of a white
+//                                     screen until React mounts)
 //
 // Usage: node scripts/ci/patch-index.mjs <path-to-index.html>
 
@@ -38,8 +41,37 @@ if (!s.includes('id="happy-pwa"')) {
     s = s.replace('</head>', pwa + '</head>');
 }
 
+// Brand loading splash: a pulsing smiley shown immediately (HTML paints before
+// the deferred JS bundle), removed the moment React commits into #root. Falls
+// back to auto-hide after 8s. Background follows prefers-color-scheme so it
+// matches the app's light/dark shell instead of flashing white.
+if (!s.includes('id="vh-splash"')) {
+    const splashStyle = '<style id="vh-splash-style">'
+        + '#vh-splash{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;'
+        + 'background:#fff;color:#18171C;z-index:2147483647;transition:opacity .35s ease}'
+        + '#vh-splash.vh-hide{opacity:0;pointer-events:none}'
+        + '#vh-splash svg{width:76px;height:76px;animation:vhpulse 1.4s ease-in-out infinite}'
+        + '@keyframes vhpulse{0%,100%{opacity:.5;transform:scale(.92)}50%{opacity:1;transform:scale(1)}}'
+        + '@media (prefers-color-scheme:dark){#vh-splash{background:#18171C;color:#fff}}'
+        + '</style>';
+    s = s.replace('</head>', splashStyle + '</head>');
+
+    const splash = '<div id="vh-splash" aria-label="Loading" role="progressbar">'
+        + '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">'
+        + '<circle cx="35.5" cy="40" r="7.5" fill="currentColor"/>'
+        + '<circle cx="64.5" cy="40" r="7.5" fill="currentColor"/>'
+        + '<path d="M28 52 Q50 80 72 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>'
+        + '</svg></div>'
+        + '<script>(function(){var r=document.getElementById("root"),s=document.getElementById("vh-splash");'
+        + 'if(!r||!s)return;function hide(){if(!s)return;s.classList.add("vh-hide");'
+        + 'var el=s;setTimeout(function(){el&&el.remove()},400);s=null}'
+        + 'var mo=new MutationObserver(function(){if(r.childNodes.length>0){hide();mo.disconnect()}});'
+        + 'mo.observe(r,{childList:true});setTimeout(hide,8000)})();</script>';
+    s = s.replace('<div id="root"></div>', '<div id="root"></div>' + splash);
+}
+
 writeFileSync(p, s);
-const ok = ['viewport-fit=cover', 'happy-dvh-fix', 'id="happy-pwa"', '<title>Very Happy</title>']
+const ok = ['viewport-fit=cover', 'happy-dvh-fix', 'id="happy-pwa"', 'id="vh-splash"', '<title>Very Happy</title>']
     .every((m) => s.includes(m));
-console.log('patched index.html (title+viewport+dvh+pwa):', ok);
+console.log('patched index.html (title+viewport+dvh+pwa+splash):', ok);
 if (!ok) process.exit(1);
