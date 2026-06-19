@@ -202,15 +202,43 @@ class Sync {
         // Notify server when the tab becomes hidden, regains visibility,
         // or window focus changes — so push routing can suppress only when
         // the user is actually looking at this client.
+        //
+        // Critically, we also RE-SYNC on resume. Mobile browsers suspend the
+        // socket while a tab is backgrounded; on return socket.io may silently
+        // "recover" the connection without firing onReconnected (which is gated
+        // on `!socket.recovered`). When that happens nothing invalidates the
+        // visible session's per-session message sync, so the UI stays frozen on
+        // the pre-background state until a manual page refresh. Edge-trigger a
+        // refresh whenever the tab transitions background → active (mirrors the
+        // native AppState 'active' path).
         if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            let wasActive = getCurrentAppState() === 'active';
             const broadcast = () => {
-                apiSocket.sendAppState(getCurrentAppState());
+                const appState = getCurrentAppState();
+                apiSocket.sendAppState(appState);
+                const isActive = appState === 'active';
+                if (isActive && !wasActive) {
+                    this.onWebResume();
+                }
+                wasActive = isActive;
             };
             document.addEventListener('visibilitychange', broadcast);
             window.addEventListener('focus', broadcast);
             window.addEventListener('blur', broadcast);
         }
     }
+
+    // Web tab returned to foreground: refresh the session list and the
+    // currently-viewed session's messages so a backgrounded tab catches up on
+    // anything that arrived while the socket was suspended.
+    private onWebResume = () => {
+        log.log('🌐 Tab resumed from background — re-syncing');
+        this.sessionsSync.invalidate();
+        const current = storage.getState().currentViewingSessionId;
+        if (current) {
+            this.onSessionVisible(current);
+        }
+    };
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
         this.credentials = credentials;
