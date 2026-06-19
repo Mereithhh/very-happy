@@ -63,33 +63,12 @@ function NotAuthenticated() {
                 {t('welcome.subtitle')}
             </Text>
             {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                            display="inverted"
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.loginWithPassword')}
-                            onPress={() => router.push('/restore/password')}
-                            display="inverted"
-                        />
-                    </View>
-                </>
+                <View style={styles.buttonContainer}>
+                    <RoundButton
+                        title={t('welcome.loginWithPassword')}
+                        onPress={() => router.push('/restore/password')}
+                    />
+                </View>
             ) : (
                 <>
                     <View style={styles.buttonContainer}>
@@ -132,33 +111,14 @@ function NotAuthenticated() {
                         {t('welcome.subtitle')}
                     </Text>
                     {Platform.OS !== 'android' && Platform.OS !== 'ios'
-                        ? (<>
+                        ? (
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                    display="inverted"
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
                                     title={t('welcome.loginWithPassword')}
                                     onPress={() => router.push('/restore/password')}
-                                    display="inverted"
                                 />
                             </View>
-                        </>)
+                        )
                         : (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
