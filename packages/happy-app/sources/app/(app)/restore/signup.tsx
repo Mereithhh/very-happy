@@ -143,6 +143,7 @@ export default function Signup() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [confirm, setConfirm] = useState('');
+    const [invite, setInvite] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -167,10 +168,11 @@ export default function Signup() {
         setLoading(true);
         setError(null);
         try {
-            // 1) Create a fresh account from a random secret.
+            // 1) Create a fresh account from a random secret. The invite code (if
+            //    the server runs invite-only) is checked here, at account create.
             const secret = await getRandomBytesAsync(32);
             const secretB64 = encodeBase64(secret, 'base64url');
-            const token = await authGetToken(secret);
+            const token = await authGetToken(secret, invite.trim() || undefined);
             // 2) Attach username+password (and stash the secret server-side).
             //    Done before login so a 409 leaves no signed-in half-state.
             await setAccountCredentials(user, password, secretB64, { token, secret: secretB64 });
@@ -180,11 +182,17 @@ export default function Signup() {
             if (router.canGoBack()) {
                 router.back();
             }
-        } catch (e) {
+        } catch (e: any) {
+            const status = e?.response?.status;
+            const serverError = e?.response?.data?.error;
             if (e instanceof AccountAuthError && e.code === 'username-taken') {
                 setError('That username is taken. Pick another.');
             } else if (e instanceof AccountAuthError && e.code === 'rate-limited') {
                 setError('Too many attempts. Wait a minute and try again.');
+            } else if (status === 403 && serverError === 'invite-required') {
+                setError('A valid invite code is required to sign up here.');
+            } else if (status === 403 && serverError === 'signup-closed') {
+                setError('Signups are currently closed on this server.');
             } else {
                 setError('Could not create the account. Please try again.');
             }
@@ -241,12 +249,26 @@ export default function Signup() {
 
                     <View style={styles.inputWrapper}>
                         <TextInput
-                            style={[styles.input, error ? styles.inputError : styles.inputDefault]}
+                            style={[styles.input, styles.inputDefault]}
                             placeholder="Confirm password"
                             placeholderTextColor={theme.colors.input.placeholder}
                             value={confirm}
                             onChangeText={(text) => { setConfirm(text); if (error) setError(null); }}
                             secureTextEntry
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!loading}
+                            returnKeyType="next"
+                        />
+                    </View>
+
+                    <View style={styles.inputWrapper}>
+                        <TextInput
+                            style={[styles.input, error ? styles.inputError : styles.inputDefault]}
+                            placeholder="Invite code (if required)"
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={invite}
+                            onChangeText={(text) => { setInvite(text); if (error) setError(null); }}
                             autoCapitalize="none"
                             autoCorrect={false}
                             editable={!loading}

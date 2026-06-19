@@ -5,13 +5,36 @@ import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 
+// Signup gating (self-host). New-account creation can be restricted so this
+// relay isn't open to the world (bandwidth/storage land on the host).
+//   SIGNUP_CLOSED=1            → no new accounts at all
+//   SIGNUP_INVITE_CODES=a,b,c  → new accounts require one of these codes
+//   (neither set)              → open (default; fine for single-user)
+// Existing accounts always re-authenticate freely — the gate only applies to
+// the create path, so it can't lock out current users or CLI pairing.
+function signupClosed(): boolean {
+    return process.env.SIGNUP_CLOSED === '1' || process.env.SIGNUP_CLOSED === 'true';
+}
+function inviteCodes(): string[] {
+    return (process.env.SIGNUP_INVITE_CODES ?? '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c.length > 0);
+}
+function inviteAccepted(code: string | undefined): boolean {
+    const codes = inviteCodes();
+    if (codes.length === 0) return true; // invite not required
+    return !!code && codes.includes(code.trim());
+}
+
 export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
         schema: {
             body: z.object({
                 publicKey: z.string(),
                 challenge: z.string(),
-                signature: z.string()
+                signature: z.string(),
+                inviteCode: z.string().optional()
             })
         }
     }, async (request, reply) => {
@@ -24,8 +47,21 @@ export function authRoutes(app: Fastify) {
             return reply.code(401).send({ error: 'Invalid signature' });
         }
 
-        // Create or update user in database
         const publicKeyHex = privacyKit.encodeHex(publicKey);
+        const existing = await db.account.findUnique({ where: { publicKey: publicKeyHex } });
+
+        // Gate the CREATE path only — existing accounts always pass.
+        if (!existing) {
+            if (signupClosed()) {
+                log({ module: 'auth' }, `Signup blocked (closed) for new pubkey ${publicKeyHex.slice(0, 12)}`);
+                return reply.code(403).send({ error: 'signup-closed' });
+            }
+            if (!inviteAccepted(request.body.inviteCode)) {
+                log({ module: 'auth' }, `Signup blocked (bad/no invite) for new pubkey ${publicKeyHex.slice(0, 12)}`);
+                return reply.code(403).send({ error: 'invite-required' });
+            }
+        }
+
         const user = await db.account.upsert({
             where: { publicKey: publicKeyHex },
             update: { updatedAt: new Date() },
