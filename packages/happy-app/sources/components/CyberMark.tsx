@@ -14,14 +14,14 @@ export function CyberMark({ size = 72 }: { size?: number }) {
             style={[
                 { width: size, height: size, alignItems: 'center', justifyContent: 'center' },
                 Platform.OS === 'web'
-                    ? ({ filter: `drop-shadow(0 0 18px ${CYBER.cyan}aa)` } as any)
+                    ? ({ filter: `drop-shadow(0 0 16px ${CYBER.accent}aa)` } as any)
                     : null,
             ]}
         >
             <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-                <Circle cx="35.5" cy="40" r="7.5" fill={CYBER.cyan} />
-                <Circle cx="64.5" cy="40" r="7.5" fill={CYBER.cyan} />
-                <Path d="M28 52 Q50 80 72 52" stroke={CYBER.cyan} strokeWidth={9} strokeLinecap="round" />
+                <Circle cx="35.5" cy="40" r="7.5" fill={CYBER.accent} />
+                <Circle cx="64.5" cy="40" r="7.5" fill={CYBER.accent} />
+                <Path d="M28 52 Q50 80 72 52" stroke={CYBER.accent} strokeWidth={9} strokeLinecap="round" />
             </Svg>
         </View>
     );
