@@ -37,7 +37,8 @@ export const localSettingsDefaults: LocalSettings = {
     debugMode: false,
     devModeEnabled: false,
     voiceUpsellOverride: null,
-    commandPaletteEnabled: false,
+    // very-happy: CMD+K command palette on by default (web product feature).
+    commandPaletteEnabled: true,
     themePreference: 'adaptive',
     markdownCopyV2: false,
     consoleLoggingEnabled: false,

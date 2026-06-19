@@ -12,10 +12,10 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
+import { useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
+import { trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { useAllMachines } from '@/sync/storage';
@@ -85,7 +85,6 @@ export const SettingsView = React.memo(function SettingsView() {
     const versionSubtitle = formatBuildSubtitle(getBuildConfig());
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
-    const isPro = __DEV__ || useEntitlement('pro');
     const experiments = useSetting('experiments');
     const isCustomServer = isUsingCustomServer();
     const [showOfflineMachines, setShowOfflineMachines] = React.useState(false);
@@ -108,21 +107,11 @@ export const SettingsView = React.memo(function SettingsView() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
     const handleGitHub = async () => {
-        await openExternalUrl('https://github.com/slopus/happy');
+        await openExternalUrl('https://github.com/Mereithhh/very-happy');
     };
 
     const handleReportIssue = async () => {
-        await openExternalUrl('https://github.com/slopus/happy/issues');
-    };
-
-    const handleSubscribe = async () => {
-        trackPaywallButtonClicked('voluntary_support');
-        const result = await sync.presentPaywall('voluntary_support');
-        if (!result.success) {
-            console.error('Failed to present paywall:', result.error);
-        } else if (result.purchased) {
-            console.log('Purchase successful!');
-        }
+        await openExternalUrl('https://github.com/Mereithhh/very-happy/issues');
     };
 
     // Use the multi-click hook for version clicks
@@ -249,17 +238,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     />
                 </ItemGroup>
             )}
-
-            {/* Support Us */}
-            <ItemGroup>
-                <Item
-                    title={t('settings.supportUs')}
-                    subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
-                    icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
-                    showChevron={false}
-                    onPress={isPro ? undefined : handleSubscribe}
-                />
-            </ItemGroup>
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
@@ -443,23 +421,13 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.github')}
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-                    detail="slopus/happy"
+                    detail="Mereithhh/very-happy"
                     onPress={handleGitHub}
                 />
                 <Item
                     title={t('settings.reportIssue')}
                     icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
                     onPress={handleReportIssue}
-                />
-                <Item
-                    title={t('settings.privacyPolicy')}
-                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
-                    onPress={() => openExternalUrl('https://happy.engineering/privacy/')}
-                />
-                <Item
-                    title={t('settings.termsOfService')}
-                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                    onPress={() => openExternalUrl('https://github.com/slopus/happy/blob/main/TERMS.md')}
                 />
                 {Platform.OS === 'ios' && (
                     <Item
