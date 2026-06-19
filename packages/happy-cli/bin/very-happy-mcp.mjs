@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// very-happy MCP stdio bridge launcher (very-happy-cli).
+// Fork of slopus/happy. Ensures quiet node flags so warnings don't corrupt MCP stdout.
+
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
@@ -29,4 +32,3 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   // Already have desired flags; import module directly
   import('../dist/codex/happyMcpStdioBridge.mjs');
 }
-

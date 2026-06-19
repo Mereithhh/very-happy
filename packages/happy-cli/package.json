@@ -1,19 +1,22 @@
 {
-  "name": "happy",
+  "name": "very-happy-cli",
   "version": "1.1.10-beta.10",
-  "description": "Mobile and Web client for Claude Code and Codex",
+  "description": "Self-hosted remote client for Claude Code (CLI). Fork of slopus/happy that defaults to https://happy.mereith.com.",
   "author": "Kirill Dubovitskiy",
+  "contributors": [
+    "Mereith (very-happy-cli fork)"
+  ],
   "license": "MIT",
   "type": "module",
-  "homepage": "https://happy.engineering",
-  "bugs": "https://github.com/slopus/happy/issues",
+  "homepage": "https://github.com/Mereithhh/very-happy",
+  "bugs": "https://github.com/Mereithhh/very-happy/issues",
   "repository": {
     "type": "git",
-    "url": "https://github.com/slopus/happy"
+    "url": "git+https://github.com/Mereithhh/very-happy.git"
   },
   "bin": {
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "very-happy": "./bin/very-happy.mjs",
+    "very-happy-mcp": "./bin/very-happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -56,7 +59,9 @@
     "scripts",
     "tools/archives",
     "tools/licenses",
-    "package.json"
+    "package.json",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -78,7 +83,6 @@
     "@noble/ed25519": "^3.0.0",
     "@noble/hashes": "^2.0.1",
     "@paralleldrive/cuid2": "^2.2.2",
-    "@slopus/happy-wire": "workspace:*",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
@@ -109,6 +113,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@slopus/happy-wire": "workspace:*",
     "@eslint/compat": "^1",
     "@types/inquirer": "^9.0.9",
     "@types/node": ">=20",

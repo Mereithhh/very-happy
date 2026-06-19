@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// very-happy CLI launcher (very-happy-cli).
+// Fork of slopus/happy. Re-execs node with quiet flags, then loads dist/index.mjs.
+
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
@@ -12,7 +15,7 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   // Get path to the actual CLI entrypoint
   const projectRoot = dirname(dirname(fileURLToPath(import.meta.url)));
   const entrypoint = join(projectRoot, 'dist', 'index.mjs');
-  
+
   // Execute the actual CLI directly with the correct flags
   try {
     execFileSync(process.execPath, [

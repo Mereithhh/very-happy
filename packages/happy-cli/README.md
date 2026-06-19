@@ -1,151 +1,84 @@
-# Happy
+# very-happy-cli
 
-Code on the go — control AI coding agents from your phone, browser, or terminal.
+A self-hosted remote client for **Claude Code (CLI)**. Run a Claude Code
+session on your machine and drive it remotely from a web browser through a relay
+server.
 
-Free. Open source. Code anywhere.
+`very-happy-cli` is a rebranded fork of [slopus/happy](https://github.com/slopus/happy)
+(MIT). It changes only the default server endpoint and the command name — the
+agent runtime is unchanged.
 
-## Installation
+By default it connects to **https://happy.mereith.com**. You can point it at any
+compatible Happy server (including your own) via `HAPPY_SERVER_URL`.
+
+## ⚠️ Security notice — read this before using
+
+This is **not end-to-end encrypted against the server**. It is a
+**server-trusted relay**: the server operator can decrypt and read the contents
+of your sessions (prompts, code, tool output). The default server
+`happy.mereith.com` is operated by the maintainer of this fork.
+
+**Only use a server you trust with your session contents.** If you don't trust
+the operator of `happy.mereith.com`, run your own Happy server and set
+`HAPPY_SERVER_URL` to it, or don't use this tool.
+
+## Prerequisites
+
+1. **Node.js >= 20**.
+2. **Claude Code CLI installed and logged in.** `very-happy` drives the real
+   `claude` binary, so `claude` must be on your `PATH` and already authenticated.
+   Install it from Anthropic's instructions and run `claude` once to log in
+   before using `very-happy`.
+
+## Install
 
 ```bash
-npm install -g happy
+npm install -g very-happy-cli
 ```
 
-> Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
+The package runs a `postinstall` step that unpacks platform-specific helper
+binaries (ripgrep, difftastic) for your OS/arch. Supported platforms:
+darwin/linux/win32 on x64/arm64.
 
 ## Usage
 
-### Claude Code (default)
+```bash
+very-happy            # start a Claude Code session and connect to the relay
+very-happy claude     # same, explicit
+```
+
+This starts a Claude Code session locally and registers it with the relay so you
+can control it from the web client at your server's origin.
+
+### Pointing at a different server
 
 ```bash
-happy
-# or
-happy claude
+# one-off
+HAPPY_SERVER_URL=https://your-happy-server.example.com very-happy
+
+# or persist it in settings.json (see `very-happy server --help`)
 ```
 
-This will:
-1. Start a Claude Code session
-2. Display a QR code to connect from your mobile device or browser
-3. Allow real-time session control — all communication is end-to-end encrypted
-4. Start new sessions directly from your phone or web while your computer is online
+The web client URL follows the same precedence (`HAPPY_WEBAPP_URL`, then
+`settings.webappUrl`, then the default). Defaults for both point at
+`https://happy.mereith.com`.
 
-### More agents
-
-```
-happy codex
-happy gemini
-happy openclaw
-
-# or any ACP-compatible CLI
-happy acp opencode
-happy acp -- custom-agent --flag
-```
-
-## Daemon
-
-The daemon is a background service that stays running on your machine. It lets you spawn and manage coding sessions remotely — from your phone or the web app — without needing an open terminal.
+### MCP bridge
 
 ```bash
-happy daemon start
-happy daemon stop
-happy daemon status
-happy daemon list
+very-happy-mcp        # stdio MCP bridge (for Codex / MCP hosts)
 ```
 
-The daemon starts automatically when you run `happy`, so you usually don't need to manage it manually.
+## Configuration precedence
 
-### Keeping the daemon running across reboots
+For both the API server and the web app URL:
 
-If you want the daemon to come back automatically after a reboot — without opening a `happy` session first — start it from your shell profile so it inherits your normal user session context (PATH, keychain access, OAuth credentials):
-
-```bash
-# ~/.zshrc or ~/.bashrc
-if [[ -o interactive ]] && [[ -z "$HAPPY_DAEMON_CHECKED" ]]; then
-    export HAPPY_DAEMON_CHECKED=1
-    () {
-        local state=$HOME/.happy/daemon.state.json
-        local pid=$(grep -oE '"pid"[[:space:]]*:[[:space:]]*[0-9]+' "$state" 2>/dev/null | grep -oE '[0-9]+')
-        if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
-            happy daemon start >/dev/null 2>&1
-        fi
-    } &!
-fi
-```
-
-The first interactive shell after a reboot triggers the start; subsequent shells short-circuit because the daemon is already running.
-
-> **macOS users:** prefer this shell-init approach over a `launchd` LaunchAgent. A LaunchAgent runs in an agent domain that is **detached from your GUI/Aqua login session**, which means the bundled `claude-agent-sdk` cannot reach the macOS keychain and silently fails authentication ("Failed to authenticate. API Error: 401 terminated", `duration_api_ms: 0`). If you must use launchd, your wrapper has to read the OAuth access token from `~/.claude/.credentials.json` and export it as `CLAUDE_CODE_OAUTH_TOKEN` before exec'ing the daemon — and you'll need to handle token rotation yourself.
-
-## Authentication
-
-```bash
-happy auth login
-happy auth logout
-```
-
-Happy uses cryptographic key pairs for authentication — your private key stays on your machine. All session data is end-to-end encrypted before leaving your device.
-
-To connect third-party agent APIs:
-
-```bash
-happy connect gemini
-happy connect claude
-happy connect codex
-happy connect status
-```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `happy` | Start Claude Code session (default) |
-| `happy codex` | Start Codex mode |
-| `happy gemini` | Start Gemini CLI session |
-| `happy openclaw` | Start OpenClaw session |
-| `happy acp` | Start any ACP-compatible agent |
-| `happy resume <id>` | Resume a previous session |
-| `happy notify` | Send push notification to your devices |
-| `happy doctor` | Diagnostics & troubleshooting |
-
----
-
-## Advanced
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `HAPPY_SERVER_URL` | Custom server URL (default: `https://api.cluster-fluster.com`) |
-| `HAPPY_WEBAPP_URL` | Custom web app URL (default: `https://app.happy.engineering`) |
-| `HAPPY_HOME_DIR` | Custom home directory for Happy data (default: `~/.happy`) |
-| `HAPPY_DISABLE_CAFFEINATE` | Disable macOS sleep prevention |
-| `HAPPY_EXPERIMENTAL` | Enable experimental features |
-
-### Sandbox (experimental)
-
-Happy can run agents inside an OS-level sandbox to restrict file system and network access.
-
-```bash
-happy sandbox configure
-happy sandbox status
-happy sandbox disable
-```
-
-### Building from source
-
-```bash
-git clone https://github.com/slopus/happy
-cd happy-cli
-yarn install
-yarn workspace happy cli --help
-```
-
-## Requirements
-
-- Node.js >= 20.0.0
-- For Claude: `claude` CLI installed & logged in
-- For Codex: `codex` CLI installed & logged in
-- For Gemini: `npm install -g @google/gemini-cli` + `happy connect gemini`
+1. environment variable (`HAPPY_SERVER_URL` / `HAPPY_WEBAPP_URL`)
+2. `settings.json` (`serverUrl` / `webappUrl`) in the Happy home dir
+3. built-in default (`https://happy.mereith.com`)
 
 ## License
 
-MIT
+MIT. This is a fork of [slopus/happy](https://github.com/slopus/happy) by Kirill
+Dubovitskiy and Happy Coder Contributors. See [LICENSE](./LICENSE) for the full
+text and original copyright notice, which is preserved.
