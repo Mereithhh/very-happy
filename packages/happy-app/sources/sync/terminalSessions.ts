@@ -13,6 +13,7 @@ export interface TerminalSession {
     machineId: string;
     machineName: string;
     title: string;
+    manual?: boolean;      // user renamed it → never auto-title again
     createdAt: number;
 }
 
@@ -48,6 +49,10 @@ interface TerminalSessionsState {
     terminals: TerminalSession[];
     create(machineId: string, machineName: string, title?: string): TerminalSession;
     rename(id: string, title: string): void;
+    /** Set a title derived automatically (e.g. first command). Applies only
+     *  while the title is still the machine-name default and not user-renamed,
+     *  so it replaces the default once and never fights a manual rename. */
+    autoTitle(id: string, title: string): void;
     remove(id: string): void;
 }
 
@@ -67,7 +72,15 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
         return t;
     },
     rename: (id, title) => {
-        const next = get().terminals.map((t) => (t.id === id ? { ...t, title: title.trim() || t.title } : t));
+        const next = get().terminals.map((t) => (t.id === id ? { ...t, title: title.trim() || t.title, manual: true } : t));
+        persist(next);
+        set({ terminals: next });
+    },
+    autoTitle: (id, title) => {
+        const clean = title.trim().slice(0, 48);
+        if (!clean) return;
+        const next = get().terminals.map((t) =>
+            (t.id === id && !t.manual && t.title === t.machineName) ? { ...t, title: clean } : t);
         persist(next);
         set({ terminals: next });
     },

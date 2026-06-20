@@ -12,6 +12,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
 import { machineOpenTerminal } from '@/sync/ops';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 
 const BG = '#0B0E13';
 
@@ -71,8 +72,24 @@ export default function WebTerminalScreen() {
             });
             cleanups.push(offOut, offExit);
 
+            // Auto-title from the first command the user runs (replaces the
+            // default machine-name once; a manual rename always wins).
+            let titled = false;
+            let lineBuf = '';
             const offData = term.onData((d) => {
                 if (terminalId) apiSocket.send('terminal-input', { machineId, terminalId, data: toBase64(d) });
+                if (titled || !tid) return;
+                for (const ch of d) {
+                    if (ch === '\r' || ch === '\n') {
+                        const cmd = lineBuf.trim();
+                        lineBuf = '';
+                        if (cmd) { useTerminalSessions.getState().autoTitle(tid, cmd); titled = true; break; }
+                    } else if (ch === '\x7f' || ch === '\b') {
+                        lineBuf = lineBuf.slice(0, -1);
+                    } else if (ch >= ' ') {
+                        lineBuf += ch;
+                    }
+                }
             });
             cleanups.push(() => offData.dispose());
 
