@@ -250,16 +250,27 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  */
 export async function machineOpenTerminal(
     machineId: string,
-    options: { cols?: number; rows?: number; cwd?: string },
+    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string },
 ): Promise<{ success: true; terminalId: string; tmuxSession?: string } | { success: false; error: string }> {
     try {
         const result = await apiSocket.machineRPC<
             { type: 'success'; terminalId: string; tmuxSession?: string },
-            { cols?: number; rows?: number; cwd?: string }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string }
         >(machineId, 'open-terminal', options);
         return { success: true, terminalId: result.terminalId, tmuxSession: result.tmuxSession };
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to open terminal' };
+    }
+}
+
+/** Permanently destroy a terminal's tmux session on the machine. */
+export async function machineKillTerminal(machineId: string, terminalId: string): Promise<void> {
+    try {
+        await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string }>(
+            machineId, 'kill-terminal', { terminalId },
+        );
+    } catch {
+        // best-effort — the record is removed locally regardless
     }
 }
 
