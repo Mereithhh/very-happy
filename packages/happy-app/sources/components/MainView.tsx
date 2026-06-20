@@ -6,6 +6,7 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
+import { EmptyDetailPane } from './EmptyDetailPane';
 import { SessionsList } from './SessionsList';
 import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
@@ -289,11 +290,15 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }
 
     // Phone variant
-    // Tablet in phone mode - special case (when showing index view on tablets, show empty view)
+    // Tablet in phone mode - special case: the sessions list lives in the
+    // sidebar, so the index route's detail area shows a branded empty state
+    // ("pick a conversation") instead of a blank white pane.
     if (isTablet) {
-        // Just show an empty view on tablets for the index view
-        // The sessions list is shown in the sidebar, so the main area should be blank
-        return <View style={styles.emptyStateContentContainer} />;
+        return (
+            <View style={styles.emptyStateContentContainer}>
+                <EmptyDetailPane />
+            </View>
+        );
     }
 
     // Regular phone mode with tabs
