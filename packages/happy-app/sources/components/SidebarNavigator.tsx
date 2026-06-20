@@ -7,7 +7,6 @@ import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -168,11 +167,12 @@ const PersistentHeader = React.memo(() => {
                     style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
                     accessibilityLabel={t('zen.toggle')}
                 >
-                    <Image
-                        source={require('@/assets/images/zen-icon.png')}
-                        contentFit="contain"
-                        style={{ width: 18, height: 18 }}
-                        tintColor={zenMode ? theme.colors.textLink : theme.colors.header.tint}
+                    {/* Focus/zen toggle. The old custom open-ring icon read as a
+                        stuck loading spinner — use a clear focus glyph instead. */}
+                    <Ionicons
+                        name={zenMode ? 'scan-outline' : 'contract-outline'}
+                        size={19}
+                        color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
                     />
                 </Pressable>
                 <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
