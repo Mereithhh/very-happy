@@ -7,6 +7,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
+import { useUnistyles } from 'react-native-unistyles';
 import { UsageBar } from '@/components/usage/UsageBar';
 import { useSettingMutable, useLocalSetting, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { useAuth } from '@/auth/AuthContext';
@@ -24,6 +25,7 @@ function formatVoiceTime(totalSeconds: number): string {
 }
 
 export default React.memo(function VoiceSettingsScreen() {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const auth = useAuth();
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
@@ -177,14 +179,14 @@ export default React.memo(function VoiceSettingsScreen() {
                         title="Voice Experiment Override"
                         subtitle="Simple local override for the voice-upsell flag"
                         detail={developerOverrideLabel}
-                        icon={<Ionicons name="options-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="options-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={handleVoiceExperimentOverride}
                     />
                     <Item
                         title="Voice Experiment Status"
                         subtitle={developerExperimentSubtitle}
                         subtitleLines={0}
-                        icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
+                        icon={<Ionicons name="flask-outline" size={29} color={theme.colors.textSecondary} />}
                         showChevron={false}
                         copy={developerExperimentSubtitle}
                     />
@@ -192,7 +194,7 @@ export default React.memo(function VoiceSettingsScreen() {
                         title="Reset Voice Counters"
                         subtitle={developerCountersSubtitle}
                         subtitleLines={0}
-                        icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
+                        icon={<Ionicons name="refresh-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={handleResetVoiceCounters}
                     />
                 </ItemGroup>
@@ -206,7 +208,7 @@ export default React.memo(function VoiceSettingsScreen() {
                 <Item
                     title={t('settingsVoice.preferredLanguage')}
                     subtitle={t('settingsVoice.preferredLanguageSubtitle')}
-                    icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="language-outline" size={29} color={theme.colors.textSecondary} />}
                     detail={getLanguageDisplayName(currentLanguage)}
                     onPress={() => router.push('/settings/voice/language')}
                 />
@@ -220,13 +222,13 @@ export default React.memo(function VoiceSettingsScreen() {
                 <Item
                     title={t('settingsVoice.customAgentId')}
                     subtitle={voiceCustomAgentId ?? t('settingsVoice.customAgentIdNotSet')}
-                    icon={<Ionicons name="key-outline" size={29} color="#FF9500" />}
+                    icon={<Ionicons name="key-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={handleCustomAgentId}
                 />
                 <Item
                     title={t('settingsVoice.bypassToken')}
                     subtitle={t('settingsVoice.bypassTokenSubtitle')}
-                    icon={<Ionicons name="flash-outline" size={29} color="#FF3B30" />}
+                    icon={<Ionicons name="flash-outline" size={29} color={theme.colors.textSecondary} />}
                     rightElement={
                         <Switch
                             value={voiceBypassToken}

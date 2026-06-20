@@ -147,6 +147,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
+        // transparent edge on every row → no layout shift when selected lights it
+        borderLeftWidth: 3,
+        borderLeftColor: 'transparent',
     },
     sessionItemContainer: {
         marginHorizontal: 16,
@@ -179,6 +182,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,
+        borderLeftColor: theme.colors.status.connected, // teal "active" edge
     },
     sessionContent: {
         flex: 1,
