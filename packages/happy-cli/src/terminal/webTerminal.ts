@@ -98,10 +98,15 @@ export class WebTerminalManager {
 
         if (isTmuxAvailable()) {
             tmuxSession = `vh-${id}`;
-            // -A: attach if exists, else create. Per-tab session → independent
-            // and locally attachable via `tmux attach -t vh-<id>`.
-            file = 'tmux';
-            args = ['new-session', '-A', '-s', tmuxSession, '-x', String(cols), '-y', String(rows)];
+            // Create-or-noop the session detached, then attach with `-d` so any
+            // OTHER client (a stale web view, or a local attach) is detached —
+            // a single client means the session size follows THIS xterm and we
+            // avoid the multi-client size-clamp that garbles redraws. id is
+            // validated to [A-Za-z0-9_-], cols/rows are ints → safe to inline.
+            file = '/bin/sh';
+            args = ['-c',
+                `tmux new-session -A -d -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
+                + `exec tmux attach-session -d -t ${tmuxSession}`];
         } else {
             file = defaultShell();
             args = [];
