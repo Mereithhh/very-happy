@@ -7,7 +7,10 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
 import { AttentionBar } from './AttentionBar';
+import { TerminalsSection } from './TerminalsSection';
 import { StyleSheet } from 'react-native-unistyles';
+import { Modal } from '@/modal';
+import { Platform } from 'react-native';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -68,6 +71,15 @@ export const SidebarView = React.memo(() => {
     const realtimeStatus = useRealtimeStatus();
 
     const handleNewSession = React.useCallback(() => {
+        // Web: offer a choice between a conversation and a terminal session.
+        if (Platform.OS === 'web') {
+            Modal.alert(t('sidebar.newSession'), undefined, [
+                { text: t('newSession.title'), onPress: () => router.navigate('/new') },
+                { text: 'Terminal', onPress: () => router.navigate('/terminal/web' as any) },
+                { text: t('common.cancel'), style: 'cancel' },
+            ]);
+            return;
+        }
         router.navigate('/new');
     }, [router]);
 
@@ -91,6 +103,9 @@ export const SidebarView = React.memo(() => {
 
             {/* "Needs attention" queue — sessions blocked on a permission request */}
             <AttentionBar />
+
+            {/* Terminal sessions (web) — managed alongside conversations */}
+            <TerminalsSection />
 
             {/* Sessions list */}
             <MainView variant="sidebar" />
