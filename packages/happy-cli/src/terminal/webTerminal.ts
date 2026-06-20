@@ -90,6 +90,13 @@ export class WebTerminalManager {
             try { this.terminals.get(id)!.pty.kill(); } catch { /* gone */ }
             this.terminals.delete(id);
         }
+        // Bulletproof single-client: explicitly detach ANY clients still
+        // attached to this tmux session (a killed pty's client can linger and
+        // survive SIGHUP). Multiple clients clamp the session size and garble
+        // redraws / double-echo. Safe no-op if the session doesn't exist yet.
+        if (isTmuxAvailable()) {
+            try { spawnSync('tmux', ['detach-client', '-s', `vh-${id}`], { stdio: 'ignore' }); } catch { /* none */ }
+        }
         const env = ptyEnv();
 
         let file: string;
