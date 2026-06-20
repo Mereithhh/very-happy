@@ -29,7 +29,7 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 export default function WebTerminalScreen() {
-    const { machineId } = useLocalSearchParams<{ machineId: string }>();
+    const { machineId, tid } = useLocalSearchParams<{ machineId: string; tid?: string }>();
     const hostRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
@@ -55,7 +55,7 @@ export default function WebTerminalScreen() {
         term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
 
         (async () => {
-            const res = await machineOpenTerminal(machineId, { cols: term.cols, rows: term.rows });
+            const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows });
             if (disposed) return;
             if (!res.success) {
                 term.writeln('\r\n\x1b[31m✗ ' + res.error + '\x1b[0m');
@@ -94,7 +94,7 @@ export default function WebTerminalScreen() {
             cleanups.forEach((c) => c());
             term.dispose();
         };
-    }, [machineId]);
+    }, [machineId, tid]);
 
     return (
         <View style={{ flex: 1, backgroundColor: BG }}>

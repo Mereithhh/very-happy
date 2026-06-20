@@ -186,9 +186,16 @@ export class ApiMachineClient {
         // enforced by the server (RPC rooms are per-account), so only this
         // machine's owner can reach it.
         this.rpcHandlerManager.registerHandler('open-terminal', async (params: any) => {
-            const { cols, rows, cwd } = params || {};
-            const result = this.webTerminal.open({ cols, rows, cwd });
+            const { terminalId, cols, rows, cwd } = params || {};
+            const result = this.webTerminal.open({ terminalId, cols, rows, cwd });
             return { type: 'success', ...result };
+        });
+
+        // Permanently destroy a terminal's tmux session (sidebar delete).
+        this.rpcHandlerManager.registerHandler('kill-terminal', async (params: any) => {
+            const { terminalId } = params || {};
+            if (terminalId) this.webTerminal.killSession(terminalId);
+            return { type: 'success' };
         });
 
         // Register stop session handler
