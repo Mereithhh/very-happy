@@ -7,7 +7,6 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
 import { AttentionBar } from './AttentionBar';
-import { TerminalsSection } from './TerminalsSection';
 import { StyleSheet } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { Platform } from 'react-native';
@@ -104,10 +103,7 @@ export const SidebarView = React.memo(() => {
             {/* "Needs attention" queue — sessions blocked on a permission request */}
             <AttentionBar />
 
-            {/* Terminal sessions (web) — managed alongside conversations */}
-            <TerminalsSection />
-
-            {/* Sessions list */}
+            {/* Sessions list (terminals are rendered at the top of this list) */}
             <MainView variant="sidebar" />
 
             {/* Settings at bottom */}

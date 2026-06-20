@@ -31,12 +31,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 10,
         marginHorizontal: 8,
         paddingHorizontal: 10,
-        paddingVertical: 9,
+        paddingVertical: 8,
         borderRadius: 8,
     },
     rowPressed: { backgroundColor: theme.colors.surfaceHigh },
     title: { ...Typography.default(), fontSize: 14, color: theme.colors.text, flex: 1 },
-    sub: { ...Typography.default(), fontSize: 11, color: theme.colors.textSecondary },
     kebab: { padding: 4, borderRadius: 6 },
 }));
 
@@ -86,10 +85,7 @@ export function TerminalsSection() {
                     style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 >
                     <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.title} numberOfLines={1}>{term.title}</Text>
-                        <Text style={styles.sub} numberOfLines={1}>{term.machineName}</Text>
-                    </View>
+                    <Text style={styles.title} numberOfLines={1}>{term.title}</Text>
                     <Pressable hitSlop={8} style={styles.kebab} onPress={() => menu(term.id, term.machineId, term.title)}>
                         <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
                     </Pressable>
