@@ -158,6 +158,22 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="terminal/web/index"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Web terminal',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="terminal/web/[machineId]"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Terminal',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="restore/index"
                 options={{
                     headerShown: true,

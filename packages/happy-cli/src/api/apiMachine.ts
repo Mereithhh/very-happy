@@ -11,6 +11,7 @@ import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from 
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { WebTerminalManager } from '@/terminal/webTerminal';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
@@ -39,9 +40,16 @@ interface ServerToDaemonEvents {
     'rpc-error': (data: { type: string, error: string }) => void;
     auth: (data: { success: boolean, user: string }) => void;
     error: (data: { message: string }) => void;
+    // Web terminal: user → daemon (relayed by server, scoped to owning account)
+    'terminal-input': (data: { terminalId: string, data: string }) => void;
+    'terminal-resize': (data: { terminalId: string, cols: number, rows: number }) => void;
+    'terminal-close': (data: { terminalId: string }) => void;
 }
 
 interface DaemonToServerEvents {
+    // Web terminal: daemon → user (relayed by server)
+    'terminal-output': (data: { terminalId: string, data: string }) => void;
+    'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
     'machine-alive': (data: {
         machineId: string;
         time: number;
@@ -120,6 +128,9 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
+    private webTerminal = new WebTerminalManager((event, payload) => {
+        (this.socket as any)?.emit(event, payload);
+    });
 
     constructor(
         private token: string,
@@ -170,6 +181,15 @@ export class ApiMachineClient {
         });
 
         this.syncResumeSessionRpcRegistration();
+
+        // Register web-terminal open handler. Account scoping is already
+        // enforced by the server (RPC rooms are per-account), so only this
+        // machine's owner can reach it.
+        this.rpcHandlerManager.registerHandler('open-terminal', async (params: any) => {
+            const { cols, rows, cwd } = params || {};
+            const result = this.webTerminal.open({ cols, rows, cwd });
+            return { type: 'success', ...result };
+        });
 
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
@@ -470,6 +490,17 @@ export class ApiMachineClient {
         this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
             logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
             callback(await this.rpcHandlerManager.handleRequest(data));
+        });
+
+        // Web terminal byte stream (relayed by server, already account-scoped).
+        this.socket.on('terminal-input', (data) => {
+            this.webTerminal.write(data.terminalId, data.data);
+        });
+        this.socket.on('terminal-resize', (data) => {
+            this.webTerminal.resize(data.terminalId, data.cols, data.rows);
+        });
+        this.socket.on('terminal-close', (data) => {
+            this.webTerminal.close(data.terminalId);
         });
 
         // Handle update events from server
