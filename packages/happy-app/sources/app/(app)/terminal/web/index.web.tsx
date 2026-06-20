@@ -11,6 +11,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: { flex: 1, backgroundColor: theme.colors.groupped.background },
@@ -33,6 +34,12 @@ export default function WebTerminalPicker() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const machines = useAllMachines();
+    const createTerminal = useTerminalSessions((s) => s.create);
+
+    const openOn = React.useCallback((machineId: string, name: string) => {
+        const t = createTerminal(machineId, name);
+        router.replace(`/terminal/web/${machineId}?tid=${t.id}` as any);
+    }, [createTerminal, router]);
 
     const sorted = React.useMemo(() => {
         return [...machines].sort((a, b) => Number(isMachineOnline(b)) - Number(isMachineOnline(a)));
@@ -57,7 +64,7 @@ export default function WebTerminalPicker() {
                     <Pressable
                         key={m.id}
                         disabled={!online}
-                        onPress={() => router.push(`/terminal/web/${m.id}` as any)}
+                        onPress={() => openOn(m.id, name)}
                         style={({ pressed }) => [styles.row, !online && styles.rowDisabled, { opacity: pressed ? 0.8 : (online ? 1 : 0.5) }]}
                     >
                         <View style={[styles.dot, { backgroundColor: online ? theme.colors.status?.connected ?? '#34C759' : theme.colors.textSecondary }]} />

@@ -18,6 +18,9 @@ import os from 'node:os';
 import { logger } from '@/ui/logger';
 
 export interface OpenTerminalOptions {
+    /** Client-owned id → tmux session `vh-<id>`. Reusing it reattaches to the
+     *  same live session (state survives). Omitted → a fresh random id. */
+    terminalId?: string;
     cols?: number;
     rows?: number;
     cwd?: string;
@@ -78,7 +81,15 @@ export class WebTerminalManager {
         const cols = Math.max(2, Math.floor(opts.cols ?? 80));
         const rows = Math.max(2, Math.floor(opts.rows ?? 24));
         const cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
-        const id = randomBytes(5).toString('hex');
+        const id = opts.terminalId && /^[a-zA-Z0-9_-]{1,64}$/.test(opts.terminalId)
+            ? opts.terminalId
+            : randomBytes(5).toString('hex');
+        // Reopening an id: drop the previous pty client (the tmux session lives
+        // on) before attaching a fresh one.
+        if (this.terminals.has(id)) {
+            try { this.terminals.get(id)!.pty.kill(); } catch { /* gone */ }
+            this.terminals.delete(id);
+        }
         const env = ptyEnv();
 
         let file: string;
@@ -146,6 +157,19 @@ export class WebTerminalManager {
             // already gone
         }
         logger.debug(`[WEB TERMINAL] closed ${terminalId}`);
+    }
+
+    /** Permanently destroy the terminal: close the pty AND kill the tmux
+     *  session (so a local `tmux attach` won't find it either). Used when the
+     *  user deletes the terminal from the sidebar. */
+    killSession(terminalId: string) {
+        this.close(terminalId);
+        try {
+            spawnSync('tmux', ['kill-session', '-t', `vh-${terminalId}`], { stdio: 'ignore' });
+        } catch {
+            // tmux gone / session already dead
+        }
+        logger.debug(`[WEB TERMINAL] killed session vh-${terminalId}`);
     }
 
     closeAll() {

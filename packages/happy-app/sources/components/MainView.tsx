@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Text, Pressable } from 'react-native';
+import { View, ActivityIndicator, Text, Pressable, Platform } from 'react-native';
+import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
@@ -237,6 +238,14 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
 
     const handleNewSession = React.useCallback(() => {
+        if (Platform.OS === 'web') {
+            Modal.alert(t('sidebar.newSession'), undefined, [
+                { text: t('newSession.title'), onPress: () => router.navigate('/new') },
+                { text: 'Terminal', onPress: () => router.navigate('/terminal/web' as any) },
+                { text: t('common.cancel'), style: 'cancel' },
+            ]);
+            return;
+        }
         router.navigate('/new');
     }, [router]);
 
