@@ -72,26 +72,31 @@ export default function WebTerminalScreen() {
             });
             cleanups.push(offOut, offExit);
 
-            // Auto-title from the first command the user runs (replaces the
-            // default machine-name once; a manual rename always wins).
-            let titled = false;
-            let lineBuf = '';
             const offData = term.onData((d) => {
                 if (terminalId) apiSocket.send('terminal-input', { machineId, terminalId, data: toBase64(d) });
-                if (titled || !tid) return;
-                for (const ch of d) {
-                    if (ch === '\r' || ch === '\n') {
-                        const cmd = lineBuf.trim();
-                        lineBuf = '';
-                        if (cmd) { useTerminalSessions.getState().autoTitle(tid, cmd); titled = true; break; }
-                    } else if (ch === '\x7f' || ch === '\b') {
-                        lineBuf = lineBuf.slice(0, -1);
-                    } else if (ch >= ' ') {
-                        lineBuf += ch;
-                    }
-                }
             });
             cleanups.push(() => offData.dispose());
+
+            // Auto-title from the first command the user runs (replaces the
+            // default machine-name once; a manual rename always wins). Driven
+            // by onKey, not onData — onData also carries xterm's replies to
+            // terminal queries (device-attributes / color), which would
+            // otherwise be captured as a garbage "command".
+            let titled = false;
+            let lineBuf = '';
+            const offKey = term.onKey(({ key, domEvent }) => {
+                if (titled || !tid) return;
+                if (domEvent.key === 'Enter') {
+                    const cmd = lineBuf.trim();
+                    lineBuf = '';
+                    if (cmd) { useTerminalSessions.getState().autoTitle(tid, cmd); titled = true; }
+                } else if (domEvent.key === 'Backspace') {
+                    lineBuf = lineBuf.slice(0, -1);
+                } else if (key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {
+                    lineBuf += key;
+                }
+            });
+            cleanups.push(() => offKey.dispose());
 
             // push the real size now that the session exists
             apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
