@@ -244,6 +244,26 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 }
 
 /**
+ * Open a web terminal (tmux-in-pty) on one of the user's machines. Account
+ * scoping is enforced server-side. Returns the terminalId used for the
+ * subsequent terminal-input/output/resize/close byte stream.
+ */
+export async function machineOpenTerminal(
+    machineId: string,
+    options: { cols?: number; rows?: number; cwd?: string },
+): Promise<{ success: true; terminalId: string; tmuxSession?: string } | { success: false; error: string }> {
+    try {
+        const result = await apiSocket.machineRPC<
+            { type: 'success'; terminalId: string; tmuxSession?: string },
+            { cols?: number; rows?: number; cwd?: string }
+        >(machineId, 'open-terminal', options);
+        return { success: true, terminalId: result.terminalId, tmuxSession: result.tmuxSession };
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to open terminal' };
+    }
+}
+
+/**
  * Copy the source session's Claude JSONL on the daemon machine and return
  * the new Claude session UUID. Caller then spawns a fresh Happy session
  * with `resumeClaudeSessionId` set to that UUID to attach a new Happy
