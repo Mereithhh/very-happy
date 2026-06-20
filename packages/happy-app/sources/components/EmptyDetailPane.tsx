@@ -4,7 +4,7 @@
  * with a calm, branded "pick a conversation" state + a new-session CTA.
  */
 import React from 'react';
-import { View, Text, Pressable, Image } from 'react-native';
+import { View, Text, Pressable, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -54,6 +54,19 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.button.primary.tint,
         ...Typography.default('semiBold'),
     },
+    secondary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        marginTop: 14,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+    },
+    secondaryText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
 }));
 
 export function EmptyDetailPane() {
@@ -77,6 +90,15 @@ export function EmptyDetailPane() {
                 <Ionicons name="add" size={19} color={theme.colors.button.primary.tint} />
                 <Text style={styles.buttonText}>New session</Text>
             </Pressable>
+            {Platform.OS === 'web' && (
+                <Pressable
+                    style={({ pressed }) => [styles.secondary, { opacity: pressed ? 0.7 : 1 }]}
+                    onPress={() => router.navigate('/terminal/web' as any)}
+                >
+                    <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
+                    <Text style={styles.secondaryText}>Open web terminal</Text>
+                </Pressable>
+            )}
         </View>
     );
 }
