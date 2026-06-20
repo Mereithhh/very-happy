@@ -336,7 +336,7 @@ export default React.memo(() => {
                         <Item
                             title={t('settingsAccount.linkNewDevice')}
                             subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
-                            icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
+                            icon={<Ionicons name="qr-code-outline" size={29} color={theme.colors.textSecondary} />}
                             onPress={connectAccount}
                             disabled={isConnecting}
                             showChevron={false}
@@ -345,7 +345,7 @@ export default React.memo(() => {
                     <Item
                         title={t('settingsAccount.password')}
                         subtitle={t('settingsAccount.passwordSet')}
-                        icon={<Ionicons name="key-outline" size={29} color="#5856D6" />}
+                        icon={<Ionicons name="key-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={() => router.push('/settings/password')}
                     />
                 </ItemGroup>
@@ -439,7 +439,7 @@ export default React.memo(() => {
                     <Item
                         title={t('settingsAccount.secretKey')}
                         subtitle={showSecret ? t('settingsAccount.tapToHide') : t('settingsAccount.tapToReveal')}
-                        icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={29} color="#FF9500" />}
+                        icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={29} color={theme.colors.textSecondary} />}
                         onPress={handleShowSecret}
                         showChevron={false}
                     />
@@ -518,7 +518,7 @@ export default React.memo(() => {
                         title="Permission"
                         detail={formatPushPermissionLabel(pushPermission)}
                         subtitle={formatPushPermissionSubtitle(pushPermission)}
-                        icon={<Ionicons name="notifications-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="notifications-outline" size={29} color={theme.colors.textSecondary} />}
                         loading={loadingPushSettings}
                         showChevron={false}
                     />
@@ -529,7 +529,7 @@ export default React.memo(() => {
                             : pushPermission?.canAskAgain
                             ? 'Shows the system prompt again if iOS still allows it.'
                             : 'Opens system settings when iOS will not prompt again.'}
-                        icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
+                        icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={handlePushPermissionRequest}
                         loading={requestingPushPermission}
                         disabled={requestingPushPermission || loadingPushSettings || pushPermission?.status === 'unsupported' || !auth.credentials}
@@ -540,7 +540,7 @@ export default React.memo(() => {
                         subtitle={currentPushToken
                             ? `Current token ${formatPushTokenFingerprint(currentPushToken)}`
                             : 'Fetches the current Expo token and registers it again.'}
-                        icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
+                        icon={<Ionicons name="refresh-outline" size={29} color={theme.colors.textSecondary} />}
                         onPress={handleRefreshCurrentPushToken}
                         loading={refreshingPushToken}
                         disabled={refreshingPushToken || loadingPushSettings || !auth.credentials}
@@ -577,7 +577,7 @@ export default React.memo(() => {
                                             <Ionicons
                                                 name={isCurrentDevice ? 'phone-portrait-outline' : 'trash-outline'}
                                                 size={29}
-                                                color={isCurrentDevice ? theme.colors.textSecondary : '#FF3B30'}
+                                                color={isCurrentDevice ? theme.colors.textSecondary : theme.colors.textDestructive}
                                             />
                                         )}
                                         onPress={isCurrentDevice ? undefined : () => handleDeletePushToken(pushToken)}
@@ -597,7 +597,7 @@ export default React.memo(() => {
                     <Item
                         title={t('settingsAccount.logout')}
                         subtitle={t('settingsAccount.logoutSubtitle')}
-                        icon={<Ionicons name="log-out-outline" size={29} color="#FF3B30" />}
+                        icon={<Ionicons name="log-out-outline" size={29} color={theme.colors.textDestructive} />}
                         destructive
                         onPress={handleLogout}
                     />

@@ -67,7 +67,7 @@ export default function WebTerminalPicker() {
                         onPress={() => openOn(m.id, name)}
                         style={({ pressed }) => [styles.row, !online && styles.rowDisabled, { opacity: pressed ? 0.8 : (online ? 1 : 0.5) }]}
                     >
-                        <View style={[styles.dot, { backgroundColor: online ? theme.colors.status?.connected ?? '#34C759' : theme.colors.textSecondary }]} />
+                        <View style={[styles.dot, { backgroundColor: online ? theme.colors.status.connected : theme.colors.textSecondary }]} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.name}>{name}</Text>
                             <Text style={styles.sub}>{online ? 'Online' : 'Offline'}{platform ? ` · ${platform}` : ''}</Text>

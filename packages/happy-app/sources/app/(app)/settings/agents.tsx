@@ -97,7 +97,7 @@ export default function AgentDefaultsSettingsScreen() {
                 <Item
                     title={config.title}
                     detail={detail}
-                    icon={<Ionicons name={config.icon} size={29} color="#5856D6" />}
+                    icon={<Ionicons name={config.icon} size={29} color={theme.colors.textSecondary} />}
                     onPress={() => setExpanded(isExpanded ? null : { agent, field: config.field })}
                 />
                 {isExpanded && (
@@ -132,7 +132,7 @@ export default function AgentDefaultsSettingsScreen() {
                 <Item
                     title="Clear Overrides"
                     subtitle="Return every agent to code defaults"
-                    icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
+                    icon={<Ionicons name="refresh-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={() => setAgentDefaultOverrides({})}
                     disabled={Object.keys(agentDefaultOverrides).length === 0}
                     showChevron={false}
