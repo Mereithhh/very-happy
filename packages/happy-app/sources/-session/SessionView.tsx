@@ -19,6 +19,7 @@ import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
+import { useVoiceTranscription } from '@/hooks/useVoiceTranscription';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -464,6 +465,9 @@ const AGENT_INPUT_AUTOCOMPLETE_PREFIXES = ['@', '/'];
 type ChatComposerHandle = {
     getMessage: () => string;
     clearMessage: () => void;
+    // Append text to the composer (used by voice dictation), keeping the caret
+    // at the end so the user can keep editing.
+    insertText: (text: string) => void;
 };
 
 type ChatComposerProps = Omit<
@@ -509,6 +513,13 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
             inputHandleRef.current?.setTextAndSelection('', { start: 0, end: 0 });
             setMessage('');
             clearDraft();
+        },
+        insertText: (text: string) => {
+            const current = inputHandleRef.current?.getText() ?? '';
+            const next = current.trim().length > 0 ? `${current.replace(/\s+$/, '')} ${text}` : text;
+            inputHandleRef.current?.setTextAndSelection(next, { start: next.length, end: next.length });
+            inputHandleRef.current?.focus();
+            setMessage(next);
         },
     }), [clearDraft]);
 
@@ -601,6 +612,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // SessionViewLoaded tree on every keystroke).
     const composerHandleRef = React.useRef<ChatComposerHandle | null>(null);
 
+    // Web voice dictation: record → transcribe (ElevenLabs Scribe via server) →
+    // drop the text into the composer for the user to edit. Replaces the mic
+    // button's behavior on web; native keeps the realtime conversational agent.
+    const voiceTranscription = useVoiceTranscription(React.useCallback((text: string) => {
+        composerHandleRef.current?.insertText(text);
+    }, []));
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -689,6 +707,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = React.useCallback(async () => {
+        // Web: dictation (ASR into the composer), not the realtime agent.
+        if (voiceTranscription.supported) {
+            await voiceTranscription.toggle();
+            return;
+        }
         if (realtimeStatus === 'connecting') {
             return; // Prevent actions during transitions
         }
@@ -728,13 +751,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             // Notify voice assistant about voice session stop
             voiceHooks.onVoiceStopped();
         }
-    }, [realtimeStatus, sessionId]);
+    }, [voiceTranscription, realtimeStatus, sessionId]);
 
     // Memoize mic button state to prevent flashing during chat transitions
     const micButtonState = useMemo(() => ({
         onMicPress: handleMicrophonePress,
-        isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
-    }), [handleMicrophonePress, realtimeStatus]);
+        isMicActive: voiceTranscription.supported
+            ? (voiceTranscription.recording || voiceTranscription.transcribing)
+            : (realtimeStatus === 'connected' || realtimeStatus === 'connecting'),
+        isMicRecording: voiceTranscription.recording,
+        isMicTranscribing: voiceTranscription.transcribing,
+    }), [handleMicrophonePress, realtimeStatus, voiceTranscription.supported, voiceTranscription.recording, voiceTranscription.transcribing]);
 
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
@@ -796,6 +823,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onSend={handleSend}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
+            isMicRecording={isDisconnected ? false : micButtonState.isMicRecording}
+            isMicTranscribing={isDisconnected ? false : micButtonState.isMicTranscribing}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}

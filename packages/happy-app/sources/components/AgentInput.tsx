@@ -41,6 +41,10 @@ interface AgentInputProps {
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
+    // Web voice dictation states (drives the button icon): recording shows a
+    // stop square, transcribing shows a spinner.
+    isMicRecording?: boolean;
+    isMicTranscribing?: boolean;
     permissionMode?: PermissionMode | null;
     availableModes?: PermissionMode[];
     onPermissionModeChange?: (mode: PermissionMode) => void;
@@ -1483,6 +1487,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     styles.sendButtonIcon,
                                                     { marginTop: Platform.OS === 'web' ? 2 : 0 }
                                                 ]}
+                                            />
+                                        ) : props.isMicTranscribing ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : props.isMicRecording ? (
+                                            <Ionicons
+                                                name="stop"
+                                                size={16}
+                                                color={theme.colors.button.primary.tint}
                                             />
                                         ) : props.onMicPress && !props.isMicActive ? (
                                             <Image

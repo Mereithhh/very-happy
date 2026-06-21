@@ -242,4 +242,69 @@ export function voiceRoutes(app: Fastify) {
             return reply.code(500).send({ error: 'Failed to get voice usage' });
         }
     });
+
+    /**
+     * Speech-to-text proxy. The web client records a short audio clip, base64s
+     * it, and posts it here; we forward to ElevenLabs Scribe with the server's
+     * API key (which therefore never ships to the browser) and return the plain
+     * transcript. Unlike the conversational agent this is dictation only — the
+     * client drops the text into the composer for the user to edit, so there's
+     * no usage/paywall gating (Scribe is cheap, ~$0.006/min).
+     */
+    app.post('/v1/voice/transcribe', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                audioBase64: z.string().min(1),
+                mimeType: z.string().optional(),
+                // Optional ISO-639 hint; omitted → Scribe auto-detects (handles
+                // mixed zh/en well).
+                languageCode: z.string().optional(),
+            }),
+            response: {
+                200: z.object({ text: z.string() }),
+                500: z.object({ error: z.string() }),
+            },
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(500).send({ error: 'ELEVENLABS_API_KEY not configured' });
+        }
+
+        const { audioBase64, mimeType, languageCode } = request.body;
+        const buffer = Buffer.from(audioBase64, 'base64');
+        if (buffer.length === 0) {
+            return reply.code(500).send({ error: 'Empty audio' });
+        }
+
+        try {
+            const type = mimeType || 'audio/webm';
+            const ext = type.includes('mp4') || type.includes('mpeg') ? 'mp4' : type.includes('wav') ? 'wav' : 'webm';
+            const form = new FormData();
+            form.append('model_id', 'scribe_v1');
+            form.append('file', new Blob([buffer], { type }), `audio.${ext}`);
+            if (languageCode) form.append('language_code', languageCode);
+
+            const res = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+                method: 'POST',
+                headers: { 'xi-api-key': elevenLabsApiKey },
+                // Cast: the monorepo's ambient types resolve global fetch/FormData
+                // to React Native's; at runtime this is Node (undici) where a
+                // global FormData body is correct.
+                body: form as any,
+            });
+            if (!res.ok) {
+                const detail = await res.text().catch(() => '');
+                log({ module: 'voice' }, `STT failed for user ${userId}: ${res.status} ${detail.slice(0, 200)}`);
+                return reply.code(500).send({ error: 'Transcription failed' });
+            }
+            const data = (await res.json()) as { text?: string };
+            return reply.send({ text: (data.text ?? '').trim() });
+        } catch (error) {
+            log({ module: 'voice' }, `STT error for user ${userId}: ${error}`);
+            return reply.code(500).send({ error: 'Transcription failed' });
+        }
+    });
 }

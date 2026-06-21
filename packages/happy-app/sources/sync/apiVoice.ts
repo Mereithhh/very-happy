@@ -42,6 +42,38 @@ export async function fetchVoiceCredentials(
     return VoiceConversationResponseSchema.parse(await response.json());
 }
 
+/**
+ * Speech-to-text (ASR). Posts a recorded audio clip (base64) to the server,
+ * which forwards it to ElevenLabs Scribe and returns the transcript. The API
+ * key stays server-side. `languageCode` is optional — omitted means Scribe
+ * auto-detects (handles mixed zh/en).
+ */
+export async function transcribeAudio(
+    credentials: AuthCredentials,
+    audioBase64: string,
+    mimeType: string,
+    languageCode?: string,
+): Promise<string> {
+    const serverUrl = getServerUrl();
+
+    const response = await fetch(`${serverUrl}/v1/voice/transcribe`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json',
+            'X-Happy-Client': getHappyClientId(),
+        },
+        body: JSON.stringify({ audioBase64, mimeType, languageCode }),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Transcription failed: ${response.status}`);
+    }
+
+    const data = (await response.json()) as { text?: string };
+    return data.text ?? '';
+}
+
 export async function fetchVoiceUsage(
     credentials: AuthCredentials
 ): Promise<VoiceUsageResponse> {
