@@ -57,10 +57,20 @@ export function TerminalsSection() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const groups = useMachineTerminals();
+    // Optimistically hide a terminal the moment it's deleted, so the row
+    // disappears instantly instead of lingering until the next poll.
+    const [removed, setRemoved] = React.useState<Set<string>>(() => new Set());
 
-    if (Platform.OS !== 'web' || groups.length === 0) return null;
+    if (Platform.OS !== 'web') return null;
 
     const multiMachine = groups.length > 1;
+    const items = groups.flatMap((g) =>
+        g.terminals
+            .filter((term) => !removed.has(`${g.machineId}:${term.id}`))
+            .map((term) => ({ machineId: g.machineId, machineName: g.machineName, term })),
+    );
+    if (items.length === 0) return null;
+
     const open = (machineId: string, id: string) => router.push(`/terminal/web/${machineId}?tid=${id}` as any);
 
     const menu = (machineId: string, id: string, title: string) => {
@@ -75,7 +85,10 @@ export function TerminalsSection() {
             {
                 text: t('common.delete'),
                 style: 'destructive',
-                onPress: () => void machineKillTerminal(machineId, id),
+                onPress: () => {
+                    setRemoved((prev) => new Set(prev).add(`${machineId}:${id}`));
+                    void machineKillTerminal(machineId, id);
+                },
             },
             { text: t('common.cancel'), style: 'cancel' },
         ]);
@@ -84,26 +97,26 @@ export function TerminalsSection() {
     return (
         <View>
             <Text style={styles.header}>Terminals</Text>
-            {groups.flatMap((g) => g.terminals.map((term) => {
+            {items.map(({ machineId, machineName, term }) => {
                 const title = titleFor(term);
                 return (
                     <Pressable
-                        key={`${g.machineId}:${term.id}`}
-                        onPress={() => open(g.machineId, term.id)}
-                        onLongPress={() => menu(g.machineId, term.id, title)}
+                        key={`${machineId}:${term.id}`}
+                        onPress={() => open(machineId, term.id)}
+                        onLongPress={() => menu(machineId, term.id, title)}
                         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                     >
                         <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
                         <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={styles.title} numberOfLines={1}>{title}</Text>
-                            {multiMachine && <Text style={styles.sub} numberOfLines={1}>{g.machineName}</Text>}
+                            {multiMachine && <Text style={styles.sub} numberOfLines={1}>{machineName}</Text>}
                         </View>
-                        <Pressable hitSlop={8} style={styles.kebab} onPress={() => menu(g.machineId, term.id, title)}>
+                        <Pressable hitSlop={8} style={styles.kebab} onPress={() => menu(machineId, term.id, title)}>
                             <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
                         </Pressable>
                     </Pressable>
                 );
-            }))}
+            })}
         </View>
     );
 }

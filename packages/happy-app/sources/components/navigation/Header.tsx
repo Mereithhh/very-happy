@@ -109,8 +109,10 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
 
-    // Hide back button on tablet — navigation is handled via sidebar and persistent header
-    const shouldHideBackButton = isTablet;
+    // Hide the back button on tablet — desktop navigation is the sidebar +
+    // persistent header. Exception: settings screens open in the detail pane
+    // with no sidebar affordance to leave them, so they keep a back button.
+    const shouldHideBackButton = isTablet && !route.name.startsWith('settings');
 
     // Extract title - handle both string and function types
     let title: React.ReactNode | null = null;
@@ -118,7 +120,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
         if (typeof options.headerTitle === 'string') {
             title = (
                 <Text style={[
-                    { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || theme.colors.header.tint },
+                    { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || theme.colors.header.tint },
                     Typography.default('semiBold'),
                     options.headerTitleStyle
                 ]}>
@@ -132,7 +134,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     } else if (typeof options.title === 'string') {
         title = (
             <Text style={[
-                { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || theme.colors.header.tint },
+                { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || theme.colors.header.tint },
                 Typography.default('semiBold'),
                 options.headerTitleStyle
             ]}>
@@ -216,7 +218,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignSelf: 'stretch',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
+        justifyContent: 'center',
         paddingHorizontal: 12,
     },
     rightContainer: {
@@ -234,7 +236,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     subtitle: {
         fontSize: 13,
         fontWeight: '400',
-        textAlign: Platform.OS === 'ios' ? 'center' : 'left',
+        textAlign: 'center',
         marginTop: 2,
         color: theme.colors.header.tint,
         ...Typography.default('regular'),
