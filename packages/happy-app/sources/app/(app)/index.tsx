@@ -98,8 +98,8 @@ function NotAuthenticated() {
                 <CyberMark size={44} />
                 <Text style={[styles.wordmark, { fontSize: isWide ? 44 : 36 }]}>Very Happy</Text>
             </View>
-            <Text style={[styles.tagline, isWide && styles.taglineWide]}>{t('welcome.title')}</Text>
-            <Text style={[styles.subtitle, isWide && styles.subtitleWide]}>{t('welcome.subtitle')}</Text>
+            <Text style={[styles.tagline, isWide && styles.taglineWide]}>Claude Code & Codex, from any browser</Text>
+            <Text style={[styles.subtitle, isWide && styles.subtitleWide]}>在任意浏览器里掌控你的编码 agent —— 密码登录、多设备同步、可自托管。</Text>
 
             <View style={[styles.buttons, isWide && styles.buttonsWide]}>
                 {isWebClient ? (
