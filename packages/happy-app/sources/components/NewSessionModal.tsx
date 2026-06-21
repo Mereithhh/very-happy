@@ -59,18 +59,18 @@ export function NewSessionModal({ onClose }: NewSessionModalProps) {
     return (
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.eyebrow, { color: theme.colors.textLink, ...Typography.mono() }]}>NEW SESSION</Text>
-            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>开始点什么</Text>
+            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>开始点什么 · Start something</Text>
             <View style={styles.options}>
                 <Option
                     icon="chatbubbles-outline"
-                    title="新会话"
+                    title="新会话 · New chat"
                     subtitle="在某台机器上让 Claude / Codex 开始干活"
                     onPress={() => go('/new')}
                 />
                 {Platform.OS === 'web' && (
                     <Option
                         icon="terminal-outline"
-                        title="网页终端"
+                        title="网页终端 · Web terminal"
                         subtitle="在已连接的机器上打开一个终端（tmux）"
                         onPress={() => go('/terminal/web')}
                     />

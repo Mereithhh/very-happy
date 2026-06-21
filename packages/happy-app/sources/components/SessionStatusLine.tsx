@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 
 /**
  * The "Console" signature: a thin monospace status line under the session
@@ -47,7 +48,7 @@ export const SessionStatusLine: React.FC<SessionStatusLineProps> = ({ host, cwd,
                 <View style={styles.conn}>
                     <View style={[styles.dot, { backgroundColor: dotColor }]} />
                     <Text style={[styles.connText, { color: dotColor, ...Typography.mono() }]}>
-                        {isConnected ? 'connected' : 'offline'}
+                        {isConnected ? t('status.connected') : t('status.offline')}
                     </Text>
                 </View>
             </View>
