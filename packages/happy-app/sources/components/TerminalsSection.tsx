@@ -39,7 +39,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderBottomColor: theme.colors.divider,
     },
     rowPressed: { backgroundColor: theme.colors.surfaceSelected },
-    title: { ...Typography.default(), fontSize: 14, color: theme.colors.text, flex: 1 },
+    title: { ...Typography.mono(), fontSize: 13, color: theme.colors.text, flex: 1 },
     kebab: { padding: 4, borderRadius: 6 },
 }));
 

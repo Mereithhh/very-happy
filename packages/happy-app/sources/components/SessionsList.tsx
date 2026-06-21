@@ -205,10 +205,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 4,
     },
     sessionSubtitle: {
-        fontSize: 13,
+        fontSize: 12,
         color: theme.colors.textSecondary,
         flexShrink: 1,
-        ...Typography.default(),
+        // machine layer (path / meta) reads in mono
+        ...Typography.mono(),
     },
     statusRow: {
         flexDirection: 'row',
