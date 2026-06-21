@@ -228,7 +228,7 @@ const toggleStyles = StyleSheet.create({
     },
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     outer: {
         flex: 1,
         alignItems: 'center',
@@ -257,12 +257,12 @@ const styles = StyleSheet.create({
     },
     added: {
         fontSize: 12,
-        color: '#34C759',
+        color: theme.colors.diff.success,
         ...Typography.mono(),
     },
     removed: {
         fontSize: 12,
-        color: '#FF3B30',
+        color: theme.colors.diff.error,
         ...Typography.mono(),
     },
     closeButton: {
@@ -274,4 +274,4 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
-});
+}));

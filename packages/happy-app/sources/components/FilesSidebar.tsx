@@ -713,7 +713,7 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 12,
     },
     emptyIcon: {
-        color: '#34C759',
+        color: theme.colors.success,
     },
     emptyTitle: {
         fontSize: 15,

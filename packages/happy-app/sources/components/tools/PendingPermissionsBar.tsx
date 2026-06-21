@@ -84,7 +84,7 @@ export const PendingPermissionsBar = React.memo((props: { sessionId: string }) =
         ?? (theme.colors as any).permission?.approve
         ?? theme.colors.success
         ?? theme.colors.text;
-    const accentText = (theme.colors as any).permissionButton?.allow?.text ?? '#FFFFFF';
+    const accentText = (theme.colors as any).permissionButton?.allow?.text ?? theme.colors.button.primary.tint;
 
     const styles = StyleSheet.create({
         container: {

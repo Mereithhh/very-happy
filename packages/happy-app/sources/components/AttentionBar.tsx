@@ -10,13 +10,11 @@
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { useAttentionSessions } from '@/sync/storage';
 import { getSessionName } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
-
-const ACCENT = '#FF9500';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -25,8 +23,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 4,
         borderRadius: 10,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: ACCENT,
-        backgroundColor: theme.dark ? 'rgba(255,149,0,0.12)' : 'rgba(255,149,0,0.08)',
+        borderColor: theme.colors.warning,
+        backgroundColor: theme.colors.box.warning.background,
         overflow: 'hidden',
     },
     header: {
@@ -39,7 +37,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     headerText: {
         fontSize: 12,
-        color: ACCENT,
+        color: theme.colors.warning,
         ...Typography.default('semiBold'),
     },
     row: {
@@ -65,7 +63,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 5,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: ACCENT,
+        backgroundColor: theme.colors.warning,
     },
     countText: {
         fontSize: 11,
@@ -76,6 +74,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 export const AttentionBar = React.memo(() => {
     const styles = stylesheet;
+    const { theme } = useUnistyles();
     const router = useRouter();
     const sessions = useAttentionSessions();
 
@@ -84,7 +83,7 @@ export const AttentionBar = React.memo(() => {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Ionicons name="alert-circle" size={14} color={ACCENT} />
+                <Ionicons name="alert-circle" size={14} color={theme.colors.warning} />
                 <Text style={styles.headerText}>
                     {sessions.length} waiting on you
                 </Text>
@@ -97,7 +96,7 @@ export const AttentionBar = React.memo(() => {
                         onPress={() => router.navigate(`/session/${s.id}`)}
                         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                     >
-                        <Ionicons name="shield-checkmark-outline" size={16} color={ACCENT} />
+                        <Ionicons name="shield-checkmark-outline" size={16} color={theme.colors.warning} />
                         <Text style={styles.rowText} numberOfLines={1}>
                             {getSessionName(s)}
                         </Text>
@@ -106,7 +105,7 @@ export const AttentionBar = React.memo(() => {
                                 <Text style={styles.countText}>{count}</Text>
                             </View>
                         )}
-                        <Ionicons name="chevron-forward" size={14} color={ACCENT} />
+                        <Ionicons name="chevron-forward" size={14} color={theme.colors.warning} />
                     </Pressable>
                 );
             })}

@@ -617,7 +617,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                                             handleRemoveFavorite(item);
                                                         }}
                                                     >
-                                                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                                        <Ionicons name="trash-outline" size={20} color={theme.colors.textDestructive} />
                                                     </Pressable>
                                                 )}
                                             </View>

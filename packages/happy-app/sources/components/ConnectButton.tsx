@@ -4,9 +4,11 @@ import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { trackConnectAttempt } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 export const ConnectButton = React.memo(() => {
+    const { theme } = useUnistyles();
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [manualUrl, setManualUrl] = React.useState('');
     const [showManualEntry, setShowManualEntry] = React.useState(false);
@@ -42,15 +44,15 @@ export const ConnectButton = React.memo(() => {
                     justifyContent: 'center',
                 }}
             >
-                <Ionicons 
-                    name="link-outline" 
-                    size={16} 
-                    color="#666" 
+                <Ionicons
+                    name="link-outline"
+                    size={16}
+                    color={theme.colors.textSecondary}
                     style={{ marginRight: 6 }}
                 />
                 <Text style={{
                     fontSize: 14,
-                    color: '#666',
+                    color: theme.colors.textSecondary,
                     textDecorationLine: 'underline',
                 }}>
                     {t('connectButton.authenticateWithUrlPaste')}
@@ -62,12 +64,12 @@ export const ConnectButton = React.memo(() => {
                     marginTop: 12,
                     padding: 12,
                     borderRadius: 8,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: theme.colors.surface,
                     width: 210,
                 }}>
                     <Text style={{
                         fontSize: 12,
-                        color: '#666',
+                        color: theme.colors.textSecondary,
                         marginBottom: 8,
                     }}>
                         {t('connectButton.pasteAuthUrl')}
@@ -79,9 +81,10 @@ export const ConnectButton = React.memo(() => {
                         <TextInput
                             style={{
                                 flex: 1,
-                                backgroundColor: 'white',
+                                backgroundColor: theme.colors.input.background,
+                                color: theme.colors.input.text,
                                 borderWidth: 1,
-                                borderColor: '#ddd',
+                                borderColor: theme.colors.divider,
                                 borderRadius: 6,
                                 padding: 8,
                                 fontSize: 12,
@@ -89,7 +92,7 @@ export const ConnectButton = React.memo(() => {
                             value={manualUrl}
                             onChangeText={setManualUrl}
                             placeholder="happy://terminal?..."
-                            placeholderTextColor="#999"
+                            placeholderTextColor={theme.colors.input.placeholder}
                             autoCapitalize="none"
                             autoCorrect={false}
                             onSubmitEditing={handleManualConnect}
@@ -103,10 +106,10 @@ export const ConnectButton = React.memo(() => {
                                 opacity: manualUrl.trim() ? 1 : 0.5,
                             }}
                         >
-                            <Ionicons 
-                                name="checkmark-circle" 
-                                size={24} 
-                                color="#007AFF" 
+                            <Ionicons
+                                name="checkmark-circle"
+                                size={24}
+                                color={theme.colors.textLink}
                             />
                         </TouchableOpacity>
                     </View>

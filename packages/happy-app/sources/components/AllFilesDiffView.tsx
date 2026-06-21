@@ -379,10 +379,10 @@ const FileDiffSection = React.memo(function FileDiffSection({
                     {file.fullPath}
                 </Text>
                 {file.status === 'deleted' && (
-                    <Text style={[styles.statusBadge, { color: '#FF3B30' }]}>deleted</Text>
+                    <Text style={[styles.statusBadge, { color: theme.colors.textDestructive }]}>deleted</Text>
                 )}
                 {file.status === 'untracked' && (
-                    <Text style={[styles.statusBadge, { color: '#34C759' }]}>new</Text>
+                    <Text style={[styles.statusBadge, { color: theme.colors.success }]}>new</Text>
                 )}
                 {stats && (stats.additions > 0 || stats.deletions > 0) && (
                     <View style={styles.stats}>
@@ -458,7 +458,7 @@ const toggleStyles = StyleSheet.create({
     },
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     outer: {
         flex: 1,
     },
@@ -499,12 +499,12 @@ const styles = StyleSheet.create({
     },
     added: {
         fontSize: 12,
-        color: '#34C759',
+        color: theme.colors.diff.success,
         ...Typography.mono(),
     },
     removed: {
         fontSize: 12,
-        color: '#FF3B30',
+        color: theme.colors.diff.error,
         ...Typography.mono(),
     },
     sectionMessage: {
@@ -512,4 +512,4 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-});
+}));

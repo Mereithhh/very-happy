@@ -130,7 +130,7 @@ export const MermaidRenderer = React.memo((props: {
                     height: auto;
                 }
                 .error {
-                    color: #ff6b6b;
+                    color: ${theme.colors.textDestructive};
                     font-family: monospace;
                     white-space: pre-wrap;
                 }

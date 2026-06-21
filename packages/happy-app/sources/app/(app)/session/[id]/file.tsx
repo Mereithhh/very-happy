@@ -402,7 +402,7 @@ export default React.memo(function FileScreen() {
                 </Text>
                 <Text style={{
                     fontSize: 14,
-                    color: '#999',
+                    color: theme.colors.textSecondary,
                     textAlign: 'center',
                     marginTop: 8,
                     ...Typography.default()
@@ -478,7 +478,7 @@ export default React.memo(function FileScreen() {
                         <Text style={{
                             fontSize: 14,
                             fontWeight: '600',
-                            color: displayMode === 'diff' ? 'white' : theme.colors.textSecondary,
+                            color: displayMode === 'diff' ? theme.colors.button.primary.tint : theme.colors.textSecondary,
                             ...Typography.default()
                         }}>
                             {t('files.diff')}
@@ -497,7 +497,7 @@ export default React.memo(function FileScreen() {
                         <Text style={{
                             fontSize: 14,
                             fontWeight: '600',
-                            color: displayMode === 'file' ? 'white' : theme.colors.textSecondary,
+                            color: displayMode === 'file' ? theme.colors.button.primary.tint : theme.colors.textSecondary,
                             ...Typography.default()
                         }}>
                             {t('files.file')}

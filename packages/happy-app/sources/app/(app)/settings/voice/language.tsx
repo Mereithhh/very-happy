@@ -99,7 +99,7 @@ export default function LanguageSelectionScreen() {
                             icon={<Ionicons name="language-outline" size={29} color={theme.colors.textSecondary} />}
                             rightElement={
                                 voiceAssistantLanguage === item.code ? (
-                                    <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
+                                    <Ionicons name="checkmark-circle" size={24} color={theme.colors.textLink} />
                                 ) : null
                             }
                             onPress={() => handleLanguageSelect(item.code)}

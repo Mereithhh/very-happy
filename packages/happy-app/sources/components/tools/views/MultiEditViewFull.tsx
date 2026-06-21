@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
@@ -53,7 +54,7 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
     );
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     editHeader: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -78,7 +79,7 @@ const styles = StyleSheet.create({
     },
     separator: {
         height: 1,
-        backgroundColor: '#E5E5EA',
+        backgroundColor: theme.colors.divider,
         marginVertical: 16,
     },
-});
+}));
