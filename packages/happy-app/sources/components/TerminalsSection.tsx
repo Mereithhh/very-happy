@@ -96,7 +96,7 @@ export function TerminalsSection() {
 
     return (
         <View>
-            <Text style={styles.header}>Terminals</Text>
+            <Text style={styles.header}>Terminals · 终端</Text>
             {items.map(({ machineId, machineName, term }) => {
                 const title = titleFor(term);
                 return (
