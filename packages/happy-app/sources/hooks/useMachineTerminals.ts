@@ -14,8 +14,11 @@ export interface MachineTerminalsGroup {
  * for its own live tmux terminals; we query them over the RPC relay and poll
  * so any logged-in device sees (and can reattach) every machine's terminals —
  * no per-device localStorage. Only groups with ≥1 terminal are returned.
+ *
+ * `enabled` gates the polling — terminals are a web-only feature, so callers
+ * pass `false` on native to avoid a needless 6s RPC fan-out to every machine.
  */
-export function useMachineTerminals(): MachineTerminalsGroup[] {
+export function useMachineTerminals(enabled: boolean = true): MachineTerminalsGroup[] {
     const machines = useAllMachines();
     const [groups, setGroups] = React.useState<MachineTerminalsGroup[]>([]);
 
@@ -24,6 +27,10 @@ export function useMachineTerminals(): MachineTerminalsGroup[] {
     const onlineKey = online.map((m) => m.id).join(',');
 
     React.useEffect(() => {
+        if (!enabled) {
+            setGroups([]);
+            return;
+        }
         let cancelled = false;
         const refresh = async () => {
             const results = await Promise.all(online.map(async (m) => ({
@@ -37,7 +44,7 @@ export function useMachineTerminals(): MachineTerminalsGroup[] {
         const iv = setInterval(refresh, 6000);
         return () => { cancelled = true; clearInterval(iv); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [onlineKey]);
+    }, [onlineKey, enabled]);
 
     return groups;
 }

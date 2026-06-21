@@ -6,7 +6,6 @@ import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
@@ -17,10 +16,12 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
-import { sessionKill } from '@/sync/ops';
+import { sessionKill, machineKillTerminal, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
+import { Modal } from '@/modal';
+import { type MachineTerminalsGroup } from '@/hooks/useMachineTerminals';
 
 const getStatusConfig = (theme: any): Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> => ({
     disconnected: { color: theme.colors.status.disconnected, dotColor: theme.colors.status.disconnected, isPulsing: false, isConnected: false },
@@ -32,17 +33,31 @@ const getStatusConfig = (theme: any): Record<SessionState, { color: string; dotC
 interface ActiveSessionsGroupProps {
     sessions: SessionRowData[];
     selectedSessionId?: string;
+    // Live tmux terminals (web only). Folded into the same machine→project
+    // groups as Claude sessions — a terminal is just another kind of session.
+    terminals?: MachineTerminalsGroup[];
+}
+
+interface ProjectGroup {
+    path: string;
+    displayPath: string;
+    homeDir: string | null;
+    machineId: string;
+    // First session in the group — used to look up git status for the header.
+    gitSessionId: string | null;
+    sessions: SessionRowData[];
+    terminals: MachineTerminal[];
 }
 
 /**
  * Hook to get git display info for a section header:
  * branch name, line changes, and worktree status.
  */
-function useSectionGitInfo(sessionId: string) {
-    const gitStatus = useSessionGitStatus(sessionId);
+function useSectionGitInfo(sessionId: string | null) {
+    const gitStatus = useSessionGitStatus(sessionId ?? '');
 
     return React.useMemo(() => {
-        if (!gitStatus || gitStatus.lastUpdatedAt === 0) {
+        if (!sessionId || !gitStatus || gitStatus.lastUpdatedAt === 0) {
             return { branch: null, linesAdded: 0, linesRemoved: 0, hasChanges: false };
         }
         return {
@@ -51,40 +66,41 @@ function useSectionGitInfo(sessionId: string) {
             linesRemoved: gitStatus.unstagedLinesRemoved,
             hasChanges: gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0,
         };
-    }, [gitStatus]);
+    }, [gitStatus, sessionId]);
 }
 
-// Section header: avatar | path + branch + tree icon + line changes | + button
-const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRowData; displayPath: string }) => {
+// Section header: path (folder) + branch + tree icon + line changes | + button.
+// No avatar — for a single account the per-path identicon was decorative noise;
+// the path itself is the meaningful, distinguishing label.
+const SectionHeader = React.memo(({ group }: { group: ProjectGroup }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
     const draft = useNewSessionDraft();
 
-    const sessionPath = session.path || '';
+    const sessionPath = group.path || '';
     const isWorktree = isWorktreePath(sessionPath);
     const repoPath = isWorktree ? getRepoPath(sessionPath) : sessionPath;
     const repoDisplayPath = isWorktree
-        ? formatPathRelativeToHome(repoPath, session.homeDir ?? undefined)
-        : displayPath;
+        ? formatPathRelativeToHome(repoPath, group.homeDir ?? undefined)
+        : group.displayPath;
     const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
-    const gitInfo = useSectionGitInfo(session.id);
+    const gitInfo = useSectionGitInfo(group.gitSessionId);
     const branchName = worktreeName || gitInfo.branch;
     const hasBranch = !!branchName;
 
     const handleAdd = React.useCallback(() => {
-        const machineId = session.machineId;
-        if (machineId) {
-            draft.setMachineId(machineId);
+        if (group.machineId) {
+            draft.setMachineId(group.machineId);
         }
-        const pathToSet = formatPathRelativeToHome(repoPath, session.homeDir ?? undefined);
+        const pathToSet = formatPathRelativeToHome(repoPath, group.homeDir ?? undefined);
         draft.setPath(pathToSet);
         draft.setSessionType(isWorktree ? 'worktree' : 'simple');
         draft.setWorktreeKey(isWorktree ? sessionPath : null);
         router.navigate('/new');
-    }, [session.machineId, session.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
+    }, [group.machineId, group.homeDir, repoPath, isWorktree, sessionPath, draft, router]);
 
     const [isHovered, setIsHovered] = React.useState(false);
 
@@ -96,11 +112,6 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
             // @ts-ignore - Web only events
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Avatar — vertically centered */}
-            <View style={styles.sectionHeaderAvatar}>
-                <Avatar id={session.avatarId} size={24} flavor={null} />
-            </View>
-
             {/* Path + branch */}
             <View style={styles.sectionHeaderContent}>
                 <Text style={styles.sectionHeaderPath} numberOfLines={1}>
@@ -163,9 +174,15 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
     );
 });
 
-export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
+export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, terminals }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
     const machines = useAllMachines();
+    // Optimistically hide a terminal the instant it's killed, instead of
+    // waiting for the next 6s poll to drop it.
+    const [removedTerminals, setRemovedTerminals] = React.useState<Set<string>>(() => new Set());
+    const removeTerminal = React.useCallback((machineId: string, id: string) => {
+        setRemovedTerminals((prev) => new Set(prev).add(`${machineId}:${id}`));
+    }, []);
 
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -175,46 +192,63 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         return map;
     }, [machines]);
 
-    // Group sessions by machine, then by project within each machine
+    // Group sessions AND terminals by machine, then by project within each.
     const { machineGroups, hasMultipleMachines } = React.useMemo(() => {
         const unknownText = t('status.unknown');
         const byMachine = new Map<string, {
             machineId: string;
             machineName: string;
-            projects: Map<string, {
-                displayPath: string;
-                sessions: SessionRowData[];
-            }>;
+            projects: Map<string, ProjectGroup>;
         }>();
 
-        sessions.forEach(session => {
-            const machineId = session.machineId || unknownText;
+        const ensureMachine = (machineId: string) => {
             const machine = machineId !== unknownText ? machinesMap[machineId] : null;
             const machineName = machine?.metadata?.displayName ||
                 machine?.metadata?.host ||
                 (machineId !== unknownText ? machineId : `<${unknownText}>`);
-
             let machineGroup = byMachine.get(machineId);
             if (!machineGroup) {
                 machineGroup = { machineId, machineName, projects: new Map() };
                 byMachine.set(machineId, machineGroup);
             }
+            return machineGroup;
+        };
 
-            const projectPath = session.path || '';
-            let projectGroup = machineGroup.projects.get(projectPath);
+        const ensureProject = (machineGroup: { projects: Map<string, ProjectGroup> }, machineId: string, path: string, homeDir: string | null) => {
+            let projectGroup = machineGroup.projects.get(path);
             if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.homeDir ?? undefined);
-                projectGroup = { displayPath, sessions: [] };
-                machineGroup.projects.set(projectPath, projectGroup);
+                const displayPath = formatPathRelativeToHome(path, homeDir ?? undefined);
+                projectGroup = { path, displayPath, homeDir, machineId, gitSessionId: null, sessions: [], terminals: [] };
+                machineGroup.projects.set(path, projectGroup);
             }
+            return projectGroup;
+        };
 
+        sessions.forEach(session => {
+            const machineId = session.machineId || unknownText;
+            const machineGroup = ensureMachine(machineId);
+            const projectGroup = ensureProject(machineGroup, machineId, session.path || '', session.homeDir);
             projectGroup.sessions.push(session);
+            if (!projectGroup.gitSessionId) projectGroup.gitSessionId = session.id;
         });
 
-        // Sort sessions within each project group
+        // Fold terminals into the same machine→project groups (matched by cwd).
+        (terminals ?? []).forEach(group => {
+            const machineGroup = ensureMachine(group.machineId);
+            const homeDir = machinesMap[group.machineId]?.metadata?.homeDir ?? null;
+            group.terminals.forEach(term => {
+                if (removedTerminals.has(`${group.machineId}:${term.id}`)) return;
+                const path = term.cwd || ` term:${term.id}`; // terminals without cwd get their own group
+                const projectGroup = ensureProject(machineGroup, group.machineId, path, homeDir);
+                projectGroup.terminals.push(term);
+            });
+        });
+
+        // Sort sessions/terminals within each project group
         byMachine.forEach(mg => {
             mg.projects.forEach(pg => {
                 pg.sessions.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+                pg.terminals.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
             });
         });
 
@@ -223,13 +257,13 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
         );
 
         return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
-    }, [sessions, machinesMap]);
+    }, [sessions, terminals, machinesMap, removedTerminals]);
 
     return (
         <View style={styles.container}>
             {machineGroups.map(machineGroup => {
-                const sortedProjects = Array.from(machineGroup.projects.entries()).sort(
-                    ([, a], [, b]) => a.displayPath.localeCompare(b.displayPath)
+                const sortedProjects = Array.from(machineGroup.projects.values()).sort(
+                    (a, b) => a.displayPath.localeCompare(b.displayPath)
                 );
 
                 return (
@@ -240,25 +274,36 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                                 machineId={machineGroup.machineId}
                             />
                         )}
-                        {sortedProjects.map(([projectPath, projectGroup]) => {
-                            const firstSession = projectGroup.sessions[0];
-                            if (!firstSession) return null;
-
+                        {sortedProjects.map((projectGroup) => {
+                            const rowCount = projectGroup.sessions.length + projectGroup.terminals.length;
+                            let rowIndex = 0;
                             return (
-                                <View key={projectPath}>
-                                    <SectionHeader
-                                        session={firstSession}
-                                        displayPath={projectGroup.displayPath}
-                                    />
+                                <View key={projectGroup.path}>
+                                    <SectionHeader group={projectGroup} />
                                     <View style={styles.projectCard}>
-                                        {projectGroup.sessions.map((session, index) => (
-                                            <CompactSessionRow
-                                                key={session.id}
-                                                session={session}
-                                                selected={selectedSessionId === session.id}
-                                                showBorder={index < projectGroup.sessions.length - 1}
-                                            />
-                                        ))}
+                                        {projectGroup.sessions.map((session) => {
+                                            const i = rowIndex++;
+                                            return (
+                                                <CompactSessionRow
+                                                    key={session.id}
+                                                    session={session}
+                                                    selected={selectedSessionId === session.id}
+                                                    showBorder={i < rowCount - 1}
+                                                />
+                                            );
+                                        })}
+                                        {projectGroup.terminals.map((term) => {
+                                            const i = rowIndex++;
+                                            return (
+                                                <CompactTerminalRow
+                                                    key={`term:${term.id}`}
+                                                    machineId={projectGroup.machineId}
+                                                    terminal={term}
+                                                    showBorder={i < rowCount - 1}
+                                                    onRemoved={removeTerminal}
+                                                />
+                                            );
+                                        })}
                                     </View>
                                 </View>
                             );
@@ -410,6 +455,92 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     );
 });
 
+function terminalTitle(term: MachineTerminal): string {
+    if (term.title && term.title.trim()) return term.title.trim();
+    if (term.cwd) {
+        const segs = term.cwd.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (segs.length) return segs[segs.length - 1];
+    }
+    return term.id;
+}
+
+// Terminal row — same anatomy as a session row, but with a mono "$" glyph in
+// the leading slot so a live tmux session reads as part of the same list.
+const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemoved }: {
+    machineId: string;
+    terminal: MachineTerminal;
+    showBorder?: boolean;
+    onRemoved: (machineId: string, id: string) => void;
+}) => {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const router = useRouter();
+    const pathname = usePathname();
+    const params = useGlobalSearchParams<{ tid?: string }>();
+
+    const title = terminalTitle(terminal);
+    const selected = pathname === `/terminal/web/${machineId}` && params.tid === terminal.id;
+
+    const handlePress = React.useCallback(() => {
+        router.push(`/terminal/web/${machineId}?tid=${terminal.id}` as any);
+    }, [router, machineId, terminal.id]);
+
+    const menu = React.useCallback(() => {
+        Modal.alert(title, undefined, [
+            {
+                text: t('common.rename'),
+                onPress: async () => {
+                    const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
+                    if (next && next.trim()) void machineSetTerminalTitle(machineId, terminal.id, next.trim());
+                },
+            },
+            {
+                text: t('common.delete'),
+                style: 'destructive',
+                onPress: () => {
+                    onRemoved(machineId, terminal.id);
+                    void machineKillTerminal(machineId, terminal.id);
+                },
+            },
+            { text: t('common.cancel'), style: 'cancel' },
+        ]);
+    }, [title, machineId, terminal.id, onRemoved]);
+
+    const handleContextMenu = React.useCallback((event: any) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        menu();
+    }, [menu]);
+
+    return (
+        <Pressable
+            style={[
+                styles.sessionRow,
+                showBorder && styles.sessionRowWithBorder,
+                selected && styles.sessionRowSelected,
+            ]}
+            onPress={handlePress}
+            onLongPress={menu}
+            // @ts-ignore - web only
+            onContextMenu={Platform.OS === 'web' ? handleContextMenu : undefined}
+        >
+            <View style={styles.sessionContent}>
+                <View style={styles.sessionTitleRow}>
+                    <View style={styles.leadingIndicatorSlot}>
+                        <Text style={[styles.terminalGlyph, { color: theme.colors.textSecondary }]}>$</Text>
+                    </View>
+                    <Text style={[styles.sessionTitle, styles.terminalTitle]} numberOfLines={1}>
+                        {title}
+                    </Text>
+                    <Pressable hitSlop={8} style={styles.terminalKebab} onPress={menu}>
+                        <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
+                    </Pressable>
+                </View>
+            </View>
+        </Pressable>
+    );
+});
+
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         backgroundColor: theme.colors.groupped.background,
@@ -429,9 +560,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    sectionHeaderAvatar: {
-        marginRight: 8,
     },
     sectionHeaderContent: {
         flex: 1,
@@ -549,6 +677,20 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 16,
         height: 16,
         marginRight: 8,
+    },
+    terminalGlyph: {
+        ...Typography.mono('semiBold'),
+        fontSize: 13,
+        lineHeight: 16,
+    },
+    terminalTitle: {
+        ...Typography.mono(),
+        fontSize: 13,
+    },
+    terminalKebab: {
+        padding: 4,
+        borderRadius: 6,
+        marginLeft: 4,
     },
     swipeAction: {
         width: 112,
