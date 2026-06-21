@@ -111,8 +111,22 @@ export class WebTerminalManager {
             // avoid the multi-client size-clamp that garbles redraws. id is
             // validated to [A-Za-z0-9_-], cols/rows are ints → safe to inline.
             file = '/bin/sh';
+            // Session-scoped options (not global -g): they only touch THIS vh-
+            // session, never the user's own tmux config or other sessions.
+            //  - mouse on: wheel-scrolls the scrollback and lets you click
+            //    panes/windows — the whole point of a browser terminal.
+            //  - history-limit: a deep scrollback for panes in the session.
+            // Both are genuine session options, so `-t <session>` is correct
+            // (mode-keys/set-clipboard are window/server-scoped, so they'd
+            // silently no-op here and are deliberately left out). Idempotent,
+            // so re-running on reattach is harmless.
+            const setOpts = [
+                `tmux set-option -t ${tmuxSession} mouse on`,
+                `tmux set-option -t ${tmuxSession} history-limit 100000`,
+            ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
             args = ['-c',
                 `tmux new-session -A -d -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
+                + setOpts
                 + `exec tmux attach-session -d -t ${tmuxSession}`];
         } else {
             file = defaultShell();
