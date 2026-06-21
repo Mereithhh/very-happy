@@ -120,6 +120,12 @@ function buildSessionRowData(session: Session, unreadSessionIds?: Set<string>): 
         ...(!session.active && { activeAt: session.activeAt, createdAt: session.createdAt }),
         hasDraft: !!session.draft,
         active: session.active,
+        // createdAt is stable (set once at creation), so including it for active
+        // sessions too — used to sort sidebar groups by recency — doesn't add
+        // heartbeat churn. activeAt (which updates every heartbeat) stays
+        // inactive-only to avoid needless deep-equal diffs.
+        createdAt: session.createdAt,
+        ...(!session.active && { activeAt: session.activeAt }),
         machineId: session.metadata?.machineId ?? null,
         path: session.metadata?.path ?? null,
         homeDir: session.metadata?.homeDir ?? null,
