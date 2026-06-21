@@ -5,8 +5,8 @@ import { usePathname } from 'expo-router';
 import { SessionListViewItem, SessionRowData, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatLastSeen, vibingMessages } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
+import { useMachineTerminals } from '@/hooks/useMachineTerminals';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
@@ -15,7 +15,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
-import { TerminalsSection } from './TerminalsSection';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
@@ -142,7 +141,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     sessionItem: {
-        height: 88,
+        height: 72,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -178,7 +177,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 16,
         justifyContent: 'center',
     },
     sessionTitleRow: {
@@ -227,23 +225,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
-    },
-    avatarContainer: {
-        position: 'relative',
-        width: 48,
-        height: 48,
-    },
-    draftIconContainer: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    draftIconOverlay: {
-        color: theme.colors.textSecondary,
     },
     artifactsSection: {
         paddingHorizontal: 16,
@@ -354,6 +335,13 @@ export function SessionsList() {
     const rawData = useSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
+    // Live tmux terminals are folded into the same list as Claude sessions —
+    // both are "sessions". Web-only feature, so don't poll on native.
+    const terminals = useMachineTerminals(Platform.OS === 'web');
+    const hasTerminals = React.useMemo(
+        () => terminals.some((g) => g.terminals.length > 0),
+        [terminals],
+    );
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const toggleArchived = React.useCallback(() => {
         setHideInactiveSessions(!hideInactiveSessions);
@@ -369,10 +357,19 @@ export function SessionsList() {
     // shown regardless of the persisted toggle); otherwise keep the existing
     // hideInactiveSessions-driven view untouched.
     const data = React.useMemo(() => {
-        if (!isFiltering) return visibleData;
-        if (!rawData) return rawData;
-        return filterSessionListData(rawData, searchQuery, statusFilter);
-    }, [isFiltering, visibleData, rawData, searchQuery, statusFilter]);
+        const base = !isFiltering
+            ? visibleData
+            : (!rawData ? rawData : filterSessionListData(rawData, searchQuery, statusFilter));
+        if (!base) return base;
+        // Terminals ride along inside the active-sessions group. If there are
+        // terminals but no active Claude sessions (so no active-sessions item
+        // was emitted), inject an empty one so the group — and its terminal
+        // rows — still render.
+        if (hasTerminals && !base.some((item) => item.type === 'active-sessions')) {
+            return [{ type: 'active-sessions' as const, sessions: [] }, ...base];
+        }
+        return base;
+    }, [isFiltering, visibleData, rawData, searchQuery, statusFilter, hasTerminals]);
 
     const statusFilterOptions = React.useMemo(() => ([
         { value: 'all' as const, label: t('sidebar.filterAll') },
@@ -440,6 +437,7 @@ export function SessionsList() {
                     <ActiveSessionsGroupCompact
                         sessions={item.sessions}
                         selectedSessionId={selectedSessionId}
+                        terminals={terminals}
                     />
                 );
 
@@ -475,7 +473,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [selectedSessionId, data, toggleArchived]);
+    }, [selectedSessionId, data, toggleArchived, terminals]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -485,8 +483,6 @@ export function SessionsList() {
         return (
             <>
                 <UpdateBanner />
-                {/* Terminal sessions live at the top of the same list (web). */}
-                <TerminalsSection />
             </>
         );
     }, []);
@@ -624,20 +620,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             onPress={handlePress}
             {...menuProps}
         >
-            <View style={styles.avatarContainer}>
-                <Avatar id={session.avatarId} size={48} monochrome={!status.isConnected} flavor={session.flavor} />
-                {session.hasDraft && (
-                    <View style={styles.draftIconContainer}>
-                        <Ionicons
-                            name="create-outline"
-                            size={12}
-                            style={styles.draftIconOverlay}
-                        />
-                    </View>
-                )}
-            </View>
             <View style={styles.sessionContent}>
                 <View style={styles.sessionTitleRow}>
+                    {session.hasDraft && (
+                        <Ionicons
+                            name="create-outline"
+                            size={13}
+                            color={theme.colors.textSecondary}
+                            style={{ marginRight: 6 }}
+                        />
+                    )}
                     <Text style={[
                         styles.sessionTitle,
                         status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
