@@ -20,6 +20,9 @@ Sign in with a password, pick up your coding sessions on any device — no app s
 
 <div align="center">
   <img src="docs/screenshots/landing.png" width="82%" alt="Very Happy — sign in with a password and drive Claude Code from any browser">
+  <br><br>
+  <img src="docs/screenshots/app.png" width="49%" alt="Pick up any session on any device">
+  <img src="docs/screenshots/terminal.png" width="49%" alt="Open a real web terminal on any connected machine">
 </div>
 
 ## What's different from Happy
