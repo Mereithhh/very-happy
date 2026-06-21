@@ -4,10 +4,13 @@ import * as React from 'react';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
 import { Platform, TouchableOpacity, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { registerNotificationNavigator } from '@/sync/webNotifications';
+import { Modal } from '@/modal';
+import { TmuxHelpModal } from '@/components/TmuxHelpModal';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -171,6 +174,16 @@ export default function RootLayout() {
                     headerShown: true,
                     headerTitle: 'Terminal',
                     headerBackTitle: t('common.back'),
+                    // Help button → tmux cheat-sheet. Web-only feature.
+                    headerRight: Platform.OS === 'web' ? () => (
+                        <TouchableOpacity
+                            onPress={() => Modal.show({ component: TmuxHelpModal })}
+                            style={{ paddingHorizontal: 16 }}
+                            accessibilityLabel="tmux shortcuts"
+                        >
+                            <Ionicons name="help-circle-outline" size={22} color={theme.colors.header.tint} />
+                        </TouchableOpacity>
+                    ) : undefined,
                 }}
             />
             <Stack.Screen
