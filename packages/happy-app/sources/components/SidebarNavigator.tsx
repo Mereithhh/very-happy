@@ -3,7 +3,10 @@ import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { useIsTablet, useHeaderHeight } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
+import { useWindowDimensions, View, Text, Pressable, Platform } from 'react-native';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
+import { NewSessionModal } from './NewSessionModal';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -119,6 +122,10 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
         router.navigate('/');
     }, [router]);
 
+    const handleNewSession = React.useCallback(() => {
+        Modal.show({ component: NewSessionModal });
+    }, []);
+
     const handleBack = React.useCallback(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
         // so the chat → diff → file flow can be unwound without a close X.
@@ -142,70 +149,67 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
 
+    const backBtn = (
+        <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.35 }}>
+            <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
+        </Pressable>
+    );
+    const toggleBtn = (color: string) => (
+        <Pressable onPress={handleZenToggle} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={t('zen.toggle')}>
+            <MaterialCommunityIcons name="dock-left" size={20} color={color} />
+        </Pressable>
+    );
+
     return (
         <View
-            style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                paddingTop: safeArea.top,
-                paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-                paddingRight: 16,
-                height: safeArea.top + headerHeight,
-                flexDirection: 'row',
-                alignItems: 'center',
-                zIndex: 1100,
-            }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: safeArea.top + headerHeight, flexDirection: 'row', alignItems: 'flex-start', zIndex: 1100 }}
             pointerEvents="box-none"
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Left cluster: [expand toggle when collapsed] · logo (→home) · back · forward */}
-            <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
-                pointerEvents="auto"
-                {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
-            >
-                {!showSidebar && (
-                    <Pressable
-                        onPress={handleZenToggle}
-                        hitSlop={10}
-                        style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
-                        accessibilityLabel={t('zen.toggle')}
-                    >
-                        <MaterialCommunityIcons name="dock-left" size={20} color={theme.colors.textLink} />
-                    </Pressable>
-                )}
-                <Pressable
-                    onPress={goHome}
-                    hitSlop={8}
-                    accessibilityLabel={t('common.home')}
-                    style={{ marginRight: 2 }}
-                >
-                    <HeaderLogo />
-                </Pressable>
-                <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
-                </Pressable>
-                {Platform.OS === 'web' && (
-                    <Pressable onPress={handleForward} disabled={!canGoForwardEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoForwardEffective ? 1 : 0.3 }}>
-                        <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
-                    </Pressable>
-                )}
-            </View>
-
-            {/* Collapse toggle — pinned to the sidebar's top-right when expanded. */}
-            {showSidebar && (
-                <Pressable
-                    onPress={handleZenToggle}
-                    hitSlop={10}
+            {showSidebar ? (
+                /* Sidebar top bar: logo · back · 新建会话 · collapse — one row. */
+                <View
+                    style={{ width: drawerWidth, height: safeArea.top + headerHeight, paddingTop: safeArea.top, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 12, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                     pointerEvents="auto"
                     {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
-                    style={{ position: 'absolute', top: safeArea.top, height: headerHeight, width: 28, alignItems: 'center', justifyContent: 'center', left: Math.max(16, drawerWidth - 44) }}
-                    accessibilityLabel={t('zen.toggle')}
                 >
-                    <MaterialCommunityIcons name="dock-left" size={20} color={theme.colors.header.tint} />
-                </Pressable>
+                    <Pressable onPress={goHome} hitSlop={8} accessibilityLabel={t('common.home')}>
+                        <HeaderLogo />
+                    </Pressable>
+                    {backBtn}
+                    <Pressable
+                        onPress={handleNewSession}
+                        style={({ pressed }) => ({
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            height: 34,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: theme.colors.divider,
+                            backgroundColor: pressed ? theme.colors.surfaceSelected : theme.colors.surfaceHigh,
+                        })}
+                        accessibilityLabel={t('sidebar.newSession')}
+                    >
+                        <Ionicons name="create-outline" size={15} color={theme.colors.text} />
+                        <Text style={{ fontSize: 13, color: theme.colors.text, ...Typography.default('semiBold') }} numberOfLines={1}>
+                            {t('sidebar.newSession')}
+                        </Text>
+                    </Pressable>
+                    {toggleBtn(theme.colors.header.tint)}
+                </View>
+            ) : (
+                /* Collapsed: just expand-toggle + back, top-left. */
+                <View
+                    style={{ paddingTop: safeArea.top, height: safeArea.top + headerHeight, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    pointerEvents="auto"
+                    {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
+                >
+                    {toggleBtn(theme.colors.textLink)}
+                    {backBtn}
+                </View>
             )}
         </View>
     );

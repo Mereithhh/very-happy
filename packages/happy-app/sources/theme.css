@@ -11,6 +11,19 @@ html, body {
     font-synthesis: none;
 }
 
+/* iOS Safari force-zooms the whole page when a focused <input>/<textarea> has
+   font-size < 16px. Scope to touch devices (where the bug is) so desktop input
+   sizes are untouched; this also covers the login, modal prompts, and the web
+   terminal's hidden textarea. */
+@media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    textarea,
+    select,
+    [contenteditable="true"] {
+        font-size: 16px !important;
+    }
+}
+
 html.happy-app-zoomed {
     overflow: hidden;
 }
