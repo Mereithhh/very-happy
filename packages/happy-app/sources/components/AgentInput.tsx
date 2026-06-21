@@ -1401,9 +1401,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     color={theme.colors.button.secondary.tint}
                                                 />
                                             ) : (
-                                                <Octicons
+                                                <Ionicons
                                                     name={"stop"}
-                                                    size={16}
+                                                    size={18}
                                                     color={theme.colors.button.secondary.tint}
                                                 />
                                             )}

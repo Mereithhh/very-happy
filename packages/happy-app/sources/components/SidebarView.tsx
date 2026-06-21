@@ -76,18 +76,7 @@ export const SidebarView = React.memo(() => {
 
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>
-            {/* New Session button */}
-            <Pressable
-                onPress={handleNewSession}
-                style={({ pressed }) => [
-                    styles.newSessionButton,
-                    pressed && styles.newSessionButtonPressed,
-                ]}
-            >
-                <Ionicons name="create-outline" size={16} color={stylesheet.newSessionText.color} />
-                <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
-            </Pressable>
-
+            {/* New-session moved into the sidebar's top header row (SidebarNavigator). */}
             {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="sidebar" />
             )}
