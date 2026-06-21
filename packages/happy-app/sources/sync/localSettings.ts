@@ -44,7 +44,9 @@ export const localSettingsDefaults: LocalSettings = {
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,
-    filesSidebarCollapsed: false,
+    // Default the desktop files sidebar to a thin rail so it doesn't eat ~25%
+    // of width when there are no diffs; one click expands it (and it persists).
+    filesSidebarCollapsed: true,
     acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);
