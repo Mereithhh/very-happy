@@ -43,7 +43,7 @@ export const ItemList = React.memo<ItemListProps>((props) => {
     const isWeb = Platform.OS === 'web';
     
     // Override background for non-inset grouped lists on iOS
-    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.groupped.background;
+    const backgroundColor = (isIOS && !insetGrouped) ? theme.colors.surface : theme.colors.groupped.background;
 
     return (
         <ScrollView 
@@ -85,7 +85,7 @@ export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewPro
     const isIOS = Platform.OS === 'ios';
     
     // Override background for non-inset grouped lists on iOS
-    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.groupped.background;
+    const backgroundColor = (isIOS && !insetGrouped) ? theme.colors.surface : theme.colors.groupped.background;
 
     return (
         <View 

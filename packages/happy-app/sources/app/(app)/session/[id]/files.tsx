@@ -82,14 +82,14 @@ export default React.memo(function FilesScreen() {
             return (
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={{
-                        color: '#FF3B30',
+                        color: theme.colors.textDestructive,
                         fontSize: 12,
                         marginRight: 4,
                         ...Typography.default()
                     }}>
                         {t('files.deleted')}
                     </Text>
-                    <Octicons name="diff-removed" size={16} color="#FF3B30" />
+                    <Octicons name="diff-removed" size={16} color={theme.colors.textDestructive} />
                 </View>
             );
         }
@@ -99,11 +99,11 @@ export default React.memo(function FilesScreen() {
 
         switch (file.status) {
             case 'modified':
-                statusColor = "#FF9500";
+                statusColor = theme.colors.warning;
                 statusIcon = "diff-modified";
                 break;
             case 'added':
-                statusColor = "#34C759";
+                statusColor = theme.colors.success;
                 statusIcon = "diff-added";
                 break;
             case 'renamed':
@@ -111,7 +111,7 @@ export default React.memo(function FilesScreen() {
                 statusIcon = "arrow-right";
                 break;
             case 'untracked':
-                statusColor = theme.dark ? "#b0b0b0" : "#8E8E93";
+                statusColor = theme.colors.textSecondary;
                 statusIcon = "file";
                 break;
             default:

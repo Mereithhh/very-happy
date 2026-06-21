@@ -130,11 +130,11 @@ const styles = StyleSheet.create((theme) => ({
     retryButton: {
         paddingHorizontal: 20,
         paddingVertical: 10,
-        backgroundColor: '#007AFF',
+        backgroundColor: theme.colors.button.primary.background,
         borderRadius: 8,
     },
     retryButtonText: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
         fontSize: 16,
         fontWeight: '600',
     },
@@ -158,7 +158,7 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 24,
     },
     terminalContainer: {
-        backgroundColor: '#1e1e1e',
+        backgroundColor: theme.colors.terminal.background,
         borderRadius: 8,
         padding: 16,
         minWidth: 280,
@@ -168,11 +168,11 @@ const styles = StyleSheet.create((theme) => ({
     terminalPrompt: {
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
         fontSize: 14,
-        color: '#00ff00',
+        color: theme.colors.terminal.prompt,
     },
     terminalCommand: {
         fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
         fontSize: 14,
-        color: '#ffffff',
+        color: theme.colors.terminal.command,
     },
 }));

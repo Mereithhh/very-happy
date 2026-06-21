@@ -307,7 +307,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
                                                     isSelected && styles.checkboxOuterSelected,
                                                 ]}>
                                                     {isSelected && (
-                                                        <Ionicons name="checkmark" size={14} color="#fff" />
+                                                        <Ionicons name="checkmark" size={14} color={theme.colors.button.primary.tint} />
                                                     )}
                                                 </View>
                                             ) : (

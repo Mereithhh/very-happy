@@ -183,7 +183,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         ?? (theme.colors as any).permission?.approve
         ?? theme.colors.success
         ?? theme.colors.text;
-    const accentText = (theme.colors as any).permissionButton?.allow?.text ?? '#FFFFFF';
+    const accentText = (theme.colors as any).permissionButton?.allow?.text ?? theme.colors.button.primary.tint;
 
     const styles = StyleSheet.create({
         container: {

@@ -89,10 +89,10 @@ export default function LanguageSettingsScreen() {
                         />}
                         rightElement={
                             currentSelection === option.key ? (
-                                <Ionicons 
-                                    name="checkmark" 
-                                    size={20} 
-                                    color="#007AFF" 
+                                <Ionicons
+                                    name="checkmark"
+                                    size={20}
+                                    color={theme.colors.textLink}
                                 />
                             ) : null
                         }

@@ -343,11 +343,11 @@ const styles = StyleSheet.create((theme) => ({
     added: {
         fontSize: 12,
         fontFamily: 'monospace',
-        color: '#34C759',
+        color: theme.colors.diff.success,
     },
     removed: {
         fontSize: 12,
         fontFamily: 'monospace',
-        color: '#FF3B30',
+        color: theme.colors.diff.error,
     },
 }));

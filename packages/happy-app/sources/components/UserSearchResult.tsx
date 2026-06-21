@@ -80,7 +80,7 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 12,
         marginHorizontal: 16,
         marginVertical: 4,
-        shadowColor: '#000',
+        shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
         shadowRadius: 2,

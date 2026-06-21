@@ -22,12 +22,12 @@ import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter } from 'expo-router';
 
-const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> = {
-    disconnected: { color: '#999', dotColor: '#999', isPulsing: false, isConnected: false },
-    thinking: { color: '#007AFF', dotColor: '#007AFF', isPulsing: true, isConnected: true },
-    waiting: { color: '#34C759', dotColor: '#34C759', isPulsing: false, isConnected: true },
-    permission_required: { color: '#FF9500', dotColor: '#FF9500', isPulsing: true, isConnected: true },
-};
+const getStatusConfig = (theme: any): Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> => ({
+    disconnected: { color: theme.colors.status.disconnected, dotColor: theme.colors.status.disconnected, isPulsing: false, isConnected: false },
+    thinking: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: true, isConnected: true },
+    waiting: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: true },
+    permission_required: { color: theme.colors.status.connecting, dotColor: theme.colors.status.connecting, isPulsing: true, isConnected: true },
+});
 
 interface ActiveSessionsGroupProps {
     sessions: SessionRowData[];
@@ -274,10 +274,10 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const baseStatus = STATUS_CONFIG[session.state];
-    // Override to solid blue when session has unread results
+    const baseStatus = getStatusConfig(theme)[session.state];
+    // Override to solid accent when session has unread results
     const status = session.hasUnread
-        ? { ...baseStatus, color: '#007AFF', dotColor: '#007AFF', isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);

@@ -27,6 +27,7 @@ import {
     type KeyPressEvent,
 } from '@/components/MultiTextInput';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import type { Theme } from '@/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Constants from 'expo-constants';
@@ -108,21 +109,21 @@ function normalizePathForComparison(path: string | null | undefined, homeDir?: s
     return trimTrailingPathSeparator(resolveAbsolutePath(trimmed, homeDir));
 }
 
-function getPermissionStyle(key: string): PermissionStyle | null {
+function getPermissionStyle(key: string, theme: Theme): PermissionStyle | null {
     switch (key) {
         case 'acceptEdits':
         case 'auto_edit':
-            return { color: '#A78BFA', icon: 'play-forward' };
+            return { color: theme.colors.permission.acceptEdits, icon: 'play-forward' };
         case 'plan':
-            return { color: '#5EABA4', icon: 'pause' };
+            return { color: theme.colors.permission.plan, icon: 'pause' };
         case 'dontAsk':
         case 'safe-yolo':
-            return { color: '#FBBF24', icon: 'play-forward' };
+            return { color: theme.colors.permission.safeYolo, icon: 'play-forward' };
         case 'bypassPermissions':
         case 'yolo':
-            return { color: '#F87171', icon: 'play-forward' };
+            return { color: theme.colors.permission.yolo, icon: 'play-forward' };
         case 'read-only':
-            return { color: '#60A5FA', icon: 'pause' };
+            return { color: theme.colors.permission.readOnly, icon: 'pause' };
         default:
             return null;
     }
@@ -808,7 +809,7 @@ function NewSessionScreen() {
     const agent = availableAgents.find(a => a.key === selectedAgent) ?? ALL_AGENTS[0];
     const currentPermission = permissionModes[permissionIndex] ?? permissionModes[0];
     const currentEffort = effortLevels[effortIndex] ?? effortLevels[0];
-    const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key) : null;
+    const permissionStyle = currentPermission?.key !== 'default' ? getPermissionStyle(currentPermission.key, theme) : null;
 
     // Display values
     const machineName = selectedMachine ? getMachineName(selectedMachine) : 'Select machine';

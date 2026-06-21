@@ -265,7 +265,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.cliVersionOutdated')}
                             subtitle={t('sessionInfo.updateCliInstructions')}
-                            icon={<Ionicons name="warning-outline" size={29} color="#FF9500" />}
+                            icon={<Ionicons name="warning-outline" size={29} color={theme.colors.warning} />}
                             showChevron={false}
                             onPress={handleCopyUpdateCommand}
                         />
@@ -323,7 +323,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
-                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
+                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? theme.colors.status.connected : theme.colors.status.disconnected} />}
                         showChevron={false}
                     />
                     <Item
@@ -392,13 +392,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                     <Item
                         title={t('sessionInfo.archiveSession')}
                         subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                        icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                        icon={<Ionicons name="archive-outline" size={29} color={theme.colors.textDestructive} />}
                         onPress={handleArchiveSession}
                     />
                     <Item
                         title={t('sessionInfo.deleteSession')}
                         subtitle={t('sessionInfo.deleteSessionSubtitle')}
-                        icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                        icon={<Ionicons name="trash-outline" size={29} color={theme.colors.textDestructive} />}
                         onPress={handleDeleteSession}
                     />
                 </ItemGroup>
@@ -423,7 +423,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 title={t('sessionInfo.cliVersion')}
                                 subtitle={session.metadata.version}
                                 detail={isCliOutdated ? '⚠️' : undefined}
-                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? "#FF9500" : "#5856D6"} />}
+                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? theme.colors.warning : "#5856D6"} />}
                                 showChevron={false}
                             />
                         )}
@@ -637,6 +637,7 @@ export default React.memo(() => {
 });
 
 function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subtitle: string; icon: React.ReactNode; copyText: string }) {
+    const { theme } = useUnistyles();
     const [copied, setCopied] = React.useState(false);
     return (
         <Item
@@ -644,7 +645,7 @@ function CopyableItem({ title, subtitle, icon, copyText }: { title: string; subt
             subtitle={subtitle}
             icon={icon}
             showChevron={false}
-            rightElement={<Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? '#30D158' : '#8E8E93'} />}
+            rightElement={<Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={copied ? theme.colors.success : theme.colors.textSecondary} />}
             onPress={async () => {
                 await Clipboard.setStringAsync(copyText);
                 setCopied(true);

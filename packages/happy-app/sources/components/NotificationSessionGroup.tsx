@@ -48,7 +48,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     countBadgeText: {
         ...Typography.default('semiBold'),
         fontSize: 11,
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
     },
 }));
 

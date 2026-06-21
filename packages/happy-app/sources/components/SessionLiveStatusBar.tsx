@@ -106,16 +106,16 @@ export const SessionLiveStatusBar = React.memo(function SessionLiveStatusBar({ s
 
     if (kind === 'permission') {
         label = t('liveStatus.waitingPermission');
-        dotColor = '#FF9500';
+        dotColor = theme.colors.warning;
     } else if (kind === 'tool') {
         elapsedText = formatElapsed(elapsedSeconds);
         label = runningTool!.name;
-        dotColor = '#007AFF';
+        dotColor = theme.colors.status.connected;
     } else {
         elapsedText = formatElapsed(elapsedSeconds);
         label = t('liveStatus.thinking', { elapsed: elapsedText });
         elapsedText = null; // already folded into the label for thinking
-        dotColor = '#007AFF';
+        dotColor = theme.colors.status.connected;
     }
 
     return (

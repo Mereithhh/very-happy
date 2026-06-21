@@ -115,7 +115,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         elevation: 4,
     },
     fabIcon: {
-        color: '#FFFFFF',
+        color: theme.colors.fab.icon,
     },
 }));
 

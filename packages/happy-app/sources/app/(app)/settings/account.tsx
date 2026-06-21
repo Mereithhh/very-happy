@@ -470,7 +470,7 @@ export default React.memo(() => {
                                     <Ionicons
                                         name={copiedRecently ? "checkmark-circle" : "copy-outline"}
                                         size={18}
-                                        color={copiedRecently ? "#34C759" : theme.colors.textSecondary}
+                                        color={copiedRecently ? theme.colors.success : theme.colors.textSecondary}
                                     />
                                 </View>
                                 <Text style={{
@@ -502,8 +502,8 @@ export default React.memo(() => {
                                     const optOut = !value;
                                     setAnalyticsOptOut(optOut);
                                 }}
-                                trackColor={{ false: '#767577', true: '#34C759' }}
-                                thumbColor="#FFFFFF"
+                                trackColor={{ false: theme.colors.switch.track.inactive, true: theme.colors.switch.track.active }}
+                                thumbColor={theme.colors.switch.thumb.active}
                             />
                         }
                         showChevron={false}

@@ -32,7 +32,7 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
     },
     periodButtonActive: {
-        backgroundColor: '#007AFF',
+        backgroundColor: theme.colors.button.primary.background,
     },
     periodText: {
         fontSize: 14,
@@ -40,7 +40,7 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '500',
     },
     periodTextActive: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
     },
     statsContainer: {
         padding: 16,
@@ -101,7 +101,7 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
     },
     metricButtonActive: {
-        backgroundColor: '#007AFF',
+        backgroundColor: theme.colors.button.primary.background,
     },
     metricText: {
         fontSize: 14,
@@ -109,7 +109,7 @@ const styles = StyleSheet.create((theme) => ({
         fontWeight: '500',
     },
     metricTextActive: {
-        color: '#FFFFFF',
+        color: theme.colors.button.primary.tint,
     }
 }));
 
@@ -179,7 +179,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007AFF" />
+                <ActivityIndicator size="large" color={theme.colors.button.primary.background} />
             </View>
         );
     }
@@ -272,7 +272,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
                                 label={model}
                                 value={tokens}
                                 maxValue={maxModelTokens}
-                                color="#007AFF"
+                                color={theme.colors.button.primary.background}
                             />
                         ))}
                     </View>

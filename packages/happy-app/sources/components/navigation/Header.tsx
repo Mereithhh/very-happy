@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { layout } from '../layout';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -105,6 +105,7 @@ const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> =
 // Component wrapper for navigation header
 const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((props) => {
     const { options, route, back, navigation } = props;
+    const { theme } = useUnistyles();
     const extendedOptions = options as ExtendedNavigationOptions;
     const isTablet = useIsTablet();
 
@@ -117,7 +118,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
         if (typeof options.headerTitle === 'string') {
             title = (
                 <Text style={[
-                    { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000' },
+                    { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || theme.colors.header.tint },
                     Typography.default('semiBold'),
                     options.headerTitleStyle
                 ]}>
@@ -131,7 +132,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     } else if (typeof options.title === 'string') {
         title = (
             <Text style={[
-                { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000' },
+                { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || theme.colors.header.tint },
                 Typography.default('semiBold'),
                 options.headerTitleStyle
             ]}>
