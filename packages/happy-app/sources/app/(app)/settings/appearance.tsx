@@ -6,7 +6,6 @@ import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
 import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
-import { Switch } from '@/components/Switch';
 import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
@@ -22,15 +21,8 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const [viewInline, setViewInline] = useSettingMutable('viewInline');
-    const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
-    const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
-    const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
-    const [wrapLinesInDiffs, setWrapLinesInDiffs] = useSettingMutable('wrapLinesInDiffs');
     const [diffStyle, setDiffStyle] = useSettingMutable('diffStyle');
-    const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
-    const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
@@ -122,77 +114,11 @@ export default function AppearanceSettingsScreen() {
             {/* Display Settings */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
                 <Item
-                    title={t('settingsAppearance.inlineToolCalls')}
-                    subtitle={t('settingsAppearance.inlineToolCallsDescription')}
-                    icon={<Ionicons name="code-slash-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={viewInline}
-                            onValueChange={setViewInline}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.expandTodoLists')}
-                    subtitle={t('settingsAppearance.expandTodoListsDescription')}
-                    icon={<Ionicons name="checkmark-done-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={expandTodos}
-                            onValueChange={setExpandTodos}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.showLineNumbersInDiffs')}
-                    subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription')}
-                    icon={<Ionicons name="list-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={showLineNumbers}
-                            onValueChange={setShowLineNumbers}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.showLineNumbersInToolViews')}
-                    subtitle={t('settingsAppearance.showLineNumbersInToolViewsDescription')}
-                    icon={<Ionicons name="code-working-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={showLineNumbersInToolViews}
-                            onValueChange={setShowLineNumbersInToolViews}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.wrapLinesInDiffs')}
-                    subtitle={t('settingsAppearance.wrapLinesInDiffsDescription')}
-                    icon={<Ionicons name="return-down-forward-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={wrapLinesInDiffs}
-                            onValueChange={setWrapLinesInDiffs}
-                        />
-                    }
-                />
-                <Item
                     title={t('settingsAppearance.diffStyle')}
                     subtitle={t('settingsAppearance.diffStyleDescription')}
                     icon={<Ionicons name="git-compare-outline" size={29} color={theme.colors.textSecondary} />}
                     detail={diffStyle === 'split' ? t('settingsAppearance.diffStyleOptions.split') : t('settingsAppearance.diffStyleOptions.unified')}
                     onPress={() => setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')}
-                />
-                <Item
-                    title={t('settingsAppearance.alwaysShowContextSize')}
-                    subtitle={t('settingsAppearance.alwaysShowContextSizeDescription')}
-                    icon={<Ionicons name="analytics-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={alwaysShowContextSize}
-                            onValueChange={setAlwaysShowContextSize}
-                        />
-                    }
                 />
                 <Item
                     title={t('settingsAppearance.avatarStyle')}
@@ -205,17 +131,6 @@ export default function AppearanceSettingsScreen() {
                         const nextStyle = nextIndex === 0 ? 'pixelated' : nextIndex === 1 ? 'gradient' : 'brutalist';
                         setAvatarStyle(nextStyle);
                     }}
-                />
-                <Item
-                    title={t('settingsAppearance.showFlavorIcons')}
-                    subtitle={t('settingsAppearance.showFlavorIconsDescription')}
-                    icon={<Ionicons name="apps-outline" size={29} color={theme.colors.textSecondary} />}
-                    rightElement={
-                        <Switch
-                            value={showFlavorIcons}
-                            onValueChange={setShowFlavorIcons}
-                        />
-                    }
                 />
                 {/* <Item
                     title="Compact Mode"

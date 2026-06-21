@@ -147,38 +147,30 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
-        // transparent edge on every row → no layout shift when selected lights it
+        // Console list: flat, hairline-separated rows. A transparent left edge
+        // on every row means the selected teal edge causes no layout shift.
         borderLeftWidth: 3,
         borderLeftColor: 'transparent',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
     sessionItemContainer: {
-        marginHorizontal: 16,
-        marginBottom: 1,
+        marginHorizontal: 0,
+        marginBottom: 0,
         overflow: 'hidden',
     },
-    sessionItemFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-    },
-    sessionItemLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
-    },
-    sessionItemSingle: {
-        borderRadius: 12,
-    },
-    sessionItemContainerFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-    },
+    // Flat list: no per-group card rounding or gaps; the section header gives
+    // separation. Kept as (mostly) no-ops so the render logic that toggles
+    // isFirst/isLast/isSingle needs no changes.
+    sessionItemFirst: {},
+    sessionItemLast: {},
+    sessionItemSingle: {},
+    sessionItemContainerFirst: {},
     sessionItemContainerLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
-        marginBottom: 12,
+        marginBottom: 8,
     },
     sessionItemContainerSingle: {
-        borderRadius: 12,
-        marginBottom: 12,
+        marginBottom: 8,
     },
     sessionItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,
