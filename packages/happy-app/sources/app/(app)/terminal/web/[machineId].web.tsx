@@ -9,6 +9,7 @@ import { View, Platform } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
 import { machineOpenTerminal, machineSetTerminalTitle } from '@/sync/ops';
@@ -45,6 +46,12 @@ export default function WebTerminalScreen() {
         });
         const fit = new FitAddon();
         term.loadAddon(fit);
+        // Unicode 11 width tables: without this xterm measures CJK/emoji with
+        // the legacy v6 tables and the cursor advances by the wrong cell count
+        // → wide chars overlap. Must be activated before content is written.
+        const unicode11 = new Unicode11Addon();
+        term.loadAddon(unicode11);
+        term.unicode.activeVersion = '11';
         term.open(host);
         try { fit.fit(); } catch { /* container not laid out yet */ }
 
@@ -118,9 +125,16 @@ export default function WebTerminalScreen() {
     }, [machineId, tid]);
 
     return (
-        <View style={{ flex: 1, backgroundColor: BG }}>
+        // minWidth/minHeight:0 + overflow:hidden are load-bearing: a flex item
+        // defaults to min-width:auto and won't shrink below its content's
+        // intrinsic size. xterm's canvas reports a min-width for its current
+        // cols, so without this the host grows WIDER than the viewport, FitAddon
+        // then measures that inflated width → too many cols → the line runs off
+        // the right edge before wrapping. Clamping the box makes fit see the
+        // real visible width and cols match what's on screen.
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG }}>
             {/* @ts-ignore web-only DOM host */}
-            <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', padding: 8, boxSizing: 'border-box' }} />
+            <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', padding: 8, boxSizing: 'border-box' }} />
         </View>
     );
 }

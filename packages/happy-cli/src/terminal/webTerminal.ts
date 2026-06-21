@@ -61,6 +61,16 @@ function ptyEnv(): Record<string, string> {
         env.PATH = `${local}:${env.PATH || ''}`;
     }
     env.TERM = 'xterm-256color';
+    // Ensure a UTF-8 locale so tmux + the shell treat CJK/emoji as wide chars.
+    // The daemon is often launched without LANG (launchd/GUI context) → tmux
+    // falls back to the C locale → multibyte input renders at width 1 and
+    // overlaps ("中文" overwrites itself). Only inject when no UTF-8 locale is
+    // already present, so we never clobber a user's own zh_CN.UTF-8 etc.
+    const isUtf8 = (v?: string) => !!v && /utf-?8/i.test(v);
+    if (!isUtf8(env.LC_ALL) && !isUtf8(env.LANG) && !isUtf8(env.LC_CTYPE)) {
+        env.LANG = 'en_US.UTF-8';
+        env.LC_CTYPE = 'en_US.UTF-8';
+    }
     return env;
 }
 
