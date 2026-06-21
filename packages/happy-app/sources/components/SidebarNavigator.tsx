@@ -7,8 +7,9 @@ import { useWindowDimensions, View, Pressable, Platform } from 'react-native';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
+import { HeaderLogo } from './HeaderLogo';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
 import { useOverlayNav } from '@/-session/sessionOverlayNav';
@@ -86,14 +87,14 @@ export const SidebarNavigator = React.memo(() => {
             />
             {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode */}
             {isDesktopLayout && (
-                <PersistentHeader />
+                <PersistentHeader drawerWidth={fullDrawerWidth} showSidebar={showSidebar} />
             )}
         </View>
     );
 });
 
 // Header block that stays in the same position whether zen mode is on or off
-const PersistentHeader = React.memo(() => {
+const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth: number; showSidebar: boolean }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
@@ -113,6 +114,10 @@ const PersistentHeader = React.memo(() => {
     const handleZenToggle = React.useCallback(() => {
         setZenMode(!zenMode);
     }, [zenMode, setZenMode]);
+
+    const goHome = React.useCallback(() => {
+        router.navigate('/');
+    }, [router]);
 
     const handleBack = React.useCallback(() => {
         // Intra-session overlay (file diff / file view) consumes back first,
@@ -155,25 +160,29 @@ const PersistentHeader = React.memo(() => {
             pointerEvents="box-none"
             {...(inTauri ? { dataSet: { tauriDragRegion: 'true' } } : {})}
         >
-            {/* Zen / Back / Forward buttons */}
+            {/* Left cluster: [expand toggle when collapsed] · logo (→home) · back · forward */}
             <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
                 pointerEvents="auto"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
+                {!showSidebar && (
+                    <Pressable
+                        onPress={handleZenToggle}
+                        hitSlop={10}
+                        style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+                        accessibilityLabel={t('zen.toggle')}
+                    >
+                        <MaterialCommunityIcons name="dock-left" size={20} color={theme.colors.textLink} />
+                    </Pressable>
+                )}
                 <Pressable
-                    onPress={handleZenToggle}
-                    hitSlop={10}
-                    style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
-                    accessibilityLabel={t('zen.toggle')}
+                    onPress={goHome}
+                    hitSlop={8}
+                    accessibilityLabel={t('common.home')}
+                    style={{ marginRight: 2 }}
                 >
-                    {/* Focus/zen toggle. The old custom open-ring icon read as a
-                        stuck loading spinner — use a clear focus glyph instead. */}
-                    <Ionicons
-                        name={zenMode ? 'scan-outline' : 'contract-outline'}
-                        size={19}
-                        color={zenMode ? theme.colors.textLink : theme.colors.header.tint}
-                    />
+                    <HeaderLogo />
                 </Pressable>
                 <Pressable onPress={handleBack} disabled={!canGoBackEffective} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center', opacity: canGoBackEffective ? 1 : 0.3 }}>
                     <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
@@ -184,6 +193,20 @@ const PersistentHeader = React.memo(() => {
                     </Pressable>
                 )}
             </View>
+
+            {/* Collapse toggle — pinned to the sidebar's top-right when expanded. */}
+            {showSidebar && (
+                <Pressable
+                    onPress={handleZenToggle}
+                    hitSlop={10}
+                    pointerEvents="auto"
+                    {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
+                    style={{ position: 'absolute', top: safeArea.top, height: headerHeight, width: 28, alignItems: 'center', justifyContent: 'center', left: Math.max(16, drawerWidth - 44) }}
+                    accessibilityLabel={t('zen.toggle')}
+                >
+                    <MaterialCommunityIcons name="dock-left" size={20} color={theme.colors.header.tint} />
+                </Pressable>
+            )}
         </View>
     );
 });

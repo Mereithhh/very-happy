@@ -497,34 +497,6 @@ export function SessionsList() {
         <View style={styles.container}>
             <View style={styles.contentContainer}>
                 <View style={styles.filterBar}>
-                    <View style={styles.searchField}>
-                        <Ionicons
-                            name="search"
-                            size={16}
-                            color={theme.colors.textSecondary}
-                            style={styles.searchIcon}
-                        />
-                        <TextInput
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder={t('sidebar.searchPlaceholder')}
-                            placeholderTextColor={theme.colors.textSecondary}
-                            style={styles.searchInput}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            returnKeyType="search"
-                            clearButtonMode="while-editing"
-                        />
-                        {searchQuery.length > 0 && Platform.OS !== 'ios' && (
-                            <Pressable
-                                onPress={() => setSearchQuery('')}
-                                hitSlop={8}
-                                style={styles.searchClear}
-                            >
-                                <Ionicons name="close-circle" size={16} color={theme.colors.textSecondary} />
-                            </Pressable>
-                        )}
-                    </View>
                     <View style={styles.segmentedControl}>
                         {statusFilterOptions.map((option) => {
                             const active = statusFilter === option.value;
