@@ -7,6 +7,7 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
 import { AttentionBar } from './AttentionBar';
+import { NewSessionModal } from './NewSessionModal';
 import { StyleSheet } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { Platform } from 'react-native';
@@ -70,17 +71,8 @@ export const SidebarView = React.memo(() => {
     const realtimeStatus = useRealtimeStatus();
 
     const handleNewSession = React.useCallback(() => {
-        // Web: offer a choice between a conversation and a terminal session.
-        if (Platform.OS === 'web') {
-            Modal.alert(t('sidebar.newSession'), undefined, [
-                { text: t('newSession.title'), onPress: () => router.navigate('/new') },
-                { text: 'Terminal', onPress: () => router.navigate('/terminal/web' as any) },
-                { text: t('common.cancel'), style: 'cancel' },
-            ]);
-            return;
-        }
-        router.navigate('/new');
-    }, [router]);
+        Modal.show({ component: NewSessionModal });
+    }, []);
 
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>

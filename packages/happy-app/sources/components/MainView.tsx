@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { EmptyDetailPane } from './EmptyDetailPane';
 import { SessionsList } from './SessionsList';
+import { NewSessionModal } from './NewSessionModal';
 import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
@@ -182,7 +183,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     if (activeTab === 'sessions') {
         return (
             <Pressable
-                onPress={() => router.navigate('/new')}
+                onPress={() => Modal.show({ component: NewSessionModal })}
                 hitSlop={15}
                 style={styles.headerButton}
             >
@@ -238,16 +239,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
 
     const handleNewSession = React.useCallback(() => {
-        if (Platform.OS === 'web') {
-            Modal.alert(t('sidebar.newSession'), undefined, [
-                { text: t('newSession.title'), onPress: () => router.navigate('/new') },
-                { text: 'Terminal', onPress: () => router.navigate('/terminal/web' as any) },
-                { text: t('common.cancel'), style: 'cancel' },
-            ]);
-            return;
-        }
-        router.navigate('/new');
-    }, [router]);
+        Modal.show({ component: NewSessionModal });
+    }, []);
 
     const handleTabPress = React.useCallback((tab: TabType) => {
         setActiveTab(tab);
