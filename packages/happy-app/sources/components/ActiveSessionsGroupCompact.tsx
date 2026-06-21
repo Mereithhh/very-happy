@@ -4,7 +4,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { Machine } from '@/sync/storageTypes';
 import { SessionRowData } from '@/sync/storage';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
@@ -112,8 +112,8 @@ const SectionHeader = React.memo(({ session, displayPath }: { session: SessionRo
                             {branchName}
                         </Text>
                         {isWorktree && (
-                            <MaterialCommunityIcons
-                                name="tree"
+                            <Ionicons
+                                name="git-branch-outline"
                                 size={11}
                                 color={theme.colors.textSecondary}
                                 style={styles.worktreeIcon}
