@@ -198,6 +198,19 @@ export class ApiMachineClient {
             return { type: 'success' };
         });
 
+        // List this machine's live tmux terminals (source of truth for the
+        // cross-device terminal list — any device queries this over the relay).
+        this.rpcHandlerManager.registerHandler('list-terminals', async () => {
+            return { type: 'success', terminals: this.webTerminal.listSessions() };
+        });
+
+        // Persist a terminal's title on the machine so every device sees it.
+        this.rpcHandlerManager.registerHandler('set-terminal-title', async (params: any) => {
+            const { terminalId, title, ifAbsent } = params || {};
+            if (terminalId && typeof title === 'string') this.webTerminal.setTitle(terminalId, title, !!ifAbsent);
+            return { type: 'success' };
+        });
+
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};

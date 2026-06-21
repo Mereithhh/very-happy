@@ -198,4 +198,58 @@ export class WebTerminalManager {
     closeAll() {
         for (const id of [...this.terminals.keys()]) this.close(id);
     }
+
+    /**
+     * List the live `vh-*` tmux sessions on this machine. The machine is the
+     * source of truth for the cross-device terminal list — any logged-in
+     * device queries this (over the RPC relay) instead of a per-device cache,
+     * so terminals are visible and reattachable from anywhere. [] if no tmux.
+     */
+    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number }> {
+        if (!isTmuxAvailable()) return [];
+        try {
+            const r = spawnSync('tmux',
+                ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{pane_current_path}'],
+                { encoding: 'utf8' });
+            if (r.status !== 0 || !r.stdout) return [];
+            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number }> = [];
+            for (const line of r.stdout.split('\n')) {
+                if (!line) continue;
+                const [name, created, cwd] = line.split('\t');
+                if (!name || !name.startsWith('vh-')) continue;
+                const id = name.slice(3);
+                let title: string | undefined;
+                try {
+                    const t = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8' });
+                    if (t.status === 0 && t.stdout && t.stdout.trim()) title = t.stdout.trim();
+                } catch { /* no title set */ }
+                out.push({
+                    id,
+                    title,
+                    cwd: cwd || undefined,
+                    createdAt: created ? Number(created) * 1000 : undefined,
+                });
+            }
+            return out;
+        } catch {
+            return [];
+        }
+    }
+
+    /** Persist a human title on the tmux session (`@vh_title`) so every device
+     *  sees the same name. `ifAbsent` (used by auto-titling from the first
+     *  command) skips when a title already exists, so it never clobbers a
+     *  manual rename on reattach. No-op without tmux or for an invalid id. */
+    setTitle(terminalId: string, title: string, ifAbsent = false) {
+        if (!isTmuxAvailable()) return;
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return;
+        const name = `vh-${terminalId}`;
+        try {
+            if (ifAbsent) {
+                const cur = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8' });
+                if (cur.status === 0 && cur.stdout && cur.stdout.trim()) return; // already titled
+            }
+            spawnSync('tmux', ['set-option', '-t', name, '@vh_title', title], { stdio: 'ignore' });
+        } catch { /* session gone */ }
+    }
 }

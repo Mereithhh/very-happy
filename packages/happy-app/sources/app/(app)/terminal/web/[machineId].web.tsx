@@ -11,8 +11,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
-import { machineOpenTerminal } from '@/sync/ops';
-import { useTerminalSessions } from '@/sync/terminalSessions';
+import { machineOpenTerminal, machineSetTerminalTitle } from '@/sync/ops';
 
 const BG = '#0B0E13';
 
@@ -89,7 +88,7 @@ export default function WebTerminalScreen() {
                 if (domEvent.key === 'Enter') {
                     const cmd = lineBuf.trim();
                     lineBuf = '';
-                    if (cmd) { useTerminalSessions.getState().autoTitle(tid, cmd); titled = true; }
+                    if (cmd) { void machineSetTerminalTitle(machineId, tid, cmd, true); titled = true; }
                 } else if (domEvent.key === 'Backspace') {
                     lineBuf = lineBuf.slice(0, -1);
                 } else if (key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {

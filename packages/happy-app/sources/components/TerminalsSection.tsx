@@ -1,7 +1,8 @@
 /**
- * Sidebar "Terminals" group (web only). Lists the device's persisted terminal
- * sessions; tap to (re)attach, ⋯ to rename or remove. Pinned above the
- * conversation list so terminals are managed alongside chats.
+ * Sidebar "Terminals" group (web only). Lists the LIVE tmux terminals reported
+ * by each connected machine (cross-device source of truth — see
+ * useMachineTerminals), not a per-device cache. Tap to (re)attach, ⋯ to rename
+ * (persisted on the machine) or kill the session.
  */
 import * as React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
@@ -11,8 +12,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { useTerminalSessions } from '@/sync/terminalSessions';
-import { machineKillTerminal } from '@/sync/ops';
+import { useMachineTerminals } from '@/hooks/useMachineTerminals';
+import { machineKillTerminal, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 
 const stylesheet = StyleSheet.create((theme) => ({
     header: {
@@ -31,48 +32,50 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 10,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        // Match the conversation rows: flat, hairline-separated, transparent
-        // left edge so an active terminal can light it teal without a shift.
         borderLeftWidth: 3,
         borderLeftColor: 'transparent',
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
     },
     rowPressed: { backgroundColor: theme.colors.surfaceSelected },
-    title: { ...Typography.mono(), fontSize: 13, color: theme.colors.text, flex: 1 },
+    title: { ...Typography.mono(), fontSize: 13, color: theme.colors.text },
+    sub: { ...Typography.mono(), fontSize: 11, color: theme.colors.textSecondary, marginTop: 1 },
     kebab: { padding: 4, borderRadius: 6 },
 }));
+
+function titleFor(term: MachineTerminal): string {
+    if (term.title && term.title.trim()) return term.title.trim();
+    if (term.cwd) {
+        const segs = term.cwd.replace(/\\/g, '/').split('/').filter(Boolean);
+        if (segs.length) return segs[segs.length - 1];
+    }
+    return term.id;
+}
 
 export function TerminalsSection() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
-    const terminals = useTerminalSessions((s) => s.terminals);
-    const rename = useTerminalSessions((s) => s.rename);
-    const remove = useTerminalSessions((s) => s.remove);
+    const groups = useMachineTerminals();
 
-    if (Platform.OS !== 'web' || terminals.length === 0) return null;
+    if (Platform.OS !== 'web' || groups.length === 0) return null;
 
-    const open = (machineId: string, id: string) => {
-        router.push(`/terminal/web/${machineId}?tid=${id}` as any);
-    };
+    const multiMachine = groups.length > 1;
+    const open = (machineId: string, id: string) => router.push(`/terminal/web/${machineId}?tid=${id}` as any);
 
-    const menu = (id: string, machineId: string, title: string) => {
+    const menu = (machineId: string, id: string, title: string) => {
         Modal.alert(title, undefined, [
             {
                 text: t('common.rename'),
                 onPress: async () => {
                     const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
-                    if (next && next.trim()) rename(id, next.trim());
+                    if (next && next.trim()) void machineSetTerminalTitle(machineId, id, next.trim());
                 },
             },
             {
                 text: t('common.delete'),
                 style: 'destructive',
-                onPress: () => {
-                    remove(id);
-                    void machineKillTerminal(machineId, id);
-                },
+                onPress: () => void machineKillTerminal(machineId, id),
             },
             { text: t('common.cancel'), style: 'cancel' },
         ]);
@@ -81,20 +84,26 @@ export function TerminalsSection() {
     return (
         <View>
             <Text style={styles.header}>Terminals</Text>
-            {terminals.map((term) => (
-                <Pressable
-                    key={term.id}
-                    onPress={() => open(term.machineId, term.id)}
-                    onLongPress={() => menu(term.id, term.machineId, term.title)}
-                    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                >
-                    <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
-                    <Text style={styles.title} numberOfLines={1}>{term.title}</Text>
-                    <Pressable hitSlop={8} style={styles.kebab} onPress={() => menu(term.id, term.machineId, term.title)}>
-                        <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
+            {groups.flatMap((g) => g.terminals.map((term) => {
+                const title = titleFor(term);
+                return (
+                    <Pressable
+                        key={`${g.machineId}:${term.id}`}
+                        onPress={() => open(g.machineId, term.id)}
+                        onLongPress={() => menu(g.machineId, term.id, title)}
+                        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                    >
+                        <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                            {multiMachine && <Text style={styles.sub} numberOfLines={1}>{g.machineName}</Text>}
+                        </View>
+                        <Pressable hitSlop={8} style={styles.kebab} onPress={() => menu(g.machineId, term.id, title)}>
+                            <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
+                        </Pressable>
                     </Pressable>
-                </Pressable>
-            ))}
+                );
+            }))}
         </View>
     );
 }

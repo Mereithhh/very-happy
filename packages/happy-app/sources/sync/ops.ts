@@ -274,6 +274,37 @@ export async function machineKillTerminal(machineId: string, terminalId: string)
     }
 }
 
+export interface MachineTerminal {
+    id: string;
+    title?: string;
+    cwd?: string;
+    createdAt?: number;
+}
+
+/** Ask a machine for its live tmux terminals (cross-device source of truth). */
+export async function machineListTerminals(machineId: string): Promise<MachineTerminal[]> {
+    try {
+        const result = await apiSocket.machineRPC<{ type: 'success'; terminals: MachineTerminal[] }, {}>(
+            machineId, 'list-terminals', {},
+        );
+        return result.terminals ?? [];
+    } catch {
+        return [];
+    }
+}
+
+/** Persist a terminal's title on the machine so every device sees it.
+ *  `ifAbsent` (auto-title from first command) won't overwrite a manual rename. */
+export async function machineSetTerminalTitle(machineId: string, terminalId: string, title: string, ifAbsent = false): Promise<void> {
+    try {
+        await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string; title: string; ifAbsent: boolean }>(
+            machineId, 'set-terminal-title', { terminalId, title, ifAbsent },
+        );
+    } catch {
+        // best-effort
+    }
+}
+
 /**
  * Copy the source session's Claude JSONL on the daemon machine and return
  * the new Claude session UUID. Caller then spawns a fresh Happy session

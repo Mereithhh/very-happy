@@ -11,7 +11,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { useTerminalSessions } from '@/sync/terminalSessions';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: { flex: 1, backgroundColor: theme.colors.groupped.background },
@@ -34,12 +33,13 @@ export default function WebTerminalPicker() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const machines = useAllMachines();
-    const createTerminal = useTerminalSessions((s) => s.create);
 
-    const openOn = React.useCallback((machineId: string, name: string) => {
-        const t = createTerminal(machineId, name);
-        router.replace(`/terminal/web/${machineId}?tid=${t.id}` as any);
-    }, [createTerminal, router]);
+    const openOn = React.useCallback((machineId: string, _name: string) => {
+        // Client-picked id → the daemon creates tmux `vh-<id>`; the terminal
+        // then shows up in every device's list (machine is source of truth).
+        const id = (Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 8)).slice(0, 12);
+        router.replace(`/terminal/web/${machineId}?tid=${id}` as any);
+    }, [router]);
 
     const sorted = React.useMemo(() => {
         return [...machines].sort((a, b) => Number(isMachineOnline(b)) - Number(isMachineOnline(a)));
