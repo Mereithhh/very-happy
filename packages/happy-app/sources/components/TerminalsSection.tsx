@@ -29,12 +29,16 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        marginHorizontal: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        // Match the conversation rows: flat, hairline-separated, transparent
+        // left edge so an active terminal can light it teal without a shift.
+        borderLeftWidth: 3,
+        borderLeftColor: 'transparent',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
     },
-    rowPressed: { backgroundColor: theme.colors.surfaceHigh },
+    rowPressed: { backgroundColor: theme.colors.surfaceSelected },
     title: { ...Typography.default(), fontSize: 14, color: theme.colors.text, flex: 1 },
     kebab: { padding: 4, borderRadius: 6 },
 }));
