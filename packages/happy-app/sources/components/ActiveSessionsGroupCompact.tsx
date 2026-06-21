@@ -45,6 +45,9 @@ interface ProjectGroup {
     machineId: string;
     // First session in the group — used to look up git status for the header.
     gitSessionId: string | null;
+    // Newest createdAt across the group's sessions + terminals — groups sort by
+    // this (most recently active on top).
+    lastActivity: number;
     sessions: SessionRowData[];
     terminals: MachineTerminal[];
 }
@@ -84,7 +87,6 @@ const SectionHeader = React.memo(({ group }: { group: ProjectGroup }) => {
     const repoDisplayPath = isWorktree
         ? formatPathRelativeToHome(repoPath, group.homeDir ?? undefined)
         : group.displayPath;
-    const repoFolderName = repoPath.split(/[/\\]/).filter(Boolean).pop() || repoDisplayPath;
     const worktreeName = isWorktree ? getWorktreeName(sessionPath) : null;
 
     const gitInfo = useSectionGitInfo(group.gitSessionId);
@@ -112,10 +114,11 @@ const SectionHeader = React.memo(({ group }: { group: ProjectGroup }) => {
             // @ts-ignore - Web only events
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Path + branch */}
+            {/* Path + branch — full (home-relative) path; long ones ellipsize
+                in the middle so both the root and the leaf folder stay visible. */}
             <View style={styles.sectionHeaderContent}>
-                <Text style={styles.sectionHeaderPath} numberOfLines={1}>
-                    {repoFolderName}
+                <Text style={styles.sectionHeaderPath} numberOfLines={1} ellipsizeMode="middle">
+                    {repoDisplayPath}
                 </Text>
                 {hasBranch && (
                     <View style={styles.branchRow}>
@@ -218,7 +221,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
             let projectGroup = machineGroup.projects.get(path);
             if (!projectGroup) {
                 const displayPath = formatPathRelativeToHome(path, homeDir ?? undefined);
-                projectGroup = { path, displayPath, homeDir, machineId, gitSessionId: null, sessions: [], terminals: [] };
+                projectGroup = { path, displayPath, homeDir, machineId, gitSessionId: null, lastActivity: 0, sessions: [], terminals: [] };
                 machineGroup.projects.set(path, projectGroup);
             }
             return projectGroup;
@@ -229,6 +232,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
             const machineGroup = ensureMachine(machineId);
             const projectGroup = ensureProject(machineGroup, machineId, session.path || '', session.homeDir);
             projectGroup.sessions.push(session);
+            projectGroup.lastActivity = Math.max(projectGroup.lastActivity, session.createdAt ?? 0);
             if (!projectGroup.gitSessionId) projectGroup.gitSessionId = session.id;
         });
 
@@ -241,6 +245,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
                 const path = term.cwd || ` term:${term.id}`; // terminals without cwd get their own group
                 const projectGroup = ensureProject(machineGroup, group.machineId, path, homeDir);
                 projectGroup.terminals.push(term);
+                projectGroup.lastActivity = Math.max(projectGroup.lastActivity, term.createdAt ?? 0);
             });
         });
 
@@ -252,9 +257,13 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
             });
         });
 
-        const sorted = Array.from(byMachine.values()).sort((a, b) =>
-            a.machineName.localeCompare(b.machineName)
-        );
+        // Machine groups sort by their most-recent project; projects within a
+        // machine by recency too — most recently active bubbles to the top.
+        const sorted = Array.from(byMachine.values()).map(mg => {
+            const projectsSorted = Array.from(mg.projects.values()).sort((a, b) => b.lastActivity - a.lastActivity);
+            const lastActivity = projectsSorted.reduce((m, p) => Math.max(m, p.lastActivity), 0);
+            return { machineId: mg.machineId, machineName: mg.machineName, projectsSorted, lastActivity };
+        }).sort((a, b) => b.lastActivity - a.lastActivity);
 
         return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
     }, [sessions, terminals, machinesMap, removedTerminals]);
@@ -262,9 +271,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
     return (
         <View style={styles.container}>
             {machineGroups.map(machineGroup => {
-                const sortedProjects = Array.from(machineGroup.projects.values()).sort(
-                    (a, b) => a.displayPath.localeCompare(b.displayPath)
-                );
+                const sortedProjects = machineGroup.projectsSorted;
 
                 return (
                     <React.Fragment key={machineGroup.machineId}>
@@ -686,6 +693,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     terminalTitle: {
         ...Typography.mono(),
         fontSize: 13,
+        color: theme.colors.text,
     },
     terminalKebab: {
         padding: 4,
