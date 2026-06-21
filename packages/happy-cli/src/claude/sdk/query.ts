@@ -41,6 +41,17 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         mcpServers: opts?.mcpServers as Options['mcpServers'],
         systemPrompt,
         settings: opts?.settingsPath,
+        // Load filesystem settings the way the real `claude` CLI does. The
+        // agent SDK does NOT load these by default (the rename from
+        // @anthropic-ai/claude-code flipped the default to "isolated" — the
+        // sdk.d.ts comment claiming "omitted = all sources" is stale), so a
+        // remote/web session would otherwise ignore ~/.claude/CLAUDE.md, the
+        // project .claude/, AND skills (skills are discovered from these dirs).
+        // 'user' brings in the global CLAUDE.md (e.g. "reply in Chinese"),
+        // 'project'/'local' bring in repo-level CLAUDE.md + settings → parity
+        // with a plain CLI invocation. This is the whole point of running our
+        // own fork: remote sessions should behave like local ones.
+        settingSources: ['user', 'project', 'local'],
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
