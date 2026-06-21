@@ -122,26 +122,24 @@ async function loadFonts() {
             (window as any).__TAURI_INTERNALS__ !== undefined;
 
         if (!isTauri) {
-            // Normal font loading for non-Tauri environments (native and regular web)
+            // Block ONLY on the primary text faces (Plex Sans/Mono regular +
+            // semibold) so body/UI copy never flashes. Italics, the legacy
+            // SpaceMono, the Bricolage logo face and the FontAwesome icon font
+            // are loaded in the background — a cold page load shouldn't be gated
+            // on ~1.5MB of fonts before the app can render.
             await Fonts.loadAsync({
-                // Keep existing font
-                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
-
-                // IBM Plex Sans family
                 'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
                 'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
-
-                // IBM Plex Mono family  
                 'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
                 'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
-
-                // Bricolage Grotesque  
-                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
-
-                ...FontAwesome.font,
             });
+            void Fonts.loadAsync({
+                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+                ...FontAwesome.font,
+            }).catch(() => { /* non-blocking */ });
         } else {
             // For Tauri, skip Font Face Observer as fonts are loaded via CSS
             console.log('Do not wait for fonts to load');

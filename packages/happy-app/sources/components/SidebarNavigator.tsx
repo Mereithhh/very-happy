@@ -10,7 +10,8 @@ import { NewSessionModal } from './NewSessionModal';
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Rect, Line } from 'react-native-svg';
 import { useUnistyles } from 'react-native-unistyles';
 import { HeaderLogo } from './HeaderLogo';
 import { t } from '@/text';
@@ -156,7 +157,10 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
     );
     const toggleBtn = (color: string) => (
         <Pressable onPress={handleZenToggle} hitSlop={10} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }} accessibilityLabel={t('zen.toggle')}>
-            <MaterialCommunityIcons name="dock-left" size={20} color={color} />
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+                <Rect x="3" y="4.5" width="18" height="15" rx="2.5" stroke={color} strokeWidth={1.8} />
+                <Line x1="9.5" y1="4.5" x2="9.5" y2="19.5" stroke={color} strokeWidth={1.8} />
+            </Svg>
         </Pressable>
     );
 
