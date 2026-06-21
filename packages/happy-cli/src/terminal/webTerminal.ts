@@ -127,12 +127,23 @@ export class WebTerminalManager {
             env,
         });
 
-        this.terminals.set(id, { pty: proc, tmuxSession });
+        const entry: TerminalEntry = { pty: proc, tmuxSession };
+        this.terminals.set(id, entry);
 
+        // Guard against a stale client: on a rapid re-open (reattach), the
+        // previous pty's tmux client can linger and survive SIGHUP for a beat.
+        // While it lives it keeps receiving tmux's render and would emit a
+        // SECOND copy of every byte → the web writes input twice (`ls` → `llls`).
+        // Only the pty that is *currently* the entry for this id may emit; a
+        // replaced pty goes silent even if it hasn't fully died yet. Same guard
+        // on exit so a dying old pty can't delete the new entry or fire a
+        // spurious terminal-exit.
         proc.onData((data) => {
+            if (this.terminals.get(id) !== entry) return;
             this.emit('terminal-output', { terminalId: id, data: Buffer.from(data, 'utf8').toString('base64') });
         });
         proc.onExit(({ exitCode }) => {
+            if (this.terminals.get(id) !== entry) return;
             this.terminals.delete(id);
             this.emit('terminal-exit', { terminalId: id, exitCode });
         });
