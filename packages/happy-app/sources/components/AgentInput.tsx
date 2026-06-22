@@ -45,6 +45,8 @@ interface AgentInputProps {
     onPresetsPress?: () => void;
     // Picks a text file and inlines its content into the composer.
     onAttachTextPress?: () => void;
+    // Uploads any file to the machine and references its path in the composer.
+    onUploadFilePress?: () => void;
     // Web voice dictation states (drives the button icon): recording shows a
     // stop square, transcribing shows a spinner.
     isMicRecording?: boolean;
@@ -1492,6 +1494,31 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     >
                                         <Ionicons
                                             name="document-text-outline"
+                                            size={16}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                )}
+
+                                {/* Upload any file to the machine → reference its path */}
+                                {props.onUploadFilePress && (
+                                    <Pressable
+                                        onPress={() => { hapticsLight(); props.onUploadFilePress?.(); }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        accessibilityLabel="Upload file to machine"
+                                    >
+                                        <Ionicons
+                                            name="cloud-upload-outline"
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
                                         />
