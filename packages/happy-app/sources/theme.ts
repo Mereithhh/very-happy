@@ -270,14 +270,14 @@ export const darkTheme = {
         warningCritical: '#FF6B6B',
         warning: '#E6B450',
         success: '#34E2C4',
-        surface: '#0B0E13',                       // bg-1 panel
+        surface: '#0E141B',                       // bg-1 panel
         surfaceRipple: 'rgba(232,237,244,0.06)',
-        surfacePressed: '#171C25',                // bg-3
-        surfaceSelected: '#11151C',               // bg-2 (active row)
-        surfacePressedOverlay: Platform.select({ ios: '#171C25', default: 'transparent' }),
-        surfaceHigh: '#11151C',                   // bg-2 raised
-        surfaceHighest: '#171C25',                // bg-3
-        divider: '#1E2530',                       // line
+        surfacePressed: '#232C3A',                // bg-3
+        surfaceSelected: '#181F2A',               // bg-2 (active row)
+        surfacePressedOverlay: Platform.select({ ios: '#232C3A', default: 'transparent' }),
+        surfaceHigh: '#181F2A',                   // bg-2 raised
+        surfaceHighest: '#232C3A',                // bg-3
+        divider: '#2C3543',                       // line
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0,0,0,0.4)' }),
             opacity: 0.4,
@@ -288,13 +288,13 @@ export const darkTheme = {
         //
 
         header: {
-            background: '#0B0E13',
+            background: '#0E141B',
             tint: '#E8EDF4',
         },
         switch: {
             track: {
                 active: '#15433B',                // accent-dim
-                inactive: '#171C25',              // bg-3
+                inactive: '#232C3A',              // bg-3
             },
             thumb: {
                 active: '#34E2C4',                // accent
@@ -302,7 +302,7 @@ export const darkTheme = {
             },
         },
         groupped: {
-            background: '#07090D',                // bg-0 page
+            background: '#06080C',                // bg-0 page
             chevron: '#5B6675',                   // text-faint
             sectionTitle: '#5B6675',
         },
@@ -330,7 +330,7 @@ export const darkTheme = {
             },
         },
         input: {
-            background: '#11151C',                // bg-2
+            background: '#181F2A',                // bg-2
             text: '#E8EDF4',
             placeholder: '#5B6675',
         },
@@ -386,12 +386,12 @@ export const darkTheme = {
                 text: '#34E2C4',
             },
             inactive: {
-                background: '#171C25',
+                background: '#232C3A',
                 border: '#2A3340',
                 text: '#5B6675',
             },
             selected: {
-                background: '#11151C',
+                background: '#181F2A',
                 border: '#2A3340',
                 text: '#E8EDF4',
             },
@@ -400,7 +400,7 @@ export const darkTheme = {
 
         // Diff view (GitHub-dark, with Console surfaces)
         diff: {
-            outline: '#1E2530',
+            outline: '#2C3543',
             success: '#34E2C4',
             error: '#FF6B6B',
             addedBg: '#0D2E1F',
@@ -409,13 +409,13 @@ export const darkTheme = {
             removedBg: '#3F1B23',
             removedBorder: '#9E3B43',
             removedText: '#C9D1D9',
-            contextBg: '#11151C',
+            contextBg: '#181F2A',
             contextText: '#9AA4B2',
-            lineNumberBg: '#11151C',
+            lineNumberBg: '#181F2A',
             lineNumberText: '#5B6675',
-            hunkHeaderBg: '#11151C',
+            hunkHeaderBg: '#181F2A',
             hunkHeaderText: '#34E2C4',
-            leadingSpaceDot: '#1E2530',
+            leadingSpaceDot: '#2C3543',
             inlineAddedBg: '#1E5A3F',
             inlineAddedText: '#7AFFC4',
             inlineRemovedBg: '#5A2A2A',
@@ -423,7 +423,7 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#171C25',         // bg-3 raised bubble
+        userMessageBackground: '#232C3A',         // bg-3 raised bubble
         userMessageText: '#E8EDF4',
         agentMessageText: '#E8EDF4',
         agentEventText: '#5B6675',

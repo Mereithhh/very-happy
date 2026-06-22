@@ -371,8 +371,9 @@ export function SessionsList() {
         return base;
     }, [isFiltering, visibleData, rawData, searchQuery, statusFilter, hasTerminals]);
 
+    // "All" segment removed — Active / Archived is enough. Sessions are always
+    // partitioned by status now; no combined view.
     const statusFilterOptions = React.useMemo(() => ([
-        { value: 'all' as const, label: t('sidebar.filterAll') },
         { value: 'active' as const, label: t('sidebar.filterActive') },
         { value: 'archived' as const, label: t('sidebar.filterArchived') },
     ]), []);
