@@ -14,6 +14,7 @@ import { Platform } from 'react-native';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -46,7 +47,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
-    settingsRow: {
+    footerRow: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -54,6 +55,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: theme.colors.divider,
         gap: 10,
+    },
+    footerRowPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    footerIcon: {
+        position: 'relative',
+    },
+    footerDot: {
+        position: 'absolute',
+        top: -2,
+        right: -3,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: theme.colors.status.connected,
     },
     settingsText: {
         fontSize: 14,
@@ -74,6 +90,8 @@ export const SidebarView = React.memo(() => {
         Modal.show({ component: NewSessionModal });
     }, []);
 
+    const inboxHasContent = useInboxHasContent();
+
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>
             {/* New-session moved into the sidebar's top header row (SidebarNavigator). */}
@@ -87,10 +105,22 @@ export const SidebarView = React.memo(() => {
             {/* Sessions list (terminals are rendered at the top of this list) */}
             <MainView variant="sidebar" />
 
-            {/* Settings at bottom */}
+            {/* Inbox + Settings at bottom. Desktop has no tab bar, so the inbox
+                (notifications: updates, friend requests, activity, changelog)
+                is otherwise unreachable here. Dot mirrors the mobile tab badge. */}
+            <Pressable
+                onPress={() => router.push('/inbox')}
+                style={({ pressed }) => [styles.footerRow, pressed && styles.footerRowPressed]}
+            >
+                <View style={styles.footerIcon}>
+                    <Ionicons name="notifications-outline" size={18} color={stylesheet.settingsText.color} />
+                    {inboxHasContent && <View style={styles.footerDot} />}
+                </View>
+                <Text style={styles.settingsText}>{t('tabs.inbox')}</Text>
+            </Pressable>
             <Pressable
                 onPress={() => router.push('/settings')}
-                style={styles.settingsRow}
+                style={({ pressed }) => [styles.footerRow, pressed && styles.footerRowPressed]}
             >
                 <Ionicons name="settings-outline" size={18} color={stylesheet.settingsText.color} />
                 <Text style={styles.settingsText}>{t('settings.title')}</Text>

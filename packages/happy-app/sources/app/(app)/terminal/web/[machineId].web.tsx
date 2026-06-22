@@ -90,6 +90,23 @@ export default function WebTerminalScreen() {
         host.addEventListener('contextmenu', onCtx);
         cleanups.push(() => host.removeEventListener('contextmenu', onCtx));
 
+        // Mobile: focusing the terminal pops the on-screen keyboard, and the
+        // browser scrolls the focused (bottom) textarea into view, hiding the
+        // output/context above. Pin the page back to the top on focus so the
+        // context stays visible. Coarse-pointer only (real touch devices).
+        const isCoarsePointer = typeof window !== 'undefined'
+            && typeof window.matchMedia === 'function'
+            && window.matchMedia('(pointer: coarse)').matches;
+        if (isCoarsePointer && term.textarea) {
+            const ta = term.textarea;
+            const onFocus = () => {
+                // After the browser's own scroll-into-view settles.
+                setTimeout(() => window.scrollTo({ top: 0, left: 0 }), 50);
+            };
+            ta.addEventListener('focus', onFocus);
+            cleanups.push(() => ta.removeEventListener('focus', onFocus));
+        }
+
         term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
 
         (async () => {
@@ -163,9 +180,13 @@ export default function WebTerminalScreen() {
         // then measures that inflated width → too many cols → the line runs off
         // the right edge before wrapping. Clamping the box makes fit see the
         // real visible width and cols match what's on screen.
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG }}>
+        // The 8px inset lives on the OUTER View, not the host div: FitAddon
+        // measures the host's box to pick rows, and a padding on the host made
+        // it overcount by a row → the last line was clipped at the bottom.
+        // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8 }}>
             {/* @ts-ignore web-only DOM host */}
-            <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', padding: 8, boxSizing: 'border-box' }} />
+            <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
         </View>
     );
 }
