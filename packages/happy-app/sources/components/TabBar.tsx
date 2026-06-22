@@ -6,14 +6,12 @@ import { Image } from 'expo-image';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
-import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'sessions' | 'settings';
 
 interface TabBarProps {
     activeTab: TabType;
     onTabPress: (tab: TabType) => void;
-    inboxBadgeCount?: number;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -80,15 +78,14 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }: TabBarProps) => {
+export const TabBar = React.memo(({ activeTab, onTabPress }: TabBarProps) => {
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
-    const inboxHasContent = useInboxHasContent();
 
     const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
-        // NOTE: Zen tab removed - the feature never got to a useful state
+        // NOTE: Zen tab removed - the feature never got to a useful state.
+        // Inbox tab removed too — notifications view wasn't pulling its weight.
         return [
-            { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism-27.png'), label: t('tabs.inbox') },
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism-15.png'), label: t('tabs.sessions') },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism-9.png'), label: t('tabs.settings') },
         ];
@@ -114,16 +111,6 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
                                     style={[{ width: 24, height: 24 }]}
                                     tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
                                 />
-                                {tab.key === 'inbox' && inboxBadgeCount > 0 && (
-                                    <View style={styles.badge}>
-                                        <Text style={styles.badgeText}>
-                                            {inboxBadgeCount > 99 ? '99+' : inboxBadgeCount}
-                                        </Text>
-                                    </View>
-                                )}
-                                {tab.key === 'inbox' && inboxHasContent && inboxBadgeCount === 0 && (
-                                    <View style={styles.indicatorDot} />
-                                )}
                             </View>
                             <Text style={[
                                 styles.label,
