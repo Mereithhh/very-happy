@@ -145,12 +145,13 @@ export function settingsParse(settings: unknown): Settings {
 
     const parsed = SettingsSchemaPartial.safeParse(settings);
     if (!parsed.success) {
-        // For invalid settings, preserve unknown fields but use defaults for known fields
-        const unknownFields = { ...(settings as any) };
-        // Remove all known schema fields from unknownFields
-        const knownFields = Object.keys(SettingsSchema.shape);
-        knownFields.forEach(key => delete unknownFields[key]);
-        return { ...settingsDefaults, ...unknownFields };
+        // This is our OWN decrypted settings, not untrusted input. A single
+        // field that doesn't match the current schema (a legacy value, or one
+        // written by a newer client) must NOT wipe every other setting back to
+        // defaults — that silently drops user content like promptPresets /
+        // terminalCommands on the next load. Keep all stored values; defaults
+        // only fill in genuinely-missing keys.
+        return { ...settingsDefaults, ...(settings as any) };
     }
 
     // Migration: Convert old 'zh' language code to 'zh-Hans'
