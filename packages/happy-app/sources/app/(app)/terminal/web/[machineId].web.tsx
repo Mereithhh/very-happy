@@ -84,11 +84,56 @@ export default function WebTerminalScreen() {
             if (sel) writeClipboard(sel);
         });
         cleanups.push(() => offSel.dispose());
-        //  - Suppress the browser context menu so right-click doesn't cover the
-        //    terminal.
-        const onCtx = (e: Event) => e.preventDefault();
+        //  - tmux mouse-mode is ON (wheel-scroll), so a PLAIN drag is eaten by
+        //    tmux (clears on release). The way to select+copy is Shift+drag
+        //    (handled above by onSelectionChange). It's not discoverable, so
+        //    show a one-time hint the first time the user drags WITHOUT Shift.
+        let hintEl: HTMLDivElement | null = null;
+        let hintTimer: ReturnType<typeof setTimeout> | null = null;
+        let hintShownOnce = false;
+        const showShiftHint = () => {
+            if (hintShownOnce) return; // once per session, don't nag
+            hintShownOnce = true;
+            hintEl = document.createElement('div');
+            hintEl.textContent = '按住 Shift 拖动可选择复制 · Hold Shift to select & copy';
+            hintEl.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(11,14,19,0.95);color:#E8EDF4;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:8px 12px;border:1px solid rgba(52,226,196,0.45);border-radius:8px;z-index:9999;pointer-events:none;';
+            document.body.appendChild(hintEl);
+            hintTimer = setTimeout(() => { hintEl?.remove(); hintEl = null; }, 3500);
+        };
+        let downX = 0, downY = 0, watchingDrag = false;
+        const onDown = (e: MouseEvent) => {
+            watchingDrag = e.button === 0 && !e.shiftKey;
+            downX = e.clientX; downY = e.clientY;
+        };
+        const onMove = (e: MouseEvent) => {
+            if (watchingDrag && (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10)) {
+                watchingDrag = false;
+                showShiftHint();
+            }
+        };
+        const onUp = () => { watchingDrag = false; };
+        host.addEventListener('mousedown', onDown);
+        host.addEventListener('mousemove', onMove);
+        host.addEventListener('mouseup', onUp);
+
+        //  - Right-click pastes (the browser menu is hidden anyway) — a common
+        //    terminal convention, and pairs with Shift+drag-to-copy.
+        const onCtx = (e: MouseEvent) => {
+            e.preventDefault();
+            navigator.clipboard?.readText?.().then((text) => {
+                if (text && terminalId) apiSocket.send('terminal-input', { machineId, terminalId, data: toBase64(text) });
+            }).catch(() => { /* clipboard read blocked / denied */ });
+        };
         host.addEventListener('contextmenu', onCtx);
-        cleanups.push(() => host.removeEventListener('contextmenu', onCtx));
+
+        cleanups.push(() => {
+            host.removeEventListener('mousedown', onDown);
+            host.removeEventListener('mousemove', onMove);
+            host.removeEventListener('mouseup', onUp);
+            host.removeEventListener('contextmenu', onCtx);
+            if (hintTimer) clearTimeout(hintTimer);
+            hintEl?.remove();
+        });
 
         // Mobile: focusing the terminal pops the on-screen keyboard, and the
         // browser scrolls the focused (bottom) textarea into view, hiding the
