@@ -326,18 +326,22 @@ export default function WebTerminalScreen() {
         // measures the host's box to pick rows, and a padding on the host made
         // it overcount by a row → the last line was clipped at the bottom.
         // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8 }}>
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8, paddingRight: 14 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
             {/* Quick-commands launcher — floats over the terminal (doesn't affect
-                FitAddon sizing). Opens saved terminal commands to paste. */}
+                FitAddon sizing). Opens saved terminal commands to paste.
+                Anchored TOP-right: the bottom row is tmux's status bar (persistent
+                session-name + clock) and the prompt/cursor live at the bottom, so a
+                bottom-right button covered the status bar's right end. Top-right
+                overlaps only scrolled-away output, never the status line. */}
             <Pressable
                 onPress={openCommands}
                 accessibilityLabel="Quick commands"
                 style={({ pressed, hovered }: any) => ({
                     position: 'absolute',
                     right: 16,
-                    bottom: 16,
+                    top: 16,
                     width: 40,
                     height: 40,
                     borderRadius: 20,
