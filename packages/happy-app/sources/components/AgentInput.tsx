@@ -43,6 +43,8 @@ interface AgentInputProps {
     isMicActive?: boolean;
     // Opens the prompt-preset picker (saved snippets → insert into composer).
     onPresetsPress?: () => void;
+    // Picks a text file and inlines its content into the composer.
+    onAttachTextPress?: () => void;
     // Web voice dictation states (drives the button icon): recording shows a
     // stop square, transcribing shows a spinner.
     isMicRecording?: boolean;
@@ -1467,6 +1469,31 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             color={(props.selectedImages?.length ?? 0) > 0
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                )}
+
+                                {/* Attach text file → inline its content into the composer */}
+                                {props.onAttachTextPress && (
+                                    <Pressable
+                                        onPress={() => { hapticsLight(); props.onAttachTextPress?.(); }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        accessibilityLabel="Attach text file"
+                                    >
+                                        <Ionicons
+                                            name="document-text-outline"
+                                            size={16}
+                                            color={theme.colors.button.secondary.tint}
                                         />
                                     </Pressable>
                                 )}

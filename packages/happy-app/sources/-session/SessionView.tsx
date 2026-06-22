@@ -34,6 +34,7 @@ import { t } from '@/text';
 import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
+import { pickTextFile } from '@/utils/pickTextFile';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { FileTabBar } from '@/components/FileTabBar';
@@ -637,6 +638,23 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         });
     }, [promptPresets]);
 
+    // Attach a text file: pick from device, read as string, inline its content
+    // into the composer (fenced + filename) so the user can edit before sending.
+    const handleAttachTextPress = React.useCallback(async () => {
+        try {
+            const picked = await pickTextFile();
+            if (!picked) return;
+            const MAX = 100_000; // guard against dumping a huge file into the prompt
+            const body = picked.content.length > MAX
+                ? picked.content.slice(0, MAX) + `\n…[truncated, ${picked.content.length} chars total]`
+                : picked.content;
+            const block = `\n\n\`\`\`${picked.name}\n${body}\n\`\`\`\n`;
+            composerHandleRef.current?.insertText(block);
+        } catch {
+            Modal.alert(t('common.error'), t('files.failedToRead'));
+        }
+    }, []);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -840,6 +858,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             blockSend={false}
             onSend={handleSend}
             onPresetsPress={handlePresetsPress}
+            onAttachTextPress={handleAttachTextPress}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
             isMicRecording={isDisconnected ? false : micButtonState.isMicRecording}
