@@ -14,7 +14,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
 import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decryptTerminalData } from '@/sync/ops';
-import { useLocalSetting } from '@/sync/storage';
+import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { SnippetPickerModal } from '@/components/SnippetPickerModal';
 
@@ -40,7 +40,7 @@ export default function WebTerminalScreen() {
     // paste into it. term.paste goes through bracketed-paste, so a pasted
     // command is NOT auto-run — the user reviews it and presses Enter.
     const termRef = React.useRef<Terminal | null>(null);
-    const terminalCommands = useLocalSetting('terminalCommands');
+    const terminalCommands = useSetting('terminalCommands');
 
     const openCommands = React.useCallback(() => {
         Modal.show({
