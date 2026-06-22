@@ -111,8 +111,18 @@ export default function WebTerminalScreen() {
             try { fit.fit(); } catch { return; }
             const screenEl = host.querySelector('.xterm-screen') as HTMLElement | null;
             if (screenEl && term.cols > 2) {
-                const overflow = screenEl.getBoundingClientRect().width - host.clientWidth;
-                if (overflow >= 0) {
+                // The DOM renderer lays cells out a couple px wider than the
+                // .xterm-screen box (sub-pixel cell rounding accumulated over all
+                // columns); that overhang is clipped by the container. FitAddon's
+                // floor (cols = ⌊width/cellWidth⌋) can leave near-zero slack, so
+                // when the overhang exceeds the remainder the last column's glyph
+                // is shaved — visibly, tmux's trailing status-bar date ("6" cut).
+                // Guarantee enough slack to absorb the overhang: if the floor
+                // remainder is too small, drop one column (slack then jumps by a
+                // full cell). Width-independent — a fixed right padding can't fix
+                // this, it only shifts which window widths fail.
+                const slack = host.clientWidth - screenEl.getBoundingClientRect().width;
+                if (slack < 6) {
                     term.resize(term.cols - 1, term.rows);
                 }
             }
