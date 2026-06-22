@@ -20,6 +20,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { useVoiceTranscription } from '@/hooks/useVoiceTranscription';
+import { SnippetPickerModal } from '@/components/SnippetPickerModal';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -619,6 +620,22 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         composerHandleRef.current?.insertText(text);
     }, []));
 
+    // Prompt presets: pick a saved snippet → insert into the composer to edit.
+    const promptPresets = useSetting('promptPresets');
+    const handlePresetsPress = React.useCallback(() => {
+        Modal.show({
+            component: (props: any) => (
+                <SnippetPickerModal
+                    {...props}
+                    heading="Prompt 预设 · Presets"
+                    items={promptPresets.map((p) => ({ id: p.id, title: p.title || p.text.split('\n')[0], body: p.text }))}
+                    emptyHint="还没有 Prompt 预设。去 设置 → 快捷片段 添加。No presets yet."
+                    onPick={(text: string) => composerHandleRef.current?.insertText(text)}
+                />
+            ),
+        });
+    }, [promptPresets]);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -821,6 +838,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             connectionStatus={connectionStatus}
             blockSend={false}
             onSend={handleSend}
+            onPresetsPress={handlePresetsPress}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
             isMicRecording={isDisconnected ? false : micButtonState.isMicRecording}

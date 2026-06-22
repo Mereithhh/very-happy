@@ -131,6 +131,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="settings/snippets"
+                options={{
+                    headerTitle: '快捷片段 · Snippets',
+                }}
+            />
+            <Stack.Screen
                 name="settings/features"
                 options={{
                     headerTitle: t('settings.features'),

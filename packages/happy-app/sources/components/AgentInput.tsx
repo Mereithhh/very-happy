@@ -41,6 +41,8 @@ interface AgentInputProps {
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
+    // Opens the prompt-preset picker (saved snippets → insert into composer).
+    onPresetsPress?: () => void;
     // Web voice dictation states (drives the button icon): recording shows a
     // stop square, transcribing shows a spinner.
     isMicRecording?: boolean;
@@ -1339,6 +1341,31 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     >
                                         <Octicons
                                             name={'gear'}
+                                            size={16}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                )}
+
+                                {/* Prompt presets button */}
+                                {props.onPresetsPress && (
+                                    <Pressable
+                                        onPress={() => { hapticsLight(); props.onPresetsPress?.(); }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        accessibilityLabel="Prompt presets"
+                                    >
+                                        <Ionicons
+                                            name={'bookmark-outline'}
                                             size={16}
                                             color={theme.colors.button.secondary.tint}
                                         />

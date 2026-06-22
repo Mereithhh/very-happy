@@ -5,14 +5,18 @@
  * and every fit pushes a terminal-resize to the daemon so tmux follows.
  */
 import * as React from 'react';
-import { View, Platform } from 'react-native';
+import { View, Platform, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
 import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decryptTerminalData } from '@/sync/ops';
+import { useSetting } from '@/sync/storage';
+import { Modal } from '@/modal';
+import { SnippetPickerModal } from '@/components/SnippetPickerModal';
 
 const BG = '#0B0E13';
 
@@ -32,6 +36,26 @@ function fromBase64(b64: string): Uint8Array {
 export default function WebTerminalScreen() {
     const { machineId, tid } = useLocalSearchParams<{ machineId: string; tid?: string }>();
     const hostRef = React.useRef<HTMLDivElement | null>(null);
+    // Hold the live xterm so the (React-rendered) quick-commands button can
+    // paste into it. term.paste goes through bracketed-paste, so a pasted
+    // command is NOT auto-run — the user reviews it and presses Enter.
+    const termRef = React.useRef<Terminal | null>(null);
+    const terminalCommands = useSetting('terminalCommands');
+
+    const openCommands = React.useCallback(() => {
+        Modal.show({
+            component: (props: any) => (
+                <SnippetPickerModal
+                    {...props}
+                    heading="终端快捷指令 · Quick commands"
+                    bodyMono
+                    items={terminalCommands.map((c) => ({ id: c.id, title: c.title || c.command.split('\n')[0], body: c.command }))}
+                    emptyHint="还没有快捷指令。去 设置 → 快捷片段 添加。No commands yet."
+                    onPick={(command: string) => { termRef.current?.paste(command); termRef.current?.focus(); }}
+                />
+            ),
+        });
+    }, [terminalCommands]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !hostRef.current || !machineId) return;
@@ -59,6 +83,7 @@ export default function WebTerminalScreen() {
         term.loadAddon(unicode11);
         term.unicode.activeVersion = '11';
         term.open(host);
+        termRef.current = term;
         try { fit.fit(); } catch { /* container not laid out yet */ }
 
         let terminalId: string | null = null;
@@ -219,6 +244,7 @@ export default function WebTerminalScreen() {
             ro.disconnect();
             if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });
             cleanups.forEach((c) => c());
+            termRef.current = null;
             term.dispose();
         };
     }, [machineId, tid]);
@@ -238,6 +264,28 @@ export default function WebTerminalScreen() {
         <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
+            {/* Quick-commands launcher — floats over the terminal (doesn't affect
+                FitAddon sizing). Opens saved terminal commands to paste. */}
+            <Pressable
+                onPress={openCommands}
+                accessibilityLabel="Quick commands"
+                style={({ pressed, hovered }: any) => ({
+                    position: 'absolute',
+                    right: 16,
+                    bottom: 16,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#11161D',
+                    borderWidth: 1,
+                    borderColor: 'rgba(52,226,196,0.4)',
+                    opacity: pressed ? 0.7 : hovered ? 1 : 0.78,
+                })}
+            >
+                <Ionicons name="flash-outline" size={20} color="#34E2C4" />
+            </Pressable>
         </View>
     );
 }
