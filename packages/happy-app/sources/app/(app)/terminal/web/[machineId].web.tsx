@@ -98,7 +98,26 @@ export default function WebTerminalScreen() {
         term.unicode.activeVersion = '11';
         term.open(host);
         termRef.current = term;
-        try { fit.fit(); } catch { /* container not laid out yet */ }
+
+        // FitAddon picks cols = floor(width / cellWidth) using a *fractional*
+        // cell width, but the DOM renderer lays out cells at rounded widths, so
+        // the rendered grid can end up a hair WIDER than the host. With the host
+        // on overflow:hidden that shaves the last column's glyph — visibly, tmux's
+        // trailing status-bar date loses its right edge ("6" cut in half). Fit,
+        // then if the rendered screen reaches/overflows the host edge, drop one
+        // column so the last cell always has room. Width-independent (works at any
+        // window size) — unlike a fixed right padding, which just moves the clip.
+        const safeFit = () => {
+            try { fit.fit(); } catch { return; }
+            const screenEl = host.querySelector('.xterm-screen') as HTMLElement | null;
+            if (screenEl && term.cols > 2) {
+                const overflow = screenEl.getBoundingClientRect().width - host.clientWidth;
+                if (overflow >= 0) {
+                    term.resize(term.cols - 1, term.rows);
+                }
+            }
+        };
+        safeFit();
 
         let terminalId: string | null = null;
         let disposed = false;
@@ -299,7 +318,7 @@ export default function WebTerminalScreen() {
         })();
 
         const ro = new ResizeObserver(() => {
-            try { fit.fit(); } catch { return; }
+            safeFit();
             if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
         });
         ro.observe(host);
@@ -326,7 +345,7 @@ export default function WebTerminalScreen() {
         // measures the host's box to pick rows, and a padding on the host made
         // it overcount by a row → the last line was clipped at the bottom.
         // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8, paddingRight: 14 }}>
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
             {/* Quick-commands launcher — floats over the terminal (doesn't affect
