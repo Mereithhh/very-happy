@@ -248,11 +248,30 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  * scoping is enforced server-side. Returns the terminalId used for the
  * subsequent terminal-input/output/resize/close byte stream.
  */
+/**
+ * Wait (bounded) for a machine's encryption to be initialized. On a cold load
+ * or a direct navigation to the terminal URL, `fetchMachines` (which decrypts
+ * the per-machine data key and calls `initializeMachines`) may not have run yet,
+ * so a machine RPC would throw "Machine encryption not found". Polling until the
+ * key is ready turns that race into a brief wait instead of a hard failure.
+ */
+export async function ensureMachineEncryption(machineId: string, timeoutMs = 12000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        if (sync.encryption.getMachineEncryption(machineId)) return true;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    return !!sync.encryption.getMachineEncryption(machineId);
+}
+
 export async function machineOpenTerminal(
     machineId: string,
     options: { terminalId?: string; cols?: number; rows?: number; cwd?: string },
 ): Promise<{ success: true; terminalId: string; tmuxSession?: string } | { success: false; error: string }> {
     try {
+        // Avoid the cold-load race: don't fire the RPC before the machine's
+        // encryption key has synced, or it fails with "Machine encryption not found".
+        await ensureMachineEncryption(machineId);
         const result = await apiSocket.machineRPC<
             { type: 'success'; terminalId: string; tmuxSession?: string },
             { terminalId?: string; cols?: number; rows?: number; cwd?: string }
