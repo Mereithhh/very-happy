@@ -264,19 +264,39 @@ export async function ensureMachineEncryption(machineId: string, timeoutMs = 120
     return !!sync.encryption.getMachineEncryption(machineId);
 }
 
+/**
+ * Encrypt/decrypt the terminal byte stream with the per-machine key, so the
+ * relay can't read keystrokes/output or inject commands (the control RPC is
+ * already E2E-encrypted; this closes the same gap for the live stream).
+ * `data` is a base64 string of raw bytes; the ciphertext is itself base64.
+ */
+export async function encryptTerminalData(machineId: string, dataB64: string): Promise<string | null> {
+    const me = sync.encryption.getMachineEncryption(machineId);
+    if (!me) return null;
+    return me.encryptRaw(dataB64);
+}
+export async function decryptTerminalData(machineId: string, cipher: string): Promise<string | null> {
+    const me = sync.encryption.getMachineEncryption(machineId);
+    if (!me) return null;
+    const out = await me.decryptRaw(cipher);
+    return typeof out === 'string' ? out : null;
+}
+
 export async function machineOpenTerminal(
     machineId: string,
-    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string },
-): Promise<{ success: true; terminalId: string; tmuxSession?: string } | { success: false; error: string }> {
+    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string; encStream?: boolean },
+): Promise<{ success: true; terminalId: string; tmuxSession?: string; encStream?: boolean } | { success: false; error: string }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's
         // encryption key has synced, or it fails with "Machine encryption not found".
         await ensureMachineEncryption(machineId);
         const result = await apiSocket.machineRPC<
-            { type: 'success'; terminalId: string; tmuxSession?: string },
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string }
+            { type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean },
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; encStream?: boolean }
         >(machineId, 'open-terminal', options);
-        return { success: true, terminalId: result.terminalId, tmuxSession: result.tmuxSession };
+        // encStream is echoed back only by daemons that support stream encryption
+        // (old daemons ignore the flag → falsy → we fall back to plaintext).
+        return { success: true, terminalId: result.terminalId, tmuxSession: result.tmuxSession, encStream: result.encStream === true };
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to open terminal' };
     }
