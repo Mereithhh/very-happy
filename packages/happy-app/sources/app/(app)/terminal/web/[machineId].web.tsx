@@ -5,7 +5,7 @@
  * and every fit pushes a terminal-resize to the daemon so tmux follows.
  */
 import * as React from 'react';
-import { View, Platform, Pressable } from 'react-native';
+import { View, Platform, Pressable, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Terminal } from '@xterm/xterm';
@@ -13,7 +13,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
-import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decryptTerminalData } from '@/sync/ops';
+import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decryptTerminalData, machineUploadFile } from '@/sync/ops';
 import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { SnippetPickerModal } from '@/components/SnippetPickerModal';
@@ -32,6 +32,18 @@ function fromBase64(b64: string): Uint8Array {
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
 }
+function bytesToBase64(bytes: Uint8Array): string {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+}
+// Shell-quote a path only if it contains characters that the shell would split.
+function shellQuote(p: string): string {
+    return /[^\w@%+=:,./-]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p;
+}
 
 export default function WebTerminalScreen() {
     const { machineId, tid } = useLocalSearchParams<{ machineId: string; tid?: string }>();
@@ -41,6 +53,8 @@ export default function WebTerminalScreen() {
     // command is NOT auto-run — the user reviews it and presses Enter.
     const termRef = React.useRef<Terminal | null>(null);
     const terminalCommands = useSetting('terminalCommands');
+    // Drag-and-drop file upload overlay state ('over' = hovering, 'uploading').
+    const [dragState, setDragState] = React.useState<'idle' | 'over' | 'uploading'>('idle');
 
     const openCommands = React.useCallback(() => {
         Modal.show({
@@ -134,6 +148,52 @@ export default function WebTerminalScreen() {
         };
         host.addEventListener('contextmenu', onCtx);
         cleanups.push(() => host.removeEventListener('contextmenu', onCtx));
+
+        // Drag-and-drop file upload: drop a file onto the terminal → it's staged
+        // on the machine (~/.happy/uploads/terminal/) and its absolute path is
+        // pasted at the cursor (bracketed-paste, not auto-run) so you can use it
+        // in a command. Multiple files → space-separated, shell-quoted paths.
+        const onDragOver = (e: DragEvent) => {
+            if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            setDragState((s) => (s === 'uploading' ? s : 'over'));
+        };
+        const onDragLeave = (e: DragEvent) => {
+            if (!host.contains(e.relatedTarget as Node | null)) setDragState((s) => (s === 'uploading' ? s : 'idle'));
+        };
+        const onDrop = (e: DragEvent) => {
+            const files = Array.from(e.dataTransfer?.files || []);
+            if (!files.length) { setDragState('idle'); return; }
+            e.preventDefault();
+            setDragState('uploading');
+            void (async () => {
+                const paths: string[] = [];
+                for (const f of files) {
+                    try {
+                        const buf = new Uint8Array(await f.arrayBuffer());
+                        const res = await machineUploadFile(machineId, f.name, bytesToBase64(buf));
+                        if (res.success && res.path) paths.push(res.path);
+                        else term.writeln('\r\n\x1b[31m✗ upload failed: ' + (res.error || f.name) + '\x1b[0m');
+                    } catch {
+                        term.writeln('\r\n\x1b[31m✗ upload error: ' + f.name + '\x1b[0m');
+                    }
+                }
+                setDragState('idle');
+                if (paths.length) {
+                    term.paste(paths.map(shellQuote).join(' ') + ' ');
+                    term.focus();
+                }
+            })();
+        };
+        host.addEventListener('dragover', onDragOver);
+        host.addEventListener('dragleave', onDragLeave);
+        host.addEventListener('drop', onDrop);
+        cleanups.push(() => {
+            host.removeEventListener('dragover', onDragOver);
+            host.removeEventListener('dragleave', onDragLeave);
+            host.removeEventListener('drop', onDrop);
+        });
 
         // Mobile: focusing the terminal pops the on-screen keyboard, and the
         // browser scrolls the focused (bottom) textarea into view, hiding the
@@ -286,6 +346,38 @@ export default function WebTerminalScreen() {
             >
                 <Ionicons name="flash-outline" size={20} color="#34E2C4" />
             </Pressable>
+
+            {/* Drag-and-drop upload overlay. pointerEvents:none so drop events
+                still reach the terminal host underneath. */}
+            {dragState !== 'idle' && (
+                <View
+                    // @ts-ignore web-only prop
+                    pointerEvents="none"
+                    style={{
+                        position: 'absolute',
+                        top: 8, left: 8, right: 8, bottom: 8,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(5,7,10,0.78)',
+                        borderWidth: 2,
+                        borderColor: '#34E2C4',
+                        borderStyle: 'dashed',
+                        borderRadius: 10,
+                    }}
+                >
+                    <Ionicons
+                        name={dragState === 'uploading' ? 'cloud-upload-outline' : 'download-outline'}
+                        size={36}
+                        color="#34E2C4"
+                    />
+                    <Text style={{ color: '#E8EDF4', marginTop: 12, fontSize: 14 }}>
+                        {dragState === 'uploading' ? '上传中… · Uploading…' : '松开上传到机器 · Drop to upload'}
+                    </Text>
+                    <Text style={{ color: '#5B6675', marginTop: 4, fontSize: 12 }}>
+                        路径会粘贴到终端 · path will be pasted into the terminal
+                    </Text>
+                </View>
+            )}
         </View>
     );
 }

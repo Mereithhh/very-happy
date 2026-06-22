@@ -302,6 +302,27 @@ export async function machineOpenTerminal(
     }
 }
 
+/**
+ * Upload a file to the machine via the machine-level RPC (used by the web
+ * terminal's drag-and-drop). Lands under ~/.happy/uploads/terminal/ and returns
+ * the absolute path so it can be pasted into the terminal. Reuses the same
+ * `uploadFile` handler that sessions use (registered at machine level too).
+ */
+export async function machineUploadFile(
+    machineId: string,
+    name: string,
+    content: string,
+): Promise<{ success: boolean; path?: string; size?: number; error?: string }> {
+    try {
+        return await apiSocket.machineRPC<
+            { success: boolean; path?: string; size?: number; error?: string },
+            { name: string; content: string; subdir?: string }
+        >(machineId, 'uploadFile', { name, content, subdir: 'terminal' });
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
 /** Permanently destroy a terminal's tmux session on the machine. */
 export async function machineKillTerminal(machineId: string, terminalId: string): Promise<void> {
     try {
