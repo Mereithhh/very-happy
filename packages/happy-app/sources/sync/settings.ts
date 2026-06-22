@@ -41,6 +41,20 @@ export const SettingsSchema = z.object({
         machineId: z.string(),
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
+    // User snippets — synced across devices (same mechanism as recentMachinePaths:
+    // version-gated full-object writes with field-level merge). Must default to []
+    // so a client that has never set them never sends/clobbers an empty value the
+    // wrong way; settingsParse preserves the stored array on every load.
+    promptPresets: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        text: z.string(),
+    })).default([]).describe('Saved prompt presets for the chat composer'),
+    terminalCommands: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        command: z.string(),
+    })).default([]).describe('Saved quick commands for the web terminal'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
@@ -111,6 +125,8 @@ export const settingsDefaults: Settings = {
     voiceBypassToken: false,
     preferredLanguage: null,
     recentMachinePaths: [],
+    promptPresets: [],
+    terminalCommands: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
