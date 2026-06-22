@@ -12,7 +12,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import { apiSocket } from '@/sync/apiSocket';
-import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decryptTerminalData } from '@/sync/ops';
+import { machineOpenTerminal, machineSetTerminalTitle } from '@/sync/ops';
 
 const BG = '#0B0E13';
 
@@ -130,55 +130,24 @@ export default function WebTerminalScreen() {
         term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
 
         (async () => {
-            // encStream:true asks the daemon to encrypt the byte stream with the
-            // per-machine key. The daemon echoes encStream back iff it supports it
-            // (old daemons ignore it → plaintext, still works).
-            const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows, encStream: true });
+            const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows });
             if (disposed) return;
             if (!res.success) {
                 term.writeln('\r\n\x1b[31m✗ ' + res.error + '\x1b[0m');
                 return;
             }
             terminalId = res.terminalId;
-            const enc = res.encStream === true;
 
-            // The app's machine crypto is async, so serialize input and output
-            // through promise chains to preserve byte order. (Daemon crypto is
-            // sync, so its side keeps order for free.)
-            let outChain: Promise<void> = Promise.resolve();
-            const offOut = apiSocket.onMessage('terminal-output', (e: { terminalId: string; data: string; enc?: boolean }) => {
-                if (e.terminalId !== terminalId) return;
-                outChain = outChain.then(async () => {
-                    let b64 = e.data;
-                    if (e.enc) {
-                        const plain = await decryptTerminalData(machineId, e.data);
-                        if (plain == null) return; // undecryptable → drop, never render garbage
-                        b64 = plain;
-                    }
-                    term.write(fromBase64(b64));
-                });
+            const offOut = apiSocket.onMessage('terminal-output', (e: { terminalId: string; data: string }) => {
+                if (e.terminalId === terminalId) term.write(fromBase64(e.data));
             });
             const offExit = apiSocket.onMessage('terminal-exit', (e: { terminalId: string; exitCode: number }) => {
                 if (e.terminalId === terminalId) term.writeln('\r\n\x1b[2m[session ended · exit ' + e.exitCode + ']\x1b[0m');
             });
             cleanups.push(offOut, offExit);
 
-            let inChain: Promise<void> = Promise.resolve();
             const offData = term.onData((d) => {
-                const b64 = toBase64(d);
-                inChain = inChain.then(async () => {
-                    if (!terminalId) return;
-                    if (enc) {
-                        const cipher = await encryptTerminalData(machineId, b64);
-                        if (cipher != null) {
-                            apiSocket.send('terminal-input', { machineId, terminalId, data: cipher, enc: true });
-                            return;
-                        }
-                        // Encryption unavailable (shouldn't happen post-open) — fall
-                        // back to plaintext so typing still works.
-                    }
-                    apiSocket.send('terminal-input', { machineId, terminalId, data: b64 });
-                });
+                if (terminalId) apiSocket.send('terminal-input', { machineId, terminalId, data: toBase64(d) });
             });
             cleanups.push(() => offData.dispose());
 
