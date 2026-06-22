@@ -9,7 +9,7 @@ import { Pressable } from 'react-native';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable } from '@/sync/storage';
+import { useLocalSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { SnippetEditorModal } from '@/components/SnippetEditorModal';
@@ -20,8 +20,8 @@ function genId(): string {
 
 export default function SnippetsSettingsScreen() {
     const { theme } = useUnistyles();
-    const [promptPresets, setPromptPresets] = useSettingMutable('promptPresets');
-    const [terminalCommands, setTerminalCommands] = useSettingMutable('terminalCommands');
+    const [promptPresets, setPromptPresets] = useLocalSettingMutable('promptPresets');
+    const [terminalCommands, setTerminalCommands] = useLocalSettingMutable('terminalCommands');
 
     const editPreset = React.useCallback((existing?: { id: string; title: string; text: string }) => {
         Modal.show({
