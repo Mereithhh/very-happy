@@ -42,19 +42,25 @@ export const SettingsSchema = z.object({
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
     // User snippets — synced across devices (same mechanism as recentMachinePaths:
-    // version-gated full-object writes with field-level merge). Must default to []
-    // so a client that has never set them never sends/clobbers an empty value the
-    // wrong way; settingsParse preserves the stored array on every load.
+    // version-gated full-object writes with field-level merge).
+    // CRITICAL: do NOT add .default([]) here. loadPendingSettings() runs the
+    // stored pending blob through SettingsSchema.partial().parse(), and zod
+    // injects a value for every field that carries a .default() — even when the
+    // key was never in the blob. That turns an empty pending {} into
+    // {promptPresets: [], terminalCommands: []} on every reload, which then gets
+    // POSTed and clobbers the server's saved snippets with []. recentMachinePaths
+    // has no default for exactly this reason; mirror it. The default value is
+    // supplied by settingsDefaults below + settingsParse's defaults merge.
     promptPresets: z.array(z.object({
         id: z.string(),
         title: z.string(),
         text: z.string(),
-    })).default([]).describe('Saved prompt presets for the chat composer'),
+    })).describe('Saved prompt presets for the chat composer'),
     terminalCommands: z.array(z.object({
         id: z.string(),
         title: z.string(),
         command: z.string(),
-    })).default([]).describe('Saved quick commands for the web terminal'),
+    })).describe('Saved quick commands for the web terminal'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),

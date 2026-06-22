@@ -50,7 +50,19 @@ export function loadPendingSettings(): Partial<Settings> {
     if (pending) {
         try {
             const parsed = JSON.parse(pending);
-            return SettingsSchema.partial().parse(parsed);
+            const validated = SettingsSchema.partial().parse(parsed) as Partial<Settings>;
+            // Only keep keys that were ACTUALLY stored as pending. zod injects a
+            // value for every field declared with .default(), so a stored `{}`
+            // would otherwise come back as { dismissedCLIWarnings: {...}, ... } —
+            // phantom "pending" changes that get POSTed on the next load and
+            // clobber the server's real values.
+            const result: Partial<Settings> = {};
+            for (const key of Object.keys(parsed) as (keyof Settings)[]) {
+                if (key in validated) {
+                    (result as any)[key] = validated[key];
+                }
+            }
+            return result;
         } catch (e) {
             console.error('Failed to parse pending settings', e);
             return {};
