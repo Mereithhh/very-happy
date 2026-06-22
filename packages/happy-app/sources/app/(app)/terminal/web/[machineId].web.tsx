@@ -186,13 +186,18 @@ export default function WebTerminalScreen() {
                 }
             })();
         };
-        host.addEventListener('dragover', onDragOver);
-        host.addEventListener('dragleave', onDragLeave);
-        host.addEventListener('drop', onDrop);
+        // Capture phase (3rd arg true): xterm mounts a textarea + canvas/rows
+        // inside `host`; a real OS file-drag lands on one of those inner nodes,
+        // and if xterm stops propagation we'd never see a bubbling drop. Capturing
+        // on `host` runs before any inner handler, so the drop always registers
+        // (and our dragover preventDefault enables the drop for the whole subtree).
+        host.addEventListener('dragover', onDragOver, true);
+        host.addEventListener('dragleave', onDragLeave, true);
+        host.addEventListener('drop', onDrop, true);
         cleanups.push(() => {
-            host.removeEventListener('dragover', onDragOver);
-            host.removeEventListener('dragleave', onDragLeave);
-            host.removeEventListener('drop', onDrop);
+            host.removeEventListener('dragover', onDragOver, true);
+            host.removeEventListener('dragleave', onDragLeave, true);
+            host.removeEventListener('drop', onDrop, true);
         });
 
         // Mobile: focusing the terminal pops the on-screen keyboard, and the
