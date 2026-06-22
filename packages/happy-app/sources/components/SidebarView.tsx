@@ -14,7 +14,6 @@ import { Platform } from 'react-native';
 import { t } from '@/text';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -90,8 +89,6 @@ export const SidebarView = React.memo(() => {
         Modal.show({ component: NewSessionModal });
     }, []);
 
-    const inboxHasContent = useInboxHasContent();
-
     return (
         <View style={[styles.container, { paddingTop: safeArea.top + headerHeight }]}>
             {/* New-session moved into the sidebar's top header row (SidebarNavigator). */}
@@ -105,19 +102,8 @@ export const SidebarView = React.memo(() => {
             {/* Sessions list (terminals are rendered at the top of this list) */}
             <MainView variant="sidebar" />
 
-            {/* Inbox + Settings at bottom. Desktop has no tab bar, so the inbox
-                (notifications: updates, friend requests, activity, changelog)
-                is otherwise unreachable here. Dot mirrors the mobile tab badge. */}
-            <Pressable
-                onPress={() => router.push('/inbox')}
-                style={({ pressed }) => [styles.footerRow, pressed && styles.footerRowPressed]}
-            >
-                <View style={styles.footerIcon}>
-                    <Ionicons name="notifications-outline" size={18} color={stylesheet.settingsText.color} />
-                    {inboxHasContent && <View style={styles.footerDot} />}
-                </View>
-                <Text style={styles.settingsText}>{t('tabs.inbox')}</Text>
-            </Pressable>
+            {/* Settings at bottom. Desktop has no tab bar. (Inbox removed — the
+                notifications view wasn't pulling its weight here.) */}
             <Pressable
                 onPress={() => router.push('/settings')}
                 style={({ pressed }) => [styles.footerRow, pressed && styles.footerRowPressed]}

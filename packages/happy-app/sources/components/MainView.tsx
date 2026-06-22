@@ -311,7 +311,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                     <Header
                         title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
                         headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
-                        headerLeft={() => <HeaderLogo />}
+                        headerLeft={() => <HeaderLogo onPress={() => setActiveTab('sessions')} />}
                         headerShadowVisible={false}
                         headerTransparent={true}
                     />
