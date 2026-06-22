@@ -41,14 +41,14 @@ interface ServerToDaemonEvents {
     auth: (data: { success: boolean, user: string }) => void;
     error: (data: { message: string }) => void;
     // Web terminal: user → daemon (relayed by server, scoped to owning account)
-    'terminal-input': (data: { terminalId: string, data: string, enc?: boolean }) => void;
+    'terminal-input': (data: { terminalId: string, data: string }) => void;
     'terminal-resize': (data: { terminalId: string, cols: number, rows: number }) => void;
     'terminal-close': (data: { terminalId: string }) => void;
 }
 
 interface DaemonToServerEvents {
     // Web terminal: daemon → user (relayed by server)
-    'terminal-output': (data: { terminalId: string, data: string, enc?: boolean }) => void;
+    'terminal-output': (data: { terminalId: string, data: string }) => void;
     'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
     'machine-alive': (data: {
         machineId: string;
@@ -128,25 +128,8 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
-    // Terminals opened with end-to-end stream encryption (negotiated per
-    // open-terminal via `encStream`). For these, terminal-output is encrypted
-    // and terminal-input is decrypted with the per-machine key — so the relay
-    // can't read or inject the interactive shell, matching the E2E guarantee
-    // the control RPC already provides. (Declared before webTerminal so the
-    // emit closure can read it.)
-    private encTerminals = new Set<string>();
     private webTerminal = new WebTerminalManager((event, payload) => {
-        let out: any = payload;
-        // Encrypt the live byte stream for negotiated terminals. Daemon crypto
-        // is synchronous, so output ordering is preserved.
-        if (event === 'terminal-output' && this.encTerminals.has(payload.terminalId)) {
-            out = {
-                ...payload,
-                data: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, payload.data)),
-                enc: true,
-            };
-        }
-        (this.socket as any)?.emit(event, out);
+        (this.socket as any)?.emit(event, payload);
     });
 
     constructor(
@@ -203,19 +186,15 @@ export class ApiMachineClient {
         // enforced by the server (RPC rooms are per-account), so only this
         // machine's owner can reach it.
         this.rpcHandlerManager.registerHandler('open-terminal', async (params: any) => {
-            const { terminalId, cols, rows, cwd, encStream } = params || {};
+            const { terminalId, cols, rows, cwd } = params || {};
             const result = this.webTerminal.open({ terminalId, cols, rows, cwd });
-            // Negotiated stream encryption: only enable for clients that ask
-            // (so an old client still works in plaintext). Echo it back so the
-            // client knows whether to encrypt its input / decrypt output.
-            if (encStream) this.encTerminals.add(result.terminalId);
-            return { type: 'success', ...result, encStream: !!encStream };
+            return { type: 'success', ...result };
         });
 
         // Permanently destroy a terminal's tmux session (sidebar delete).
         this.rpcHandlerManager.registerHandler('kill-terminal', async (params: any) => {
             const { terminalId } = params || {};
-            if (terminalId) { this.encTerminals.delete(terminalId); this.webTerminal.killSession(terminalId); }
+            if (terminalId) this.webTerminal.killSession(terminalId);
             return { type: 'success' };
         });
 
@@ -535,21 +514,12 @@ export class ApiMachineClient {
 
         // Web terminal byte stream (relayed by server, already account-scoped).
         this.socket.on('terminal-input', (data) => {
-            let payload = data.data;
-            if (data.enc) {
-                // Encrypted keystrokes — decrypt with the per-machine key. If it
-                // can't be decrypted, drop it; never guess/write plaintext.
-                const dec = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(data.data));
-                if (typeof dec !== 'string') return;
-                payload = dec;
-            }
-            this.webTerminal.write(data.terminalId, payload);
+            this.webTerminal.write(data.terminalId, data.data);
         });
         this.socket.on('terminal-resize', (data) => {
             this.webTerminal.resize(data.terminalId, data.cols, data.rows);
         });
         this.socket.on('terminal-close', (data) => {
-            this.encTerminals.delete(data.terminalId);
             this.webTerminal.close(data.terminalId);
         });
 
