@@ -24,8 +24,8 @@ export const en = {
 
     inbox: {
         // Inbox screen
-        emptyTitle: 'Empty Inbox',
-        emptyDescription: 'Connect with friends to start sharing sessions',
+        emptyTitle: 'No notifications',
+        emptyDescription: 'Sessions that need your attention will show up here',
         updates: 'Updates',
     },
 
