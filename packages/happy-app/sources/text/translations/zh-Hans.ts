@@ -26,8 +26,8 @@ export const zhHans: TranslationStructure = {
 
     inbox: {
         // Inbox screen
-        emptyTitle: '收件箱为空',
-        emptyDescription: '与好友建立连接，开始共享会话',
+        emptyTitle: '没有新通知',
+        emptyDescription: '会话有需要你处理的地方时，会出现在这里',
         updates: '更新',
     },
 
