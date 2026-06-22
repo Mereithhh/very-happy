@@ -11,6 +11,7 @@ import { Typography } from '@/constants/Typography';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { PierreDiffView } from '@/components/diff/PierreDiffView';
 import { sessionReadFile, sessionWriteFile } from '@/sync/ops';
+import { saveFile } from '@/utils/saveFile';
 import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -134,6 +135,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     const [fileState, setFileState] = React.useState<FileState>({ kind: 'loading' });
     const [editContent, setEditContent] = React.useState('');
     const [isSaving, setIsSaving] = React.useState(false);
+    const [isDownloading, setIsDownloading] = React.useState(false);
     const [displayMode, setDisplayMode] = React.useState<'edit' | 'preview'>('edit');
 
     // External change detection
@@ -218,6 +220,24 @@ export const FileViewPanel = React.memo(function FileViewPanel({
 
         return () => clearInterval(interval);
     }, [sessionId, filePath, fileState]);
+
+    // Download/save the file to the user's device. Re-reads the raw bytes so it
+    // works for binary files too (which never get loaded into `content`).
+    const handleDownload = React.useCallback(async () => {
+        setIsDownloading(true);
+        try {
+            const res = await sessionReadFile(sessionId, filePath);
+            if (!res.success || !res.content) {
+                Modal.alert(t('common.error'), res.error || t('files.failedToRead'));
+                return;
+            }
+            await saveFile({ filename: fileName, base64: res.content });
+        } catch {
+            Modal.alert(t('common.error'), t('files.failedToRead'));
+        } finally {
+            setIsDownloading(false);
+        }
+    }, [sessionId, filePath, fileName]);
 
     const handleReload = React.useCallback(() => {
         if (!externalChange) return;
@@ -310,8 +330,9 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         }
     }, [sessionId, filePath, editContent, fileState]);
 
-    // Publish right-slot controls (edit/preview toggle, save button) into the chat header.
+    // Publish right-slot controls (download, edit/preview toggle, save) into the chat header.
     const isLoaded = fileState.kind === 'loaded';
+    const canDownload = fileState.kind === 'loaded' || fileState.kind === 'binary';
     React.useEffect(() => {
         onHeaderRightSlotChange(
             <FileHeaderRight
@@ -322,10 +343,13 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 hasChanges={hasChanges}
                 isSaving={isSaving}
                 onSave={handleSave}
+                canDownload={canDownload}
+                isDownloading={isDownloading}
+                onDownload={handleDownload}
             />
         );
         return () => onHeaderRightSlotChange(null);
-    }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, onHeaderRightSlotChange]);
+    }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, canDownload, isDownloading, handleDownload, onHeaderRightSlotChange]);
 
     return (
         <View style={styles.outer}>
@@ -436,6 +460,9 @@ const FileHeaderRight = React.memo(function FileHeaderRight({
     hasChanges,
     isSaving,
     onSave,
+    canDownload,
+    isDownloading,
+    onDownload,
 }: {
     isMarkdown: boolean;
     isLoaded: boolean;
@@ -444,10 +471,27 @@ const FileHeaderRight = React.memo(function FileHeaderRight({
     hasChanges: boolean;
     isSaving: boolean;
     onSave: () => void;
+    canDownload: boolean;
+    isDownloading: boolean;
+    onDownload: () => void;
 }) {
     const { theme } = useUnistyles();
     return (
         <>
+            {canDownload && (
+                <Pressable
+                    onPress={onDownload}
+                    disabled={isDownloading}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.iconButton, { opacity: isDownloading ? 0.5 : pressed ? 0.6 : 1 }]}
+                >
+                    {isDownloading ? (
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    ) : (
+                        <Ionicons name="download-outline" size={22} color={theme.colors.header.tint} />
+                    )}
+                </Pressable>
+            )}
             {isMarkdown && isLoaded && (
                 <View style={[styles.toggleRow, { backgroundColor: theme.colors.groupped.background, borderColor: theme.colors.divider }]}>
                     <Pressable
@@ -593,6 +637,13 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 6,
+    },
+    iconButton: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 2,
     },
     actionButtonText: {
         fontSize: 13,
