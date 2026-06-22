@@ -18,6 +18,20 @@ export const LocalSettingsSchema = z.object({
     filesSidebarCollapsed: z.boolean().describe('Collapse the desktop files sidebar to a thin rail to save space'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+    // User snippets — kept LOCAL (not synced). The synced-settings path proved
+    // clobber-prone (a load-time write races the fetch / multiple tabs overwrite
+    // with stale values), which silently dropped these on reload. Local storage
+    // persists reliably per-device, which is what matters for this content.
+    promptPresets: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        text: z.string(),
+    })).describe('Saved prompt presets for the chat composer'),
+    terminalCommands: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        command: z.string(),
+    })).describe('Saved quick commands for the web terminal'),
 });
 
 //
@@ -48,6 +62,8 @@ export const localSettingsDefaults: LocalSettings = {
     // of width when there are no diffs; one click expands it (and it persists).
     filesSidebarCollapsed: true,
     acknowledgedCliVersions: {},
+    promptPresets: [],
+    terminalCommands: [],
 };
 Object.freeze(localSettingsDefaults);
 

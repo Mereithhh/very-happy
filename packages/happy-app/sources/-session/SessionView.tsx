@@ -621,7 +621,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, []));
 
     // Prompt presets: pick a saved snippet → insert into the composer to edit.
-    const promptPresets = useSetting('promptPresets');
+    // Stored in localSettings (per-device, reliable) — see localSettings.ts.
+    const promptPresets = useLocalSetting('promptPresets');
     const handlePresetsPress = React.useCallback(() => {
         Modal.show({
             component: (props: any) => (
