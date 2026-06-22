@@ -43,6 +43,12 @@ export default function WebTerminalScreen() {
             fontSize: 13,
             theme: { background: BG, foreground: '#E8EDF4', cursor: '#34E2C4', selectionBackground: 'rgba(52,226,196,0.25)' },
             allowProposedApi: true,
+            // tmux owns the scrollback (wheel → tmux copy-mode), so xterm needs
+            // none. scrollback:0 also makes FitAddon stop reserving a ~17px
+            // scrollbar gutter, so the terminal uses the FULL width — otherwise
+            // it runs ~2 cols short and tmux clips the right end of its status
+            // bar (the trailing date/number).
+            scrollback: 0,
         });
         const fit = new FitAddon();
         term.loadAddon(fit);
