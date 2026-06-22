@@ -827,6 +827,27 @@ export async function sessionWriteFile(
 }
 
 /**
+ * Upload a user file to the machine, staged under ~/.happy/uploads/<sessionId>/
+ * (outside the session cwd). Returns the absolute path so it can be referenced
+ * in chat for the agent to read with its own tools. Works on both execution
+ * paths (local + remote), unlike inline multimodal which is remote-only.
+ */
+export async function sessionUploadFile(
+    sessionId: string,
+    name: string,
+    content: string,
+): Promise<{ success: boolean; path?: string; size?: number; error?: string }> {
+    try {
+        return await apiSocket.sessionRPC<
+            { success: boolean; path?: string; size?: number; error?: string },
+            { name: string; content: string; subdir?: string }
+        >(sessionId, 'uploadFile', { name, content, subdir: sessionId });
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
  * List directory contents in the session
  */
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {

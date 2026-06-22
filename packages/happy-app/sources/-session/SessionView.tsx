@@ -25,7 +25,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionUploadFile } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -35,6 +35,7 @@ import { tracking } from '@/track';
 import { getVoiceMessageCount, getVoiceOnboardingPromptLoadCount } from '@/sync/persistence';
 import { isRunningOnMac } from '@/utils/platform';
 import { pickTextFile } from '@/utils/pickTextFile';
+import { pickFileBase64 } from '@/utils/pickFileBase64';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { FilesSidebar, SidebarMode } from '@/components/FilesSidebar';
 import { FileTabBar } from '@/components/FileTabBar';
@@ -655,6 +656,27 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         }
     }, []);
 
+    // Upload any file to the machine (~/.happy/uploads/<session>/) and drop a
+    // reference into the composer so the agent reads it with its own tools.
+    // Works on both execution paths — unlike inline multimodal (remote-only).
+    const handleUploadFilePress = React.useCallback(async () => {
+        try {
+            const picked = await pickFileBase64();
+            if (!picked) return;
+            const res = await sessionUploadFile(sessionId, picked.name, picked.base64);
+            if (!res.success || !res.path) {
+                Modal.alert(t('common.error'), res.error || '上传失败 · Upload failed');
+                return;
+            }
+            const note = picked.isImage
+                ? `\n[已上传图片到机器 · uploaded image] ${res.path}\n请用 Read 工具查看这张图片。\n`
+                : `\n[已上传文件到机器 · uploaded file] ${res.path}\n请查看 / 处理这个文件。\n`;
+            composerHandleRef.current?.insertText(note);
+        } catch {
+            Modal.alert(t('common.error'), '上传失败 · Upload failed');
+        }
+    }, [sessionId]);
+
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
         if (machineId && cliVersion) {
@@ -859,6 +881,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onSend={handleSend}
             onPresetsPress={handlePresetsPress}
             onAttachTextPress={handleAttachTextPress}
+            onUploadFilePress={handleUploadFilePress}
             onMicPress={isDisconnected ? undefined : micButtonState.onMicPress}
             isMicActive={isDisconnected ? false : micButtonState.isMicActive}
             isMicRecording={isDisconnected ? false : micButtonState.isMicRecording}
