@@ -160,12 +160,14 @@ export function settingsParse(settings: unknown): Settings {
         parsed.data.preferredLanguage = 'zh-Hans';
     }
 
-    // Merge defaults, parsed settings, and preserve unknown fields
-    const unknownFields = { ...(settings as any) };
-    // Remove known fields from unknownFields to preserve only the unknown ones
-    Object.keys(parsed.data).forEach(key => delete unknownFields[key]);
-
-    return { ...settingsDefaults, ...parsed.data, ...unknownFields };
+    // Base on the RAW stored object, then let the validated+migrated values win.
+    // Critical: never rely on parsed.data to carry every field — zod's partial
+    // parse can omit a present field (observed with the promptPresets /
+    // terminalCommands arrays), which previously dropped user content on every
+    // load and then got written back, clobbering it server-side. Starting from
+    // the raw object preserves both unknown fields AND any known field the parse
+    // didn't surface, while defaults only fill genuinely-missing keys.
+    return { ...settingsDefaults, ...(settings as any), ...parsed.data };
 }
 
 //
