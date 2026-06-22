@@ -78,7 +78,10 @@ export default function WebTerminalScreen() {
         };
         const offOsc = term.parser.registerOscHandler(52, (payload) => {
             const b64 = payload.split(';').pop();
-            if (b64 && b64 !== '?') {
+            // Cap size: a program in the shell can emit OSC 52 to set the
+            // clipboard (standard terminal behavior, and how our drag-copy
+            // works), but bound it so it can't dump megabytes into the clipboard.
+            if (b64 && b64 !== '?' && b64.length <= 128 * 1024) {
                 try {
                     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
                     writeClipboard(new TextDecoder().decode(bytes)); // UTF-8 → handles CJK
@@ -94,11 +97,14 @@ export default function WebTerminalScreen() {
         cleanups.push(() => offSel.dispose());
 
         // Right-click pastes (the browser menu is hidden anyway) — a common
-        // terminal convention that pairs with drag-to-copy.
+        // terminal convention that pairs with drag-to-copy. Route through
+        // term.paste() (not a raw terminal-input send) so it goes through
+        // xterm's bracketed-paste handling: a clipboard payload containing
+        // newlines is delivered as pasted text, NOT auto-executed as commands.
         const onCtx = (e: MouseEvent) => {
             e.preventDefault();
             navigator.clipboard?.readText?.().then((text) => {
-                if (text && terminalId) apiSocket.send('terminal-input', { machineId, terminalId, data: toBase64(text) });
+                if (text) term.paste(text);
             }).catch(() => { /* clipboard read blocked / denied */ });
         };
         host.addEventListener('contextmenu', onCtx);
