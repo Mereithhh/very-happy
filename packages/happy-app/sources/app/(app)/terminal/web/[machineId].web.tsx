@@ -59,6 +59,37 @@ export default function WebTerminalScreen() {
         let disposed = false;
         const cleanups: Array<() => void> = [];
 
+        // Clipboard + right-click UX (tmux mouse-mode is on for wheel-scroll,
+        // which otherwise makes selecting/copying awkward in a browser):
+        //  - OSC 52: tmux emits this when you copy (mouse drag-select); mirror it
+        //    into the browser clipboard so the selection is actually copyable.
+        const writeClipboard = (text: string) => {
+            try { void navigator.clipboard?.writeText(text); } catch { /* blocked by policy */ }
+        };
+        const offOsc = term.parser.registerOscHandler(52, (payload) => {
+            const b64 = payload.split(';').pop();
+            if (b64 && b64 !== '?') {
+                try {
+                    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+                    writeClipboard(new TextDecoder().decode(bytes)); // UTF-8 → handles CJK
+                } catch { /* malformed */ }
+            }
+            return true;
+        });
+        cleanups.push(() => offOsc.dispose());
+        //  - Native xterm selection (Shift+drag bypasses tmux mouse-mode): keep
+        //    the highlight and auto-copy it, so it doesn't vanish on release.
+        const offSel = term.onSelectionChange(() => {
+            const sel = term.getSelection();
+            if (sel) writeClipboard(sel);
+        });
+        cleanups.push(() => offSel.dispose());
+        //  - Suppress the browser context menu so right-click doesn't cover the
+        //    terminal.
+        const onCtx = (e: Event) => e.preventDefault();
+        host.addEventListener('contextmenu', onCtx);
+        cleanups.push(() => host.removeEventListener('contextmenu', onCtx));
+
         term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
 
         (async () => {

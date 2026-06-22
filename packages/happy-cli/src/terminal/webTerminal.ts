@@ -121,18 +121,22 @@ export class WebTerminalManager {
             // avoid the multi-client size-clamp that garbles redraws. id is
             // validated to [A-Za-z0-9_-], cols/rows are ints → safe to inline.
             file = '/bin/sh';
-            // Session-scoped options (not global -g): they only touch THIS vh-
-            // session, never the user's own tmux config or other sessions.
-            //  - mouse on: wheel-scrolls the scrollback and lets you click
-            //    panes/windows — the whole point of a browser terminal.
-            //  - history-limit: a deep scrollback for panes in the session.
-            // Both are genuine session options, so `-t <session>` is correct
-            // (mode-keys/set-clipboard are window/server-scoped, so they'd
-            // silently no-op here and are deliberately left out). Idempotent,
-            // so re-running on reattach is harmless.
+            // tmux options applied on (re)attach, idempotent.
+            //  Session-scoped (`-t`, touch only THIS vh- session):
+            //   - mouse on: wheel-scrolls scrollback + click panes/windows —
+            //     the point of a browser terminal.
+            //   - history-limit: deep scrollback for panes in the session.
+            //  Server-scoped (`-g`, no session-scoped equivalent exists):
+            //   - set-clipboard on + terminal-features …:clipboard: make tmux
+            //     emit an OSC 52 escape when copying (mouse drag-select), so the
+            //     web xterm can mirror the selection into the browser clipboard.
+            //     Without this, copying inside tmux only fills tmux's own buffer,
+            //     which the browser can't read. Benign + desirable globally.
             const setOpts = [
                 `tmux set-option -t ${tmuxSession} mouse on`,
                 `tmux set-option -t ${tmuxSession} history-limit 100000`,
+                `tmux set-option -g set-clipboard on`,
+                `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,
             ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
             args = ['-c',
                 `tmux new-session -A -d -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
