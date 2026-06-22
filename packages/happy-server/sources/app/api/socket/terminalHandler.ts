@@ -23,9 +23,12 @@ export function terminalHandler(userId: string, socket: Socket, io: Server, conn
         const machineId = connection.machineId;
         const userRoom = `user:${userId}:user-scoped`;
 
-        socket.on('terminal-output', (data: { terminalId: string; data: string }) => {
+        socket.on('terminal-output', (data: { terminalId: string; data: string; enc?: boolean }) => {
             if (!data?.terminalId) return;
-            io.to(userRoom).emit('terminal-output', { terminalId: data.terminalId, machineId, data: data.data });
+            // Forward `enc` so the client knows the byte stream is encrypted with
+            // the per-machine key (the relay can't read it). Must pass through —
+            // dropping it makes the client render ciphertext as plaintext.
+            io.to(userRoom).emit('terminal-output', { terminalId: data.terminalId, machineId, data: data.data, enc: data.enc });
         });
         socket.on('terminal-exit', (data: { terminalId: string; exitCode: number }) => {
             if (!data?.terminalId) return;
@@ -44,9 +47,9 @@ export function terminalHandler(userId: string, socket: Socket, io: Server, conn
         emit(`user:${userId}:machine:${machineId}`);
     };
 
-    socket.on('terminal-input', (data: { machineId: string; terminalId: string; data: string }) => {
+    socket.on('terminal-input', (data: { machineId: string; terminalId: string; data: string; enc?: boolean }) => {
         void toMachine(data?.machineId, (room) =>
-            io.to(room).emit('terminal-input', { terminalId: data.terminalId, data: data.data }));
+            io.to(room).emit('terminal-input', { terminalId: data.terminalId, data: data.data, enc: data.enc }));
     });
     socket.on('terminal-resize', (data: { machineId: string; terminalId: string; cols: number; rows: number }) => {
         void toMachine(data?.machineId, (room) =>
