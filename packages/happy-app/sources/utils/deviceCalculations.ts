@@ -63,12 +63,12 @@ export function calculateHeaderHeight(params: {
     
     // Mac Catalyst: Use dedicated height for desktop environment
     if (isMacCatalyst) {
-        return 44; // Compact desktop header (was 56) — more room for content
+        return 40; // Compact desktop-client header (was 56)
     }
 
-    // Web platform: compact header — more vertical room for chat/terminal
+    // Web platform: compact header — desktop-client feel, more room for content
     if (platform === 'web') {
-        return 44; // was 56
+        return 40; // was 56
     }
     
     if (platform === 'android') {

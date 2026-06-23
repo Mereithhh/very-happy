@@ -202,7 +202,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: Platform.select({ ios: 8, default: 16 }),
+        paddingHorizontal: Platform.select({ ios: 8, default: 12 }),
         width: '100%',
         // No maxWidth cap: the header spans the full content area so the
         // left/right controls sit at the edges (title stays centered between

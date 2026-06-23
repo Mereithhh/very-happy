@@ -112,9 +112,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     headerSection: {
         backgroundColor: theme.colors.groupped.background,
-        paddingHorizontal: 24,
-        paddingTop: 20,
-        paddingBottom: 8,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 6,
     },
     headerText: {
         fontSize: 14,
@@ -125,7 +125,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     projectGroup: {
         paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingVertical: 7,
         backgroundColor: theme.colors.surface,
     },
     projectGroupTitle: {
@@ -141,7 +141,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     sessionItem: {
-        height: 72,
+        height: 60,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
@@ -232,9 +232,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
     },
     filterBar: {
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 8,
+        paddingHorizontal: 12,
+        paddingTop: 6,
+        paddingBottom: 6,
         gap: 8,
         backgroundColor: theme.colors.groupped.background,
     },
