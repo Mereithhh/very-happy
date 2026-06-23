@@ -30,12 +30,19 @@ export const SidebarNavigator = React.memo(() => {
     const isDesktopLayout = auth.isAuthenticated && isTablet;
     const showSidebar = isDesktopLayout && !zenMode;
     const { width: windowWidth } = useWindowDimensions();
+    const [savedSidebarWidth, setSavedSidebarWidth] = useLocalSettingMutable('sidebarWidth');
 
-    // Calculate target drawer width
+    // Drag-resize bounds for the desktop sidebar.
+    const SIDEBAR_MIN = 220;
+    const sidebarMax = React.useMemo(() => Math.min(560, Math.floor(windowWidth * 0.6)), [windowWidth]);
+
+    // Calculate target drawer width — a user-dragged width (clamped) wins over
+    // the responsive default.
     const fullDrawerWidth = React.useMemo(() => {
         if (!isDesktopLayout) return 280;
+        if (savedSidebarWidth != null) return Math.min(Math.max(savedSidebarWidth, SIDEBAR_MIN), sidebarMax);
         return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
-    }, [windowWidth, isDesktopLayout]);
+    }, [windowWidth, isDesktopLayout, savedSidebarWidth, sidebarMax]);
     const drawerWidth = showSidebar ? fullDrawerWidth : 0;
 
     const drawerNavigationOptions = React.useMemo(() => {
@@ -93,7 +100,49 @@ export const SidebarNavigator = React.memo(() => {
             {isDesktopLayout && (
                 <PersistentHeader drawerWidth={fullDrawerWidth} showSidebar={showSidebar} />
             )}
+            {/* Draggable divider to resize the sidebar (web/desktop only) */}
+            {showSidebar && Platform.OS === 'web' && (
+                <SidebarResizeHandle
+                    x={fullDrawerWidth}
+                    min={SIDEBAR_MIN}
+                    max={sidebarMax}
+                    onCommit={setSavedSidebarWidth}
+                />
+            )}
         </View>
+    );
+});
+
+// Thin draggable divider at the sidebar's right edge. While dragging it shows a
+// ghost line and only commits the new width on release — so the chat/list to the
+// right reflows exactly once (not every frame), matching the no-animate rationale
+// for the drawer width above.
+const SidebarResizeHandle = React.memo(({ x, min, max, onCommit }: { x: number; min: number; max: number; onCommit: (w: number) => void }) => {
+    const { theme } = useUnistyles();
+    const [dragX, setDragX] = React.useState<number | null>(null);
+    const clamp = (v: number) => Math.min(Math.max(v, min), max);
+    return (
+        <>
+            <View
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => true}
+                onResponderGrant={(e) => setDragX(clamp(e.nativeEvent.pageX))}
+                onResponderMove={(e) => setDragX(clamp(e.nativeEvent.pageX))}
+                onResponderRelease={(e) => { onCommit(Math.round(clamp(e.nativeEvent.pageX))); setDragX(null); }}
+                onResponderTerminate={() => setDragX(null)}
+                style={{
+                    position: 'absolute', top: 0, bottom: 0, left: x - 4, width: 8,
+                    zIndex: 1200,
+                    cursor: 'col-resize',
+                } as any}
+            />
+            {dragX != null && (
+                <View
+                    pointerEvents="none"
+                    style={{ position: 'absolute', top: 0, bottom: 0, left: dragX - 1, width: 2, backgroundColor: theme.colors.textLink, zIndex: 1300 }}
+                />
+            )}
+        </>
     );
 });
 

@@ -6,8 +6,10 @@
  */
 import * as React from 'react';
 import { View, Platform, Pressable, Text } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
+import { TmuxHelpModal } from '@/components/TmuxHelpModal';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -55,6 +57,8 @@ export default function WebTerminalScreen() {
     const terminalCommands = useSetting('terminalCommands');
     // Drag-and-drop file upload overlay state ('over' = hovering, 'uploading').
     const [dragState, setDragState] = React.useState<'idle' | 'over' | 'uploading'>('idle');
+    const navigation = useNavigation();
+    const { theme } = useUnistyles();
 
     const openCommands = React.useCallback(() => {
         Modal.show({
@@ -70,6 +74,34 @@ export default function WebTerminalScreen() {
             ),
         });
     }, [terminalCommands]);
+
+    // Put the quick-commands launcher + tmux-help into the header's top-right
+    // (replaces the old floating button over the terminal, and the layout's
+    // help-only headerRight). Keeps the terminal surface clean.
+    React.useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 8 }}>
+                    <Pressable
+                        onPress={openCommands}
+                        hitSlop={8}
+                        accessibilityLabel="Quick commands"
+                        style={({ pressed }: any) => ({ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+                    >
+                        <Ionicons name="flash-outline" size={20} color="#34E2C4" />
+                    </Pressable>
+                    <Pressable
+                        onPress={() => Modal.show({ component: TmuxHelpModal })}
+                        hitSlop={8}
+                        accessibilityLabel="tmux shortcuts"
+                        style={({ pressed }: any) => ({ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+                    >
+                        <Ionicons name="help-circle-outline" size={22} color={theme.colors.header.tint} />
+                    </Pressable>
+                </View>
+            ),
+        });
+    }, [navigation, openCommands, theme.colors.header.tint]);
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !hostRef.current || !machineId) return;
@@ -112,17 +144,15 @@ export default function WebTerminalScreen() {
             const screenEl = host.querySelector('.xterm-screen') as HTMLElement | null;
             if (screenEl && term.cols > 2) {
                 // The DOM renderer lays cells out a couple px wider than the
-                // .xterm-screen box (sub-pixel cell rounding accumulated over all
-                // columns); that overhang is clipped by the container. FitAddon's
-                // floor (cols = ⌊width/cellWidth⌋) can leave near-zero slack, so
-                // when the overhang exceeds the remainder the last column's glyph
-                // is shaved — visibly, tmux's trailing status-bar date ("6" cut).
-                // Guarantee enough slack to absorb the overhang: if the floor
-                // remainder is too small, drop one column (slack then jumps by a
-                // full cell). Width-independent — a fixed right padding can't fix
-                // this, it only shifts which window widths fail.
+                // .xterm-screen box (sub-pixel cell rounding); that overhang is
+                // clipped by the container, shaving the last column's glyph. But
+                // we want the grid to stay as WIDE as possible so tmux's status
+                // bar reaches the right edge (no black gap) — so only drop a column
+                // when the floor remainder is too small to absorb the ~2px overhang
+                // (i.e. the last glyph would actually clip). A small threshold keeps
+                // the terminal effectively full-width while still never clipping.
                 const slack = host.clientWidth - screenEl.getBoundingClientRect().width;
-                if (slack < 6) {
+                if (slack < 3) {
                     term.resize(term.cols - 1, term.rows);
                 }
             }
@@ -355,35 +385,10 @@ export default function WebTerminalScreen() {
         // measures the host's box to pick rows, and a padding on the host made
         // it overcount by a row → the last line was clipped at the bottom.
         // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, padding: 8 }}>
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 0 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
-            {/* Quick-commands launcher — floats over the terminal (doesn't affect
-                FitAddon sizing). Opens saved terminal commands to paste.
-                Anchored TOP-right: the bottom row is tmux's status bar (persistent
-                session-name + clock) and the prompt/cursor live at the bottom, so a
-                bottom-right button covered the status bar's right end. Top-right
-                overlaps only scrolled-away output, never the status line. */}
-            <Pressable
-                onPress={openCommands}
-                accessibilityLabel="Quick commands"
-                style={({ pressed, hovered }: any) => ({
-                    position: 'absolute',
-                    right: 16,
-                    top: 16,
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#11161D',
-                    borderWidth: 1,
-                    borderColor: 'rgba(52,226,196,0.4)',
-                    opacity: pressed ? 0.7 : hovered ? 1 : 0.78,
-                })}
-            >
-                <Ionicons name="flash-outline" size={20} color="#34E2C4" />
-            </Pressable>
+            {/* (Quick-commands launcher moved into the header top-right.) */}
 
             {/* Drag-and-drop upload overlay. pointerEvents:none so drop events
                 still reach the terminal host underneath. */}

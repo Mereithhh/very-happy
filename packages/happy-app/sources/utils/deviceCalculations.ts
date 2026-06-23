@@ -63,12 +63,12 @@ export function calculateHeaderHeight(params: {
     
     // Mac Catalyst: Use dedicated height for desktop environment
     if (isMacCatalyst) {
-        return 56; // Mac Catalyst: 52 points (slightly taller than iOS for desktop feel)
+        return 44; // Compact desktop header (was 56) — more room for content
     }
-    
-    // Web platform: Use Material Design height
+
+    // Web platform: compact header — more vertical room for chat/terminal
     if (platform === 'web') {
-        return 56; // Web: 64px for consistency with Material Design
+        return 44; // was 56
     }
     
     if (platform === 'android') {
