@@ -18,6 +18,9 @@ export const LocalSettingsSchema = z.object({
     filesSidebarCollapsed: z.boolean().describe('Collapse the desktop files sidebar to a thin rail to save space'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+    // Desktop sidebar width override (px) set by dragging the divider. null = use
+    // the responsive default. Per-device (local).
+    sidebarWidth: z.number().nullable().describe('User-dragged desktop sidebar width in px (null = responsive default)'),
 });
 
 //
@@ -48,6 +51,7 @@ export const localSettingsDefaults: LocalSettings = {
     // of width when there are no diffs; one click expands it (and it persists).
     filesSidebarCollapsed: true,
     acknowledgedCliVersions: {},
+    sidebarWidth: null,
 };
 Object.freeze(localSettingsDefaults);
 
