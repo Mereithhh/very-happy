@@ -414,7 +414,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             styles.sessionTitle,
                             status.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                         ]}
-                        numberOfLines={2}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
                     >
                         {session.name}
                     </Text>
@@ -551,20 +552,20 @@ const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemo
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         backgroundColor: theme.colors.groupped.background,
-        paddingTop: 8,
+        paddingTop: 4,
     },
     // Section header styles
     sectionHeader: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: 8,
+        paddingBottom: Platform.select({ ios: 6, default: 4 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 12 }),
         flexDirection: 'row',
         alignItems: 'center',
     },
     sectionHeaderSingleLine: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: 8,
+        paddingBottom: Platform.select({ ios: 6, default: 4 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 12 }),
         flexDirection: 'row',
         alignItems: 'center',
     },
@@ -634,9 +635,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     // Project card styles
     projectCard: {
         backgroundColor: theme.colors.surface,
-        marginBottom: 8,
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        marginBottom: Platform.select({ ios: 8, default: 6 }),
+        marginHorizontal: Platform.select({ ios: 16, default: 8 }),
+        borderRadius: Platform.select({ ios: 10, default: 8 }),
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 0.33 },
@@ -644,12 +645,12 @@ const stylesheet = StyleSheet.create((theme) => ({
         shadowRadius: 0,
         elevation: 1,
     },
-    // Session row styles
+    // Session row styles — compact single-line rows (desktop-client density).
     sessionRow: {
-        height: 56,
+        height: Platform.select({ ios: 56, default: 38 }),
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 12,
         backgroundColor: theme.colors.surface,
     },
     sessionRowWithBorder: {
