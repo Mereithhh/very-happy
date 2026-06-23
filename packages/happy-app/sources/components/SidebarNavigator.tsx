@@ -222,7 +222,7 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
             {showSidebar ? (
                 /* Sidebar top bar: logo · back · 新建会话 · collapse — one row. */
                 <View
-                    style={{ width: drawerWidth, height: safeArea.top + headerHeight, paddingTop: safeArea.top, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 12, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    style={{ width: drawerWidth, height: safeArea.top + headerHeight, paddingTop: safeArea.top, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 10, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     pointerEvents="auto"
                     {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
                 >
@@ -238,8 +238,8 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 6,
-                            height: 34,
-                            borderRadius: 10,
+                            height: 30,
+                            borderRadius: 8,
                             borderWidth: 1,
                             borderColor: theme.colors.divider,
                             backgroundColor: pressed ? theme.colors.surfaceSelected : theme.colors.surfaceHigh,
