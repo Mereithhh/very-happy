@@ -81,7 +81,7 @@ export default function WebTerminalScreen() {
     React.useLayoutEffect(() => {
         navigation.setOptions({
             headerRight: () => (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                     <Pressable
                         onPress={openCommands}
                         hitSlop={8}

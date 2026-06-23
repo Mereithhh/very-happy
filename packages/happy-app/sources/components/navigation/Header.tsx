@@ -3,7 +3,6 @@ import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { layout } from '../layout';
 import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -205,7 +204,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         paddingHorizontal: Platform.select({ ios: 8, default: 16 }),
         width: '100%',
-        maxWidth: layout.headerMaxWidth,
+        // No maxWidth cap: the header spans the full content area so the
+        // left/right controls sit at the edges (title stays centered between
+        // them). Previously capped at headerMaxWidth(=800 on web) + centered,
+        // which floated the action buttons ~145px in from the right edge.
     },
     leftContainer: {
         flexGrow: 0,
