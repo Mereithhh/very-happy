@@ -29,6 +29,10 @@ export const zhHant: TranslationStructure = {
         emptyTitle: '收件匣是空的',
         emptyDescription: '與好友建立連結，開始共享工作階段',
         updates: '更新',
+        laneNeedsApproval: '等你批准',
+        laneInProgress: '進行中',
+        laneToReview: '待查看',
+        laneOther: '其他',
     },
 
     notifications: {

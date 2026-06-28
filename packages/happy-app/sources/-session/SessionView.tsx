@@ -26,7 +26,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, sessionUploadFile } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, useSocketStatus } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -71,6 +71,7 @@ export const SessionView = React.memo((props: { id: string }) => {
     const deviceType = useDeviceType();
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
+    const socketStatus = useSocketStatus();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
@@ -238,6 +239,16 @@ export const SessionView = React.memo((props: { id: string }) => {
     // content paddingTop below, same as the voice bar.
     const showStatusLine = isDataReady && !!session && !fileViewPath && !diffViewOpen;
 
+    // The status-line connection signal reflects the real app↔server socket, not
+    // just daemon presence: a dropped/reconnecting socket (e.g. phone resumed from
+    // background mid-stream) shows "reconnecting" instead of a confident "connected".
+    const statusConnectionState: 'connected' | 'reconnecting' | 'disconnected' =
+        socketStatus.status === 'connecting' || socketStatus.status === 'error'
+            ? 'reconnecting'
+            : socketStatus.status === 'connected' && headerProps.isConnected
+                ? 'connected'
+                : 'disconnected';
+
     const mainContent = (
         <>
             {/* Status bar shadow for landscape mode */}
@@ -290,7 +301,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                             host={headerProps.host}
                             cwd={headerProps.cwd}
                             model={headerProps.model}
-                            isConnected={headerProps.isConnected}
+                            connectionState={statusConnectionState}
                         />
                     )}
                 </View>

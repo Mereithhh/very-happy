@@ -27,6 +27,10 @@ export const ca: TranslationStructure = {
         emptyTitle: 'Safata buida',
         emptyDescription: 'Connecta\'t amb amics per començar a compartir sessions',
         updates: 'Actualitzacions',
+        laneNeedsApproval: 'Needs approval',
+        laneInProgress: 'In progress',
+        laneToReview: 'To review',
+        laneOther: 'Other',
     },
 
     notifications: {

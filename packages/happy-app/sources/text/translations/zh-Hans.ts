@@ -29,6 +29,10 @@ export const zhHans: TranslationStructure = {
         emptyTitle: '没有新通知',
         emptyDescription: '会话有需要你处理的地方时，会出现在这里',
         updates: '更新',
+        laneNeedsApproval: '等你批准',
+        laneInProgress: '进行中',
+        laneToReview: '待查看',
+        laneOther: '其他',
     },
 
     notifications: {
