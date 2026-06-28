@@ -19,6 +19,7 @@ import { machineOpenTerminal, machineSetTerminalTitle, encryptTerminalData, decr
 import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { SnippetPickerModal } from '@/components/SnippetPickerModal';
+import { t } from '@/text';
 
 const BG = '#0B0E13';
 
@@ -65,10 +66,10 @@ export default function WebTerminalScreen() {
             component: (props: any) => (
                 <SnippetPickerModal
                     {...props}
-                    heading="终端快捷指令 · Quick commands"
+                    heading={t('terminal.quickCommands')}
                     bodyMono
                     items={terminalCommands.map((c) => ({ id: c.id, title: c.title || c.command.split('\n')[0], body: c.command }))}
-                    emptyHint="还没有快捷指令。去 设置 → 快捷片段 添加。No commands yet."
+                    emptyHint={t('terminal.quickCommandsEmpty')}
                     onPick={(command: string) => { termRef.current?.paste(command); termRef.current?.focus(); }}
                 />
             ),
@@ -414,10 +415,10 @@ export default function WebTerminalScreen() {
                         color="#34E2C4"
                     />
                     <Text style={{ color: '#E8EDF4', marginTop: 12, fontSize: 14 }}>
-                        {dragState === 'uploading' ? '上传中… · Uploading…' : '松开上传到机器 · Drop to upload'}
+                        {dragState === 'uploading' ? t('terminal.uploadingFile') : t('terminal.dropToUpload')}
                     </Text>
                     <Text style={{ color: '#5B6675', marginTop: 4, fontSize: 12 }}>
-                        路径会粘贴到终端 · path will be pasted into the terminal
+                        {t('terminal.pathWillBePasted')}
                     </Text>
                 </View>
             )}

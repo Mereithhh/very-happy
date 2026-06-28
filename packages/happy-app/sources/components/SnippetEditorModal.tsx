@@ -7,6 +7,7 @@ import * as React from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface SnippetEditorModalProps {
     heading: string;
@@ -52,11 +53,11 @@ export function SnippetEditorModal({
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>{heading}</Text>
 
-            <Text style={[styles.label, { color: theme.colors.textSecondary, ...Typography.mono() }]}>标题 · TITLE</Text>
+            <Text style={[styles.label, { color: theme.colors.textSecondary, ...Typography.mono() }]}>{t('settingsSnippets.editorTitleLabel')}</Text>
             <TextInput
                 value={title}
                 onChangeText={setTitle}
-                placeholder="可选,留空取首行 · optional"
+                placeholder={t('settingsSnippets.editorTitlePlaceholder')}
                 placeholderTextColor={theme.colors.textSecondary}
                 style={[styles.input, inputBase, { ...Typography.default() }]}
             />
@@ -73,7 +74,7 @@ export function SnippetEditorModal({
 
             <View style={styles.actions}>
                 <Pressable onPress={onClose} style={styles.btn} hitSlop={6}>
-                    <Text style={[styles.btnText, { color: theme.colors.textSecondary, ...Typography.default() }]}>取消 · Cancel</Text>
+                    <Text style={[styles.btnText, { color: theme.colors.textSecondary, ...Typography.default() }]}>{t('settingsSnippets.editorCancel')}</Text>
                 </Pressable>
                 <Pressable
                     onPress={handleSave}
@@ -81,7 +82,7 @@ export function SnippetEditorModal({
                     style={[styles.btn, { backgroundColor: theme.colors.button.primary.background, opacity: canSave ? 1 : 0.5 }]}
                     hitSlop={6}
                 >
-                    <Text style={[styles.btnText, { color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }]}>保存 · Save</Text>
+                    <Text style={[styles.btnText, { color: theme.colors.button.primary.tint, ...Typography.default('semiBold') }]}>{t('settingsSnippets.editorSave')}</Text>
                 </Pressable>
             </View>
         </View>

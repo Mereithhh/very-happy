@@ -133,7 +133,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="settings/snippets"
                 options={{
-                    headerTitle: '快捷片段 · Snippets',
+                    headerTitle: t('settingsSnippets.navTitle'),
                 }}
             />
             <Stack.Screen
