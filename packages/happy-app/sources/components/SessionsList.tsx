@@ -10,7 +10,7 @@ import { useMachineTerminals } from '@/hooks/useMachineTerminals';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
+import { StatusDot, StatusDotKind } from './StatusDot';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
@@ -544,11 +544,11 @@ export function SessionsList() {
     );
 }
 
-const getStatusConfig = (theme: any): Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> => ({
-    disconnected: { color: theme.colors.status.disconnected, dotColor: theme.colors.status.disconnected, isPulsing: false, isConnected: false },
-    thinking: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: true, isConnected: true },
-    waiting: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: true },
-    permission_required: { color: theme.colors.status.connecting, dotColor: theme.colors.status.connecting, isPulsing: true, isConnected: true },
+const getStatusConfig = (theme: any): Record<SessionState, { color: string; kind: StatusDotKind; accessibilityLabel: string; isConnected: boolean }> => ({
+    disconnected: { color: theme.colors.status.disconnected, kind: 'offline', accessibilityLabel: t('status.offline'), isConnected: false },
+    thinking: { color: theme.colors.status.connected, kind: 'thinking', accessibilityLabel: t('status.connected'), isConnected: true },
+    waiting: { color: theme.colors.status.connected, kind: 'connected', accessibilityLabel: t('status.connected'), isConnected: true },
+    permission_required: { color: theme.colors.status.connecting, kind: 'permission', accessibilityLabel: t('status.permissionRequired'), isConnected: true },
 });
 
 const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
@@ -565,7 +565,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const baseStatus = getStatusConfig(theme)[session.state];
     // Override to solid accent when session has unread results
     const status = session.hasUnread
-        ? { ...baseStatus, color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, color: theme.colors.status.connected, kind: 'connected' as StatusDotKind, accessibilityLabel: t('status.connected'), isConnected: baseStatus.isConnected }
         : baseStatus;
 
     const vibingMessage = React.useMemo(() => {
@@ -653,7 +653,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
                 <View style={styles.statusRow}>
                     <View style={styles.statusDotContainer}>
-                        <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />
+                        <StatusDot kind={status.kind} accessibilityLabel={status.accessibilityLabel} />
                     </View>
                     <Text style={[
                         styles.statusText,

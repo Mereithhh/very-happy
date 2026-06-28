@@ -7,7 +7,7 @@ import { SessionRowData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { type SessionState, formatPathRelativeToHome, vibingMessages, formatLastSeen } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
+import { StatusDot, StatusDotKind } from './StatusDot';
 import { useAllMachines, useSessionGitStatus } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -23,11 +23,11 @@ import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
 import { Modal } from '@/modal';
 import { type MachineTerminalsGroup } from '@/hooks/useMachineTerminals';
 
-const getStatusConfig = (theme: any): Record<SessionState, { color: string; dotColor: string; isPulsing: boolean; isConnected: boolean }> => ({
-    disconnected: { color: theme.colors.status.disconnected, dotColor: theme.colors.status.disconnected, isPulsing: false, isConnected: false },
-    thinking: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: true, isConnected: true },
-    waiting: { color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: true },
-    permission_required: { color: theme.colors.status.connecting, dotColor: theme.colors.status.connecting, isPulsing: true, isConnected: true },
+const getStatusConfig = (theme: any): Record<SessionState, { color: string; kind: StatusDotKind; accessibilityLabel: string; isConnected: boolean }> => ({
+    disconnected: { color: theme.colors.status.disconnected, kind: 'offline', accessibilityLabel: t('status.offline'), isConnected: false },
+    thinking: { color: theme.colors.status.connected, kind: 'thinking', accessibilityLabel: t('status.connected'), isConnected: true },
+    waiting: { color: theme.colors.status.connected, kind: 'connected', accessibilityLabel: t('status.connected'), isConnected: true },
+    permission_required: { color: theme.colors.status.connecting, kind: 'permission', accessibilityLabel: t('status.permissionRequired'), isConnected: true },
 });
 
 interface ActiveSessionsGroupProps {
@@ -329,7 +329,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const baseStatus = getStatusConfig(theme)[session.state];
     // Override to solid accent when session has unread results
     const status = session.hasUnread
-        ? { ...baseStatus, color: theme.colors.status.connected, dotColor: theme.colors.status.connected, isPulsing: false, isConnected: baseStatus.isConnected }
+        ? { ...baseStatus, color: theme.colors.status.connected, kind: 'connected' as StatusDotKind, accessibilityLabel: t('status.connected'), isConnected: baseStatus.isConnected }
         : baseStatus;
     const navigateToSession = useNavigateToSession();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -373,7 +373,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         let indicator: React.ReactNode = null;
 
         if (session.hasUnread) {
-            indicator = <StatusDot color={status.dotColor} isPulsing={false} />;
+            indicator = <StatusDot kind="connected" accessibilityLabel={t('status.connected')} />;
         } else if (session.state === 'waiting' && session.hasDraft) {
             indicator = (
                 <Ionicons
@@ -383,9 +383,10 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 />
             );
         } else if (session.state === 'permission_required' || session.state === 'thinking') {
-            indicator = <StatusDot color={status.dotColor} isPulsing={status.isPulsing} />;
+            indicator = <StatusDot kind={status.kind} accessibilityLabel={status.accessibilityLabel} />;
         } else if (session.state === 'waiting') {
-            indicator = <StatusDot color={theme.colors.textSecondary} isPulsing={false} />;
+            const waiting = getStatusConfig(theme).waiting;
+            indicator = <StatusDot kind={waiting.kind} accessibilityLabel={waiting.accessibilityLabel} />;
         }
 
         return (

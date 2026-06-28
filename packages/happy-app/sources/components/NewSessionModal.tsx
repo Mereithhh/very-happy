@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface NewSessionModalProps {
     onClose?: () => void;
@@ -58,20 +59,20 @@ export function NewSessionModal({ onClose }: NewSessionModalProps) {
 
     return (
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.eyebrow, { color: theme.colors.textLink, ...Typography.mono() }]}>NEW SESSION</Text>
-            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>开始点什么 · Start something</Text>
+            <Text style={[styles.eyebrow, { color: theme.colors.textLink, ...Typography.mono() }]}>{t('newSessionModal.eyebrow')}</Text>
+            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>{t('newSessionModal.heading')}</Text>
             <View style={styles.options}>
                 <Option
                     icon="chatbubbles-outline"
-                    title="新会话 · New chat"
-                    subtitle="在某台机器上让 Claude / Codex 开始干活"
+                    title={t('newSessionModal.chatTitle')}
+                    subtitle={t('newSessionModal.chatSubtitle')}
                     onPress={() => go('/new')}
                 />
                 {Platform.OS === 'web' && (
                     <Option
                         icon="terminal-outline"
-                        title="网页终端 · Web terminal"
-                        subtitle="在已连接的机器上打开一个终端（tmux）"
+                        title={t('newSessionModal.terminalTitle')}
+                        subtitle={t('newSessionModal.terminalSubtitle')}
                         onPress={() => go('/terminal/web')}
                     />
                 )}

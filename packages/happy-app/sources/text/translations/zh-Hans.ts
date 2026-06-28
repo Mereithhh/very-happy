@@ -452,6 +452,24 @@ export const zhHans: TranslationStructure = {
         },
     },
 
+    newSessionModal: {
+        // Used by NewSessionModal component
+        eyebrow: '新会话',
+        heading: '开始点什么',
+        chatTitle: '新会话',
+        chatSubtitle: '在某台机器上让 Claude / Codex 开始干活',
+        terminalTitle: '网页终端',
+        terminalSubtitle: '在已连接的机器上打开一个终端（tmux）',
+    },
+
+    emptyState: {
+        // Used by EmptyDetailPane component
+        pickUpTitle: '继续上次的工作',
+        pickUpDescription: '在左侧选择一个会话，或在任意已连接的机器上新建一个。',
+        newSession: '新建会话',
+        openWebTerminal: '打开网页终端',
+    },
+
     agentInput: {
         permissionMode: {
             title: '权限模式',

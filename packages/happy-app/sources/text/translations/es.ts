@@ -451,6 +451,24 @@ export const es: TranslationStructure = {
         },
     },
 
+    newSessionModal: {
+        // Used by NewSessionModal component
+        eyebrow: 'NEW SESSION',
+        heading: 'Start something',
+        chatTitle: 'New chat',
+        chatSubtitle: 'Let Claude or Codex start working on a machine',
+        terminalTitle: 'Web terminal',
+        terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
+    },
+
+    emptyState: {
+        // Used by EmptyDetailPane component
+        pickUpTitle: 'Pick up where you left off',
+        pickUpDescription: 'Select a conversation on the left, or start a new one on any connected machine.',
+        newSession: 'New session',
+        openWebTerminal: 'Open web terminal',
+    },
+
     agentInput: {
         permissionMode: {
             title: 'MODO DE PERMISOS',
