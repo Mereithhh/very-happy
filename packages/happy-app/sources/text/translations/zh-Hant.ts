@@ -451,6 +451,24 @@ export const zhHant: TranslationStructure = {
         },
     },
 
+    newSessionModal: {
+        // Used by NewSessionModal component
+        eyebrow: '新工作階段',
+        heading: '開始做點什麼',
+        chatTitle: '新對話',
+        chatSubtitle: '在某台機器上讓 Claude / Codex 開始工作',
+        terminalTitle: '網頁終端機',
+        terminalSubtitle: '在已連線的機器上開啟一個終端機（tmux）',
+    },
+
+    emptyState: {
+        // Used by EmptyDetailPane component
+        pickUpTitle: '繼續上次的工作',
+        pickUpDescription: '在左側選擇一個工作階段，或在任意已連線的機器上新建一個。',
+        newSession: '新建工作階段',
+        openWebTerminal: '開啟網頁終端機',
+    },
+
     agentInput: {
         permissionMode: {
             title: '權限模式',

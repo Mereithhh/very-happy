@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter } from 'expo-router';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -82,13 +83,13 @@ export function EmptyDetailPane() {
                 style={styles.logo}
                 resizeMode="contain"
             />
-            <Text style={styles.title}>Pick up where you left off · 继续上次的工作</Text>
+            <Text style={styles.title}>{t('emptyState.pickUpTitle')}</Text>
             <Text style={styles.description}>
-                Select a conversation on the left, or start a new one on any connected machine.{'\n'}在左侧选择一个会话，或在任意已连接的机器上新建一个。
+                {t('emptyState.pickUpDescription')}
             </Text>
             <Pressable style={({ pressed }) => [styles.button, { opacity: pressed ? 0.85 : 1 }]} onPress={() => router.navigate('/new')}>
                 <Ionicons name="add" size={19} color={theme.colors.button.primary.tint} />
-                <Text style={styles.buttonText}>New session · 新建会话</Text>
+                <Text style={styles.buttonText}>{t('emptyState.newSession')}</Text>
             </Pressable>
             {Platform.OS === 'web' && (
                 <Pressable
@@ -96,7 +97,7 @@ export function EmptyDetailPane() {
                     onPress={() => router.navigate('/terminal/web' as any)}
                 >
                     <Ionicons name="terminal-outline" size={16} color={theme.colors.textSecondary} />
-                    <Text style={styles.secondaryText}>Open web terminal · 打开网页终端</Text>
+                    <Text style={styles.secondaryText}>{t('emptyState.openWebTerminal')}</Text>
                 </Pressable>
             )}
         </View>

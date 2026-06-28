@@ -31,6 +31,19 @@ if (!s.includes('happy-dvh-fix')) {
     const style = '<style id="happy-dvh-fix">html,body{height:100dvh !important}#root{height:100dvh !important;min-height:100dvh !important}</style>';
     s = s.replace('</head>', style + '</head>');
 }
+// Global keyboard focus ring (WCAG 2.4.7). RN-web strips outlines by default and
+// no component sets one; this restores a visible focus indicator for every
+// focusable element on keyboard nav: teal in dark, readable teal in light, plus a
+// forced-colors fallback. Mouse :focus stays clean via :not(:focus-visible).
+if (!s.includes('id="vh-a11y"')) {
+    const a11y = '<style id="vh-a11y">'
+        + ':focus-visible{outline:2px solid #34E2C4 !important;outline-offset:2px !important;border-radius:4px}'
+        + '@media(prefers-color-scheme:light){:focus-visible{outline-color:#0A7D69 !important}}'
+        + ':focus:not(:focus-visible){outline:none}'
+        + '@media(forced-colors:active){:focus-visible{outline:2px solid CanvasText !important}}'
+        + '</style>';
+    s = s.replace('</head>', a11y + '</head>');
+}
 if (!s.includes('id="happy-pwa"')) {
     const pwa = '<link id="happy-pwa" rel="manifest" href="/manifest.json">'
         + '<meta name="theme-color" content="#000000">'
@@ -78,7 +91,7 @@ if (!s.includes('id="vh-splash"')) {
 }
 
 writeFileSync(p, s);
-const ok = ['viewport-fit=cover', 'happy-dvh-fix', 'id="happy-pwa"', 'id="vh-splash"', '<title>Very Happy</title>']
+const ok = ['viewport-fit=cover', 'happy-dvh-fix', 'id="vh-a11y"', 'id="happy-pwa"', 'id="vh-splash"', '<title>Very Happy</title>']
     .every((m) => s.includes(m));
-console.log('patched index.html (title+viewport+dvh+pwa+splash):', ok);
+console.log('patched index.html (title+viewport+dvh+a11y+pwa+splash):', ok);
 if (!ok) process.exit(1);
