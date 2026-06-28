@@ -8,6 +8,7 @@ import * as React from 'react';
 import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface Shortcut {
     keys: string;
@@ -20,55 +21,57 @@ interface Section {
     items: Shortcut[];
 }
 
-const SECTIONS: Section[] = [
-    {
-        title: '鼠标 · Mouse',
-        items: [
-            { keys: '滚轮', label: '上下滚动回看历史 / Wheel scrolls history' },
-            { keys: '点击', label: '切换窗格、窗口 / Click panes & windows' },
-            { keys: 'Shift+拖动', label: '用浏览器选中复制（绕过 tmux）/ Select to copy' },
-        ],
-    },
-    {
-        title: '前缀键 · Prefix',
-        note: '先按 Ctrl-b 松开，再按下面的键 / Press Ctrl-b, release, then the key',
-        items: [
-            { keys: 'Ctrl-b', label: '所有 tmux 快捷键的前缀 / Prefix for every command' },
-        ],
-    },
-    {
-        title: '回看 · Scrollback',
-        items: [
-            { keys: 'Ctrl-b  [', label: '进入回看模式 / Enter copy mode' },
-            { keys: '↑ ↓  PgUp', label: '在回看里滚动 / Scroll' },
-            { keys: 'q', label: '退出回看 / Quit copy mode' },
-        ],
-    },
-    {
-        title: '窗格 · Panes',
-        items: [
-            { keys: 'Ctrl-b  %', label: '竖向分屏 / Split vertically' },
-            { keys: 'Ctrl-b  "', label: '横向分屏 / Split horizontally' },
-            { keys: 'Ctrl-b  ←↑↓→', label: '在窗格间切换 / Move between panes' },
-            { keys: 'Ctrl-b  z', label: '当前窗格全屏切换 / Zoom toggle' },
-            { keys: 'Ctrl-b  x', label: '关闭当前窗格 / Close pane' },
-        ],
-    },
-    {
-        title: '窗口 · Windows',
-        items: [
-            { keys: 'Ctrl-b  c', label: '新建窗口 / New window' },
-            { keys: 'Ctrl-b  n / p', label: '下一个 / 上一个 / Next / prev' },
-            { keys: 'Ctrl-b  0–9', label: '按编号跳转 / Jump by number' },
-        ],
-    },
-    {
-        title: '会话 · Session',
-        items: [
-            { keys: 'Ctrl-b  d', label: '脱离会话（仍在后台运行，可随时重连）/ Detach — keeps running' },
-        ],
-    },
-];
+function buildSections(): Section[] {
+    return [
+        {
+            title: t('tmuxHelp.mouse'),
+            items: [
+                { keys: t('tmuxHelp.keyWheel'), label: t('tmuxHelp.labelWheel') },
+                { keys: t('tmuxHelp.keyClick'), label: t('tmuxHelp.labelClick') },
+                { keys: t('tmuxHelp.keyShiftDrag'), label: t('tmuxHelp.labelShiftDrag') },
+            ],
+        },
+        {
+            title: t('tmuxHelp.prefix'),
+            note: t('tmuxHelp.prefixNote'),
+            items: [
+                { keys: 'Ctrl-b', label: t('tmuxHelp.labelPrefix') },
+            ],
+        },
+        {
+            title: t('tmuxHelp.scrollback'),
+            items: [
+                { keys: 'Ctrl-b  [', label: t('tmuxHelp.labelEnterCopy') },
+                { keys: '↑ ↓  PgUp', label: t('tmuxHelp.labelScroll') },
+                { keys: 'q', label: t('tmuxHelp.labelQuit') },
+            ],
+        },
+        {
+            title: t('tmuxHelp.panes'),
+            items: [
+                { keys: 'Ctrl-b  %', label: t('tmuxHelp.labelSplitV') },
+                { keys: 'Ctrl-b  "', label: t('tmuxHelp.labelSplitH') },
+                { keys: 'Ctrl-b  ←↑↓→', label: t('tmuxHelp.labelMovePanes') },
+                { keys: 'Ctrl-b  z', label: t('tmuxHelp.labelZoom') },
+                { keys: 'Ctrl-b  x', label: t('tmuxHelp.labelClosePane') },
+            ],
+        },
+        {
+            title: t('tmuxHelp.windows'),
+            items: [
+                { keys: 'Ctrl-b  c', label: t('tmuxHelp.labelNewWindow') },
+                { keys: 'Ctrl-b  n / p', label: t('tmuxHelp.labelNextPrev') },
+                { keys: 'Ctrl-b  0–9', label: t('tmuxHelp.labelJump') },
+            ],
+        },
+        {
+            title: t('tmuxHelp.session'),
+            items: [
+                { keys: 'Ctrl-b  d', label: t('tmuxHelp.labelDetach') },
+            ],
+        },
+    ];
+}
 
 interface TmuxHelpModalProps {
     onClose?: () => void;
@@ -85,12 +88,13 @@ function KeyChip({ value }: { value: string }) {
 
 export function TmuxHelpModal(_props: TmuxHelpModalProps) {
     const { theme } = useUnistyles();
+    const sections = buildSections();
     return (
         <View style={[styles.card, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.eyebrow, { color: theme.colors.textLink, ...Typography.mono() }]}>TMUX</Text>
-            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>快捷键 · Shortcuts</Text>
+            <Text style={[styles.heading, { color: theme.colors.text, ...Typography.default('semiBold') }]}>{t('tmuxHelp.heading')}</Text>
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
-                {SECTIONS.map((section) => (
+                {sections.map((section) => (
                     <View key={section.title} style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary, ...Typography.mono('semiBold') }]}>
                             {section.title}

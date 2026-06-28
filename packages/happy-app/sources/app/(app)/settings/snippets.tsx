@@ -13,6 +13,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
 import { SnippetEditorModal } from '@/components/SnippetEditorModal';
+import { t } from '@/text';
 
 function genId(): string {
     return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
@@ -28,7 +29,7 @@ export default function SnippetsSettingsScreen() {
             component: (props: any) => (
                 <SnippetEditorModal
                     {...props}
-                    heading={existing ? '编辑 Prompt 预设 · Edit preset' : '新建 Prompt 预设 · New preset'}
+                    heading={existing ? t('settingsSnippets.editPreset') : t('settingsSnippets.newPreset')}
                     bodyLabel="PROMPT"
                     bodyPlaceholder="例如:用审视的目光 review 这段代码,指出潜在问题…"
                     initialTitle={existing?.title}
@@ -50,7 +51,7 @@ export default function SnippetsSettingsScreen() {
             component: (props: any) => (
                 <SnippetEditorModal
                     {...props}
-                    heading={existing ? '编辑快捷指令 · Edit command' : '新建快捷指令 · New command'}
+                    heading={existing ? t('settingsSnippets.editCommand') : t('settingsSnippets.newCommand')}
                     bodyLabel="COMMAND"
                     bodyMono
                     bodyPlaceholder="例如:git status"
@@ -69,7 +70,7 @@ export default function SnippetsSettingsScreen() {
     }, [terminalCommands, setTerminalCommands]);
 
     const deleteRow = React.useCallback(async (title: string, onConfirm: () => void) => {
-        const ok = await Modal.confirm('删除? · Delete?', title, { confirmText: '删除 · Delete', destructive: true });
+        const ok = await Modal.confirm(t('settingsSnippets.deleteTitle'), title, { confirmText: t('settingsSnippets.deleteConfirm'), destructive: true });
         if (ok) onConfirm();
     }, []);
 
@@ -81,7 +82,7 @@ export default function SnippetsSettingsScreen() {
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
-            <ItemGroup title="Prompt 预设 · Prompt presets" footer="在对话输入框点书签图标快速插入,可二次编辑后再发。">
+            <ItemGroup title={t('settingsSnippets.presetsGroup')} footer={t('settingsSnippets.presetsFooter')}>
                 {promptPresets.map((p) => (
                     <Item
                         key={p.id}
@@ -94,13 +95,13 @@ export default function SnippetsSettingsScreen() {
                     />
                 ))}
                 <Item
-                    title="添加 Prompt 预设 · Add preset"
+                    title={t('settingsSnippets.addPreset')}
                     icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.textLink} />}
                     onPress={() => editPreset()}
                 />
             </ItemGroup>
 
-            <ItemGroup title="终端快捷指令 · Terminal commands" footer="在网页终端点指令图标,命令会填入终端(不自动执行,你按回车确认)。">
+            <ItemGroup title={t('settingsSnippets.commandsGroup')} footer={t('settingsSnippets.commandsFooter')}>
                 {terminalCommands.map((c) => (
                     <Item
                         key={c.id}
@@ -113,7 +114,7 @@ export default function SnippetsSettingsScreen() {
                     />
                 ))}
                 <Item
-                    title="添加快捷指令 · Add command"
+                    title={t('settingsSnippets.addCommand')}
                     icon={<Ionicons name="add-circle-outline" size={29} color={theme.colors.textLink} />}
                     onPress={() => editCommand()}
                 />

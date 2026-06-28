@@ -366,8 +366,8 @@ export const SettingsView = React.memo(function SettingsView() {
                     onPress={() => router.push('/settings/agents' as any)}
                 />
                 <Item
-                    title="快捷片段 · Snippets"
-                    subtitle="Prompt 预设 + 终端快捷指令"
+                    title={t('settingsSnippets.navTitle')}
+                    subtitle={t('settingsSnippets.navSubtitle')}
                     icon={<Ionicons name="bookmark-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={() => router.push('/settings/snippets' as any)}
                 />

@@ -12,18 +12,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { CYBER } from '@/components/CyberBackdrop';
+import { t } from '@/text';
 
 const CLI_INSTALL = 'npm i -g very-happy-cli';
 const CLI_RUN = 'very-happy';
 const REPO_URL = 'https://github.com/Mereithhh/very-happy';
 const UPSTREAM_URL = 'https://github.com/slopus/happy';
-
-const FEATURES: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
-    { icon: 'key-outline', text: 'Password sign-in, any device · 密码登录，任意设备，免扫码' },
-    { icon: 'sync-outline', text: 'Multi-device sync · 多设备实时同步，会话随身' },
-    { icon: 'terminal-outline', text: 'Web terminal over tmux · 浏览器里的真实终端' },
-    { icon: 'sparkles-outline', text: 'Latest models + reworked UI · 最新模型 + 重做的界面' },
-];
 
 const stylesheet = StyleSheet.create(() => ({
     container: {
@@ -180,19 +174,26 @@ export function WelcomeInstall() {
 
     if (Platform.OS !== 'web') return null;
 
+    const features: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [
+        { icon: 'key-outline', text: t('welcome.installFeaturePassword') },
+        { icon: 'sync-outline', text: t('welcome.installFeatureSync') },
+        { icon: 'terminal-outline', text: t('welcome.installFeatureTerminal') },
+        { icon: 'sparkles-outline', text: t('welcome.installFeatureModels') },
+    ];
+
     return (
         <View style={styles.container}>
-            <Text style={styles.introTitle}>A friendly fork of Happy · 基于 Happy 的友好分支</Text>
+            <Text style={styles.introTitle}>{t('welcome.installForkTitle')}</Text>
             <Text style={styles.introText}>
                 <Text style={styles.link} onPress={() => Linking.openURL(REPO_URL)}>Very Happy</Text>
-                {' builds on '}
+                {' · '}
                 <Text style={styles.link} onPress={() => Linking.openURL(UPSTREAM_URL)}>Happy</Text>
-                {' and trades end-to-end encryption for password-based, multi-device convenience.'}
-                {'\n用密码登录代替端到端加密，换来多设备即开即用的便利。'}
+                {'\n'}
+                {t('welcome.installIntro')}
             </Text>
 
             <View style={styles.features}>
-                {FEATURES.map((f) => (
+                {features.map((f) => (
                     <View key={f.text} style={styles.featureRow}>
                         <Ionicons name={f.icon} size={16} color={CYBER.accent} />
                         <Text style={styles.featureText}>{f.text}</Text>
@@ -202,22 +203,19 @@ export function WelcomeInstall() {
 
             <View style={styles.divider} />
 
-            <Text style={styles.heading}>USE IT ON YOUR OWN COMPUTER · 在你自己的电脑上运行</Text>
+            <Text style={styles.heading}>{t('welcome.installHeading')}</Text>
 
             <View style={styles.step}>
                 <View style={styles.stepNum}><Text style={styles.stepNumText}>1</Text></View>
                 <View style={styles.stepBody}>
-                    <Text style={styles.stepText}>
-                        Install Claude Code so the `claude` command is on your PATH.
-                        {'\n安装 Claude Code，确保 claude 命令在 PATH 上。'}
-                    </Text>
+                    <Text style={styles.stepText}>{t('welcome.installStep1')}</Text>
                 </View>
             </View>
 
             <View style={styles.step}>
                 <View style={styles.stepNum}><Text style={styles.stepNumText}>2</Text></View>
                 <View style={styles.stepBody}>
-                    <Text style={styles.stepText}>Install the CLI from npm · 从 npm 安装 CLI：</Text>
+                    <Text style={styles.stepText}>{t('welcome.installStep2')}</Text>
                     <CommandRow cmd={CLI_INSTALL} />
                 </View>
             </View>
@@ -225,20 +223,14 @@ export function WelcomeInstall() {
             <View style={styles.step}>
                 <View style={styles.stepNum}><Text style={styles.stepNumText}>3</Text></View>
                 <View style={styles.stepBody}>
-                    <Text style={styles.stepText}>
-                        Run it on the machine you want to control — pre-configured to this server.
-                        {'\n在你想控制的机器上运行，已预设连到本服务器。'}
-                    </Text>
+                    <Text style={styles.stepText}>{t('welcome.installStep3')}</Text>
                     <CommandRow cmd={CLI_RUN} />
                 </View>
             </View>
 
             <View style={styles.note}>
                 <Ionicons name="information-circle-outline" size={16} color={CYBER.textDim} />
-                <Text style={styles.noteText}>
-                    Server-trusted: your sessions are relayed through this server, whose operator can
-                    read them. Only sign up if you trust them. · 服务器可见你的会话内容，信任再注册。
-                </Text>
+                <Text style={styles.noteText}>{t('welcome.installNote')}</Text>
             </View>
         </View>
     );

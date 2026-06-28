@@ -812,6 +812,12 @@ export const ca: TranslationStructure = {
         clientSideProcessing: 'Processament del costat del client',
         linkProcessedLocally: 'Enllaç processat localment al navegador',
         linkProcessedOnDevice: 'Enllaç processat localment al dispositiu',
+        // Web terminal (tmux) quick commands & drag-upload overlay
+        quickCommands: 'Quick commands',
+        quickCommandsEmpty: 'No commands yet. Add them in Settings → Snippets.',
+        uploadingFile: 'Uploading…',
+        dropToUpload: 'Drop to upload',
+        pathWillBePasted: 'path will be pasted into the terminal',
     },
 
     modals: {
@@ -856,6 +862,18 @@ export const ca: TranslationStructure = {
         linkOrRestoreAccount: 'Enllaça o restaura un compte',
         loginWithMobileApp: 'Inicia sessió amb l\'aplicació mòbil',
         loginWithPassword: 'Inicia sessió amb contrasenya',
+        // WelcomeInstall landing card (web)
+        installForkTitle: 'A friendly fork of Happy',
+        installIntro: 'Very Happy builds on Happy and trades end-to-end encryption for password-based, multi-device convenience.',
+        installFeaturePassword: 'Password sign-in, any device',
+        installFeatureSync: 'Multi-device sync',
+        installFeatureTerminal: 'Web terminal over tmux',
+        installFeatureModels: 'Latest models + reworked UI',
+        installHeading: 'USE IT ON YOUR OWN COMPUTER',
+        installStep1: 'Install Claude Code so the `claude` command is on your PATH.',
+        installStep2: 'Install the CLI from npm:',
+        installStep3: 'Run it on the machine you want to control — pre-configured to this server.',
+        installNote: 'Server-trusted: your sessions are relayed through this server, whose operator can read them. Only sign up if you trust them.',
     },
 
     passwordLogin: {
@@ -1099,7 +1117,59 @@ export const ca: TranslationStructure = {
         friendRequestGeneric: 'Nova sol·licitud d\'amistat',
         friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
         friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
-    }
+    },
+
+    settingsSnippets: {
+        navTitle: 'Snippets',
+        navSubtitle: 'Prompt presets + terminal commands',
+        editorTitleLabel: 'TITLE',
+        editorTitlePlaceholder: 'optional, first line if blank',
+        editorCancel: 'Cancel',
+        editorSave: 'Save',
+        editPreset: 'Edit preset',
+        newPreset: 'New preset',
+        editCommand: 'Edit command',
+        newCommand: 'New command',
+        deleteTitle: 'Delete?',
+        deleteConfirm: 'Delete',
+        presetsGroup: 'Prompt presets',
+        presetsFooter: 'Tap the bookmark icon in the composer to insert one; you can edit it before sending.',
+        addPreset: 'Add preset',
+        commandsGroup: 'Terminal commands',
+        commandsFooter: 'Tap the command icon in the web terminal; the command is inserted (not auto-run — press Enter to confirm).',
+        addCommand: 'Add command',
+    },
+
+    tmuxHelp: {
+        heading: 'Shortcuts',
+        mouse: 'Mouse',
+        prefix: 'Prefix',
+        prefixNote: 'Press Ctrl-b, release, then the key',
+        scrollback: 'Scrollback',
+        panes: 'Panes',
+        windows: 'Windows',
+        session: 'Session',
+        keyWheel: 'Wheel',
+        labelWheel: 'Wheel scrolls history',
+        keyClick: 'Click',
+        labelClick: 'Click panes & windows',
+        keyShiftDrag: 'Shift+Drag',
+        labelShiftDrag: 'Select to copy',
+        labelPrefix: 'Prefix for every command',
+        labelEnterCopy: 'Enter copy mode',
+        labelScroll: 'Scroll',
+        labelQuit: 'Quit copy mode',
+        labelSplitV: 'Split vertically',
+        labelSplitH: 'Split horizontally',
+        labelMovePanes: 'Move between panes',
+        labelZoom: 'Zoom toggle',
+        labelClosePane: 'Close pane',
+        labelNewWindow: 'New window',
+        labelNextPrev: 'Next / prev',
+        labelJump: 'Jump by number',
+        labelDetach: 'Detach — keeps running',
+    },
+
 } as const;
 
 export type TranslationsCa = typeof ca;
