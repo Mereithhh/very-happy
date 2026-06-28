@@ -27,6 +27,11 @@ export const en = {
         emptyTitle: 'No notifications',
         emptyDescription: 'Sessions that need your attention will show up here',
         updates: 'Updates',
+        // Attention triage lane headers
+        laneNeedsApproval: 'Needs approval',
+        laneInProgress: 'In progress',
+        laneToReview: 'To review',
+        laneOther: 'Other',
     },
 
     notifications: {

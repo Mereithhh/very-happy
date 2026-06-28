@@ -30,6 +30,10 @@ export const ja: TranslationStructure = {
         emptyTitle: '受信トレイは空です',
         emptyDescription: '友達と接続してセッションを共有しましょう',
         updates: '更新',
+        laneNeedsApproval: 'Needs approval',
+        laneInProgress: 'In progress',
+        laneToReview: 'To review',
+        laneOther: 'Other',
     },
 
     notifications: {

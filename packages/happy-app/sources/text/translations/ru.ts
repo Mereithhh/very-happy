@@ -38,6 +38,10 @@ export const ru: TranslationStructure = {
         emptyTitle: 'Входящие пусты',
         emptyDescription: 'Подключитесь к друзьям, чтобы начать делиться сессиями',
         updates: 'Обновления',
+        laneNeedsApproval: 'Needs approval',
+        laneInProgress: 'In progress',
+        laneToReview: 'To review',
+        laneOther: 'Other',
     },
 
     notifications: {

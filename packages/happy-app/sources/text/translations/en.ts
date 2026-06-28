@@ -42,6 +42,10 @@ export const en: TranslationStructure = {
         emptyTitle: 'No notifications',
         emptyDescription: 'Sessions that need your attention will show up here',
         updates: 'Updates',
+        laneNeedsApproval: 'Needs approval',
+        laneInProgress: 'In progress',
+        laneToReview: 'To review',
+        laneOther: 'Other',
     },
 
     notifications: {
