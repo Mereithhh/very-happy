@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import {
@@ -21,6 +21,42 @@ import { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { getToolSummaryCategory, getToolSummaryDetail, ToolSummaryCategory } from '@/utils/toolDisplay';
 import { formatMCPTitle } from './tools/views/MCPToolView';
 
+type ThemeColors = ReturnType<typeof useUnistyles>['theme']['colors'];
+
+/**
+ * "Console" spine colour for a tool *group* container. The left accent ridge
+ * encodes the machine's working state at a glance:
+ *  - running  -> teal (the only time it lights up; "machine is working")
+ *  - all error -> destructive
+ *  - mixed (some ok, some failed) -> warning
+ *  - done / static -> neutral divider (teal is reserved for live only)
+ */
+function getGroupSpineColor(colors: ThemeColors, hasRunning: boolean, stats: ToolGroupStats): string {
+    if (hasRunning) {
+        return colors.status.connected;
+    }
+    if (stats.error > 0) {
+        // Partial failure (some completed) reads as warning; a wholly-failed
+        // group reads as a hard error.
+        return stats.completed > 0 ? colors.warning : colors.textDestructive;
+    }
+    return colors.divider;
+}
+
+/**
+ * "Console" spine colour for a single tool row, driven by that tool's own state.
+ */
+function getToolSpineColor(colors: ThemeColors, state: 'running' | 'completed' | 'error'): string {
+    switch (state) {
+        case 'running':
+            return colors.status.connected;
+        case 'error':
+            return colors.textDestructive;
+        default:
+            return colors.divider;
+    }
+}
+
 interface ToolGroupViewProps {
     group: ToolGroupItem;
     metadata: Metadata | null;
@@ -33,9 +69,15 @@ interface ToolGroupViewProps {
 
 export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
+    const { theme } = useUnistyles();
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
     const stats = React.useMemo(() => generateGroupStats(group.messages), [group.messages]);
+    const spineColor = getGroupSpineColor(theme.colors, group.hasRunning, stats);
+    const runningStartedAt = React.useMemo(
+        () => (group.hasRunning ? getRunningStartedAt(group.messages) : null),
+        [group.hasRunning, group.messages],
+    );
     const iconCategories = React.useMemo(() => getGroupIconCategories(group.messages), [group.messages]);
     const suppressChildren = hideSingleToolChildren && group.messages.length === 1 && group.messages[0]?.kind === 'tool-call';
     const singleToolMessage = suppressChildren && group.messages[0]?.kind === 'tool-call'
@@ -54,7 +96,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     ), [metadata, sessionId]);
 
     const body = (
-        <View style={nested ? styles.nestedInnerContainer : styles.innerContainer}>
+        <View style={[nested ? styles.nestedInnerContainer : styles.innerContainer, { borderLeftColor: spineColor }]}>
             <CollapseHeader
                 expanded={expanded}
                 hasRunning={group.hasRunning}
@@ -64,6 +106,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
                 showChevron
                 stats={singleToolMessage ? undefined : stats}
                 iconCategories={singleToolMessage ? undefined : iconCategories}
+                runningStartedAt={runningStartedAt}
             />
             {expanded && (
                 <View style={styles.content}>
@@ -108,6 +151,9 @@ interface AgentWorkGroupViewProps {
 
 export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) => {
     const { group, metadata, sessionId, expanded, onToggle } = props;
+    const { theme } = useUnistyles();
+    const stats = React.useMemo(() => generateGroupStats(group.messages), [group.messages]);
+    const spineColor = getGroupSpineColor(theme.colors, group.hasRunning, stats);
     const runningElapsedSeconds = useElapsedTime(group.completedAt === null ? group.startedAt : null);
     const durationMs = group.completedAt === null
         ? runningElapsedSeconds * 1000
@@ -196,7 +242,7 @@ export const AgentWorkGroupView = React.memo<AgentWorkGroupViewProps>((props) =>
 
     return (
         <View style={styles.outerContainer}>
-            <View style={styles.innerContainer}>
+            <View style={[styles.innerContainer, { borderLeftColor: spineColor }]}>
                 <CollapseHeader
                     expanded={expanded}
                     hasRunning={group.hasRunning}
@@ -223,9 +269,16 @@ function CollapseHeader(props: {
     disabled?: boolean;
     stats?: ToolGroupStats;
     iconCategories?: ToolSummaryCategory[];
+    runningStartedAt?: number | null;
 }) {
     const { theme } = useUnistyles();
     const showChevron = props.showChevron ?? true;
+    // Live elapsed for running groups so a long Bash isn't reduced to a bare
+    // spinner. A bare formatted duration (e.g. "42s") needs no translation key.
+    const runningElapsedSeconds = useElapsedTime(props.hasRunning ? (props.runningStartedAt ?? null) : null);
+    const runningLabel = props.hasRunning && props.runningStartedAt != null
+        ? formatWorkDuration(runningElapsedSeconds * 1000)
+        : null;
     // The leading per-category icon strip replaces the single summary icon when
     // a group spans multiple distinct tool categories, giving an at-a-glance
     // sense of what ran without expanding.
@@ -253,10 +306,15 @@ function CollapseHeader(props: {
             {props.stats ? (
                 <GroupStatusPills stats={props.stats} />
             ) : null}
+            {runningLabel ? (
+                <Text style={styles.headerRunningElapsed} numberOfLines={1}>
+                    {runningLabel}
+                </Text>
+            ) : null}
             {props.hasRunning && (
                 <ActivityIndicator
                     size="small"
-                    color={theme.colors.textSecondary}
+                    color={theme.colors.status.connected}
                     style={{ transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] }}
                 />
             )}
@@ -339,6 +397,7 @@ function ToolSummaryRow(props: {
     const title = getToolRowTitle(category, tool.name);
     const durationLabel = getToolDurationLabel(tool);
     const isPressable = Boolean(props.sessionId);
+    const spineColor = getToolSpineColor(theme.colors, tool.state);
 
     // Inline expansion: tapping the compact summary row reveals the full tool
     // (input/output/diff) in place via the regular ToolView, instead of jumping
@@ -383,7 +442,7 @@ function ToolSummaryRow(props: {
 
     if (!isPressable) {
         return (
-            <View style={styles.toolSummaryRow}>
+            <View style={[styles.toolSummaryRow, { borderLeftColor: spineColor }]}>
                 {content}
             </View>
         );
@@ -395,19 +454,26 @@ function ToolSummaryRow(props: {
                 onPress={handlePress}
                 style={({ pressed }) => [
                     styles.toolSummaryRow,
+                    { borderLeftColor: spineColor },
                     pressed && styles.toolSummaryRowPressed,
                 ]}
             >
                 {content}
             </Pressable>
             {expanded ? (
-                <View style={styles.toolSummaryExpanded}>
+                // Cap the inline tool body so a giant stdout can't blow out the
+                // chat; overflow scrolls within the block.
+                <ScrollView
+                    style={styles.toolSummaryExpanded}
+                    contentContainerStyle={styles.toolSummaryExpandedContent}
+                    nestedScrollEnabled
+                >
                     <MessageView
                         message={props.message}
                         metadata={props.metadata}
                         sessionId={props.sessionId}
                     />
-                </View>
+                </ScrollView>
             ) : null}
         </View>
     );
@@ -502,6 +568,25 @@ function ToolStatusIndicator(props: { state: 'running' | 'completed' | 'error' }
     );
 }
 
+/**
+ * Earliest start time among the group's still-running tools, so the header can
+ * show how long the live work has been going. Falls back to null when no
+ * running tool carries a startedAt.
+ */
+function getRunningStartedAt(messages: Message[]): number | null {
+    let earliest: number | null = null;
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        if (message.tool.state !== 'running') continue;
+        const startedAt = message.tool.startedAt;
+        if (typeof startedAt !== 'number') continue;
+        if (earliest === null || startedAt < earliest) {
+            earliest = startedAt;
+        }
+    }
+    return earliest;
+}
+
 function getToolDurationLabel(tool: ToolCallMessage['tool']): string | null {
     if (tool.state === 'running') return null;
     if (typeof tool.startedAt !== 'number' || typeof tool.completedAt !== 'number') return null;
@@ -558,6 +643,10 @@ const styles = StyleSheet.create((theme) => ({
         maxWidth: layout.maxWidth,
         marginVertical: 6,
         overflow: 'hidden',
+        // "Console" accent spine: 2px left ridge, colour set inline per state.
+        borderLeftWidth: 2,
+        borderLeftColor: theme.colors.divider,
+        paddingLeft: 8,
     },
     nestedOuterContainer: {
         overflow: 'hidden',
@@ -565,6 +654,9 @@ const styles = StyleSheet.create((theme) => ({
     nestedInnerContainer: {
         minWidth: 0,
         overflow: 'hidden',
+        borderLeftWidth: 2,
+        borderLeftColor: theme.colors.divider,
+        paddingLeft: 8,
     },
     header: {
         flexDirection: 'row',
@@ -626,6 +718,14 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 20,
         color: theme.colors.textSecondary,
     },
+    headerRunningElapsed: {
+        flexShrink: 0,
+        fontSize: 11,
+        lineHeight: 16,
+        color: theme.colors.status.connected,
+        fontVariant: ['tabular-nums'],
+        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    },
     content: {
         marginTop: 2,
         gap: 2,
@@ -637,14 +737,23 @@ const styles = StyleSheet.create((theme) => ({
         minHeight: 24,
         marginHorizontal: 16,
         paddingVertical: 2,
+        paddingLeft: 8,
         borderRadius: 4,
         overflow: 'hidden',
+        // Per-tool "Console" spine: 2px left ridge, colour set inline per state.
+        borderLeftWidth: 2,
+        borderLeftColor: theme.colors.divider,
     },
     toolSummaryRowPressed: {
         opacity: 0.65,
     },
     toolSummaryExpanded: {
         marginHorizontal: 8,
+        // Cap runaway stdout/diff height; scroll inside the block instead.
+        maxHeight: 200,
+    },
+    toolSummaryExpandedContent: {
+        flexGrow: 1,
     },
     toolSummaryIcon: {
         width: 14,
@@ -658,6 +767,8 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         lineHeight: 18,
         color: theme.colors.textSecondary,
+        // "Console" language: the tool name reads as machine output (mono).
+        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     toolSummaryDetailPill: {
         flexShrink: 1,
@@ -687,6 +798,7 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 16,
         color: theme.colors.textSecondary,
         fontVariant: ['tabular-nums'],
+        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     toolStatusDot: {
         width: 6,

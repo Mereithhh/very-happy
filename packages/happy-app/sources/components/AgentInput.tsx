@@ -337,7 +337,9 @@ const getContextUsage = (contextSize: number, alwaysShow: boolean, theme: Theme)
         color = theme.colors.warning;
         isNearLimit = true;
     } else {
-        color = theme.colors.warning;
+        // Healthy: a calm neutral fill. Reserve warn/danger for the real escalation
+        // and keep teal for "live" — the meter is capacity, not liveness.
+        color = theme.colors.textSecondary;
     }
 
     if (!isNearLimit && !alwaysShow) {

@@ -56,19 +56,19 @@ export const lightTheme = {
         text: '#101720',
         textDestructive: '#D9484D',
         textSecondary: '#52606E',
-        textLink: '#0A8772',          // accent-2 (readable teal on white)
+        textLink: '#07735F',          // accent-2 (readable teal on white)
         deleteAction: '#D9484D',
         warningCritical: '#D9484D',
         warning: '#A8770F',
-        success: '#0A8772',
+        success: '#07735F',
         surface: '#FFFFFF',                       // bg-1 panel
         surfaceRipple: 'rgba(16,22,32,0.06)',
-        surfacePressed: '#E8ECF2',                // bg-3
-        surfaceSelected: '#E8ECF2',
-        surfacePressedOverlay: Platform.select({ ios: '#E8ECF2', default: 'transparent' }),
+        surfacePressed: '#E6EAF0',                // bg-3
+        surfaceSelected: '#E6EAF0',
+        surfacePressedOverlay: Platform.select({ ios: '#E6EAF0', default: 'transparent' }),
         surfaceHigh: '#F5F7FA',                   // bg-2 raised
-        surfaceHighest: '#E8ECF2',                // bg-3
-        divider: '#E4E8EE',                       // line
+        surfaceHighest: '#E6EAF0',                // bg-3
+        divider: '#D8DEE6',                       // line
         shadow: {
             color: Platform.select({ default: '#101720', web: 'rgba(16,22,32,0.18)' }),
             opacity: 0.12,
@@ -80,8 +80,8 @@ export const lightTheme = {
 
         groupped: {
             background: '#EDF0F4',                // bg-0 page
-            chevron: '#8A93A0',                   // text-faint
-            sectionTitle: '#8A93A0',
+            chevron: '#69737F',                   // text-faint
+            sectionTitle: '#69737F',
         },
         header: {
             background: '#FFFFFF',
@@ -90,31 +90,31 @@ export const lightTheme = {
         switch: {
             track: {
                 active: 'rgba(21,194,166,0.16)',  // accent-dim
-                inactive: '#CFD6DF',              // line-2
+                inactive: '#C2CAD5',              // line-2
             },
             thumb: {
-                active: '#15C2A6',                // accent
+                active: '#0A7D69',                // accent
                 inactive: '#FFFFFF',
             },
         },
         fab: {
-            background: '#15C2A6',                 // accent
-            backgroundPressed: '#0E9F88',
-            icon: '#04130F',                      // accent-ink
+            background: '#0A7D69',                 // accent
+            backgroundPressed: '#08664F',
+            icon: '#FFFFFF',                      // accent-ink
         },
         radio: {
-            active: '#0A8772',
-            inactive: '#CFD6DF',
-            dot: '#0A8772',
+            active: '#07735F',
+            inactive: '#C2CAD5',
+            dot: '#07735F',
         },
         modal: {
             border: 'rgba(16,22,32,0.10)',
         },
         button: {
             primary: {
-                background: '#15C2A6',            // accent fill
-                tint: '#04130F',                  // accent-ink
-                disabled: '#CFD6DF',
+                background: '#0A7D69',            // accent fill
+                tint: '#FFFFFF',                  // accent-ink
+                disabled: '#C2CAD5',
             },
             secondary: {
                 tint: '#52606E',
@@ -123,7 +123,7 @@ export const lightTheme = {
         input: {
             background: '#F5F7FA',                // bg-2
             text: '#101720',
-            placeholder: '#8A93A0',
+            placeholder: '#69737F',
         },
         box: {
             warning: {
@@ -143,20 +143,20 @@ export const lightTheme = {
         //
 
         status: {
-            connected: '#15C2A6',
+            connected: '#0A7D69',
             connecting: '#A8770F',
-            disconnected: '#8A93A0',
+            disconnected: '#69737F',
             error: '#D9484D',
-            default: '#8A93A0',
+            default: '#69737F',
         },
 
         // Permission mode colors — collapsed onto accent / warn / danger.
         permission: {
-            default: '#8A93A0',
-            approve: '#0A8772',
-            acceptEdits: '#0A8772',
+            default: '#69737F',
+            approve: '#07735F',
+            acceptEdits: '#07735F',
             bypass: '#A8770F',
-            plan: '#0A8772',
+            plan: '#07735F',
             readOnly: '#52606E',
             safeYolo: '#A8770F',
             yolo: '#D9484D',
@@ -165,8 +165,8 @@ export const lightTheme = {
         // Permission button colors
         permissionButton: {
             allow: {
-                background: '#15C2A6',
-                text: '#04130F',
+                background: '#0A7D69',
+                text: '#FFFFFF',
             },
             deny: {
                 background: '#D9484D',
@@ -174,16 +174,16 @@ export const lightTheme = {
             },
             allowAll: {
                 background: 'rgba(21,194,166,0.14)',
-                text: '#0A8772',
+                text: '#07735F',
             },
             inactive: {
-                background: '#E8ECF2',
-                border: '#CFD6DF',
-                text: '#8A93A0',
+                background: '#E6EAF0',
+                border: '#C2CAD5',
+                text: '#69737F',
             },
             selected: {
                 background: '#F5F7FA',
-                border: '#CFD6DF',
+                border: '#C2CAD5',
                 text: '#101720',
             },
         },
@@ -191,8 +191,8 @@ export const lightTheme = {
 
         // Diff view (GitHub-light, with Console outline)
         diff: {
-            outline: '#E4E8EE',
-            success: '#0A8772',
+            outline: '#D8DEE6',
+            success: '#07735F',
             error: '#D9484D',
             addedBg: '#E6FFED',
             addedBorder: '#34D058',
@@ -203,10 +203,10 @@ export const lightTheme = {
             contextBg: '#F5F7FA',
             contextText: '#52606E',
             lineNumberBg: '#F5F7FA',
-            lineNumberText: '#8A93A0',
+            lineNumberText: '#69737F',
             hunkHeaderBg: '#EDF0F4',
-            hunkHeaderText: '#0A8772',
-            leadingSpaceDot: '#E4E8EE',
+            hunkHeaderText: '#07735F',
+            leadingSpaceDot: '#D8DEE6',
             inlineAddedBg: '#ACFFA6',
             inlineAddedText: '#0A3F0A',
             inlineRemovedBg: '#FFCECB',
@@ -214,15 +214,15 @@ export const lightTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#E8ECF2',         // bg-3 raised bubble
+        userMessageBackground: '#E6EAF0',         // bg-3 raised bubble
         userMessageText: '#101720',
         agentMessageText: '#101720',
         agentEventText: '#52606E',
 
         // Code/Syntax colors
         syntaxKeyword: '#1d4ed8',
-        syntaxString: '#0A8772',
-        syntaxComment: '#8A93A0',
+        syntaxString: '#07735F',
+        syntaxComment: '#69737F',
         syntaxNumber: '#0891b2',
         syntaxFunction: '#9333ea',
         syntaxBracket1: '#ff6b6b',
@@ -233,9 +233,9 @@ export const lightTheme = {
         syntaxDefault: '#374151',
 
         // Git status colors
-        gitBranchText: '#8A93A0',
-        gitFileCountText: '#8A93A0',
-        gitAddedText: '#0A8772',
+        gitBranchText: '#69737F',
+        gitFileCountText: '#69737F',
+        gitAddedText: '#07735F',
         gitRemovedText: '#D9484D',
 
         // Terminal/Command colors — the terminal stays dark in light mode too.
@@ -246,7 +246,7 @@ export const lightTheme = {
             stdout: '#C7D0DC',
             stderr: '#E6B450',
             error: '#FF6B6B',
-            emptyOutput: '#5B6675',
+            emptyOutput: '#727D8D',
         },
 
     },
@@ -270,14 +270,14 @@ export const darkTheme = {
         warningCritical: '#FF6B6B',
         warning: '#E6B450',
         success: '#34E2C4',
-        surface: '#0E141B',                       // bg-1 panel
+        surface: '#11161E',                       // bg-1 panel
         surfaceRipple: 'rgba(232,237,244,0.06)',
-        surfacePressed: '#232C3A',                // bg-3
-        surfaceSelected: '#181F2A',               // bg-2 (active row)
-        surfacePressedOverlay: Platform.select({ ios: '#232C3A', default: 'transparent' }),
-        surfaceHigh: '#181F2A',                   // bg-2 raised
-        surfaceHighest: '#232C3A',                // bg-3
-        divider: '#2C3543',                       // line
+        surfacePressed: '#27313F',                // bg-3
+        surfaceSelected: '#1B2230',               // bg-2 (active row)
+        surfacePressedOverlay: Platform.select({ ios: '#27313F', default: 'transparent' }),
+        surfaceHigh: '#1B2230',                   // bg-2 raised
+        surfaceHighest: '#27313F',                // bg-3
+        divider: '#333D4D',                       // line
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0,0,0,0.4)' }),
             opacity: 0.4,
@@ -288,23 +288,23 @@ export const darkTheme = {
         //
 
         header: {
-            background: '#0E141B',
+            background: '#11161E',
             tint: '#E8EDF4',
         },
         switch: {
             track: {
                 active: '#15433B',                // accent-dim
-                inactive: '#232C3A',              // bg-3
+                inactive: '#27313F',              // bg-3
             },
             thumb: {
                 active: '#34E2C4',                // accent
-                inactive: '#5B6675',              // text-faint
+                inactive: '#727D8D',              // text-faint
             },
         },
         groupped: {
             background: '#06080C',                // bg-0 page
-            chevron: '#5B6675',                   // text-faint
-            sectionTitle: '#5B6675',
+            chevron: '#727D8D',                   // text-faint
+            sectionTitle: '#727D8D',
         },
         fab: {
             background: '#34E2C4',                 // accent
@@ -313,7 +313,7 @@ export const darkTheme = {
         },
         radio: {
             active: '#34E2C4',
-            inactive: '#2A3340',
+            inactive: '#3E495B',
             dot: '#34E2C4',
         },
         modal: {
@@ -323,16 +323,16 @@ export const darkTheme = {
             primary: {
                 background: '#34E2C4',            // accent fill
                 tint: '#04110E',                  // accent-ink
-                disabled: '#2A3340',
+                disabled: '#3E495B',
             },
             secondary: {
                 tint: '#9AA4B2',
             },
         },
         input: {
-            background: '#181F2A',                // bg-2
+            background: '#1B2230',                // bg-2
             text: '#E8EDF4',
-            placeholder: '#5B6675',
+            placeholder: '#727D8D',
         },
         box: {
             warning: {
@@ -354,14 +354,14 @@ export const darkTheme = {
         status: { // App Connection Status
             connected: '#34E2C4',
             connecting: '#E6B450',
-            disconnected: '#5B6675',
+            disconnected: '#727D8D',
             error: '#FF6B6B',
-            default: '#5B6675',
+            default: '#727D8D',
         },
 
         // Permission mode colors — collapsed onto accent / warn / danger.
         permission: {
-            default: '#5B6675',
+            default: '#727D8D',
             approve: '#34E2C4',
             acceptEdits: '#34E2C4',
             bypass: '#E6B450',
@@ -386,13 +386,13 @@ export const darkTheme = {
                 text: '#34E2C4',
             },
             inactive: {
-                background: '#232C3A',
-                border: '#2A3340',
-                text: '#5B6675',
+                background: '#27313F',
+                border: '#3E495B',
+                text: '#727D8D',
             },
             selected: {
-                background: '#181F2A',
-                border: '#2A3340',
+                background: '#1B2230',
+                border: '#3E495B',
                 text: '#E8EDF4',
             },
         },
@@ -400,7 +400,7 @@ export const darkTheme = {
 
         // Diff view (GitHub-dark, with Console surfaces)
         diff: {
-            outline: '#2C3543',
+            outline: '#333D4D',
             success: '#34E2C4',
             error: '#FF6B6B',
             addedBg: '#0D2E1F',
@@ -409,13 +409,13 @@ export const darkTheme = {
             removedBg: '#3F1B23',
             removedBorder: '#9E3B43',
             removedText: '#C9D1D9',
-            contextBg: '#181F2A',
+            contextBg: '#1B2230',
             contextText: '#9AA4B2',
-            lineNumberBg: '#181F2A',
-            lineNumberText: '#5B6675',
-            hunkHeaderBg: '#181F2A',
+            lineNumberBg: '#1B2230',
+            lineNumberText: '#727D8D',
+            hunkHeaderBg: '#1B2230',
             hunkHeaderText: '#34E2C4',
-            leadingSpaceDot: '#2C3543',
+            leadingSpaceDot: '#333D4D',
             inlineAddedBg: '#1E5A3F',
             inlineAddedText: '#7AFFC4',
             inlineRemovedBg: '#5A2A2A',
@@ -423,10 +423,10 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#232C3A',         // bg-3 raised bubble
+        userMessageBackground: '#27313F',         // bg-3 raised bubble
         userMessageText: '#E8EDF4',
         agentMessageText: '#E8EDF4',
-        agentEventText: '#5B6675',
+        agentEventText: '#727D8D',
 
         // Code/Syntax colors (brighter for dark mode)
         syntaxKeyword: '#569CD6',
@@ -442,8 +442,8 @@ export const darkTheme = {
         syntaxDefault: '#D4D4D4',
 
         // Git status colors
-        gitBranchText: '#5B6675',
-        gitFileCountText: '#5B6675',
+        gitBranchText: '#727D8D',
+        gitFileCountText: '#727D8D',
         gitAddedText: '#34E2C4',
         gitRemovedText: '#FF6B6B',
 
@@ -455,7 +455,7 @@ export const darkTheme = {
             stdout: '#C7D0DC',
             stderr: '#E6B450',
             error: '#FF6B6B',
-            emptyOutput: '#5B6675',
+            emptyOutput: '#727D8D',
         },
 
     },

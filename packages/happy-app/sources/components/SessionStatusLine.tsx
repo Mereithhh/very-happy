@@ -13,11 +13,16 @@ import { t } from '@/text';
  */
 export const SESSION_STATUS_LINE_HEIGHT = 28;
 
+type ConnectionState = 'connected' | 'reconnecting' | 'disconnected';
+
 interface SessionStatusLineProps {
     host?: string;
     cwd?: string;
     model?: string;
+    effort?: string;
+    /** Boolean shorthand. Prefer `connectionState` for the three-state signal. */
     isConnected?: boolean;
+    connectionState?: ConnectionState;
 }
 
 /** Keep the cwd readable: collapse a home-dir prefix and cap the depth. */
@@ -30,25 +35,42 @@ function shortenCwd(cwd?: string): string | undefined {
     return p;
 }
 
-export const SessionStatusLine: React.FC<SessionStatusLineProps> = ({ host, cwd, model, isConnected }) => {
+export const SessionStatusLine: React.FC<SessionStatusLineProps> = ({ host, cwd, model, effort, isConnected, connectionState }) => {
     const { theme } = useUnistyles();
-    const parts = [host, shortenCwd(cwd), model].filter((x): x is string => !!x && x.length > 0);
-    const dotColor = isConnected ? theme.colors.status.connected : theme.colors.textSecondary;
+    const parts = [host, shortenCwd(cwd), model, effort].filter((x): x is string => !!x && x.length > 0);
+
+    // Resolve the three-state connection signal (falls back to the boolean).
+    const state: ConnectionState = connectionState ?? (isConnected ? 'connected' : 'disconnected');
+    const connColor =
+        state === 'connected' ? theme.colors.status.connected :
+        state === 'reconnecting' ? theme.colors.warning :
+        theme.colors.textSecondary;
+    const connLabel =
+        state === 'connected' ? t('status.connected') :
+        state === 'reconnecting' ? t('status.connecting') :
+        t('status.offline');
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.header.background, borderBottomColor: theme.colors.divider }]}>
+        <View
+            style={[styles.container, { backgroundColor: theme.colors.header.background, borderBottomColor: theme.colors.divider }]}
+            // Read the whole line as one labelled status region, not per-span fragments.
+            accessibilityRole="text"
+            accessibilityLabel={`${parts.join(', ')}, ${connLabel}`}
+        >
             <View style={styles.inner}>
                 <Text
                     numberOfLines={1}
                     ellipsizeMode="middle"
                     style={[styles.meta, { color: theme.colors.textSecondary, ...Typography.mono() }]}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
                 >
                     {parts.join('  ·  ')}
                 </Text>
-                <View style={styles.conn}>
-                    <View style={[styles.dot, { backgroundColor: dotColor }]} />
-                    <Text style={[styles.connText, { color: dotColor, ...Typography.mono() }]}>
-                        {isConnected ? t('status.connected') : t('status.offline')}
+                <View style={styles.conn} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                    <View style={[styles.dot, { backgroundColor: connColor }]} />
+                    <Text style={[styles.connText, { color: connColor, ...Typography.mono() }]}>
+                        {connLabel}
                     </Text>
                 </View>
             </View>
