@@ -11,8 +11,8 @@ import { layout } from '@/components/layout';
 import { useIsTablet } from '@/utils/responsive';
 import { Header } from './navigation/Header';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
+import { CyberMark } from './CyberMark';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useNotificationFeed } from '@/sync/useNotificationFeed';
 import { NotificationSessionGroupView } from './NotificationSessionGroup';
@@ -134,12 +134,11 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 <TabletHeader />
                 <UpdateBanner />
                 <View style={styles.emptyContainer}>
-                    <Image
-                        source={require('@/assets/images/brutalist/Brutalism-10.png')}
-                        contentFit="contain"
-                        style={[{ width: 64, height: 64 }, styles.emptyIcon]}
-                        tintColor={theme.colors.textSecondary}
-                    />
+                    {/* Brand geometric mark instead of the brutalist placeholder —
+                        an "all clear" smiley, matching the Console empty states. */}
+                    <View style={styles.emptyIcon}>
+                        <CyberMark size={56} />
+                    </View>
                     <Text style={styles.emptyTitle}>{t('inbox.emptyTitle')}</Text>
                     <Text style={styles.emptyDescription}>{t('inbox.emptyDescription')}</Text>
                 </View>
