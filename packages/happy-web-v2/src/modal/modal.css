@@ -1,0 +1,79 @@
+.vh-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+.vh-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  animation: vh-fade var(--motion-fast);
+}
+@keyframes vh-fade {
+  from {
+    opacity: 0;
+  }
+}
+.vh-modal-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.6);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.vh-modal-title {
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.vh-modal-message {
+  font-size: var(--fs-14);
+  color: var(--text-dim);
+}
+.vh-modal-input {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: var(--fs-14);
+}
+.vh-modal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.vh-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.vh-modal-btn {
+  font-size: var(--fs-13);
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+}
+.vh-modal-btn.is-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.vh-modal-btn.is-cancel {
+  color: var(--text-dim);
+  border-color: var(--line-2);
+}
+.vh-modal-btn.is-danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+  border-color: var(--danger);
+}

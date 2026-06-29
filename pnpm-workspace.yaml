@@ -1,5 +1,6 @@
 packages:
   - "packages/happy-app"
+  - "packages/happy-web-v2"
   - "packages/happy-agent"
   - "packages/happy-cli"
   - "packages/happy-server"

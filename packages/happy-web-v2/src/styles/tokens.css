@@ -1,0 +1,162 @@
+/*
+ * very-happy "Console" design system — token source of truth (CSS custom properties).
+ * Ported verbatim from happy/references/very-happy-design-tokens.md.
+ *
+ * Rules baked into these names:
+ *  - --accent (phosphor teal) means LIVE only (focus / active session / connected / agent running).
+ *    Never a generic "clickable" color.
+ *  - --accent-2 is teal-as-text/border (dark: same as accent; light: darkened for contrast).
+ *  - Dark is the brand default; light is "the terminal by day".
+ *  - Surfaces are matte black, layered by lightness — no shadows in dark mode.
+ */
+
+:root,
+:root[data-theme='dark'] {
+  /* surfaces (matte black, 4 levels, lightness-only) */
+  --bg-0: #06080c; /* app floor / deepest */
+  --bg-1: #0e141b; /* sidebar / panel */
+  --bg-2: #181f2a; /* raised card / input */
+  --bg-3: #232c3a; /* hover / pressed */
+  --line: #2c3543; /* hairline divider / border */
+  --line-2: #2a3340; /* stronger border */
+
+  /* ink */
+  --text: #e8edf4;
+  --text-dim: #9aa4b2;
+  --text-faint: #5b6675; /* tertiary / placeholder / metadata */
+
+  /* accent = live (phosphor teal) */
+  --accent: #34e2c4;
+  --accent-2: #34e2c4; /* teal-as-text/border */
+  --accent-press: #27c7ab;
+  --accent-dim: #15433b; /* weak fill / badge bg / strong border */
+  --accent-ink: #04110e; /* text on accent fill */
+  --accent-glow: rgba(52, 226, 196, 0.16);
+
+  /* status (ANSI-ish, used sparingly) */
+  --warn: #e6b450;
+  --danger: #ff6b6b;
+  --warn-dim: rgba(230, 180, 80, 0.14);
+  --danger-dim: rgba(255, 107, 107, 0.14);
+
+  /* lift */
+  --shadow-lift: none;
+
+  /* backdrop (grid + glow + vignette) */
+  --bd-glow: rgba(52, 226, 196, 0.16);
+  --bd-grid: rgba(122, 162, 214, 0.05);
+  --bd-vig: rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg-0: #edf0f4; /* faintly cool paper-white, not pure white */
+  --bg-1: #ffffff;
+  --bg-2: #f5f7fa;
+  --bg-3: #e8ecf2;
+  --line: #e4e8ee;
+  --line-2: #cfd6df;
+
+  --text: #101720;
+  --text-dim: #52606e;
+  --text-faint: #8a93a0;
+
+  --accent: #15c2a6; /* fill darker so it reads on white */
+  --accent-2: #0a8772; /* teal-as-text/border, readable on white */
+  --accent-press: #0e9f88;
+  --accent-dim: rgba(21, 194, 166, 0.14);
+  --accent-ink: #04130f;
+  --accent-glow: rgba(21, 194, 166, 0.28);
+
+  --warn: #a8770f;
+  --danger: #d9484d;
+  --warn-dim: rgba(168, 119, 15, 0.12);
+  --danger-dim: rgba(217, 72, 77, 0.1);
+
+  --shadow-lift: 0 1px 2px rgba(16, 22, 32, 0.05), 0 12px 32px -20px rgba(16, 22, 32, 0.35);
+
+  --bd-glow: rgba(21, 194, 166, 0.1);
+  --bd-grid: rgba(40, 70, 110, 0.05);
+  --bd-vig: rgba(80, 90, 110, 0.045);
+
+  color-scheme: light;
+}
+
+/* follow system when no explicit data-theme is set */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg-0: #edf0f4;
+    --bg-1: #ffffff;
+    --bg-2: #f5f7fa;
+    --bg-3: #e8ecf2;
+    --line: #e4e8ee;
+    --line-2: #cfd6df;
+    --text: #101720;
+    --text-dim: #52606e;
+    --text-faint: #8a93a0;
+    --accent: #15c2a6;
+    --accent-2: #0a8772;
+    --accent-press: #0e9f88;
+    --accent-dim: rgba(21, 194, 166, 0.14);
+    --accent-ink: #04130f;
+    --accent-glow: rgba(21, 194, 166, 0.28);
+    --warn: #a8770f;
+    --danger: #d9484d;
+    --warn-dim: rgba(168, 119, 15, 0.12);
+    --danger-dim: rgba(217, 72, 77, 0.1);
+    --shadow-lift: 0 1px 2px rgba(16, 22, 32, 0.05), 0 12px 32px -20px rgba(16, 22, 32, 0.35);
+    --bd-glow: rgba(21, 194, 166, 0.1);
+    --bd-grid: rgba(40, 70, 110, 0.05);
+    --bd-vig: rgba(80, 90, 110, 0.045);
+    color-scheme: light;
+  }
+}
+
+:root {
+  /* fonts */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* type scale (compact, app density): 11 / 12 / 13 / 14 / 16 / 20 / 28 / 40 */
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-28: 28px;
+  --fs-40: 40px;
+
+  /* spacing (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* radius */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  /* motion (prefers-reduced-motion disables all) */
+  --motion-fast: 120ms ease;
+  --caret-blink: 1.1s;
+  --progress-dur: 1.3s;
+
+  /* breakpoints (constants — phone / tablet / desktop) */
+  --bp-tablet: 600px;
+  --bp-desktop: 980px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+  }
+}

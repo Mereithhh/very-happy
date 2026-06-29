@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Very Happy</title>
+    <meta name="description" content="Claude Code, from any browser." />
+    <style>
+      /* pre-paint splash to avoid white flash before React mounts */
+      #vh-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #06080c;
+        z-index: 9999;
+        transition: opacity 0.25s ease;
+      }
+      @media (prefers-color-scheme: light) {
+        #vh-splash { background: #edf0f4; }
+      }
+      #vh-splash .mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        border: 2px solid #34e2c4;
+        animation: vh-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes vh-pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.96); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #vh-splash .mark { animation: none; opacity: 0.8; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="vh-splash"><div class="mark"></div></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

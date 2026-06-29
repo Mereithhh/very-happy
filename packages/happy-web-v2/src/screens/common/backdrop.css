@@ -1,0 +1,17 @@
+.cyber-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(55% 38% at 82% -8%, var(--bd-glow), transparent 62%),
+    linear-gradient(transparent 0, transparent calc(100% - 1px), var(--bd-grid) 100%),
+    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), var(--bd-grid) 100%),
+    radial-gradient(120% 120% at 50% 0%, transparent 60%, var(--bd-vig) 100%),
+    var(--bg-0);
+  background-size:
+    auto,
+    34px 34px,
+    34px 34px,
+    auto,
+    auto;
+}
