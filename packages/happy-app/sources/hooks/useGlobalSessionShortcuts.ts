@@ -5,16 +5,21 @@ import { storage } from '@/sync/storage';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { getQuickSwitchTarget } from '@/hooks/quickSwitchStore';
 import { Modal } from '@/modal';
-import { sessionUpdateTitle } from '@/sync/ops';
+import { sessionUpdateTitle, sessionKill, sessionArchive } from '@/sync/ops';
+import { maybeCleanupWorktree } from '@/hooks/useWorktreeCleanup';
 import { ShortcutsHelpModal } from '@/components/ShortcutsHelpModal';
 import { t } from '@/text';
 
 /**
  * Web-only global keyboard shortcuts for session navigation:
  *  - ⌘1..⌘9  jump to the Nth active session (same order as the hover badges)
- *  - ⌘R       rename the currently-open session (only on a /session/:id route
- *             and only when focus isn't in a text field — otherwise the browser
- *             reload is allowed through)
+ *  - ⌘R       rename the currently-open session — on a /session/:id route this
+ *             unconditionally intercepts the browser reload (⌘R is a safe key to
+ *             swallow) and opens the rename prompt, regardless of focus
+ *  - ⌘W       archive the currently-open session (only on a /session/:id route),
+ *             then navigate back to the root list. ⌘W is a browser-reserved key
+ *             so preventDefault may not stop a plain tab from closing in Chrome,
+ *             but it works inside the installed PWA.
  *  - ?  /  ⌘/ open the shortcuts help overlay
  *
  * ⌘K (command palette) is intentionally NOT handled here — it lives in
@@ -71,6 +76,32 @@ async function renameCurrentSession(sessionId: string) {
     }
 }
 
+// Archive the current session using the same path as the quick-actions menu:
+// optimistically flip it inactive in the store, run worktree cleanup, then kill
+// the CLI (falling back to a server-side archive if the process is already
+// dead). Reads the session from the store on demand so it never goes stale.
+async function archiveCurrentSession(sessionId: string) {
+    const state = storage.getState();
+    const session = state.sessions[sessionId];
+    if (!session) return;
+    const wasActive = session.active;
+    if (wasActive) {
+        state.setSessionActiveLocal(sessionId, false);
+    }
+    try {
+        await maybeCleanupWorktree(sessionId, session.metadata?.path, session.metadata?.machineId);
+        const killResult = await sessionKill(sessionId);
+        if (!killResult.success) {
+            await sessionArchive(sessionId);
+        }
+    } catch (error) {
+        if (wasActive) {
+            storage.getState().setSessionActiveLocal(sessionId, true);
+        }
+        Modal.alert(t('common.error'), String(error instanceof Error ? error.message : error));
+    }
+}
+
 function openHelp() {
     Modal.show({ component: ShortcutsHelpModal });
 }
@@ -111,15 +142,30 @@ export function useGlobalSessionShortcuts() {
                 return;
             }
 
-            // ⌘R — rename current session. Only intercept the browser reload when
-            // we're on a session route AND focus isn't in an editable field;
-            // otherwise let the reload happen normally.
+            // ⌘R — rename current session. On a /session/:id route we always
+            // intercept the browser reload and open the rename prompt, even when
+            // focus is in the composer (⌘R is a safe key to swallow, and the
+            // composer is where focus usually sits). Off the session route we
+            // leave the reload alone.
             if (modifier && !e.altKey && (e.key === 'r' || e.key === 'R')) {
-                if (isEditableTarget(e)) return;
                 const sessionId = currentSessionIdFromPathname(pathnameRef.current);
                 if (!sessionId) return;
                 e.preventDefault();
                 void renameCurrentSession(sessionId);
+                return;
+            }
+
+            // ⌘W — archive current session, then return to the root list. Only
+            // acts on a /session/:id route; ⌘W is browser-reserved so the
+            // preventDefault may not hold in a plain tab, but it works in the PWA.
+            if (modifier && !e.altKey && (e.key === 'w' || e.key === 'W')) {
+                const sessionId = currentSessionIdFromPathname(pathnameRef.current);
+                if (!sessionId) return;
+                e.preventDefault();
+                void (async () => {
+                    await archiveCurrentSession(sessionId);
+                    router.navigate('/');
+                })();
                 return;
             }
 

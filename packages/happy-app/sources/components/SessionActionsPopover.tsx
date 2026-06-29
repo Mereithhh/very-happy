@@ -4,8 +4,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useSessionQuickActions, SessionActionItem } from '@/hooks/useSessionQuickActions';
+import { useSessionQuickActions } from '@/hooks/useSessionQuickActions';
 import { useSession } from '@/sync/storage';
+
+// A single row in the generic dropdown. Shared by the session quick-actions
+// popover and the terminal row menu so both render the exact same affordance.
+export interface PopoverActionItem {
+    id: string;
+    label: string;
+    icon: string;
+    onPress: () => void;
+    destructive?: boolean;
+}
 
 export type SessionActionsAnchor =
     | {
@@ -103,23 +113,25 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export function SessionActionsPopover({
+// Generic anchored dropdown/action-sheet. Owns positioning, the backdrop, and
+// the platform split (web = anchored popover, native = bottom sheet). Both the
+// session quick-actions menu and the terminal row menu render through this so
+// the ⋯ interaction is identical everywhere.
+export function ActionsPopover({
     anchor,
-    onAfterArchive,
-    onAfterDelete,
+    actions,
     onClose,
-    sessionId,
     visible,
-}: SessionActionsPopoverProps) {
+}: {
+    anchor: SessionActionsAnchor | null;
+    actions: PopoverActionItem[];
+    onClose: () => void;
+    visible: boolean;
+}) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-    const session = useSession(sessionId);
-    const { actionItems: actions } = useSessionQuickActions(session!, {
-        onAfterArchive,
-        onAfterDelete,
-    });
 
     const position = React.useMemo(() => {
         if (!anchor) {
@@ -145,12 +157,12 @@ export function SessionActionsPopover({
         };
     }, [actions.length, anchor, windowHeight, windowWidth]);
 
-    const handleActionPress = React.useCallback((action: SessionActionItem) => {
+    const handleActionPress = React.useCallback((action: PopoverActionItem) => {
         onClose();
         action.onPress();
     }, [onClose]);
 
-    if (!visible || !anchor || !session) {
+    if (!visible || !anchor) {
         return null;
     }
 
@@ -236,5 +248,33 @@ export function SessionActionsPopover({
                 </View>
             </View>
         </RNModal>
+    );
+}
+
+export function SessionActionsPopover({
+    anchor,
+    onAfterArchive,
+    onAfterDelete,
+    onClose,
+    sessionId,
+    visible,
+}: SessionActionsPopoverProps) {
+    const session = useSession(sessionId);
+    const { actionItems: actions } = useSessionQuickActions(session!, {
+        onAfterArchive,
+        onAfterDelete,
+    });
+
+    if (!session) {
+        return null;
+    }
+
+    return (
+        <ActionsPopover
+            anchor={anchor}
+            actions={actions}
+            onClose={onClose}
+            visible={visible}
+        />
     );
 }
