@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
 import {
   createBrowserRouter,
   RouterProvider,
@@ -9,18 +9,35 @@ import {
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
-import { ThemeProvider, ToastProvider } from '@/ui';
+import { ThemeProvider, ToastProvider, Spinner } from '@/ui';
 import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
-import { SignupScreen } from '@/screens/auth/SignupScreen';
 import { AppLayout } from '@/screens/AppLayout';
-import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
-import { SettingsRoutes } from '@/screens/settings/SettingsRoutes';
-import { WebTerminalScreen } from '@/screens/terminal/WebTerminalScreen';
-import { TerminalPickerScreen } from '@/screens/terminal/TerminalPickerScreen';
-import { MachineScreen } from '@/screens/machine/MachineScreen';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+
+// Heavy screens are code-split so the initial bundle stays lean (chat pulls the
+// markdown renderer, terminal pulls xterm, settings is large).
+const SignupScreen = lazy(() => import('@/screens/auth/SignupScreen').then((m) => ({ default: m.SignupScreen })));
+const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
+const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
+const WebTerminalScreen = lazy(() => import('@/screens/terminal/WebTerminalScreen').then((m) => ({ default: m.WebTerminalScreen })));
+const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
+const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
+
+function Lazy({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spinner size={20} color="var(--accent)" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
 
 function RequireAuth() {
   const { isAuthenticated } = useAuth();
@@ -51,7 +68,9 @@ const router = createBrowserRouter(
       path: '/signup',
       element: (
         <RedirectIfAuthed>
-          <SignupScreen />
+          <Lazy>
+            <SignupScreen />
+          </Lazy>
         </RedirectIfAuthed>
       ),
     },
@@ -63,11 +82,11 @@ const router = createBrowserRouter(
           element: <AppLayout />,
           children: [
             { index: true, element: <EmptyDetail /> },
-            { path: 'session/:id', element: <SessionDetailScreen /> },
-            { path: 'terminal', element: <TerminalPickerScreen /> },
-            { path: 'terminal/:machineId', element: <WebTerminalScreen /> },
-            { path: 'machine/:id', element: <MachineScreen /> },
-            { path: 'settings/*', element: <SettingsRoutes /> },
+            { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
+            { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
+            { path: 'terminal/:machineId', element: <Lazy><WebTerminalScreen /></Lazy> },
+            { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
+            { path: 'settings/*', element: <Lazy><SettingsRoutes /></Lazy> },
           ],
         },
       ],

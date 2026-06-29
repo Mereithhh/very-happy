@@ -12,7 +12,6 @@ import '@fontsource/ibm-plex-mono/600.css';
 import './styles/tokens.css';
 import './styles/base.css';
 
-import './dev/spine.ts';
 import { AppRoot } from './app/AppRoot.tsx';
 
 const root = document.getElementById('root');
