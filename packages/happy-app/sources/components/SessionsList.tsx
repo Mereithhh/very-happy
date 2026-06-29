@@ -21,6 +21,9 @@ import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPop
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { useSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
+import { useCommandKeyHeld } from '@/hooks/useCommandKeyHeld';
+import { useSessionQuickSwitchMap } from '@/hooks/useSessionQuickSwitchMap';
+import { QuickSwitchBadge } from './QuickSwitchBadge';
 
 type SessionStatusFilter = 'all' | 'active' | 'archived';
 
@@ -603,6 +606,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         onLongPress: showActionAlert,
     };
 
+    // Cmd-held quick-switch number badge (web only).
+    const commandHeld = useCommandKeyHeld();
+    const quickSwitch = useSessionQuickSwitchMap();
+    const quickSwitchNumber = quickSwitch.byId[session.id];
+    const showQuickSwitchBadge = commandHeld && quickSwitchNumber != null;
+
     return (
         <View style={[
             styles.sessionItemContainer,
@@ -663,6 +672,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                     </Text>
                 </View>
             </View>
+            {showQuickSwitchBadge && <QuickSwitchBadge number={quickSwitchNumber} />}
         </Pressable>
         {Platform.OS === 'web' && (
             <SessionActionsPopover

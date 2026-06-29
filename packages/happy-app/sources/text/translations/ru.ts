@@ -1210,6 +1210,16 @@ export const ru: TranslationStructure = {
         labelDetach: 'Detach — keeps running',
     },
 
+    shortcuts: {
+        eyebrow: 'KEYBOARD',
+        title: 'Keyboard shortcuts',
+        search: 'Search',
+        switchSession: 'Switch to session',
+        renameSession: 'Rename current session',
+        goBack: 'Go back',
+        showHelp: 'Show this help',
+    },
+
 } as const;
 
 export type TranslationsRu = typeof ru;

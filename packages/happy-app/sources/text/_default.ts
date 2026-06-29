@@ -1188,6 +1188,17 @@ export const en = {
         labelDetach: 'Detach — keeps running',
     },
 
+    // Keyboard shortcuts help overlay (web only).
+    shortcuts: {
+        eyebrow: 'KEYBOARD',
+        title: 'Keyboard shortcuts',
+        search: 'Search',
+        switchSession: 'Switch to session',
+        renameSession: 'Rename current session',
+        goBack: 'Go back',
+        showHelp: 'Show this help',
+    },
+
 } as const;
 
 export type Translations = typeof en;
