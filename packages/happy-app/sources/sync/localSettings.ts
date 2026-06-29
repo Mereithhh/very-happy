@@ -47,7 +47,9 @@ export const localSettingsDefaults: LocalSettings = {
     voiceUpsellOverride: null,
     // very-happy: CMD+K command palette on by default (web product feature).
     commandPaletteEnabled: true,
-    themePreference: 'adaptive',
+    // very-happy: dark is the Console brand default (deck v2). Users can still
+    // pick light/adaptive in Settings → Appearance.
+    themePreference: 'dark',
     markdownCopyV2: false,
     consoleLoggingEnabled: false,
     verboseLogging: false,
