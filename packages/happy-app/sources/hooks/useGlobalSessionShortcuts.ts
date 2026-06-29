@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { storage } from '@/sync/storage';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
-import { useSessionQuickSwitchMap } from '@/hooks/useSessionQuickSwitchMap';
+import { getQuickSwitchTarget } from '@/hooks/quickSwitchStore';
 import { Modal } from '@/modal';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { ShortcutsHelpModal } from '@/components/ShortcutsHelpModal';
@@ -78,14 +78,12 @@ function openHelp() {
 export function useGlobalSessionShortcuts() {
     const router = useRouter();
     const pathname = usePathname();
-    const quickSwitch = useSessionQuickSwitchMap();
 
-    // Keep the latest pathname / map in refs so the window listener can stay
-    // mounted once (no re-subscribe churn) while always reading fresh values.
+    // Keep the latest pathname in a ref so the window listener can stay mounted
+    // once (no re-subscribe churn) while always reading the fresh value. The
+    // quick-switch map is read synchronously from the module store.
     const pathnameRef = React.useRef(pathname);
-    const quickSwitchRef = React.useRef(quickSwitch);
     pathnameRef.current = pathname;
-    quickSwitchRef.current = quickSwitch;
 
     React.useEffect(() => {
         if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -95,14 +93,20 @@ export function useGlobalSessionShortcuts() {
         const onKeyDown = (e: KeyboardEvent) => {
             const modifier = e.metaKey || e.ctrlKey;
 
-            // ⌘1..⌘9 — quick switch. Ignore numpad/shifted variants by checking
-            // the digit directly; only act when a session is mapped to it.
+            // ⌘1..⌘9 — quick switch into the Nth active row (session or
+            // terminal), matching the hover badge order. Ignore numpad/shifted
+            // variants by checking the digit directly; only act when a row is
+            // mapped to it, and navigate by the target's kind.
             if (modifier && !e.altKey && e.key >= '1' && e.key <= '9') {
                 const n = Number(e.key);
-                const targetId = quickSwitchRef.current.byNumber[n];
-                if (targetId) {
+                const target = getQuickSwitchTarget(n);
+                if (target) {
                     e.preventDefault();
-                    navigateToSession(router, targetId);
+                    if (target.kind === 'session') {
+                        navigateToSession(router, target.sessionId);
+                    } else {
+                        router.push(`/terminal/web/${target.machineId}?tid=${target.tid}` as any);
+                    }
                 }
                 return;
             }

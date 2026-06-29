@@ -23,7 +23,7 @@ import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
 import { Modal } from '@/modal';
 import { type MachineTerminalsGroup } from '@/hooks/useMachineTerminals';
 import { useCommandKeyHeld } from '@/hooks/useCommandKeyHeld';
-import { useSessionQuickSwitchMap } from '@/hooks/useSessionQuickSwitchMap';
+import { QUICK_SWITCH_MAX, setQuickSwitchMap, type QuickSwitchByNumber } from '@/hooks/quickSwitchStore';
 import { QuickSwitchBadge } from './QuickSwitchBadge';
 
 const getStatusConfig = (theme: any): Record<SessionState, { color: string; kind: StatusDotKind; accessibilityLabel: string; isConnected: boolean }> => ({
@@ -199,7 +199,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
     }, [machines]);
 
     // Group sessions AND terminals by machine, then by project within each.
-    const { machineGroups, hasMultipleMachines } = React.useMemo(() => {
+    const { machineGroups, hasMultipleMachines, byNumber, sessionQuickNums, terminalQuickNums } = React.useMemo(() => {
         const unknownText = t('status.unknown');
         const byMachine = new Map<string, {
             machineId: string;
@@ -268,8 +268,38 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
             return { machineId: mg.machineId, machineName: mg.machineName, projectsSorted, lastActivity };
         }).sort((a, b) => b.lastActivity - a.lastActivity);
 
-        return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1 };
+        // Walk the fully-sorted groups in the exact top-to-bottom render order
+        // (sessions before terminals within each project — matching the JSX
+        // below) and assign 1..9 to each row. Badge number == ⌘<n> target.
+        const byNumber: QuickSwitchByNumber = {};
+        const sessionQuickNums: Record<string, number> = {};
+        const terminalQuickNums: Record<string, number> = {};
+        let counter = 0;
+        outer: for (const mg of sorted) {
+            for (const pg of mg.projectsSorted) {
+                for (const session of pg.sessions) {
+                    const n = ++counter;
+                    if (n > QUICK_SWITCH_MAX) break outer;
+                    byNumber[n] = { kind: 'session', sessionId: session.id };
+                    sessionQuickNums[session.id] = n;
+                }
+                for (const term of pg.terminals) {
+                    const n = ++counter;
+                    if (n > QUICK_SWITCH_MAX) break outer;
+                    byNumber[n] = { kind: 'terminal', machineId: mg.machineId, tid: term.id };
+                    terminalQuickNums[term.id] = n;
+                }
+            }
+        }
+
+        return { machineGroups: sorted, hasMultipleMachines: byMachine.size > 1, byNumber, sessionQuickNums, terminalQuickNums };
     }, [sessions, terminals, machinesMap, removedTerminals]);
+
+    // Publish the unified map to the module store for the global ⌘1-9 handler.
+    // setQuickSwitchMap no-ops when structurally unchanged, so this won't churn.
+    React.useEffect(() => {
+        setQuickSwitchMap(byNumber);
+    }, [byNumber]);
 
     return (
         <View style={styles.container}>
@@ -299,6 +329,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
                                                     session={session}
                                                     selected={selectedSessionId === session.id}
                                                     showBorder={i < rowCount - 1}
+                                                    quickNum={sessionQuickNums[session.id]}
                                                 />
                                             );
                                         })}
@@ -311,6 +342,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
                                                     terminal={term}
                                                     showBorder={i < rowCount - 1}
                                                     onRemoved={removeTerminal}
+                                                    quickNum={terminalQuickNums[term.id]}
                                                 />
                                             );
                                         })}
@@ -326,7 +358,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId, termin
 }
 
 // Compact session row with status dot indicator
-const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: SessionRowData; selected?: boolean; showBorder?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder, quickNum }: { session: SessionRowData; selected?: boolean; showBorder?: boolean; quickNum?: number }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const baseStatus = getStatusConfig(theme)[session.state];
@@ -372,11 +404,10 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         onLongPress: showActionAlert,
     };
 
-    // Cmd-held quick-switch number badge (web only).
+    // Cmd-held quick-switch number badge (web only). Number is assigned by the
+    // parent in render order and passed down as a prop.
     const commandHeld = useCommandKeyHeld();
-    const quickSwitch = useSessionQuickSwitchMap();
-    const quickSwitchNumber = quickSwitch.byId[session.id];
-    const showQuickSwitchBadge = commandHeld && quickSwitchNumber != null;
+    const showQuickSwitchBadge = commandHeld && quickNum != null;
 
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
@@ -429,7 +460,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
-                    {showQuickSwitchBadge && <QuickSwitchBadge number={quickSwitchNumber} />}
+                    {showQuickSwitchBadge && <QuickSwitchBadge number={quickNum} />}
                 </View>
             </View>
         </Pressable>
@@ -485,17 +516,22 @@ function terminalTitle(term: MachineTerminal): string {
 
 // Terminal row — same anatomy as a session row, but with a mono "$" glyph in
 // the leading slot so a live tmux session reads as part of the same list.
-const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemoved }: {
+const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemoved, quickNum }: {
     machineId: string;
     terminal: MachineTerminal;
     showBorder?: boolean;
     onRemoved: (machineId: string, id: string) => void;
+    quickNum?: number;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const router = useRouter();
     const pathname = usePathname();
     const params = useGlobalSearchParams<{ tid?: string }>();
+
+    // Cmd-held quick-switch number badge (web only); number assigned by parent.
+    const commandHeld = useCommandKeyHeld();
+    const showQuickSwitchBadge = commandHeld && quickNum != null;
 
     const title = terminalTitle(terminal);
     const selected = pathname === `/terminal/web/${machineId}` && params.tid === terminal.id;
@@ -551,6 +587,7 @@ const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemo
                     <Text style={[styles.sessionTitle, styles.terminalTitle]} numberOfLines={1}>
                         {title}
                     </Text>
+                    {showQuickSwitchBadge && <QuickSwitchBadge number={quickNum} />}
                     <Pressable hitSlop={8} style={styles.terminalKebab} onPress={menu}>
                         <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
                     </Pressable>
