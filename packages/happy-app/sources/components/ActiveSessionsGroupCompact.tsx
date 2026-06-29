@@ -14,7 +14,7 @@ import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
-import { SessionActionsAnchor, SessionActionsPopover } from './SessionActionsPopover';
+import { SessionActionsAnchor, SessionActionsPopover, ActionsPopover, type PopoverActionItem } from './SessionActionsPopover';
 import { useSessionActionAlert } from '@/hooks/useSessionQuickActions';
 import { sessionKill, machineKillTerminal, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 import { isWorktreePath, getRepoPath, getWorktreeName } from '@/utils/worktree';
@@ -536,64 +536,87 @@ const CompactTerminalRow = React.memo(({ machineId, terminal, showBorder, onRemo
     const title = terminalTitle(terminal);
     const selected = pathname === `/terminal/web/${machineId}` && params.tid === terminal.id;
 
+    // Same anchored-dropdown interaction as a session row: ⋯ (or right-click)
+    // opens a popover with Rename / Delete; Rename is a single Modal.prompt.
+    const [actionsAnchor, setActionsAnchor] = React.useState<SessionActionsAnchor | null>(null);
+
     const handlePress = React.useCallback(() => {
         router.push(`/terminal/web/${machineId}?tid=${terminal.id}` as any);
     }, [router, machineId, terminal.id]);
 
-    const menu = React.useCallback(() => {
-        Modal.alert(title, undefined, [
-            {
-                text: t('common.rename'),
-                onPress: async () => {
-                    const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
-                    if (next && next.trim()) void machineSetTerminalTitle(machineId, terminal.id, next.trim());
-                },
-            },
-            {
-                text: t('common.delete'),
-                style: 'destructive',
-                onPress: () => {
-                    onRemoved(machineId, terminal.id);
-                    void machineKillTerminal(machineId, terminal.id);
-                },
-            },
-            { text: t('common.cancel'), style: 'cancel' },
-        ]);
-    }, [title, machineId, terminal.id, onRemoved]);
+    const handleRename = React.useCallback(async () => {
+        const next = await Modal.prompt(t('session.renameTitle'), undefined, {
+            defaultValue: title,
+            cancelText: t('common.cancel'),
+            confirmText: t('common.save'),
+        });
+        if (next && next.trim()) void machineSetTerminalTitle(machineId, terminal.id, next.trim());
+    }, [title, machineId, terminal.id]);
+
+    const handleDelete = React.useCallback(() => {
+        onRemoved(machineId, terminal.id);
+        void machineKillTerminal(machineId, terminal.id);
+    }, [onRemoved, machineId, terminal.id]);
+
+    const actions = React.useMemo<PopoverActionItem[]>(() => [
+        { id: 'rename', icon: 'pencil-outline', label: t('common.rename'), onPress: () => void handleRename() },
+        { id: 'delete', icon: 'trash-outline', label: t('common.delete'), onPress: handleDelete, destructive: true },
+    ], [handleRename, handleDelete]);
+
+    const openMenuFromKebab = React.useCallback((event: any) => {
+        event.stopPropagation?.();
+        const nx = event.nativeEvent ?? {};
+        setActionsAnchor({
+            type: 'point',
+            x: nx.clientX ?? nx.pageX ?? 0,
+            y: nx.clientY ?? nx.pageY ?? 0,
+        });
+    }, []);
 
     const handleContextMenu = React.useCallback((event: any) => {
         event.preventDefault?.();
         event.stopPropagation?.();
-        menu();
-    }, [menu]);
+        setActionsAnchor({
+            type: 'point',
+            x: event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? 0,
+            y: event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? 0,
+        });
+    }, []);
 
     return (
-        <Pressable
-            style={[
-                styles.sessionRow,
-                showBorder && styles.sessionRowWithBorder,
-                selected && styles.sessionRowSelected,
-            ]}
-            onPress={handlePress}
-            onLongPress={menu}
-            // @ts-ignore - web only
-            onContextMenu={Platform.OS === 'web' ? handleContextMenu : undefined}
-        >
-            <View style={styles.sessionContent}>
-                <View style={styles.sessionTitleRow}>
-                    <View style={styles.leadingIndicatorSlot}>
-                        <Text style={[styles.terminalGlyph, { color: theme.colors.textSecondary }]}>$</Text>
+        <>
+            <Pressable
+                style={[
+                    styles.sessionRow,
+                    showBorder && styles.sessionRowWithBorder,
+                    selected && styles.sessionRowSelected,
+                ]}
+                onPress={handlePress}
+                // @ts-ignore - web only
+                onContextMenu={Platform.OS === 'web' ? handleContextMenu : undefined}
+            >
+                <View style={styles.sessionContent}>
+                    <View style={styles.sessionTitleRow}>
+                        <View style={styles.leadingIndicatorSlot}>
+                            <Text style={[styles.terminalGlyph, { color: theme.colors.textSecondary }]}>$</Text>
+                        </View>
+                        <Text style={[styles.sessionTitle, styles.terminalTitle]} numberOfLines={1}>
+                            {title}
+                        </Text>
+                        {showQuickSwitchBadge && <QuickSwitchBadge number={quickNum} />}
+                        <Pressable hitSlop={8} style={styles.terminalKebab} onPress={openMenuFromKebab}>
+                            <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
+                        </Pressable>
                     </View>
-                    <Text style={[styles.sessionTitle, styles.terminalTitle]} numberOfLines={1}>
-                        {title}
-                    </Text>
-                    {showQuickSwitchBadge && <QuickSwitchBadge number={quickNum} />}
-                    <Pressable hitSlop={8} style={styles.terminalKebab} onPress={menu}>
-                        <Ionicons name="ellipsis-horizontal" size={16} color={theme.colors.textSecondary} />
-                    </Pressable>
                 </View>
-            </View>
-        </Pressable>
+            </Pressable>
+            <ActionsPopover
+                anchor={actionsAnchor}
+                actions={actions}
+                onClose={() => setActionsAnchor(null)}
+                visible={!!actionsAnchor}
+            />
+        </>
     );
 });
 
