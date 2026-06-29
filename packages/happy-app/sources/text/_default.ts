@@ -526,6 +526,11 @@ export const en = {
     agentInput: {
         workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
         interruptAndSend: 'Interrupt and send',
+        chip: {
+            mode: 'mode',
+            model: 'model',
+            effort: 'effort',
+        },
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'default permissions',

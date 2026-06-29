@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
@@ -258,10 +258,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     actionButtonsLeft: {
-        flexDirection: 'row',
-        gap: 8,
         flex: 1,
-        overflow: 'hidden',
     },
     actionButton: {
         flexDirection: 'row',
@@ -318,6 +315,42 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 2,
         ...Typography.mono(),
     },
+
+    // Console-style mono chip (mode / model / effort) — surfaceHigh fill, line
+    // border, mono text. The `<k>` label uses textLink; active state swaps the
+    // fill to accent-dim and lifts the value text to textLink.
+    footerChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surfaceHigh,
+        paddingHorizontal: 8,
+        height: 32,
+        gap: 5,
+        flexShrink: 0,
+    },
+    footerChipActive: {
+        backgroundColor: theme.colors.radio.active,   // accent-dim
+        borderColor: theme.colors.textLink,
+    },
+    footerChipPressed: {
+        opacity: 0.7,
+    },
+    footerChipLabel: {
+        fontSize: 11,
+        color: theme.colors.textLink,
+        ...Typography.mono(),
+    },
+    footerChipValue: {
+        fontSize: 12,
+        color: theme.colors.text,
+        ...Typography.mono(),
+    },
+    footerChipValueActive: {
+        color: theme.colors.textLink,
+    },
 }));
 
 type ContextUsage = {
@@ -370,8 +403,6 @@ const getContextUsage = (contextSize: number, alwaysShow: boolean, theme: Theme)
 
 type StatusRowProps = {
     connectionStatus?: AgentInputProps['connectionStatus'];
-    contextUsage: ContextUsage | null;
-    onCompact?: () => void;
     displayPermissionMode: ReturnType<typeof hackMode> | null;
     permissionModeKey: string;
     isSandboxedYoloMode: boolean;
@@ -447,13 +478,48 @@ const ContextUsageMeter = React.memo(function ContextUsageMeter(p: {
     );
 });
 
+/**
+ * Console-style mono chip rendering `<k>label</k> value` (e.g. `mode acceptEdits`).
+ * Pressing it opens the corresponding picker (currently the shared settings
+ * overlay, which already groups mode / model / effort). `active` reflects the
+ * open picker so the chip lifts to the accent-dim treatment.
+ */
+const FooterChip = React.memo(function FooterChip(p: {
+    label: string;
+    value: string;
+    active?: boolean;
+    onPress: () => void;
+    accessibilityLabel?: string;
+}) {
+    return (
+        <Pressable
+            onPress={() => { hapticsLight(); p.onPress(); }}
+            hitSlop={{ top: 5, bottom: 10, left: 2, right: 2 }}
+            accessibilityLabel={p.accessibilityLabel ?? `${p.label} ${p.value}`}
+            style={({ pressed }) => [
+                stylesheet.footerChip,
+                p.active && stylesheet.footerChipActive,
+                pressed && stylesheet.footerChipPressed,
+            ]}
+        >
+            <Text style={stylesheet.footerChipLabel} numberOfLines={1}>{p.label}</Text>
+            <Text
+                style={[stylesheet.footerChipValue, p.active && stylesheet.footerChipValueActive]}
+                numberOfLines={1}
+            >
+                {p.value}
+            </Text>
+        </Pressable>
+    );
+});
+
 const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRowProps) {
     const { theme } = useUnistyles();
     const showPermissionBadge = !!p.displayPermissionMode
         && p.permissionModeKey !== 'default'
         && !p.zenMode
         && !!p.permissionLabel;
-    if (!p.connectionStatus && !p.contextUsage && !showPermissionBadge) {
+    if (!p.connectionStatus && !showPermissionBadge) {
         return null;
     }
     return (
@@ -537,9 +603,6 @@ const AgentInputStatusRow = React.memo(function AgentInputStatusRow(p: StatusRow
                             </>
                         )}
                     </>
-                )}
-                {p.contextUsage && (
-                    <ContextUsageMeter usage={p.contextUsage} onCompact={p.onCompact} />
                 )}
             </View>
             {showPermissionBadge && (() => {
@@ -706,9 +769,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return label;
     }, [isSandboxEnabled]);
 
-    // Calculate context usage for the inline meter
+    // Calculate context usage for the meter. We now keep it always-on (per the
+    // v2 deck: the meter is a persistent footer affordance, healthy = neutral
+    // tint, not only surfaced near the limit), so force alwaysShow=true whenever
+    // we have any usage data. The legacy alwaysShowContextSize setting is
+    // subsumed by this. Still null when there's no usage data at all.
     const contextUsage = props.usageData?.contextSize
-        ? getContextUsage(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
+        ? getContextUsage(props.usageData.contextSize, true, theme)
         : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
@@ -1311,8 +1378,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 <AgentInputStatusRow
                     connectionStatus={props.connectionStatus}
-                    contextUsage={contextUsage}
-                    onCompact={props.onCompact}
                     displayPermissionMode={displayPermissionMode}
                     permissionModeKey={permissionModeKey}
                     isSandboxedYoloMode={isSandboxedYoloMode}
@@ -1358,30 +1423,43 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 {props.zenMode && <View style={{ flex: 1 }} />}
-                                {!props.zenMode && <View style={styles.actionButtonsLeft}>
+                                {!props.zenMode && <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    keyboardShouldPersistTaps="always"
+                                    style={styles.actionButtonsLeft}
+                                    contentContainerStyle={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                                >
 
-                                {/* Settings button */}
-                                {props.onPermissionModeChange && (
-                                    <Pressable
+                                {/* Permission mode chip — replaces the old gear button.
+                                    Tapping opens the shared settings overlay (mode/model/effort). */}
+                                {props.onPermissionModeChange && displayPermissionMode && (
+                                    <FooterChip
+                                        label={t('agentInput.chip.mode')}
+                                        value={withSandboxSuffix(displayPermissionMode.name, permissionModeKey)}
+                                        active={showSettings}
                                         onPress={handleSettingsPress}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name={'gear'}
-                                            size={16}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                    </Pressable>
+                                    />
+                                )}
+
+                                {/* Model chip */}
+                                {props.onModelModeChange && props.modelMode && (
+                                    <FooterChip
+                                        label={t('agentInput.chip.model')}
+                                        value={props.modelMode.name}
+                                        active={showSettings}
+                                        onPress={handleSettingsPress}
+                                    />
+                                )}
+
+                                {/* Effort chip — only for reasoning models that expose levels */}
+                                {props.onEffortLevelChange && props.effortLevel && availableEffortLevels.length > 0 && (
+                                    <FooterChip
+                                        label={t('agentInput.chip.effort')}
+                                        value={props.effortLevel.name}
+                                        active={showSettings}
+                                        onPress={handleSettingsPress}
+                                    />
                                 )}
 
                                 {/* Prompt presets button */}
@@ -1583,7 +1661,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         />
                                     </Pressable>
                                 )}
-                                </View>}
+                                </ScrollView>}
+
+                                {/* Right cluster: context meter (persistent) + send.
+                                    Both are pinned and never shrink — the chip/icon
+                                    ScrollView on the left absorbs any width pressure. */}
+                                {contextUsage && (
+                                    <View style={{ flexShrink: 0, marginLeft: 8 }}>
+                                        <ContextUsageMeter usage={contextUsage} onCompact={props.onCompact} />
+                                    </View>
+                                )}
 
                                 {/* Send/Voice button - aligned with first row */}
                                 <View
@@ -1698,7 +1785,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 paddingVertical: 6,
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
-                flex: 1,
+                flexShrink: 0,
                 overflow: 'hidden',
             })}
             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}

@@ -509,6 +509,11 @@ export const zhHans: TranslationStructure = {
     agentInput: {
         workingHint: '回车排队 · ⌘/Ctrl+回车 打断并发送',
         interruptAndSend: '打断并发送',
+        chip: {
+            mode: '模式',
+            model: '模型',
+            effort: '强度',
+        },
         permissionMode: {
             title: '权限模式',
             default: '默认',
