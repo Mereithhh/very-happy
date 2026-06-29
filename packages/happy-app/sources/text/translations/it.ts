@@ -224,7 +224,6 @@ export const it: TranslationStructure = {
         avatarOptions: {
             pixelated: 'Pixelato',
             gradient: 'Gradiente',
-            brutalist: 'Brutalista',
         },
         showFlavorIcons: 'Mostra icone provider IA',
         showFlavorIconsDescription: 'Mostra le icone del provider IA sugli avatar di sessione',
@@ -232,6 +231,11 @@ export const it: TranslationStructure = {
 
     settingsFeatures: {
         // Features settings screen
+        safety: 'Safety',
+        changeApplicationDescription: 'Controls how new sessions start. Review-first modes (Plan / read-only) propose changes for you to approve before they are applied; auto-apply modes (Accept Edits / Bypass / YOLO) write changes without asking. This is a per-device preference and only sets the starting mode — you can still change it per session. For per-agent defaults, see Settings → Agents.',
+        reviewChangesFirst: 'Review Changes First',
+        reviewChangesFirstEnabled: 'New sessions start in a review-first mode',
+        reviewChangesFirstDisabled: 'New sessions use the per-agent default mode',
         experiments: 'Esperimenti',
         experimentsDescription: 'Abilita funzionalità sperimentali ancora in sviluppo. Queste funzionalità possono essere instabili o cambiare senza preavviso.',
         experimentalFeatures: 'Funzionalità sperimentali',

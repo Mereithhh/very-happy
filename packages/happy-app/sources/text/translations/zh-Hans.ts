@@ -227,7 +227,6 @@ export const zhHans: TranslationStructure = {
         avatarOptions: {
             pixelated: '像素化',
             gradient: '渐变',
-            brutalist: '粗糙风格',
         },
         showFlavorIcons: '显示 AI 提供商图标',
         showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
@@ -235,6 +234,11 @@ export const zhHans: TranslationStructure = {
 
     settingsFeatures: {
         // Features settings screen
+        safety: '安全',
+        changeApplicationDescription: '控制新会话的起始权限模式。先审阅模式（Plan / 只读）会先把改动提交给你确认后再落盘；自动应用模式（Accept Edits / Bypass / YOLO）则直接写入、不再询问。这是按设备保存的偏好，只设定起始模式——每个会话仍可单独调整。如需按 agent 设置默认值，请前往 设置 → Agents。',
+        reviewChangesFirst: '先审阅改动',
+        reviewChangesFirstEnabled: '新会话以先审阅模式启动',
+        reviewChangesFirstDisabled: '新会话使用各 agent 的默认模式',
         experiments: '实验功能',
         experimentsDescription: '启用仍在开发中的实验功能。这些功能可能不稳定或会在没有通知的情况下改变。',
         experimentalFeatures: '实验功能',
