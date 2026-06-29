@@ -20,7 +20,7 @@ import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { SnippetPickerModal } from '@/components/SnippetPickerModal';
 import { t } from '@/text';
-import { cacheKey, getTerminalEntry, setTerminalEntry, type TerminalCacheEntry } from './terminalCache.web';
+import { cacheKey, getTerminalEntry, setTerminalEntry, type TerminalCacheEntry } from '@/utils/terminalCache.web';
 
 const BG = '#0B0E13';
 
