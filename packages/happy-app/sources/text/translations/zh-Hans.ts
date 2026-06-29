@@ -365,6 +365,29 @@ export const zhHans: TranslationStructure = {
 
     commandPalette: {
         placeholder: '输入命令或搜索...',
+        // Categories
+        categorySessions: '会话',
+        categoryRecentSessions: '最近会话',
+        categoryNavigation: '导航',
+        categorySystem: '系统',
+        categoryTerminals: '终端',
+        categoryDeveloper: '开发者',
+        // Commands
+        newSession: '新建会话',
+        newSessionSubtitle: '开始一个新的聊天会话',
+        viewAllSessions: '查看所有会话',
+        viewAllSessionsSubtitle: '浏览你的聊天记录',
+        settings: '设置',
+        settingsSubtitle: '配置你的偏好',
+        account: '账户',
+        accountSubtitle: '管理你的账户',
+        connectDevice: '连接设备',
+        connectDeviceSubtitle: '通过网页连接新设备',
+        signOut: '退出登录',
+        signOutSubtitle: '退出当前账户',
+        developerMenu: '开发者菜单',
+        developerMenuSubtitle: '访问开发者工具',
+        switchToSession: '切换到该会话',
     },
 
     server: {

@@ -364,6 +364,29 @@ export const zhHant: TranslationStructure = {
 
     commandPalette: {
         placeholder: '輸入命令或搜尋...',
+        // Categories
+        categorySessions: '工作階段',
+        categoryRecentSessions: '最近的工作階段',
+        categoryNavigation: '導覽',
+        categorySystem: '系統',
+        categoryTerminals: '終端機',
+        categoryDeveloper: '開發者',
+        // Commands
+        newSession: '新增工作階段',
+        newSessionSubtitle: '開始一個新的聊天工作階段',
+        viewAllSessions: '檢視所有工作階段',
+        viewAllSessionsSubtitle: '瀏覽你的聊天記錄',
+        settings: '設定',
+        settingsSubtitle: '設定你的偏好',
+        account: '帳戶',
+        accountSubtitle: '管理你的帳戶',
+        connectDevice: '連接裝置',
+        connectDeviceSubtitle: '透過網頁連接新裝置',
+        signOut: '登出',
+        signOutSubtitle: '登出目前帳戶',
+        developerMenu: '開發者選單',
+        developerMenuSubtitle: '存取開發者工具',
+        switchToSession: '切換到該工作階段',
     },
 
     server: {
