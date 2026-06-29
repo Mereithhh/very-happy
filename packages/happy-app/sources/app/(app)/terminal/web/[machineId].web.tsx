@@ -386,7 +386,7 @@ export default function WebTerminalScreen() {
         // measures the host's box to pick rows, and a padding on the host made
         // it overcount by a row → the last line was clipped at the bottom.
         // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 0 }}>
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
             {/* (Quick-commands launcher moved into the header top-right.) */}
