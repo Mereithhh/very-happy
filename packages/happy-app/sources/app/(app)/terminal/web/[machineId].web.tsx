@@ -20,8 +20,50 @@ import { useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { SnippetPickerModal } from '@/components/SnippetPickerModal';
 import { t } from '@/text';
+import { cacheKey, getTerminalEntry, setTerminalEntry, type TerminalCacheEntry } from './terminalCache.web';
 
 const BG = '#0B0E13';
+
+// IME (Chinese/Japanese/Korean) composition overlay fix. xterm positions a
+// hidden .xterm-helper-textarea at the cursor and, while composing, the OS draws
+// the candidate/pinyin string there. The browser default makes that text
+// transparent and 1px-wide, so the composing string renders ON TOP of the
+// terminal content underneath — overlapping/garbled until you commit. Make the
+// composing textarea opaque with the terminal's own colors and let it size to
+// the composition so the pinyin sits in a solid box at the cursor instead of
+// bleeding over the cells. Scoped to .xterm so it can't touch anything else;
+// injected once, web only. Does not affect normal (non-composing) latin input —
+// the textarea is still visually 0-opacity until a composition starts (xterm
+// toggles .composing on the textarea during IME composition).
+let imeStyleInjected = false;
+function injectImeCompositionFix() {
+    if (imeStyleInjected || typeof document === 'undefined') return;
+    imeStyleInjected = true;
+    const style = document.createElement('style');
+    style.setAttribute('data-vh-terminal-ime', '');
+    style.textContent = `
+.xterm .xterm-helper-textarea.composing,
+.xterm textarea.composing {
+    opacity: 1 !important;
+    color: #E8EDF4 !important;
+    background-color: ${BG} !important;
+    caret-color: #34E2C4 !important;
+    z-index: 10 !important;
+    width: auto !important;
+    min-width: 1ch;
+    max-width: 90vw;
+    white-space: pre !important;
+    outline: none !important;
+    border: none !important;
+    padding: 0 2px !important;
+}
+.xterm .composition-view {
+    background-color: ${BG} !important;
+    color: #E8EDF4 !important;
+    z-index: 10 !important;
+}`;
+    document.head.appendChild(style);
+}
 
 function toBase64(s: string): string {
     const bytes = new TextEncoder().encode(s);
@@ -107,31 +149,185 @@ export default function WebTerminalScreen() {
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !hostRef.current || !machineId) return;
         const host = hostRef.current;
+        injectImeCompositionFix();
 
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-            fontSize: 13,
-            theme: { background: BG, foreground: '#E8EDF4', cursor: '#34E2C4', selectionBackground: 'rgba(52,226,196,0.25)' },
-            allowProposedApi: true,
-            // tmux owns the scrollback (wheel → tmux copy-mode), so xterm needs
-            // none. scrollback:0 also makes FitAddon stop reserving a ~17px
-            // scrollbar gutter, so the terminal uses the FULL width — otherwise
-            // it runs ~2 cols short and tmux clips the right end of its status
-            // bar (the trailing date/number).
-            scrollback: 0,
-        });
+        const key = cacheKey(machineId, tid);
+        const hit = getTerminalEntry(key);
+
+        // ── Shared state holders ────────────────────────────────────────────
+        // terminalId/titled live on the persistent listeners' closures. On a
+        // cache hit we DON'T rebuild those listeners, so the build-path closure
+        // variables stay valid — we only mirror the entry's stored values back
+        // into fresh holders so the host-bound (per-mount) code (resize) can read
+        // the current terminalId.
+        let entry: TerminalCacheEntry;
+        let term: Terminal;
+        // getter for the live terminalId (resize uses it; updated in build path)
+        let getTerminalId: () => string | null;
+
+        if (hit) {
+            // ── REUSE: re-parent the cached xterm root into this host ─────────
+            // The socket listeners (output/exit/onData/onKey/OSC52/selection)
+            // have stayed alive while hidden and kept writing into this term, so
+            // it already holds the latest state. No new Terminal / open /
+            // machineOpenTerminal / listener registration — that would double
+            // every keystroke. We just move term.element back under `host`.
+            entry = hit;
+            term = entry.term;
+            getTerminalId = () => entry.terminalId;
+            if (term.element) host.appendChild(term.element);
+            termRef.current = term;
+        } else {
+            // ── BUILD: first time for this (machineId, tid) ───────────────────
+            term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+                fontSize: 13,
+                theme: { background: BG, foreground: '#E8EDF4', cursor: '#34E2C4', selectionBackground: 'rgba(52,226,196,0.25)' },
+                allowProposedApi: true,
+                // tmux owns the scrollback (wheel → tmux copy-mode), so xterm needs
+                // none. scrollback:0 also makes FitAddon stop reserving a ~17px
+                // scrollbar gutter, so the terminal uses the FULL width — otherwise
+                // it runs ~2 cols short and tmux clips the right end of its status
+                // bar (the trailing date/number).
+                scrollback: 0,
+            });
+            const unicode11 = new Unicode11Addon();
+            term.loadAddon(unicode11);
+            term.unicode.activeVersion = '11';
+            term.open(host);
+            termRef.current = term;
+
+            const persistent: Array<() => void> = [];
+            let terminalId: string | null = null;
+            getTerminalId = () => terminalId;
+
+            // Clipboard + right-click UX. tmux mouse-mode is ON (for wheel-scroll),
+            // so a plain drag is a tmux selection — on release tmux copies it and,
+            // because the daemon enabled set-clipboard + the clipboard terminal
+            // feature, emits an OSC 52 escape. We mirror that into the browser
+            // clipboard, so a plain drag-select copies with NO modifier needed
+            // (the highlight clears on release — that's tmux — but the text is
+            // copied). A Shift+drag instead makes a native xterm selection that
+            // keeps the highlight; we auto-copy that too. These are term-bound
+            // (not DOM-bound), so they survive while the tab is hidden.
+            const writeClipboard = (text: string) => {
+                try { void navigator.clipboard?.writeText(text); } catch { /* blocked by browser policy */ }
+            };
+            const offOsc = term.parser.registerOscHandler(52, (payload) => {
+                const b64 = payload.split(';').pop();
+                // Cap size: a program in the shell can emit OSC 52 to set the
+                // clipboard (standard terminal behavior, and how our drag-copy
+                // works), but bound it so it can't dump megabytes into the clipboard.
+                if (b64 && b64 !== '?' && b64.length <= 128 * 1024) {
+                    try {
+                        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+                        writeClipboard(new TextDecoder().decode(bytes)); // UTF-8 → handles CJK
+                    } catch { /* malformed */ }
+                }
+                return true;
+            });
+            persistent.push(() => offOsc.dispose());
+            const offSel = term.onSelectionChange(() => {
+                const sel = term.getSelection();
+                if (sel) writeClipboard(sel);
+            });
+            persistent.push(() => offSel.dispose());
+
+            // Pre-create the entry so we can store the persistent cleanups; the
+            // async open below fills in terminalId.
+            entry = setTerminalEntry(key, { term, terminalId: null, cleanups: persistent, titled: false });
+
+            term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
+
+            (async () => {
+                // encStream:true asks the daemon to encrypt the byte stream with the
+                // per-machine key. The daemon echoes encStream back iff it supports it
+                // (old daemons ignore it → plaintext, still works).
+                const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows, encStream: true });
+                if (!res.success) {
+                    term.writeln('\r\n\x1b[31m✗ ' + res.error + '\x1b[0m');
+                    return;
+                }
+                terminalId = res.terminalId;
+                entry.terminalId = res.terminalId;
+                const enc = res.encStream === true;
+
+                // The app's machine crypto is async, so serialize input and output
+                // through promise chains to preserve byte order. (Daemon crypto is
+                // sync, so its side keeps order for free.)
+                let outChain: Promise<void> = Promise.resolve();
+                const offOut = apiSocket.onMessage('terminal-output', (e: { terminalId: string; data: string; enc?: boolean }) => {
+                    if (e.terminalId !== terminalId) return;
+                    outChain = outChain.then(async () => {
+                        let b64 = e.data;
+                        if (e.enc) {
+                            const plain = await decryptTerminalData(machineId, e.data);
+                            if (plain == null) return; // undecryptable → drop, never render garbage
+                            b64 = plain;
+                        }
+                        term.write(fromBase64(b64));
+                    });
+                });
+                const offExit = apiSocket.onMessage('terminal-exit', (e: { terminalId: string; exitCode: number }) => {
+                    if (e.terminalId === terminalId) term.writeln('\r\n\x1b[2m[session ended · exit ' + e.exitCode + ']\x1b[0m');
+                });
+                persistent.push(offOut, offExit);
+
+                let inChain: Promise<void> = Promise.resolve();
+                const offData = term.onData((d) => {
+                    const b64 = toBase64(d);
+                    inChain = inChain.then(async () => {
+                        if (!terminalId) return;
+                        if (enc) {
+                            const cipher = await encryptTerminalData(machineId, b64);
+                            if (cipher != null) {
+                                apiSocket.send('terminal-input', { machineId, terminalId, data: cipher, enc: true });
+                                return;
+                            }
+                            // Encryption unavailable (shouldn't happen post-open) — fall
+                            // back to plaintext so typing still works.
+                        }
+                        apiSocket.send('terminal-input', { machineId, terminalId, data: b64 });
+                    });
+                });
+                persistent.push(() => offData.dispose());
+
+                // Auto-title from the first command the user runs (replaces the
+                // default machine-name once; a manual rename always wins). Driven
+                // by onKey, not onData — onData also carries xterm's replies to
+                // terminal queries (device-attributes / color), which would
+                // otherwise be captured as a garbage "command". `titled` lives on
+                // the entry so a reused terminal never re-titles.
+                let lineBuf = '';
+                const offKey = term.onKey(({ key: k, domEvent }) => {
+                    if (entry.titled || !tid) return;
+                    if (domEvent.key === 'Enter') {
+                        const cmd = lineBuf.trim();
+                        lineBuf = '';
+                        if (cmd) { void machineSetTerminalTitle(machineId, tid, cmd, true); entry.titled = true; }
+                    } else if (domEvent.key === 'Backspace') {
+                        lineBuf = lineBuf.slice(0, -1);
+                    } else if (k.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {
+                        lineBuf += k;
+                    }
+                });
+                persistent.push(() => offKey.dispose());
+
+                // push the real size now that the session exists
+                apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+                term.focus();
+            })();
+        }
+
+        // ── PER-MOUNT host-bound wiring (recreated on every mount/show) ──────
+        // FitAddon + ResizeObserver + DOM event listeners are bound to THIS host
+        // element, so they're rebuilt each mount and torn down on unmount (the
+        // term itself survives). FitAddon is cheap to re-add; xterm dedupes.
         const fit = new FitAddon();
         term.loadAddon(fit);
-        // Unicode 11 width tables: without this xterm measures CJK/emoji with
-        // the legacy v6 tables and the cursor advances by the wrong cell count
-        // → wide chars overlap. Must be activated before content is written.
-        const unicode11 = new Unicode11Addon();
-        term.loadAddon(unicode11);
-        term.unicode.activeVersion = '11';
-        term.open(host);
-        termRef.current = term;
-
+        // (disposed in mountCleanups below so reused terminals don't accumulate
+        // stale FitAddon instances across tab switches.)
         // FitAddon picks cols = floor(width / cellWidth) using a *fractional*
         // cell width, but the DOM renderer lays out cells at rounded widths, so
         // the rendered grid can end up a hair WIDER than the host. With the host
@@ -144,14 +340,6 @@ export default function WebTerminalScreen() {
             try { fit.fit(); } catch { return; }
             const screenEl = host.querySelector('.xterm-screen') as HTMLElement | null;
             if (screenEl && term.cols > 2) {
-                // The DOM renderer lays cells out a couple px wider than the
-                // .xterm-screen box (sub-pixel cell rounding); that overhang is
-                // clipped by the container, shaving the last column's glyph. But
-                // we want the grid to stay as WIDE as possible so tmux's status
-                // bar reaches the right edge (no black gap) — so only drop a column
-                // when the floor remainder is too small to absorb the ~2px overhang
-                // (i.e. the last glyph would actually clip). A small threshold keeps
-                // the terminal effectively full-width while still never clipping.
                 const slack = host.clientWidth - screenEl.getBoundingClientRect().width;
                 if (slack < 3) {
                     term.resize(term.cols - 1, term.rows);
@@ -160,40 +348,8 @@ export default function WebTerminalScreen() {
         };
         safeFit();
 
-        let terminalId: string | null = null;
-        let disposed = false;
-        const cleanups: Array<() => void> = [];
-
-        // Clipboard + right-click UX. tmux mouse-mode is ON (for wheel-scroll),
-        // so a plain drag is a tmux selection — on release tmux copies it and,
-        // because the daemon enabled set-clipboard + the clipboard terminal
-        // feature, emits an OSC 52 escape. We mirror that into the browser
-        // clipboard, so a plain drag-select copies with NO modifier needed
-        // (the highlight clears on release — that's tmux — but the text is
-        // copied). A Shift+drag instead makes a native xterm selection that
-        // keeps the highlight; we auto-copy that too.
-        const writeClipboard = (text: string) => {
-            try { void navigator.clipboard?.writeText(text); } catch { /* blocked by browser policy */ }
-        };
-        const offOsc = term.parser.registerOscHandler(52, (payload) => {
-            const b64 = payload.split(';').pop();
-            // Cap size: a program in the shell can emit OSC 52 to set the
-            // clipboard (standard terminal behavior, and how our drag-copy
-            // works), but bound it so it can't dump megabytes into the clipboard.
-            if (b64 && b64 !== '?' && b64.length <= 128 * 1024) {
-                try {
-                    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-                    writeClipboard(new TextDecoder().decode(bytes)); // UTF-8 → handles CJK
-                } catch { /* malformed */ }
-            }
-            return true;
-        });
-        cleanups.push(() => offOsc.dispose());
-        const offSel = term.onSelectionChange(() => {
-            const sel = term.getSelection();
-            if (sel) writeClipboard(sel);
-        });
-        cleanups.push(() => offSel.dispose());
+        const mountCleanups: Array<() => void> = [];
+        mountCleanups.push(() => { try { fit.dispose(); } catch { /* noop */ } });
 
         // Right-click pastes (the browser menu is hidden anyway) — a common
         // terminal convention that pairs with drag-to-copy. Route through
@@ -207,7 +363,7 @@ export default function WebTerminalScreen() {
             }).catch(() => { /* clipboard read blocked / denied */ });
         };
         host.addEventListener('contextmenu', onCtx);
-        cleanups.push(() => host.removeEventListener('contextmenu', onCtx));
+        mountCleanups.push(() => host.removeEventListener('contextmenu', onCtx));
 
         // Drag-and-drop file upload: drop a file onto the terminal → it's staged
         // on the machine (~/.happy/uploads/terminal/) and its absolute path is
@@ -254,7 +410,7 @@ export default function WebTerminalScreen() {
         host.addEventListener('dragover', onDragOver, true);
         host.addEventListener('dragleave', onDragLeave, true);
         host.addEventListener('drop', onDrop, true);
-        cleanups.push(() => {
+        mountCleanups.push(() => {
             host.removeEventListener('dragover', onDragOver, true);
             host.removeEventListener('dragleave', onDragLeave, true);
             host.removeEventListener('drop', onDrop, true);
@@ -274,103 +430,37 @@ export default function WebTerminalScreen() {
                 setTimeout(() => window.scrollTo({ top: 0, left: 0 }), 50);
             };
             ta.addEventListener('focus', onFocus);
-            cleanups.push(() => ta.removeEventListener('focus', onFocus));
+            mountCleanups.push(() => ta.removeEventListener('focus', onFocus));
         }
-
-        term.writeln('\x1b[2m… connecting to ' + machineId + '\x1b[0m');
-
-        (async () => {
-            // encStream:true asks the daemon to encrypt the byte stream with the
-            // per-machine key. The daemon echoes encStream back iff it supports it
-            // (old daemons ignore it → plaintext, still works).
-            const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows, encStream: true });
-            if (disposed) return;
-            if (!res.success) {
-                term.writeln('\r\n\x1b[31m✗ ' + res.error + '\x1b[0m');
-                return;
-            }
-            terminalId = res.terminalId;
-            const enc = res.encStream === true;
-
-            // The app's machine crypto is async, so serialize input and output
-            // through promise chains to preserve byte order. (Daemon crypto is
-            // sync, so its side keeps order for free.)
-            let outChain: Promise<void> = Promise.resolve();
-            const offOut = apiSocket.onMessage('terminal-output', (e: { terminalId: string; data: string; enc?: boolean }) => {
-                if (e.terminalId !== terminalId) return;
-                outChain = outChain.then(async () => {
-                    let b64 = e.data;
-                    if (e.enc) {
-                        const plain = await decryptTerminalData(machineId, e.data);
-                        if (plain == null) return; // undecryptable → drop, never render garbage
-                        b64 = plain;
-                    }
-                    term.write(fromBase64(b64));
-                });
-            });
-            const offExit = apiSocket.onMessage('terminal-exit', (e: { terminalId: string; exitCode: number }) => {
-                if (e.terminalId === terminalId) term.writeln('\r\n\x1b[2m[session ended · exit ' + e.exitCode + ']\x1b[0m');
-            });
-            cleanups.push(offOut, offExit);
-
-            let inChain: Promise<void> = Promise.resolve();
-            const offData = term.onData((d) => {
-                const b64 = toBase64(d);
-                inChain = inChain.then(async () => {
-                    if (!terminalId) return;
-                    if (enc) {
-                        const cipher = await encryptTerminalData(machineId, b64);
-                        if (cipher != null) {
-                            apiSocket.send('terminal-input', { machineId, terminalId, data: cipher, enc: true });
-                            return;
-                        }
-                        // Encryption unavailable (shouldn't happen post-open) — fall
-                        // back to plaintext so typing still works.
-                    }
-                    apiSocket.send('terminal-input', { machineId, terminalId, data: b64 });
-                });
-            });
-            cleanups.push(() => offData.dispose());
-
-            // Auto-title from the first command the user runs (replaces the
-            // default machine-name once; a manual rename always wins). Driven
-            // by onKey, not onData — onData also carries xterm's replies to
-            // terminal queries (device-attributes / color), which would
-            // otherwise be captured as a garbage "command".
-            let titled = false;
-            let lineBuf = '';
-            const offKey = term.onKey(({ key, domEvent }) => {
-                if (titled || !tid) return;
-                if (domEvent.key === 'Enter') {
-                    const cmd = lineBuf.trim();
-                    lineBuf = '';
-                    if (cmd) { void machineSetTerminalTitle(machineId, tid, cmd, true); titled = true; }
-                } else if (domEvent.key === 'Backspace') {
-                    lineBuf = lineBuf.slice(0, -1);
-                } else if (key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) {
-                    lineBuf += key;
-                }
-            });
-            cleanups.push(() => offKey.dispose());
-
-            // push the real size now that the session exists
-            apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
-            term.focus();
-        })();
 
         const ro = new ResizeObserver(() => {
             safeFit();
-            if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+            const id = getTerminalId();
+            if (id) apiSocket.send('terminal-resize', { machineId, terminalId: id, cols: term.cols, rows: term.rows });
         });
         ro.observe(host);
+        mountCleanups.push(() => ro.disconnect());
+
+        // On reuse, force a repaint of the current screen + push the (possibly
+        // changed) size, then focus — so switching back shows up-to-date content
+        // and an active cursor immediately.
+        if (hit) {
+            const id = getTerminalId();
+            if (id) apiSocket.send('terminal-resize', { machineId, terminalId: id, cols: term.cols, rows: term.rows });
+            term.refresh(0, term.rows - 1);
+            term.focus();
+        }
 
         return () => {
-            disposed = true;
-            ro.disconnect();
-            if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });
-            cleanups.forEach((c) => c());
-            termRef.current = null;
-            term.dispose();
+            // KEEP-ALIVE cleanup: tear down only the host-bound wiring and detach
+            // the xterm root from the DOM. Do NOT terminal-close, NOT dispose the
+            // term, NOT dispose the socket/term listeners — they stay alive so the
+            // tmux session keeps streaming into the cached term while hidden, and
+            // switching back is instant. True teardown happens via the LRU cap in
+            // the cache module (or disposeTerminalCache on a future kill path).
+            mountCleanups.forEach((c) => c());
+            if (term.element && term.element.parentNode === host) host.removeChild(term.element);
+            if (termRef.current === term) termRef.current = null;
         };
     }, [machineId, tid]);
 
