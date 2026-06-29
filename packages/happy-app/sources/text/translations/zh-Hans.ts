@@ -22,6 +22,7 @@ export const zhHans: TranslationStructure = {
         inbox: '收件箱',
         sessions: '终端',
         settings: '设置',
+        terminal: '网页终端',
     },
 
     inbox: {

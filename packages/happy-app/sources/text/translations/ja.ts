@@ -23,6 +23,7 @@ export const ja: TranslationStructure = {
         inbox: '受信トレイ',
         sessions: 'ターミナル',
         settings: '設定',
+        terminal: 'ターミナル',
     },
 
     inbox: {

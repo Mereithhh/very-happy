@@ -20,6 +20,7 @@ import { useOverlayNav } from '@/-session/sessionOverlayNav';
 import { DEFAULT_APP_ZOOM } from '@/hooks/useTauriZoom';
 import { canRouteForward, canUseRouteBack, getNavigatorCanGoBack } from '@/navigation/browserNavigation';
 import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
+import { RailNav, RAIL_WIDTH } from './RailNav';
 
 const TAURI_HEADER_CONTROL_LEFT = Math.ceil(92 / DEFAULT_APP_ZOOM);
 
@@ -90,24 +91,41 @@ export const SidebarNavigator = React.memo(() => {
         []
     );
 
+    // Console-v2 left rail: a 52px icon column on web/desktop, left of the
+    // resizable sidebar (rail | sidebar | main). It stays visible in zen mode
+    // so inbox/terminal/settings remain one click away while the sidebar is
+    // collapsed. Native/mobile keeps its bottom TabBar — no rail, no offset.
+    const showRail = isDesktopLayout && Platform.OS === 'web';
+    const railOffset = showRail ? RAIL_WIDTH : 0;
+
     return (
         <View style={{ flex: 1 }}>
-            <Drawer
-                screenOptions={drawerNavigationOptions}
-                drawerContent={isDesktopLayout ? drawerContent : undefined}
-            />
-            {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode */}
-            {isDesktopLayout && (
-                <PersistentHeader drawerWidth={fullDrawerWidth} showSidebar={showSidebar} />
-            )}
-            {/* Draggable divider to resize the sidebar (web/desktop only) */}
-            {showSidebar && Platform.OS === 'web' && (
-                <SidebarResizeHandle
-                    x={fullDrawerWidth}
-                    min={SIDEBAR_MIN}
-                    max={sidebarMax}
-                    onCommit={setSavedSidebarWidth}
+            {/* Drawer + main content are pushed right by the rail width. */}
+            <View style={{ flex: 1, paddingLeft: railOffset }}>
+                <Drawer
+                    screenOptions={drawerNavigationOptions}
+                    drawerContent={isDesktopLayout ? drawerContent : undefined}
                 />
+                {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode. Absolute left:0 is relative to the rail-padded box, so it already starts after the rail. */}
+                {isDesktopLayout && (
+                    <PersistentHeader drawerWidth={fullDrawerWidth} showSidebar={showSidebar} railOffset={railOffset} />
+                )}
+                {/* Draggable divider to resize the sidebar (web/desktop only) */}
+                {showSidebar && Platform.OS === 'web' && (
+                    <SidebarResizeHandle
+                        x={fullDrawerWidth}
+                        min={SIDEBAR_MIN}
+                        max={sidebarMax}
+                        offsetLeft={railOffset}
+                        onCommit={setSavedSidebarWidth}
+                    />
+                )}
+            </View>
+            {/* Leftmost icon rail. Rendered last so it overlays the rail gutter. */}
+            {showRail && (
+                <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: RAIL_WIDTH, zIndex: 1400 }}>
+                    <RailNav />
+                </View>
             )}
         </View>
     );
@@ -117,10 +135,12 @@ export const SidebarNavigator = React.memo(() => {
 // ghost line and only commits the new width on release — so the chat/list to the
 // right reflows exactly once (not every frame), matching the no-animate rationale
 // for the drawer width above.
-const SidebarResizeHandle = React.memo(({ x, min, max, onCommit }: { x: number; min: number; max: number; onCommit: (w: number) => void }) => {
+const SidebarResizeHandle = React.memo(({ x, min, max, offsetLeft = 0, onCommit }: { x: number; min: number; max: number; offsetLeft?: number; onCommit: (w: number) => void }) => {
     const { theme } = useUnistyles();
     const [dragX, setDragX] = React.useState<number | null>(null);
-    const clamp = (v: number) => Math.min(Math.max(v, min), max);
+    // pageX is viewport-absolute; the sidebar's own coordinate space starts
+    // after the rail, so subtract the rail offset before clamping/committing.
+    const clamp = (v: number) => Math.min(Math.max(v - offsetLeft, min), max);
     return (
         <>
             <View
@@ -147,7 +167,7 @@ const SidebarResizeHandle = React.memo(({ x, min, max, onCommit }: { x: number; 
 });
 
 // Header block that stays in the same position whether zen mode is on or off
-const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth: number; showSidebar: boolean }) => {
+const PersistentHeader = React.memo(({ drawerWidth, showSidebar, railOffset = 0 }: { drawerWidth: number; showSidebar: boolean; railOffset?: number }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
@@ -155,6 +175,10 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+    // macOS traffic-light controls sit at viewport left:0, which the rail now
+    // occupies — so the header (already shifted right by the rail) only needs
+    // to clear whatever of the controls extends past the rail.
+    const macControlLeft = Math.max(TAURI_HEADER_CONTROL_LEFT - railOffset, 10);
 
     const routeHistory = useBrowserNavigationStore((s) => s.routeHistory);
     const canGoForward = useBrowserNavigationStore((s) => s.routeHistory ? canRouteForward(s.routeHistory) : false);
@@ -222,7 +246,7 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
             {showSidebar ? (
                 /* Sidebar top bar: logo · back · 新建会话 · collapse — one row. */
                 <View
-                    style={{ width: drawerWidth, height: safeArea.top + headerHeight, paddingTop: safeArea.top, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 10, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    style={{ width: drawerWidth, height: safeArea.top + headerHeight, paddingTop: safeArea.top, paddingLeft: isMacTauri ? macControlLeft : 10, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     pointerEvents="auto"
                     {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
                 >
@@ -256,7 +280,7 @@ const PersistentHeader = React.memo(({ drawerWidth, showSidebar }: { drawerWidth
             ) : (
                 /* Collapsed: just expand-toggle + back, top-left. */
                 <View
-                    style={{ paddingTop: safeArea.top, height: safeArea.top + headerHeight, paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    style={{ paddingTop: safeArea.top, height: safeArea.top + headerHeight, paddingLeft: isMacTauri ? macControlLeft : 16, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                     pointerEvents="auto"
                     {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
                 >
