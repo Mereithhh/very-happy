@@ -13,9 +13,29 @@ export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
+    const [newSessionReviewFirst, setNewSessionReviewFirst] = useLocalSettingMutable('newSessionReviewFirst');
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
+            {/* Safety: how changes get applied */}
+            <ItemGroup
+                title={t('settingsFeatures.safety')}
+                footer={t('settingsFeatures.changeApplicationDescription')}
+            >
+                <Item
+                    title={t('settingsFeatures.reviewChangesFirst')}
+                    subtitle={newSessionReviewFirst ? t('settingsFeatures.reviewChangesFirstEnabled') : t('settingsFeatures.reviewChangesFirstDisabled')}
+                    icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.textSecondary} />}
+                    rightElement={
+                        <Switch
+                            value={newSessionReviewFirst}
+                            onValueChange={setNewSessionReviewFirst}
+                        />
+                    }
+                    showChevron={false}
+                />
+            </ItemGroup>
+
             {/* Experimental Features */}
             <ItemGroup
                 title={t('settingsFeatures.experiments')}

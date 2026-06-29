@@ -11,11 +11,13 @@ import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 
-// Define known avatar styles for this version of the app
-type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
+// Define known avatar styles for this version of the app.
+// 'brutalist' was removed (conflicts with the Console redesign); legacy stored
+// values fall back to 'gradient' both here and in Avatar rendering.
+type KnownAvatarStyle = 'pixelated' | 'gradient';
 
 const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
-    return style === 'pixelated' || style === 'gradient' || style === 'brutalist';
+    return style === 'pixelated' || style === 'gradient';
 };
 
 export default function AppearanceSettingsScreen() {
@@ -124,11 +126,9 @@ export default function AppearanceSettingsScreen() {
                     title={t('settingsAppearance.avatarStyle')}
                     subtitle={t('settingsAppearance.avatarStyleDescription')}
                     icon={<Ionicons name="person-circle-outline" size={29} color={theme.colors.textSecondary} />}
-                    detail={displayStyle === 'pixelated' ? t('settingsAppearance.avatarOptions.pixelated') : displayStyle === 'brutalist' ? t('settingsAppearance.avatarOptions.brutalist') : t('settingsAppearance.avatarOptions.gradient')}
+                    detail={displayStyle === 'pixelated' ? t('settingsAppearance.avatarOptions.pixelated') : t('settingsAppearance.avatarOptions.gradient')}
                     onPress={() => {
-                        const currentIndex = displayStyle === 'pixelated' ? 0 : displayStyle === 'gradient' ? 1 : 2;
-                        const nextIndex = (currentIndex + 1) % 3;
-                        const nextStyle = nextIndex === 0 ? 'pixelated' : nextIndex === 1 ? 'gradient' : 'brutalist';
+                        const nextStyle: KnownAvatarStyle = displayStyle === 'gradient' ? 'pixelated' : 'gradient';
                         setAvatarStyle(nextStyle);
                     }}
                 />

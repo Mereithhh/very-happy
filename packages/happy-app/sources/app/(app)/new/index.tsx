@@ -59,7 +59,7 @@ import {
 import { isRunningOnMac } from '@/utils/platform';
 import { getNewSessionSidebarLayout } from '@/utils/newSessionSidebarLayout';
 import { getAgentPickerItems, getModePickerItems } from '@/utils/newSessionPickerItems';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { resolveAgentDefaultConfig, getReviewFirstPermissionMode } from '@/sync/agentDefaults';
 
 // Agent icon assets
 const agentIcons = {
@@ -553,6 +553,7 @@ function NewSessionScreen() {
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
     const fileDiffsSidebarEnabled = useSetting('fileDiffsSidebar');
     const zenMode = useLocalSetting('zenMode');
+    const newSessionReviewFirst = useLocalSetting('newSessionReviewFirst');
     const { width: windowWidth } = useWindowDimensions();
 
     // Persisted draft state (survives navigation).
@@ -744,9 +745,16 @@ function NewSessionScreen() {
         () => getEffortLevelsForModel(selectedAgent, currentModelKey),
         [selectedAgent, currentModelKey],
     );
-    const effectiveAgentDefaults = React.useMemo(() => (
-        resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent)
-    ), [agentDefaultOverrides, selectedAgent]);
+    const effectiveAgentDefaults = React.useMemo(() => {
+        const resolved = resolveAgentDefaultConfig(agentDefaultOverrides, selectedAgent);
+        // Device-local safety toggle: force a review-first default for new
+        // sessions. This only changes the initial permission mode the picker
+        // lands on — the user can still pick any mode before sending.
+        if (newSessionReviewFirst) {
+            return { ...resolved, permissionMode: getReviewFirstPermissionMode(selectedAgent) };
+        }
+        return resolved;
+    }, [agentDefaultOverrides, selectedAgent, newSessionReviewFirst]);
 
     const supportsWorktree = getSupportsWorktree(selectedAgent);
     const showModel = modelModes.length > 1;

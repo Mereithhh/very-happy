@@ -226,7 +226,6 @@ export const zhHant: TranslationStructure = {
         avatarOptions: {
             pixelated: '像素化',
             gradient: '漸層',
-            brutalist: '粗獷風格',
         },
         showFlavorIcons: '顯示 AI 提供者圖示',
         showFlavorIconsDescription: '在工作階段頭像上顯示 AI 提供者圖示',
@@ -234,6 +233,11 @@ export const zhHant: TranslationStructure = {
 
     settingsFeatures: {
         // Features settings screen
+        safety: '安全',
+        changeApplicationDescription: '控制新工作階段的起始權限模式。先審閱模式（Plan / 唯讀）會先把變更提交給你確認後再寫入；自動套用模式（Accept Edits / Bypass / YOLO）則直接寫入、不再詢問。這是依裝置儲存的偏好，只設定起始模式——每個工作階段仍可個別調整。若需依 agent 設定預設值，請前往 設定 → Agents。',
+        reviewChangesFirst: '先審閱變更',
+        reviewChangesFirstEnabled: '新工作階段以先審閱模式啟動',
+        reviewChangesFirstDisabled: '新工作階段使用各 agent 的預設模式',
         experiments: '實驗功能',
         experimentsDescription: '啟用仍在開發中的實驗功能。這些功能可能不穩定或會在沒有通知的情況下改變。',
         experimentalFeatures: '實驗功能',

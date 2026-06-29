@@ -3,7 +3,6 @@ import { View } from "react-native";
 import { Image } from "expo-image";
 import { AvatarSkia } from "./AvatarSkia";
 import { AvatarGradient } from "./AvatarGradient";
-import { AvatarBrutalist } from "./AvatarBrutalist";
 import { useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -101,11 +100,10 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
     // Original generated avatar logic
     // Determine which avatar variant to render
+    // 'brutalist' was removed; any legacy stored value falls through to gradient.
     let AvatarComponent: React.ComponentType<any>;
     if (avatarStyle === 'pixelated') {
         AvatarComponent = AvatarSkia;
-    } else if (avatarStyle === 'brutalist') {
-        AvatarComponent = AvatarBrutalist;
     } else {
         AvatarComponent = AvatarGradient;
     }

@@ -46,6 +46,21 @@ export function getCodeAgentDefaults(flavor: string | null | undefined): AgentDe
     return codeAgentDefaults[normalizeAgentKey(flavor)];
 }
 
+// Review-first permission mode per agent: the agent proposes changes and waits
+// for approval before applying them, rather than auto-applying. Used by the
+// device-local "new session review-first" safety toggle. Keys must match the
+// permission mode keys in components/modelModeOptions.ts.
+const reviewFirstPermissionModes: Record<AgentKey, string> = {
+    claude: 'plan',
+    codex: 'read-only',
+    gemini: 'plan',
+    openclaw: 'default',
+};
+
+export function getReviewFirstPermissionMode(flavor: string | null | undefined): string {
+    return reviewFirstPermissionModes[normalizeAgentKey(flavor)];
+}
+
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
