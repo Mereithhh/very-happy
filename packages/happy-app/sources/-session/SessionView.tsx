@@ -26,7 +26,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { getCurrentVoiceConversationId, getCurrentVoiceSessionDurationSeconds, startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort, sessionUploadFile } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, useSocketStatus } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useLocalSettingMutable, useRealtimeStatus, useSessionGitStatus, useSessionMessages, useSessionUsage, useSetting, useSocketStatus } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -320,7 +320,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} sidebarVisible={showSidebar} />
                 )}
             </View>
         </>
@@ -548,7 +548,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+function SessionViewLoaded({ sessionId, session, sidebarVisible }: { sessionId: string, session: Session, sidebarVisible: boolean }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
@@ -951,9 +951,24 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </View>
     ) : null;
 
+    // Compact "the agent finished a round and left uncommitted changes" bar.
+    // Only the diff entry — no commit/PR (the daemon has no git-write RPC).
+    // Shown when the session is idle (waiting, not thinking) and the working
+    // tree is dirty. Routing to the files screen is the one diff entry that
+    // works everywhere (the inline AllFilesDiffView overlay is desktop-only),
+    // so this is especially the mobile path into the diff. Suppressed when the
+    // desktop files sidebar is already showing the same changes.
+    const completionBar = (!isDisconnected && !sidebarVisible) ? (
+        <SessionCompletionBar
+            sessionId={sessionId}
+            sessionState={sessionStatus.state}
+        />
+    ) : null;
+
     const input = (
         <>
             {inactiveHint}
+            {completionBar}
             {liveStatusBar}
             {composer}
         </>
@@ -1045,6 +1060,86 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     )
 }
+
+// Compact completion affordance: a single low-profile row above the composer
+// that surfaces "agent done · N files changed · view diff" once the agent is
+// idle and the working tree is dirty. Tapping it opens the existing files /
+// diff screen (router) — the only diff entry that works on phones too. No
+// commit / PR action: the daemon exposes no git-write RPC.
+const SessionCompletionBar = React.memo(function SessionCompletionBar({
+    sessionId,
+    sessionState,
+}: {
+    sessionId: string;
+    sessionState: ReturnType<typeof useSessionStatus>['state'];
+}) {
+    const { theme } = useUnistyles();
+    const router = useRouter();
+    const gitStatus = useSessionGitStatus(sessionId);
+
+    // Total uncommitted files: tracked modifications + staged + untracked.
+    const changedCount = gitStatus
+        ? gitStatus.modifiedCount + gitStatus.stagedCount + gitStatus.untrackedCount
+        : 0;
+
+    // Only when the agent has actually settled (idle/waiting). While it's
+    // thinking the live status bar owns the area; when disconnected /
+    // awaiting permission we stay out of the way.
+    const isIdle = sessionState === 'waiting';
+    if (!isIdle || !gitStatus?.isDirty || changedCount <= 0) {
+        return null;
+    }
+
+    const handlePress = () => {
+        router.push(`/session/${sessionId}/files`);
+    };
+
+    return (
+        <View style={{ paddingHorizontal: 8, paddingBottom: 6 }}>
+            <Pressable
+                onPress={handlePress}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={t('session.viewDiff')}
+                style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignSelf: 'flex-start',
+                    maxWidth: '100%',
+                    gap: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? theme.colors.surfaceSelected : theme.colors.surfaceHigh,
+                })}
+            >
+                <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.success} />
+                <Text
+                    numberOfLines={1}
+                    style={{
+                        flexShrink: 1,
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                    }}
+                >
+                    {`${t('session.done')} · ${t('session.completedChanges', { count: changedCount })}`}
+                </Text>
+                <Text
+                    numberOfLines={1}
+                    style={{
+                        fontSize: 12,
+                        color: theme.colors.textLink,
+                        fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                    }}
+                >
+                    {t('session.viewDiff')}
+                </Text>
+                <Ionicons name="chevron-forward" size={12} color={theme.colors.textLink} />
+            </Pressable>
+        </View>
+    );
+});
 
 function InactiveArchivedHint(props: {
     resumeCommandBlock: NonNullable<ReturnType<typeof getResumeCommandBlock>> | null;

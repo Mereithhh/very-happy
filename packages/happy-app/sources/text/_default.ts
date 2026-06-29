@@ -351,6 +351,11 @@ export const en = {
         inputPlaceholder: 'Type a message ...',
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
+        // Compact "done with uncommitted changes" bar shown above the composer
+        // when the agent is idle and the working tree is dirty.
+        done: 'Done',
+        completedChanges: ({ count }: { count: number }) => count === 1 ? '1 file changed' : `${count} files changed`,
+        viewDiff: 'View diff',
         newChat: 'New chat',
         setTitle: 'Set title',
         renameTitle: 'Rename session',
