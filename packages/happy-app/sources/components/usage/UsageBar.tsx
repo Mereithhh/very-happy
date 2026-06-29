@@ -12,37 +12,7 @@ interface UsageBarProps {
     height?: number;
 }
 
-const styles = StyleSheet.create((theme) => ({
-    container: {
-        marginVertical: 8,
-    },
-    labelRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 4,
-    },
-    label: {
-        fontSize: 14,
-        color: theme.colors.text,
-    },
-    value: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        fontWeight: '600',
-    },
-    barContainer: {
-        height: 8,
-        backgroundColor: theme.colors.divider,
-        borderRadius: 4,
-        overflow: 'hidden',
-    },
-    barFill: {
-        height: '100%',
-        borderRadius: 4,
-    }
-}));
-
-export const UsageBar: React.FC<UsageBarProps> = ({
+export const UsageBar: React.FC<UsageBarProps> = React.memo(({
     label,
     value,
     maxValue,
@@ -77,4 +47,36 @@ export const UsageBar: React.FC<UsageBarProps> = ({
             </View>
         </View>
     );
-};
+});
+
+UsageBar.displayName = 'UsageBar';
+
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        marginVertical: 8,
+    },
+    labelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    label: {
+        fontSize: 14,
+        color: theme.colors.text,
+    },
+    value: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        fontWeight: '600',
+    },
+    barContainer: {
+        height: 8,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    barFill: {
+        height: '100%',
+        borderRadius: 4,
+    }
+}));
