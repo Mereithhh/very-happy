@@ -508,6 +508,11 @@ export const zhHant: TranslationStructure = {
     agentInput: {
         workingHint: '回車排隊 · ⌘/Ctrl+回車 打斷並發送',
         interruptAndSend: '打斷並發送',
+        chip: {
+            mode: '模式',
+            model: '模型',
+            effort: '強度',
+        },
         permissionMode: {
             title: '權限模式',
             default: '預設',

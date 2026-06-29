@@ -509,6 +509,11 @@ export const ja: TranslationStructure = {
     agentInput: {
         workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
         interruptAndSend: 'Interrupt and send',
+        chip: {
+            mode: 'モード',
+            model: 'モデル',
+            effort: '労力',
+        },
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',

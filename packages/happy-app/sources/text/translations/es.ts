@@ -508,6 +508,11 @@ export const es: TranslationStructure = {
     agentInput: {
         workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
         interruptAndSend: 'Interrupt and send',
+        chip: {
+            mode: 'modo',
+            model: 'modelo',
+            effort: 'esfuerzo',
+        },
         permissionMode: {
             title: 'MODO DE PERMISOS',
             default: 'Por defecto',
