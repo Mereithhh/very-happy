@@ -1,34 +1,56 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath, URL } from 'node:url';
 
 // Default server target; overridable at runtime via window.__HAPPY_CONFIG__.serverUrl
 // (injected into index.html on deploy, mirroring the v1 HAPPY_INJECT_HTML_CONFIG path).
 const DEFAULT_SERVER_URL = 'https://happy.mereith.com';
 const APP_VERSION = process.env.VH_VERSION ?? '2.0.0';
+const BASE = process.env.VH_BASE ?? '/';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
-  base: process.env.VH_BASE ?? '/',
-  plugins: [react()],
+  base: BASE,
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
+      manifest: {
+        name: 'Very Happy',
+        short_name: 'Very Happy',
+        description: 'Claude Code, from any browser.',
+        theme_color: '#06080c',
+        background_color: '#06080c',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: BASE,
+        start_url: BASE,
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        // SPA: serve index.html for navigations; never precache the API/socket.
+        navigateFallback: `${BASE}index.html`,
+        navigateFallbackDenylist: [/^\/v1\//, /^\/health/],
+        globPatterns: ['**/*.{js,css,html,woff,woff2,png,svg}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: {
-    // Metro-style platform resolution: prefer `.web.ts(x)` so the existing web
-    // forks (libsodium.lib.web, aes.web, uploadFormFile.web, …) win over native.
     extensions: [
-      '.web.tsx',
-      '.web.ts',
-      '.web.jsx',
-      '.web.js',
-      '.tsx',
-      '.ts',
-      '.jsx',
-      '.js',
-      '.json',
+      '.web.tsx', '.web.ts', '.web.jsx', '.web.js',
+      '.tsx', '.ts', '.jsx', '.js', '.json',
     ],
     alias: {
       '@': r('./src'),
-      // RN + expo native modules → minimal web shims (see src/shims).
       'react-native': r('./src/shims/react-native.ts'),
       'expo-crypto': r('./src/shims/expo-crypto.ts'),
       'expo-constants': r('./src/shims/expo-constants.ts'),
@@ -45,12 +67,25 @@ export default defineConfig({
   define: {
     __DEFAULT_SERVER_URL__: JSON.stringify(DEFAULT_SERVER_URL),
     __APP_VERSION__: JSON.stringify(APP_VERSION),
-    // some npm deps reference process.env.NODE_ENV; keep a safe fallback object.
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     'process.env': '{}',
   },
-  server: {
-    port: 8082,
-    host: true,
+  build: {
+    rollupOptions: {
+      output: {
+        // Salt filenames with the app version so a new release always mints fresh
+        // asset URLs — even for content-stable chunks (libsodium). Guards against
+        // a poisoned immutable cache surviving a redeploy.
+        entryFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}.js`,
+        assetFileNames: `assets/[name]-[hash]-${APP_VERSION.replace(/\W/g, '')}[extname]`,
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          crypto: ['libsodium-wrappers', 'tweetnacl'],
+          xterm: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
+        },
+      },
+    },
   },
+  server: { port: 8082, host: true },
 });
