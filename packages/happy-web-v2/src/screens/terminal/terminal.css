@@ -1,0 +1,52 @@
+.term-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #0b0e13; /* terminal stays dark in both themes */
+}
+.term-header {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  flex-shrink: 0;
+}
+.term-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}
+.term-back:hover {
+  color: var(--text);
+}
+.term-host {
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-2);
+  padding-bottom: max(var(--sp-2), env(safe-area-inset-bottom));
+  position: relative;
+  overflow: hidden;
+}
+.term-host.is-dragover::after {
+  content: 'Drop to upload';
+  position: absolute;
+  inset: var(--sp-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-md);
+  background: rgba(52, 226, 196, 0.08);
+  color: var(--accent-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  pointer-events: none;
+}
+.term-host .xterm {
+  height: 100%;
+}

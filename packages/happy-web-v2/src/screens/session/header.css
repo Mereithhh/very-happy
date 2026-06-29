@@ -1,0 +1,120 @@
+.ch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  min-height: 48px;
+}
+.ch-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.ch-back:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+@media (min-width: 980px) {
+  .ch-back {
+    display: none;
+  }
+}
+.ch-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ch-title-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  color: var(--text);
+}
+.ch-title {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ch-title-pencil {
+  color: var(--text-faint);
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+.ch-title-btn:hover .ch-title-pencil {
+  opacity: 1;
+}
+.ch-crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ch-crumb-host {
+  color: var(--text-dim);
+  flex: none;
+}
+.ch-crumb-cwd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.ch-rename {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.ch-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: var(--fs-14);
+  padding: 5px var(--sp-2);
+}
+.ch-rename-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.ch-icon:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.ch-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-right: var(--sp-1);
+}

@@ -1,0 +1,160 @@
+.ci {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  max-width: 820px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* selector row */
+.ci-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* composer */
+.ci-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--sp-2);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+.ci-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ci-textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-14);
+  line-height: 1.5;
+  padding: 6px var(--sp-2);
+  max-height: 200px;
+}
+.ci-textarea:focus {
+  outline: none;
+}
+.ci-textarea::placeholder {
+  color: var(--text-faint);
+}
+
+/* circular send button */
+.ci-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: background var(--motion-fast), transform var(--motion-fast), opacity var(--motion-fast);
+}
+.ci-send:not(:disabled):hover {
+  background: var(--accent-press);
+}
+.ci-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ci-send--abort {
+  background: var(--danger);
+  color: #fff;
+}
+.ci-send--abort:not(:disabled):hover {
+  background: var(--danger);
+  transform: scale(1.04);
+}
+
+/* status row */
+.ci-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  flex-wrap: wrap;
+}
+.ci-spacer {
+  flex: 1;
+}
+.ci-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+}
+.ci-conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.ci-conn--on {
+  color: var(--accent-2);
+}
+.ci-conn--on .ci-conn-dot {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.ci-conn--off {
+  color: var(--text-faint);
+}
+
+/* always-visible context meter */
+.ci-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+}
+.ci-meter-track {
+  width: 64px;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.ci-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--text-dim);
+  transition: width var(--motion-fast);
+}
+.ci-meter--ok .ci-meter-fill {
+  background: var(--accent);
+}
+.ci-meter--warn .ci-meter-fill {
+  background: var(--warn);
+}
+.ci-meter--crit .ci-meter-fill {
+  background: var(--danger);
+}
+.ci-meter--warn .ci-meter-label {
+  color: var(--warn);
+}
+.ci-meter--crit .ci-meter-label {
+  color: var(--danger);
+}
+.ci-hint {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .ci-hint {
+    display: none;
+  }
+}

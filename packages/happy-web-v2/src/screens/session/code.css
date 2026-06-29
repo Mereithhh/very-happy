@@ -1,0 +1,47 @@
+.cv {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.cv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px var(--sp-2) 4px var(--sp-3);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.cv-lang {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  text-transform: lowercase;
+}
+.cv-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.cv-copy:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.cv-pre {
+  margin: 0;
+  padding: var(--sp-3);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  color: var(--text);
+}
+.cv-pre code {
+  font-family: inherit;
+  white-space: pre;
+}

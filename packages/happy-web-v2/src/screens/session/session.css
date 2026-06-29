@@ -1,0 +1,18 @@
+.sd {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-0);
+}
+.sd-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sd-foot {
+  flex: none;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
