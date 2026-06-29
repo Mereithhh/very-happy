@@ -365,6 +365,29 @@ export const ja: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'コマンドを入力または検索...',
+        // Categories
+        categorySessions: 'Sessions',
+        categoryRecentSessions: 'Recent Sessions',
+        categoryNavigation: 'Navigation',
+        categorySystem: 'System',
+        categoryTerminals: 'Terminals',
+        categoryDeveloper: 'Developer',
+        // Commands
+        newSession: 'New Session',
+        newSessionSubtitle: 'Start a new chat session',
+        viewAllSessions: 'View All Sessions',
+        viewAllSessionsSubtitle: 'Browse your chat history',
+        settings: 'Settings',
+        settingsSubtitle: 'Configure your preferences',
+        account: 'Account',
+        accountSubtitle: 'Manage your account',
+        connectDevice: 'Connect Device',
+        connectDeviceSubtitle: 'Connect a new device via web',
+        signOut: 'Sign Out',
+        signOutSubtitle: 'Sign out of your account',
+        developerMenu: 'Developer Menu',
+        developerMenuSubtitle: 'Access developer tools',
+        switchToSession: 'Switch to session',
     },
 
     server: {
