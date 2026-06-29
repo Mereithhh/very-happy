@@ -137,9 +137,12 @@ export function useGlobalSessionShortcuts() {
             }
         };
 
-        window.addEventListener('keydown', onKeyDown);
+        // Capture phase so ⌘1-9 / ⌘R / ? fire before any bubble-phase listener
+        // swallows the event (same reason as useCommandKeyHeld). The in-handler
+        // guards (editable target, pathname, mapping presence) still apply.
+        window.addEventListener('keydown', onKeyDown, true);
         return () => {
-            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keydown', onKeyDown, true);
         };
     }, [router]);
 }

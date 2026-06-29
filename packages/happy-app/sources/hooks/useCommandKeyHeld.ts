@@ -49,8 +49,12 @@ function reset() {
 function attachListeners() {
     if (listenersAttached || typeof window === 'undefined') return;
     listenersAttached = true;
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
+    // Capture phase: fire before any bubble-phase listener (and before anything
+    // that stopPropagation/stopImmediatePropagation in bubble, e.g. xterm or a
+    // listener registered earlier). A late-registered bubble listener here was
+    // getting swallowed, so the held flag never flipped.
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('blur', reset);
     document.addEventListener('visibilitychange', reset);
 }
@@ -58,8 +62,8 @@ function attachListeners() {
 function detachListeners() {
     if (!listenersAttached || typeof window === 'undefined') return;
     listenersAttached = false;
-    window.removeEventListener('keydown', onKeyDown);
-    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('keyup', onKeyUp, true);
     window.removeEventListener('blur', reset);
     document.removeEventListener('visibilitychange', reset);
     held = false;
