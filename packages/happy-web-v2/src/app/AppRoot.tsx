@@ -14,13 +14,13 @@ import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { SignupScreen } from '@/screens/auth/SignupScreen';
 import { AppLayout } from '@/screens/AppLayout';
-import { SessionsScreen } from '@/screens/sessions/SessionsScreen';
 import { SessionDetailScreen } from '@/screens/session/SessionDetailScreen';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
 import { SettingsRoutes } from '@/screens/settings/SettingsRoutes';
 import { WebTerminalScreen } from '@/screens/terminal/WebTerminalScreen';
 import { TerminalPickerScreen } from '@/screens/terminal/TerminalPickerScreen';
 import { MachineScreen } from '@/screens/machine/MachineScreen';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 
 function RequireAuth() {
   const { isAuthenticated } = useAuth();
@@ -98,6 +98,8 @@ export function AppRoot() {
           await syncRestore(stored);
           if (cancelled) return;
           setCreds(stored);
+          // server-backed terminal list (cross-device, unified with chat sessions)
+          void useTerminalSessions.getState().initialize();
         }
       } catch (e) {
         console.error('[bootstrap] restore failed', e);
