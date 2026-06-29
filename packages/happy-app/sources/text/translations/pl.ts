@@ -134,6 +134,7 @@ export const pl: TranslationStructure = {
         thinking: ({ elapsed }: { elapsed: string }) => `Myślę ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: 'Oczekiwanie na uprawnienia',
+        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -490,6 +491,8 @@ export const pl: TranslationStructure = {
     },
 
     agentInput: {
+        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
+        interruptAndSend: 'Interrupt and send',
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             default: 'Domyślny',

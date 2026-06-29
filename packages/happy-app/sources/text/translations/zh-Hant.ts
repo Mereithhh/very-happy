@@ -124,6 +124,7 @@ export const zhHant: TranslationStructure = {
         thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: '等待授權',
+        reconnecting: '連線中斷，正在重連…',
     },
 
     time: {
@@ -474,6 +475,8 @@ export const zhHant: TranslationStructure = {
     },
 
     agentInput: {
+        workingHint: '回車排隊 · ⌘/Ctrl+回車 打斷並發送',
+        interruptAndSend: '打斷並發送',
         permissionMode: {
             title: '權限模式',
             default: '預設',

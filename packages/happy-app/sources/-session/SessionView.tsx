@@ -616,6 +616,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isDisconnected = !sessionStatus.isConnected;
     const resumeCommandBlock = getResumeCommandBlock(session);
 
+    // Real app↔server socket signal for the live status bar: a connecting/errored
+    // socket (e.g. phone resumed from background mid-stream) surfaces as
+    // "reconnecting" rather than a confident "connected".
+    const socketStatus = useSocketStatus();
+    const statusConnectionState: 'connected' | 'reconnecting' | 'disconnected' =
+        socketStatus.status === 'connecting' || socketStatus.status === 'error'
+            ? 'reconnecting'
+            : socketStatus.status === 'connected' && sessionStatus.isConnected
+                ? 'connected'
+                : 'disconnected';
+
     // Image attachment state (expImageUpload feature flag)
     const expImageUpload = useSetting('expImageUpload');
     const { selectedImages, pickImages, removeImage, clearImages, addImages } = useImagePicker();
@@ -936,7 +947,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // never competes with the input area. Sits just above the composer.
     const liveStatusBar = !isDisconnected ? (
         <View style={{ paddingBottom: 6 }}>
-            <SessionLiveStatusBar sessionId={sessionId} />
+            <SessionLiveStatusBar sessionId={sessionId} connectionState={statusConnectionState} />
         </View>
     ) : null;
 

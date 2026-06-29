@@ -449,6 +449,7 @@ export const ru: TranslationStructure = {
         thinking: ({ elapsed }: { elapsed: string }) => `Думаю ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: 'Ожидание разрешения',
+        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -490,6 +491,8 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
+        interruptAndSend: 'Interrupt and send',
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             default: 'По умолчанию',
