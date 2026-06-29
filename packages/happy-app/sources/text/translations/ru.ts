@@ -31,6 +31,7 @@ export const ru: TranslationStructure = {
         inbox: 'Входящие',
         sessions: 'Терминалы',
         settings: 'Настройки',
+        terminal: 'Терминал',
     },
 
     inbox: {

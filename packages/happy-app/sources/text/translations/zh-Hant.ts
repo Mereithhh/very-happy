@@ -22,6 +22,7 @@ export const zhHant: TranslationStructure = {
         inbox: '收件匣',
         sessions: '終端',
         settings: '設定',
+        terminal: '網頁終端',
     },
 
     inbox: {

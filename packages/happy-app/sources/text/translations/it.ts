@@ -20,6 +20,7 @@ export const it: TranslationStructure = {
         inbox: 'Posta',
         sessions: 'Terminali',
         settings: 'Impostazioni',
+        terminal: 'Terminale',
     },
 
     inbox: {

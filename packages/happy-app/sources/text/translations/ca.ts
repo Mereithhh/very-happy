@@ -20,6 +20,7 @@ export const ca: TranslationStructure = {
         inbox: 'Safata',
         sessions: 'Terminals',
         settings: 'Configuració',
+        terminal: 'Terminal',
     },
 
     inbox: {

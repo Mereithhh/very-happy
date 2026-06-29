@@ -20,6 +20,7 @@ export const en = {
         inbox: 'Inbox',
         sessions: 'Terminals',
         settings: 'Settings',
+        terminal: 'Terminal',
     },
 
     inbox: {

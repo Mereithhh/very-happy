@@ -31,6 +31,7 @@ export const pl: TranslationStructure = {
         inbox: 'Skrzynka',
         sessions: 'Terminale',
         settings: 'Ustawienia',
+        terminal: 'Terminal',
     },
 
     inbox: {
