@@ -1181,4 +1181,14 @@ export const zhHans: TranslationStructure = {
         labelDetach: '脱离会话（仍在后台运行，可随时重连）',
     },
 
+    shortcuts: {
+        eyebrow: '键盘',
+        title: '键盘快捷键',
+        search: '搜索',
+        switchSession: '切换会话',
+        renameSession: '重命名当前会话',
+        goBack: '返回',
+        showHelp: '显示此帮助',
+    },
+
 } as const;

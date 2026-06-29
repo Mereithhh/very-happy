@@ -1180,4 +1180,14 @@ export const zhHant: TranslationStructure = {
         labelDetach: '卸離工作階段（仍在背景執行，可隨時重連）',
     },
 
+    shortcuts: {
+        eyebrow: '鍵盤',
+        title: '鍵盤快捷鍵',
+        search: '搜尋',
+        switchSession: '切換工作階段',
+        renameSession: '重新命名目前工作階段',
+        goBack: '返回',
+        showHelp: '顯示此說明',
+    },
+
 } as const;

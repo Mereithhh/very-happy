@@ -22,6 +22,9 @@ import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
 import { Modal } from '@/modal';
 import { type MachineTerminalsGroup } from '@/hooks/useMachineTerminals';
+import { useCommandKeyHeld } from '@/hooks/useCommandKeyHeld';
+import { useSessionQuickSwitchMap } from '@/hooks/useSessionQuickSwitchMap';
+import { QuickSwitchBadge } from './QuickSwitchBadge';
 
 const getStatusConfig = (theme: any): Record<SessionState, { color: string; kind: StatusDotKind; accessibilityLabel: string; isConnected: boolean }> => ({
     disconnected: { color: theme.colors.status.disconnected, kind: 'offline', accessibilityLabel: t('status.offline'), isConnected: false },
@@ -369,6 +372,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         onLongPress: showActionAlert,
     };
 
+    // Cmd-held quick-switch number badge (web only).
+    const commandHeld = useCommandKeyHeld();
+    const quickSwitch = useSessionQuickSwitchMap();
+    const quickSwitchNumber = quickSwitch.byId[session.id];
+    const showQuickSwitchBadge = commandHeld && quickSwitchNumber != null;
+
     const renderLeadingIndicator = () => {
         let indicator: React.ReactNode = null;
 
@@ -420,6 +429,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     >
                         {session.name}
                     </Text>
+                    {showQuickSwitchBadge && <QuickSwitchBadge number={quickSwitchNumber} />}
                 </View>
             </View>
         </Pressable>

@@ -35,6 +35,7 @@ import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { BrowserNavigationShortcuts } from '@/hooks/useBrowserNavigationShortcuts';
+import { GlobalSessionShortcuts } from '@/hooks/useGlobalSessionShortcuts';
 
 // Configure notification handler — suppress push display when app is in foreground
 Notifications.setNotificationHandler({
@@ -393,6 +394,7 @@ export default function RootLayout() {
                             <StatusBarProvider />
                             <ModalProvider>
                                 <BrowserNavigationShortcuts />
+                                <GlobalSessionShortcuts />
                                 <CommandPaletteProvider>
                                     <RealtimeProvider>
                                         <HorizontalSafeAreaWrapper>
