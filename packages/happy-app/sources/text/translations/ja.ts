@@ -125,6 +125,7 @@ export const ja: TranslationStructure = {
         thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: '権限を待機中',
+        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -475,6 +476,8 @@ export const ja: TranslationStructure = {
     },
 
     agentInput: {
+        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
+        interruptAndSend: 'Interrupt and send',
         permissionMode: {
             title: '権限モード',
             default: 'デフォルト',

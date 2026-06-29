@@ -124,6 +124,7 @@ export const en = {
         thinking: ({ elapsed }: { elapsed: string }) => `Thinking ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: 'Waiting for permission',
+        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -490,6 +491,8 @@ export const en = {
     },
 
     agentInput: {
+        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
+        interruptAndSend: 'Interrupt and send',
         permissionMode: {
             title: 'PERMISSION MODE',
             default: 'default permissions',

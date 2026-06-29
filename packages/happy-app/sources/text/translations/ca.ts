@@ -123,6 +123,7 @@ export const ca: TranslationStructure = {
         thinking: ({ elapsed }: { elapsed: string }) => `Pensant ${elapsed}`,
         runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: 'Esperant permís',
+        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -474,6 +475,8 @@ export const ca: TranslationStructure = {
     },
 
     agentInput: {
+        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
+        interruptAndSend: 'Interrupt and send',
         permissionMode: {
             title: 'MODE DE PERMISOS',
             default: 'Per defecte',

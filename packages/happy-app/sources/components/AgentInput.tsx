@@ -310,6 +310,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+    workingHint: {
+        fontSize: 10,
+        lineHeight: 14,
+        color: theme.colors.textSecondary,
+        paddingTop: 2,
+        paddingHorizontal: 2,
+        ...Typography.mono(),
+    },
 }));
 
 type ContextUsage = {
@@ -900,6 +908,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
     }, [props.onAbort]);
 
+    // "Interrupt & send" (steer): while the agent is working, abort the current
+    // turn and immediately send the pending input. The abort resumes the same
+    // session so context is preserved; the new message steers the next turn.
+    const handleSteerPress = React.useCallback(async () => {
+        const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0;
+        if (!liveHasText && !hasImages) return;
+        hapticsLight();
+        await props.onAbort?.();
+        props.onSend?.();
+    }, [hasImages, props.onAbort, props.onSend]);
+
     const handleBlockedSendAttempt = React.useCallback(() => {
         if (!isSendBlocked || !hasText || props.isSending) return;
         hapticsError();
@@ -958,6 +977,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return true;
         }
 
+        // Cmd/Ctrl+Enter = "interrupt & send" (steer) while the agent is working.
+        // This is the ONLY modifier+Enter combo we add: plain Enter (queue/send,
+        // governed by agentInputEnterToSend) and Shift+Enter (newline) keep their
+        // existing semantics untouched.
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && props.showAbortButton && props.onAbort) {
+            const liveText = inputRef.current?.getText() ?? '';
+            if (liveText.trim() || hasImages) {
+                handleSteerPress();
+                return true; // Key was handled
+            }
+        }
+
         // Original key handling
         if (Platform.OS === 'web') {
             // On mobile web (touch devices), Enter should insert a newline since
@@ -989,7 +1020,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, handleSteerPress, hasImages, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -1448,6 +1479,32 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Shaker>
                                 )}
 
+                                {/* Interrupt & send (steer): only while working AND there is pending input */}
+                                {props.showAbortButton && props.onAbort && (hasText || hasImages) && (
+                                    <Pressable
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        onPress={handleSteerPress}
+                                        disabled={isAborting}
+                                        accessibilityLabel={t('agentInput.interruptAndSend')}
+                                    >
+                                        <Ionicons
+                                            name="play-skip-forward"
+                                            size={16}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                )}
+
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
 
@@ -1607,6 +1664,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             </View>
                         </View>
                     </View>
+
+                    {/* Working hint: how to queue vs. interrupt while the agent runs */}
+                    {props.showAbortButton && (
+                        <Text style={styles.workingHint} numberOfLines={1}>
+                            {t('agentInput.workingHint')}
+                        </Text>
+                    )}
                 </View>
                 </Shaker>
             </View>

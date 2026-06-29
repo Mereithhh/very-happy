@@ -66,7 +66,7 @@ type LiveStatusKind = 'thinking' | 'tool' | 'permission';
  * actionable; a concrete running tool is more informative than the generic
  * "thinking" flag, so it wins when both are present.
  */
-export const SessionLiveStatusBar = React.memo(function SessionLiveStatusBar({ sessionId }: { sessionId: string }) {
+export const SessionLiveStatusBar = React.memo(function SessionLiveStatusBar({ sessionId, connectionState }: { sessionId: string; connectionState?: 'connected' | 'reconnecting' | 'disconnected' }) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const session = useSession(sessionId);
@@ -116,6 +116,17 @@ export const SessionLiveStatusBar = React.memo(function SessionLiveStatusBar({ s
         label = t('liveStatus.thinking', { elapsed: elapsedText });
         elapsedText = null; // already folded into the label for thinking
         dotColor = theme.colors.status.connected;
+    }
+
+    // When the socket drops mid-work, surface a "reconnecting" state instead of a
+    // confident working indicator. Only applies while actually working (thinking/
+    // tool); permission prompts keep their own steady call-to-action. Socket
+    // recovery (connected) automatically restores the normal working label.
+    const isReconnecting = connectionState === 'reconnecting' && (kind === 'thinking' || kind === 'tool');
+    if (isReconnecting) {
+        label = t('liveStatus.reconnecting');
+        dotColor = theme.colors.warning;
+        elapsedText = null;
     }
 
     return (
