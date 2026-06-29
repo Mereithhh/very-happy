@@ -337,6 +337,12 @@ export default function WebTerminalScreen() {
         // column so the last cell always has room. Width-independent (works at any
         // window size) — unlike a fixed right padding, which just moves the clip.
         const safeFit = () => {
+            // Never fit before the host has a real layout size. On a cache-reuse
+            // reattach the host may not be measured yet (clientWidth≈0); fitting
+            // then resizes the terminal to ~1 col, the canvas collapses and the
+            // flex layout "goes tiny" with no repaint. Wait for a real size
+            // (the ResizeObserver / deferred fit will call us again post-layout).
+            if (host.clientWidth < 40 || host.clientHeight < 24) return;
             try { fit.fit(); } catch { return; }
             const screenEl = host.querySelector('.xterm-screen') as HTMLElement | null;
             if (screenEl && term.cols > 2) {
@@ -346,10 +352,26 @@ export default function WebTerminalScreen() {
                 }
             }
         };
-        safeFit();
-
         const mountCleanups: Array<() => void> = [];
         mountCleanups.push(() => { try { fit.dispose(); } catch { /* noop */ } });
+
+        // Defer the first fit to after the host's flex layout settles (double rAF).
+        // A synchronous fit here races the layout — on a cache-reuse reattach the
+        // host isn't measured yet, fit reads width≈0 and shrinks the terminal,
+        // collapsing the UI. The ResizeObserver below also fits on every resize.
+        const initialFit = () => {
+            safeFit();
+            const id = getTerminalId();
+            if (id) apiSocket.send('terminal-resize', { machineId, terminalId: id, cols: term.cols, rows: term.rows });
+            // Reused terminals: repaint the current screen now that we're sized.
+            if (hit) term.refresh(0, term.rows - 1);
+            term.focus();
+        };
+        const rafA = requestAnimationFrame(() => {
+            const rafB = requestAnimationFrame(initialFit);
+            mountCleanups.push(() => cancelAnimationFrame(rafB));
+        });
+        mountCleanups.push(() => cancelAnimationFrame(rafA));
 
         // Right-click pastes (the browser menu is hidden anyway) — a common
         // terminal convention that pairs with drag-to-copy. Route through
@@ -441,15 +463,8 @@ export default function WebTerminalScreen() {
         ro.observe(host);
         mountCleanups.push(() => ro.disconnect());
 
-        // On reuse, force a repaint of the current screen + push the (possibly
-        // changed) size, then focus — so switching back shows up-to-date content
-        // and an active cursor immediately.
-        if (hit) {
-            const id = getTerminalId();
-            if (id) apiSocket.send('terminal-resize', { machineId, terminalId: id, cols: term.cols, rows: term.rows });
-            term.refresh(0, term.rows - 1);
-            term.focus();
-        }
+        // (reuse repaint + resize + focus is handled in initialFit above, after
+        // the host is laid out — doing it synchronously here raced the layout.)
 
         return () => {
             // KEEP-ALIVE cleanup: tear down only the host-bound wiring and detach
