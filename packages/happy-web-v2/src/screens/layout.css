@@ -24,6 +24,15 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg-0);
+}
+/* generic picker/scroll page surface used by terminal picker etc. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-0);
 }
 .app-detail--full {
   height: 100dvh;

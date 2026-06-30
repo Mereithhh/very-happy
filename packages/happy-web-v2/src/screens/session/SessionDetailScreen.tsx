@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -8,6 +8,7 @@ import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { AgentInput } from './AgentInput';
+import { FilesPanel } from './FilesPanel';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -15,6 +16,7 @@ export function SessionDetailScreen() {
     const navigate = useNavigate();
     const { t } = useTranslation();
     const session = useSession(id ?? '');
+    const [filesOpen, setFilesOpen] = useState(false);
 
     // Trigger the initial message fetch + mark this session as the one being
     // viewed (drives message sync, read state, and web-resume refresh).
@@ -50,15 +52,30 @@ export function SessionDetailScreen() {
     }
 
     return (
-        <div className="sd">
-            <ChatHeader sessionId={id} onBack={() => navigate('/')} />
-            <div className="sd-body">
-                <ChatList sessionId={id} />
+        <div className={`sd${filesOpen ? ' sd--files-open' : ''}`}>
+            <div className="sd-main">
+                <ChatHeader
+                    sessionId={id}
+                    onBack={() => navigate('/')}
+                    filesOpen={filesOpen}
+                    onToggleFiles={() => setFilesOpen((v) => !v)}
+                />
+                <div className="sd-body">
+                    <ChatList sessionId={id} />
+                </div>
+                <div className="sd-foot">
+                    <SessionLiveStatusBar sessionId={id} />
+                    <AgentInput sessionId={id} />
+                </div>
             </div>
-            <div className="sd-foot">
-                <SessionLiveStatusBar sessionId={id} />
-                <AgentInput sessionId={id} />
-            </div>
+            {filesOpen && (
+                <>
+                    <div className="sd-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
+                    <aside className="sd-files">
+                        <FilesPanel sessionId={id} onClose={() => setFilesOpen(false)} />
+                    </aside>
+                </>
+            )}
         </div>
     );
 }

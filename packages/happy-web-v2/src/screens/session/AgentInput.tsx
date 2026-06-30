@@ -7,7 +7,7 @@
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Send, Square } from 'lucide-react';
+import { Paperclip, Send, Square, X } from 'lucide-react';
 import { sync } from '@/sync/sync';
 import { sessionAbort } from '@/sync/ops';
 import {
@@ -25,6 +25,8 @@ import {
     getEffortLevelsForModel,
 } from '@/components/modelModeOptions';
 import { ModeMenu } from './ModeMenu';
+import { PresetsMenu } from './PresetsMenu';
+import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentUsed } from './format';
 import './input.css';
 
@@ -39,10 +41,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const enterToSend = useSetting('agentInputEnterToSend');
 
     const taRef = useRef<HTMLTextAreaElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const composingRef = useRef(false);
     const [text, setText] = useState(session?.draft ?? '');
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
+    const [dragOver, setDragOver] = useState(false);
+    const { attachments, addFiles, remove, clear } = useAttachments();
+
+    const flavorForAttach = session?.metadata?.flavor;
+    const supportsAttachments = !flavorForAttach || flavorForAttach === 'claude';
 
     const flavor = session?.metadata?.flavor as any;
     const metadata = session?.metadata ?? null;
@@ -79,18 +87,52 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const doSend = async () => {
         const value = text.trim();
-        if (!value || sending) return;
+        const atts = attachments.length > 0 ? attachments : undefined;
+        if ((!value && !atts) || sending) return;
         setSending(true);
         setText('');
+        clear();
         storage.getState().updateSessionDraft(sessionId, null);
         try {
-            await sync.sendMessage(sessionId, value, { source: 'chat' });
+            await sync.sendMessage(sessionId, value, { source: 'chat', attachments: atts });
         } catch {
             // restore text on failure so the user doesn't lose it
             setText(value);
         } finally {
             setSending(false);
             requestAnimationFrame(() => taRef.current?.focus());
+        }
+    };
+
+    const insertPreset = (presetText: string) => {
+        setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
+        requestAnimationFrame(() => taRef.current?.focus());
+    };
+
+    const onPickFiles = () => fileInputRef.current?.click();
+
+    const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files ? Array.from(e.target.files) : [];
+        if (files.length) void addFiles(files);
+        e.target.value = '';
+    };
+
+    const onPaste = (e: React.ClipboardEvent) => {
+        if (!supportsAttachments) return;
+        const images = getImagesFromClipboard(e.nativeEvent);
+        if (images.length) {
+            e.preventDefault();
+            void addFiles(images);
+        }
+    };
+
+    const onDrop = (e: React.DragEvent) => {
+        setDragOver(false);
+        if (!supportsAttachments) return;
+        const images = getImagesFromDrop(e.nativeEvent);
+        if (images.length) {
+            e.preventDefault();
+            void addFiles(images);
         }
     };
 
@@ -123,7 +165,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         storage.getState()[fn](sessionId, key);
     };
 
-    const canSend = text.trim().length > 0 && !sending;
+    const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending;
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
@@ -151,8 +193,57 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 )}
             </div>
 
+            {/* attachment previews */}
+            {attachments.length > 0 && (
+                <div className="ci-attachments">
+                    {attachments.map((a) => (
+                        <div key={a.id} className="ci-att">
+                            <img className="ci-att-img" src={a.uri} alt={a.name} />
+                            <button
+                                type="button"
+                                className="ci-att-remove"
+                                onClick={() => remove(a.id)}
+                                aria-label={t('common.delete' as any)}
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* composer */}
-            <div className="ci-composer">
+            <div
+                className={`ci-composer${dragOver ? ' ci-composer--drag' : ''}`}
+                onDragOver={(e) => {
+                    if (supportsAttachments) {
+                        e.preventDefault();
+                        setDragOver(true);
+                    }
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+            >
+                {supportsAttachments && (
+                    <button
+                        type="button"
+                        className="ci-icon-btn"
+                        onClick={onPickFiles}
+                        aria-label={t('session.chat.attach' as any)}
+                        title={t('session.chat.attach' as any)}
+                    >
+                        <Paperclip size={18} />
+                    </button>
+                )}
+                <PresetsMenu onPick={insertPreset} />
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={onFileInputChange}
+                />
                 <textarea
                     ref={taRef}
                     className="ci-textarea"
@@ -161,6 +252,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     placeholder={t('session.inputPlaceholder' as any)}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={onKeyDown}
+                    onPaste={onPaste}
                     onCompositionStart={() => (composingRef.current = true)}
                     onCompositionEnd={() => (composingRef.current = false)}
                     aria-label={t('common.message' as any)}

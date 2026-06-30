@@ -3,7 +3,7 @@
  * and a mobile back button.
  */
 import { useState } from 'react';
-import { ArrowLeft, Check, Pencil, X } from 'lucide-react';
+import { ArrowLeft, Check, FolderTree, Pencil, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSession, useRealtimeStatus } from '@/sync/storage';
 import { sessionUpdateTitle } from '@/sync/ops';
@@ -17,7 +17,17 @@ function connectionStatus(presence: 'online' | number | undefined, realtime: str
     return 'offline';
 }
 
-export function ChatHeader({ sessionId, onBack }: { sessionId: string; onBack?: () => void }) {
+export function ChatHeader({
+    sessionId,
+    onBack,
+    filesOpen,
+    onToggleFiles,
+}: {
+    sessionId: string;
+    onBack?: () => void;
+    filesOpen?: boolean;
+    onToggleFiles?: () => void;
+}) {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const session = useSession(sessionId);
@@ -106,6 +116,18 @@ export function ChatHeader({ sessionId, onBack }: { sessionId: string; onBack?: 
             <div className="ch-status">
                 <StatusDot status={status} size={9} pulse={status === 'connected'} />
             </div>
+            {onToggleFiles && (
+                <button
+                    type="button"
+                    className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
+                    onClick={onToggleFiles}
+                    aria-label={t('session.chat.files' as any)}
+                    title={t('session.chat.files' as any)}
+                    aria-pressed={filesOpen}
+                >
+                    <FolderTree size={16} />
+                </button>
+            )}
         </header>
     );
 }

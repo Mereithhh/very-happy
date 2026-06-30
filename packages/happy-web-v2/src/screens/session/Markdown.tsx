@@ -19,6 +19,8 @@ type Block =
     | { type: 'code'; lang: string | null; code: string }
     | { type: 'list'; ordered: boolean; items: string[] }
     | { type: 'quote'; text: string }
+    | { type: 'options'; items: string[] }
+    | { type: 'table'; headers: string[]; rows: string[][] }
     | { type: 'hr' };
 
 function parseBlocks(src: string): Block[] {
@@ -62,6 +64,39 @@ function parseBlocks(src: string): Block[] {
         if (heading) {
             blocks.push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
             i++;
+            continue;
+        }
+
+        // Options block: <options><option>..</option>..</options>
+        if (/^\s*<options>/.test(line)) {
+            const items: string[] = [];
+            i++;
+            while (i < lines.length && !/^\s*<\/options>/.test(lines[i])) {
+                const om = lines[i].match(/<option>([\s\S]*?)<\/option>/);
+                if (om) items.push(om[1].trim());
+                i++;
+            }
+            i++; // skip closing tag
+            if (items.length > 0) blocks.push({ type: 'options', items });
+            continue;
+        }
+
+        // Table: a line with '|' followed by a separator row of dashes.
+        if (line.includes('|') && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) {
+            const splitRow = (l: string): string[] => {
+                let cells = l.trim().split('|').map((c) => c.trim());
+                if (cells.length && cells[0] === '') cells = cells.slice(1);
+                if (cells.length && cells[cells.length - 1] === '') cells = cells.slice(0, -1);
+                return cells;
+            };
+            const headers = splitRow(line);
+            i += 2; // header + separator
+            const rows: string[][] = [];
+            while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+                rows.push(splitRow(lines[i]));
+                i++;
+            }
+            blocks.push({ type: 'table', headers, rows });
             continue;
         }
 
@@ -110,6 +145,7 @@ function parseBlocks(src: string): Block[] {
                 /^\s*>\s?/.test(l) ||
                 /^\s*[-*+]\s+/.test(l) ||
                 /^\s*\d+[.)]\s+/.test(l) ||
+                /^\s*<options>/.test(l) ||
                 /^\s*(?:---|\*\*\*|___)\s*$/.test(l)
             ) {
                 break;
@@ -195,7 +231,7 @@ function renderBoldItalic(text: string): React.ReactNode[] {
     return nodes;
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, onOption }: { text: string; onOption?: (option: string) => void }) {
     const blocks = React.useMemo(() => parseBlocks(text), [text]);
     return (
         <div className="md">
@@ -236,6 +272,50 @@ export function Markdown({ text }: { text: string }) {
                             <blockquote key={idx} className="md-quote">
                                 {renderInline(b.text)}
                             </blockquote>
+                        );
+                    case 'options':
+                        return (
+                            <div key={idx} className="md-options">
+                                {b.items.map((it, j) =>
+                                    onOption ? (
+                                        <button
+                                            key={j}
+                                            type="button"
+                                            className="md-option md-option--clickable"
+                                            onClick={() => onOption(it)}
+                                        >
+                                            {renderInline(it)}
+                                        </button>
+                                    ) : (
+                                        <div key={j} className="md-option">
+                                            {renderInline(it)}
+                                        </div>
+                                    ),
+                                )}
+                            </div>
+                        );
+                    case 'table':
+                        return (
+                            <div key={idx} className="md-table-wrap">
+                                <table className="md-table">
+                                    <thead>
+                                        <tr>
+                                            {b.headers.map((h, j) => (
+                                                <th key={j}>{renderInline(h)}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {b.rows.map((row, ri) => (
+                                            <tr key={ri}>
+                                                {row.map((cell, ci) => (
+                                                    <td key={ci}>{renderInline(cell)}</td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         );
                     case 'hr':
                         return <hr key={idx} className="md-hr" />;

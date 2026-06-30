@@ -20,9 +20,15 @@
   font-size: var(--fs-14);
   line-height: 1.55;
   color: var(--text);
+  box-shadow: var(--shadow-lift);
+}
+/* Long user queries: cap height + internal scroll instead of expanding unbounded. */
+.msg-bubble-scroll {
+  max-height: 40vh;
+  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  box-shadow: var(--shadow-lift);
+  overscroll-behavior: contain;
 }
 .msg-bubble--cmd {
   display: inline-flex;
@@ -60,6 +66,16 @@
   padding: 2px var(--sp-2);
   border: 1px dashed var(--line);
   border-radius: var(--r-pill);
+  max-width: 100%;
+  text-align: center;
+  word-break: break-word;
+}
+/* subtle inline system note (title change, plan mode, compaction, …) */
+.msg-event-line--subtle {
+  border: none;
+  color: var(--text-faint);
+  opacity: 0.8;
+  padding: 1px var(--sp-1);
 }
 
 /* thinking block */
@@ -74,6 +90,9 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--text-faint);
+}
+.msg-thinking-emoji {
+  font-size: var(--fs-12);
 }
 .msg-thinking-body {
   margin-top: var(--sp-2);

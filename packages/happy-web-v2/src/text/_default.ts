@@ -333,6 +333,11 @@ export const en = {
     },
 
     newSession: {
+        machine: 'Machine',
+        directory: 'Directory',
+        agent: 'Agent',
+        createDirTitle: 'Create directory?',
+        createDirMessage: ({ directory }: { directory: string }) => `Directory ${directory} doesn't exist yet. Create it?`,
         title: 'Start New Session',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
@@ -412,6 +417,17 @@ export const en = {
             modelLabel: 'model',
             permissionLabel: 'mode',
             effortLabel: 'effort',
+            attach: 'Attach image',
+            presets: 'Prompt presets',
+            presetsTitle: 'PROMPT PRESETS',
+            files: 'Files',
+            closeFiles: 'Close files',
+            fileTree: 'Project files',
+            changedFiles: 'Changed files',
+            noFiles: 'No files',
+            loadingFile: 'Loading file…',
+            binaryFile: 'Binary file — not shown',
+            refresh: 'Refresh',
         },
         permission: {
             title: 'Permission required',
@@ -649,6 +665,8 @@ export const en = {
     },
 
     sidebar: {
+        openSessions: 'Open sessions',
+        archiveConfirm: 'Archive this session?',
         sessionsTitle: 'Very Happy',
         showArchived: 'Show archived',
         hideArchived: 'Hide archived',
