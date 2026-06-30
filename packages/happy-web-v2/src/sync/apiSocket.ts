@@ -93,7 +93,11 @@ class ApiSocket {
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
             },
-            transports: ['websocket'],
+            // Allow HTTP long-polling fallback (+ try every transport on the
+            // first attempt) so the socket still connects when wss is blocked by
+            // a proxy/VPN (e.g. Clash TUN) — websocket-only would silently hang.
+            transports: ['websocket', 'polling'],
+            tryAllTransports: true,
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
