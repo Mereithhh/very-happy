@@ -132,8 +132,20 @@ export function WebTerminalScreen() {
       safeFit();
       if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
     };
-    const ro = new ResizeObserver(() => doFit());
+    // Debounce refits to the next frame so a burst of resize ticks collapses into
+    // one fit AFTER layout settles — otherwise the xterm canvas keeps its old
+    // (too-tall) size mid-resize and the host shows a scrollbar instead of reflowing.
+    let fitRaf = 0;
+    const scheduleFit = () => {
+      if (fitRaf) cancelAnimationFrame(fitRaf);
+      fitRaf = requestAnimationFrame(() => {
+        fitRaf = 0;
+        doFit();
+      });
+    };
+    const ro = new ResizeObserver(scheduleFit);
     ro.observe(hostRef.current);
+    window.addEventListener('resize', scheduleFit);
 
     (async () => {
       safeFit();
@@ -170,6 +182,8 @@ export function WebTerminalScreen() {
     return () => {
       disposed = true;
       clearTimeout(t0);
+      if (fitRaf) cancelAnimationFrame(fitRaf);
+      window.removeEventListener('resize', scheduleFit);
       ro.disconnect();
       apiSocket.offMessage('terminal-output', onOutput);
       apiSocket.offMessage('terminal-exit', onExit);
