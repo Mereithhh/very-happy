@@ -61,6 +61,13 @@ export const SettingsSchema = z.object({
         title: z.string(),
         command: z.string(),
     })).describe('Saved quick commands for the web terminal'),
+    // User-managed default-directory presets for new session creation. Synced;
+    // no zod .default() (same footgun as recentMachinePaths/promptPresets).
+    sessionPathPresets: z.array(z.object({
+        id: z.string(),
+        path: z.string(),
+        label: z.string().optional(),
+    })).describe('Saved working-directory presets for new sessions'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
@@ -133,6 +140,7 @@ export const settingsDefaults: Settings = {
     recentMachinePaths: [],
     promptPresets: [],
     terminalCommands: [],
+    sessionPathPresets: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
