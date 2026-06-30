@@ -333,6 +333,8 @@ export const en = {
     },
 
     newSession: {
+        savePreset: 'Save as preset',
+        updatePreset: 'Update preset',
         machine: 'Machine',
         directory: 'Directory',
         agent: 'Agent',

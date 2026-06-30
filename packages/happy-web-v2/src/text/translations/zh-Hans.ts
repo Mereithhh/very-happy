@@ -319,6 +319,8 @@ export const zhHans: TranslationStructure = {
     },
 
     newSession: {
+        savePreset: '保存为预设',
+        updatePreset: '更新预设',
         machine: '机器',
         directory: '目录',
         agent: '智能体',
