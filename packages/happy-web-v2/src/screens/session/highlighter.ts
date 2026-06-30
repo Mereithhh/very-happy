@@ -14,6 +14,11 @@
 
 export type HighlightResult = { html: string } | null;
 
+/** One highlighted token: text + the per-theme CSS-variable style. */
+export type HiToken = { content: string; style: Record<string, string> };
+/** Highlighted lines, each an array of tokens. null = highlighting unavailable. */
+export type HiLines = HiToken[][] | null;
+
 // Map our short language ids (file extensions / fence langs) to shiki lang ids.
 const LANG_ALIASES: Record<string, string> = {
     ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx', mjs: 'javascript', cjs: 'javascript',
@@ -54,9 +59,17 @@ export function normalizeLang(lang: string | null | undefined): string | null {
 
 type CoreHighlighter = {
     codeToHtml: (code: string, opts: any) => string;
+    codeToTokens: (code: string, opts: any) => { tokens: Array<Array<{ content: string; htmlStyle?: Record<string, string> }>> };
     getLoadedLanguages: () => string[];
     loadLanguage: (lang: any) => Promise<void>;
 };
+
+async function ensureLang(hl: CoreHighlighter, normalized: string): Promise<void> {
+    if (!hl.getLoadedLanguages().includes(normalized)) {
+        const mod = await LANG_LOADERS[normalized]();
+        await hl.loadLanguage(mod.default);
+    }
+}
 
 let corePromise: Promise<CoreHighlighter | null> | null = null;
 
@@ -96,15 +109,41 @@ export async function highlightToHtml(code: string, lang: string | null): Promis
     const hl = await getCore();
     if (!hl) return null;
     try {
-        if (!hl.getLoadedLanguages().includes(normalized)) {
-            const mod = await LANG_LOADERS[normalized]();
-            await hl.loadLanguage(mod.default);
-        }
+        await ensureLang(hl, normalized);
         const html = hl.codeToHtml(code, {
             lang: normalized,
             themes: { light: 'github-light-default', dark: 'github-dark-default' },
+            // Emit only CSS variables (--shiki-light / --shiki-dark) per token,
+            // with NO default inline `color`. This lets our stylesheet pick the
+            // theme via those variables; otherwise an inline `color` would win
+            // over any stylesheet rule and the tokens would all render one color.
+            defaultColor: false,
         });
         return { html };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Highlight `code` into per-line token arrays (for the diff view, which needs to
+ * own its own row layout). Returns null when highlighting is unavailable.
+ */
+export async function highlightToLines(code: string, lang: string | null): Promise<HiLines> {
+    const normalized = normalizeLang(lang);
+    if (!normalized) return null;
+    const hl = await getCore();
+    if (!hl) return null;
+    try {
+        await ensureLang(hl, normalized);
+        const { tokens } = hl.codeToTokens(code, {
+            lang: normalized,
+            themes: { light: 'github-light-default', dark: 'github-dark-default' },
+            defaultColor: false,
+        });
+        return tokens.map((line) =>
+            line.map((tok) => ({ content: tok.content, style: tok.htmlStyle ?? {} })),
+        );
     } catch {
         return null;
     }
