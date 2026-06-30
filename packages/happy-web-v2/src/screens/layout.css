@@ -33,28 +33,28 @@ body.vh-col-resizing iframe {
   pointer-events: none;
 }
 
-/* floating expand button when the sidebar is collapsed */
-.app-expand-btn {
-  position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  left: 12px;
-  z-index: 50;
+/* thin rail holding the expand control when the sidebar is collapsed */
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.app-rail-btn {
   width: 34px;
   height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-md);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
   color: var(--text-dim);
+  transition: background var(--motion-fast);
 }
-.app-expand-btn:hover {
+.app-rail-btn:hover {
   color: var(--text);
-  background: var(--bg-3);
-}
-.app-shell--collapsed .app-detail {
-  position: relative;
+  background: var(--bg-2);
 }
 .app-sidebar {
   border-right: 1px solid var(--line);
