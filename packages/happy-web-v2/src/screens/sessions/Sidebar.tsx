@@ -14,7 +14,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { NewSessionModal } from './NewSessionModal';
 import './sidebar.css';
 
-type Filter = 'all' | 'active' | 'archived';
+type Filter = 'active' | 'archived';
 
 interface Row {
   key: string;
@@ -33,7 +33,7 @@ export function Sidebar() {
   const socket = useSocketStatus();
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>('active');
   const [showNew, setShowNew] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
 
@@ -41,7 +41,7 @@ export function Sidebar() {
     if (!sessions) return null;
     const sessRows = sessions
       .filter((s): s is Session => typeof s !== 'string')
-      .filter((s) => (filter === 'active' ? s.active : filter === 'archived' ? !s.active : true))
+      .filter((s) => (filter === 'archived' ? !s.active : s.active))
       .map<Row>((s) => ({
         key: s.id,
         kind: 'session',
@@ -116,7 +116,7 @@ export function Sidebar() {
       </div>
 
       <div className="sb-filter" role="tablist">
-        {(['all', 'active', 'archived'] as Filter[]).map((f) => (
+        {(['active', 'archived'] as Filter[]).map((f) => (
           <button
             key={f}
             className={`sb-filter-btn${filter === f ? ' is-on' : ''}`}
