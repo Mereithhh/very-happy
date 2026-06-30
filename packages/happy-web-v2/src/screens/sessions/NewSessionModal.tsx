@@ -42,6 +42,17 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
 
   const canCreate = !!machineId && directory.trim().length > 0 && !busy;
   const trimmed = directory.trim();
+
+  // The daemon's spawn doesn't expand a leading ~, so resolve it here using the
+  // selected machine's reported home dir. Avoids a bogus "create directory ~/…"
+  // prompt for paths that actually exist.
+  const homeDir = (online.find((m) => m.id === machineId) as any)?.metadata?.homeDir as string | undefined;
+  function resolveDir(p: string): string {
+    if (!homeDir) return p;
+    if (p === '~') return homeDir;
+    if (p.startsWith('~/')) return `${homeDir.replace(/\/$/, '')}/${p.slice(2)}`;
+    return p;
+  }
   const matchesEditing = editingId != null && list.find((p) => p.id === editingId)?.path === trimmed;
 
   function selectPreset(p: PathPreset) {
@@ -67,7 +78,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
   async function spawn(approve = false) {
     const res = await machineSpawnNewSession({
       machineId,
-      directory: trimmed,
+      directory: resolveDir(trimmed),
       agent,
       approvedNewDirectoryCreation: approve,
     });

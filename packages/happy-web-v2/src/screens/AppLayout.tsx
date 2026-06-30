@@ -43,16 +43,18 @@ export function AppLayout() {
   if (isDesktop) {
     if (collapsed) {
       return (
-        <div className="app-shell app-shell--collapsed">
-          <main className="app-detail">
+        <div className="app-shell app-shell--collapsed" style={{ gridTemplateColumns: '46px 1fr' }}>
+          <div className="app-rail">
             <button
-              className="app-expand-btn"
+              className="app-rail-btn"
               onClick={() => setCollapsed(false)}
               aria-label="expand sidebar"
               title="Show sidebar"
             >
               <PanelLeft size={18} />
             </button>
+          </div>
+          <main className="app-detail">
             <Outlet />
           </main>
         </div>
