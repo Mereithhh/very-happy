@@ -5,15 +5,19 @@
 import { useState } from 'react';
 import { ArrowLeft, Check, FolderTree, Pencil, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useSession, useRealtimeStatus } from '@/sync/storage';
+import { useSession } from '@/sync/storage';
+import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot, type Status } from '@/ui';
 import './header.css';
 
-function connectionStatus(presence: 'online' | number | undefined, realtime: string): Status {
+// Session is "connected" when its agent is online AND our relay socket is up.
+// (Previously gated on the realtime/voice status — a cut feature — so it never
+// showed connected.)
+function connectionStatus(presence: 'online' | number | undefined, socketStatus: string): Status {
     if (presence !== 'online') return 'offline';
-    if (realtime === 'connected') return 'connected';
+    if (socketStatus === 'connected') return 'connected';
     return 'offline';
 }
 
@@ -31,7 +35,7 @@ export function ChatHeader({
     const { t } = useTranslation();
     const navigate = useNavigate();
     const session = useSession(sessionId);
-    const realtime = useRealtimeStatus();
+    const socketStatus = useSocketStatus();
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
@@ -40,7 +44,7 @@ export function ChatHeader({
     const title = meta?.summary?.text?.trim() || t('session.newChat' as any);
     const host = meta?.host;
     const cwd = meta?.path;
-    const status = connectionStatus(session?.presence, realtime);
+    const status = connectionStatus(session?.presence, socketStatus);
 
     const startEdit = () => {
         setDraft(meta?.summary?.text ?? '');

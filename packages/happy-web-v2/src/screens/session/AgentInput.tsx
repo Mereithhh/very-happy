@@ -14,10 +14,10 @@ import {
     useSession,
     useSessionUsage,
     useSessionRunningTool,
-    useRealtimeStatus,
     useSetting,
     storage,
 } from '@/sync/storage';
+import { useSocketStatus } from '@/app/useConnection';
 import { useTranslation } from '@/i18n/useTranslation';
 import {
     getAvailableModels,
@@ -37,7 +37,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const session = useSession(sessionId);
     const usage = useSessionUsage(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
-    const realtime = useRealtimeStatus();
+    const socketStatus = useSocketStatus();
     const enterToSend = useSetting('agentInputEnterToSend');
 
     const taRef = useRef<HTMLTextAreaElement>(null);
@@ -55,7 +55,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const flavor = session?.metadata?.flavor as any;
     const metadata = session?.metadata ?? null;
     const online = session?.presence === 'online';
-    const connected = online && realtime === 'connected';
+    const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
 
     // selectors
