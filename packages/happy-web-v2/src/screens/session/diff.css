@@ -1,0 +1,68 @@
+.dv {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
+.dv-stat {
+  display: flex;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-3);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-11);
+}
+.dv-add {
+  color: var(--accent-2);
+}
+.dv-del {
+  color: var(--danger);
+}
+.dv-body {
+  max-height: 420px;
+  overflow: auto;
+}
+.dv-row {
+  display: flex;
+  align-items: flex-start;
+  white-space: pre;
+}
+.dv-row--add {
+  background: rgba(52, 226, 196, 0.1);
+}
+.dv-row--del {
+  background: rgba(255, 107, 107, 0.1);
+}
+.dv-no {
+  flex: none;
+  width: 34px;
+  padding: 0 6px;
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+  border-right: 1px solid var(--line);
+}
+.dv-sign {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  user-select: none;
+}
+.dv-row--add .dv-sign {
+  color: var(--accent-2);
+}
+.dv-row--del .dv-sign {
+  color: var(--danger);
+}
+.dv-text {
+  flex: 1;
+  min-width: 0;
+  padding-right: var(--sp-3);
+  color: var(--text);
+}
+.dv-row--del .dv-text {
+  color: var(--text-dim);
+}

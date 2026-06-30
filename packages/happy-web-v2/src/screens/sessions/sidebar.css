@@ -240,3 +240,14 @@
 .vh-menu-item.is-danger {
   color: var(--danger);
 }
+
+.sb-row-badge {
+  flex-shrink: 0;
+  font-size: var(--fs-11);
+  color: var(--accent-2);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  margin-right: var(--sp-2);
+}

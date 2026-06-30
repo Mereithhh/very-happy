@@ -428,6 +428,8 @@ export const en = {
             loadingFile: 'Loading file…',
             binaryFile: 'Binary file — not shown',
             refresh: 'Refresh',
+            editN: ({ n, total }: { n: number; total: number }) => `Edit ${n} of ${total}`,
+            replaceAll: 'replace all',
         },
         permission: {
             title: 'Permission required',
@@ -665,6 +667,7 @@ export const en = {
     },
 
     sidebar: {
+        collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
         archiveConfirm: 'Archive this session?',
         sessionsTitle: 'Very Happy',

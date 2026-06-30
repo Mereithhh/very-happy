@@ -8,9 +8,8 @@ import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
-import { CommandView } from './CommandView';
-import { CodeView } from './CodeView';
-import { asCommand, extractError, resultToText, toolTitle } from './toolInfo';
+import { ToolView } from './ToolView';
+import { toolTitle } from './toolInfo';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import './toolgroup.css';
@@ -26,25 +25,6 @@ function groupState(tools: ToolCallMessage[]): GroupState {
     return 'done';
 }
 
-function ToolBody({ message }: { message: ToolCallMessage }) {
-    const tool = message.tool;
-    const cmd = asCommand(tool);
-    if (cmd) {
-        return <CommandView command={cmd.command} stdout={cmd.stdout} stderr={cmd.stderr} error={cmd.error} />;
-    }
-    const error = tool.state === 'error' ? extractError(tool) : undefined;
-    const out = resultToText(tool.result);
-    return (
-        <div className="tg-body">
-            {Object.keys(tool.input ?? {}).length > 0 && (
-                <CodeView code={JSON.stringify(tool.input, null, 2)} lang="json" copyable={false} />
-            )}
-            {error && <div className="tg-error">{error}</div>}
-            {out && !error && <CodeView code={out} lang={null} copyable={false} />}
-        </div>
-    );
-}
-
 function ToolRow({ message, single }: { message: ToolCallMessage; single: boolean }) {
     const tool = message.tool;
     const [open, setOpen] = useState(single);
@@ -57,7 +37,7 @@ function ToolRow({ message, single }: { message: ToolCallMessage; single: boolea
                 <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
                 <span className="tg-tool-name">{toolTitle(tool)}</span>
             </button>
-            {open && <ToolBody message={message} />}
+            {open && <ToolView message={message} />}
         </div>
     );
 }

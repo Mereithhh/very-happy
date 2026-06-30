@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus } from 'lucide-react';
+import { ChevronLeft, Pencil, ListPlus, HelpCircle } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -20,6 +20,7 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
+import { TmuxHelpModal } from './TmuxHelpModal';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -56,6 +57,8 @@ export function WebTerminalScreen() {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const [connecting, setConnecting] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
+  const navigateTo = navigate;
 
   useEffect(() => {
     if (!machineId || !hostRef.current) return;
@@ -227,27 +230,42 @@ export function WebTerminalScreen() {
         </button>
         <div className="term-header-right">
           {connecting && <span className="term-connecting mono">{t('common.loading' as any)}</span>}
-          {cmds.length > 0 && (
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button className="sb-icon-btn" title={t('settingsSnippets.terminalCommands' as any)}>
-                  <ListPlus size={18} />
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content className="vh-menu" align="end" sideOffset={6}>
-                  {cmds.map((c) => (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup' as any)}>
+                <ListPlus size={18} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="vh-menu" align="end" sideOffset={6}>
+                {cmds.length > 0 ? (
+                  cmds.map((c) => (
                     <DropdownMenu.Item key={c.id} className="vh-menu-item" onSelect={() => runCommand(c.command)}>
                       {c.title}
                     </DropdownMenu.Item>
-                  ))}
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-          )}
+                  ))
+                ) : (
+                  <DropdownMenu.Item
+                    className="vh-menu-item"
+                    onSelect={() => navigateTo('/settings/snippets')}
+                  >
+                    {t('settingsSnippets.addCommand' as any)}
+                  </DropdownMenu.Item>
+                )}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          <button
+            className="sb-icon-btn"
+            title={t('tmuxHelp.title' as any)}
+            onClick={() => setShowHelp(true)}
+          >
+            <HelpCircle size={18} />
+          </button>
         </div>
       </header>
       <div ref={hostRef} className="term-host" />
+      {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
