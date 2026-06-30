@@ -319,6 +319,11 @@ export const zhHans: TranslationStructure = {
     },
 
     newSession: {
+        machine: '机器',
+        directory: '目录',
+        agent: '智能体',
+        createDirTitle: '创建目录?',
+        createDirMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建吗？`,
         title: '开始新会话',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',
@@ -395,6 +400,17 @@ export const zhHans: TranslationStructure = {
             modelLabel: '模型',
             permissionLabel: '模式',
             effortLabel: '强度',
+            attach: '添加图片',
+            presets: '提示词预设',
+            presetsTitle: '提示词预设',
+            files: '文件',
+            closeFiles: '关闭文件面板',
+            fileTree: '项目文件',
+            changedFiles: '改动文件',
+            noFiles: '没有文件',
+            loadingFile: '正在加载文件…',
+            binaryFile: '二进制文件 —— 不显示',
+            refresh: '刷新',
         },
         permission: {
             title: '需要权限',
@@ -632,6 +648,8 @@ export const zhHans: TranslationStructure = {
     },
 
     sidebar: {
+        openSessions: '打开的会话',
+        archiveConfirm: '归档此会话？',
         sessionsTitle: 'Happy',
         showArchived: '显示已归档',
         hideArchived: '隐藏已归档',

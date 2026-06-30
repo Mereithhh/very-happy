@@ -1,0 +1,77 @@
+.ns-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+.ns-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.7);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.ns-title {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  margin-bottom: var(--sp-2);
+}
+.ns-label {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  margin-top: var(--sp-2);
+}
+.ns-select,
+.ns-input {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: var(--fs-14);
+  color: var(--text);
+}
+.ns-select:focus,
+.ns-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ns-agents {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.ns-agent {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  color: var(--text-dim);
+}
+.ns-agent.is-on {
+  border-color: var(--accent);
+  color: var(--accent-2);
+  background: var(--accent-dim);
+}
+.ns-empty {
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+  padding: var(--sp-4) 0;
+}
+.ns-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}

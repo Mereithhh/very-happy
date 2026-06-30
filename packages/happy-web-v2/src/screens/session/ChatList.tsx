@@ -17,7 +17,7 @@ import { PermissionCard } from './PermissionCard';
 import './chatlist.css';
 
 type Row =
-    | { type: 'message'; key: string; message: Message; showMeta: boolean }
+    | { type: 'message'; key: string; message: Message; showMeta: boolean; thinkingDurationMs?: number }
     | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
 
 function buildRows(messages: Message[]): Row[] {
@@ -44,7 +44,16 @@ function buildRows(messages: Message[]): Row[] {
             rows.push({ type: 'toolgroup', key: `tg-${tools[0].id}`, tools });
             continue;
         }
-        rows.push({ type: 'message', key: m.id, message: m, showMeta: i === lastAgentTextIdx });
+        // Approximate thinking duration: from this thinking message's createdAt
+        // to the next message's createdAt (the moment output started).
+        let thinkingDurationMs: number | undefined;
+        if (m.kind === 'agent-text' && (m as any).isThinking) {
+            const next = messages[i + 1];
+            if (next && next.createdAt > m.createdAt) {
+                thinkingDurationMs = next.createdAt - m.createdAt;
+            }
+        }
+        rows.push({ type: 'message', key: m.id, message: m, showMeta: i === lastAgentTextIdx, thinkingDurationMs });
         i++;
     }
     return rows;
@@ -152,7 +161,13 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                         row.type === 'toolgroup' ? (
                             <ToolGroupView key={row.key} tools={row.tools} />
                         ) : (
-                            <MessageView key={row.key} message={row.message} showMeta={row.showMeta} />
+                            <MessageView
+                                key={row.key}
+                                message={row.message}
+                                showMeta={row.showMeta}
+                                sessionId={sessionId}
+                                thinkingDurationMs={row.thinkingDurationMs}
+                            />
                         ),
                     )}
                     <PermissionCard sessionId={sessionId} />

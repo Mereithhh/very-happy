@@ -15,11 +15,48 @@
   gap: var(--sp-2);
 }
 
+/* attachment previews */
+.ci-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.ci-att {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.ci-att-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ci-att-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+.ci-att-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
 /* composer */
 .ci-composer {
   display: flex;
   align-items: flex-end;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -29,6 +66,27 @@
 .ci-composer:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ci-composer--drag {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: var(--accent-dim);
+}
+.ci-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.ci-icon-btn:hover,
+.ci-icon-btn[data-state='open'] {
+  background: var(--bg-3);
+  color: var(--text);
 }
 .ci-textarea {
   flex: 1;

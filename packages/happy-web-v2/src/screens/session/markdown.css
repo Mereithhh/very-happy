@@ -61,3 +61,55 @@
 .md-link:hover {
   text-decoration: none;
 }
+
+/* options block (<options><option>..) */
+.md-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.md-option {
+  font-size: var(--fs-13);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  text-align: left;
+  word-break: break-word;
+}
+.md-option--clickable {
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.md-option--clickable:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+
+/* tables — scroll horizontally inside their own container */
+.md-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.md-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--fs-13);
+}
+.md-table th,
+.md-table td {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.md-table th {
+  background: var(--bg-2);
+  font-weight: 600;
+  color: var(--text);
+}
+.md-table tr:last-child td {
+  border-bottom: none;
+}

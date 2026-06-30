@@ -8,6 +8,7 @@
 .term-header {
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   padding-top: max(var(--sp-2), env(safe-area-inset-top));
   border-bottom: 1px solid var(--line);
@@ -17,20 +18,56 @@
 .term-back {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   color: var(--text-dim);
-  font-size: var(--fs-13);
+  flex-shrink: 0;
 }
-.term-back:hover {
+.term-back:hover { color: var(--text); }
+.term-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
   color: var(--text);
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+.term-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-title-edit {
+  color: var(--text-faint);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity var(--motion-fast);
+}
+.term-title:hover .term-title-edit { opacity: 1; }
+.term-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+.term-connecting {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
 }
 .term-host {
   flex: 1;
   min-height: 0;
-  padding: var(--sp-2);
-  padding-bottom: max(var(--sp-2), env(safe-area-inset-bottom));
   position: relative;
   overflow: hidden;
+  padding: 6px 8px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+.term-host .xterm {
+  height: 100%;
+  width: 100%;
+}
+.term-host .xterm-viewport {
+  overflow-y: auto;
 }
 .term-host.is-dragover::after {
   content: 'Drop to upload';
@@ -46,7 +83,4 @@
   font-family: var(--font-mono);
   font-size: var(--fs-13);
   pointer-events: none;
-}
-.term-host .xterm {
-  height: 100%;
 }

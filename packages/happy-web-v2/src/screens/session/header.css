@@ -118,3 +118,10 @@
   align-items: center;
   padding-right: var(--sp-1);
 }
+.ch-files-toggle {
+  flex: none;
+}
+.ch-files-toggle.is-active {
+  color: var(--accent-2);
+  background: var(--accent-dim);
+}

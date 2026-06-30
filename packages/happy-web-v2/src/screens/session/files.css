@@ -1,0 +1,194 @@
+.fp {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg-1);
+}
+.fp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+}
+.fp-tabs {
+  flex: 1;
+  display: flex;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.fp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  padding: 4px var(--sp-2);
+  border-radius: var(--r-sm);
+}
+.fp-tab.is-active {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.fp-tab-count {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--accent-2);
+  background: var(--accent-dim);
+  border-radius: var(--r-pill);
+  padding: 0 5px;
+}
+.fp-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.fp-icon:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.fp-spin {
+  animation: fp-rot 0.9s linear infinite;
+}
+@keyframes fp-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fp-spin {
+    animation: none;
+  }
+}
+
+.fp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fp-list {
+  flex: none;
+  max-height: 45%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+  padding: var(--sp-1) 0;
+}
+.fp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  padding: 4px var(--sp-3);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.fp-row:hover {
+  background: var(--bg-2);
+}
+.fp-row--active {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+.fp-row--dir {
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+.fp-name {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.fp-file-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.fp-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+.fp-st--mod { color: var(--warn); background: var(--warn-dim); }
+.fp-st--add { color: var(--accent-2); background: var(--accent-dim); }
+.fp-st--del { color: var(--danger); background: var(--danger-dim); }
+.fp-st--ren { color: var(--text-dim); background: var(--bg-3); }
+.fp-st--unt { color: var(--text-faint); background: var(--bg-3); }
+.fp-diffstat {
+  flex: none;
+  display: inline-flex;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.fp-add { color: var(--accent-2); }
+.fp-del { color: var(--danger); }
+.fp-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+
+.fp-viewer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fp-viewer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.fp-viewer-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.fp-fileview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-2);
+}
+.fp-fileview--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
