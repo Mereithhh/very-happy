@@ -2,11 +2,45 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  min-width: 0;
+  max-width: 100%;
 }
 .tv-stack {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* collapsible labelled section (default + task views) */
+.tv-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.tv-section-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: flex-start;
+}
+.tv-section-head:hover {
+  color: var(--text-dim);
+}
+.tv-section-body {
+  min-width: 0;
+}
+.tv-empty {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-faint);
+  padding: var(--sp-1) 0;
 }
 .tv-path {
   font-family: var(--font-mono);

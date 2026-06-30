@@ -9,7 +9,7 @@ import type { ToolCallMessage } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
 import { ToolView } from './ToolView';
-import { toolTitle } from './toolInfo';
+import { toolLabel, toolDetail } from './toolInfo';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import './toolgroup.css';
@@ -30,12 +30,15 @@ function ToolRow({ message, single }: { message: ToolCallMessage; single: boolea
     const [open, setOpen] = useState(single);
     const status =
         tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
+    const label = toolLabel(tool);
+    const detail = toolDetail(tool);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <button type="button" className="tg-row-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
                 <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                 <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
-                <span className="tg-tool-name">{toolTitle(tool)}</span>
+                <span className="tg-tool-label">{label}</span>
+                {detail && detail !== label && <span className="tg-tool-detail">{detail}</span>}
             </button>
             {open && <ToolView message={message} />}
         </div>

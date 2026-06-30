@@ -2,6 +2,8 @@
   display: flex;
   gap: var(--sp-2);
   align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
 }
 .tg-spine {
   flex: none;
@@ -80,22 +82,36 @@
   font-size: var(--fs-12);
   color: var(--text-dim);
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 2px 0;
 }
-.tg-tool-name {
+.tg-tool-label {
+  flex: none;
   color: var(--text);
+  font-weight: 600;
+}
+.tg-tool-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tg-row--error .tg-tool-name {
+.tg-row--error .tg-tool-label {
   color: var(--danger);
 }
 .tg-body {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+}
+/* tool body content must never overflow the spine container */
+.tg-row > .tv,
+.tg-content > .tv {
+  min-width: 0;
+  max-width: 100%;
 }
 .tg-error {
   font-family: var(--font-mono);

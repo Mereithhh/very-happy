@@ -1,11 +1,11 @@
 /**
  * ToolView — specialized per-tool rendering for an expanded tool call.
- * Dispatches on tool name to a purpose-built view (Bash terminal, Edit/Write
- * diff, Read content, TodoWrite checklist, Grep/Glob/LS results, Task subagent,
- * WebFetch/WebSearch), with a JSON-ish default for unknown tools.
+ * Dispatches on tool name to a purpose-built view; everything unrecognized
+ * (including the long tail of MCP tools) gets an attractive default with a
+ * collapsible pretty-printed input + output rather than a raw JSON blob.
  */
-import type { ReactNode } from 'react';
-import { CheckSquare, Circle, Square, Globe, Search } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
@@ -21,6 +21,20 @@ function asString(v: unknown): string | null {
     return typeof v === 'string' ? v : null;
 }
 
+// Collapsible labelled section used by the default / search / web views.
+function Section({ label, children, defaultOpen = true }: { label: string; children: ReactNode; defaultOpen?: boolean }) {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="tv-section">
+            <button type="button" className="tv-section-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+                <ChevronRight size={12} className={`tg-chevron${open ? ' is-open' : ''}`} />
+                <span>{label}</span>
+            </button>
+            {open && <div className="tv-section-body">{children}</div>}
+        </div>
+    );
+}
+
 // ── Bash ───────────────────────────────────────────────────────────────────
 function BashView({ tool }: { tool: ToolCall }) {
     const cmd = asCommand(tool);
@@ -32,15 +46,22 @@ function BashView({ tool }: { tool: ToolCall }) {
 function EditView({ tool }: { tool: ToolCall }) {
     const showLn = useSetting('showLineNumbersInToolViews');
     const input = tool.input ?? {};
-    const oldString = trimIdent(asString(input.old_string) ?? '');
-    const newString = trimIdent(asString(input.new_string) ?? '');
-    return <DiffView oldText={oldString} newText={newString} showLineNumbers={showLn} />;
+    const lang = langForPath(asString(input.file_path));
+    return (
+        <DiffView
+            oldText={trimIdent(asString(input.old_string) ?? '')}
+            newText={trimIdent(asString(input.new_string) ?? '')}
+            lang={lang}
+            showLineNumbers={showLn}
+        />
+    );
 }
 
 function MultiEditView({ tool }: { tool: ToolCall }) {
     const { t } = useTranslation();
     const showLn = useSetting('showLineNumbersInToolViews');
     const edits = Array.isArray(tool.input?.edits) ? tool.input.edits : [];
+    const lang = langForPath(asString(tool.input?.file_path));
     if (edits.length === 0) return <DefaultView tool={tool} />;
     return (
         <div className="tv-stack">
@@ -53,6 +74,7 @@ function MultiEditView({ tool }: { tool: ToolCall }) {
                     <DiffView
                         oldText={trimIdent(asString(e?.old_string) ?? '')}
                         newText={trimIdent(asString(e?.new_string) ?? '')}
+                        lang={lang}
                         showLineNumbers={showLn}
                     />
                 </div>
@@ -64,7 +86,8 @@ function MultiEditView({ tool }: { tool: ToolCall }) {
 function WriteView({ tool }: { tool: ToolCall }) {
     const showLn = useSetting('showLineNumbersInToolViews');
     const content = asString(tool.input?.content) ?? '';
-    return <DiffView oldText="" newText={content} showLineNumbers={showLn} />;
+    const lang = langForPath(asString(tool.input?.file_path));
+    return <DiffView oldText="" newText={content} lang={lang} showLineNumbers={showLn} />;
 }
 
 // ── Read ─────────────────────────────────────────────────────────────────────
@@ -72,10 +95,18 @@ function ReadView({ tool }: { tool: ToolCall }) {
     const filePath = asString(tool.input?.file_path) ?? asString(tool.input?.locations?.[0]?.path);
     const result = tool.result as any;
     const content = asString(result?.file?.content) ?? (typeof result === 'string' ? result : null);
-    if (content == null) {
+    if (content == null || content.trim() === '') {
         return filePath ? <div className="tv-path">{filePath}</div> : <DefaultView tool={tool} />;
     }
-    return <CodeView code={content} lang={langForPath(filePath)} copyable={false} />;
+    return <CodeView code={content} lang={langForPath(filePath)} copyable={false} showLineNumbers />;
+}
+
+// ── NotebookEdit ──────────────────────────────────────────────────────────────
+function NotebookView({ tool }: { tool: ToolCall }) {
+    const showLn = useSetting('showLineNumbersInToolViews');
+    const source = asString(tool.input?.new_source) ?? asString(tool.input?.source) ?? '';
+    if (!source) return <DefaultView tool={tool} />;
+    return <DiffView oldText="" newText={source} lang="python" showLineNumbers={showLn} />;
 }
 
 // ── TodoWrite ─────────────────────────────────────────────────────────────────
@@ -127,6 +158,7 @@ function TaskView({ message }: { message: ToolCallMessage }) {
     const tool = message.tool;
     const subtype = asString(tool.input?.subagent_type);
     const prompt = asString(tool.input?.prompt);
+    const out = resultToText(tool.result);
     const children = (message.children ?? []).filter((c) => c.kind === 'tool-call') as Message[];
     return (
         <div className="tv-stack">
@@ -137,6 +169,11 @@ function TaskView({ message }: { message: ToolCallMessage }) {
                 )}
             </div>
             {prompt && <div className="tv-task-prompt">{prompt}</div>}
+            {out.trim() && (
+                <Section label={t('tools.fullView.output' as any)} defaultOpen={false}>
+                    <pre className="tv-results">{out}</pre>
+                </Section>
+            )}
         </div>
     );
 }
@@ -161,27 +198,54 @@ function WebView({ tool }: { tool: ToolCall }) {
     );
 }
 
-// ── Default ───────────────────────────────────────────────────────────────────
+// ── Default (incl. all MCP / unrecognized tools) ─────────────────────────────────
 function DefaultView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     const out = resultToText(tool.result);
-    const hasInput = Object.keys(tool.input ?? {}).length > 0;
+    const inputKeys = Object.keys(tool.input ?? {});
+    const hasInput = inputKeys.length > 0;
+    // Detect whether the output is structured (JSON) vs prose, for nicer rendering.
+    const outIsJson = out.trim().startsWith('{') || out.trim().startsWith('[');
     return (
         <div className="tv-stack">
-            {hasInput && <CodeView code={JSON.stringify(tool.input, null, 2)} lang="json" copyable={false} />}
+            {hasInput && (
+                <Section label={t('tools.fullView.inputParams' as any)} defaultOpen={!out}>
+                    <CodeView code={prettyInput(tool.input)} lang="json" copyable={false} />
+                </Section>
+            )}
             {error && <div className="tg-error">{error}</div>}
-            {out && !error && <CodeView code={out} lang={null} copyable={false} />}
+            {out && !error && (
+                <Section label={t('tools.fullView.output' as any)} defaultOpen>
+                    {outIsJson ? (
+                        <CodeView code={out} lang="json" copyable={false} />
+                    ) : (
+                        <pre className="tv-results">{out}</pre>
+                    )}
+                </Section>
+            )}
+            {!hasInput && !out && !error && <div className="tv-empty">{t('tools.fullView.noOutput' as any)}</div>}
         </div>
     );
+}
+
+function prettyInput(input: unknown): string {
+    try {
+        return JSON.stringify(input, null, 2);
+    } catch {
+        return String(input);
+    }
 }
 
 export function ToolView({ message }: { message: ToolCallMessage }) {
     const tool = message.tool;
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     let body: ReactNode;
+    let handlesOwnError = false;
     switch (tool.name) {
         case 'Bash':
             body = <BashView tool={tool} />;
+            handlesOwnError = true;
             break;
         case 'Edit':
             body = <EditView tool={tool} />;
@@ -191,6 +255,9 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
             break;
         case 'Write':
             body = <WriteView tool={tool} />;
+            break;
+        case 'NotebookEdit':
+            body = <NotebookView tool={tool} />;
             break;
         case 'Read':
         case 'read':
@@ -203,25 +270,27 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
         case 'Glob':
         case 'LS':
             body = <SearchView tool={tool} />;
+            handlesOwnError = true;
             break;
         case 'Task':
         case 'Agent':
             body = <TaskView message={message} />;
+            handlesOwnError = true;
             break;
         case 'WebFetch':
         case 'WebSearch':
             body = <WebView tool={tool} />;
+            handlesOwnError = true;
             break;
         default:
+            // All MCP + unrecognized tools land here with a clean collapsible view.
             body = <DefaultView tool={tool} />;
+            handlesOwnError = true;
     }
     return (
         <div className="tv">
             {body}
-            {/* Edit/Read-style views don't surface tool errors themselves — show here. */}
-            {error && tool.name !== 'Bash' && tool.name !== 'Grep' && tool.name !== 'Glob' && tool.name !== 'LS' && tool.name !== 'WebFetch' && tool.name !== 'WebSearch' && (
-                <div className="tg-error">{error}</div>
-            )}
+            {error && !handlesOwnError && <div className="tg-error">{error}</div>}
         </div>
     );
 }
