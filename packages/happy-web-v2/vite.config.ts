@@ -87,5 +87,18 @@ export default defineConfig({
       },
     },
   },
-  server: { port: 8082, host: true },
+  server: {
+    port: 8082,
+    host: true,
+    // Dev-only: proxy the API + socket to the live server so the app talks
+    // same-origin to localhost (no cross-origin / Clash / wss quirks). In dev the
+    // app uses a same-origin serverUrl (see sync/serverConfig getServerUrl), so
+    // these paths get forwarded here. Ignored entirely by `vite build`.
+    proxy: {
+      '/v1': { target: DEFAULT_SERVER_URL, changeOrigin: true, secure: true, ws: true },
+      '/v2': { target: DEFAULT_SERVER_URL, changeOrigin: true, secure: true },
+      '/v3': { target: DEFAULT_SERVER_URL, changeOrigin: true, secure: true },
+      '/health': { target: DEFAULT_SERVER_URL, changeOrigin: true, secure: true },
+    },
+  },
 });

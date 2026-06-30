@@ -8,6 +8,13 @@ const LOG_SERVER_KEY = 'log-server-url';
 const DEFAULT_SERVER_URL = __DEFAULT_SERVER_URL__;
 
 export function getServerUrl(): string {
+    // Local dev: talk same-origin to the Vite dev server, which proxies /v1,
+    // /v3, /health (incl. the socket) to the real server. Avoids cross-origin /
+    // Clash / wss issues that otherwise block `pnpm dev` from connecting.
+    // Dead-code-eliminated in production builds (import.meta.env.DEV === false).
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+        return window.location.origin;
+    }
     return serverConfigStorage.getString(SERVER_KEY) ||
            (globalThis as any).__HAPPY_CONFIG__?.serverUrl ||
            DEFAULT_SERVER_URL;
