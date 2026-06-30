@@ -1247,6 +1247,7 @@ export const zhHans: TranslationStructure = {
     },
 
     tmuxHelp: {
+        title: '快捷键',
         heading: '快捷键',
         mouse: '鼠标',
         prefix: '前缀键',

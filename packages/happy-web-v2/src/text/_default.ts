@@ -1253,6 +1253,7 @@ export const en = {
     },
 
     tmuxHelp: {
+        title: 'Keyboard shortcuts',
         // tmux cheat-sheet modal (web terminal header "?" button)
         heading: 'Shortcuts',
         mouse: 'Mouse',
