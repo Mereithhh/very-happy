@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
@@ -9,10 +9,15 @@ import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark } from '@/ui';
 import { Modal } from '@/modal';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
+import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { NewSessionModal } from './NewSessionModal';
 import './sidebar.css';
+
+function rowHref(r: Row): string {
+  return r.kind === 'terminal' ? `/terminal/${r.machineId}?tid=${r.terminalId}` : `/session/${r.session!.id}`;
+}
 
 type Filter = 'active' | 'archived';
 
@@ -35,7 +40,9 @@ export function Sidebar() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('active');
   const [showNew, setShowNew] = useState(false);
+  const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
+  const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -71,6 +78,47 @@ export function Sidebar() {
     return all;
   }, [sessions, terminals, query, filter]);
 
+  // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
+  // jumps to that conversation. Mirrors the v1 power-user shortcut.
+  const rowsRef = useRef<Row[] | null>(rows);
+  rowsRef.current = rows;
+  useEffect(() => {
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    const clear = () => {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      setCmdHeld(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+        const list = rowsRef.current;
+        const target = list?.[Number(e.key) - 1];
+        if (target) {
+          e.preventDefault();
+          if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+          setCmdHeld(false);
+          navigate(rowHref(target));
+        }
+        return;
+      }
+      // long-press ⌘/Ctrl (no other key) → reveal badges after a short delay
+      if ((e.key === 'Meta' || e.key === 'Control') && !holdTimer) {
+        holdTimer = setTimeout(() => setCmdHeld(true), 280);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Meta' || e.key === 'Control') clear();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', clear);
+      if (holdTimer) clearTimeout(holdTimer);
+    };
+  }, [navigate]);
+
   return (
     <div className="sb">
       <header className="sb-header">
@@ -80,6 +128,9 @@ export function Sidebar() {
         </div>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
+          <button className="sb-icon-btn" title={t('sidebar.collapse' as any)} onClick={toggleCollapsed}>
+            <PanelLeftClose size={17} />
+          </button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="sb-icon-btn" title={t('sidebar.newSession' as any)}>
@@ -135,7 +186,7 @@ export function Sidebar() {
         ) : rows.length === 0 ? (
           <div className="sb-empty">{query ? t('sidebar.noResults' as any) : t('newSession.empty' as any)}</div>
         ) : (
-          rows.map((r) => <SidebarRow key={r.key} row={r} />)
+          rows.map((r, i) => <SidebarRow key={r.key} row={r} badge={cmdHeld && i < 9 ? i + 1 : undefined} />)
         )}
       </div>
 
@@ -150,7 +201,7 @@ export function Sidebar() {
   );
 }
 
-function SidebarRow({ row }: { row: Row }) {
+function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const { t } = useTranslation();
@@ -209,6 +260,7 @@ function SidebarRow({ row }: { row: Row }) {
           <span className="sb-row-title">{row.title}</span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
+        {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
       </button>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>

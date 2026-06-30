@@ -411,6 +411,8 @@ export const zhHans: TranslationStructure = {
             loadingFile: '正在加载文件…',
             binaryFile: '二进制文件 —— 不显示',
             refresh: '刷新',
+            editN: ({ n, total }: { n: number; total: number }) => `第 ${n} / ${total} 处修改`,
+            replaceAll: '全部替换',
         },
         permission: {
             title: '需要权限',
@@ -648,6 +650,7 @@ export const zhHans: TranslationStructure = {
     },
 
     sidebar: {
+        collapse: '收起侧栏',
         openSessions: '打开的会话',
         archiveConfirm: '归档此会话？',
         sessionsTitle: 'Happy',

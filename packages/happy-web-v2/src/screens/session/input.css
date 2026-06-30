@@ -101,8 +101,14 @@
   padding: 6px var(--sp-2);
   max-height: 200px;
 }
-.ci-textarea:focus {
+/* The composer container owns the focus treatment. Neutralize the global
+ * :focus-visible ring (base.css) on the inner textarea so we don't stack a
+ * second border + glow box inside the composer. */
+.ci-textarea:focus,
+.ci-textarea:focus-visible {
   outline: none;
+  border: none;
+  box-shadow: none;
 }
 .ci-textarea::placeholder {
   color: var(--text-faint);

@@ -45,3 +45,55 @@
   font-family: inherit;
   white-space: pre;
 }
+
+/* shiki output: force the Console mono font + sizing, and drive the dual-theme
+ * via CSS variables (dark by default; light when the app theme is light). */
+.cv-shiki :global(pre.shiki),
+.cv-shiki pre.shiki {
+  margin: 0;
+  padding: var(--sp-3);
+  overflow-x: auto;
+  font-family: var(--font-mono) !important;
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  background: var(--bg-0) !important;
+}
+.cv-shiki pre.shiki code {
+  font-family: inherit;
+  white-space: pre;
+}
+/* shiki dual-theme: spans carry color + --shiki-dark. Default render is the
+ * light theme; under dark themes, swap to the dark color. */
+.cv-shiki pre.shiki span {
+  color: var(--shiki-dark, inherit);
+}
+:root[data-theme='light'] .cv-shiki pre.shiki,
+:root[data-theme='light'] .cv-shiki pre.shiki span {
+  color: var(--shiki-light, inherit);
+}
+:root[data-theme='light'] .cv-shiki pre.shiki {
+  background: var(--bg-1) !important;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .cv-shiki pre.shiki,
+  :root:not([data-theme]) .cv-shiki pre.shiki span {
+    color: var(--shiki-light, inherit);
+  }
+  :root:not([data-theme]) .cv-shiki pre.shiki {
+    background: var(--bg-1) !important;
+  }
+}
+/* line numbers (best-effort; shiki line spans) */
+.cv--ln .cv-shiki pre.shiki code {
+  counter-reset: ln;
+}
+.cv--ln .cv-shiki pre.shiki .line::before {
+  counter-increment: ln;
+  content: counter(ln);
+  display: inline-block;
+  width: 2.5em;
+  margin-right: var(--sp-2);
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+}
