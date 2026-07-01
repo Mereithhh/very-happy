@@ -55,14 +55,16 @@ export function WebTerminalScreen() {
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle' as any);
 
   const hostRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const navigateTo = navigate;
 
   useEffect(() => {
-    if (!machineId || !hostRef.current) return;
+    if (!machineId || !hostRef.current || !innerRef.current) return;
     ensureImeFix();
+    const mount = innerRef.current;
 
     const term = new Terminal({
       fontFamily: 'var(--font-mono), monospace',
@@ -72,7 +74,7 @@ export function WebTerminalScreen() {
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
-    term.open(hostRef.current);
+    term.open(mount);
     termRef.current = term;
 
     const safeFit = () => {
@@ -147,8 +149,12 @@ export function WebTerminalScreen() {
       });
     };
     const ro = new ResizeObserver(scheduleFit);
-    ro.observe(hostRef.current);
+    ro.observe(mount);
     window.addEventListener('resize', scheduleFit);
+    // rAF is paused while the tab is hidden, so a resize that lands in the
+    // background never gets fitted; re-fit when the tab becomes visible again.
+    const onVisible = () => { if (!document.hidden) scheduleFit(); };
+    document.addEventListener('visibilitychange', onVisible);
 
     (async () => {
       safeFit();
@@ -187,6 +193,7 @@ export function WebTerminalScreen() {
       clearTimeout(t0);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
+      document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       apiSocket.offMessage('terminal-output', onOutput);
       apiSocket.offMessage('terminal-exit', onExit);
@@ -264,7 +271,9 @@ export function WebTerminalScreen() {
           </button>
         </div>
       </header>
-      <div ref={hostRef} className="term-host" />
+      <div ref={hostRef} className="term-host">
+        <div ref={innerRef} className="term-host-inner" />
+      </div>
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
