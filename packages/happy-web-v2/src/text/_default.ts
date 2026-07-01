@@ -918,6 +918,9 @@ export const en = {
     },
 
     terminal: {
+        // Deleting a web terminal destroys its tmux session on the machine
+        deleteTitle: 'Delete terminal?',
+        deleteMessage: 'This destroys the tmux session on the machine and cannot be undone.',
         // Used by terminal connection screens
         webBrowserRequired: 'Web Browser Required',
         webBrowserRequiredDescription: 'Terminal connection links can only be opened in a web browser for security reasons. Please use the QR code scanner or open this link on a computer.',

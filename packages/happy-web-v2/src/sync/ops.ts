@@ -341,15 +341,18 @@ export interface MachineTerminal {
     createdAt?: number;
 }
 
-/** Ask a machine for its live tmux terminals (cross-device source of truth). */
-export async function machineListTerminals(machineId: string): Promise<MachineTerminal[]> {
+/** Ask a machine for its live tmux terminals (cross-device source of truth).
+ *  Returns null on RPC failure (offline/timeout) so callers can distinguish
+ *  "the machine has no terminals" ([]) from "we couldn't reach it" (null) — the
+ *  reconcile pass must NOT reap local records on a failed query. */
+export async function machineListTerminals(machineId: string): Promise<MachineTerminal[] | null> {
     try {
         const result = await apiSocket.machineRPC<{ type: 'success'; terminals: MachineTerminal[] }, {}>(
             machineId, 'list-terminals', {},
         );
         return result.terminals ?? [];
     } catch {
-        return [];
+        return null;
     }
 }
 

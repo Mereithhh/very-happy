@@ -2,9 +2,10 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
-import { useSessions } from '@/sync/storage';
+import { useSessions, useAllMachines } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
+import { sessionUpdateTitle, sessionArchive, machineKillTerminal, machineListTerminals } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark } from '@/ui';
 import { Modal } from '@/modal';
@@ -42,7 +43,31 @@ export function Sidebar() {
   const [showNew, setShowNew] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
+  const reconcileTerminals = useTerminalSessions((s) => s.reconcile);
+  const machines = useAllMachines({ includeOffline: true });
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
+
+  // Reconcile the (client-owned) terminal list against each online machine's
+  // REAL live tmux sessions: adopt orphans (created elsewhere / lost records) so
+  // they're visible+deletable instead of leaking, and drop dead records. Runs on
+  // mount and whenever the set of online machines changes.
+  const onlineMachineIds = useMemo(
+    () => machines.filter(isMachineOnline).map((m) => m.id).join(','),
+    [machines],
+  );
+  useEffect(() => {
+    if (!onlineMachineIds) return;
+    let cancelled = false;
+    for (const id of onlineMachineIds.split(',')) {
+      const m = machines.find((x) => x.id === id);
+      const name = (m as any)?.metadata?.displayName || (m as any)?.metadata?.host || id.slice(0, 8);
+      machineListTerminals(id).then((live) => {
+        if (!cancelled) reconcileTerminals(id, name, live);
+      });
+    }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineMachineIds]);
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -240,6 +265,15 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
 
   const onArchiveOrDelete = async () => {
     if (isTerminal) {
+      // Deleting a terminal destroys its tmux session on the machine — confirm,
+      // then kill on the machine AND drop the record (they were out of sync
+      // before: removing the record alone orphaned the tmux session forever).
+      const ok = await Modal.confirm(t('terminal.deleteTitle' as any), t('terminal.deleteMessage' as any), {
+        confirmText: t('common.delete' as any),
+        destructive: true,
+      });
+      if (!ok) return;
+      await machineKillTerminal(row.machineId!, row.terminalId!);
       removeTerminal(row.terminalId!);
     } else {
       const ok = await Modal.confirm(t('sidebar.archiveConfirm' as any), undefined, {

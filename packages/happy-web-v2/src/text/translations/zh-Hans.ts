@@ -900,6 +900,9 @@ export const zhHans: TranslationStructure = {
     },
 
     terminal: {
+        // 删除网页终端会销毁机器上的 tmux 会话
+        deleteTitle: '删除终端？',
+        deleteMessage: '这会销毁机器上的 tmux 会话，且不可恢复。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',
