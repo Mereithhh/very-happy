@@ -59,10 +59,25 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  display: flex;
   padding: 6px 8px;
   padding-bottom: max(6px, env(safe-area-inset-bottom));
 }
-.term-host .xterm {
+/* xterm mounts in this UNPADDED inner box, not directly in .term-host. The
+   FitAddon computes rows from getComputedStyle(parent).height, which — with
+   border-box — INCLUDES .term-host's padding, but it only subtracts the xterm
+   element's own padding (0). Mounting in an unpadded wrapper makes the parent
+   height it reads equal the true content area, so fit is exact and the grid
+   can't overflow into a spurious vertical scrollbar at small container heights. */
+.term-host-inner {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.term-host-inner .xterm {
   height: 100%;
   width: 100%;
 }
