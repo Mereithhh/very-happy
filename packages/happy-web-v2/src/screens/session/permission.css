@@ -1,0 +1,61 @@
+.perm-card {
+  border: 1px solid var(--warn);
+  background: var(--warn-dim);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.perm-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--warn);
+}
+.perm-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+.perm-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.perm-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.perm-req {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.perm-req-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.perm-tool {
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+.perm-sub {
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.perm-actions,
+.perm-batch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.perm-batch {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+}

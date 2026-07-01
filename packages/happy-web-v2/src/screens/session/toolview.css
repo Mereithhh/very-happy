@@ -1,0 +1,167 @@
+.tv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.tv-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* collapsible labelled section (default + task views) */
+.tv-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.tv-section-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: flex-start;
+}
+.tv-section-head:hover {
+  color: var(--text-dim);
+}
+.tv-section-body {
+  min-width: 0;
+}
+.tv-empty {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-faint);
+  padding: var(--sp-1) 0;
+}
+.tv-path {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+/* query/search/web rows */
+.tv-query {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-1) var(--sp-2);
+}
+.tv-query-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.tv-query-text,
+.tv-query-link {
+  word-break: break-all;
+}
+.tv-query-link {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tv-query-in {
+  color: var(--text-faint);
+}
+.tv-results {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  white-space: pre;
+}
+
+/* todo checklist */
+.tv-todos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tv-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text);
+}
+.tv-todo-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-faint);
+}
+.tv-todo--completed {
+  color: var(--text-faint);
+}
+.tv-todo--completed .tv-todo-text {
+  text-decoration: line-through;
+}
+.tv-todo--completed .tv-todo-icon {
+  color: var(--accent-2);
+}
+.tv-todo--in_progress {
+  color: var(--text);
+}
+.tv-todo--in_progress .tv-todo-icon {
+  color: var(--accent-2);
+}
+
+/* multiedit + task */
+.tv-multiedit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.tv-multiedit-head,
+.tv-task-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.tv-task-count {
+  color: var(--text-dim);
+}
+.tv-task-prompt {
+  font-size: var(--fs-13);
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+}
+.tv-badge {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--accent-2);
+  background: var(--accent-dim);
+  border-radius: var(--r-sm);
+  padding: 0 6px;
+}

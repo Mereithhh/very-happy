@@ -1,0 +1,101 @@
+.msg {
+  display: flex;
+  flex-direction: column;
+}
+.msg--user {
+  align-items: flex-end;
+}
+.msg--agent {
+  align-items: stretch;
+}
+
+/* user bubble — raised */
+.msg-bubble {
+  max-width: min(85%, 640px);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-14);
+  line-height: 1.55;
+  color: var(--text);
+  box-shadow: var(--shadow-lift);
+}
+/* Long user queries: cap height + internal scroll instead of expanding unbounded. */
+.msg-bubble-scroll {
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overscroll-behavior: contain;
+}
+.msg-bubble--cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--accent-2);
+  background: var(--accent-dim);
+  border-color: transparent;
+}
+.msg-cmd-name {
+  font-weight: 600;
+}
+.msg-cmd-args {
+  color: var(--text-dim);
+}
+
+/* agent text — borderless */
+.msg-agent-text {
+  font-size: var(--fs-14);
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 100%;
+}
+
+/* agent event — centered system line */
+.msg--event {
+  align-items: center;
+}
+.msg-event-line {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  padding: 2px var(--sp-2);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-pill);
+  max-width: 100%;
+  text-align: center;
+  word-break: break-word;
+}
+/* subtle inline system note (title change, plan mode, compaction, …) */
+.msg-event-line--subtle {
+  border: none;
+  color: var(--text-faint);
+  opacity: 0.8;
+  padding: 1px var(--sp-1);
+}
+
+/* thinking block */
+.msg-thinking {
+  border-left: 2px solid var(--line-2);
+  padding-left: var(--sp-3);
+}
+.msg-thinking-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-faint);
+}
+.msg-thinking-emoji {
+  font-size: var(--fs-12);
+}
+.msg-thinking-body {
+  margin-top: var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+}

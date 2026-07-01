@@ -1,0 +1,88 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 6px 1fr;
+  height: 100dvh;
+  background: var(--bg-0);
+}
+.app-shell--mobile,
+.app-shell--collapsed {
+  grid-template-columns: 1fr;
+}
+
+/* draggable column divider */
+.app-resize-handle {
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+.app-resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  background: var(--line);
+  transition: background var(--motion-fast);
+}
+.app-resize-handle:hover::after {
+  background: var(--accent);
+}
+body.vh-col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.vh-col-resizing iframe {
+  pointer-events: none;
+}
+
+/* thin rail holding the expand control when the sidebar is collapsed */
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.app-rail-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  transition: background var(--motion-fast);
+}
+.app-rail-btn:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.app-sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-sidebar--full {
+  border-right: none;
+}
+.app-detail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+/* generic picker/scroll page surface used by terminal picker etc. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-0);
+}
+.app-detail--full {
+  height: 100dvh;
+}

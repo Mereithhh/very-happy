@@ -1,0 +1,46 @@
+.cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  overflow: hidden;
+  max-width: 100%;
+}
+.cmd-line {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.cmd-prompt {
+  color: var(--accent-2);
+  flex: none;
+  user-select: none;
+  position: sticky;
+  left: 0;
+  background: var(--bg-1);
+}
+.cmd-cmd {
+  color: var(--text);
+  white-space: pre;
+}
+.cmd-out {
+  max-height: 360px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.cmd-stream {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  white-space: pre;
+  color: var(--text-dim);
+  min-width: max-content;
+}
+.cmd-stream--err {
+  color: var(--danger);
+}

@@ -1,0 +1,125 @@
+.tg {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+.tg-spine {
+  flex: none;
+  width: 2px;
+  border-radius: var(--r-pill);
+  background: var(--line-2);
+}
+.tg--running .tg-spine {
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.tg--error .tg-spine {
+  background: var(--danger);
+}
+.tg--mixed .tg-spine {
+  background: var(--warn);
+}
+.tg-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.tg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  padding: 2px 0;
+  width: 100%;
+  text-align: left;
+}
+.tg-summary {
+  font-weight: 600;
+  color: var(--text);
+}
+.tg-elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--fs-11);
+}
+.tg-elapsed--live {
+  color: var(--accent-2);
+}
+.tg-elapsed--err {
+  color: var(--danger);
+}
+.tg-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--motion-fast);
+}
+.tg-chevron.is-open {
+  transform: rotate(90deg);
+}
+.tg-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.tg-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.tg-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 2px 0;
+}
+.tg-tool-label {
+  flex: none;
+  color: var(--text);
+  font-weight: 600;
+}
+.tg-tool-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg-row--error .tg-tool-label {
+  color: var(--danger);
+}
+.tg-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+/* tool body content must never overflow the spine container */
+.tg-row > .tv,
+.tg-content > .tv {
+  min-width: 0;
+  max-width: 100%;
+}
+.tg-error {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
