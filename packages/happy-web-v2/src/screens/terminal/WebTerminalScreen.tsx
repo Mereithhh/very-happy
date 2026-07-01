@@ -40,6 +40,15 @@ const THEME = {
   cyan: '#34E2C4', white: '#E8EDF4',
 };
 
+// Explicit mono stack — NOT the --font-mono CSS var: xterm measures glyph size
+// from this string directly (canvas), where a var() fails to resolve → it falls
+// back to a different font whose metrics don't match what's rendered → clipped
+// glyphs. lineHeight 1.3 gives descenders and CJK vertical room (default 1.0 is
+// cramped). IBM Plex Mono loads async via @fontsource, so we also re-measure
+// once document.fonts is ready (below) — otherwise the cell size is locked to
+// the fallback metrics and text gets clipped after the real font swaps in.
+const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+
 export function WebTerminalScreen() {
   const { machineId } = useParams<{ machineId: string }>();
   const [params] = useSearchParams();
@@ -67,8 +76,8 @@ export function WebTerminalScreen() {
     const mount = innerRef.current;
 
     const term = new Terminal({
-      fontFamily: 'var(--font-mono), monospace',
-      fontSize: 13, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
+      fontFamily: TERM_FONT,
+      fontSize: 13, lineHeight: 1.3, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
       scrollback: 5000,
     });
     const fit = new FitAddon();
@@ -155,6 +164,14 @@ export function WebTerminalScreen() {
     // background never gets fitted; re-fit when the tab becomes visible again.
     const onVisible = () => { if (!document.hidden) scheduleFit(); };
     document.addEventListener('visibilitychange', onVisible);
+    // The web font loads async; xterm caches glyph cell size at open time from
+    // whatever font was available then. Once the real font is ready, force a
+    // re-measure so the cell size matches and text isn't clipped, then refit.
+    (document as any).fonts?.ready?.then(() => {
+      if (disposed) return;
+      try { (term as any)._core?._charSizeService?.measure?.(); } catch { /* private API best-effort */ }
+      scheduleFit();
+    });
 
     (async () => {
       safeFit();
