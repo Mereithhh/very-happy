@@ -66,6 +66,7 @@ export const en = {
     },
 
     common: {
+        name: 'Username',
         // Simple string constants
         cancel: 'Cancel',
         authenticate: 'Authenticate',
