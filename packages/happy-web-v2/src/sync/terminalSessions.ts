@@ -97,6 +97,10 @@ interface TerminalSessionsState {
   rename(id: string, title: string): void;
   autoTitle(id: string, title: string): void;
   remove(id: string): void;
+  /** Reconcile the list against a machine's REAL live tmux `vh-*` sessions:
+   *  adopt orphans that exist on the machine but not in our list, and drop dead
+   *  records whose session is gone. `live=null` means the query failed → no-op. */
+  reconcile(machineId: string, machineName: string, live: Array<{ id: string; title?: string; createdAt?: number }> | null): void;
 }
 
 export const useTerminalSessions = create<TerminalSessionsState>((set, get) => ({
@@ -158,6 +162,38 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
   },
   remove: (id) => {
     const next = get().terminals.filter((t) => t.id !== id);
+    persistLocal(next);
+    set({ terminals: next });
+    scheduleKvPush(next);
+  },
+  reconcile: (machineId, machineName, live) => {
+    if (live == null) return; // query failed → don't touch records
+    const liveIds = new Set(live.map((l) => l.id));
+    const cur = get().terminals;
+    const now = Date.now();
+    const GRACE_MS = 30_000; // a just-created terminal's tmux may still be spawning
+    // Drop dead records for THIS machine (in our list, gone on the machine),
+    // sparing very recent ones so a new-terminal/list race can't reap them.
+    let next = cur.filter(
+      (t) => t.machineId !== machineId || liveIds.has(t.id) || now - (t.createdAt ?? 0) < GRACE_MS,
+    );
+    // Adopt orphans present on the machine but missing from our list — so
+    // sessions created on other devices / older clients (or whose record was
+    // lost) become visible and manageable here instead of leaking.
+    const known = new Set(next.filter((t) => t.machineId === machineId).map((t) => t.id));
+    const adopted: TerminalSession[] = live
+      .filter((l) => !known.has(l.id))
+      .map((l) => ({
+        id: l.id,
+        machineId,
+        machineName,
+        title: (l.title ?? '').trim() || machineName || 'Terminal',
+        manual: !!(l.title ?? '').trim(),
+        createdAt: l.createdAt ?? now,
+      }));
+    if (adopted.length) next = [...adopted, ...next];
+    // Commit only on a real change, so a steady state doesn't churn the KV version.
+    if (next.length === cur.length && next.every((t, i) => t === cur[i])) return;
     persistLocal(next);
     set({ terminals: next });
     scheduleKvPush(next);
