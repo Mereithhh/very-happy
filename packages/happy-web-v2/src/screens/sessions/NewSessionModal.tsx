@@ -91,6 +91,10 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
       if (ok) return spawn(true);
       return null;
     }
+    if (res.type === 'error') {
+      toast.error(res.errorMessage || t('errors.networkError' as any));
+      return null;
+    }
     return res.sessionId;
   }
 

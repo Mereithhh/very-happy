@@ -176,14 +176,26 @@ export function t<K extends TranslationKey>(
 
         // Navigate to the value using dot notation
         const keys = key.split('.');
-        let value: any = currentTranslations;
-
-        for (const k of keys) {
-            value = value[k];
-            if (value === undefined) {
-                console.warn(`Translation missing: ${key}`);
-                return key;
+        const resolve = (root: any): any => {
+            let v: any = root;
+            for (const k of keys) {
+                if (v == null) return undefined;
+                v = v[k];
             }
+            return v;
+        };
+
+        // Resolve in the current language; fall back to English (the source of
+        // truth) when a key is missing — so a not-yet-translated key shows real
+        // English text instead of the raw dotted key. Only the raw key remains
+        // as a last resort if English is missing it too.
+        let value: any = resolve(currentTranslations);
+        if (value === undefined && currentLanguage !== 'en') {
+            value = resolve(en);
+        }
+        if (value === undefined) {
+            console.warn(`Translation missing: ${key}`);
+            return key;
         }
 
         // If it's a function, call it with the provided parameters
