@@ -31,7 +31,17 @@ type EmitFn = (event: string, payload: any) => void;
 interface TerminalEntry {
     pty: pty.IPty;
     tmuxSession?: string;
+    lastTouch: number;
 }
+
+// A web-terminal pty is just a `tmux attach` client; the tmux SESSION holds the
+// real state, so a pty is disposable (reopening reattaches). Bound live ptys so
+// orphaned ones — web views that vanished without sending `terminal-close`
+// (tab closed, nav, socket drop) — can't accumulate and exhaust the system PTY
+// pool (kern.tty.ptmx_max ~511 → node-pty `posix_spawnp failed` → black screen).
+const MAX_LIVE_PTYS = 24;              // hard cap; LRU-evict oldest-touched beyond this
+const PTY_IDLE_MS = 20 * 60 * 1000;    // reap ptys with no input/resize for 20 min
+const REAP_INTERVAL_MS = 5 * 60 * 1000;
 
 let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
@@ -77,9 +87,41 @@ function ptyEnv(): Record<string, string> {
 export class WebTerminalManager {
     private terminals = new Map<string, TerminalEntry>();
     private emit: EmitFn;
+    private reaper: ReturnType<typeof setInterval>;
 
     constructor(emit: EmitFn) {
         this.emit = emit;
+        // Periodically reap idle/orphaned ptys (detach only — tmux session lives).
+        this.reaper = setInterval(() => this.reapIdle(), REAP_INTERVAL_MS);
+        this.reaper.unref?.();
+    }
+
+    /** Detach ptys with no client activity for PTY_IDLE_MS (orphaned web views).
+     *  The tmux `vh-<id>` session survives, so reopening reattaches instantly. */
+    private reapIdle() {
+        const now = Date.now();
+        for (const [id, entry] of [...this.terminals]) {
+            if (now - entry.lastTouch > PTY_IDLE_MS) {
+                logger.debug(`[WEB TERMINAL] reaping idle pty ${id} (idle ${Math.round((now - entry.lastTouch) / 60000)}m)`);
+                this.close(id);
+            }
+        }
+    }
+
+    /** Enforce the live-pty cap by detaching the least-recently-touched ones
+     *  (their tmux sessions survive). Guards against orphan accumulation even
+     *  when few new terminals are opened to trigger natural eviction. */
+    private enforceCap() {
+        while (this.terminals.size >= MAX_LIVE_PTYS) {
+            let oldestId: string | null = null;
+            let oldest = Infinity;
+            for (const [id, e] of this.terminals) {
+                if (e.lastTouch < oldest) { oldest = e.lastTouch; oldestId = id; }
+            }
+            if (!oldestId) break;
+            logger.debug(`[WEB TERMINAL] pty cap reached (${this.terminals.size}); evicting LRU ${oldestId}`);
+            this.close(oldestId);
+        }
     }
 
     /** Update the emitter when the socket reconnects. */
@@ -147,6 +189,10 @@ export class WebTerminalManager {
             args = [];
         }
 
+        // Bound live ptys before spawning a new one (the reopen path above
+        // already freed this id, so this only trims OTHER stale/orphaned ptys).
+        this.enforceCap();
+
         const proc = pty.spawn(file, args, {
             name: 'xterm-256color',
             cols,
@@ -155,7 +201,7 @@ export class WebTerminalManager {
             env,
         });
 
-        const entry: TerminalEntry = { pty: proc, tmuxSession };
+        const entry: TerminalEntry = { pty: proc, tmuxSession, lastTouch: Date.now() };
         this.terminals.set(id, entry);
 
         // Guard against a stale client: on a rapid re-open (reattach), the
@@ -183,12 +229,14 @@ export class WebTerminalManager {
     write(terminalId: string, dataBase64: string) {
         const entry = this.terminals.get(terminalId);
         if (!entry) return;
+        entry.lastTouch = Date.now();
         entry.pty.write(Buffer.from(dataBase64, 'base64').toString('utf8'));
     }
 
     resize(terminalId: string, cols: number, rows: number) {
         const entry = this.terminals.get(terminalId);
         if (!entry) return;
+        entry.lastTouch = Date.now();
         try {
             entry.pty.resize(Math.max(2, Math.floor(cols)), Math.max(2, Math.floor(rows)));
         } catch (e) {

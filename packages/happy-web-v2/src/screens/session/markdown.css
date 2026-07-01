@@ -1,0 +1,115 @@
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md-p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.md-h {
+  margin: var(--sp-2) 0 0;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.md-h1 { font-size: var(--fs-20); }
+.md-h2 { font-size: var(--fs-16); }
+.md-h3 { font-size: var(--fs-14); }
+.md-h4, .md-h5, .md-h6 { font-size: var(--fs-13); color: var(--text-dim); }
+.md-ul,
+.md-ol {
+  margin: 0;
+  padding-left: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.md-ul li,
+.md-ol li {
+  word-break: break-word;
+}
+.md-quote {
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-left: 3px solid var(--line-2);
+  color: var(--text-dim);
+  white-space: pre-wrap;
+}
+.md-hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: var(--sp-1) 0;
+}
+.md-code-inline {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 1px 5px;
+  word-break: break-word;
+}
+.md-link {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-link:hover {
+  text-decoration: none;
+}
+
+/* options block (<options><option>..) */
+.md-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.md-option {
+  font-size: var(--fs-13);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  color: var(--text);
+  text-align: left;
+  word-break: break-word;
+}
+.md-option--clickable {
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.md-option--clickable:hover {
+  border-color: var(--accent);
+  background: var(--bg-2);
+}
+
+/* tables — scroll horizontally inside their own container */
+.md-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.md-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--fs-13);
+}
+.md-table th,
+.md-table td {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.md-table th {
+  background: var(--bg-2);
+  font-weight: 600;
+  color: var(--text);
+}
+.md-table tr:last-child td {
+  border-bottom: none;
+}
