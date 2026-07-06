@@ -985,7 +985,20 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         });
         
         if (response.ok) {
-            const result = await response.json();
+            await response.json();
+            // Purge local state right away instead of relying on the
+            // delete-session socket echo — the socket may be down, and the
+            // purge also tombstones the id so a raced session update or an
+            // in-flight sessions fetch can't pop the session back into the
+            // sidebar ("deleted session reappears" bug).
+            sync.onSessionDeleted(sessionId);
+            return { success: true };
+        } else if (response.status === 404) {
+            // Session is already gone server-side (e.g. a previous delete
+            // succeeded but a raced update resurrected the local copy).
+            // Treat as success and purge the local ghost so the user isn't
+            // stuck with an undeletable session.
+            sync.onSessionDeleted(sessionId);
             return { success: true };
         } else {
             const error = await response.text();

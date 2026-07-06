@@ -14,6 +14,7 @@ import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
+import { compareMessagesNewestFirst } from "./messageOrder";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
@@ -34,6 +35,22 @@ import { FeedItem } from "./feedTypes";
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
+
+// Tombstones for deleted sessions. Deletion is confirmed by the server
+// (DELETE response / delete-session update), but in-flight work can still
+// race it back into the store: an `update-session` handler that captured
+// the session before deletion and applies it after (the kill-before-delete
+// flow emits exactly such an update), or a /v1/sessions fetch whose
+// response was computed before the server delete. Since `applySessions`
+// merges and never prunes, one such straggler used to resurrect the
+// session in the sidebar permanently. Any session id recorded here is
+// ignored by `applySessions`. In-memory only — a fresh app load fetches
+// the authoritative list from the server anyway.
+const deletedSessionTombstones = new Set<string>();
+
+export function isSessionDeleted(sessionId: string): boolean {
+    return deletedSessionTombstones.has(sessionId);
+}
 
 /**
  * Centralized session online state resolver
@@ -399,7 +416,11 @@ export const storage = create<StorageState>()((set, get) => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
         },
-        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+        applySessions: (incomingSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+            // Drop sessions that were already deleted — a raced update/fetch
+            // must not resurrect them (see deletedSessionTombstones above).
+            const sessions = incomingSessions.filter(session => !deletedSessionTombstones.has(session.id));
+
             // Load drafts and permission modes if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
@@ -560,7 +581,7 @@ export const storage = create<StorageState>()((set, get) => {
                     });
 
                     const messagesArray = Object.values(mergedMessagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        .sort(compareMessagesNewestFirst);
 
                     updatedSessionMessages[session.id] = {
                         messages: messagesArray,
@@ -688,9 +709,12 @@ export const storage = create<StorageState>()((set, get) => {
                     mergedMessagesMap[message.id] = message;
                 });
 
-                // Convert to array and sort by createdAt
+                // Convert to array and sort newest-first by seq/createdAt.
+                // History backfill pages arrive newest-first and batched
+                // writes tie on createdAt, so plain createdAt + insertion
+                // order rendered long sessions out of order.
                 const messagesArray = Object.values(mergedMessagesMap)
-                    .sort((a, b) => b.createdAt - a.createdAt);
+                    .sort(compareMessagesNewestFirst);
 
                 // Update session with todos and latestUsage
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -770,7 +794,7 @@ export const storage = create<StorageState>()((set, get) => {
                     });
 
                     messages = Object.values(messagesMap)
-                        .sort((a, b) => b.createdAt - a.createdAt);
+                        .sort(compareMessagesNewestFirst);
                 }
 
                 // Extract latestUsage from reducerState if available and update session
@@ -1272,6 +1296,10 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         deleteSession: (sessionId: string) => set((state) => {
+            // Tombstone first so any concurrently-processing update or fetch
+            // can no longer re-insert this session via applySessions.
+            deletedSessionTombstones.add(sessionId);
+
             // Remove session from sessions
             const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
             

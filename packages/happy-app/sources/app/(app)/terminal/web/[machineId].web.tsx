@@ -3,6 +3,8 @@
  * on the selected machine via the socket relay. Responsive: a FitAddon +
  * ResizeObserver keep cols/rows matched to the container (mobile + resize),
  * and every fit pushes a terminal-resize to the daemon so tmux follows.
+ * Mobile (coarse pointer): tap-to-focus pops the soft keyboard, and a
+ * visualViewport listener shrinks the host (→ tmux rows) above the keyboard.
  */
 import * as React from 'react';
 import { View, Platform, Pressable, Text } from 'react-native';
@@ -23,6 +25,13 @@ import { t } from '@/text';
 import { cacheKey, getTerminalEntry, setTerminalEntry, type TerminalCacheEntry } from '@/utils/terminalCache.web';
 
 const BG = '#0B0E13';
+
+// Coarse-pointer (touch) device detection — drives all the mobile-only wiring
+// (tap-to-focus, visualViewport keyboard handling, smaller font, safe-area
+// padding). Evaluated once; a device doesn't change pointer class mid-session.
+const IS_COARSE_POINTER = typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
 
 // IME (Chinese/Japanese/Korean) composition overlay fix. xterm positions a
 // hidden .xterm-helper-textarea at the cursor and, while composing, the OS draws
@@ -182,7 +191,9 @@ export default function WebTerminalScreen() {
             term = new Terminal({
                 cursorBlink: true,
                 fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-                fontSize: 13,
+                // Phones: 12px buys ~2 extra cols on a 390px-wide screen, which is
+                // often the difference between tmux's status bar fitting or clipping.
+                fontSize: IS_COARSE_POINTER ? 12 : 13,
                 theme: { background: BG, foreground: '#E8EDF4', cursor: '#34E2C4', selectionBackground: 'rgba(52,226,196,0.25)' },
                 allowProposedApi: true,
                 // tmux owns the scrollback (wheel → tmux copy-mode), so xterm needs
@@ -442,10 +453,7 @@ export default function WebTerminalScreen() {
         // browser scrolls the focused (bottom) textarea into view, hiding the
         // output/context above. Pin the page back to the top on focus so the
         // context stays visible. Coarse-pointer only (real touch devices).
-        const isCoarsePointer = typeof window !== 'undefined'
-            && typeof window.matchMedia === 'function'
-            && window.matchMedia('(pointer: coarse)').matches;
-        if (isCoarsePointer && term.textarea) {
+        if (IS_COARSE_POINTER && term.textarea) {
             const ta = term.textarea;
             const onFocus = () => {
                 // After the browser's own scroll-into-view settles.
@@ -453,6 +461,71 @@ export default function WebTerminalScreen() {
             };
             ta.addEventListener('focus', onFocus);
             mountCleanups.push(() => ta.removeEventListener('focus', onFocus));
+        }
+
+        // Mobile tap-to-focus. xterm only focuses its hidden helper textarea
+        // via its mouse-event path; a touch tap often never reaches it (and with
+        // tmux mouse-mode on, xterm swallows touches for wheel emulation), so
+        // the soft keyboard never appears. Focus explicitly on touchend —
+        // SYNCHRONOUSLY, inside the user-gesture call stack: iOS only shows the
+        // keyboard when focus() runs directly in the gesture handler (a focus
+        // from setTimeout/rAF is applied but the keyboard stays hidden, which is
+        // also why the rAF'd initialFit focus above can't pop it on reuse).
+        // A moved finger is a scroll/selection drag, not a tap — don't steal it.
+        if (IS_COARSE_POINTER) {
+            let touchX = 0;
+            let touchY = 0;
+            const onTouchStart = (e: TouchEvent) => {
+                const t0 = e.touches[0];
+                if (t0) { touchX = t0.clientX; touchY = t0.clientY; }
+            };
+            const onTouchEnd = (e: TouchEvent) => {
+                const t0 = e.changedTouches[0];
+                if (!t0) return;
+                if (Math.abs(t0.clientX - touchX) > 12 || Math.abs(t0.clientY - touchY) > 12) return;
+                term.focus(); // → .xterm-helper-textarea.focus(), synchronous
+            };
+            // Capture phase: the tap lands on xterm's inner canvas/rows and xterm
+            // may stop propagation there; capturing on host always sees it.
+            // Passive is fine — we never preventDefault, only focus.
+            host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+            host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+            mountCleanups.push(() => {
+                host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
+                host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
+            });
+        }
+
+        // Mobile soft keyboard ⇄ terminal height. When the keyboard opens, the
+        // layout viewport keeps its height (iOS Safari) — only visualViewport
+        // shrinks — so the bottom rows (prompt + cursor) end up hidden BEHIND
+        // the keyboard. Clamp the host to the visible height on visualViewport
+        // resize/scroll; the ResizeObserver below then safeFit()s and pushes
+        // terminal-resize, so tmux re-lays rows above the keyboard. When the
+        // keyboard closes we clear the clamp and the same observer restores the
+        // full size. Plays fine with the focus→scrollTo(top) above: that scroll
+        // fires a vv 'scroll' event, which re-runs this with offsetTop≈0.
+        const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+        if (IS_COARSE_POINTER && vv) {
+            const onVvChange = () => {
+                // Keyboard closed (visual ≈ layout viewport): let flex own the height.
+                if (vv.height >= window.innerHeight - 50) {
+                    if (host.style.maxHeight) host.style.maxHeight = '';
+                    return;
+                }
+                // Visible space below the host's top edge (client coords: the
+                // visual viewport spans [offsetTop, offsetTop+height]); keep the
+                // outer view's 8px bottom inset.
+                const avail = vv.offsetTop + vv.height - host.getBoundingClientRect().top - 8;
+                if (avail > 80) host.style.maxHeight = `${Math.floor(avail)}px`;
+            };
+            vv.addEventListener('resize', onVvChange);
+            vv.addEventListener('scroll', onVvChange);
+            mountCleanups.push(() => {
+                vv.removeEventListener('resize', onVvChange);
+                vv.removeEventListener('scroll', onVvChange);
+                host.style.maxHeight = '';
+            });
         }
 
         const ro = new ResizeObserver(() => {
@@ -491,7 +564,10 @@ export default function WebTerminalScreen() {
         // measures the host's box to pick rows, and a padding on the host made
         // it overcount by a row → the last line was clipped at the bottom.
         // A padding-free host gives FitAddon a clean box (no off-by-a-row clip).
-        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, paddingTop: 8, paddingBottom: 8, paddingLeft: 8, paddingRight: 8 }}>
+        // paddingBottom folds in env(safe-area-inset-bottom) on touch devices so
+        // the last row (prompt) clears the iPhone home indicator; env() is 0 on
+        // desktop/non-notch so the string form is only used under coarse pointer.
+        <View style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', backgroundColor: BG, paddingTop: 8, paddingBottom: IS_COARSE_POINTER ? ('calc(8px + env(safe-area-inset-bottom))' as unknown as number) : 8, paddingLeft: 8, paddingRight: 8 }}>
             {/* @ts-ignore web-only DOM host */}
             <div ref={hostRef} style={{ flex: 1, width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', boxSizing: 'border-box' }} />
             {/* (Quick-commands launcher moved into the header top-right.) */}

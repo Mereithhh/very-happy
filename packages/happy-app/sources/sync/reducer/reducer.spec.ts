@@ -3,6 +3,8 @@ import { NormalizedMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 import { AgentState } from '../storageTypes';
+import { compareMessagesNewestFirst } from '../messageOrder';
+import type { Message } from '../typesMessage';
 
 describe('reducer', () => {
     // it('should process golden cases', () => {
@@ -3239,6 +3241,141 @@ describe('reducer', () => {
             ]);
 
             expect(result.todos).toBeUndefined();
+        });
+    });
+
+    describe('message ordering (seq / out-of-order arrival)', () => {
+        // Helpers mirror how sync.ts builds NormalizedMessages: fetched
+        // messages carry the server seq; the storage layer then merges the
+        // reducer output into a map and sorts with compareMessagesNewestFirst.
+        const userMsg = (id: string, seq: number, createdAt: number, text: string): NormalizedMessage => ({
+            id,
+            localId: null,
+            createdAt,
+            seq,
+            role: 'user',
+            content: { type: 'text', text },
+            isSidechain: false
+        });
+        const agentText = (id: string, seq: number, createdAt: number, text: string): NormalizedMessage => ({
+            id,
+            localId: null,
+            createdAt,
+            seq,
+            role: 'agent',
+            content: [{ type: 'text', text, uuid: `${id}-uuid`, parentUUID: null }],
+            isSidechain: false
+        } as NormalizedMessage);
+
+        // Accumulate reducer output the same way storage.applyMessages does,
+        // then return ids sorted for display (newest first).
+        const displayOrder = (state: ReturnType<typeof createReducer>, batches: NormalizedMessage[][]): string[] => {
+            const map: Record<string, Message> = {};
+            for (const batch of batches) {
+                const result = reducer(state, batch);
+                for (const message of result.messages) {
+                    map[message.id] = message;
+                }
+            }
+            return Object.values(map)
+                .sort(compareMessagesNewestFirst)
+                .map((m) => (state.messages.get(m.id)?.realID ?? m.id));
+        };
+
+        it('propagates server seq onto produced messages', () => {
+            const state = createReducer();
+            const result = reducer(state, [userMsg('m1', 7, 1000, 'hi')]);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].seq).toBe(7);
+            expect(typeof result.messages[0].sortOrder).toBe('number');
+        });
+
+        it('orders a backward-paginated history correctly (pages arrive newest-first, DESC within page)', () => {
+            const state = createReducer();
+            // Conversation order: seq 1..4. Server returns backward pages:
+            // page 1 = [4, 3] (newest first), page 2 = [2, 1] — the older
+            // page is applied AFTER the newer one, so pure insertion order
+            // is the reverse of conversation order.
+            const order = displayOrder(state, [
+                [agentText('m4', 4, 4000, 'four'), agentText('m3', 3, 3000, 'three')],
+                [agentText('m2', 2, 2000, 'two'), agentText('m1', 1, 1000, 'one')]
+            ]);
+            // Newest first for the inverted list.
+            expect(order).toEqual(['m4', 'm3', 'm2', 'm1']);
+        });
+
+        it('orders a batch that ties on createdAt by seq (server stamps a POSTed batch with one timestamp)', () => {
+            const state = createReducer();
+            const T = 5000;
+            // Live/forward delivery: ascending seq, identical createdAt.
+            const ascending = displayOrder(createReducer(), [[
+                agentText('a1', 10, T, 'first'),
+                agentText('a2', 11, T, 'second'),
+                agentText('a3', 12, T, 'third')
+            ]]);
+            expect(ascending).toEqual(['a3', 'a2', 'a1']);
+
+            // Backfill delivery of the same batch: descending seq. The final
+            // order must be identical regardless of arrival direction.
+            const descending = displayOrder(state, [[
+                agentText('a3', 12, T, 'third'),
+                agentText('a2', 11, T, 'second'),
+                agentText('a1', 10, T, 'first')
+            ]]);
+            expect(descending).toEqual(['a3', 'a2', 'a1']);
+        });
+
+        it('keeps realtime messages after older backfilled history', () => {
+            const state = createReducer();
+            // Initial latest page (seq 3,4 newest-first), then a realtime
+            // message (seq 5), then the older backfill page (seq 1,2) lands
+            // last — insertion order is thoroughly shuffled.
+            const order = displayOrder(state, [
+                [agentText('m4', 4, 4000, 'four'), agentText('m3', 3, 3000, 'three')],
+                [userMsg('m5', 5, 5000, 'five')],
+                [agentText('m2', 2, 2000, 'two'), agentText('m1', 1, 1000, 'one')]
+            ]);
+            expect(order).toEqual(['m5', 'm4', 'm3', 'm2', 'm1']);
+        });
+
+        it('orders blocks of one source message by content order when seq and createdAt tie', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'multi',
+                localId: null,
+                createdAt: 1000,
+                seq: 42,
+                role: 'agent',
+                content: [
+                    { type: 'text', text: 'let me check', uuid: 'u1', parentUUID: null },
+                    { type: 'tool-call', id: 'tool-1', name: 'Bash', input: { command: 'ls' }, description: null, uuid: 'u2', parentUUID: null }
+                ],
+                isSidechain: false
+            } as NormalizedMessage]);
+            expect(result.messages).toHaveLength(2);
+
+            const sorted = [...result.messages].sort(compareMessagesNewestFirst);
+            // Newest-first: the tool call (later block) must precede the text.
+            expect(sorted[0].kind).toBe('tool-call');
+            expect(sorted[1].kind).toBe('agent-text');
+        });
+
+        it('falls back to createdAt when a message has no seq (locally synthesized)', () => {
+            const state = createReducer();
+            const local: NormalizedMessage = {
+                id: 'local-1',
+                localId: 'local-1',
+                createdAt: 2500,
+                role: 'user',
+                content: { type: 'text', text: 'optimistic' },
+                isSidechain: false
+            };
+            const order = displayOrder(state, [
+                [agentText('m2', 2, 2000, 'two'), agentText('m1', 1, 1000, 'one')],
+                [local],
+                [agentText('m3', 3, 3000, 'three')]
+            ]);
+            expect(order).toEqual(['m3', 'local-1', 'm2', 'm1']);
         });
     });
 });

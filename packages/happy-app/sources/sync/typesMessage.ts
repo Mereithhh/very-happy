@@ -21,8 +21,22 @@ export type ToolCall = {
     };
 }
 
+/**
+ * Ordering keys shared by all message kinds. The chat list sorts by `seq`
+ * (server-assigned conversation order) first, then `createdAt`, then
+ * `sortOrder` (reducer creation counter). `createdAt` alone is not a total
+ * order: the server stamps a whole POSTed batch with a single transaction
+ * timestamp, so batched messages tie on it.
+ */
+export type MessageOrdering = {
+    /** Server-assigned per-session sequence number; null/undefined for locally synthesized messages. */
+    seq?: number | null;
+    /** Monotonic reducer creation counter; last-resort ordering tiebreaker. */
+    sortOrder?: number;
+}
+
 // Flattened message types - each message represents a single block
-export type UserTextMessage = {
+export type UserTextMessage = MessageOrdering & {
     kind: 'user-text';
     id: string;
     localId: string | null;
@@ -43,7 +57,7 @@ export type UserTextMessage = {
     codexItemId?: string;
 }
 
-export type ModeSwitchMessage = {
+export type ModeSwitchMessage = MessageOrdering & {
     kind: 'agent-event';
     id: string;
     createdAt: number;
@@ -62,7 +76,7 @@ export type MessageUsage = {
     cacheRead?: number;
 }
 
-export type AgentTextMessage = {
+export type AgentTextMessage = MessageOrdering & {
     kind: 'agent-text';
     id: string;
     localId: string | null;
@@ -82,7 +96,7 @@ export type AgentTextMessage = {
     numTurns?: number;
 }
 
-export type ToolCallMessage = {
+export type ToolCallMessage = MessageOrdering & {
     kind: 'tool-call';
     id: string;
     localId: string | null;
