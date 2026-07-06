@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
-import { useSessions, useAllMachines } from '@/sync/storage';
+import { useSessions, useAllMachines, storage } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal, machineListTerminals } from '@/sync/ops';
@@ -280,7 +280,24 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
         confirmText: t('sidebar.filterArchived' as any),
         destructive: true,
       });
-      if (ok) await sessionArchive(row.session!.id).catch(() => {});
+      if (!ok) return;
+      // Mirrors happy-app's performArchive. Server-side archive alone doesn't
+      // stick for a LIVE session: the still-running CLI keeps reporting itself
+      // active and flips the row right back. So: optimistic local flip (row
+      // leaves the active list instantly), then kill the CLI process; only if
+      // it's already dead force-archive via the server. Roll back on failure.
+      const session = row.session!;
+      const wasActive = session.active;
+      if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
+      try {
+        const killResult = await sessionKill(session.id);
+        if (!killResult.success) {
+          await sessionArchive(session.id);
+        }
+      } catch (error) {
+        if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
+        throw error;
+      }
     }
   };
 

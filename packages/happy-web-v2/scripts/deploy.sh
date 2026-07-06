@@ -31,7 +31,12 @@ else
   ssh "$HOST" 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
   tar -C dist -czf - . | ssh "$HOST" 'tar -C /opt/happy/webapp.new -xzf - 2>/dev/null'
   echo "[deploy] swap + restart (re-globs @fastify/static)"
-  ssh "$HOST" 'cd /opt/happy && cp -a webapp webapp.prev 2>/dev/null; find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new && docker compose restart happy-server >/dev/null 2>&1'
+  # Swap in the new build, then merge the PREVIOUS build's hashed assets back in
+  # (no-clobber; hashed names never collide) so clients still running the old
+  # shell keep lazy-loading their chunks instead of hitting "Failed to fetch
+  # dynamically imported module" mid-session. Prune merged assets >14d old so
+  # the dir doesn't grow forever. index.html/sw.js always come from the new build.
+  ssh "$HOST" 'cd /opt/happy && cp -a webapp webapp.prev 2>/dev/null; find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new && { cp -an webapp.prev/assets/. webapp/assets/ 2>/dev/null || true; } && find webapp/assets -type f -mtime +14 -delete 2>/dev/null; docker compose restart happy-server >/dev/null 2>&1'
   echo "[deploy] waiting for happy-server…"
   for i in $(seq 1 20); do
     code=$(curl -s -o /dev/null -w '%{http_code}' https://happy.mereith.com/health || true)
