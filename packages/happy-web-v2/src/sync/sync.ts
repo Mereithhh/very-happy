@@ -4,7 +4,7 @@ import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { storage } from './storage';
+import { storage, isSessionDeleted } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
@@ -1010,6 +1010,35 @@ class Sync {
 
     public refreshSessions = async () => {
         return this.sessionsSync.invalidateAndAwait();
+    }
+
+    /**
+     * Purge a deleted session from local state. Called from the
+     * `delete-session` socket update AND directly after a successful
+     * DELETE request — the HTTP response must not depend on the socket
+     * echo arriving (it may be disconnected), and purging immediately
+     * tombstones the id so raced updates can't resurrect the session.
+     * Idempotent, so running it from both paths is fine.
+     */
+    public onSessionDeleted = (sessionId: string) => {
+        // Remove session from storage (also records the deletion tombstone)
+        storage.getState().deleteSession(sessionId);
+
+        // Remove encryption keys from memory
+        this.encryption.removeSessionEncryption(sessionId);
+
+        // Clear any cached git status
+        gitStatusSync.clearForSession(sessionId);
+        this.messagesSync.delete(sessionId);
+        this.sendSync.delete(sessionId);
+        this.pendingOutbox.delete(sessionId);
+        this.sessionLastSeq.delete(sessionId);
+        this.sessionOldestSeq.delete(sessionId);
+        this.sessionMessageLocks.delete(sessionId);
+        this.sessionMessageQueue.delete(sessionId);
+        this.sessionQueueProcessing.delete(sessionId);
+
+        log.log(`🗑️ Session ${sessionId} deleted from local storage`);
     }
 
     public getCredentials() {
@@ -2025,6 +2054,12 @@ class Sync {
             if (!decrypted) continue;
             const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
             if (normalized) {
+                // Carry the server sequence number through — it is the primary
+                // ordering key for rendering. Backward pagination delivers
+                // pages newest-first and batched writes share one createdAt
+                // (single DB transaction), so createdAt alone cannot
+                // reconstruct conversation order.
+                normalized.seq = decrypted.seq;
                 normalizedMessages.push(normalized);
             }
         }
@@ -2159,6 +2194,13 @@ class Sync {
 
         if (updateData.body.t === 'new-message') {
 
+            // Straggler event for a session that was just deleted (e.g. the
+            // death message emitted by the kill that precedes deletion) —
+            // ignore it instead of triggering a pointless full refetch.
+            if (isSessionDeleted(updateData.body.sid)) {
+                return;
+            }
+
             // Get encryption — may not be ready if sessions are still syncing
             let encryption = this.encryption.getSessionEncryption(updateData.body.sid);
             if (!encryption) {
@@ -2177,6 +2219,10 @@ class Sync {
                 const decrypted = await encryption.decryptMessage(updateData.body.message);
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    if (lastMessage) {
+                        // Primary ordering key for rendering (see applyFetchedMessages).
+                        lastMessage.seq = decrypted.seq;
+                    }
 
                     // Check for task lifecycle events to update thinking state
                     // This ensures UI updates even if volatile activity updates are lost
@@ -2255,27 +2301,15 @@ class Sync {
             this.sessionsSync.invalidate();
         } else if (updateData.body.t === 'delete-session') {
             log.log('🗑️ Delete session update received');
-            const sessionId = updateData.body.sid;
-
-            // Remove session from storage
-            storage.getState().deleteSession(sessionId);
-
-            // Remove encryption keys from memory
-            this.encryption.removeSessionEncryption(sessionId);
-
-            // Clear any cached git status
-            gitStatusSync.clearForSession(sessionId);
-            this.messagesSync.delete(sessionId);
-            this.sendSync.delete(sessionId);
-            this.pendingOutbox.delete(sessionId);
-            this.sessionLastSeq.delete(sessionId);
-            this.sessionOldestSeq.delete(sessionId);
-            this.sessionMessageLocks.delete(sessionId);
-            this.sessionMessageQueue.delete(sessionId);
-            this.sessionQueueProcessing.delete(sessionId);
-
-            log.log(`🗑️ Session ${sessionId} deleted from local storage`);
+            this.onSessionDeleted(updateData.body.sid);
         } else if (updateData.body.t === 'update-session') {
+            // Straggler update for a just-deleted session (the kill that
+            // precedes deletion stamps archive metadata, emitting exactly
+            // this update) — never apply it, it would resurrect the session.
+            if (isSessionDeleted(updateData.body.id)) {
+                return;
+            }
+
             // Session + encryption may not be initialized yet if sessions are
             // still syncing on startup. Mirror the new-message path: await the
             // sessions sync queue and re-check before giving up — dropping here

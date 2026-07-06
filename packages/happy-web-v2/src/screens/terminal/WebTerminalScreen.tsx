@@ -49,6 +49,12 @@ const THEME = {
 // the fallback metrics and text gets clipped after the real font swaps in.
 const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
 
+// Touch-first device (phone/tablet). Evaluated once at module load — pointer
+// capability doesn't change at runtime, and all mobile-only behavior below is
+// gated on this so desktop is untouched.
+const IS_COARSE_POINTER =
+  typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+
 export function WebTerminalScreen() {
   const { machineId } = useParams<{ machineId: string }>();
   const [params] = useSearchParams();
@@ -77,7 +83,7 @@ export function WebTerminalScreen() {
 
     const term = new Terminal({
       fontFamily: TERM_FONT,
-      fontSize: 13, lineHeight: 1.3, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
+      fontSize: IS_COARSE_POINTER ? 12 : 13, lineHeight: 1.3, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
       scrollback: 5000,
     });
     const fit = new FitAddon();
@@ -205,6 +211,58 @@ export function WebTerminalScreen() {
     host.addEventListener('dragleave', onDragLeave);
     host.addEventListener('drop', onDrop);
 
+    // ── Mobile (coarse pointer) only: tap-to-focus + soft-keyboard avoidance ──
+    // On iOS Safari, xterm's hidden textarea never receives focus from a plain
+    // tap on the canvas, so the soft keyboard never opens and the terminal is
+    // uneditable. We detect a tap ourselves (small touch displacement) and call
+    // term.focus() SYNCHRONOUSLY in the touchend handler — iOS only opens the
+    // keyboard when focus happens inside the user-gesture call stack (no rAF /
+    // setTimeout). Capture phase so xterm's internal stopPropagation can't eat
+    // it; passive so scrolling stays smooth. Large displacement = scroll or
+    // text selection → don't steal focus.
+    let touchX = 0;
+    let touchY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      const p = e.touches[0];
+      if (p) { touchX = p.clientX; touchY = p.clientY; }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const p = e.changedTouches[0];
+      if (!p) return;
+      const dx = p.clientX - touchX;
+      const dy = p.clientY - touchY;
+      if (dx * dx + dy * dy <= 12 * 12) term.focus();
+    };
+    // When the soft keyboard opens, window.innerHeight doesn't change — only
+    // window.visualViewport shrinks — so the keyboard covers the bottom of the
+    // terminal (including the input line). Cap the host's height to the visible
+    // viewport portion; the ResizeObserver → scheduleFit chain then shrinks the
+    // xterm grid (and tmux rows follow via terminal-resize).
+    const vv = window.visualViewport;
+    const onViewport = () => {
+      if (!vv) return;
+      if (vv.height >= window.innerHeight - 50) {
+        // Keyboard dismissed (viewport ≈ full window) → restore natural layout.
+        if (host.style.maxHeight) {
+          host.style.maxHeight = '';
+          scheduleFit();
+        }
+        return;
+      }
+      const hostTop = host.getBoundingClientRect().top;
+      const avail = Math.round(vv.offsetTop + vv.height - hostTop - 8);
+      if (avail > 60) {
+        host.style.maxHeight = `${avail}px`;
+        scheduleFit();
+      }
+    };
+    if (IS_COARSE_POINTER) {
+      host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+      host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+      vv?.addEventListener('resize', onViewport);
+      vv?.addEventListener('scroll', onViewport);
+    }
+
     return () => {
       disposed = true;
       clearTimeout(t0);
@@ -217,6 +275,13 @@ export function WebTerminalScreen() {
       host.removeEventListener('dragover', onDragOver);
       host.removeEventListener('dragleave', onDragLeave);
       host.removeEventListener('drop', onDrop);
+      if (IS_COARSE_POINTER) {
+        host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
+        host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
+        vv?.removeEventListener('resize', onViewport);
+        vv?.removeEventListener('scroll', onViewport);
+        host.style.maxHeight = '';
+      }
       dataDisp.dispose();
       keyDisp.dispose();
       if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });

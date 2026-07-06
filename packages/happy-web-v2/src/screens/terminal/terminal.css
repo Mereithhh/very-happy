@@ -63,6 +63,13 @@
   padding: 6px 8px;
   padding-bottom: max(6px, env(safe-area-inset-bottom));
 }
+/* Mobile: keep the last row clear of the home indicator / rounded corners.
+   Coarse-pointer only so desktop layout is untouched. */
+@media (pointer: coarse) {
+  .term-host {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+}
 /* xterm mounts in this UNPADDED inner box, not directly in .term-host. The
    FitAddon computes rows from getComputedStyle(parent).height, which — with
    border-box — INCLUDES .term-host's padding, but it only subtracts the xterm

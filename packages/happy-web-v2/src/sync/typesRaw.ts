@@ -552,6 +552,15 @@ export type NormalizedMessage = ({
     id: string,
     localId: string | null,
     createdAt: number,
+    /**
+     * Server-assigned per-session sequence number. Present on every message
+     * fetched from (or pushed by) the server; null/undefined for messages
+     * created locally before the server has acknowledged them. Used as the
+     * primary ordering key for chat rendering — `createdAt` alone is not
+     * enough because the server stamps a whole POSTed batch with the same
+     * transaction timestamp, so batched messages tie on `createdAt`.
+     */
+    seq?: number | null,
     isSidechain: boolean,
     meta?: MessageMeta,
     usage?: UsageData,

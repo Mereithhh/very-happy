@@ -5,7 +5,7 @@ import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquar
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitle, sessionArchive, machineKillTerminal, machineListTerminals } from '@/sync/ops';
+import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal, machineListTerminals } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark } from '@/ui';
 import { Modal } from '@/modal';
@@ -284,6 +284,29 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
     }
   };
 
+  // Permanently delete a session — mirrors happy-app's info-screen flow:
+  // confirm, best-effort kill while the CLI is still connected (the server
+  // rejects deleting a live session), then DELETE. sessionDelete purges the
+  // local copy and tombstones the id, so the kill's straggler update-session
+  // can't resurrect the row (deleted-session race).
+  const onDeleteSession = async () => {
+    const session = row.session!;
+    const ok = await Modal.confirm(
+      t('sessionInfo.deleteSessionConfirm'),
+      t('sessionInfo.deleteSessionWarning'),
+      { confirmText: t('common.delete'), destructive: true },
+    );
+    if (!ok) return;
+    if (selected) navigate('/');
+    if (session.active || session.presence === 'online') {
+      await sessionKill(session.id).catch(() => {});
+    }
+    const result = await sessionDelete(session.id);
+    if (!result.success) {
+      Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToDeleteSession'));
+    }
+  };
+
   return (
     <div className={`sb-row${selected ? ' is-selected' : ''}`}>
       <button className="sb-row-main" onClick={open}>
@@ -310,6 +333,11 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
             <DropdownMenu.Item className="vh-menu-item is-danger" onSelect={onArchiveOrDelete}>
               {isTerminal ? t('common.delete' as any) : t('sidebar.filterArchived' as any)}
             </DropdownMenu.Item>
+            {!isTerminal && (
+              <DropdownMenu.Item className="vh-menu-item is-danger" onSelect={onDeleteSession}>
+                {t('common.delete')}
+              </DropdownMenu.Item>
+            )}
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>

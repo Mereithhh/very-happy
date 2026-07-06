@@ -128,6 +128,20 @@ type ReducerMessage = {
     id: string;
     realID: string | null;
     createdAt: number;
+    /**
+     * Server-assigned sequence number of the source message (conversation
+     * order). Undefined for messages synthesized locally (agent-state
+     * permission requests, optimistic sends). Primary ordering key for
+     * rendering — createdAt ties are common because the server stamps a
+     * whole POSTed batch with one transaction timestamp.
+     */
+    seq?: number | null;
+    /**
+     * Monotonic creation counter within this reducer state. Last-resort
+     * ordering tiebreaker when both seq and createdAt tie (e.g. several
+     * blocks of one source message, which share seq and createdAt).
+     */
+    sortOrder: number;
     role: 'user' | 'agent';
     text: string | null;
     isThinking?: boolean;
@@ -166,6 +180,7 @@ export type ReducerState = {
     messages: Map<string, ReducerMessage>;
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
+    nextSortOrder: number; // Monotonic counter feeding ReducerMessage.sortOrder
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -189,7 +204,8 @@ export function createReducer(): ReducerState {
         localIds: new Map(),
         messageIds: new Map(),
         sidechains: new Map(),
-        tracerState: createTracer()
+        tracerState: createTracer(),
+        nextSortOrder: 0
     }
 };
 
@@ -397,6 +413,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             realID: message.id,
             role: 'agent',
             createdAt: message.createdAt,
+            seq: message.seq,
+            sortOrder: state.nextSortOrder++,
             event: event,
             tool: null,
             text: null,
@@ -478,6 +496,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: null,
                         role: 'agent',
                         createdAt: request.createdAt || Date.now(),
+                        sortOrder: state.nextSortOrder++,
                         text: null,
                         tool: toolCall,
                         event: null,
@@ -640,6 +659,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: null,
                         role: 'agent',
                         createdAt: completed.createdAt || Date.now(),
+                        sortOrder: state.nextSortOrder++,
                         text: null,
                         tool: toolCall,
                         event: null,
@@ -688,6 +708,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
+                seq: msg.seq,
+                sortOrder: state.nextSortOrder++,
                 text: msg.content.text,
                 tool: null,
                 event: null,
@@ -735,6 +757,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
+                        seq: msg.seq,
+                        sortOrder: state.nextSortOrder++,
                         text: isThinking ? `*${c.thinking}*` : c.text,
                         isThinking,
                         tool: null,
@@ -770,6 +794,12 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         const message = state.messages.get(existingMessageId);
                         if (message?.tool) {
                             message.realID = msg.id;
+                            // Permission-synthesized messages have no seq; adopt
+                            // the real tool-call's server seq so the message
+                            // sorts at the point the tool actually ran.
+                            if (message.seq === undefined || message.seq === null) {
+                                message.seq = msg.seq;
+                            }
                             message.tool.input = mergeToolInputs(message.tool.input, c.input);
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
@@ -830,6 +860,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             realID: msg.id,
                             role: 'agent',
                             createdAt: msg.createdAt,
+                            seq: msg.seq,
+                            sortOrder: state.nextSortOrder++,
                             text: null,
                             tool: toolCall,
                             event: null,
@@ -942,6 +974,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
+                seq: msg.seq,
+                sortOrder: state.nextSortOrder++,
                 text: msg.content[0].prompt,
                 tool: null,
                 event: null,
@@ -964,6 +998,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
+                        seq: msg.seq,
+                        sortOrder: state.nextSortOrder++,
                         text: isThinking ? `*${c.thinking}*` : c.text,
                         isThinking,
                         tool: null,
@@ -1008,6 +1044,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
+                        seq: msg.seq,
+                        sortOrder: state.nextSortOrder++,
                         text: null,
                         tool: toolCall,
                         event: null,
@@ -1125,6 +1163,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 realID: msg.id,
                 role: 'agent',
                 createdAt: msg.createdAt,
+                seq: msg.seq,
+                sortOrder: state.nextSortOrder++,
                 event: msg.content,
                 tool: null,
                 text: null,
@@ -1235,6 +1275,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             id: reducerMsg.id,
             localId: null,
             createdAt: reducerMsg.createdAt,
+            seq: reducerMsg.seq,
+            sortOrder: reducerMsg.sortOrder,
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
@@ -1247,6 +1289,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             id: reducerMsg.id,
             localId: null,
             createdAt: reducerMsg.createdAt,
+            seq: reducerMsg.seq,
+            sortOrder: reducerMsg.sortOrder,
             kind: 'agent-text',
             text: reducerMsg.text,
             ...(reducerMsg.isThinking && { isThinking: true }),
@@ -1271,6 +1315,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             id: reducerMsg.id,
             localId: null,
             createdAt: reducerMsg.createdAt,
+            seq: reducerMsg.seq,
+            sortOrder: reducerMsg.sortOrder,
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
             children: childMessages,
@@ -1280,6 +1326,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
         return {
             id: reducerMsg.id,
             createdAt: reducerMsg.createdAt,
+            seq: reducerMsg.seq,
+            sortOrder: reducerMsg.sortOrder,
             kind: 'agent-event',
             event: reducerMsg.event,
             meta: reducerMsg.meta

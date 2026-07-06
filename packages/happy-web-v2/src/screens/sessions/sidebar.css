@@ -114,9 +114,6 @@
   align-items: stretch;
   position: relative;
 }
-.sb-row:hover {
-  background: var(--bg-2);
-}
 .sb-row.is-selected {
   background: var(--bg-2);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -169,15 +166,26 @@
   width: 34px;
   flex-shrink: 0;
   color: var(--text-faint);
-  opacity: 0;
   transition: opacity var(--motion-fast), color var(--motion-fast);
 }
-.sb-row:hover .sb-row-menu,
-.sb-row-menu[data-state='open'] {
-  opacity: 1;
-}
-.sb-row-menu:hover {
-  color: var(--text);
+/* Hover-reveal is desktop-pointer only. On touch, iOS Safari dispatches hover
+   before click, and a hover that makes content appear (the kebab) swallows the
+   first tap — rows needed two taps to open. Touch keeps the kebab always
+   visible instead (also removes an invisible 34px tap target). */
+@media (hover: hover) {
+  .sb-row:hover {
+    background: var(--bg-2);
+  }
+  .sb-row-menu {
+    opacity: 0;
+  }
+  .sb-row:hover .sb-row-menu,
+  .sb-row-menu[data-state='open'] {
+    opacity: 1;
+  }
+  .sb-row-menu:hover {
+    color: var(--text);
+  }
 }
 .sb-loading {
   display: flex;
