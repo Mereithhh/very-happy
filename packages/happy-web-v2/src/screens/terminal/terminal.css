@@ -68,6 +68,11 @@
 @media (pointer: coarse) {
   .term-host {
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    /* Touch drags are handled in JS (synthetic wheel → tmux scrollback).
+       Without this the browser claims the gesture for native scrolling of
+       .xterm-viewport and the touchmove becomes non-cancelable, so our
+       preventDefault is silently ignored. Taps/focus are unaffected. */
+    touch-action: none;
   }
 }
 /* xterm mounts in this UNPADDED inner box, not directly in .term-host. The

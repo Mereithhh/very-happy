@@ -56,6 +56,20 @@
   background: var(--bg-2);
   color: var(--text);
 }
+/* touch: 28px icon buttons and 26px list rows are under-sized for fingers */
+@media (pointer: coarse) {
+  .fp-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .fp-tab {
+    padding: 8px var(--sp-2);
+  }
+  .fp-row {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+}
 .fp-spin {
   animation: fp-rot 0.9s linear infinite;
 }

@@ -267,6 +267,12 @@
   box-shadow: 0 0 0 3px var(--accent-glow);
   outline: none;
 }
+/* touch: 16px floor stops iOS focus auto-zoom */
+@media (pointer: coarse) {
+  .input {
+    font-size: var(--fs-16);
+  }
+}
 
 .footnote {
   font-size: var(--fs-11);

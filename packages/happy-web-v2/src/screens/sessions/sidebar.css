@@ -77,6 +77,29 @@
   color: var(--text);
 }
 
+/* touch: 16px floor stops iOS focus auto-zoom on the search field; header
+ * icons, the clear button, filter segments and dropdown rows get
+ * finger-sized hit areas. */
+@media (pointer: coarse) {
+  .sb-search-input {
+    font-size: var(--fs-16);
+  }
+  .sb-icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .sb-search-clear {
+    padding: 10px 8px;
+    margin-right: -8px;
+  }
+  .sb-filter-btn {
+    padding: 8px 0;
+  }
+  .vh-menu-item {
+    padding: 11px 10px;
+  }
+}
+
 /* filter segmented */
 .sb-filter {
   display: flex;

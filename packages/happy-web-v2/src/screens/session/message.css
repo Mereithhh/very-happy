@@ -24,7 +24,8 @@
 }
 /* Long user queries: cap height + internal scroll instead of expanding unbounded. */
 .msg-bubble-scroll {
-  max-height: 40vh;
+  /* dvh: 40vh overshoots on iOS when the toolbar collapses */
+  max-height: 40dvh;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;

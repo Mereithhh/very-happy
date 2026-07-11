@@ -1,7 +1,8 @@
 .pm-content {
   min-width: 240px;
   max-width: 360px;
-  max-height: 50vh;
+  /* dvh: 50vh overshoots on iOS when the toolbar collapses */
+  max-height: 50dvh;
   overflow-y: auto;
   background: var(--bg-2);
   border: 1px solid var(--line-2);

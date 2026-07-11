@@ -112,6 +112,13 @@
   color: var(--text-faint);
   border-radius: 50%;
   padding: 2px;
+  position: relative;
+}
+/* invisible hit-area extension so the tiny × is tappable without inflating the pill */
+.ns-preset-x::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 .ns-preset-x:hover {
   color: var(--danger);
@@ -147,4 +154,18 @@
 }
 .ns-save:disabled {
   opacity: 0.4;
+}
+
+/* touch: 16px floor stops iOS focus auto-zoom; anchor the card in the upper
+ * third so the on-screen keyboard doesn't cover the path/name inputs
+ * (position: fixed doesn't track the iOS visual viewport). */
+@media (pointer: coarse) {
+  .ns-backdrop {
+    align-items: flex-start;
+    padding-top: max(10dvh, env(safe-area-inset-top));
+  }
+  .ns-select,
+  .ns-input {
+    font-size: var(--fs-16);
+  }
 }

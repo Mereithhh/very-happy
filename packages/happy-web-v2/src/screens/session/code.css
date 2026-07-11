@@ -32,6 +32,12 @@
   background: var(--bg-3);
   color: var(--text);
 }
+/* touch: the copy chip is ~20px tall — give it a real tap target */
+@media (pointer: coarse) {
+  .cv-copy {
+    padding: 8px 10px;
+  }
+}
 .cv-pre {
   margin: 0;
   padding: var(--sp-3);

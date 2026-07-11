@@ -79,3 +79,19 @@
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* touch: 16px input floor (iOS focus auto-zoom); anchor the card in the upper
+ * third so the on-screen keyboard doesn't cover the prompt input (position:
+ * fixed doesn't track the iOS visual viewport); comfier button targets. */
+@media (pointer: coarse) {
+  .vh-modal-backdrop {
+    align-items: flex-start;
+    padding-top: max(12dvh, env(safe-area-inset-top));
+  }
+  .vh-modal-input {
+    font-size: var(--fs-16);
+  }
+  .vh-modal-btn {
+    padding: 11px 16px;
+  }
+}

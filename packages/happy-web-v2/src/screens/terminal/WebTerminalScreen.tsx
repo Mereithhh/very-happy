@@ -233,6 +233,56 @@ export function WebTerminalScreen() {
       const dy = p.clientY - touchY;
       if (dx * dx + dy * dy <= 12 * 12) term.focus();
     };
+    // Touch drag → synthetic wheel events, so mobile can scroll back through
+    // history. xterm has no useful touch handling: on desktop the wheel is
+    // what gets translated into tmux mouse sequences (tmux mouse-mode →
+    // copy-mode scrollback), and on mobile that input simply doesn't exist.
+    // We reuse the tap threshold (12px) as the gesture gate: a drag beyond it
+    // becomes a scroll (and the tap handler above already ignores it). Each
+    // accumulated line-height of vertical movement dispatches one WheelEvent
+    // at the xterm screen element, exactly like a desktop wheel tick.
+    // Direction follows natural touch scrolling: finger down = see earlier
+    // content = wheel up (negative deltaY). Multi-touch (pinch) is left alone.
+    // preventDefault (non-passive listener below) stops the page/viewport from
+    // scrolling along — but only once the gesture is classified as a scroll,
+    // so taps are unaffected.
+    let scrollActive = false;
+    let scrollLastY = 0;
+    let scrollAccum = 0;
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) { scrollActive = false; return; }
+      const p = e.touches[0];
+      if (!p) return;
+      if (!scrollActive) {
+        const dx = p.clientX - touchX;
+        const dy = p.clientY - touchY;
+        if (dx * dx + dy * dy <= 12 * 12) return; // still a potential tap
+        scrollActive = true;
+        scrollLastY = p.clientY;
+        scrollAccum = 0;
+      }
+      if (e.cancelable) e.preventDefault();
+      scrollAccum += p.clientY - scrollLastY;
+      scrollLastY = p.clientY;
+      const termEl = term.element;
+      const lineH = Math.max(12, (termEl?.clientHeight ?? mount.clientHeight) / Math.max(1, term.rows));
+      const lines = Math.trunc(scrollAccum / lineH);
+      if (lines === 0) return;
+      scrollAccum -= lines * lineH;
+      const target = host.querySelector('.xterm-screen') ?? termEl;
+      if (!target) return;
+      // finger moved down (lines > 0) → wheel up → negative deltaY.
+      // clientX/Y matter: tmux mouse reports carry cell coordinates.
+      target.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -lines * lineH,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        clientX: p.clientX,
+        clientY: p.clientY,
+        bubbles: true,
+        cancelable: true,
+      }));
+    };
+    const onTouchDone = () => { scrollActive = false; scrollAccum = 0; };
     // When the soft keyboard opens, window.innerHeight doesn't change — only
     // window.visualViewport shrinks — so the keyboard covers the bottom of the
     // terminal (including the input line). Cap the host's height to the visible
@@ -259,6 +309,10 @@ export function WebTerminalScreen() {
     if (IS_COARSE_POINTER) {
       host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
       host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+      // NOT passive: we preventDefault once a drag is classified as a scroll.
+      host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+      host.addEventListener('touchend', onTouchDone, { capture: true, passive: true });
+      host.addEventListener('touchcancel', onTouchDone, { capture: true, passive: true });
       vv?.addEventListener('resize', onViewport);
       vv?.addEventListener('scroll', onViewport);
     }
@@ -278,6 +332,9 @@ export function WebTerminalScreen() {
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
         host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
+        host.removeEventListener('touchmove', onTouchMove, { capture: true } as EventListenerOptions);
+        host.removeEventListener('touchend', onTouchDone, { capture: true } as EventListenerOptions);
+        host.removeEventListener('touchcancel', onTouchDone, { capture: true } as EventListenerOptions);
         vv?.removeEventListener('resize', onViewport);
         vv?.removeEventListener('scroll', onViewport);
         host.style.maxHeight = '';

@@ -222,3 +222,23 @@
     display: none;
   }
 }
+
+/* touch: 16px floor stops iOS focus auto-zoom; larger targets for the
+ * composer's icon/send buttons (34/36px is under-sized for fingers). */
+@media (pointer: coarse) {
+  .ci-textarea {
+    font-size: var(--fs-16);
+  }
+  .ci-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .ci-send {
+    width: 40px;
+    height: 40px;
+  }
+  .ci-att-remove {
+    width: 24px;
+    height: 24px;
+  }
+}

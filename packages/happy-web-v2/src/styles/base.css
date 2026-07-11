@@ -48,6 +48,34 @@ a {
   text-decoration: none;
 }
 
+/* ---- touch baseline ----
+ * touch-action: manipulation removes the 300ms double-tap-zoom delay and
+ * accidental zoom on fast repeated taps; tap-highlight is replaced by our
+ * own :focus-visible / active treatments. */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+a,
+label,
+input,
+textarea,
+select,
+[role='button'] {
+  touch-action: manipulation;
+}
+
+/* iOS Safari force-zooms the page when a focused input/textarea/select has
+ * font-size < 16px. Coarse-pointer floor: never below 16px on form fields.
+ * Component classes with higher specificity carry their own coarse override. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: var(--fs-16);
+  }
+}
+
 code,
 kbd,
 pre,

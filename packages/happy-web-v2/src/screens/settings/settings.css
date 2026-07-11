@@ -144,6 +144,14 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
+/* touch: 16px floor stops iOS focus auto-zoom (snippet editor + the
+ * <input type="time"> quiet-hours fields that reuse .set-value). */
+@media (pointer: coarse) {
+  .set-editor__textarea,
+  input.set-value {
+    font-size: var(--fs-16);
+  }
+}
 .set-editor__row {
   display: flex;
   gap: var(--sp-2);

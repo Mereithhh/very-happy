@@ -52,11 +52,18 @@
 .ch-title-pencil {
   color: var(--text-faint);
   flex: none;
-  opacity: 0;
   transition: opacity var(--motion-fast);
 }
-.ch-title-btn:hover .ch-title-pencil {
-  opacity: 1;
+/* Hover-reveal is desktop-pointer only: on touch there is no hover, so a
+ * hidden pencil means the rename affordance is invisible. Keep it always
+ * visible on touch, reveal-on-hover on mouse. */
+@media (hover: hover) {
+  .ch-title-pencil {
+    opacity: 0;
+  }
+  .ch-title-btn:hover .ch-title-pencil {
+    opacity: 1;
+  }
 }
 .ch-crumb {
   display: flex;
@@ -124,4 +131,20 @@
 .ch-files-toggle.is-active {
   color: var(--accent-2);
   background: var(--accent-dim);
+}
+
+/* touch: 16px floor stops iOS focus auto-zoom on the rename input; header
+ * icons/back get finger-sized targets (header is 48px tall, room exists). */
+@media (pointer: coarse) {
+  .ch-rename-input {
+    font-size: var(--fs-16);
+  }
+  .ch-back {
+    width: 40px;
+    height: 40px;
+  }
+  .ch-icon {
+    width: 36px;
+    height: 36px;
+  }
 }

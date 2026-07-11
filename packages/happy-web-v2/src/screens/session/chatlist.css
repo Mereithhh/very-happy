@@ -54,3 +54,11 @@
   background: var(--bg-3);
   transform: translateY(-1px);
 }
+
+/* touch: finger-sized jump-to-bottom target */
+@media (pointer: coarse) {
+  .cl-jump {
+    width: 44px;
+    height: 44px;
+  }
+}

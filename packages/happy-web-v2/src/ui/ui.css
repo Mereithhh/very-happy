@@ -128,6 +128,13 @@
 .vh-input::placeholder {
   color: var(--text-faint);
 }
+/* touch: 16px floor stops iOS focus auto-zoom (class beats the base.css
+ * element-level floor, so it needs its own coarse override). */
+@media (pointer: coarse) {
+  .vh-input {
+    font-size: var(--fs-16);
+  }
+}
 .vh-input__left,
 .vh-input__right {
   display: inline-flex;

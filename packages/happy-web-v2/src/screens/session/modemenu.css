@@ -70,3 +70,14 @@
   font-size: var(--fs-11);
   color: var(--text-faint);
 }
+
+/* touch: the mode pills are ~22px tall with 3px padding — too small to tap
+ * reliably; grow padding (still compact) and menu rows get taller targets. */
+@media (pointer: coarse) {
+  .mm-trigger {
+    padding: 7px 11px;
+  }
+  .mm-item {
+    padding: 10px var(--sp-2);
+  }
+}
