@@ -94,11 +94,15 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
 
     // Claude Code idle at its input box: the process itself (claude, or node
     // for the bundled CLI) is foreground, or its input-box footer is visible.
+    // Real-world quirk: Claude Code's pane_current_command shows up as its bare
+    // VERSION string (argv0 is versioned, e.g. "2.1.201"), not "claude"/"node" —
+    // so treat a version-like command as the claude process too.
+    const looksLikeClaude = cmd === 'claude' || cmd === 'node' || /^\d+\.\d+(\.\d+)?$/.test(cmd);
     const hasIdleFooter =
         text.includes('? for shortcuts')
         || text.includes('bypass permissions on')
         || text.includes('⏵⏵');
-    if (cmd === 'claude' || cmd === 'node' || hasIdleFooter) return 'idle';
+    if (looksLikeClaude || hasIdleFooter) return 'idle';
 
     if (isShell) return 'shell';
     return undefined;
