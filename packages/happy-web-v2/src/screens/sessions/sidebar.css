@@ -162,6 +162,25 @@
 .sb-row-icon--term {
   color: var(--accent-2);
 }
+/* Claude agent-state badge on a terminal row: small StatusDot pinned to the
+ * icon's corner so the terminal glyph itself stays recognizable. */
+.sb-row-term-icon {
+  position: relative;
+  display: inline-flex;
+}
+.sb-row-agent-dot {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: inline-flex;
+  border-radius: 50%;
+  /* ring punches the dot out of the icon strokes underneath */
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+.sb-row:hover .sb-row-agent-dot,
+.sb-row.is-selected .sb-row-agent-dot {
+  box-shadow: 0 0 0 2px var(--bg-2);
+}
 .sb-row-text {
   display: flex;
   flex-direction: column;

@@ -334,11 +334,17 @@ export async function machineKillTerminal(machineId: string, terminalId: string)
     }
 }
 
+/** Claude Code status inside a terminal, reported by newer daemons.
+ *  Old daemons omit the field entirely — treat `undefined` as "unknown" and
+ *  keep the default terminal rendering (no agent dot, no alerts). */
+export type TerminalAgentState = 'working' | 'needs_input' | 'idle' | 'shell';
+
 export interface MachineTerminal {
     id: string;
     title?: string;
     cwd?: string;
     createdAt?: number;
+    agentState?: TerminalAgentState;
 }
 
 /** Ask a machine for its live tmux terminals (cross-device source of truth).

@@ -43,6 +43,67 @@ const MAX_LIVE_PTYS = 24;              // hard cap; LRU-evict oldest-touched bey
 const PTY_IDLE_MS = 20 * 60 * 1000;    // reap ptys with no input/resize for 20 min
 const REAP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Per-probe tmux subprocess timeout — a wedged tmux must never stall the
+ *  sidebar's periodic `list-terminals` poll. */
+const TMUX_PROBE_TIMEOUT_MS = 1500;
+
+/**
+ * Coarse state of the agent (Claude Code) inside a web terminal, surfaced in
+ * the sidebar. Optional everywhere: probing is best-effort and the field is
+ * simply omitted when detection fails or times out.
+ *  - working:     Claude Code is actively running a turn.
+ *  - needs_input: a permission / choice / plan-approval dialog is waiting.
+ *  - idle:        Claude Code is up but sitting at its input box.
+ *  - shell:       plain shell, no agent TUI detected.
+ */
+export type AgentState = 'working' | 'needs_input' | 'idle' | 'shell';
+
+const SHELL_COMMANDS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
+
+/**
+ * Classify a tmux pane into an AgentState from its current foreground command
+ * (`#{pane_current_command}`) and the tail of its visible text (capture-pane).
+ * Pure function so the heuristics are unit-testable without tmux.
+ *
+ * Priority: needs_input > working > idle > shell. Dialog markers only count
+ * inside the last 15 non-blank-trimmed lines so a "Do you want" merely quoted
+ * in scrolled-by output doesn't misfire. Returns undefined when nothing is
+ * recognizable (e.g. vim/htop in the pane) — callers omit the field then.
+ */
+export function classifyPane(currentCommand: string, tail: string): AgentState | undefined {
+    const cmd = (currentCommand || '').trim().replace(/^-/, '').toLowerCase();
+    const isShell = SHELL_COMMANDS.has(cmd);
+    const lines = tail.replace(/\r/g, '').split('\n').map((l) => l.trimEnd());
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    const text = lines.join('\n');
+    const last15 = lines.slice(-15).join('\n');
+
+    // Interactive dialog (permission prompt / choice list / plan approval).
+    // Checked first: a waiting dialog also shows other footer text around it.
+    const hasDialog =
+        last15.includes('Do you want')
+        || last15.includes('Would you like to proceed')
+        // Numbered choice list: a line starting (after box-drawing/space) with
+        // "❯ 1." or "> 1." — Claude Code renders options inside │…│ borders.
+        || /^[\s│]*[❯>]\s*1\.\s/m.test(last15)
+        || /\(y\/n\)/i.test(last15);
+    if (hasDialog) return 'needs_input';
+
+    // Claude Code's in-progress footer while a turn is running.
+    if (text.includes('esc to interrupt')) return 'working';
+
+    // Claude Code idle at its input box: the process itself (claude, or node
+    // for the bundled CLI) is foreground, or its input-box footer is visible.
+    const hasIdleFooter =
+        text.includes('? for shortcuts')
+        || text.includes('bypass permissions on')
+        || text.includes('⏵⏵');
+    if (cmd === 'claude' || cmd === 'node' || hasIdleFooter) return 'idle';
+
+    if (isShell) return 'shell';
+    return undefined;
+}
+
 let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
     if (tmuxAvailableCache !== null) return tmuxAvailableCache;
@@ -280,15 +341,20 @@ export class WebTerminalManager {
      * source of truth for the cross-device terminal list — any logged-in
      * device queries this (over the RPC relay) instead of a per-device cache,
      * so terminals are visible and reattachable from anywhere. [] if no tmux.
+     *
+     * `agentState` is a best-effort probe of what's running inside each
+     * session (Claude Code working / waiting for input / idle, or plain
+     * shell); it is omitted whenever the probe fails, times out, or nothing
+     * is recognizable — never an error.
      */
-    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number }> {
+    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number; agentState?: AgentState }> {
         if (!isTmuxAvailable()) return [];
         try {
             const r = spawnSync('tmux',
                 ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{pane_current_path}'],
                 { encoding: 'utf8' });
             if (r.status !== 0 || !r.stdout) return [];
-            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number }> = [];
+            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; agentState?: AgentState }> = [];
             for (const line of r.stdout.split('\n')) {
                 if (!line) continue;
                 const [name, created, cwd] = line.split('\t');
@@ -304,11 +370,31 @@ export class WebTerminalManager {
                     title,
                     cwd: cwd || undefined,
                     createdAt: created ? Number(created) * 1000 : undefined,
+                    agentState: this.probeAgentState(name),
                 });
             }
             return out;
         } catch {
             return [];
+        }
+    }
+
+    /** Best-effort agent-state probe for one tmux session: 2 short tmux calls
+     *  (foreground command + pane tail) fed into classifyPane. Any failure or
+     *  timeout → undefined (the field is omitted), never an error. */
+    private probeAgentState(sessionName: string): AgentState | undefined {
+        try {
+            const cmd = spawnSync('tmux',
+                ['display-message', '-p', '-t', sessionName, '#{pane_current_command}'],
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+            if (cmd.status !== 0 || typeof cmd.stdout !== 'string') return undefined;
+            const cap = spawnSync('tmux',
+                ['capture-pane', '-p', '-t', sessionName, '-S', '-40'],
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+            if (cap.status !== 0 || typeof cap.stdout !== 'string') return undefined;
+            return classifyPane(cmd.stdout.trim(), cap.stdout);
+        } catch {
+            return undefined;
         }
     }
 

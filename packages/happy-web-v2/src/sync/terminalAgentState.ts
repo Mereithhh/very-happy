@@ -1,0 +1,126 @@
+/**
+ * terminalAgentState — lightweight store of each web terminal's Claude Code
+ * status (`agentState` on `machineListTerminals` items, daemon >= the version
+ * that reports it). There is deliberately NO polling loop here: the Sidebar's
+ * existing reconcile pass is the single `list-terminals` caller and feeds every
+ * result through `ingest()` (see Sidebar.tsx), so we never run two competing
+ * poll loops against the same RPC.
+ *
+ * Besides the {terminalId → state} map (consumed by the sidebar dot), ingest
+ * owns the alerting side effects:
+ *   - while ANY terminal is in `needs_input`, the tab title gets a "(!) "
+ *     prefix (re-asserted on every ingest since other code rewrites the title);
+ *   - on a *transition* to `needs_input` (previous value known and different),
+ *     if the tab isn't focused and Notification permission is already granted,
+ *     raise a foreground browser Notification (no permission prompts here —
+ *     that flow stays in webNotifications.ts / settings).
+ *
+ * Old daemons don't report `agentState`: those terminals simply never get an
+ * entry, and every consumer treats `undefined` as "keep the current UI".
+ */
+import { create } from 'zustand';
+import { t } from '@/text';
+import type { MachineTerminal, TerminalAgentState } from '@/sync/ops';
+import { useTerminalSessions } from '@/sync/terminalSessions';
+
+interface Entry {
+  machineId: string;
+  state: TerminalAgentState;
+}
+
+interface TerminalAgentStates {
+  /** terminalId → last known agent state (only terminals whose daemon reports it). */
+  states: Record<string, Entry>;
+  /** Feed one machine's `machineListTerminals` result. Callers must skip
+   *  failed queries (null) — old values are silently kept on failure. */
+  ingest(machineId: string, terminals: MachineTerminal[]): void;
+}
+
+/** Prefix the tab title with "(!) " while some terminal needs input.
+ *  Strips every prior "(!) " first so re-applies are idempotent and we don't
+ *  fight webTabTitle's own "(N) " unread prefix. */
+function applyTitleFlag(active: boolean) {
+  if (typeof document === 'undefined') return;
+  const stripped = document.title.replace(/\(!\)\s*/g, '');
+  const next = active ? `(!) ${stripped}` : stripped;
+  if (next !== document.title) document.title = next;
+}
+
+function isTabFocused(): boolean {
+  if (typeof document === 'undefined') return true;
+  const visible = document.visibilityState === 'visible';
+  const focused = typeof document.hasFocus === 'function' ? document.hasFocus() : true;
+  return visible && focused;
+}
+
+/** Foreground Notification for a needs_input transition. Only uses an already
+ *  granted permission; never requests one. Best-effort, never throws. */
+function notifyNeedsInput(terminalId: string, terminalTitle: string) {
+  if (isTabFocused()) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try {
+    const notification = new Notification(terminalTitle, {
+      body: t('terminal.claudeNeedsInputBody'),
+      tag: `vh-term-agent-${terminalId}`, // newer alert for same terminal replaces older
+    });
+    notification.onclick = () => {
+      try {
+        window.focus();
+      } catch {
+        // focus is best-effort
+      }
+      notification.close();
+    };
+  } catch {
+    // Notification constructor can throw (e.g. some mobile browsers) — ignore
+  }
+}
+
+export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => ({
+  states: {},
+  ingest: (machineId, terminals) => {
+    const prev = get().states;
+    const next: Record<string, Entry> = {};
+    let changed = false;
+
+    // Entries owned by OTHER machines carry over untouched; this machine's
+    // entries are rebuilt from the fresh listing (a vanished terminal or a
+    // daemon that stopped reporting agentState drops back to undefined).
+    for (const [id, entry] of Object.entries(prev)) {
+      if (entry.machineId !== machineId) next[id] = entry;
+    }
+
+    for (const term of terminals) {
+      const state = term.agentState;
+      if (!state) continue; // old daemon → stay unknown, keep current UI
+      const before = prev[term.id];
+      if (before && before.machineId === machineId && before.state === state) {
+        next[term.id] = before; // keep identity, avoid churn
+      } else {
+        next[term.id] = { machineId, state };
+        changed = true;
+        // Alert only on a real transition INTO needs_input — not on the first
+        // observation after load, so reopening the app doesn't replay alerts.
+        if (state === 'needs_input' && before && before.state !== 'needs_input') {
+          const record = useTerminalSessions
+            .getState()
+            .terminals.find((x) => x.id === term.id);
+          const title =
+            record?.title || term.title?.trim() || record?.machineName || 'Terminal';
+          notifyNeedsInput(term.id, title);
+        }
+      }
+    }
+
+    if (!changed && Object.keys(next).length !== Object.keys(prev).length) changed = true;
+    if (changed) set({ states: next });
+    // Re-assert every ingest (idempotent): navigation may have rewritten the title.
+    const current = changed ? next : prev;
+    applyTitleFlag(Object.values(current).some((e) => e.state === 'needs_input'));
+  },
+}));
+
+/** Subscribe to one terminal's Claude state (undefined = unknown / old daemon). */
+export function useTerminalAgentState(terminalId: string | undefined): TerminalAgentState | undefined {
+  return useTerminalAgentStates((s) => (terminalId ? s.states[terminalId]?.state : undefined));
+}

@@ -930,6 +930,10 @@ export const zhHans: TranslationStructure = {
         uploadingFile: '上传中…',
         dropToUpload: '松开上传到机器',
         pathWillBePasted: '路径会粘贴到终端',
+        // 终端内 Claude Code 状态（侧边栏状态点 + 通知）
+        claudeWorking: 'Claude：工作中',
+        claudeNeedsInput: 'Claude：等待输入',
+        claudeNeedsInputBody: 'Claude 需要你的输入',
     },
 
     modals: {

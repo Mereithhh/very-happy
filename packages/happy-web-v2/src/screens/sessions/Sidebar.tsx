@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
 import { useSessions, useAllMachines, storage } from '@/sync/storage';
@@ -13,6 +13,7 @@ import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { NewSessionModal } from './NewSessionModal';
 import './sidebar.css';
 
@@ -49,8 +50,17 @@ export function Sidebar() {
 
   // Reconcile the (client-owned) terminal list against each online machine's
   // REAL live tmux sessions: adopt orphans (created elsewhere / lost records) so
-  // they're visible+deletable instead of leaking, and drop dead records. Runs on
-  // mount and whenever the set of online machines changes.
+  // they're visible+deletable instead of leaking, and drop dead records.
+  //
+  // This is also the ONE poll loop for per-terminal Claude agent state: every
+  // `machineListTerminals` result is fed to the terminalAgentState store, so we
+  // don't run a second competing poller against the same RPC. Runs on mount /
+  // online-set change, then every 10s — slowed to 30s while the tab is hidden
+  // rather than paused outright, because the needs_input notification only
+  // matters while the user is away (a fully paused poll could never fire it).
+  const ingestAgentStates = useTerminalAgentStates((s) => s.ingest);
+  const machinesRef = useRef(machines);
+  machinesRef.current = machines;
   const onlineMachineIds = useMemo(
     () => machines.filter(isMachineOnline).map((m) => m.id).join(','),
     [machines],
@@ -58,14 +68,35 @@ export function Sidebar() {
   useEffect(() => {
     if (!onlineMachineIds) return;
     let cancelled = false;
-    for (const id of onlineMachineIds.split(',')) {
-      const m = machines.find((x) => x.id === id);
-      const name = (m as any)?.metadata?.displayName || (m as any)?.metadata?.host || id.slice(0, 8);
-      machineListTerminals(id).then((live) => {
-        if (!cancelled) reconcileTerminals(id, name, live);
-      });
-    }
-    return () => { cancelled = true; };
+    const poll = () => {
+      for (const id of onlineMachineIds.split(',')) {
+        const m = machinesRef.current.find((x) => x.id === id);
+        const name = (m as any)?.metadata?.displayName || (m as any)?.metadata?.host || id.slice(0, 8);
+        machineListTerminals(id).then((live) => {
+          if (cancelled) return;
+          reconcileTerminals(id, name, live); // null-safe (no-op on failed query)
+          if (live) ingestAgentStates(id, live); // failure → keep last known states
+        });
+      }
+    };
+    poll();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const schedule = () => {
+      if (timer) clearInterval(timer);
+      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      timer = setInterval(poll, hidden ? 30_000 : 10_000);
+    };
+    schedule();
+    const onVisibility = () => {
+      schedule();
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onlineMachineIds]);
 
@@ -229,13 +260,31 @@ export function Sidebar() {
 function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const { t } = useTranslation();
   const renameTerminal = useTerminalSessions((s) => s.rename);
   const removeTerminal = useTerminalSessions((s) => s.remove);
 
   const isTerminal = row.kind === 'terminal';
-  const selected = isTerminal ? false : id === row.session!.id;
+  // Terminal rows are focused when the terminal route + tid match (they were
+  // hardcoded unselected before, so the open terminal had no indicator).
+  const selected = isTerminal
+    ? location.pathname === `/terminal/${row.machineId}`
+      && new URLSearchParams(location.search).get('tid') === row.terminalId
+    : id === row.session!.id;
   const s = row.session;
+
+  // Claude agent state inside a web terminal (undefined = old daemon / no data
+  // → keep the plain terminal icon, exactly the pre-agentState rendering).
+  const agentState = useTerminalAgentStates((st) =>
+    isTerminal && row.terminalId ? st.states[row.terminalId]?.state : undefined,
+  );
+  const agentDot =
+    agentState === 'needs_input' ? ('permission' as const)
+    : agentState === 'working' ? ('thinking' as const)
+    : null; // idle / shell / undefined → current rendering, no extra dot
+  const agentDotTitle =
+    agentDot === 'permission' ? t('terminal.claudeNeedsInput') : t('terminal.claudeWorking');
 
   // status dot — gate "live/thinking" on the session actually being active so
   // ended/archived sessions never render as running (bug #6).
@@ -328,7 +377,18 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
     <div className={`sb-row${selected ? ' is-selected' : ''}`}>
       <button className="sb-row-main" onClick={open}>
         <span className={`sb-row-icon${isTerminal ? ' sb-row-icon--term' : ''}`}>
-          {isTerminal ? <TerminalSquare size={16} /> : <StatusDot status={dot} pulse={dot === 'thinking'} size={9} />}
+          {isTerminal ? (
+            <span className="sb-row-term-icon" title={agentDot ? agentDotTitle : undefined}>
+              <TerminalSquare size={16} />
+              {agentDot && (
+                <span className="sb-row-agent-dot">
+                  <StatusDot status={agentDot} pulse={agentDot === 'thinking'} size={7} title={agentDotTitle} />
+                </span>
+              )}
+            </span>
+          ) : (
+            <StatusDot status={dot} pulse={dot === 'thinking'} size={9} />
+          )}
         </span>
         <span className="sb-row-text">
           <span className="sb-row-title">{row.title}</span>

@@ -857,6 +857,10 @@ export const zhHant: TranslationStructure = {
         uploadingFile: '上傳中…',
         dropToUpload: '鬆開上傳到機器',
         pathWillBePasted: '路徑會貼到終端',
+        // 終端內 Claude Code 狀態（側邊欄狀態點 + 通知）
+        claudeWorking: 'Claude：工作中',
+        claudeNeedsInput: 'Claude：等待輸入',
+        claudeNeedsInputBody: 'Claude 需要你的輸入',
     },
 
     modals: {

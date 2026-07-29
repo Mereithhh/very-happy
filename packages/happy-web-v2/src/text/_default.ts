@@ -948,6 +948,10 @@ export const en = {
         uploadingFile: 'Uploading…',
         dropToUpload: 'Drop to upload',
         pathWillBePasted: 'path will be pasted into the terminal',
+        // Claude Code status inside a web terminal (sidebar dot + notification)
+        claudeWorking: 'Claude: working',
+        claudeNeedsInput: 'Claude: needs input',
+        claudeNeedsInputBody: 'Claude needs your input',
     },
 
     modals: {
