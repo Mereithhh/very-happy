@@ -2371,6 +2371,16 @@ class Sync {
                         this.onSessionVisible(updateData.body.id);
                     }
                 }
+            } else if (!isSessionDeleted(updateData.body.id)) {
+                // The session still isn't in local state even after awaiting the
+                // sessions sync queue (e.g. it fell outside the initial /v1/sessions
+                // page, or its row hadn't landed yet). Without a compensating fetch
+                // this update — which may carry the session's new title (metadata
+                // summary) — would be dropped forever, leaving other devices stuck
+                // on the old name after a cross-device rename. Force a fresh pull so
+                // the authoritative metadata is picked up.
+                log.log(`🔄 update-session for unknown session ${updateData.body.id}, forcing sessions refetch`);
+                this.sessionsSync.invalidate();
             }
         } else if (updateData.body.t === 'update-account') {
             const accountUpdate = updateData.body;

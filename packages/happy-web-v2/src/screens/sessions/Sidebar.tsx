@@ -175,6 +175,26 @@ export function Sidebar() {
         }
         return;
       }
+      // ⌘/Ctrl+R → rename the currently open conversation/terminal. Unlike
+      // ⌘N/⌘1-9, ⌘R IS interceptable via preventDefault (it's page reload, not
+      // a browser-window command), so this works in a normal tab too. We only
+      // preventDefault when the current route actually maps to a row — on any
+      // other screen the native reload is left intact. window.location (not a
+      // captured value) so it's never stale against this once-registered handler.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+        const cur = `${window.location.pathname}${window.location.search}`;
+        const target = rowsRef.current?.find((r) => rowHref(r) === cur);
+        if (target) {
+          e.preventDefault();
+          void (async () => {
+            const next = await Modal.prompt(t('common.rename' as any), undefined, { defaultValue: target.title });
+            if (next == null) return;
+            if (target.kind === 'terminal') useTerminalSessions.getState().rename(target.terminalId!, next);
+            else await sessionUpdateTitle(target.session!.id, next).catch(() => {});
+          })();
+        }
+        return;
+      }
       // long-press ⌘/Ctrl (no other key) → reveal badges after a short delay
       if ((e.key === 'Meta' || e.key === 'Control') && !holdTimer) {
         holdTimer = setTimeout(() => setCmdHeld(true), 280);

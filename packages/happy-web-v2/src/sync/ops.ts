@@ -703,24 +703,41 @@ export async function sessionUpdateTitle(
         throw new Error(`Session encryption not found for ${sessionId}`);
     }
 
+    // Seed base metadata/version from local storage, then keep them in lock-step
+    // with what the SERVER reports on a version-mismatch. We must NOT re-derive
+    // the base from `sync.refreshSessions()` on each retry: refreshSessions()
+    // coalesces onto an already-in-flight `/v1/sessions` fetch (very common on an
+    // active session that is constantly invalidating sessionsSync as the CLI
+    // streams updates), so it can hand back a version that predates the conflict
+    // — the retry then re-sends the same stale expectedVersion, mismatches again,
+    // and after maxRetries the rename is thrown away (and the callers swallow it,
+    // so an active-session rename silently never persists → no device ever sees
+    // the new title). The version-mismatch ack already carries the authoritative
+    // current {version, metadata}; apply the summary on top of THAT and retry,
+    // exactly like the CLI's own updateMetadata does.
+    const initial = storage.getState().sessions[sessionId];
+    if (!initial) {
+        throw new Error(`Session not found: ${sessionId}`);
+    }
+    if (!initial.metadata) {
+        throw new Error(`Session metadata not loaded for ${sessionId}`);
+    }
+    let baseMetadata: Metadata = initial.metadata;
+    let expectedVersion = initial.metadataVersion;
+
+    const applySummary = (base: Metadata): Metadata => {
+        const next: Metadata = { ...base };
+        if (trimmed.length === 0) {
+            delete next.summary;
+        } else {
+            next.summary = { text: trimmed, updatedAt: Date.now() };
+        }
+        return next;
+    };
+
     let retryCount = 0;
     while (retryCount <= maxRetries) {
-        const session = storage.getState().sessions[sessionId];
-        if (!session) {
-            throw new Error(`Session not found: ${sessionId}`);
-        }
-
-        const currentMetadata: Metadata | null = session.metadata;
-        if (!currentMetadata) {
-            throw new Error(`Session metadata not loaded for ${sessionId}`);
-        }
-
-        const nextMetadata: Metadata = { ...currentMetadata };
-        if (trimmed.length === 0) {
-            delete nextMetadata.summary;
-        } else {
-            nextMetadata.summary = { text: trimmed, updatedAt: Date.now() };
-        }
+        const nextMetadata = applySummary(baseMetadata);
 
         const encryptedMetadata = await sessionEncryption.encryptMetadata(nextMetadata);
         const result = await apiSocket.emitWithAck<{
@@ -730,7 +747,7 @@ export async function sessionUpdateTitle(
         }>('update-metadata', {
             sid: sessionId,
             metadata: encryptedMetadata,
-            expectedVersion: session.metadataVersion
+            expectedVersion
         });
 
         if (result.result === 'success') {
@@ -738,9 +755,20 @@ export async function sessionUpdateTitle(
             // applies to storage; no manual local write needed.
             return;
         } else if (result.result === 'version-mismatch') {
-            // Pull the latest sessions so storage reflects the server version,
-            // then retry against the fresh metadata/version.
-            await sync.refreshSessions();
+            // The server rejected our expectedVersion and returned the current
+            // authoritative version + metadata. Rebase onto it (preserving any
+            // fields another writer — e.g. the CLI — just changed) and retry with
+            // the summary re-applied on top, so a concurrent CLI metadata write
+            // can no longer drop the rename.
+            if (typeof result.version === 'number') {
+                expectedVersion = result.version;
+            }
+            if (result.metadata) {
+                const latest = await sessionEncryption.decryptMetadata(result.version ?? expectedVersion, result.metadata);
+                if (latest) {
+                    baseMetadata = latest;
+                }
+            }
             retryCount++;
             continue;
         } else {
