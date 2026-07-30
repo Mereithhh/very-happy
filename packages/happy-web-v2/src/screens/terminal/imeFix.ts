@@ -34,6 +34,12 @@ export function ensureImeFix() {
   font-family: var(--font-mono), monospace !important;
   line-height: 1.4 !important;
   box-shadow: 0 4px 16px -4px rgba(0,0,0,0.6) !important;
+}
+/* xterm ALSO paints the composing string in its own .composition-view at the
+ * cursor — with the textarea made visible above, the pinyin rendered TWICE and
+ * overlapped. The styled textarea is the single visible source now. */
+.xterm .composition-view {
+  display: none !important;
 }`;
   document.head.appendChild(style);
 }

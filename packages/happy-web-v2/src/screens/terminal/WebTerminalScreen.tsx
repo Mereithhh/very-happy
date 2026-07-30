@@ -317,6 +317,27 @@ export function WebTerminalScreen() {
       vv?.addEventListener('scroll', onViewport);
     }
 
+    // Desktop: click-to-focus fallback. xterm only focuses its hidden textarea
+    // from its own internal mousedown path — clicks landing on the host's
+    // padding (or after an odd focus loss) miss it and typing goes nowhere
+    // until you hit the canvas exactly. A plain click (tiny displacement, and
+    // no selection made — don't break drag-to-copy) refocuses the terminal.
+    // Capture phase so inner stopPropagation can't eat it.
+    let mouseX = 0;
+    let mouseY = 0;
+    const onMouseDown = (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY; };
+    const onMouseUp = (e: MouseEvent) => {
+      const dx = e.clientX - mouseX;
+      const dy = e.clientY - mouseY;
+      if (dx * dx + dy * dy > 5 * 5) return; // drag = selection/scroll, leave it
+      if (term.hasSelection()) return;
+      term.focus();
+    };
+    if (!IS_COARSE_POINTER) {
+      host.addEventListener('mousedown', onMouseDown, true);
+      host.addEventListener('mouseup', onMouseUp, true);
+    }
+
     return () => {
       disposed = true;
       clearTimeout(t0);
@@ -338,6 +359,10 @@ export function WebTerminalScreen() {
         vv?.removeEventListener('resize', onViewport);
         vv?.removeEventListener('scroll', onViewport);
         host.style.maxHeight = '';
+      }
+      if (!IS_COARSE_POINTER) {
+        host.removeEventListener('mousedown', onMouseDown, true);
+        host.removeEventListener('mouseup', onMouseUp, true);
       }
       dataDisp.dispose();
       keyDisp.dispose();

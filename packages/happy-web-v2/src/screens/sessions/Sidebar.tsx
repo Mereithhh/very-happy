@@ -156,6 +156,25 @@ export function Sidebar() {
         }
         return;
       }
+      // ⌘/Ctrl+N → new terminal. Browser-reserved in normal tabs (Chrome opens
+      // a new window before the page sees it); works in the installed PWA,
+      // same caveat as ⌘1-9. One online machine → open a terminal there
+      // directly; several → machine picker.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault();
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        setCmdHeld(false);
+        const online = machinesRef.current.filter(isMachineOnline);
+        if (online.length === 1) {
+          const m: any = online[0];
+          const name = m?.metadata?.displayName || m?.metadata?.host || m.id.slice(0, 8);
+          const term = useTerminalSessions.getState().create(m.id, name);
+          navigate(`/terminal/${m.id}?tid=${term.id}`);
+        } else {
+          navigate('/terminal');
+        }
+        return;
+      }
       // long-press ⌘/Ctrl (no other key) → reveal badges after a short delay
       if ((e.key === 'Meta' || e.key === 'Control') && !holdTimer) {
         holdTimer = setTimeout(() => setCmdHeld(true), 280);
