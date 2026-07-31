@@ -968,6 +968,8 @@ export const en = {
         claudeWorking: 'Claude: working',
         claudeNeedsInput: 'Claude: needs input',
         claudeNeedsInputBody: 'Claude needs your input',
+        selectMode: 'Select / copy mode',
+        selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
     },
 
     modals: {

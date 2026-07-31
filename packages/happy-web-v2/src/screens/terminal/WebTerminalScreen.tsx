@@ -7,7 +7,7 @@ import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle } from 'lucide-react';
+import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -76,6 +76,13 @@ export function WebTerminalScreen() {
   const termRef = useRef<Terminal | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  // Mobile select-mode: touch has one gesture, and by default we spend it on
+  // scrolling (drag → synthetic wheel). Toggling this hands the gesture back to
+  // the browser so the OS long-press text selection works on the DOM-rendered
+  // terminal text (→ system copy). The touch handlers read the ref (they're set
+  // up once), the state drives the button + host className.
+  const [selectMode, setSelectMode] = useState(false);
+  const selectModeRef = useRef(false);
   const navigateTo = navigate;
 
   useEffect(() => {
@@ -259,9 +266,11 @@ export function WebTerminalScreen() {
     let touchY = 0;
     const onTouchStart = (e: TouchEvent) => {
       const p = e.touches[0];
+      if (selectModeRef.current) return; // let the browser select/scroll natively
       if (p) { touchX = p.clientX; touchY = p.clientY; }
     };
     const onTouchEnd = (e: TouchEvent) => {
+      if (selectModeRef.current) return;
       const p = e.changedTouches[0];
       if (!p) return;
       const dx = p.clientX - touchX;
@@ -285,6 +294,7 @@ export function WebTerminalScreen() {
     let scrollLastY = 0;
     let scrollAccum = 0;
     const onTouchMove = (e: TouchEvent) => {
+      if (selectModeRef.current) return; // native selection/scroll, don't hijack
       if (e.touches.length > 1) { scrollActive = false; return; }
       const p = e.touches[0];
       if (!p) return;
@@ -430,6 +440,21 @@ export function WebTerminalScreen() {
     if (next != null) renameTerminal(tid, next);
   };
 
+  const toggleSelectMode = () => {
+    const next = !selectModeRef.current;
+    selectModeRef.current = next;
+    setSelectMode(next);
+    const tm = termRef.current;
+    if (next) {
+      // Drop terminal focus so the soft keyboard closes and the OS long-press
+      // selection isn't fighting the caret / input.
+      tm?.blur?.();
+      (tm?.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null)?.blur();
+    } else {
+      tm?.focus();
+    }
+  };
+
   const cmds = (settings.terminalCommands ?? []) as Array<{ id: string; title: string; command: string }>;
 
   return (
@@ -446,6 +471,16 @@ export function WebTerminalScreen() {
         </button>
         <div className="term-header-right">
           {connecting && <span className="term-connecting mono">{t('common.loading' as any)}</span>}
+          {!isDesktop && (
+            <button
+              className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}
+              title={t('terminal.selectMode' as any)}
+              aria-pressed={selectMode}
+              onClick={toggleSelectMode}
+            >
+              <TextSelect size={18} />
+            </button>
+          )}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup' as any)}>
@@ -480,7 +515,8 @@ export function WebTerminalScreen() {
           </button>
         </div>
       </header>
-      <div ref={hostRef} className="term-host">
+      <div ref={hostRef} className={`term-host${selectMode ? ' is-selecting' : ''}`}>
+        {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint' as any)}</div>}
         <div ref={innerRef} className="term-host-inner" />
       </div>
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}

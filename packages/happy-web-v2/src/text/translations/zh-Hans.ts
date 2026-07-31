@@ -950,6 +950,8 @@ export const zhHans: TranslationStructure = {
         claudeWorking: 'Claude：工作中',
         claudeNeedsInput: 'Claude：等待输入',
         claudeNeedsInputBody: 'Claude 需要你的输入',
+        selectMode: '选择/复制模式',
+        selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
     },
 
     modals: {

@@ -75,6 +75,42 @@
     touch-action: none;
   }
 }
+/* Select mode (mobile): hand the touch gesture + text back to the browser so
+   the OS long-press selection works on the DOM-rendered terminal text. Override
+   the coarse-pointer `touch-action:none` above and xterm's own user-select:none. */
+.term-host.is-selecting,
+.term-host.is-selecting .xterm,
+.term-host.is-selecting .xterm-screen,
+.term-host.is-selecting .xterm-rows,
+.term-host.is-selecting .xterm-rows * {
+  touch-action: auto !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
+}
+.term-host.is-selecting {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.term-select-hint {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  background: var(--bg-1);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px -4px rgba(0,0,0,0.6);
+}
+.sb-icon-btn.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 /* xterm mounts in this UNPADDED inner box, not directly in .term-host. The
    FitAddon computes rows from getComputedStyle(parent).height, which — with
    border-box — INCLUDES .term-host's padding, but it only subtracts the xterm
