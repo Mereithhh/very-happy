@@ -166,10 +166,27 @@ export function WebTerminalScreen() {
     const ro = new ResizeObserver(scheduleFit);
     ro.observe(mount);
     window.addEventListener('resize', scheduleFit);
+    // Regain input focus + clear any stuck IME composition. Two failure modes
+    // this fixes on desktop: (1) after switching browser tab / app window away
+    // and back, the hidden textarea has lost focus and typing goes nowhere until
+    // you click; (2) switching input method (IME) mid-session can leave xterm's
+    // internal _isComposing=true — every keydown is then silently swallowed and
+    // the terminal appears frozen. Blurring the helper textarea fires
+    // compositionend per spec, which resets that flag; then we refocus. Guarded
+    // to fine pointers so mobile never force-opens the soft keyboard.
+    const refocus = () => {
+      if (IS_COARSE_POINTER || disposed || document.hidden) return;
+      const ta = term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
+      if (ta) ta.blur();
+      term.focus();
+    };
     // rAF is paused while the tab is hidden, so a resize that lands in the
     // background never gets fitted; re-fit when the tab becomes visible again.
-    const onVisible = () => { if (!document.hidden) scheduleFit(); };
+    const onVisible = () => { if (!document.hidden) { scheduleFit(); refocus(); } };
     document.addEventListener('visibilitychange', onVisible);
+    // Returning to the window (alt-tab / app switch) restores focus to the body,
+    // not the terminal — refocus so the user can type immediately.
+    window.addEventListener('focus', refocus);
     // The web font loads async; xterm caches glyph cell size at open time from
     // whatever font was available then. Once the real font is ready, force a
     // re-measure so the cell size matches and text isn't clipped, then refit.
@@ -331,7 +348,7 @@ export function WebTerminalScreen() {
       const dy = e.clientY - mouseY;
       if (dx * dx + dy * dy > 5 * 5) return; // drag = selection/scroll, leave it
       if (term.hasSelection()) return;
-      term.focus();
+      refocus(); // also clears a stuck IME composition, not just plain focus
     };
     if (!IS_COARSE_POINTER) {
       host.addEventListener('mousedown', onMouseDown, true);
@@ -343,6 +360,7 @@ export function WebTerminalScreen() {
       clearTimeout(t0);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
+      window.removeEventListener('focus', refocus);
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       apiSocket.offMessage('terminal-output', onOutput);

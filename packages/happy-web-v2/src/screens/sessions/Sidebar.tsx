@@ -150,6 +150,7 @@ export function Sidebar() {
         const target = list?.[Number(e.key) - 1];
         if (target) {
           e.preventDefault();
+          e.stopPropagation();
           if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
           setCmdHeld(false);
           navigate(rowHref(target));
@@ -162,6 +163,7 @@ export function Sidebar() {
       // directly; several → machine picker.
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
+        e.stopPropagation();
         if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
         setCmdHeld(false);
         const online = machinesRef.current.filter(isMachineOnline);
@@ -177,8 +179,11 @@ export function Sidebar() {
       }
       // ⌘/Ctrl+R → rename the currently open conversation/terminal. Unlike
       // ⌘N/⌘1-9, ⌘R IS interceptable via preventDefault (it's page reload, not
-      // a browser-window command), so this works in a normal tab too. We only
-      // preventDefault when the current route actually maps to a row — on any
+      // a browser-window command), so this works in a normal tab too. This
+      // listener is registered in the CAPTURE phase (below) precisely so it runs
+      // BEFORE xterm's textarea keydown handler on the terminal page — otherwise
+      // xterm consumes the event and the browser reloads before we ever see it.
+      // We only preventDefault when the current route maps to a row — on any
       // other screen the native reload is left intact. window.location (not a
       // captured value) so it's never stale against this once-registered handler.
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
@@ -186,6 +191,7 @@ export function Sidebar() {
         const target = rowsRef.current?.find((r) => rowHref(r) === cur);
         if (target) {
           e.preventDefault();
+          e.stopPropagation();
           void (async () => {
             const next = await Modal.prompt(t('common.rename' as any), undefined, { defaultValue: target.title });
             if (next == null) return;
@@ -203,11 +209,13 @@ export function Sidebar() {
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Meta' || e.key === 'Control') clear();
     };
-    window.addEventListener('keydown', onKeyDown);
+    // CAPTURE phase: run before xterm (or any focused input) can swallow the
+    // shortcut. Especially matters for ⌘R on the terminal page.
+    window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', clear);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', clear);
       if (holdTimer) clearTimeout(holdTimer);
