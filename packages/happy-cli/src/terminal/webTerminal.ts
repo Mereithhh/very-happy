@@ -230,17 +230,22 @@ export class WebTerminalManager {
             file = '/bin/sh';
             // tmux options applied on (re)attach, idempotent.
             //  Session-scoped (`-t`, touch only THIS vh- session):
-            //   - mouse on: wheel-scrolls scrollback + click panes/windows —
-            //     the point of a browser terminal.
+            //   - mouse OFF (was on): with mouse on, tmux swallows drag as its own
+            //     mouse events so the browser never gets a selection → copy was
+            //     broken (esp. on Mac, where xterm's Shift-drag bypass doesn't
+            //     apply). Off ⇒ plain drag makes a normal xterm/browser selection
+            //     (copy-on-select handles the rest). Trade-off: the wheel now
+            //     scrolls xterm's own 5000-line scrollback instead of tmux's deep
+            //     history — the 100k tmux history is still reachable via keyboard
+            //     copy-mode (prefix + [). Net win for a browser terminal.
             //   - history-limit: deep scrollback for panes in the session.
             //  Server-scoped (`-g`, no session-scoped equivalent exists):
             //   - set-clipboard on + terminal-features …:clipboard: make tmux
-            //     emit an OSC 52 escape when copying (mouse drag-select), so the
-            //     web xterm can mirror the selection into the browser clipboard.
-            //     Without this, copying inside tmux only fills tmux's own buffer,
-            //     which the browser can't read. Benign + desirable globally.
+            //     emit an OSC 52 escape when copying (keyboard copy-mode yank), so
+            //     the web xterm (now with @xterm/addon-clipboard) mirrors it into
+            //     the browser clipboard. Benign + desirable globally.
             const setOpts = [
-                `tmux set-option -t ${tmuxSession} mouse on`,
+                `tmux set-option -t ${tmuxSession} mouse off`,
                 `tmux set-option -t ${tmuxSession} history-limit 100000`,
                 `tmux set-option -g set-clipboard on`,
                 `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,

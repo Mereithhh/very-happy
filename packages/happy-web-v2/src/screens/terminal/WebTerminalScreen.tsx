@@ -3,6 +3,8 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { ClipboardAddon } from '@xterm/addon-clipboard';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronLeft, Pencil, ListPlus, HelpCircle } from 'lucide-react';
@@ -85,10 +87,26 @@ export function WebTerminalScreen() {
       fontFamily: TERM_FONT,
       fontSize: IS_COARSE_POINTER ? 12 : 13, lineHeight: 1.3, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
       scrollback: 5000,
+      // Mac: Shift-drag does nothing while an app holds the mouse (xterm forces
+      // local selection on Shift only off-Mac); Option-drag is the Mac gesture,
+      // but only when this is on. Lets Mac users select/copy even if an inner
+      // TUI (or a lingering mouse mode) is grabbing the mouse.
+      macOptionClickForcesSelection: true,
+      rightClickSelectsWord: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
+    // OSC 52 → system clipboard. tmux copy-mode yank (set-clipboard on) and
+    // apps like Claude Code emit OSC 52; without this addon xterm silently drops
+    // it and nothing reaches the browser clipboard. Write-only by default (the
+    // addon does not allow clipboard READ, avoiding exfiltration).
+    term.loadAddon(new ClipboardAddon());
+    // Unicode 11 widths: fixes CJK / emoji / box-drawing column alignment in the
+    // Claude Code TUI (needs allowProposedApi, already set, + activeVersion).
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = '11';
     term.open(mount);
     termRef.current = term;
 
@@ -346,7 +364,16 @@ export function WebTerminalScreen() {
     const onMouseUp = (e: MouseEvent) => {
       const dx = e.clientX - mouseX;
       const dy = e.clientY - mouseY;
-      if (dx * dx + dy * dy > 5 * 5) return; // drag = selection/scroll, leave it
+      if (dx * dx + dy * dy > 5 * 5) {
+        // Drag = a selection was made. Copy-on-select: mirror it to the system
+        // clipboard (mouseup is a user gesture, so writeText is allowed). Keep
+        // the selection visible; don't steal focus. ⌘C / right-click still work.
+        if (term.hasSelection()) {
+          const sel = term.getSelection();
+          if (sel) navigator.clipboard?.writeText(sel).catch(() => {});
+        }
+        return;
+      }
       if (term.hasSelection()) return;
       refocus(); // also clears a stuck IME composition, not just plain focus
     };
