@@ -405,6 +405,20 @@ export const pl: TranslationStructure = {
         developerMenu: 'Developer Menu',
         developerMenuSubtitle: 'Access developer tools',
         switchToSession: 'Switch to session',
+        // ⌘K palette (navigate/actions)
+        empty: 'No matches',
+        groupActions: 'Actions',
+        groupSessions: 'Chats',
+        groupTerminals: 'Terminals',
+        actionNewChat: 'New chat',
+        actionNewTerminal: 'New terminal',
+        actionRenameSession: 'Rename current chat',
+        actionArchiveSession: 'Archive current chat',
+        actionOpenSettings: 'Open settings',
+        renamePromptTitle: 'Rename chat',
+        hintNavigate: '↑↓ to navigate',
+        hintSelect: '↵ to select',
+        hintClose: 'esc to close',
     },
 
     server: {

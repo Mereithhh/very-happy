@@ -454,6 +454,20 @@ export const zhHans: TranslationStructure = {
         developerMenu: '开发者菜单',
         developerMenuSubtitle: '访问开发者工具',
         switchToSession: '切换到该会话',
+        // ⌘K palette (navigate/actions)
+        empty: '无匹配结果',
+        groupActions: '动作',
+        groupSessions: '对话',
+        groupTerminals: '终端',
+        actionNewChat: '新建对话',
+        actionNewTerminal: '新建终端',
+        actionRenameSession: '重命名当前对话',
+        actionArchiveSession: '归档当前对话',
+        actionOpenSettings: '打开设置',
+        renamePromptTitle: '重命名对话',
+        hintNavigate: '↑↓ 移动',
+        hintSelect: '↵ 选择',
+        hintClose: 'esc 关闭',
     },
 
     server: {

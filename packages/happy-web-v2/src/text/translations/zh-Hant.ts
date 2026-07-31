@@ -388,6 +388,20 @@ export const zhHant: TranslationStructure = {
         developerMenu: '開發者選單',
         developerMenuSubtitle: '存取開發者工具',
         switchToSession: '切換到該工作階段',
+        // ⌘K palette (navigate/actions)
+        empty: '無符合結果',
+        groupActions: '動作',
+        groupSessions: '對話',
+        groupTerminals: '終端',
+        actionNewChat: '新建對話',
+        actionNewTerminal: '新建終端',
+        actionRenameSession: '重新命名目前對話',
+        actionArchiveSession: '封存目前對話',
+        actionOpenSettings: '開啟設定',
+        renamePromptTitle: '重新命名對話',
+        hintNavigate: '↑↓ 移動',
+        hintSelect: '↵ 選擇',
+        hintClose: 'esc 關閉',
     },
 
     server: {

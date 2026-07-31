@@ -1,0 +1,157 @@
+/* ⌘K command palette — self-contained overlay. Mirrors sidebar.css tokens:
+   --bg-*, --line*, --accent*, --text*, --font-mono, --sp-*, --r-*, --fs-*. */
+
+.cp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* above sidebar dropdowns (--vh-menu z 1500) and detail panes */
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh var(--sp-4) var(--sp-4);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.cp-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+  animation: cp-pop var(--motion-fast) ease-out;
+}
+@keyframes cp-pop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-panel { animation: none; }
+}
+
+.cp-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.cp-search-icon {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.cp-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 14px 0;
+  /* 16px floor stops iOS focus auto-zoom (project rule); desktop reads fine too */
+  font-size: var(--fs-16);
+  color: var(--text);
+  min-width: 0;
+}
+.cp-search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.cp-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: var(--sp-2) 0 var(--sp-2);
+}
+
+.cp-group-label {
+  padding: var(--sp-3) var(--sp-4) var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.cp-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: 9px var(--sp-4);
+  color: var(--text);
+  cursor: pointer;
+}
+.cp-item.is-active {
+  background: var(--bg-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.cp-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.cp-item.is-active .cp-item-icon {
+  color: var(--accent);
+}
+.cp-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.cp-item-title {
+  font-size: var(--fs-14);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-item-sub {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-empty {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+}
+
+.cp-footer {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
+@media (hover: hover) {
+  .cp-item:hover {
+    background: var(--bg-2);
+  }
+}
+
+@media (pointer: coarse) {
+  .cp-item {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}

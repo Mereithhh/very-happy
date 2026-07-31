@@ -4,6 +4,7 @@ import { PanelLeft } from 'lucide-react';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
+import { CommandPalette } from '@/screens/command/CommandPalette';
 import './layout.css';
 
 export function AppLayout() {
@@ -40,9 +41,10 @@ export function AppLayout() {
     };
   }, [setWidth]);
 
+  let shell: React.ReactNode;
   if (isDesktop) {
     if (collapsed) {
-      return (
+      shell = (
         <div className="app-shell app-shell--collapsed" style={{ gridTemplateColumns: '46px 1fr' }}>
           <div className="app-rail">
             <button
@@ -59,8 +61,8 @@ export function AppLayout() {
           </main>
         </div>
       );
-    }
-    return (
+    } else {
+    shell = (
       <div className="app-shell" style={{ gridTemplateColumns: `${width}px 6px 1fr` }}>
         <aside className="app-sidebar">
           <Sidebar />
@@ -76,10 +78,10 @@ export function AppLayout() {
         </main>
       </div>
     );
-  }
-
+    }
+  } else {
   // mobile: single pane — sidebar at root, detail otherwise (detail has its own back nav)
-  return (
+  shell = (
     <div className="app-shell app-shell--mobile">
       {atRoot ? (
         <aside className="app-sidebar app-sidebar--full">
@@ -91,5 +93,13 @@ export function AppLayout() {
         </main>
       )}
     </div>
+  );
+  }
+
+  return (
+    <>
+      {shell}
+      <CommandPalette />
+    </>
   );
 }
