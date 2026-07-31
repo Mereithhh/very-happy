@@ -1,6 +1,10 @@
 .msg {
   display: flex;
   flex-direction: column;
+  /* Flex items default to min-width:auto, which lets a wide child (code block,
+   * table, diff) grow past 100% and get clipped by .cl-scroll's overflow-x:hidden
+   * instead of scrolling inside its own overflow-x:auto container. */
+  min-width: 0;
 }
 .msg--user {
   align-items: flex-end;
@@ -46,6 +50,8 @@
 }
 .msg-cmd-args {
   color: var(--text-dim);
+  min-width: 0;
+  word-break: break-word;
 }
 
 /* agent text — borderless */
@@ -54,6 +60,7 @@
   line-height: 1.6;
   color: var(--text);
   max-width: 100%;
+  min-width: 0;
 }
 
 /* agent event — centered system line */

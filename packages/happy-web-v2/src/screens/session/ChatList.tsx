@@ -69,6 +69,14 @@ export function ChatList({ sessionId }: { sessionId: string }) {
 
     const rows = useMemo(() => buildRows(messages), [messages]);
 
+    // Streaming signal: the last message's text grows in place (same message id,
+    // so rows.length stays constant) while the agent streams. Auto-stick must
+    // react to that growth too, not just to new rows — otherwise a long streamed
+    // answer scrolls off the bottom and the user has to chase it manually.
+    const lastContentLen = messages.length
+        ? ((messages[messages.length - 1] as any).text?.length ?? 0)
+        : 0;
+
     const reduced =
         typeof window !== 'undefined' &&
         window.matchMedia &&
@@ -90,13 +98,15 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         setShowJump(!atBottom);
     };
 
-    // Auto-stick to bottom on new content when already near the bottom.
+    // Auto-stick to bottom on new content when already near the bottom. Keyed on
+    // both row count (new messages) and the streaming message's growing length
+    // (in-place text updates) so the view follows live streamed output.
     useLayoutEffect(() => {
         if (atBottomRef.current) {
             scrollToBottom(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rows.length]);
+    }, [rows.length, lastContentLen]);
 
     // Preserve scroll position when older messages are prepended.
     useLayoutEffect(() => {
