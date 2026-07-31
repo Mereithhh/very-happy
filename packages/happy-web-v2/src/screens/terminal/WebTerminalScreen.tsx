@@ -129,9 +129,22 @@ export function WebTerminalScreen() {
     let titleBuf = '';
     let titled = false;
     let outChain: Promise<void> = Promise.resolve();
+    // Daemon-authoritative screen model: the daemon assigns a monotonic `seq`
+    // to every output chunk. We track the highest seq we've applied so that on a
+    // socket reconnect we can ask for `fromSeq=lastSeq` and the daemon replays
+    // only the gap (or sends a fresh snapshot if the gap scrolled out of its
+    // ring). Chunks are deduped by seq so a replayed-then-live overlap never
+    // double-writes. Starts at 0; first live chunk is seq 1.
+    let lastSeq = 0;
 
-    const onOutput = (e: { terminalId: string; data: string; enc?: boolean }) => {
+    const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
       if (disposed || e.terminalId !== terminalId) return;
+      // Drop anything we've already applied (e.g. a live chunk that overlaps a
+      // reconnect replay). seq is monotonic per terminal on the daemon.
+      if (typeof e.seq === 'number') {
+        if (e.seq <= lastSeq) return;
+        lastSeq = e.seq;
+      }
       if (e.enc) {
         outChain = outChain.then(async () => {
           const plain = await decryptTerminalData(machineId, e.data);
@@ -221,6 +234,37 @@ export function WebTerminalScreen() {
       scheduleFit();
     });
 
+    // Apply an open-terminal result to the xterm screen. The daemon owns the
+    // screen, so a `snapshot` fully restores it (reset + write) and a `replay`
+    // just fills the gap after a reconnect (write each chunk in seq order, no
+    // reset). onOutput's seq dedup guards against overlap with live chunks that
+    // land during this async decrypt. Sets `lastSeq` to the daemon's baseline.
+    const applyOpenResult = async (res: Extract<Awaited<ReturnType<typeof machineOpenTerminal>>, { success: true }>) => {
+      const writeMaybeEnc = async (dataB64: string) => {
+        if (res.encStream) {
+          const plain = await decryptTerminalData(machineId, dataB64);
+          if (plain && !disposed) term.write(b64ToBytes(plain));
+        } else {
+          term.write(b64ToBytes(dataB64));
+        }
+      };
+      if (res.mode === 'snapshot') {
+        term.reset();
+        await writeMaybeEnc(res.data);
+      } else {
+        // Replay: apply only chunks newer than what we already have.
+        for (const c of res.chunks) {
+          if (c.seq <= lastSeq) continue;
+          await writeMaybeEnc(c.data);
+          lastSeq = c.seq;
+        }
+      }
+      // The daemon's current seq is our new baseline (covers the snapshot case
+      // and any chunks the replay didn't include).
+      lastSeq = Math.max(lastSeq, res.seq);
+    };
+
+    // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       safeFit();
       const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows, encStream: true });
@@ -232,10 +276,30 @@ export function WebTerminalScreen() {
       }
       terminalId = res.terminalId;
       enc = res.encStream === true;
+      // Serialize the restore behind outChain so any live chunk arriving mid-
+      // restore is applied after it (and seq-deduped), never interleaved.
+      outChain = outChain.then(() => applyOpenResult(res));
       setConnecting(false);
       requestAnimationFrame(doFit);
       term.focus();
     })();
+
+    // On socket reconnect (dropped then back), re-subscribe with fromSeq=lastSeq.
+    // The daemon replays just the missed output, or resends a snapshot if the
+    // gap scrolled out of its ring. Only fires once the initial open established
+    // a terminalId (onReconnected also fires on the very first connect).
+    const offReconnected = apiSocket.onReconnected(() => {
+      if (disposed || !terminalId) return;
+      outChain = outChain.then(async () => {
+        const res = await machineOpenTerminal(machineId, {
+          terminalId, cols: term.cols, rows: term.rows, fromSeq: lastSeq, encStream: true,
+        });
+        if (disposed || !res.success) return;
+        enc = res.encStream === true;
+        await applyOpenResult(res);
+        if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+      });
+    });
 
     const host = hostRef.current;
     const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
@@ -400,6 +464,7 @@ export function WebTerminalScreen() {
       window.removeEventListener('focus', refocus);
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
+      offReconnected();
       apiSocket.offMessage('terminal-output', onOutput);
       apiSocket.offMessage('terminal-exit', onExit);
       host.removeEventListener('dragover', onDragOver);

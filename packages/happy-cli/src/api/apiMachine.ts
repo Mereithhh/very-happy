@@ -47,8 +47,10 @@ interface ServerToDaemonEvents {
 }
 
 interface DaemonToServerEvents {
-    // Web terminal: daemon → user (relayed by server)
-    'terminal-output': (data: { terminalId: string, data: string, enc?: boolean }) => void;
+    // Web terminal: daemon → user (relayed by server). `seq` is the monotonic
+    // output sequence number the client tracks as `lastSeq` for gap-based
+    // reconnect (see open-terminal `fromSeq`).
+    'terminal-output': (data: { terminalId: string, data: string, seq: number, enc?: boolean }) => void;
     'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
     'machine-alive': (data: {
         machineId: string;
@@ -138,16 +140,21 @@ export class ApiMachineClient {
     private webTerminal = new WebTerminalManager((event, payload) => {
         let out: any = payload;
         // Encrypt the live byte stream for negotiated terminals. Daemon crypto
-        // is synchronous, so output ordering is preserved.
+        // is synchronous, so output ordering is preserved. `seq` (and any other
+        // non-data field) rides along unencrypted via the spread — only the
+        // opaque byte payload is protected.
         if (event === 'terminal-output' && this.encTerminals.has(payload.terminalId)) {
-            out = {
-                ...payload,
-                data: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, payload.data)),
-                enc: true,
-            };
+            out = { ...payload, data: this.encTerminalData(payload.data), enc: true };
         }
         (this.socket as any)?.emit(event, out);
     });
+
+    /** Encrypt one base64 terminal payload with the per-machine key (same scheme
+     *  as the live output stream) → base64 ciphertext. Used for both live output
+     *  and the open-terminal snapshot/replay payloads. */
+    private encTerminalData(dataBase64: string): string {
+        return encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, dataBase64));
+    }
 
     constructor(
         private token: string,
@@ -202,13 +209,28 @@ export class ApiMachineClient {
         // Register web-terminal open handler. Account scoping is already
         // enforced by the server (RPC rooms are per-account), so only this
         // machine's owner can reach it.
+        //
+        // The daemon owns the screen: `open` (re)subscribes and returns either a
+        // full `snapshot` of the authoritative headless screen, or a seq-based
+        // `replay` of just the chunks the client missed (when it passes
+        // `fromSeq` and the ring still covers the gap). `seq` is the client's new
+        // output baseline. Under negotiated stream encryption we encrypt the
+        // snapshot/replay payload the same way live output is encrypted, so the
+        // relay never sees restored screen bytes.
         this.rpcHandlerManager.registerHandler('open-terminal', async (params: any) => {
-            const { terminalId, cols, rows, cwd, encStream } = params || {};
-            const result = this.webTerminal.open({ terminalId, cols, rows, cwd });
+            const { terminalId, cols, rows, cwd, fromSeq, encStream } = params || {};
+            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
             // client knows whether to encrypt its input / decrypt output.
-            if (encStream) this.encTerminals.add(result.terminalId);
+            if (encStream) {
+                this.encTerminals.add(result.terminalId);
+                if (result.mode === 'snapshot') {
+                    result.data = this.encTerminalData(result.data);
+                } else {
+                    result.chunks = result.chunks.map((c) => ({ seq: c.seq, data: this.encTerminalData(c.data) }));
+                }
+            }
             return { type: 'success', ...result, encStream: !!encStream };
         });
 
@@ -523,6 +545,10 @@ export class ApiMachineClient {
         this.socket.on('disconnect', (reason) => {
             logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
             this.rpcHandlerManager.onSocketDisconnect();
+            // No web view can reach us while the socket is down → drop all terminal
+            // subscriber counts to 0 so a blip/crash can't inflate them and wedge a
+            // pty un-reapable. Views re-subscribe on reconnect (++ from 0).
+            this.webTerminal.resetSubscribers();
             this.stopKeepAlive();
             this.startSmartReconnect();
         });
@@ -548,9 +574,13 @@ export class ApiMachineClient {
         this.socket.on('terminal-resize', (data) => {
             this.webTerminal.resize(data.terminalId, data.cols, data.rows);
         });
+        // A web view stopped watching: unsubscribe, don't kill. The daemon keeps
+        // the pty + authoritative screen alive so any device can reattach; the
+        // encTerminals flag is kept (a reconnect re-negotiates encStream anyway,
+        // and killSession clears it). Only the sidebar's explicit delete
+        // (kill-terminal) truly destroys the terminal.
         this.socket.on('terminal-close', (data) => {
-            this.encTerminals.delete(data.terminalId);
-            this.webTerminal.close(data.terminalId);
+            this.webTerminal.unsubscribe(data.terminalId);
         });
 
         // Handle update events from server

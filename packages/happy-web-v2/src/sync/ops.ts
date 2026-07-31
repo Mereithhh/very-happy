@@ -282,21 +282,51 @@ export async function decryptTerminalData(machineId: string, cipher: string): Pr
     return typeof out === 'string' ? out : null;
 }
 
+/** How the daemon brought a (re)subscribing client up to date:
+ *  - `snapshot`: full authoritative screen — client does reset() + write(data).
+ *  - `replay`:   only the chunks after the client's `fromSeq` — apply in seq
+ *                order, dedup by seq, no reset.
+ *  `data`/`chunks[].data` are base64 raw bytes, encrypted iff `encStream`. */
+export type OpenTerminalOk = {
+    success: true;
+    terminalId: string;
+    tmuxSession?: string;
+    encStream?: boolean;
+    seq: number;
+} & (
+    | { mode: 'snapshot'; data: string }
+    | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
+);
+
 export async function machineOpenTerminal(
     machineId: string,
-    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string; encStream?: boolean },
-): Promise<{ success: true; terminalId: string; tmuxSession?: string; encStream?: boolean } | { success: false; error: string }> {
+    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean },
+): Promise<OpenTerminalOk | { success: false; error: string }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's
         // encryption key has synced, or it fails with "Machine encryption not found".
         await ensureMachineEncryption(machineId);
         const result = await apiSocket.machineRPC<
-            { type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean },
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; encStream?: boolean }
+            {
+                type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean; seq: number;
+            } & (
+                | { mode: 'snapshot'; data: string }
+                | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
+            ),
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean }
         >(machineId, 'open-terminal', options);
         // encStream is echoed back only by daemons that support stream encryption
         // (old daemons ignore the flag → falsy → we fall back to plaintext).
-        return { success: true, terminalId: result.terminalId, tmuxSession: result.tmuxSession, encStream: result.encStream === true };
+        const base = {
+            success: true as const,
+            terminalId: result.terminalId,
+            tmuxSession: result.tmuxSession,
+            encStream: result.encStream === true,
+            seq: result.seq,
+        };
+        return result.mode === 'replay'
+            ? { ...base, mode: 'replay', chunks: result.chunks }
+            : { ...base, mode: 'snapshot', data: result.data };
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to open terminal' };
     }
