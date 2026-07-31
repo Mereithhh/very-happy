@@ -957,12 +957,6 @@ importers:
       '@types/tmp':
         specifier: ^0.2.6
         version: 0.2.6
-      '@xterm/addon-serialize':
-        specifier: 0.13.0
-        version: 0.13.0(@xterm/xterm@5.5.0)
-      '@xterm/headless':
-        specifier: 5.5.0
-        version: 5.5.0
       ai:
         specifier: ^5.0.107
         version: 5.0.123(zod@4.4.3)
@@ -1045,6 +1039,12 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      '@xterm/addon-serialize':
+        specifier: 0.13.0
+        version: 0.13.0(@xterm/xterm@5.5.0)
+      '@xterm/headless':
+        specifier: 5.5.0
+        version: 5.5.0
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
