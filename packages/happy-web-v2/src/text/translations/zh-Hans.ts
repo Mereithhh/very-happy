@@ -325,6 +325,8 @@ export const zhHans: TranslationStructure = {
         machine: '机器',
         directory: '目录',
         agent: '智能体',
+        initialCommand: '初始指令',
+        initialCommandPlaceholder: '(可选) 会话启动后作为第一条消息发送',
         createDirTitle: '创建目录?',
         createDirMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建吗？`,
         title: '开始新会话',

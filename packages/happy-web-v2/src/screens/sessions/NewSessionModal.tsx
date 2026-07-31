@@ -4,6 +4,7 @@ import { Bookmark, Check, X } from 'lucide-react';
 import { useAllMachines, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -38,6 +39,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [agent, setAgent] = useState<(typeof AGENTS)[number]>('claude');
+  const [initialCommand, setInitialCommand] = useState('');
   const [busy, setBusy] = useState(false);
 
   const canCreate = !!machineId && directory.trim().length > 0 && !busy;
@@ -104,6 +106,12 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
     try {
       const sessionId = await spawn(false);
       if (sessionId) {
+        // Optional initial instruction: fire it as the first chat message once
+        // the session exists. sendMessage awaits the sessions-sync queue, so it
+        // safely waits for the just-spawned session's encryption/storage to land
+        // before sending — no need to block navigation on it.
+        const first = initialCommand.trim();
+        if (first) void sync.sendMessage(sessionId, first, { source: 'chat' });
         onClose();
         navigate(`/session/${sessionId}`);
       }
@@ -194,6 +202,19 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
                 </button>
               ))}
             </div>
+
+            <label className="ns-label">{t('newSession.initialCommand' as any)}</label>
+            <textarea
+              className="ns-input ns-initial"
+              value={initialCommand}
+              onChange={(e) => setInitialCommand(e.target.value)}
+              placeholder={t('newSession.initialCommandPlaceholder' as any)}
+              rows={2}
+              onKeyDown={(e) => {
+                // ⌘/Ctrl+Enter from the field = create, matching the send gesture.
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
+              }}
+            />
           </>
         )}
 

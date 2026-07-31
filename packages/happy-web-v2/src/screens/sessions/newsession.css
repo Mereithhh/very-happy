@@ -40,8 +40,16 @@
   font-size: var(--fs-14);
   color: var(--text);
 }
+.ns-initial {
+  width: 100%;
+  resize: vertical;
+  min-height: 44px;
+  font-family: var(--font-mono), monospace;
+  line-height: 1.5;
+}
 .ns-select:focus,
-.ns-input:focus {
+.ns-input:focus,
+.ns-initial:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);

@@ -339,6 +339,8 @@ export const en = {
         machine: 'Machine',
         directory: 'Directory',
         agent: 'Agent',
+        initialCommand: 'Initial instruction',
+        initialCommandPlaceholder: '(optional) sent as the first message once the session starts',
         createDirTitle: 'Create directory?',
         createDirMessage: ({ directory }: { directory: string }) => `Directory ${directory} doesn't exist yet. Create it?`,
         title: 'Start New Session',
