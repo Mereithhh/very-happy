@@ -292,7 +292,12 @@ class TerminalSession {
         return {
             mode: 'snapshot',
             seq: this.seq,
-            data: this.serializer.serialize({ scrollback: SNAPSHOT_SCROLLBACK }),
+            // Match the OutputChunk.data contract: base64 of raw bytes. serialize()
+            // returns a raw ANSI *string*; live/replay chunks are base64 (see the
+            // pty 'data' handler) and the client uniformly does decrypt→b64decode.
+            // Sending the snapshot un-base64'd made the client atob() an ANSI string
+            // → InvalidCharacterError → blank terminal on cold load / hard refresh.
+            data: Buffer.from(this.serializer.serialize({ scrollback: SNAPSHOT_SCROLLBACK }), 'utf8').toString('base64'),
         };
     }
 
