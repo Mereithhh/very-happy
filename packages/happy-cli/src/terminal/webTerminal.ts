@@ -89,14 +89,17 @@ const PTY_IDLE_MS = 20 * 60 * 1000;    // detach ptys with no subscriber + idle 
 const REAP_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Ring-buffer cap per terminal. Bounds memory for reconnect replay; once the
- *  gap exceeds this we fall back to a full snapshot instead. 512KB comfortably
- *  covers a short network blip's worth of output without unbounded growth. */
-const RING_MAX_BYTES = 512 * 1024;
+ *  gap exceeds this we fall back to a full snapshot instead. 2MB lets a longer /
+ *  higher-throughput blip still replay the delta (cheap) instead of resending a
+ *  full snapshot, at a bounded per-session cost. */
+const RING_MAX_BYTES = 2 * 1024 * 1024;
 
 /** Scrollback lines included in a snapshot serialize(). Bounds snapshot size so
  *  a huge accumulated history can't blow up the transport / the client's main
- *  thread on restore. The headless buffer keeps more; we just don't ship it all. */
-const SNAPSHOT_SCROLLBACK = 1000;
+ *  thread on restore. 300 aligns with VS Code's restore depth — the headless
+ *  buffer keeps far more (HEADLESS_SCROLLBACK); we just don't ship it all on a
+ *  cold restore. */
+const SNAPSHOT_SCROLLBACK = 300;
 
 /** Headless scrollback retained in the daemon's authoritative buffer. Larger than
  *  the snapshot cap so recent history survives, but still bounded per session. */
@@ -271,6 +274,24 @@ class TerminalSession {
         try { this.headless.resize(cols, rows); } catch { /* invalid dims — ignore */ }
     }
 
+    /** Inputs for classifyPane, read straight from the authoritative in-process
+     *  state — no tmux subprocess. `tail` is the plain text of the last `maxLines`
+     *  buffer lines (≈ `tmux capture-pane -p -S -N`); `command` is node-pty's
+     *  best-effort foreground process name (≈ `#{pane_current_command}`). */
+    agentProbeInput(maxLines = 40): { command: string; tail: string } {
+        const buf = this.headless.buffer.active;
+        const total = buf.length;
+        const start = Math.max(0, total - maxLines);
+        const lines: string[] = [];
+        for (let y = start; y < total; y++) {
+            const l = buf.getLine(y);
+            lines.push(l ? l.translateToString(true) : '');
+        }
+        let command = '';
+        try { command = this.pty.process || ''; } catch { /* platform quirk — text signals carry it */ }
+        return { command, tail: lines.join('\n') };
+    }
+
     /**
      * Decide how to bring a (re)subscribing client up to date.
      *  - `fromSeq` still covered by the ring → REPLAY just the newer chunks.
@@ -428,7 +449,11 @@ export class WebTerminalManager {
             //     (copy-on-select handles the rest). Wheel scrolls xterm's own
             //     scrollback; the deep tmux history is still reachable via
             //     keyboard copy-mode (prefix + [).
-            //   - history-limit: deep scrollback for panes in the session.
+            //   - history-limit: deep scrollback for panes in the session. Kept
+            //     modest (2000): the daemon's headless buffer (HEADLESS_SCROLLBACK)
+            //     is now the authoritative scrollback the web renders from, so a
+            //     100k-line tmux history was mostly dead redundant memory. 2000
+            //     still gives keyboard copy-mode a useful recent window.
             //  Server-scoped (`-g`, no session-scoped equivalent exists):
             //   - set-clipboard on + terminal-features …:clipboard: make tmux
             //     emit an OSC 52 escape when copying (keyboard copy-mode yank), so
@@ -436,7 +461,7 @@ export class WebTerminalManager {
             //     browser clipboard. Benign + desirable globally.
             const setOpts = [
                 `tmux set-option -t ${tmuxSession} mouse off`,
-                `tmux set-option -t ${tmuxSession} history-limit 100000`,
+                `tmux set-option -t ${tmuxSession} history-limit 2000`,
                 `tmux set-option -g set-clipboard on`,
                 `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,
             ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
@@ -600,10 +625,29 @@ export class WebTerminalManager {
         }
     }
 
-    /** Best-effort agent-state probe for one tmux session: 2 short tmux calls
+    /** Best-effort agent-state probe for one session.
+     *  Fast path (zero subprocess): if the daemon holds a live TerminalSession
+     *  for this id, classify from its authoritative headless screen + pty
+     *  foreground name. The sidebar polls this for every session on each refresh;
+     *  the old path spawned 2 tmux procs EACH (2×N per refresh) — now a terminal
+     *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
+     *  (pty reaped / never attached) fall back to the tmux probe. */
+    private probeAgentState(sessionName: string): AgentState | undefined {
+        const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
+        const live = this.terminals.get(id);
+        if (live) {
+            try {
+                const { command, tail } = live.agentProbeInput();
+                return classifyPane(command, tail);
+            } catch { /* fall through to the tmux probe */ }
+        }
+        return this.probeAgentStateViaTmux(sessionName);
+    }
+
+    /** Fallback probe for sessions with no live headless: 2 short tmux calls
      *  (foreground command + pane tail) fed into classifyPane. Any failure or
      *  timeout → undefined (the field is omitted), never an error. */
-    private probeAgentState(sessionName: string): AgentState | undefined {
+    private probeAgentStateViaTmux(sessionName: string): AgentState | undefined {
         try {
             const cmd = spawnSync('tmux',
                 ['display-message', '-p', '-t', sessionName, '#{pane_current_command}'],
