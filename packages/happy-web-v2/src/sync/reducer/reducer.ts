@@ -171,9 +171,32 @@ type StoredPermission = {
     decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 };
 
+/** Content of a `tool-result` message part (mirrors typesRaw NormalizedMessage). */
+type ToolResultContent = {
+    type: 'tool-result';
+    tool_use_id: string;
+    content: any;
+    is_error: boolean;
+    uuid: string;
+    parentUUID: string | null;
+    permissions?: {
+        date: number;
+        result: 'approved' | 'denied';
+        mode?: string;
+        allowedTools?: string[];
+        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    };
+};
+
 export type ReducerState = {
     toolIdToMessageId: Map<string, string>; // toolId/permissionId -> messageId (since they're the same now)
     sidechainToolIdToMessageId: Map<string, string>; // toolId -> sidechain messageId (for dual tracking)
+    // tool-result whose tool-call message hasn't been seen yet. Backward backfill
+    // paginates newest→oldest, so a result page can arrive before its (older)
+    // tool-call page. Instead of dropping the orphan result (→ tool stuck
+    // "running" forever), stash it here keyed by tool_use_id and apply it when
+    // the tool-call finally arrives in Phase 2 — decoupled from page arrival order.
+    pendingToolResults: Map<string, { result: ToolResultContent; createdAt: number }>;
     permissions: Map<string, StoredPermission>; // Store permission details by ID for quick lookup
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
@@ -199,6 +222,7 @@ export function createReducer(): ReducerState {
     return {
         toolIdToMessageId: new Map(),
         sidechainToolIdToMessageId: new Map(),
+        pendingToolResults: new Map(),
         permissions: new Map(),
         messages: new Map(),
         localIds: new Map(),
@@ -286,6 +310,59 @@ function updateLatestTodos(state: ReducerState, value: unknown, timestamp: numbe
             timestamp,
         };
     }
+}
+
+/**
+ * Apply a tool-result onto its (running) tool message. Shared by Phase 3 (normal
+ * result path) and Phase 2's orphan-result flush, so pairing is identical
+ * regardless of whether the result or the tool-call was seen first.
+ */
+function applyToolResult(
+    state: ReducerState,
+    message: ReducerMessage,
+    messageId: string,
+    result: ToolResultContent,
+    resultCreatedAt: number,
+    changed: Set<string>,
+): void {
+    if (!message.tool) return;
+    // Only a running tool accepts a result — a permission-denied/errored tool was
+    // already finalized (in Phase 2) and must not be overwritten.
+    if (message.tool.state !== 'running') return;
+
+    message.tool.state = result.is_error ? 'error' : 'completed';
+    message.tool.result = result.content;
+    message.tool.completedAt = resultCreatedAt;
+
+    if (result.permissions) {
+        if (message.tool.permission) {
+            const existingDecision = message.tool.permission.decision;
+            message.tool.permission = {
+                ...message.tool.permission,
+                id: result.tool_use_id,
+                status: result.permissions.result === 'approved' ? 'approved' : 'denied',
+                date: result.permissions.date,
+                mode: result.permissions.mode,
+                allowedTools: result.permissions.allowedTools,
+                decision: result.permissions.decision || existingDecision,
+            };
+        } else {
+            message.tool.permission = {
+                id: result.tool_use_id,
+                status: result.permissions.result === 'approved' ? 'approved' : 'denied',
+                date: result.permissions.date,
+                mode: result.permissions.mode,
+                allowedTools: result.permissions.allowedTools,
+                decision: result.permissions.decision,
+            };
+        }
+    }
+
+    if (message.tool.name === 'TodoWrite' && !result.is_error) {
+        updateLatestTodos(state, message.tool.result?.newTodos, resultCreatedAt);
+    }
+
+    changed.add(messageId);
 }
 
 export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
@@ -872,6 +949,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         changed.add(mid);
 
                     }
+
+                    // Flush a tool-result that arrived before this tool-call
+                    // (backward backfill delivers result pages before older call
+                    // pages). The tool message now exists, so apply the stashed
+                    // result — otherwise the tool would stay "running" forever.
+                    const pendingResult = state.pendingToolResults.get(c.id);
+                    if (pendingResult) {
+                        const mid2 = state.toolIdToMessageId.get(c.id);
+                        const m2 = mid2 ? state.messages.get(mid2) : undefined;
+                        if (m2 && mid2) {
+                            applyToolResult(state, m2, mid2, pendingResult.result, pendingResult.createdAt, changed);
+                        }
+                        state.pendingToolResults.delete(c.id);
+                    }
                 }
             }
         }
@@ -885,58 +976,23 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-result') {
-                    // Find the message containing this tool
-                    let messageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    // Find the message containing this tool.
+                    const messageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (!messageId) {
+                        // Orphan result: the tool-call message hasn't been seen
+                        // yet (backward backfill delivers the result page before
+                        // the older tool-call page). Stash it — Phase 2 applies it
+                        // when the tool-call arrives (this or a later reducer run).
+                        state.pendingToolResults.set(c.tool_use_id, { result: c, createdAt: msg.createdAt });
                         continue;
                     }
 
-                    let message = state.messages.get(messageId);
+                    const message = state.messages.get(messageId);
                     if (!message || !message.tool) {
                         continue;
                     }
 
-                    if (message.tool.state !== 'running') {
-                        continue;
-                    }
-
-                    // Update tool state and result
-                    message.tool.state = c.is_error ? 'error' : 'completed';
-                    message.tool.result = c.content;
-                    message.tool.completedAt = msg.createdAt;
-
-                    // Update permission data if provided by backend
-                    if (c.permissions) {
-                        // Merge with existing permission to preserve decision field from agentState
-                        if (message.tool.permission) {
-                            // Preserve existing decision if not provided in tool result
-                            const existingDecision = message.tool.permission.decision;
-                            message.tool.permission = {
-                                ...message.tool.permission,
-                                id: c.tool_use_id,
-                                status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                date: c.permissions.date,
-                                mode: c.permissions.mode,
-                                allowedTools: c.permissions.allowedTools,
-                                decision: c.permissions.decision || existingDecision
-                            };
-                        } else {
-                            message.tool.permission = {
-                                id: c.tool_use_id,
-                                status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                date: c.permissions.date,
-                                mode: c.permissions.mode,
-                                allowedTools: c.permissions.allowedTools,
-                                decision: c.permissions.decision
-                            };
-                        }
-                    }
-
-                    if (message.tool.name === 'TodoWrite' && !c.is_error) {
-                        updateLatestTodos(state, message.tool.result?.newTodos, msg.createdAt);
-                    }
-
-                    changed.add(messageId);
+                    applyToolResult(state, message, messageId, c, msg.createdAt, changed);
                 }
             }
         }

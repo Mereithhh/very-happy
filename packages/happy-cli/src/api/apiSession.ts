@@ -455,12 +455,17 @@ export class ApiSessionClient extends EventEmitter {
     private static readonly MAX_OUTBOX_BATCH_SIZE = 50;
 
     private async flushOutbox() {
-        // Send latest messages first so the user sees recent activity immediately,
-        // then backfill older messages in subsequent batches.
+        // Send OLDEST first (FIFO). pendingOutbox is in creation order, and the
+        // server allocates its per-session monotonic `seq` in the order messages
+        // arrive within a batch — so flushing front-to-back makes server seq equal
+        // creation order, which is THE authoritative ordering the client sorts by.
+        // (The old "latest batch first" optimization inverted seq on any >50-msg
+        // backlog — messages permanently out of order server-side, unfixable
+        // client-side. The client re-sorts by seq anyway, so newest-first bought
+        // nothing but the bug.)
         while (this.pendingOutbox.length > 0) {
             const batchSize = Math.min(this.pendingOutbox.length, ApiSessionClient.MAX_OUTBOX_BATCH_SIZE);
-            const batchStart = this.pendingOutbox.length - batchSize;
-            const batch = this.pendingOutbox.slice(batchStart);
+            const batch = this.pendingOutbox.slice(0, batchSize);
 
             const response = await axios.post<V3PostSessionMessagesResponse>(
                 `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
@@ -478,7 +483,7 @@ export class ApiSessionClient extends EventEmitter {
                 message.seq > acc ? message.seq : acc
             ), this.lastSeq);
             this.lastSeq = maxSeq;
-            this.pendingOutbox.splice(batchStart, batch.length);
+            this.pendingOutbox.splice(0, batch.length);
         }
     }
 
