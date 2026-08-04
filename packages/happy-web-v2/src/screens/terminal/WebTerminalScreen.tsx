@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { ClipboardAddon } from '@xterm/addon-clipboard';
-import { Unicode11Addon } from '@xterm/addon-unicode11';
-import '@xterm/xterm/css/xterm.css';
+import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
@@ -73,7 +68,7 @@ export function WebTerminalScreen() {
 
   const hostRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
+  const termRef = useRef<TerminalRenderer | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   // Mobile select-mode: touch has one gesture, and by default we spend it on
@@ -90,36 +85,28 @@ export function WebTerminalScreen() {
     ensureImeFix();
     const mount = innerRef.current;
 
-    const term = new Terminal({
+    // Renderer abstraction (see ./renderer): the daemon-authoritative core below
+    // (subscribe / snapshot / seq / encryption / input) is renderer-agnostic, so
+    // it's built through a factory that today returns the xterm.js DOM renderer
+    // and could return a ghostty/Restty (canvas / WebGPU) renderer behind a flag.
+    // termRef holds the abstraction; its external consumers (runCommand /
+    // toggleSelectMode) use only interface methods. The delicate DOM-coupled logic
+    // in THIS effect (IME/focus textarea, synthetic-wheel scroll, private font
+    // re-measure) still reaches the xterm instance directly via `raw` — those are
+    // xterm-specific and get migrated behind explicit interface methods (or
+    // re-solved for canvas) when a non-xterm renderer actually ships.
+    const renderer = createTerminalRenderer('xterm', {
+      mount,
       fontFamily: TERM_FONT,
-      fontSize: IS_COARSE_POINTER ? 12 : 13, lineHeight: 1.3, cursorBlink: true, theme: THEME, allowProposedApi: true, convertEol: false,
+      fontSize: IS_COARSE_POINTER ? 12 : 13,
+      theme: THEME,
       scrollback: 5000,
-      // Mac: Shift-drag does nothing while an app holds the mouse (xterm forces
-      // local selection on Shift only off-Mac); Option-drag is the Mac gesture,
-      // but only when this is on. Lets Mac users select/copy even if an inner
-      // TUI (or a lingering mouse mode) is grabbing the mouse.
-      macOptionClickForcesSelection: true,
-      rightClickSelectsWord: true,
+      coarsePointer: IS_COARSE_POINTER,
     });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
-    // OSC 52 → system clipboard. tmux copy-mode yank (set-clipboard on) and
-    // apps like Claude Code emit OSC 52; without this addon xterm silently drops
-    // it and nothing reaches the browser clipboard. Write-only by default (the
-    // addon does not allow clipboard READ, avoiding exfiltration).
-    term.loadAddon(new ClipboardAddon());
-    // Unicode 11 widths: fixes CJK / emoji / box-drawing column alignment in the
-    // Claude Code TUI (needs allowProposedApi, already set, + activeVersion).
-    const unicode11 = new Unicode11Addon();
-    term.loadAddon(unicode11);
-    term.unicode.activeVersion = '11';
-    term.open(mount);
-    termRef.current = term;
+    const term = renderer.raw!;
+    termRef.current = renderer;
 
-    const safeFit = () => {
-      try { fit.fit(); } catch { /* not laid out yet */ }
-    };
+    const safeFit = () => renderer.fit();
     requestAnimationFrame(safeFit);
     const t0 = setTimeout(safeFit, 60);
 
