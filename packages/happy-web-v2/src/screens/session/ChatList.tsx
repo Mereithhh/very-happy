@@ -67,14 +67,20 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     const [showJump, setShowJump] = useState(false);
     const prevHeightRef = useRef(0);
 
-    const rows = useMemo(() => buildRows(messages), [messages]);
+    // storage keeps messages sorted NEWEST-FIRST (compareMessagesNewestFirst,
+    // used by the sidebar's latest-message needs). The transcript reads top→
+    // bottom = oldest→newest, so reverse into chronological order once here.
+    // (Rendering the raw newest-first array is what showed the whole conversation
+    // upside-down.) buildRows + the streaming signal below both consume this.
+    const chronological = useMemo(() => [...messages].reverse(), [messages]);
+    const rows = useMemo(() => buildRows(chronological), [chronological]);
 
-    // Streaming signal: the last message's text grows in place (same message id,
-    // so rows.length stays constant) while the agent streams. Auto-stick must
-    // react to that growth too, not just to new rows — otherwise a long streamed
-    // answer scrolls off the bottom and the user has to chase it manually.
-    const lastContentLen = messages.length
-        ? ((messages[messages.length - 1] as any).text?.length ?? 0)
+    // Streaming signal: the last (newest) message's text grows in place (same
+    // message id, so rows.length stays constant) while the agent streams. Auto-
+    // stick must react to that growth too, not just to new rows — otherwise a
+    // long streamed answer scrolls off the bottom and the user has to chase it.
+    const lastContentLen = chronological.length
+        ? ((chronological[chronological.length - 1] as any).text?.length ?? 0)
         : 0;
 
     const reduced =
