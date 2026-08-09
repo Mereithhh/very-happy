@@ -132,6 +132,62 @@
 .term-host .xterm-viewport {
   overflow-y: auto;
 }
+/* ── Mobile assistive key bar ──────────────────────────────────────────────
+   Only rendered on coarse-pointer devices (see WebTerminalScreen). Gives the
+   soft keyboard the keys it lacks: Esc/Tab/Ctrl/arrows/pipe/etc. Dark console
+   surface, teal accent, mono glyphs; horizontally scrollable so it never wraps
+   or forces the page to scroll sideways. Safe-area padding keeps the last row
+   clear of the home indicator. Sits between the terminal and the soft keyboard
+   (flex-column child of .term-screen), flex-shrink:0 so it's never squeezed. */
+.term-keybar {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  background: var(--bg-1, #0f141b);
+  border-top: 1px solid var(--line, #1c2430);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* The bar owns its own taps; don't let the terminal's touch-action:none or
+     synthetic-wheel logic interfere (it's outside .term-host anyway). */
+  touch-action: manipulation;
+}
+.term-keybar::-webkit-scrollbar { display: none; }
+.term-keybar-key {
+  flex: 0 0 auto;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line, #263041);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent, #34e2c4) 6%, #141a22);
+  color: var(--text, #e8edf4);
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.term-keybar-key:active {
+  background: color-mix(in srgb, var(--accent, #34e2c4) 22%, #141a22);
+  transform: translateY(1px);
+}
+.term-keybar-wide { min-width: 46px; }
+/* Ctrl armed (sticky): make it obvious the next letter becomes Ctrl+<letter>. */
+.term-keybar-mod.is-armed {
+  background: var(--accent, #34e2c4);
+  color: #04110e;
+  border-color: var(--accent, #34e2c4);
+  font-weight: 600;
+}
 .term-host.is-dragover::after {
   content: 'Drop to upload';
   position: absolute;

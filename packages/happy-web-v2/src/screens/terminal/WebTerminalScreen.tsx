@@ -69,6 +69,9 @@ export function WebTerminalScreen() {
   const hostRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<TerminalRenderer | null>(null);
+  // Bridge the effect-local sendInput (base64 → socket, honours encryption) out
+  // to the assistive key bar handlers below, which live outside the effect.
+  const sendInputRef = useRef<((d: string) => void) | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   // Mobile select-mode: touch has one gesture, and by default we spend it on
@@ -78,6 +81,10 @@ export function WebTerminalScreen() {
   // up once), the state drives the button + host className.
   const [selectMode, setSelectMode] = useState(false);
   const selectModeRef = useRef(false);
+  // Mobile assistive key bar: soft keyboards have no Esc/Tab/Ctrl/arrows/pipe,
+  // which makes claude/shell/vim painful. `ctrlSticky` is a one-shot modifier —
+  // tap Ctrl, then the next letter is sent as Ctrl+<letter> (\x01..\x1a).
+  const [ctrlSticky, setCtrlSticky] = useState(false);
   const navigateTo = navigate;
 
   useEffect(() => {
@@ -159,6 +166,64 @@ export function WebTerminalScreen() {
       }
     };
     const dataDisp = term.onData(sendInput);
+    sendInputRef.current = sendInput;
+
+    // ── Mobile English-input fix (coarse pointer only) ──────────────────────
+    // Root cause (verified against xterm 5.5 lib/xterm.js CompositionHelper +
+    // CoreBrowserTerminal._inputEvent):
+    //  • Soft keyboards (iOS, Gboard) don't emit clean keypress for letters.
+    //    A letter arrives as keydown(keyCode 229 = "composing") → the char lands
+    //    only via the textarea `input` event, often wrapped in a composition.
+    //  • xterm._keyDown sets `_keyDownSeen=true` (reset only on keyup). Its
+    //    `_inputEvent` then flushes to onData ONLY when
+    //    `e.data && inputType==='insertText' && (!e.composed || !_keyDownSeen)`.
+    //    On mobile the composed `input` has `e.composed===true` AND
+    //    `_keyDownSeen===true`, so that branch is skipped → the char is NEVER
+    //    passed to onData from _inputEvent.
+    //  • The only remaining flush is compositionend → _finalizeComposition. But
+    //    Gboard/iOS predictive text keeps the composition OPEN across a whole
+    //    word (only ending on space/enter/punct), so letters pile up in the
+    //    (now visible, teal) .composition-view bubble and never reach the pty:
+    //    "typing shows nothing / can't get into the terminal".
+    // Fix: on mobile only, own the helper textarea's `input` in the CAPTURE
+    // phase (xterm listens in bubble; it does NOT listen to beforeinput). While
+    // a real IME composition is active (CJK pinyin) we do NOTHING and let
+    // xterm's compositionend path run (that already works — imeFix styles it).
+    // Outside composition, we send inserted text ourselves, delete-backward as
+    // DEL, and keep the textarea empty so xterm's _keyDownSeen/_isComposing
+    // bookkeeping can never strand a character. Desktop is untouched.
+    let imeComposing = false;
+    let mobileBridgeTa: HTMLTextAreaElement | null = null;
+    const onCompStart = () => { imeComposing = true; };
+    const onCompEnd = () => { imeComposing = false; };
+    const onTaInput = (ev: Event) => {
+      if (imeComposing) return; // CJK IME in flight → xterm's compositionend handles it
+      const e = ev as InputEvent;
+      const ta = mobileBridgeTa;
+      if (!ta) return;
+      const type = e.inputType;
+      // NB: we deliberately do NOT handle 'insertCompositionText' — that's the
+      // commit type CJK/predictive IMEs use, and xterm's compositionend path
+      // already handles it correctly (imeFix styles its bubble). We only rescue
+      // the discrete 'insertText' the mobile path strands (see header comment).
+      if (type === 'insertText' || type === 'insertFromPaste') {
+        if (typeof e.data === 'string' && e.data.length) sendInput(e.data);
+      } else if (type === 'deleteContentBackward') {
+        sendInput('\x7f'); // DEL — matches xterm's own backspace-in-textarea handling
+      } else if (type === 'insertLineBreak' || type === 'insertParagraph') {
+        sendInput('\r');
+      } else {
+        return; // unknown editing op → let it be (don't clear)
+      }
+      // Consume so xterm's bubble-phase `input` can't double-send or strand it,
+      // and reset the textarea + xterm composing flags to a clean slate.
+      e.stopImmediatePropagation();
+      ta.value = '';
+      try {
+        const core = (term as any)._core;
+        if (core) { core._keyDownSeen = false; core._keyPressHandled = false; }
+      } catch { /* private API best-effort */ }
+    };
 
     const keyDisp = term.onKey(({ key, domEvent }) => {
       if (titled) return;
@@ -411,6 +476,18 @@ export function WebTerminalScreen() {
       host.addEventListener('touchcancel', onTouchDone, { capture: true, passive: true });
       vv?.addEventListener('resize', onViewport);
       vv?.addEventListener('scroll', onViewport);
+      // Wire the mobile English-input bridge to xterm's helper textarea (exists
+      // after term.open above). Capture phase beats xterm's bubble `input`.
+      mobileBridgeTa = term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
+      if (mobileBridgeTa) {
+        // Hint the OS toward a plain text keyboard (no numeric/url/email mode);
+        // enterKeyHint 'send' gives a sensible Return label for a shell prompt.
+        mobileBridgeTa.setAttribute('inputmode', 'text');
+        mobileBridgeTa.setAttribute('enterkeyhint', 'send');
+        mobileBridgeTa.addEventListener('compositionstart', onCompStart, true);
+        mobileBridgeTa.addEventListener('compositionend', onCompEnd, true);
+        mobileBridgeTa.addEventListener('input', onTaInput, true);
+      }
     }
 
     // Desktop: click-to-focus fallback. xterm only focuses its hidden textarea
@@ -465,12 +542,19 @@ export function WebTerminalScreen() {
         host.removeEventListener('touchcancel', onTouchDone, { capture: true } as EventListenerOptions);
         vv?.removeEventListener('resize', onViewport);
         vv?.removeEventListener('scroll', onViewport);
+        if (mobileBridgeTa) {
+          mobileBridgeTa.removeEventListener('compositionstart', onCompStart, true);
+          mobileBridgeTa.removeEventListener('compositionend', onCompEnd, true);
+          mobileBridgeTa.removeEventListener('input', onTaInput, true);
+          mobileBridgeTa = null;
+        }
         host.style.maxHeight = '';
       }
       if (!IS_COARSE_POINTER) {
         host.removeEventListener('mousedown', onMouseDown, true);
         host.removeEventListener('mouseup', onMouseUp, true);
       }
+      sendInputRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();
       if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });
@@ -506,6 +590,41 @@ export function WebTerminalScreen() {
       tm?.focus();
     }
   };
+
+  // Send raw bytes to the pty via the effect's sendInput (base64/encryption
+  // aware), then return focus to the terminal so the soft keyboard stays up.
+  const sendBytes = (bytes: string) => {
+    sendInputRef.current?.(bytes);
+    termRef.current?.focus();
+  };
+  // A literal key from the bar. If Ctrl is armed and this is a single ASCII
+  // letter, fold it to its control code (Ctrl+A=\x01 … Ctrl+Z=\x1a) and consume
+  // the sticky. Otherwise send the sequence verbatim.
+  const sendBarKey = (seq: string) => {
+    if (ctrlSticky && seq.length === 1) {
+      const c = seq.toLowerCase().charCodeAt(0);
+      if (c >= 97 && c <= 122) {
+        sendBytes(String.fromCharCode(c - 96)); // 'a'(97) → \x01
+        setCtrlSticky(false);
+        return;
+      }
+    }
+    sendBytes(seq);
+    if (ctrlSticky) setCtrlSticky(false);
+  };
+  // The static (non-letter) bar keys. Ctrl is handled separately (sticky).
+  const BAR_KEYS: Array<{ label: string; seq: string; aria: string; wide?: boolean }> = [
+    { label: 'Esc', seq: '\x1b', aria: 'Escape', wide: true },
+    { label: 'Tab', seq: '\t', aria: 'Tab', wide: true },
+    { label: '↑', seq: '\x1b[A', aria: 'Arrow up' },
+    { label: '↓', seq: '\x1b[B', aria: 'Arrow down' },
+    { label: '←', seq: '\x1b[D', aria: 'Arrow left' },
+    { label: '→', seq: '\x1b[C', aria: 'Arrow right' },
+    { label: '|', seq: '|', aria: 'Pipe' },
+    { label: '~', seq: '~', aria: 'Tilde' },
+    { label: '/', seq: '/', aria: 'Slash' },
+    { label: '-', seq: '-', aria: 'Dash' },
+  ];
 
   const cmds = (settings.terminalCommands ?? []) as Array<{ id: string; title: string; command: string }>;
 
@@ -571,6 +690,33 @@ export function WebTerminalScreen() {
         {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint' as any)}</div>}
         <div ref={innerRef} className="term-host-inner" />
       </div>
+      {IS_COARSE_POINTER && !selectMode && (
+        <div className="term-keybar" role="toolbar" aria-label={t('terminal.keybarLabel')}>
+          <button
+            type="button"
+            className={`term-keybar-key term-keybar-mod${ctrlSticky ? ' is-armed' : ''}`}
+            aria-pressed={ctrlSticky}
+            aria-label="Control"
+            // Don't blur the terminal (which would drop the soft keyboard).
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => { setCtrlSticky((v) => !v); termRef.current?.focus(); }}
+          >
+            Ctrl
+          </button>
+          {BAR_KEYS.map((k) => (
+            <button
+              key={k.label}
+              type="button"
+              className={`term-keybar-key${k.wide ? ' term-keybar-wide' : ''}`}
+              aria-label={k.aria}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => sendBarKey(k.seq)}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+      )}
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );

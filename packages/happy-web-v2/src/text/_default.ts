@@ -970,6 +970,8 @@ export const en = {
         claudeNeedsInputBody: 'Claude needs your input',
         selectMode: 'Select / copy mode',
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
+        // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
+        keybarLabel: 'Terminal keys',
     },
 
     modals: {

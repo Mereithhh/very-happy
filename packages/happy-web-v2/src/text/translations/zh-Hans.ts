@@ -952,6 +952,7 @@ export const zhHans: TranslationStructure = {
         claudeNeedsInputBody: 'Claude 需要你的输入',
         selectMode: '选择/复制模式',
         selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
+        keybarLabel: '终端按键',
     },
 
     modals: {
