@@ -272,8 +272,16 @@ export function WebTerminalScreen() {
     };
     // rAF is paused while the tab is hidden, so a resize that lands in the
     // background never gets fitted; re-fit when the tab becomes visible again.
-    const onVisible = () => { if (!document.hidden) { scheduleFit(); refocus(); } };
+    // Becoming visible again (tab switch, or mobile screen unlock) → re-fit,
+    // refocus (desktop), and catch up any output missed while hidden. catchUp
+    // is defined below in the same effect scope; onVisible only runs on events,
+    // long after the effect body (and catchUp) has initialized.
+    const onVisible = () => { if (!document.hidden) { scheduleFit(); refocus(); catchUp(); } };
     document.addEventListener('visibilitychange', onVisible);
+    // bfcache restore (iOS Safari commonly restores from bfcache on unlock and
+    // fires pageshow rather than visibilitychange) → same catch-up path.
+    const onPageShow = () => { if (!document.hidden) { scheduleFit(); catchUp(); } };
+    window.addEventListener('pageshow', onPageShow);
     // Returning to the window (alt-tab / app switch) restores focus to the body,
     // not the terminal — refocus so the user can type immediately.
     window.addEventListener('focus', refocus);
@@ -316,6 +324,35 @@ export function WebTerminalScreen() {
       lastSeq = Math.max(lastSeq, res.seq);
     };
 
+    // Catch up to the daemon's authoritative screen by re-subscribing with
+    // fromSeq=lastSeq (→ replay the gap, or a fresh snapshot if it scrolled out
+    // of the ring). Called whenever we might have missed live output: socket
+    // reconnect AND tab becoming visible again. The visibility trigger is the
+    // fix for mobile screen-lock: the socket often "recovers" silently on
+    // unlock WITHOUT firing onReconnected (same socket.io quirk we hit on the
+    // chat side), so a visibility-driven catch-up is what actually refreshes a
+    // stale terminal on return. Idempotent: in-flight guard + seq dedup make
+    // overlapping triggers (visible + reconnected firing together) harmless; if
+    // the socket isn't back yet the RPC just fails and the next trigger retries.
+    let catchingUp = false;
+    const catchUp = () => {
+      if (disposed || !terminalId || catchingUp) return;
+      catchingUp = true;
+      outChain = outChain.then(async () => {
+        try {
+          const res = await machineOpenTerminal(machineId, {
+            terminalId, cols: term.cols, rows: term.rows, fromSeq: lastSeq, encStream: true,
+          });
+          if (disposed || !res.success) return;
+          enc = res.encStream === true;
+          await applyOpenResult(res);
+          apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+        } finally {
+          catchingUp = false;
+        }
+      });
+    };
+
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       safeFit();
@@ -340,18 +377,7 @@ export function WebTerminalScreen() {
     // The daemon replays just the missed output, or resends a snapshot if the
     // gap scrolled out of its ring. Only fires once the initial open established
     // a terminalId (onReconnected also fires on the very first connect).
-    const offReconnected = apiSocket.onReconnected(() => {
-      if (disposed || !terminalId) return;
-      outChain = outChain.then(async () => {
-        const res = await machineOpenTerminal(machineId, {
-          terminalId, cols: term.cols, rows: term.rows, fromSeq: lastSeq, encStream: true,
-        });
-        if (disposed || !res.success) return;
-        enc = res.encStream === true;
-        await applyOpenResult(res);
-        if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
-      });
-    });
+    const offReconnected = apiSocket.onReconnected(() => catchUp());
 
     const host = hostRef.current;
     const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
@@ -526,6 +552,7 @@ export function WebTerminalScreen() {
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
       window.removeEventListener('focus', refocus);
+      window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       offReconnected();
