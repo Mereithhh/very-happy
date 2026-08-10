@@ -42,6 +42,11 @@
   margin: 0;
   padding: var(--sp-3);
   overflow-x: auto;
+  /* Explicit overflow-y:hidden — a bare overflow-x:auto makes overflow-y compute
+   * to auto (CSS spec), turning the block into a 2-axis scroll container that
+   * swallows the vertical wheel, so the transcript won't scroll while the cursor
+   * sits over a code block. hidden lets the wheel bubble to the transcript. */
+  overflow-y: hidden;
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   line-height: 1.5;
@@ -60,6 +65,7 @@
   margin: 0;
   padding: var(--sp-3);
   overflow-x: auto;
+  overflow-y: hidden; /* see .cv-pre: keep vertical wheel bubbling to transcript */
   font-family: var(--font-mono) !important;
   font-size: var(--fs-12);
   line-height: 1.55;
