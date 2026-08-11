@@ -170,6 +170,31 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
     return undefined;
 }
 
+/**
+ * Decide how to scroll a tmux pane for a client wheel gesture, mirroring the
+ * semantics tmux itself applies to mouse wheels:
+ *  - pane already in copy-mode → keep scrolling copy-mode;
+ *  - inner app is fullscreen (`alternate_on`, e.g. vim/less) → forward arrow
+ *    keys so the APP scrolls (its content isn't in pane history);
+ *  - otherwise scrolling UP enters copy-mode (with -e: auto-exits when
+ *    scrolled back to the bottom); scrolling DOWN at the bottom is a no-op.
+ * Pure so the decision table is unit-testable without tmux.
+ * `lines > 0` = scroll up (into history), `lines < 0` = scroll down.
+ */
+export function planScrollAction(paneInMode: boolean, alternateOn: boolean, lines: number):
+    | { kind: 'copy-scroll'; dir: 'up' | 'down'; count: number }
+    | { kind: 'keys'; key: 'Up' | 'Down'; count: number }
+    | { kind: 'none' } {
+    // Bound a single step so a burst can't wedge tmux with a huge -N.
+    const count = Math.min(Math.abs(Math.trunc(lines)), 200);
+    if (count === 0) return { kind: 'none' };
+    const up = lines > 0;
+    if (paneInMode) return { kind: 'copy-scroll', dir: up ? 'up' : 'down', count };
+    if (alternateOn) return { kind: 'keys', key: up ? 'Up' : 'Down', count };
+    if (up) return { kind: 'copy-scroll', dir: 'up', count };
+    return { kind: 'none' }; // down at the live bottom — nowhere to go
+}
+
 let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
     if (tmuxAvailableCache !== null) return tmuxAvailableCache;
@@ -660,6 +685,47 @@ export class WebTerminalManager {
             return classifyPane(cmd.stdout.trim(), cap.stdout);
         } catch {
             return undefined;
+        }
+    }
+
+    /**
+     * Scroll a terminal's tmux history for a client wheel gesture. Needed
+     * because the attach-client pty holds the OUTER terminal in the alternate
+     * screen, so the web xterm has no scrollback of its own — history lives in
+     * tmux (history-limit) and is reached via copy-mode. `lines > 0` scrolls up.
+     * See planScrollAction for the decision table. Best-effort: any tmux
+     * failure is swallowed (a scroll is never worth an error to the client).
+     */
+    scroll(terminalId: string, lines: number) {
+        if (!isTmuxAvailable()) return;
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return;
+        if (!Number.isFinite(lines)) return;
+        const name = `vh-${terminalId}`;
+        const session = this.terminals.get(terminalId);
+        if (session) session.lastTouch = Date.now();
+        try {
+            const probe = spawnSync('tmux',
+                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}'],
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+            if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
+            const [inMode, altOn] = probe.stdout.trim().split('\t');
+            const action = planScrollAction(inMode === '1', altOn === '1', lines);
+            if (action.kind === 'none') return;
+            if (action.kind === 'keys') {
+                spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                return;
+            }
+            // copy-scroll: enter copy-mode idempotently (-e → auto-exit at the
+            // bottom, so wheel-down naturally returns to the live view).
+            spawnSync('tmux', ['copy-mode', '-e', '-t', name],
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+            spawnSync('tmux',
+                ['send-keys', '-X', '-t', name, '-N', String(action.count),
+                    action.dir === 'up' ? 'scroll-up' : 'scroll-down'],
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+        } catch {
+            // tmux gone / session dead — nothing to scroll
         }
     }
 

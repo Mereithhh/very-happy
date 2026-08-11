@@ -4,7 +4,42 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane } from './webTerminal';
+import { classifyPane, planScrollAction } from './webTerminal';
+
+describe('planScrollAction', () => {
+    it('scrolling up from the live view enters copy-mode scroll', () => {
+        expect(planScrollAction(false, false, 3)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
+    });
+
+    it('scrolling down at the live bottom is a no-op', () => {
+        expect(planScrollAction(false, false, -3)).toEqual({ kind: 'none' });
+    });
+
+    it('keeps scrolling copy-mode in both directions once in mode', () => {
+        expect(planScrollAction(true, false, 5)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 5 });
+        expect(planScrollAction(true, false, -5)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 5 });
+    });
+
+    it('copy-mode wins over an inner alternate screen (probing order)', () => {
+        // A vim session scrolled back via copy-mode stays in copy-mode.
+        expect(planScrollAction(true, true, -2)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 2 });
+    });
+
+    it('forwards arrow keys when the inner app is fullscreen (vim/less)', () => {
+        expect(planScrollAction(false, true, 2)).toEqual({ kind: 'keys', key: 'Up', count: 2 });
+        expect(planScrollAction(false, true, -4)).toEqual({ kind: 'keys', key: 'Down', count: 4 });
+    });
+
+    it('zero / fractional-below-one lines do nothing', () => {
+        expect(planScrollAction(false, false, 0)).toEqual({ kind: 'none' });
+        expect(planScrollAction(false, false, 0.9)).toEqual({ kind: 'none' });
+        expect(planScrollAction(true, false, -0.5)).toEqual({ kind: 'none' });
+    });
+
+    it('caps a burst at 200 lines per step', () => {
+        expect(planScrollAction(false, false, 10_000)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 200 });
+    });
+});
 
 const WORKING_FOOTER = [
     '⏺ Searching for the config loader…',
