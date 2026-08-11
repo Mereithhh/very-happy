@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { activeTerminals } from '@/sync/terminalListOps';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
@@ -191,8 +192,8 @@ export function CommandPalette() {
       });
     }
 
-    // Terminals (nav)
-    for (const term of terminals) {
+    // Terminals (nav) — activeTerminals: deletion tombstones aren't targets
+    for (const term of activeTerminals(terminals)) {
       const sub = term.machineName;
       out.push({
         key: `terminal:${term.id}`,

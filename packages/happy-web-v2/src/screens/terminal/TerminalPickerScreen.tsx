@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { TerminalSquare, Plus, ChevronLeft } from 'lucide-react';
 import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { activeTerminals } from '@/sync/terminalListOps';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { ItemList, ItemGroup, Item, EmptyState, StatusDot, Button } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -15,7 +16,7 @@ export function TerminalPickerScreen() {
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
   const createTerminal = useTerminalSessions((s) => s.create);
-  const terminals = useTerminalSessions((s) => s.terminals);
+  const terminals = activeTerminals(useTerminalSessions((s) => s.terminals));
   const { t } = useTranslation();
   const isDesktop = useIsDesktop();
 

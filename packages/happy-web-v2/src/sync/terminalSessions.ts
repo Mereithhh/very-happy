@@ -277,7 +277,15 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     scheduleKvPush();
   },
   remove: (id) => {
-    const next = get().terminals.filter((t) => t.id !== id);
+    // Tombstone, don't filter: a deletion is a mutation that must WIN the
+    // per-terminal KV merge on other devices (and survive until the machine's
+    // tmux is confirmed dead) — see terminalListOps.ts. Renderers hide
+    // tombstoned records via activeTerminals(); reconcile() physically clears
+    // them once the tmux is gone and the tombstone has aged out.
+    const now = Date.now();
+    const next = get().terminals.map((t) =>
+      t.id === id && !t.deletedAt ? { ...t, deletedAt: now, updatedAt: now } : t,
+    );
     persistLocal(next);
     set({ terminals: next });
     scheduleKvPush();

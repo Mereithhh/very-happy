@@ -159,6 +159,14 @@ describe('terminal mapping', () => {
     expect(items.find((i) => i.key === 't:t2')!.status).toBe('working');
   });
 
+  it('deletion-tombstoned terminals never appear on the board', () => {
+    const items = build({
+      terminals: [mkTerminal({ id: 't1', deletedAt: NOW - 1000 })],
+      agentStates: { t1: entry('needs_input') },
+    });
+    expect(items.find((i) => i.key === 't:t1')).toBeUndefined();
+  });
+
   it('shell / idle / unknown (old daemon) → idle, never attention', () => {
     const items = build({
       terminals: [

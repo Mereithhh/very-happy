@@ -147,6 +147,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   }
 
   for (const tm of terminals) {
+    if (tm.deletedAt) continue; // deletion tombstone — sync bookkeeping, not a board row
     const entry = agentStates[tm.id];
     const online = machineOnline(machines, tm.machineId);
     const lastActivityAt = entry?.activityAt ?? tm.updatedAt ?? tm.createdAt;

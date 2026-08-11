@@ -14,6 +14,7 @@ import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isImeComposingEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { activeTerminals } from '@/sync/terminalListOps';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
@@ -72,10 +73,11 @@ export function Sidebar() {
         subtitle: getSessionSubtitle(s),
       }));
     // terminals are always "live"; hidden only by the archived-only filter
+    // (activeTerminals: deletion tombstones are sync bookkeeping, not rows)
     const termRows: Row[] =
       filter === 'archived'
         ? []
-        : terminals.map((tm) => ({
+        : activeTerminals(terminals).map((tm) => ({
             key: `t:${tm.id}`,
             kind: 'terminal',
             ts: tm.createdAt,
