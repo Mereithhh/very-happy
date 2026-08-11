@@ -407,6 +407,8 @@ export interface MachineTerminal {
     title?: string;
     cwd?: string;
     createdAt?: number;
+    /** tmux session_activity (ms) — newer daemons only; fall back to createdAt. */
+    activityAt?: number;
     agentState?: TerminalAgentState;
 }
 

@@ -17,6 +17,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    board: {
+        title: '任务看板',
+        filterLabel: '看板',
+        attention: '等你处理',
+        working: '进行中',
+        idleEnded: '空闲 / 已结束',
+        emptyAttention: '没有需要你处理的',
+        emptyWorking: '没有正在运行的',
+        emptyIdle: '没有空闲会话',
+        machineOffline: '机器离线',
+        endedTag: '已结束',
+        waitingFor: ({ duration }: { duration: string }) => `已等待 ${duration}`,
+        agoSuffix: '前',
+        viewArchived: '查看已归档 →',
+    },
     tabs: {
         // Tab navigation labels
         inbox: '收件箱',
@@ -202,6 +217,16 @@ export const zhHans: TranslationStructure = {
     },
 
     settingsAppearance: {
+        homeView: '主屏',
+        homeViewDescription: '没有打开任何会话时首页显示的内容。',
+        homeViewOptions: {
+            normal: '最近',
+            board: '任务看板',
+        },
+        homeViewDescriptions: {
+            normal: '经典空屏与快捷操作',
+            board: '所有 agent 与终端一屏总览',
+        },
         // Appearance settings screen
         theme: '主题',
         themeDescription: '选择您喜欢的配色方案',

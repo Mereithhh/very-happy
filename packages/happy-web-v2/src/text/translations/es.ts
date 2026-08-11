@@ -15,6 +15,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
+    board: {
+        title: 'Task Board',
+        filterLabel: 'Board',
+        attention: 'Needs attention',
+        working: 'Working',
+        idleEnded: 'Idle / ended',
+        emptyAttention: 'Nothing needs you',
+        emptyWorking: 'Nothing running',
+        emptyIdle: 'Nothing idle',
+        machineOffline: 'machine offline',
+        endedTag: 'ended',
+        waitingFor: ({ duration }: { duration: string }) => `waiting ${duration}`,
+        agoSuffix: 'ago',
+        viewArchived: 'View archived →',
+    },
     tabs: {
         // Tab navigation labels
         inbox: 'Bandeja',
@@ -200,6 +215,16 @@ export const es: TranslationStructure = {
     },
 
     settingsAppearance: {
+        homeView: 'Home Screen',
+        homeViewDescription: 'What the app shows when nothing is open.',
+        homeViewOptions: {
+            normal: 'Recents',
+            board: 'Task Board',
+        },
+        homeViewDescriptions: {
+            normal: 'The classic empty screen with quick actions',
+            board: 'Every agent and terminal at a glance',
+        },
         // Appearance settings screen
         theme: 'Tema',
         themeDescription: 'Elige tu esquema de colores preferido',

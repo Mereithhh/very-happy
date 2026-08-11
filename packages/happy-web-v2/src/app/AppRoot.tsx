@@ -15,6 +15,7 @@ import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { useLocalSetting } from '@/sync/storage';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
@@ -24,6 +25,7 @@ const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').th
 const WebTerminalScreen = lazy(() => import('@/screens/terminal/WebTerminalScreen').then((m) => ({ default: m.WebTerminalScreen })));
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
+const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -46,6 +48,20 @@ function RequireAuth() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
   return <Outlet />;
+}
+
+/** `/` home: the classic empty-detail placeholder, or the Task Board when the
+ *  device-local homeView preference says so (Settings → Appearance). */
+function HomeGate() {
+  const homeView = useLocalSetting('homeView');
+  if (homeView === 'board') {
+    return (
+      <Lazy>
+        <TaskBoardScreen />
+      </Lazy>
+    );
+  }
+  return <EmptyDetail />;
 }
 
 function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
@@ -81,7 +97,8 @@ const router = createBrowserRouter(
           path: '/',
           element: <AppLayout />,
           children: [
-            { index: true, element: <EmptyDetail /> },
+            { index: true, element: <HomeGate /> },
+            { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy><WebTerminalScreen /></Lazy> },

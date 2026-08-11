@@ -26,6 +26,9 @@ export const LocalSettingsSchema = z.object({
     // Desktop sidebar width override (px) set by dragging the divider. null = use
     // the responsive default. Per-device (local).
     sidebarWidth: z.number().nullable().describe('User-dragged desktop sidebar width in px (null = responsive default)'),
+    // What `/` shows when nothing is open: the classic empty-detail placeholder
+    // ('normal') or the global Task Board ('board'). Device-local on purpose.
+    homeView: z.enum(['normal', 'board']).describe('Home screen when nothing is open: empty detail or the task board'),
 });
 
 //
@@ -62,6 +65,8 @@ export const localSettingsDefaults: LocalSettings = {
     newSessionReviewFirst: false,
     acknowledgedCliVersions: {},
     sidebarWidth: null,
+    // Safe default: existing users keep the current home screen.
+    homeView: 'normal',
 };
 Object.freeze(localSettingsDefaults);
 

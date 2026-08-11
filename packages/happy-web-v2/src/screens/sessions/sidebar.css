@@ -301,3 +301,43 @@
   padding: 1px 6px;
   margin-right: var(--sp-2);
 }
+
+/* board entry (header icon + filter-row tab) with needs-attention badge */
+.sb-board-btn {
+  position: relative;
+}
+.sb-board-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent-ink);
+  background: var(--danger);
+  border-radius: var(--r-pill);
+}
+.sb-filter-board {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.sb-filter-board-badge {
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent-ink);
+  background: var(--danger);
+  border-radius: var(--r-pill);
+}

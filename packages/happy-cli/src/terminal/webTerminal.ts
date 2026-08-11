@@ -734,17 +734,17 @@ export class WebTerminalManager {
      * shell); it is omitted whenever the probe fails, times out, or nothing
      * is recognizable — never an error.
      */
-    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number; agentState?: AgentState }> {
+    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> {
         if (!isTmuxAvailable()) return [];
         try {
             const r = spawnSync('tmux',
-                ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{pane_current_path}'],
+                ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{session_activity}\t#{pane_current_path}'],
                 { encoding: 'utf8' });
             if (r.status !== 0 || !r.stdout) return [];
-            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; agentState?: AgentState }> = [];
+            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> = [];
             for (const line of r.stdout.split('\n')) {
                 if (!line) continue;
-                const [name, created, cwd] = line.split('\t');
+                const [name, created, activity, cwd] = line.split('\t');
                 if (!name || !name.startsWith('vh-')) continue;
                 const id = name.slice(3);
                 let title: string | undefined;
@@ -757,6 +757,9 @@ export class WebTerminalManager {
                     title,
                     cwd: cwd || undefined,
                     createdAt: created ? Number(created) * 1000 : undefined,
+                    // tmux last-activity (epoch s) → ms; optional so old daemons
+                    // simply omit it and web clients fall back to createdAt.
+                    activityAt: activity ? Number(activity) * 1000 : undefined,
                     agentState: this.probeAgentState(name),
                 });
             }

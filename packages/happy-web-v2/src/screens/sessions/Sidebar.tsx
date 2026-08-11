@@ -1,11 +1,11 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid } from 'lucide-react';
 import { useSessions, useAllMachines, storage } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal, machineListTerminals } from '@/sync/ops';
+import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark } from '@/ui';
 import { Modal } from '@/modal';
@@ -15,6 +15,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { isImeComposingEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
+import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
 import './sidebar.css';
 
@@ -45,61 +46,17 @@ export function Sidebar() {
   const [showNew, setShowNew] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
-  const reconcileTerminals = useTerminalSessions((s) => s.reconcile);
   const machines = useAllMachines({ includeOffline: true });
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
-  // Reconcile the (client-owned) terminal list against each online machine's
-  // REAL live tmux sessions: adopt orphans (created elsewhere / lost records) so
-  // they're visible+deletable instead of leaking, and drop dead records.
-  //
-  // This is also the ONE poll loop for per-terminal Claude agent state: every
-  // `machineListTerminals` result is fed to the terminalAgentState store, so we
-  // don't run a second competing poller against the same RPC. Runs on mount /
-  // online-set change, then every 10s — slowed to 30s while the tab is hidden
-  // rather than paused outright, because the needs_input notification only
-  // matters while the user is away (a fully paused poll could never fire it).
-  const ingestAgentStates = useTerminalAgentStates((s) => s.ingest);
+  // The terminal reconcile / agent-state poll used to live here; it is now the
+  // AppLayout-level singleton (sync/terminalReconcileLoop.ts) so it also runs
+  // with the sidebar collapsed or on mobile detail screens. This component is
+  // a pure consumer of its stores.
   const machinesRef = useRef(machines);
   machinesRef.current = machines;
-  const onlineMachineIds = useMemo(
-    () => machines.filter(isMachineOnline).map((m) => m.id).join(','),
-    [machines],
-  );
-  useEffect(() => {
-    if (!onlineMachineIds) return;
-    let cancelled = false;
-    const poll = () => {
-      for (const id of onlineMachineIds.split(',')) {
-        const m = machinesRef.current.find((x) => x.id === id);
-        const name = (m as any)?.metadata?.displayName || (m as any)?.metadata?.host || id.slice(0, 8);
-        machineListTerminals(id).then((live) => {
-          if (cancelled) return;
-          reconcileTerminals(id, name, live); // null-safe (no-op on failed query)
-          if (live) ingestAgentStates(id, live); // failure → keep last known states
-        });
-      }
-    };
-    poll();
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const schedule = () => {
-      if (timer) clearInterval(timer);
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      timer = setInterval(poll, hidden ? 30_000 : 10_000);
-    };
-    schedule();
-    const onVisibility = () => {
-      schedule();
-      if (document.visibilityState === 'visible') poll();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onlineMachineIds]);
+
+  const attentionCount = useBoardAttentionCount();
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -235,6 +192,16 @@ export function Sidebar() {
         </div>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
+          <button
+            className="sb-icon-btn sb-board-btn"
+            title={t('board.title')}
+            onClick={() => navigate('/board')}
+          >
+            <LayoutGrid size={17} />
+            {attentionCount > 0 && (
+              <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
+            )}
+          </button>
           <button className="sb-icon-btn" title={t('sidebar.collapse' as any)} onClick={toggleCollapsed}>
             <PanelLeftClose size={17} />
           </button>
@@ -283,6 +250,12 @@ export function Sidebar() {
             {t(`sidebar.filter${f[0].toUpperCase()}${f.slice(1)}` as any)}
           </button>
         ))}
+        {/* board entry in the filter row — the mobile way in (the header icon
+            also works); full-screen with its own back nav */}
+        <button className="sb-filter-btn sb-filter-board" onClick={() => navigate('/board')}>
+          {t('board.filterLabel')}
+          {attentionCount > 0 && <span className="sb-filter-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>}
+        </button>
       </div>
 
       <div className="sb-list">
