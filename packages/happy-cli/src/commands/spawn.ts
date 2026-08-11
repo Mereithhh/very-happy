@@ -1,0 +1,286 @@
+/**
+ * `very-happy spawn` — one-shot automation entry point:
+ * spawn a remote happy session via the LOCAL daemon control server and
+ * (optionally) send the first user message, printing a clickable web URL.
+ *
+ * Designed for external automation (e.g. jojo-agent) running on the same
+ * machine as the daemon:
+ *
+ *   very-happy spawn --dir <cwd> [--prompt <text>|--prompt-file <path>] [--json]
+ *
+ * Implementation notes:
+ * - Spawn rides the existing daemon control-server endpoint
+ *   (`POST /spawn-session` via `spawnDaemonSession`), same as the web's
+ *   machine RPC path ends up doing on this machine. Only `directory` is
+ *   sent, so older daemons that predate agent/env params still work.
+ * - The first message reuses the exact web semantics (see web-v2
+ *   `sync.sendMessage` + commit 388019d4): encrypt the user envelope
+ *   `{ role: 'user', content: { type: 'text', text } }` with the SESSION
+ *   key and POST it to `/v3/sessions/:id/messages` — the same REST outbox
+ *   the web client flushes through. The session key comes from
+ *   `~/.happy/sessions.json`, which the daemon persists from the session's
+ *   `/session-started` webhook BEFORE it answers `/spawn-session`.
+ * - Daemon-not-running is a hard error (same semantics as the web: you
+ *   cannot spawn on an offline machine). We deliberately do NOT call
+ *   `ensureDaemonRunning()` here: automation running a dev build would
+ *   otherwise restart the user's production daemon on version mismatch.
+ *
+ * Exit codes:
+ *   0 — success
+ *   1 — spawn failed (no session was created)
+ *   2 — session spawned, but sending the first message failed
+ *       (the session likely EXISTS — the URL is still printed)
+ */
+
+import chalk from 'chalk'
+import { randomUUID } from 'node:crypto'
+import { readFileSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
+import axios from 'axios'
+import { configuration } from '@/configuration'
+import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from '@/daemon/controlClient'
+import { readCredentials, readPersistedSessions } from '@/persistence'
+import { decodeBase64, encodeBase64, encrypt } from '@/api/encryption'
+import { delay } from '@/utils/time'
+import { logger } from '@/ui/logger'
+
+export interface SpawnCommandOptions {
+    dir?: string
+    prompt?: string
+    promptFile?: string
+    json: boolean
+    help: boolean
+}
+
+/** Pure argv parser (exported for tests). Throws on malformed input. */
+export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
+    const options: SpawnCommandOptions = { json: false, help: false }
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i]
+        if (arg === '--dir' || arg === '-d') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--dir requires a value')
+            options.dir = value
+        } else if (arg === '--prompt' || arg === '-p') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--prompt requires a value')
+            options.prompt = value
+        } else if (arg === '--prompt-file') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--prompt-file requires a value')
+            options.promptFile = value
+        } else if (arg === '--json') {
+            options.json = true
+        } else if (arg === '--help' || arg === '-h') {
+            options.help = true
+        } else {
+            throw new Error(`Unknown argument: ${arg}`)
+        }
+    }
+    if (options.prompt !== undefined && options.promptFile !== undefined) {
+        throw new Error('--prompt and --prompt-file are mutually exclusive')
+    }
+    return options
+}
+
+export function sessionWebUrl(sessionId: string): string {
+    return `${configuration.webappUrl.replace(/\/+$/, '')}/session/${sessionId}`
+}
+
+function printHelp() {
+    console.log(`
+${chalk.bold('happy spawn')} - Spawn a remote session via the local daemon (for automation)
+
+${chalk.bold('Usage:')}
+  happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
+
+${chalk.bold('Options:')}
+  --dir, -d <path>       Working directory for the new session (required)
+  --prompt, -p <text>    First message to send after the session starts
+  --prompt-file <file>   Read the first message from a file (UTF-8)
+  --json                 Machine-readable output: {"sessionId", "url"}
+  -h, --help             Show this help
+
+${chalk.bold('Behavior:')}
+  Requires the happy daemon to be running on this machine (same semantics
+  as spawning from the web: an offline machine cannot spawn). Without
+  --prompt / --prompt-file the session is spawned idle.
+
+${chalk.bold('Exit codes:')}
+  0  success
+  1  spawn failed (no session created)
+  2  session spawned but first message failed (session URL still printed)
+`)
+}
+
+/**
+ * Wait for the daemon to persist the freshly spawned session's encryption
+ * key into ~/.happy/sessions.json. Normally it is already there when
+ * /spawn-session returns (the webhook precedes the spawn response), but we
+ * tolerate slow disks / racy daemons with a bounded poll.
+ */
+async function waitForSessionKey(sessionId: string, timeoutMs: number) {
+    const deadline = Date.now() + timeoutMs
+    while (true) {
+        const entry = readPersistedSessions()[sessionId]
+        if (entry) return entry
+        if (Date.now() >= deadline) {
+            throw new Error(
+                `Session ${sessionId} was spawned but its encryption key never appeared in ${configuration.sessionsFile}. ` +
+                `The daemon may be too old to persist session keys — send the message from the web UI instead.`
+            )
+        }
+        await delay(200)
+    }
+}
+
+/**
+ * Send the first user message to a spawned session. Mirrors the web's
+ * sendMessage: session-key-encrypted user envelope POSTed to the v3
+ * messages endpoint; the running session picks it up via its socket.
+ */
+async function sendFirstMessage(sessionId: string, text: string): Promise<void> {
+    const credentials = await readCredentials()
+    if (!credentials) {
+        throw new Error('Not authenticated. Run `happy auth login` first.')
+    }
+
+    const persisted = await waitForSessionKey(sessionId, 15_000)
+
+    const envelope = {
+        role: 'user' as const,
+        content: {
+            type: 'text' as const,
+            text
+        },
+        meta: {
+            sentFrom: 'cli'
+        }
+    }
+
+    const encrypted = encodeBase64(encrypt(
+        decodeBase64(persisted.encryptionKey),
+        persisted.encryptionVariant,
+        envelope
+    ))
+
+    await axios.post(
+        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
+        { messages: [{ content: encrypted, localId: randomUUID() }] },
+        {
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': `cli-spawn/${configuration.currentCliVersion}`
+            },
+            timeout: 30_000
+        }
+    )
+}
+
+export async function handleSpawnCommand(args: string[]): Promise<never> {
+    let options: SpawnCommandOptions
+    try {
+        options = parseSpawnArgs(args)
+    } catch (error) {
+        console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
+        console.error(`Run ${chalk.cyan('happy spawn --help')} for usage.`)
+        process.exit(1)
+    }
+
+    if (options.help) {
+        printHelp()
+        process.exit(0)
+    }
+
+    if (!options.dir) {
+        console.error(chalk.red('Error:'), '--dir is required')
+        console.error(`Run ${chalk.cyan('happy spawn --help')} for usage.`)
+        process.exit(1)
+    }
+    const directory = resolve(options.dir)
+
+    // Resolve the prompt up front so a bad --prompt-file fails BEFORE we
+    // spawn anything.
+    let prompt: string | undefined = options.prompt
+    if (options.promptFile !== undefined) {
+        try {
+            prompt = readFileSync(resolve(options.promptFile), 'utf8')
+        } catch (error) {
+            console.error(chalk.red('Error:'), `Failed to read --prompt-file: ${error instanceof Error ? error.message : String(error)}`)
+            process.exit(1)
+        }
+    }
+    if (prompt !== undefined && prompt.trim().length === 0) {
+        console.error(chalk.red('Error:'), 'Prompt is empty')
+        process.exit(1)
+    }
+
+    // The directory must already exist: the daemon would auto-create it
+    // (approvedNewDirectoryCreation defaults to true on its side), but a
+    // typo'd path silently creating directories is the wrong default for
+    // automation.
+    try {
+        if (!statSync(directory).isDirectory()) {
+            console.error(chalk.red('Error:'), `Not a directory: ${directory}`)
+            process.exit(1)
+        }
+    } catch {
+        console.error(chalk.red('Error:'), `Directory does not exist: ${directory}`)
+        process.exit(1)
+    }
+
+    // Same semantics as the web: no running daemon on this machine → cannot
+    // spawn. (Deliberately no ensureDaemonRunning: a dev build would restart
+    // the installed daemon on version mismatch.)
+    if (!await checkIfDaemonRunningAndCleanupStaleState()) {
+        console.error(chalk.red('Error:'), 'Happy daemon is not running on this machine.')
+        console.error(`Start it with ${chalk.cyan('happy daemon start')} and retry.`)
+        process.exit(1)
+    }
+
+    logger.debug(`[SPAWN CMD] Spawning session in ${directory}`)
+    const result = await spawnDaemonSession(directory)
+    if (result?.error || !result?.success || !result?.sessionId) {
+        const message = result?.error || 'Daemon returned no session ID'
+        console.error(chalk.red('Error:'), `Failed to spawn session: ${message}`)
+        process.exit(1)
+    }
+
+    const sessionId: string = result.sessionId
+    const url = sessionWebUrl(sessionId)
+
+    let promptError: string | null = null
+    if (prompt !== undefined) {
+        try {
+            await sendFirstMessage(sessionId, prompt)
+        } catch (error) {
+            promptError = error instanceof Error ? error.message : String(error)
+        }
+    }
+
+    if (options.json) {
+        const payload: Record<string, unknown> = { sessionId, url }
+        if (prompt !== undefined) {
+            payload.promptDelivered = promptError === null
+        }
+        if (promptError !== null) {
+            payload.error = `Session spawned but first message failed: ${promptError}`
+        }
+        console.log(JSON.stringify(payload))
+    } else {
+        console.log(`${chalk.bold('Session:')} ${sessionId}`)
+        console.log(`${chalk.bold('URL:')}     ${url}`)
+        if (prompt !== undefined && promptError === null) {
+            console.log(chalk.green('First message sent.'))
+        }
+    }
+
+    if (promptError !== null) {
+        console.error(chalk.red('Error:'), `Session ${sessionId} was spawned, but sending the first message failed: ${promptError}`)
+        console.error(`The session likely exists — open ${url} and send the message manually.`)
+        process.exit(2)
+    }
+
+    process.exit(0)
+}
