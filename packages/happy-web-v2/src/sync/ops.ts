@@ -353,6 +353,32 @@ export async function machineUploadFile(
     }
 }
 
+/**
+ * Scroll a tmux-backed terminal's history on the machine. `lines > 0` scrolls
+ * UP (into history), `lines < 0` scrolls down. The daemon enters tmux
+ * copy-mode (-e: auto-exits at the bottom) and scrolls, or forwards arrow keys
+ * when the pane's inner app is fullscreen (vim/less) — mirroring tmux's own
+ * wheel semantics. Needed because tmux holds the outer terminal in the
+ * alternate screen, where xterm.js has no scrollback of its own.
+ * Returns false when the daemon doesn't support the RPC (old CLI) so the
+ * caller can fall back to xterm's default wheel behavior.
+ */
+export async function machineScrollTerminal(
+    machineId: string,
+    terminalId: string,
+    lines: number,
+): Promise<boolean> {
+    try {
+        const r = await apiSocket.machineRPC<
+            { type: string },
+            { terminalId: string; lines: number }
+        >(machineId, 'terminal-scroll', { terminalId, lines });
+        return r?.type === 'success';
+    } catch {
+        return false;
+    }
+}
+
 /** Permanently destroy a terminal's tmux session on the machine. */
 export async function machineKillTerminal(machineId: string, terminalId: string): Promise<void> {
     try {
