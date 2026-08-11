@@ -142,7 +142,12 @@ export class SessionEncryption {
     }
 
     /**
-     * Decrypt metadata using session-specific encryption
+     * Decrypt metadata using session-specific encryption.
+     *
+     * Never throws — a corrupt row (malformed base64, wrong key, bad payload)
+     * returns null, honoring the `Metadata | null` contract for EVERY caller
+     * (fetchSessions, realtime handleUpdate, …) instead of relying on each hot
+     * path to remember its own try/catch.
      */
     async decryptMetadata(version: number, encrypted: string): Promise<Metadata | null> {
         // Check cache first
@@ -152,19 +157,24 @@ export class SessionEncryption {
         }
 
         // Decrypt if not cached
-        const encryptedData = decodeBase64(encrypted, 'base64');
-        const decrypted = await this.encryptor.decrypt([encryptedData]);
-        if (!decrypted[0]) {
-            return null;
-        }
-        const parsed = MetadataSchema.safeParse(decrypted[0]);
-        if (!parsed.success) {
-            return null;
-        }
+        try {
+            const encryptedData = decodeBase64(encrypted, 'base64');
+            const decrypted = await this.encryptor.decrypt([encryptedData]);
+            if (!decrypted[0]) {
+                return null;
+            }
+            const parsed = MetadataSchema.safeParse(decrypted[0]);
+            if (!parsed.success) {
+                return null;
+            }
 
-        // Cache the result
-        this.cache.setCachedMetadata(this.sessionId, version, parsed.data);
-        return parsed.data;
+            // Cache the result
+            this.cache.setCachedMetadata(this.sessionId, version, parsed.data);
+            return parsed.data;
+        } catch (error) {
+            console.error(`Failed to decrypt session metadata for ${this.sessionId}:`, error);
+            return null;
+        }
     }
 
     /**
@@ -176,7 +186,11 @@ export class SessionEncryption {
     }
 
     /**
-     * Decrypt agent state using session-specific encryption
+     * Decrypt agent state using session-specific encryption.
+     *
+     * Never throws — a corrupt row degrades to the empty state `{}` (same as
+     * an undecryptable/unparsable payload), so hot paths like the realtime
+     * update handler can't be taken down by one bad record.
      */
     async decryptAgentState(version: number, encrypted: string | null | undefined): Promise<AgentState> {
         if (!encrypted) {
@@ -190,18 +204,23 @@ export class SessionEncryption {
         }
 
         // Decrypt if not cached
-        const encryptedData = decodeBase64(encrypted, 'base64');
-        const decrypted = await this.encryptor.decrypt([encryptedData]);
-        if (!decrypted[0]) {
-            return {};
-        }
-        const parsed = AgentStateSchema.safeParse(decrypted[0]);
-        if (!parsed.success) {
-            return {};
-        }
+        try {
+            const encryptedData = decodeBase64(encrypted, 'base64');
+            const decrypted = await this.encryptor.decrypt([encryptedData]);
+            if (!decrypted[0]) {
+                return {};
+            }
+            const parsed = AgentStateSchema.safeParse(decrypted[0]);
+            if (!parsed.success) {
+                return {};
+            }
 
-        // Cache the result
-        this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
-        return parsed.data;
+            // Cache the result
+            this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
+            return parsed.data;
+        } catch (error) {
+            console.error(`Failed to decrypt session agent state for ${this.sessionId}:`, error);
+            return {};
+        }
     }
 }
