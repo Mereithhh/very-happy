@@ -956,11 +956,23 @@ class Sync {
             lastMessage: ApiMessage | null;
         }>;
 
-        // Initialize all session encryptions first
+        // Initialize all session encryptions first.
+        //
+        // Resilience (mirrors fetchMachines): ONE session with malformed
+        // crypto material (bad base64 metadata/key, foreign key format) must
+        // NOT reject the whole fetch — InvalidateSync would retry forever
+        // (~1/s atob-throw loop) and session sync would be wedged for every
+        // client until the bad row is deleted server-side. Skip the bad
+        // session, keep the rest.
         const sessionKeys = new Map<string, Uint8Array | null>();
         for (const session of sessions) {
             if (session.dataEncryptionKey) {
-                let decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
+                let decrypted: Uint8Array | null = null;
+                try {
+                    decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
+                } catch (error) {
+                    console.error(`Failed to decrypt data encryption key for session ${session.id}:`, error);
+                }
                 if (!decrypted) {
                     console.error(`Failed to decrypt data encryption key for session ${session.id}`);
                     continue;
@@ -970,7 +982,11 @@ class Sync {
                 sessionKeys.set(session.id, null);
             }
         }
-        await this.encryption.initializeSessions(sessionKeys);
+        try {
+            await this.encryption.initializeSessions(sessionKeys);
+        } catch (error) {
+            console.error('Failed to initialize session encryptions:', error);
+        }
 
         // Decrypt sessions
         let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
@@ -982,11 +998,18 @@ class Sync {
                 continue;
             }
 
-            // Decrypt metadata using session-specific encryption
-            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
-
-            // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            // Decrypt metadata + agent state using session-specific
+            // encryption. A throw (malformed base64 from a corrupt row) must
+            // only skip THIS session — see resilience note above.
+            let metadata: Awaited<ReturnType<typeof sessionEncryption.decryptMetadata>>;
+            let agentState: Awaited<ReturnType<typeof sessionEncryption.decryptAgentState>>;
+            try {
+                metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+                agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            } catch (error) {
+                console.error(`Failed to decrypt session ${session.id} - skipping`, error);
+                continue;
+            }
 
             // Put it all together
             const processedSession = {
