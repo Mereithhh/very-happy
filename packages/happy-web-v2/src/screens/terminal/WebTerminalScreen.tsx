@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff } from 'lucide-react';
+import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -13,8 +13,9 @@ import {
   machineSetTerminalTitle,
   machineScrollTerminal,
 } from '@/sync/ops';
-import { installMobileInputBridge } from './mobileInputBridge';
-import { useSettings } from '@/sync/storage';
+import { installMobileInputBridge, toPtyText } from './mobileInputBridge';
+import { TermInputBar } from './TermInputBar';
+import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { Modal } from '@/modal';
@@ -109,6 +110,12 @@ export function WebTerminalScreen() {
   const [ctrlSticky, setCtrlSticky] = useState(false);
   const navigateTo = navigate;
 
+  // Line-input mode (mobile): compose whole lines in a plain textarea below
+  // the key bar instead of per-key input — see TermInputBar. Device-local
+  // preference (phone vs desktop is an input-hardware trait, not an account
+  // trait); remembered across sessions.
+  const [inputBarMode, setInputBarMode] = useLocalSettingMutable('terminalInputBarMode');
+
   // ── Mobile focus/keyboard policy ──────────────────────────────────────────
   // Pure state machine (see ./termFocusPolicy): decides whether taps / key-bar
   // keys / snippets may (re)focus the terminal — i.e. whether the soft keyboard
@@ -116,7 +123,12 @@ export function WebTerminalScreen() {
   // (hide-keyboard key, OS Done key, focus lost for good), nothing auto-
   // refocuses until the next explicit tap on the terminal body. All state in
   // refs: it's consulted from stable event listeners inside the effect.
-  const focusStateRef = useRef<TermFocusState>({ ...initialTermFocusState });
+  // barMode seeds from the remembered device preference (localSettings loads
+  // synchronously at store creation, so first render sees the real value).
+  const focusStateRef = useRef<TermFocusState>({
+    ...initialTermFocusState,
+    barMode: IS_COARSE_POINTER && inputBarMode === true,
+  });
   // Layout restore (clear maxHeight + refit + un-pan the page), bridged out of
   // the effect so the policy dispatcher below can trigger it.
   const restoreLayoutRef = useRef<(() => void) | null>(null);
@@ -156,6 +168,16 @@ export function WebTerminalScreen() {
     focusStateRef.current = state;
     runFocusAction(action);
     return action;
+  };
+
+  // Toggle per-key ↔ line-input mode. flushSync: the policy's focus action
+  // needs the target element MOUNTED (entering renders the input bar) and must
+  // run inside this click's gesture stack — iOS only opens the soft keyboard
+  // for focus() calls made synchronously within a user gesture.
+  const toggleInputBarMode = () => {
+    const next = !focusStateRef.current.barMode;
+    flushSync(() => setInputBarMode(next));
+    dispatchFocus({ type: 'toggle-bar-mode' });
   };
 
   useEffect(() => {
@@ -970,6 +992,17 @@ export function WebTerminalScreen() {
             >
               <KeyboardOff size={16} />
             </button>
+            <button
+              type="button"
+              className={`term-keybar-key term-keybar-sys${inputBarMode ? ' is-armed' : ''}`}
+              aria-pressed={inputBarMode}
+              aria-label={t('terminal.inputBarToggle')}
+              title={t('terminal.inputBarToggle')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleInputBarMode}
+            >
+              <TextCursorInput size={16} />
+            </button>
             <span className="term-keybar-sep" aria-hidden />
             <button
               type="button"
@@ -995,6 +1028,15 @@ export function WebTerminalScreen() {
               </button>
             ))}
           </div>
+          {inputBarMode && (
+            <TermInputBar
+              inputRef={inputBarRef}
+              // Whole-line send: newlines (pasted multi-line) become CRs, plus
+              // the terminating CR — the pty sees exactly what Enter would do.
+              onSend={(text) => sendInputRef.current?.(toPtyText(text) + '\r')}
+              onExit={toggleInputBarMode}
+            />
+          )}
         </div>
       )}
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}

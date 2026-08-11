@@ -160,6 +160,61 @@
   border-color: var(--accent, #34e2c4);
 }
 
+/* ── Line-input bar (mobile input-bar mode) ────────────────────────────────
+   A plain textarea — IME/dictation are native OS behavior here — that ships
+   whole lines to the pty on Enter (see TermInputBar.tsx). Sits at the very
+   bottom, closest to the soft keyboard; the assistive key bar stays above it
+   for Esc/Tab/Ctrl/arrows. Console-dark styling to match the key bar. */
+.term-inputbar {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 6px 8px;
+  background: var(--bg-1, #0f141b);
+  border-top: 1px solid var(--line, #1c2430);
+  touch-action: manipulation;
+}
+.term-inputbar-ta {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 1px solid var(--line, #263041);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent, #34e2c4) 4%, #0d1118);
+  color: var(--text, #e8edf4);
+  caret-color: var(--accent, #34e2c4);
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  /* ≥16px: anything smaller makes iOS auto-zoom the page on focus. */
+  font-size: 16px;
+  line-height: 1.35;
+  padding: 7px 10px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.term-inputbar-ta::placeholder { color: var(--text-faint, #5b6675); }
+.term-inputbar-ta:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #34e2c4) 55%, #263041);
+}
+.term-inputbar-send {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent, #34e2c4);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent, #34e2c4) 16%, #141a22);
+  color: var(--accent, #34e2c4);
+  -webkit-tap-highlight-color: transparent;
+}
+.term-inputbar-send:active {
+  background: var(--accent, #34e2c4);
+  color: #04110e;
+  transform: translateY(1px);
+}
+
 /* ── Mobile assistive key bar ──────────────────────────────────────────────
    Only rendered on coarse-pointer devices (see WebTerminalScreen). Gives the
    soft keyboard the keys it lacks: Esc/Tab/Ctrl/arrows/pipe/etc. Dark console

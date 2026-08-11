@@ -26,6 +26,12 @@ export const LocalSettingsSchema = z.object({
     // Desktop sidebar width override (px) set by dragging the divider. null = use
     // the responsive default. Per-device (local).
     sidebarWidth: z.number().nullable().describe('User-dragged desktop sidebar width in px (null = responsive default)'),
+    // Web terminal (mobile): line-input mode — a plain textarea below the key
+    // bar composes whole lines (IME/dictation-friendly, no xterm composition
+    // quirks) and sends them to the pty on Enter, instead of per-key input
+    // through xterm's hidden textarea. Device-local on purpose: it's an
+    // input-hardware preference (phone vs desktop), not an account preference.
+    terminalInputBarMode: z.boolean().describe('Use the line-input bar (compose + send) instead of per-key input in the mobile web terminal'),
 });
 
 //
@@ -62,6 +68,9 @@ export const localSettingsDefaults: LocalSettings = {
     newSessionReviewFirst: false,
     acknowledgedCliVersions: {},
     sidebarWidth: null,
+    // Default to per-key mode: it's the full-fidelity terminal; users who hit
+    // IME pain opt into the line-input bar from the key bar toggle.
+    terminalInputBarMode: false,
 };
 Object.freeze(localSettingsDefaults);
 
