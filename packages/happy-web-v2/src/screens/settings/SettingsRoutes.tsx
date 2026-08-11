@@ -75,6 +75,7 @@ import {
   formatMinute,
 } from '@/sync/notificationPrefs';
 import { getNotificationPermission, requestNotificationPermission } from '@/sync/webNotifications';
+import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type WebhookEvent } from '@/sync/apiWebhook';
 import type { NotifType } from '@/sync/feedTypes';
 import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
 import { getServerInfo } from '@/sync/serverConfig';
@@ -937,6 +938,155 @@ function Snippets() {
 
 const NOTIF_TYPES: NotifType[] = ['permission_request', 'reply_done', 'input_needed', 'error'];
 
+/**
+ * Webhook notifications: the SERVER posts a generic {"title","message"} JSON
+ * to a user-owned HTTPS endpoint on session events (turn done / permission /
+ * question) — e.g. a notify-gateway ingest URL that forwards to a group chat.
+ * Independent of browser notification support, so it renders even when Web
+ * Push is unavailable. One webhook per account; saving replaces the old one.
+ */
+function WebhookGroup() {
+  const { t } = useTranslation();
+  const { credentials } = useAuth();
+  const toast = useToast();
+  const [loaded, setLoaded] = useState(false);
+  const [existing, setExisting] = useState(false);
+  const [url, setUrl] = useState('');
+  const [completedOn, setCompletedOn] = useState(true);
+  const [permissionOn, setPermissionOn] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!credentials) return;
+    fetchWebhookConfig(credentials)
+      .then((config) => {
+        if (cancelled) return;
+        if (config) {
+          setExisting(true);
+          setUrl(config.url);
+          setCompletedOn(config.events.includes('completed'));
+          setPermissionOn(config.events.includes('permission'));
+        }
+      })
+      .catch(() => {
+        /* keep defaults; user can still type and save */
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials]);
+
+  async function persist(nextCompleted: boolean, nextPermission: boolean, announce: boolean) {
+    if (!credentials) return;
+    const events: WebhookEvent[] = [];
+    if (nextCompleted) events.push('completed');
+    if (nextPermission) events.push('permission');
+    setBusy(true);
+    try {
+      await saveWebhookConfig(credentials, { url: url.trim(), events });
+      setExisting(true);
+      if (announce) toast.success(t('notifications.webhookSaved'));
+    } catch (e) {
+      // Surfaces the server's validation message (https-only, private
+      // addresses blocked, …) instead of a generic error.
+      toast.error(e instanceof Error ? e.message : (t('common.error')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Event toggles apply immediately once a webhook exists (like the other
+  // toggles on this page); before the first save they just stage state.
+  function toggleCompleted(v: boolean) {
+    setCompletedOn(v);
+    if (existing && url.trim().length > 0) void persist(v, permissionOn, false);
+  }
+
+  function togglePermission(v: boolean) {
+    setPermissionOn(v);
+    if (existing && url.trim().length > 0) void persist(completedOn, v, false);
+  }
+
+  async function remove() {
+    if (!credentials) return;
+    setBusy(true);
+    try {
+      await deleteWebhookConfig(credentials);
+      setExisting(false);
+      setUrl('');
+      toast.success(t('notifications.webhookRemoved'));
+    } catch {
+      toast.error(t('common.error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ItemGroup
+      title={t('notifications.webhook')}
+      footer={t('notifications.webhookDescription')}
+    >
+      <div className="set-webhook">
+        <Input
+          label={t('notifications.webhookUrl')}
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={t('notifications.webhookUrlPlaceholder')}
+          value={url}
+          disabled={!loaded || busy}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <div className="set-webhook__row">
+          {existing && (
+            <Button variant="ghost" disabled={!loaded || busy} onClick={remove}>
+              {t('notifications.webhookRemove')}
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={!loaded || url.trim().length === 0}
+            onClick={() => void persist(completedOn, permissionOn, true)}
+          >
+            {t('common.save')}
+          </Button>
+        </div>
+      </div>
+      <Item
+        title={t('notifications.webhookEventCompleted')}
+        subtitle={t('notifications.webhookEventCompletedDesc')}
+        right={
+          <Toggle
+            checked={completedOn}
+            disabled={!loaded || busy}
+            onChange={toggleCompleted}
+            label={t('notifications.webhookEventCompleted')}
+          />
+        }
+      />
+      <Item
+        title={t('notifications.webhookEventPermission')}
+        subtitle={t('notifications.webhookEventPermissionDesc')}
+        right={
+          <Toggle
+            checked={permissionOn}
+            disabled={!loaded || busy}
+            onChange={togglePermission}
+            label={t('notifications.webhookEventPermission')}
+          />
+        }
+      />
+    </ItemGroup>
+  );
+}
+
 function Notifications() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -954,6 +1104,8 @@ function Notifications() {
           <ItemGroup title={t('notifications.webOnly' as any) as string}>
             <Item title={t('notifications.unsupported' as any)} />
           </ItemGroup>
+          {/* Webhooks are delivered server-side — no browser support needed. */}
+          <WebhookGroup />
         </ItemList>
       </Page>
     );
@@ -1082,6 +1234,8 @@ function Notifications() {
             </>
           )}
         </ItemGroup>
+
+        <WebhookGroup />
       </ItemList>
     </Page>
   );
