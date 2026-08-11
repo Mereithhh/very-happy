@@ -192,11 +192,12 @@ export async function dispatchSessionEventPush(params: {
 
     // Webhooks fire regardless of presence: they notify an external channel
     // (e.g. an IM group), not the device the user is looking at.
-    try {
-        await dispatchAccountWebhooks({ userId, sessionId, title, body, data: { sessionId, ...(data ?? {}) } });
-    } catch (error) {
-        log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
-    }
+    // Fire-and-forget: a slow webhook target (up to the 5s fetch timeout)
+    // must not delay device pushes below.
+    void dispatchAccountWebhooks({ userId, sessionId, title, body, data: { sessionId, ...(data ?? {}) } })
+        .catch((error) => {
+            log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
+        });
 
     try {
         try {
