@@ -52,17 +52,29 @@ async function fetchTokensAndSend(params: {
     }
 
     // Tokens are heterogeneous: Web Push subscriptions are stored as a
-    // `webpush:`-prefixed JSON blob, account webhooks as a `webhook:`-prefixed
-    // JSON blob, everything else is an Expo push token.
+    // `webpush:`-prefixed JSON blob, everything else is an Expo push token.
+    // Account webhooks (`webhook:` prefix) are NOT sent here — they dispatch
+    // unconditionally in dispatchSessionEventPush, before presence
+    // suppression (a webhook feeds a group chat / external system, which
+    // must hear about completions even while a happy tab sits open).
     const expoTokens = tokens.filter(t => !t.token.startsWith('webpush:') && !t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
     const webTokens = tokens.filter(t => t.token.startsWith('webpush:'));
-    const webhookTokens = tokens.filter(t => t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
 
     await Promise.all([
         sendExpo(params, expoTokens),
         sendWeb(params, webTokens),
-        sendWebhooks(params, webhookTokens),
     ]);
+}
+
+/** Account webhooks, presence-independent (see note in fetchTokensAndSend). */
+async function dispatchAccountWebhooks(params: {
+    userId: string; sessionId: string; title: string; body: string; data: Record<string, unknown>;
+}): Promise<void> {
+    const webhookTokens = await db.accountPushToken.findMany({
+        where: { accountId: params.userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } }
+    });
+    if (webhookTokens.length === 0) return;
+    await sendWebhooks(params, webhookTokens);
 }
 
 async function sendExpo(
@@ -178,10 +190,18 @@ export async function dispatchSessionEventPush(params: {
 }): Promise<void> {
     const { userId, sessionId, title, body, data } = params;
 
+    // Webhooks fire regardless of presence: they notify an external channel
+    // (e.g. an IM group), not the device the user is looking at.
+    try {
+        await dispatchAccountWebhooks({ userId, sessionId, title, body, data: { sessionId, ...(data ?? {}) } });
+    } catch (error) {
+        log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
+    }
+
     try {
         try {
             if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
+                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active (device pushes only; webhooks already sent)`);
                 return;
             }
         } catch (presenceError) {
