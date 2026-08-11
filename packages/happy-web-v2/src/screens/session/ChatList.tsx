@@ -94,6 +94,23 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduced ? 'smooth' : 'auto' });
     };
 
+    // Touch-scrolling the transcript dismisses the composer keyboard — the
+    // native `keyboardDismissMode="onDrag"` convention (iOS Messages, Telegram,
+    // every chat app): dragging the list means "let me read", and on iOS the
+    // overlay keyboard would otherwise keep covering the bottom 40% with no
+    // way to see what's under it. touchmove only fires on touch devices, so
+    // desktop (mouse wheel / trackpad) is untouched. blur() needs no gesture
+    // stack (unlike focus()) and is idempotent, so firing per-move is fine.
+    const onTouchMoveDismissKeyboard = () => {
+        const ae = document.activeElement;
+        if (
+            ae instanceof HTMLElement &&
+            (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable)
+        ) {
+            ae.blur();
+        }
+    };
+
     // Track whether the user is near the bottom.
     const onScroll = () => {
         const el = scrollRef.current;
@@ -159,7 +176,12 @@ export function ChatList({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="cl">
-            <div className="cl-scroll" ref={scrollRef} onScroll={onScroll}>
+            <div
+                className="cl-scroll"
+                ref={scrollRef}
+                onScroll={onScroll}
+                onTouchMove={onTouchMoveDismissKeyboard}
+            >
                 <div className="cl-inner">
                     {hasMoreOlder && (
                         <div className="cl-loadolder">

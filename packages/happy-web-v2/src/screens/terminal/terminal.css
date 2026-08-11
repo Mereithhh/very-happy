@@ -132,6 +132,34 @@
 .term-host .xterm-viewport {
   overflow-y: auto;
 }
+/* ── Mobile bottom bars (key bar + optional line-input bar) ────────────────
+   Wrapper for everything that sits between the terminal host and the soft
+   keyboard. The keyboard-avoidance math (onViewport) reserves this wrapper's
+   height when capping .term-host, so the bars stay visible ABOVE the keyboard
+   instead of sliding underneath it. Safe-area padding lives on the LAST child
+   only (the bar actually touching the screen bottom). */
+.term-bottombars {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.term-bottombars .term-keybar { padding-bottom: 6px; }
+.term-bottombars > :last-child { padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+/* Thin divider after the system keys (hide-keyboard / mode toggle). */
+.term-keybar-sep {
+  flex: 0 0 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--line, #263041);
+}
+/* System keys (not pty keys): slightly dimmer so they read as chrome. */
+.term-keybar-sys { color: var(--text-dim, #9aa7b8); }
+.term-keybar-sys.is-armed {
+  background: var(--accent, #34e2c4);
+  color: #04110e;
+  border-color: var(--accent, #34e2c4);
+}
+
 /* ── Mobile assistive key bar ──────────────────────────────────────────────
    Only rendered on coarse-pointer devices (see WebTerminalScreen). Gives the
    soft keyboard the keys it lacks: Esc/Tab/Ctrl/arrows/pipe/etc. Dark console

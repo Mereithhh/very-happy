@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button } from '@/ui';
 import { ChatHeader } from './ChatHeader';
@@ -17,6 +18,11 @@ export function SessionDetailScreen() {
     const { t } = useTranslation();
     const session = useSession(id ?? '');
     const [filesOpen, setFilesOpen] = useState(false);
+    // iOS: while the soft keyboard is up, pin this screen to the visual
+    // viewport so the composer sits above the keyboard and the message list's
+    // scroll math matches what's actually visible (see the hook's write-up).
+    const sdRef = useRef<HTMLDivElement>(null);
+    useKeyboardViewportPin(sdRef);
 
     // Trigger the initial message fetch + mark this session as the one being
     // viewed (drives message sync, read state, and web-resume refresh).
@@ -52,7 +58,7 @@ export function SessionDetailScreen() {
     }
 
     return (
-        <div className={`sd${filesOpen ? ' sd--files-open' : ''}`}>
+        <div className={`sd${filesOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
             <div className="sd-main">
                 <ChatHeader
                     sessionId={id}

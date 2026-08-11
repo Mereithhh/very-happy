@@ -983,6 +983,8 @@ export const en = {
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
         keybarLabel: 'Terminal keys',
+        // Mobile key bar: hide the soft keyboard (blur the terminal)
+        hideKeyboard: 'Hide keyboard',
     },
 
     modals: {

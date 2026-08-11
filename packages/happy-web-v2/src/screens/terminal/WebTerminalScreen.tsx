@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect } from 'lucide-react';
+import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -20,6 +21,13 @@ import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
 import { TmuxHelpModal } from './TmuxHelpModal';
+import {
+  reduceTermFocus,
+  initialTermFocusState,
+  type TermFocusState,
+  type TermFocusEvent,
+  type TermFocusAction,
+} from './termFocusPolicy';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -100,6 +108,55 @@ export function WebTerminalScreen() {
   // tap Ctrl, then the next letter is sent as Ctrl+<letter> (\x01..\x1a).
   const [ctrlSticky, setCtrlSticky] = useState(false);
   const navigateTo = navigate;
+
+  // ── Mobile focus/keyboard policy ──────────────────────────────────────────
+  // Pure state machine (see ./termFocusPolicy): decides whether taps / key-bar
+  // keys / snippets may (re)focus the terminal — i.e. whether the soft keyboard
+  // comes up. Core invariant: after the user explicitly dismisses the keyboard
+  // (hide-keyboard key, OS Done key, focus lost for good), nothing auto-
+  // refocuses until the next explicit tap on the terminal body. All state in
+  // refs: it's consulted from stable event listeners inside the effect.
+  const focusStateRef = useRef<TermFocusState>({ ...initialTermFocusState });
+  // Layout restore (clear maxHeight + refit + un-pan the page), bridged out of
+  // the effect so the policy dispatcher below can trigger it.
+  const restoreLayoutRef = useRef<(() => void) | null>(null);
+  // The line-input bar's textarea (input-bar mode) + the bottom-bars wrapper
+  // (key bar + input bar) whose height the keyboard-avoidance math reserves.
+  const inputBarRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomBarsRef = useRef<HTMLDivElement | null>(null);
+  const screenRef = useRef<HTMLDivElement | null>(null);
+
+  const runFocusAction = (a: TermFocusAction) => {
+    switch (a) {
+      case 'focus-terminal':
+        termRef.current?.focus();
+        break;
+      case 'focus-input-bar':
+        inputBarRef.current?.focus();
+        break;
+      case 'blur-input-bar':
+        inputBarRef.current?.blur();
+        break;
+      case 'blur-all': {
+        const tm = termRef.current;
+        tm?.blur?.();
+        (tm?.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null)?.blur();
+        inputBarRef.current?.blur();
+        break;
+      }
+      case 'restore-layout':
+        restoreLayoutRef.current?.();
+        break;
+      case 'none':
+        break;
+    }
+  };
+  const dispatchFocus = (e: TermFocusEvent): TermFocusAction => {
+    const { state, action } = reduceTermFocus(focusStateRef.current, e);
+    focusStateRef.current = state;
+    runFocusAction(action);
+    return action;
+  };
 
   useEffect(() => {
     if (!machineId || !hostRef.current || !innerRef.current) return;
@@ -432,7 +489,9 @@ export function WebTerminalScreen() {
       outChain = outChain.then(() => applyOpenResult(res));
       setConnecting(false);
       requestAnimationFrame(doFit);
-      term.focus();
+      // Don't steal focus from the line-input bar (input-bar mode): this runs
+      // async after mount, and the bar may already own the keyboard.
+      if (!(IS_COARSE_POINTER && focusStateRef.current.barMode)) term.focus();
     })();
 
     // On socket reconnect (dropped then back), re-subscribe with fromSeq=lastSeq.
@@ -503,7 +562,13 @@ export function WebTerminalScreen() {
       if (!p) return;
       const dx = p.clientX - touchX;
       const dy = p.clientY - touchY;
-      if (dx * dx + dy * dy <= 12 * 12) term.focus();
+      // A tap is the ONE explicit gesture that may summon the keyboard — route
+      // it through the focus policy (it also clears a prior dismissal). The
+      // resulting term.focus() still runs synchronously inside this touchend
+      // (iOS only opens the keyboard inside the user-gesture call stack). In
+      // input-bar mode the same tap instead blurs the bar (tap output = "let
+      // me read", normal web semantics).
+      if (dx * dx + dy * dy <= 12 * 12) dispatchFocus({ type: 'tap' });
     };
     // Touch drag → synthetic wheel events, so mobile can scroll back through
     // history. xterm has no useful touch handling: on desktop the wheel is
@@ -559,26 +624,75 @@ export function WebTerminalScreen() {
     // When the soft keyboard opens, window.innerHeight doesn't change — only
     // window.visualViewport shrinks — so the keyboard covers the bottom of the
     // terminal (including the input line). Cap the host's height to the visible
-    // viewport portion; the ResizeObserver → scheduleFit chain then shrinks the
-    // xterm grid (and tmux rows follow via terminal-resize).
+    // viewport portion MINUS the bottom bars (key bar / line-input bar), so the
+    // bars themselves stay visible above the keyboard; the ResizeObserver →
+    // scheduleFit chain then shrinks the xterm grid (and tmux rows follow via
+    // terminal-resize).
+    //
+    // Layout RESTORE runs on two channels, because the visualViewport one alone
+    // is not reliable on iOS:
+    //  1. onViewport: vv.height back to ≈ window.innerHeight. Under the iOS
+    //     standalone-PWA "viewport shrinks for good" bug, innerHeight itself
+    //     has shrunk and this condition NEVER becomes true again → the old
+    //     maxHeight stuck forever ("keyboard closed but layout never came back").
+    //  2. focusout: the helper textarea (or input bar) lost focus and — probed
+    //     one tick later — focus didn't land on another keyboard-owning element
+    //     of this screen. Focus gone ⇒ keyboard gone (the keyboard exists only
+    //     while an editable is focused), regardless of what the viewport claims.
+    // Both funnel into restoreLayout(), which also un-pans the page: iOS pans
+    // the layout viewport to reveal the focused field and routinely leaves the
+    // scroll offset behind after the keyboard closes.
     const vv = window.visualViewport;
+    let kbLayoutActive = false; // we shrank the host for the keyboard
+    const restoreLayout = () => {
+      if (!kbLayoutActive && !host.style.maxHeight) return;
+      kbLayoutActive = false;
+      host.style.maxHeight = '';
+      scheduleFit();
+      window.scrollTo({ top: 0 });
+    };
+    restoreLayoutRef.current = restoreLayout;
     const onViewport = () => {
       if (!vv) return;
+      // Pinch zoom also shrinks vv.height — that's not a keyboard; leave the
+      // layout alone (and don't fight the user's pan with scrollTo).
+      if ((vv.scale ?? 1) > 1.001) return;
       if (vv.height >= window.innerHeight - 50) {
         // Keyboard dismissed (viewport ≈ full window) → restore natural layout.
-        if (host.style.maxHeight) {
-          host.style.maxHeight = '';
-          scheduleFit();
-        }
+        restoreLayout();
         return;
       }
       const hostTop = host.getBoundingClientRect().top;
-      const avail = Math.round(vv.offsetTop + vv.height - hostTop - 8);
+      const barsH = bottomBarsRef.current?.offsetHeight ?? 0;
+      const avail = Math.round(vv.offsetTop + vv.height - hostTop - barsH - 8);
       if (avail > 60) {
+        kbLayoutActive = true;
         host.style.maxHeight = `${avail}px`;
         scheduleFit();
       }
     };
+    // Restore channel 2: focus left this screen's keyboard owners. Listened on
+    // the screen root (capture-free — focusout bubbles) so it covers both the
+    // xterm helper textarea and the line-input bar. The probe is DEFERRED:
+    // focusout fires before the next element receives focus, so activeElement
+    // is only meaningful a tick later (80ms also comfortably covers iOS timing).
+    const settleTimers = new Set<ReturnType<typeof setTimeout>>();
+    const onScreenFocusOut = () => {
+      const timer = setTimeout(() => {
+        settleTimers.delete(timer);
+        if (disposed) return;
+        const ae = document.activeElement;
+        const target =
+          ae && ae.classList?.contains('xterm-helper-textarea') ? 'terminal'
+          : ae && bottomBarsRef.current?.contains(ae) ? 'input-bar'
+          : 'none';
+        // 'none' ⇒ keyboard is gone: mark dismissed (no auto-refocus until the
+        // next tap) + restore the layout. Other targets are no-ops.
+        dispatchFocus({ type: 'focus-settled', target });
+      }, 80);
+      settleTimers.add(timer);
+    };
+    const screenEl = screenRef.current;
     if (IS_COARSE_POINTER) {
       host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
       host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
@@ -588,6 +702,7 @@ export function WebTerminalScreen() {
       host.addEventListener('touchcancel', onTouchDone, { capture: true, passive: true });
       vv?.addEventListener('resize', onViewport);
       vv?.addEventListener('scroll', onViewport);
+      screenEl?.addEventListener('focusout', onScreenFocusOut);
       // Install the v2 soft-keyboard bridge (diff engine, capture-phase on
       // term.element — see mobileInputBridge.ts). term.open already ran, so the
       // helper textarea exists.
@@ -678,6 +793,10 @@ export function WebTerminalScreen() {
         host.removeEventListener('touchcancel', onTouchDone, { capture: true } as EventListenerOptions);
         vv?.removeEventListener('resize', onViewport);
         vv?.removeEventListener('scroll', onViewport);
+        screenEl?.removeEventListener('focusout', onScreenFocusOut);
+        for (const timer of settleTimers) clearTimeout(timer);
+        settleTimers.clear();
+        restoreLayoutRef.current = null;
         mobileBridge?.dispose();
         mobileBridge = null;
         host.style.maxHeight = '';
@@ -701,7 +820,11 @@ export function WebTerminalScreen() {
     const tm = termRef.current;
     if (!tm) return;
     tm.paste(command); // user presses Enter to run — never auto-execute
-    tm.focus();
+    // Mobile: route through the focus policy (explicit menu gesture → may
+    // focus + clear a dismissal; in input-bar mode it leaves focus with the
+    // bar). Desktop keeps the unconditional historical refocus.
+    if (IS_COARSE_POINTER) dispatchFocus({ type: 'snippet' });
+    else tm.focus();
   };
 
   const onRename = async () => {
@@ -713,27 +836,30 @@ export function WebTerminalScreen() {
   const toggleSelectMode = () => {
     const next = !selectModeRef.current;
     selectModeRef.current = next;
-    setSelectMode(next);
-    const tm = termRef.current;
     if (next) {
       // Freeze incoming output: a TUI repaint replaces the DOM row nodes and
       // would destroy the native long-press selection mid-gesture.
       writeHoldRef.current?.begin();
-      // Drop terminal focus so the soft keyboard closes and the OS long-press
-      // selection isn't fighting the caret / input.
-      tm?.blur?.();
-      (tm?.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null)?.blur();
     } else {
       writeHoldRef.current?.flush();
-      tm?.focus();
     }
+    // flushSync: leaving select mode re-mounts the bottom bars — the policy's
+    // resulting focus action (e.g. focus-input-bar) needs them in the DOM, and
+    // it must run inside this click's gesture stack for iOS to open the
+    // keyboard. Entering dispatches blur-all (keyboard down for OS selection).
+    flushSync(() => setSelectMode(next));
+    dispatchFocus({ type: 'select-mode', on: next });
   };
 
   // Send raw bytes to the pty via the effect's sendInput (base64/encryption
-  // aware), then return focus to the terminal so the soft keyboard stays up.
+  // aware). Whether the terminal is refocused afterwards (keeping the soft
+  // keyboard up) is the focus policy's call: yes in normal per-key use, NO
+  // after the user explicitly dismissed the keyboard (arrow keys with the
+  // screen fully visible is a first-class TUI flow), and never in input-bar
+  // mode (the bar keeps its own focus — its buttons preventDefault mousedown).
   const sendBytes = (bytes: string) => {
     sendInputRef.current?.(bytes);
-    termRef.current?.focus();
+    dispatchFocus({ type: 'bar-key' });
   };
   // A literal key from the bar. If Ctrl is armed and this is a single ASCII
   // letter, fold it to its control code (Ctrl+A=\x01 … Ctrl+Z=\x1a) and consume
@@ -767,7 +893,7 @@ export function WebTerminalScreen() {
   const cmds = (settings.terminalCommands ?? []) as Array<{ id: string; title: string; command: string }>;
 
   return (
-    <div className="term-screen">
+    <div className="term-screen" ref={screenRef}>
       <header className="term-header">
         {!isDesktop && (
           <button className="term-back" onClick={() => navigate('/')} aria-label="back">
@@ -829,30 +955,46 @@ export function WebTerminalScreen() {
         <div ref={innerRef} className="term-host-inner" />
       </div>
       {IS_COARSE_POINTER && !selectMode && (
-        <div className="term-keybar" role="toolbar" aria-label={t('terminal.keybarLabel')}>
-          <button
-            type="button"
-            className={`term-keybar-key term-keybar-mod${ctrlSticky ? ' is-armed' : ''}`}
-            aria-pressed={ctrlSticky}
-            aria-label="Control"
-            // Don't blur the terminal (which would drop the soft keyboard).
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => { setCtrlSticky((v) => !v); termRef.current?.focus(); }}
-          >
-            Ctrl
-          </button>
-          {BAR_KEYS.map((k) => (
+        <div className="term-bottombars" ref={bottomBarsRef}>
+          <div className="term-keybar" role="toolbar" aria-label={t('terminal.keybarLabel')}>
             <button
-              key={k.label}
               type="button"
-              className={`term-keybar-key${k.wide ? ' term-keybar-wide' : ''}`}
-              aria-label={k.aria}
+              className="term-keybar-key term-keybar-sys"
+              aria-label={t('terminal.hideKeyboard')}
+              title={t('terminal.hideKeyboard')}
+              // preventDefault keeps the focus where it is for the click's
+              // duration; the policy then blurs everything explicitly (no
+              // focus flicker through the button).
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => sendBarKey(k.seq)}
+              onClick={() => dispatchFocus({ type: 'dismiss-key' })}
             >
-              {k.label}
+              <KeyboardOff size={16} />
             </button>
-          ))}
+            <span className="term-keybar-sep" aria-hidden />
+            <button
+              type="button"
+              className={`term-keybar-key term-keybar-mod${ctrlSticky ? ' is-armed' : ''}`}
+              aria-pressed={ctrlSticky}
+              aria-label="Control"
+              // Don't blur the terminal (which would drop the soft keyboard).
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { setCtrlSticky((v) => !v); dispatchFocus({ type: 'bar-key' }); }}
+            >
+              Ctrl
+            </button>
+            {BAR_KEYS.map((k) => (
+              <button
+                key={k.label}
+                type="button"
+                className={`term-keybar-key${k.wide ? ' term-keybar-wide' : ''}`}
+                aria-label={k.aria}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => sendBarKey(k.seq)}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
