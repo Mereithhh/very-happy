@@ -253,7 +253,7 @@ let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
     if (tmuxAvailableCache !== null) return tmuxAvailableCache;
     try {
-        const r = spawnSync('tmux', ['-V'], { stdio: 'ignore' });
+        const r = spawnSync('tmux', ['-V'], { stdio: 'ignore', env: ptyEnv() });
         tmuxAvailableCache = r.status === 0;
     } catch {
         tmuxAvailableCache = false;
@@ -520,9 +520,17 @@ export class WebTerminalManager {
             // another device) sees "duplicate" and injects nothing.
             let createdNew = false;
             try {
+                // env: THIS call may boot the tmux server, which pins its
+                // environment for the life of the server — without ptyEnv() a
+                // daemon launched from launchd/GUI would hand every session a
+                // PATH missing ~/.local/bin and a C locale (CJK width breakage).
+                // The pty's attach script (below) gets the same env via
+                // pty.spawn, so both creation paths agree. Later tmux calls
+                // pass it too — harmless once the server runs (env doesn't
+                // re-stick), correct when one of them is the first to boot it.
                 const created = spawnSync('tmux',
                     ['new-session', '-d', '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
-                    { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS });
+                    { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                 createdNew = created.status === 0;
             } catch {
                 // tmux hiccup — the pty script's `new-session -A` below still
@@ -545,7 +553,7 @@ export class WebTerminalManager {
                     ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
                 ];
                 for (const a of optArgs) {
-                    try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS }); } catch { /* best-effort */ }
+                    try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
                 }
                 // Startup command — ONLY into the session we just created. tmux
                 // buffers pane input, so it's fine that the pane's shell may not
@@ -554,7 +562,7 @@ export class WebTerminalManager {
                 if (startup) {
                     try {
                         for (const a of startupInjectionArgs(tmuxSession, startup)) {
-                            spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                            spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
                         }
                         logger.debug(`[WEB TERMINAL] injected startup command into new session ${tmuxSession}`);
                     } catch { /* injection is best-effort, never blocks the open */ }
@@ -712,7 +720,7 @@ export class WebTerminalManager {
     killSession(terminalId: string) {
         this.detach(terminalId);
         try {
-            spawnSync('tmux', ['kill-session', '-t', `vh-${terminalId}`], { stdio: 'ignore' });
+            spawnSync('tmux', ['kill-session', '-t', `vh-${terminalId}`], { stdio: 'ignore', env: ptyEnv() });
         } catch {
             // tmux gone / session already dead
         }
@@ -739,7 +747,7 @@ export class WebTerminalManager {
         try {
             const r = spawnSync('tmux',
                 ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{session_activity}\t#{pane_current_path}'],
-                { encoding: 'utf8' });
+                { encoding: 'utf8', env: ptyEnv() });
             if (r.status !== 0 || !r.stdout) return [];
             const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> = [];
             for (const line of r.stdout.split('\n')) {
@@ -749,7 +757,7 @@ export class WebTerminalManager {
                 const id = name.slice(3);
                 let title: string | undefined;
                 try {
-                    const t = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8' });
+                    const t = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8', env: ptyEnv() });
                     if (t.status === 0 && t.stdout && t.stdout.trim()) title = t.stdout.trim();
                 } catch { /* no title set */ }
                 out.push({
@@ -795,11 +803,11 @@ export class WebTerminalManager {
         try {
             const cmd = spawnSync('tmux',
                 ['display-message', '-p', '-t', sessionName, '#{pane_current_command}'],
-                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cmd.status !== 0 || typeof cmd.stdout !== 'string') return undefined;
             const cap = spawnSync('tmux',
                 ['capture-pane', '-p', '-t', sessionName, '-S', '-40'],
-                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cap.status !== 0 || typeof cap.stdout !== 'string') return undefined;
             return classifyPane(cmd.stdout.trim(), cap.stdout);
         } catch {
@@ -825,24 +833,24 @@ export class WebTerminalManager {
         try {
             const probe = spawnSync('tmux',
                 ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}'],
-                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS });
+                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
             const [inMode, altOn] = probe.stdout.trim().split('\t');
             const action = planScrollAction(inMode === '1', altOn === '1', lines);
             if (action.kind === 'none') return;
             if (action.kind === 'keys') {
                 spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
-                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
                 return;
             }
             // copy-scroll: enter copy-mode idempotently (-e → auto-exit at the
             // bottom, so wheel-down naturally returns to the live view).
             spawnSync('tmux', ['copy-mode', '-e', '-t', name],
-                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             spawnSync('tmux',
                 ['send-keys', '-X', '-t', name, '-N', String(action.count),
                     action.dir === 'up' ? 'scroll-up' : 'scroll-down'],
-                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
         } catch {
             // tmux gone / session dead — nothing to scroll
         }
@@ -851,17 +859,27 @@ export class WebTerminalManager {
     /** Persist a human title on the tmux session (`@vh_title`) so every device
      *  sees the same name. `ifAbsent` (used by auto-titling from the first
      *  command) skips when a title already exists, so it never clobbers a
-     *  manual rename on reattach. No-op without tmux or for an invalid id. */
-    setTitle(terminalId: string, title: string, ifAbsent = false) {
-        if (!isTmuxAvailable()) return;
-        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return;
+     *  manual rename on reattach.
+     *
+     *  Returns whether the machine actually holds a title now: the web's
+     *  `pendingTitle` mechanism treats the RPC's success as the machine's ack
+     *  and clears the pending flag — an unconditional success (session gone,
+     *  tmux missing, set-option failure) would clear it on a rename that never
+     *  landed. `ifAbsent` finding an existing title counts as success (there IS
+     *  a title; nothing to retry). */
+    setTitle(terminalId: string, title: string, ifAbsent = false): boolean {
+        if (!isTmuxAvailable()) return false;
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return false;
         const name = `vh-${terminalId}`;
         try {
             if (ifAbsent) {
-                const cur = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8' });
-                if (cur.status === 0 && cur.stdout && cur.stdout.trim()) return; // already titled
+                const cur = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8', env: ptyEnv() });
+                if (cur.status === 0 && cur.stdout && cur.stdout.trim()) return true; // already titled
             }
-            spawnSync('tmux', ['set-option', '-t', name, '@vh_title', title], { stdio: 'ignore' });
-        } catch { /* session gone */ }
+            const r = spawnSync('tmux', ['set-option', '-t', name, '@vh_title', title], { stdio: 'ignore', env: ptyEnv() });
+            return r.status === 0;
+        } catch {
+            return false; // session gone
+        }
     }
 }
