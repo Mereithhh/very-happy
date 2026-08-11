@@ -1005,6 +1005,10 @@ function WebhookGroup() {
   const [loaded, setLoaded] = useState(false);
   const [existing, setExisting] = useState(false);
   const [url, setUrl] = useState('');
+  // Last URL the SERVER confirmed (GET or successful save). The event toggles
+  // persist with THIS, never the input draft: toggling while a half-typed URL
+  // sits in the box must not silently submit the draft (or fail on it).
+  const [savedUrl, setSavedUrl] = useState('');
   const [completedOn, setCompletedOn] = useState(true);
   const [permissionOn, setPermissionOn] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -1018,6 +1022,7 @@ function WebhookGroup() {
         if (config) {
           setExisting(true);
           setUrl(config.url);
+          setSavedUrl(config.url);
           setCompletedOn(config.events.includes('completed'));
           setPermissionOn(config.events.includes('permission'));
         }
@@ -1033,35 +1038,49 @@ function WebhookGroup() {
     };
   }, [credentials]);
 
-  async function persist(nextCompleted: boolean, nextPermission: boolean, announce: boolean) {
-    if (!credentials) return;
+  /** Save `nextUrl` + events; returns whether the server accepted it. */
+  async function persist(nextUrl: string, nextCompleted: boolean, nextPermission: boolean, announce: boolean): Promise<boolean> {
+    if (!credentials) return false;
     const events: WebhookEvent[] = [];
     if (nextCompleted) events.push('completed');
     if (nextPermission) events.push('permission');
     setBusy(true);
     try {
-      await saveWebhookConfig(credentials, { url: url.trim(), events });
+      await saveWebhookConfig(credentials, { url: nextUrl, events });
       setExisting(true);
+      setSavedUrl(nextUrl);
       if (announce) toast.success(t('notifications.webhookSaved'));
+      return true;
     } catch (e) {
       // Surfaces the server's validation message (https-only, private
       // addresses blocked, …) instead of a generic error.
       toast.error(e instanceof Error ? e.message : (t('common.error')));
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
   // Event toggles apply immediately once a webhook exists (like the other
-  // toggles on this page); before the first save they just stage state.
+  // toggles on this page); before the first save they just stage state. They
+  // submit the SAVED url (see savedUrl) and roll the switch back if the
+  // server rejects the save, so the UI never shows a state that didn't stick.
   function toggleCompleted(v: boolean) {
     setCompletedOn(v);
-    if (existing && url.trim().length > 0) void persist(v, permissionOn, false);
+    if (existing && savedUrl.length > 0) {
+      void persist(savedUrl, v, permissionOn, false).then((ok) => {
+        if (!ok) setCompletedOn(!v);
+      });
+    }
   }
 
   function togglePermission(v: boolean) {
     setPermissionOn(v);
-    if (existing && url.trim().length > 0) void persist(completedOn, v, false);
+    if (existing && savedUrl.length > 0) {
+      void persist(savedUrl, completedOn, v, false).then((ok) => {
+        if (!ok) setPermissionOn(!v);
+      });
+    }
   }
 
   async function remove() {
@@ -1071,6 +1090,7 @@ function WebhookGroup() {
       await deleteWebhookConfig(credentials);
       setExisting(false);
       setUrl('');
+      setSavedUrl('');
       toast.success(t('notifications.webhookRemoved'));
     } catch {
       toast.error(t('common.error'));
@@ -1106,7 +1126,7 @@ function WebhookGroup() {
             variant="primary"
             loading={busy}
             disabled={!loaded || url.trim().length === 0}
-            onClick={() => void persist(completedOn, permissionOn, true)}
+            onClick={() => void persist(url.trim(), completedOn, permissionOn, true)}
           >
             {t('common.save')}
           </Button>
