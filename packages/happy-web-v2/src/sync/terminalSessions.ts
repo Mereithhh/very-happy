@@ -1,8 +1,9 @@
 /**
  * Registry of web terminal sessions, now **server-backed** so terminals are
  * unified with chat sessions: persisted in the account KV store (key
- * `vh.terminal-sessions`) and therefore synced across devices, with localStorage
- * as an instant offline cache. A terminal session is a tmux `vh-<id>` session on
+ * `vh.terminal-sessions`) and therefore synced across devices, with an MMKV
+ * (localStorage-backed, cleared on logout, account-fingerprinted) blob as an
+ * instant offline cache. A terminal session is a tmux `vh-<id>` session on
  * a machine; we own the id client-side so reopening reattaches to the live tmux
  * session (state survives reloads/navigation/other devices).
  *
@@ -18,6 +19,7 @@
  */
 import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
+import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
 import { machineSetTerminalTitle } from '@/sync/ops';
 import {
@@ -29,14 +31,47 @@ import {
 
 export type { TerminalSession } from '@/sync/terminalListOps';
 
-const KEY = 'vh.terminals.v1';
+// Local offline cache. Lives in the default MMKV namespace (localStorage keys
+// prefixed `mmkv:default:`) so logout's clearPersistence() → mmkv.clearAll()
+// wipes it with the rest of the account-scoped state. The pre-fix bare
+// `vh.terminals.v1` key survived logout, so the NEXT account's initialize()
+// merged the previous account's terminal records into its own KV list — a
+// cross-account leak. The legacy key is deleted, never migrated: there is no
+// way to tell which account wrote it.
+const mmkv = new MMKV();
+const CACHE_KEY = 'terminal-sessions-cache-v2';
+const LEGACY_KEY = 'vh.terminals.v1';
 const KV_KEY = 'vh.terminal-sessions';
+
+interface CacheBlob {
+  /** Fingerprint of the account (auth token) that wrote this cache. */
+  account?: string | null;
+  terminals: TerminalSession[];
+}
+
+/** Non-cryptographic fingerprint (FNV-1a) of the auth token. Only used to ask
+ *  "did the same account write this cache?" — never stored as, or derived
+ *  into, anything secret. */
+function accountFingerprint(token: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < token.length; i++) {
+    h ^= token.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/** Which account the loaded/persisted cache belongs to (undefined = no blob). */
+let cachedAccount: string | null | undefined;
 
 function load(): TerminalSession[] {
   try {
-    if (typeof localStorage === 'undefined') return [];
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as TerminalSession[]) : [];
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(LEGACY_KEY);
+    const raw = mmkv.getString(CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CacheBlob;
+    cachedAccount = parsed.account ?? null;
+    return Array.isArray(parsed.terminals) ? parsed.terminals : [];
   } catch {
     return [];
   }
@@ -44,7 +79,13 @@ function load(): TerminalSession[] {
 
 function persistLocal(list: TerminalSession[]) {
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(list));
+    const auth = getCurrentAuth();
+    const account = auth?.credentials
+      ? accountFingerprint(auth.credentials.token)
+      : (cachedAccount ?? null);
+    cachedAccount = account;
+    const blob: CacheBlob = { account, terminals: list };
+    mmkv.set(CACHE_KEY, JSON.stringify(blob));
   } catch {
     /* best-effort */
   }
@@ -147,6 +188,20 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
   initialize: async () => {
     const auth = getCurrentAuth();
     if (!auth?.credentials) return;
+    // Defense-in-depth against a cache that outlived a logout (crash before
+    // clearPersistence, restored localStorage backup, …): the blob records
+    // which account wrote it; a mismatch — or a blob with no fingerprint —
+    // discards the local records instead of merging a stranger's terminals
+    // into THIS account's KV list. The server copy is the durable truth, so
+    // dropping the cache costs nothing beyond offline edits.
+    const fp = accountFingerprint(auth.credentials.token);
+    if (cachedAccount !== fp) {
+      cachedAccount = fp;
+      if (get().terminals.length > 0) {
+        set({ terminals: [] });
+        persistLocal([]);
+      }
+    }
     try {
       const item = await kvGet(auth.credentials, KV_KEY);
       if (item) {
