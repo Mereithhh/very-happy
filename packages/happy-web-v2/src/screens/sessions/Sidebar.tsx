@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid } from 'lucide-react';
 import { useSessions, useAllMachines, storage } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -15,6 +15,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { isImeComposingEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
+import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
 import './sidebar.css';
 
@@ -54,6 +55,8 @@ export function Sidebar() {
   // a pure consumer of its stores.
   const machinesRef = useRef(machines);
   machinesRef.current = machines;
+
+  const attentionCount = useBoardAttentionCount();
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -189,6 +192,16 @@ export function Sidebar() {
         </div>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
+          <button
+            className="sb-icon-btn sb-board-btn"
+            title={t('board.title')}
+            onClick={() => navigate('/board')}
+          >
+            <LayoutGrid size={17} />
+            {attentionCount > 0 && (
+              <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
+            )}
+          </button>
           <button className="sb-icon-btn" title={t('sidebar.collapse' as any)} onClick={toggleCollapsed}>
             <PanelLeftClose size={17} />
           </button>
@@ -237,6 +250,12 @@ export function Sidebar() {
             {t(`sidebar.filter${f[0].toUpperCase()}${f.slice(1)}` as any)}
           </button>
         ))}
+        {/* board entry in the filter row — the mobile way in (the header icon
+            also works); full-screen with its own back nav */}
+        <button className="sb-filter-btn sb-filter-board" onClick={() => navigate('/board')}>
+          {t('board.filterLabel')}
+          {attentionCount > 0 && <span className="sb-filter-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>}
+        </button>
       </div>
 
       <div className="sb-list">

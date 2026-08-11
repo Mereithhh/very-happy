@@ -1,0 +1,209 @@
+/* Task Board — Console styling: flat hairline separations, mono machine
+ * layer, the teal accent reserved for live state; attention is the one
+ * red-bordered, pulsing exception. */
+.bd {
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* fills .app-detail (a flex column) on both desktop and mobile */
+  min-height: 0;
+  background: var(--bg-0);
+}
+
+.bd-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.bd-back {
+  display: none; /* mobile-only back (desktop keeps the sidebar) */
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.bd-back:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.bd-title {
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+.bd-summary-attn {
+  font-size: var(--fs-11);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+  background: var(--danger-dim);
+}
+
+.bd-cols {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bd-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+}
+.bd-col:last-child {
+  border-right: none;
+}
+.bd-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.bd-col-label {
+  color: var(--text-dim);
+}
+.bd-col--attention .bd-col-label {
+  color: var(--danger);
+}
+.bd-col-count {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.bd-col-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+.bd-col-empty {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  padding: var(--sp-4) 0;
+  text-align: center;
+}
+
+/* cards */
+.bd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+  cursor: pointer;
+}
+.bd-card:hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+}
+.bd-card--attention {
+  border-color: var(--danger);
+}
+.bd-card--attention:hover {
+  border-color: var(--danger);
+}
+.bd-card--ended {
+  opacity: 0.6;
+}
+.bd-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bd-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-13);
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-card-kind {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.bd-card-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.bd-card-machine {
+  flex-shrink: 0;
+}
+.bd-card-cwd {
+  min-width: 0;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-card-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.bd-card-tool {
+  color: var(--warn);
+}
+.bd-card-offline {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bd-card-time {
+  margin-left: auto;
+}
+.bd-card--attention .bd-card-time {
+  color: var(--danger);
+}
+
+.bd-archived-link {
+  align-self: flex-start;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  padding: 4px 0;
+}
+.bd-archived-link:hover {
+  color: var(--text-dim);
+}
+
+/* mobile: one stacked column, back button visible */
+@media (max-width: 979px) {
+  .bd-back {
+    display: inline-flex;
+  }
+  .bd-cols {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .bd-col {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    min-height: auto;
+  }
+  .bd-col-list {
+    overflow-y: visible;
+  }
+}

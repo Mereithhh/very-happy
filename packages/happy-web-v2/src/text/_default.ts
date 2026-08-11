@@ -242,6 +242,17 @@ export const en = {
         },
         showFlavorIcons: 'Show AI Provider Icons',
         showFlavorIconsDescription: 'Display AI provider icons on session avatars',
+        // Home screen: what `/` shows when nothing is open (device-local)
+        homeView: 'Home Screen',
+        homeViewDescription: 'What the app shows when nothing is open.',
+        homeViewOptions: {
+            normal: 'Recents',
+            board: 'Task Board',
+        },
+        homeViewDescriptions: {
+            normal: 'The classic empty screen with quick actions',
+            board: 'Every agent and terminal at a glance',
+        },
     },
 
     settingsFeatures: {
@@ -983,6 +994,27 @@ export const en = {
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
         keybarLabel: 'Terminal keys',
+    },
+
+    board: {
+        // Global task board (/board): every chat session + web terminal grouped
+        // by what it needs from the user right now
+        title: 'Task Board',
+        // short label for the sidebar filter-row entry (mobile way in)
+        filterLabel: 'Board',
+        attention: 'Needs attention',
+        working: 'Working',
+        idleEnded: 'Idle / ended',
+        emptyAttention: 'Nothing needs you',
+        emptyWorking: 'Nothing running',
+        emptyIdle: 'Nothing idle',
+        // ended terminal whose machine dropped off
+        machineOffline: 'machine offline',
+        endedTag: 'ended',
+        waitingFor: ({ duration }: { duration: string }) => `waiting ${duration}`,
+        // rendered after a compact duration, e.g. "3m ago"
+        agoSuffix: 'ago',
+        viewArchived: 'View archived →',
     },
 
     modals: {

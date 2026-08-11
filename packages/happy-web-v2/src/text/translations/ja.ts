@@ -18,6 +18,21 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    board: {
+        title: 'Task Board',
+        filterLabel: 'Board',
+        attention: 'Needs attention',
+        working: 'Working',
+        idleEnded: 'Idle / ended',
+        emptyAttention: 'Nothing needs you',
+        emptyWorking: 'Nothing running',
+        emptyIdle: 'Nothing idle',
+        machineOffline: 'machine offline',
+        endedTag: 'ended',
+        waitingFor: ({ duration }: { duration: string }) => `waiting ${duration}`,
+        agoSuffix: 'ago',
+        viewArchived: 'View archived →',
+    },
     tabs: {
         // Tab navigation labels
         inbox: '受信トレイ',
@@ -201,6 +216,16 @@ export const ja: TranslationStructure = {
     },
 
     settingsAppearance: {
+        homeView: 'Home Screen',
+        homeViewDescription: 'What the app shows when nothing is open.',
+        homeViewOptions: {
+            normal: 'Recents',
+            board: 'Task Board',
+        },
+        homeViewDescriptions: {
+            normal: 'The classic empty screen with quick actions',
+            board: 'Every agent and terminal at a glance',
+        },
         // Appearance settings screen
         theme: 'テーマ',
         themeDescription: 'お好みの配色を選択',

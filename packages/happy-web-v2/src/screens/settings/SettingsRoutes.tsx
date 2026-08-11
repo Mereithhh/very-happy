@@ -37,6 +37,7 @@ import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
 import {
   useSettingMutable,
+  useLocalSettingMutable,
   useProfile,
   useAllMachines,
   useSocketStatus,
@@ -252,6 +253,8 @@ function Appearance() {
   const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
   const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
   const [, setPreferredLanguage] = useSettingMutable('preferredLanguage');
+  // device-local: what `/` shows when nothing is open (empty detail vs board)
+  const [homeView, setHomeView] = useLocalSettingMutable('homeView');
 
   const themeOpts: { key: 'system' | 'dark' | 'light'; label: string; desc: string }[] = [
     {
@@ -300,6 +303,22 @@ function Appearance() {
               selected={preference === o.key}
               right={preference === o.key ? <Check size={16} /> : undefined}
               onClick={() => setPreference(o.key)}
+            />
+          ))}
+        </ItemGroup>
+
+        <ItemGroup
+          title={t('settingsAppearance.homeView')}
+          footer={t('settingsAppearance.homeViewDescription')}
+        >
+          {(['normal', 'board'] as const).map((v) => (
+            <Item
+              key={v}
+              title={t(`settingsAppearance.homeViewOptions.${v}`)}
+              subtitle={t(`settingsAppearance.homeViewDescriptions.${v}`)}
+              selected={homeView === v}
+              right={homeView === v ? <Check size={16} /> : undefined}
+              onClick={() => setHomeView(v)}
             />
           ))}
         </ItemGroup>
