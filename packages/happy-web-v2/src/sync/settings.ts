@@ -146,7 +146,10 @@ export const settingsDefaults: Settings = {
     recentMachinePaths: [],
     promptPresets: [],
     terminalCommands: [],
-    terminalStartupCommand: 'cd ~/code/github/skills && claude --dangerously-skip-permissions --chrome',
+    // Empty = disabled. Shipping a real command here would silently run it for
+    // every account on this server (invite-only but multi-tenant); each user
+    // sets their own in Settings → Snippets (synced across devices).
+    terminalStartupCommand: '',
     sessionPathPresets: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
