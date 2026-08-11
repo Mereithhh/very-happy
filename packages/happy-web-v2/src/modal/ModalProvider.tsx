@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Modal } from './ModalManager';
 import type { ModalConfig, ModalContextValue } from './types';
+import { isImeComposingEvent } from '@/utils/ime';
 import './modal.css';
 
 const ModalContext = createContext<ModalContextValue | null>(null);
@@ -104,6 +105,9 @@ function ModalCard({ config, onClose }: { config: ModalConfig; onClose: () => vo
             value={promptValue}
             onChange={(e) => setPromptValue(e.target.value)}
             onKeyDown={(e) => {
+              // IME guard: the keystroke that commits a CJK composition
+              // (Enter/Space in the candidate window) must not confirm the modal.
+              if (isImeComposingEvent(e)) return;
               if (e.key === 'Enter') close(() => Modal.resolvePrompt(config.id, promptValue));
             }}
           />

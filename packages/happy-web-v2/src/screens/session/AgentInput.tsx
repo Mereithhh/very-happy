@@ -24,6 +24,7 @@ import {
     getAvailablePermissionModes,
     getEffortLevelsForModel,
 } from '@/components/modelModeOptions';
+import { isImeComposingEvent } from '@/utils/ime';
 import { ModeMenu } from './ModeMenu';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
@@ -153,7 +154,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         // IME guard — never send mid-composition (critical for Chinese input).
-        if (e.key === 'Enter' && !e.shiftKey && !composingRef.current && !(e.nativeEvent as any).isComposing) {
+        // isImeComposingEvent also catches keyCode 229 (Safari fires the
+        // composition-committing Enter AFTER compositionend with isComposing
+        // false); composingRef covers browsers that misreport both.
+        if (e.key === 'Enter' && !e.shiftKey && !composingRef.current && !isImeComposingEvent(e)) {
             if (enterToSend) {
                 e.preventDefault();
                 void doSend();
@@ -254,7 +258,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}
                     onCompositionStart={() => (composingRef.current = true)}
-                    onCompositionEnd={() => (composingRef.current = false)}
+                    // Reset one tick late: some browsers deliver the
+                    // composition-committing keydown AFTER compositionend —
+                    // it must still count as composing (no accidental send).
+                    onCompositionEnd={() => setTimeout(() => (composingRef.current = false), 0)}
                     aria-label={t('common.message' as any)}
                 />
                 {isWorking ? (

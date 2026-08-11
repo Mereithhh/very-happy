@@ -12,6 +12,7 @@ import { Modal } from '@/modal';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
+import { isImeComposingEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { NewSessionModal } from './NewSessionModal';
@@ -145,6 +146,9 @@ export function Sidebar() {
       setCmdHeld(false);
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      // IME guard: keys routed through a CJK composition (keyCode 229) must
+      // never trigger shortcuts — this runs in the CAPTURE phase over every input.
+      if (isImeComposingEvent(e)) return;
       if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
         const list = rowsRef.current;
         const target = list?.[Number(e.key) - 1];

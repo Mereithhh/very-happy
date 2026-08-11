@@ -23,6 +23,7 @@ import {
   machineSpawnNewSession,
 } from '@/sync/ops';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { isImeComposingEvent } from '@/utils/ime';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import '@/screens/settings/settings.css';
@@ -191,6 +192,8 @@ export function MachineScreen() {
                     value={pathInput}
                     onChange={(e) => setPathInput(e.target.value)}
                     onKeyDown={(e) => {
+                      // IME guard: committing a CJK composition must not spawn.
+                      if (isImeComposingEvent(e)) return;
                       if (e.key === 'Enter') spawn();
                     }}
                   />

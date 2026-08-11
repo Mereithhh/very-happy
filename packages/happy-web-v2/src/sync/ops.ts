@@ -393,14 +393,17 @@ export async function machineListTerminals(machineId: string): Promise<MachineTe
 }
 
 /** Persist a terminal's title on the machine so every device sees it.
- *  `ifAbsent` (auto-title from first command) won't overwrite a manual rename. */
-export async function machineSetTerminalTitle(machineId: string, terminalId: string, title: string, ifAbsent = false): Promise<void> {
+ *  `ifAbsent` (auto-title from first command) won't overwrite a manual rename.
+ *  Returns whether the machine acked (false = offline/timeout; never throws) —
+ *  callers use it to keep/clear the record's `pendingTitle` flag. */
+export async function machineSetTerminalTitle(machineId: string, terminalId: string, title: string, ifAbsent = false): Promise<boolean> {
     try {
         await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string; title: string; ifAbsent: boolean }>(
             machineId, 'set-terminal-title', { terminalId, title, ifAbsent },
         );
+        return true;
     } catch {
-        // best-effort
+        return false; // best-effort
     }
 }
 

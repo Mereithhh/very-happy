@@ -8,6 +8,7 @@ import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
+import { isImeComposingEvent } from '@/utils/ime';
 import './newsession.css';
 
 const AGENTS = ['claude', 'codex', 'gemini', 'openclaw'] as const;
@@ -212,6 +213,8 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
               rows={2}
               onKeyDown={(e) => {
                 // ⌘/Ctrl+Enter from the field = create, matching the send gesture.
+                // IME guard: a composition-committing Enter must not create.
+                if (isImeComposingEvent(e)) return;
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
               }}
             />

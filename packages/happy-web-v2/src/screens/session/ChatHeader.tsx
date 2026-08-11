@@ -10,6 +10,7 @@ import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot, type Status } from '@/ui';
+import { isImeComposingEvent } from '@/utils/ime';
 import './header.css';
 
 // Session is "connected" when its agent is online AND our relay socket is up.
@@ -64,6 +65,8 @@ export function ChatHeader({
     };
 
     const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        // IME guard: committing a CJK composition must not save/close the editor.
+        if (isImeComposingEvent(e)) return;
         if (e.key === 'Enter') {
             e.preventDefault();
             void save();

@@ -16,6 +16,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
+import { isImeComposingEvent } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import './commandpalette.css';
 
@@ -251,6 +252,10 @@ export function CommandPalette() {
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // IME guard: while a CJK composition is active, Enter/arrows/Escape
+      // operate the candidate window — they must not run items, move the
+      // selection, or close the palette.
+      if (isImeComposingEvent(e)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
