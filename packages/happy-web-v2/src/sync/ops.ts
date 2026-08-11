@@ -300,7 +300,14 @@ export type OpenTerminalOk = {
 
 export async function machineOpenTerminal(
     machineId: string,
-    options: { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean },
+    options: {
+        terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean;
+        /** Auto-run ONLY if the daemon genuinely CREATES the tmux session for
+         *  this open — a reattach never re-runs it (the daemon decides; the
+         *  client can't know whether `vh-<id>` already exists on the machine).
+         *  Old daemons ignore the extra field → nothing runs. */
+        startupCommand?: string;
+    },
 ): Promise<OpenTerminalOk | { success: false; error: string }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's
@@ -313,7 +320,7 @@ export async function machineOpenTerminal(
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string }
         >(machineId, 'open-terminal', options);
         // encStream is echoed back only by daemons that support stream encryption
         // (old daemons ignore the flag → falsy → we fall back to plaintext).

@@ -1195,6 +1195,9 @@ export const zhHant: TranslationStructure = {
         commandsGroup: '終端快捷指令',
         commandsFooter: '在網頁終端點指令圖示，指令會填入終端（不自動執行，你按 Enter 確認）。',
         addCommand: '新增快捷指令',
+        startupGroup: '終端啟動命令',
+        startupFooter: '新建網頁終端時自動執行；重連 / 附著既有工作階段絕不會再跑一遍。留空則不執行。',
+        startupPlaceholder: '如 cd ~/code && claude，留空 = 關閉',
     },
 
     tmuxHelp: {

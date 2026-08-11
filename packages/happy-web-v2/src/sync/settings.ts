@@ -61,6 +61,12 @@ export const SettingsSchema = z.object({
         title: z.string(),
         command: z.string(),
     })).describe('Saved quick commands for the web terminal'),
+    // Auto-run command for NEWLY CREATED web terminals (daemon skips it on any
+    // reattach). Empty string = disabled. Synced; NO zod .default() (same
+    // ghost-pending footgun as above) — the default lives in settingsDefaults.
+    // Kept as a plain string (not a boolean+string pair) so a future per-machine
+    // map can supersede it without a schema fight.
+    terminalStartupCommand: z.string().describe('Command auto-run when a new web terminal is created (empty = disabled)'),
     // User-managed default-directory presets for new session creation. Synced;
     // no zod .default() (same footgun as recentMachinePaths/promptPresets).
     sessionPathPresets: z.array(z.object({
@@ -140,6 +146,7 @@ export const settingsDefaults: Settings = {
     recentMachinePaths: [],
     promptPresets: [],
     terminalCommands: [],
+    terminalStartupCommand: 'cd ~/code/github/skills && claude --dangerously-skip-permissions --chrome',
     sessionPathPresets: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,

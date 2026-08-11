@@ -66,6 +66,14 @@ export function WebTerminalScreen() {
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle' as any);
 
+  // Latest synced startup command, readable inside the terminal effect without
+  // adding `settings` to its deps (that would tear down a live terminal on any
+  // settings change). Sent with the initial open only; the DAEMON decides
+  // whether this open actually creates the tmux session (→ run it) or merely
+  // reattaches (→ never re-run) — the client can't know which it is.
+  const startupCommandRef = useRef(settings.terminalStartupCommand);
+  startupCommandRef.current = settings.terminalStartupCommand;
+
   const hostRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<TerminalRenderer | null>(null);
@@ -356,7 +364,11 @@ export function WebTerminalScreen() {
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       safeFit();
-      const res = await machineOpenTerminal(machineId, { terminalId: tid, cols: term.cols, rows: term.rows, encStream: true });
+      const res = await machineOpenTerminal(machineId, {
+        terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
+        // Runs only if the daemon CREATES the session (see startupCommandRef).
+        startupCommand: startupCommandRef.current,
+      });
       if (disposed) return;
       if (!res.success) {
         term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);

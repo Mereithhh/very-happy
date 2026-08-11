@@ -55,6 +55,12 @@ export interface OpenTerminalOptions {
      *  ring buffer still covers `fromSeq..now`, we replay just the gap instead
      *  of a full snapshot. */
     fromSeq?: number;
+    /** One-shot command to run ONLY when this open genuinely CREATES the
+     *  terminal (a fresh tmux session / fresh shell) — never on re-attach or
+     *  re-subscribe. Injected as literal keys (`send-keys -l`) + a separate
+     *  Enter, so tmux never parses the command's content. Empty/absent → run
+     *  nothing (old clients simply don't send the field). */
+    startupCommand?: string;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -108,6 +114,54 @@ const HEADLESS_SCROLLBACK = 5000;
 /** Per-probe tmux subprocess timeout — a wedged tmux must never stall the
  *  sidebar's periodic `list-terminals` poll. */
 const TMUX_PROBE_TIMEOUT_MS = 1500;
+
+/** Timeout for the synchronous `tmux new-session -d` in open(). More generous
+ *  than the probe timeout: the very first session may also have to boot the
+ *  tmux server. On timeout we just fall back to the pty script's `-A` create
+ *  (terminal still works; startup injection is skipped). */
+const TMUX_CREATE_TIMEOUT_MS = 5000;
+
+/** Max accepted startup-command length; anything longer is dropped (it's a
+ *  one-liner setting, not a script hose). */
+const STARTUP_COMMAND_MAX_LEN = 2000;
+
+/**
+ * Validate/normalize a client-supplied startup command. Returns undefined for
+ * anything that must NOT be injected: non-strings (old/foreign clients),
+ * blank strings (the "disabled" setting value), or absurd lengths. Embedded
+ * newlines are collapsed to spaces — the setting is a single command line, and
+ * a literal \n key would otherwise execute each fragment separately.
+ * Pure function (unit-tested without tmux).
+ */
+export function normalizeStartupCommand(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    const cmd = raw.replace(/[\r\n]+/g, ' ').trim();
+    if (cmd.length === 0 || cmd.length > STARTUP_COMMAND_MAX_LEN) return undefined;
+    return cmd;
+}
+
+/**
+ * The exact tmux argv vectors (no shell involved anywhere) that inject a
+ * startup command into a just-created session:
+ *  1. `send-keys -l -- <cmd>`: `-l` sends the argument LITERALLY — tmux does
+ *     not interpret key names, `;` command separators, or format expansion —
+ *     and `--` guards a command starting with `-`. The whole command is one
+ *     argv element, so the shell's own quoting/escaping is out of the picture
+ *     too (we spawn tmux directly, not via `sh -c`).
+ *  2. a separate `send-keys Enter` (key name, NOT literal) to run it.
+ * Target is `=<session>:` — `=` forces an exact session-name match (a bare
+ * name is a prefix match: `vh-abc` could hit `vh-abc1`) and the trailing `:`
+ * selects the session's current pane. NOTE the colon is required: tmux (3.6)
+ * rejects a bare `=name` when the command expects a pane target
+ * ("can't find pane") — verified empirically.
+ * Pure function (unit-tested without tmux).
+ */
+export function startupInjectionArgs(tmuxSession: string, command: string): string[][] {
+    return [
+        ['send-keys', '-t', `=${tmuxSession}:`, '-l', '--', command],
+        ['send-keys', '-t', `=${tmuxSession}:`, 'Enter'],
+    ];
+}
 
 /**
  * Coarse state of the agent (Claude Code) inside a web terminal, surfaced in
@@ -430,6 +484,57 @@ export class WebTerminalManager {
 
         if (isTmuxAvailable()) {
             tmuxSession = `vh-${id}`;
+            // ── NEW vs ATTACH ─────────────────────────────────────────────────
+            // Create the session HERE, synchronously: `new-session -d` exits
+            // non-zero ("duplicate session") when the session already exists, so
+            // its exit status is an ATOMIC "did WE just create it" signal — no
+            // separate has-session probe whose answer could go stale between
+            // probe and create (two devices opening the same id concurrently
+            // can't both observe "new"). Only a genuinely-created session gets
+            // the startup command; every re-attach (daemon restart, reaped pty,
+            // another device) sees "duplicate" and injects nothing.
+            let createdNew = false;
+            try {
+                const created = spawnSync('tmux',
+                    ['new-session', '-d', '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                    { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS });
+                createdNew = created.status === 0;
+            } catch {
+                // tmux hiccup — the pty script's `new-session -A` below still
+                // covers creation; we just lose startup injection this once.
+            }
+            if (createdNew) {
+                // Session-scoped options for the fresh session (mouse off /
+                // history-limit — see the setOpts comment below for rationale)
+                // plus the idempotent server-scoped clipboard ones. These MUST
+                // run here now: with the session pre-created, the pty script's
+                // `new-session -A` becomes the attach itself and everything
+                // after it in the script is unreachable until detach. The copies
+                // kept in the script only serve the fallback path where the
+                // spawnSync create failed and `-A` does the creating.
+                // (`=name:` = exact-match target, see startupInjectionArgs.)
+                const optArgs = [
+                    ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
+                    ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                    ['set-option', '-g', 'set-clipboard', 'on'],
+                    ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
+                ];
+                for (const a of optArgs) {
+                    try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS }); } catch { /* best-effort */ }
+                }
+                // Startup command — ONLY into the session we just created. tmux
+                // buffers pane input, so it's fine that the pane's shell may not
+                // have finished starting; it runs the command once it reads.
+                const startup = normalizeStartupCommand(opts.startupCommand);
+                if (startup) {
+                    try {
+                        for (const a of startupInjectionArgs(tmuxSession, startup)) {
+                            spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS });
+                        }
+                        logger.debug(`[WEB TERMINAL] injected startup command into new session ${tmuxSession}`);
+                    } catch { /* injection is best-effort, never blocks the open */ }
+                }
+            }
             // Create-or-noop the tmux session detached in the background, then
             // this pty becomes its single stable client. We keep the one-time
             // `attach -d` so that if the user ALSO ran a local `tmux attach`, the
@@ -484,6 +589,17 @@ export class WebTerminalManager {
             cwd,
             env,
         });
+
+        // No-tmux fallback: there IS no attach path — reaching this point (no
+        // live map entry, no tmux) always means a brand-new shell, so injecting
+        // the startup command as pty input is safe (the kernel pty buffers it
+        // until the shell starts reading). '\r' = the Enter keypress.
+        if (!tmuxSession) {
+            const startup = normalizeStartupCommand(opts.startupCommand);
+            if (startup) {
+                try { proc.write(startup + '\r'); } catch { /* best-effort */ }
+            }
+        }
 
         const session = new TerminalSession(id, proc, tmuxSession, cols, rows);
         session.subscribers = 1;

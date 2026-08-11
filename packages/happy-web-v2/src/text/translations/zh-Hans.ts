@@ -1273,6 +1273,9 @@ export const zhHans: TranslationStructure = {
         commandsGroup: '终端快捷指令',
         commandsFooter: '在网页终端点指令图标，命令会填入终端（不自动执行，你按回车确认）。',
         addCommand: '添加快捷指令',
+        startupGroup: '终端启动命令',
+        startupFooter: '新建网页终端时自动执行；重连 / 附着已有会话绝不会再跑一遍。留空则不执行。',
+        startupPlaceholder: '如 cd ~/code && claude，留空 = 关闭',
     },
 
     tmuxHelp: {

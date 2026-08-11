@@ -1193,6 +1193,9 @@ export const es: TranslationStructure = {
         commandsGroup: 'Terminal commands',
         commandsFooter: 'Tap the command icon in the web terminal; the command is inserted (not auto-run — press Enter to confirm).',
         addCommand: 'Add command',
+        startupGroup: 'Terminal startup command',
+        startupFooter: 'Runs automatically when a NEW web terminal is created — never again when reattaching to an existing session. Leave empty to disable.',
+        startupPlaceholder: 'e.g. cd ~/code && claude — empty = off',
     },
 
     tmuxHelp: {

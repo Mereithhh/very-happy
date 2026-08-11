@@ -777,6 +777,20 @@ function Snippets() {
   const [presets, setPresets] = useSettingMutable('promptPresets');
   const [commands, setCommands] = useSettingMutable('terminalCommands');
   const [editor, setEditor] = useState<EditorState | null>(null);
+  // Startup command for NEW web terminals (synced; daemon skips reattaches).
+  // Draft-then-commit so we don't push a settings sync on every keystroke;
+  // null draft = "not editing, show the stored value". Empty = disabled.
+  const [startupCommand, setStartupCommand] = useSettingMutable('terminalStartupCommand');
+  const [startupDraft, setStartupDraft] = useState<string | null>(null);
+
+  function commitStartup() {
+    if (startupDraft === null) return;
+    const next = startupDraft.trim();
+    setStartupDraft(null);
+    if (next === (startupCommand ?? '')) return;
+    setStartupCommand(next);
+    toast.success(t('common.success'));
+  }
 
   function openEditor(kind: SnippetKind, item?: { id: string; title: string; text?: string; command?: string }) {
     setEditor({
@@ -925,6 +939,26 @@ function Snippets() {
             left={<Plus size={18} />}
             onClick={() => openEditor('command')}
           />
+        </ItemGroup>
+
+        <ItemGroup
+          title={t('settingsSnippets.startupGroup')}
+          footer={t('settingsSnippets.startupFooter')}
+        >
+          <div style={{ padding: '10px 16px' }}>
+            <Input
+              value={startupDraft ?? startupCommand ?? ''}
+              placeholder={t('settingsSnippets.startupPlaceholder')}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              onChange={(e) => setStartupDraft(e.target.value)}
+              onBlur={commitStartup}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </div>
         </ItemGroup>
       </ItemList>
     </Page>
