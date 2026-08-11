@@ -218,8 +218,11 @@ export class ApiMachineClient {
         // snapshot/replay payload the same way live output is encrypted, so the
         // relay never sees restored screen bytes.
         this.rpcHandlerManager.registerHandler('open-terminal', async (params: any) => {
-            const { terminalId, cols, rows, cwd, fromSeq, encStream } = params || {};
-            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq });
+            // `startupCommand` runs ONLY when this open genuinely creates the
+            // tmux session (never on re-attach) — see WebTerminalManager.open.
+            // Old clients simply don't send it → nothing runs.
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand } = params || {};
+            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq, startupCommand });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
             // client knows whether to encrypt its input / decrypt output.

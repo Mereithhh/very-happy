@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs } from './webTerminal';
 
 const WORKING_FOOTER = [
     '⏺ Searching for the config loader…',
@@ -115,5 +115,74 @@ describe('classifyPane', () => {
         expect(classifyPane('vim', ':wq')).toBeUndefined();
         expect(classifyPane('htop', 'CPU 12%')).toBeUndefined();
         expect(classifyPane('', '')).toBeUndefined();
+    });
+});
+
+describe('normalizeStartupCommand', () => {
+    it('accepts a plain one-liner and trims whitespace', () => {
+        expect(normalizeStartupCommand('  cd ~/code && claude  ')).toBe('cd ~/code && claude');
+    });
+
+    it('rejects non-strings (old / foreign clients)', () => {
+        expect(normalizeStartupCommand(undefined)).toBeUndefined();
+        expect(normalizeStartupCommand(null)).toBeUndefined();
+        expect(normalizeStartupCommand(42)).toBeUndefined();
+        expect(normalizeStartupCommand(['rm', '-rf'])).toBeUndefined();
+        expect(normalizeStartupCommand({ cmd: 'ls' })).toBeUndefined();
+    });
+
+    it('rejects blank strings — the "disabled" setting value', () => {
+        expect(normalizeStartupCommand('')).toBeUndefined();
+        expect(normalizeStartupCommand('   ')).toBeUndefined();
+        expect(normalizeStartupCommand('\n\r\n')).toBeUndefined();
+    });
+
+    it('collapses embedded newlines to spaces (single command line semantics)', () => {
+        expect(normalizeStartupCommand('cd ~/code\nclaude')).toBe('cd ~/code claude');
+        expect(normalizeStartupCommand('a\r\n\r\nb')).toBe('a b');
+    });
+
+    it('rejects absurd lengths', () => {
+        expect(normalizeStartupCommand('x'.repeat(2000))).toBe('x'.repeat(2000));
+        expect(normalizeStartupCommand('x'.repeat(2001))).toBeUndefined();
+    });
+
+    it('keeps shell metacharacters verbatim — escaping is send-keys -l\'s job', () => {
+        const cmd = `cd "$HOME/my dir" && echo 'a;b' | grep -- -v`;
+        expect(normalizeStartupCommand(cmd)).toBe(cmd);
+    });
+});
+
+describe('startupInjectionArgs', () => {
+    it('sends the command literally, then Enter as a separate key press', () => {
+        expect(startupInjectionArgs('vh-abc123', 'cd ~/x && claude')).toEqual([
+            ['send-keys', '-t', '=vh-abc123:', '-l', '--', 'cd ~/x && claude'],
+            ['send-keys', '-t', '=vh-abc123:', 'Enter'],
+        ]);
+    });
+
+    it('passes tmux-significant content as ONE literal argv element (no parsing surface)', () => {
+        // `;` would separate tmux commands, `Enter`/`C-c` are key names, `#{}`
+        // is format expansion — all must ride inside the single `-l` argument.
+        const nasty = `echo 'hi; kill-server' Enter C-c #{pane_id} "$(rm -rf /)"`;
+        const [literal, enter] = startupInjectionArgs('vh-x', nasty);
+        expect(literal).toEqual(['send-keys', '-t', '=vh-x:', '-l', '--', nasty]);
+        expect(literal.filter((a) => a === nasty)).toHaveLength(1);
+        // The Enter keypress must NOT be literal, or it would type the word "Enter".
+        expect(enter).toEqual(['send-keys', '-t', '=vh-x:', 'Enter']);
+        expect(enter).not.toContain('-l');
+    });
+
+    it('guards a command starting with "-" behind --', () => {
+        const [literal] = startupInjectionArgs('vh-x', '-n hello');
+        const dd = literal.indexOf('--');
+        expect(dd).toBeGreaterThan(-1);
+        expect(literal[dd + 1]).toBe('-n hello');
+    });
+
+    it('targets the session by exact match (= prefix), not prefix match', () => {
+        for (const args of startupInjectionArgs('vh-abc', 'ls')) {
+            expect(args[args.indexOf('-t') + 1]).toBe('=vh-abc:');
+        }
     });
 });
