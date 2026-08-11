@@ -288,9 +288,18 @@ export class ApiMachineClient {
         });
 
         // Persist a terminal's title on the machine so every device sees it.
+        // The tmux result is transmitted honestly: the web treats this RPC's
+        // success as the machine's ack (clearing its `pendingTitle` retry
+        // state), so an unconditional success on a failed set-option would
+        // strand a rename that never landed.
         this.rpcHandlerManager.registerHandler('set-terminal-title', async (params: any) => {
             const { terminalId, title, ifAbsent } = params || {};
-            if (terminalId && typeof title === 'string') this.webTerminal.setTitle(terminalId, title, !!ifAbsent);
+            if (!terminalId || typeof title !== 'string') {
+                throw new Error('terminalId and title are required');
+            }
+            if (!this.webTerminal.setTitle(terminalId, title, !!ifAbsent)) {
+                throw new Error('Failed to set terminal title (tmux unavailable or session gone)');
+            }
             return { type: 'success' };
         });
 
