@@ -452,6 +452,20 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'mcp' && args.length === 1) {
+    // Standalone stdio MCP server for the real claude CLI (web terminal path).
+    // Register once with: claude mcp add --scope user very-happy-clipboard -- very-happy mcp
+    // Only the BARE `mcp` is ours: `happy mcp add ...` etc. still falls through
+    // to claude's own `mcp` subcommand (happy forwards unknown args to claude).
+    // NOTE: never print to stdout here — it would corrupt the MCP stdio framing.
+    try {
+      const { handleMcpCommand } = await import('./commands/mcp')
+      await handleMcpCommand()
+    } catch (error) {
+      process.stderr.write(`[very-happy mcp] Fatal: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'notify') {
     // Handle notification command
     try {
@@ -683,6 +697,9 @@ ${chalk.bold('Usage:')}
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
   happy notify            Send push notification
+  happy mcp               Stdio MCP server exposing copy_to_clipboard for a
+                            plain claude CLI (register once with:
+                            claude mcp add --scope user very-happy-clipboard -- very-happy mcp)
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
   happy doctor            System diagnostics & troubleshooting

@@ -17,13 +17,15 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onHappySessionWebhook
+  onHappySessionWebhook,
+  pushClipboard
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
+  pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -188,6 +190,30 @@ export function startDaemonControlServer({
             error: result.errorMessage
           };
       }
+    });
+
+    // Push text to the clipboard of the user's open web clients.
+    // Local IPC for the `very-happy mcp` stdio server (registered into the
+    // real claude CLI running in a web terminal): the daemon relays the text
+    // over its authenticated machine socket, encrypted with the machine key.
+    typed.post('/clipboard', {
+      schema: {
+        body: z.object({
+          text: z.string()
+        }),
+        response: {
+          200: z.object({
+            delivered: z.boolean(),
+            truncated: z.boolean(),
+            totalBytes: z.number(),
+            error: z.string().optional()
+          })
+        }
+      }
+    }, async (request) => {
+      const { text } = request.body;
+      logger.debug(`[CONTROL SERVER] Clipboard push request (${text.length} chars)`);
+      return pushClipboard(text);
     });
 
     // Stop daemon

@@ -1,0 +1,109 @@
+import { describe, expect, it } from 'vitest';
+import { clipboardHandler } from './clipboardHandler';
+
+/** Minimal socket.io stand-ins: capture the handler and room emits. */
+function makeFakes() {
+    const handlers = new Map<string, (data: any) => void>();
+    const emitted: Array<{ room: string; event: string; data: any }> = [];
+    const socket = {
+        on: (event: string, handler: (data: any) => void) => {
+            handlers.set(event, handler);
+        },
+    } as any;
+    const io = {
+        to: (room: string) => ({
+            emit: (event: string, data: any) => {
+                emitted.push({ room, event, data });
+            },
+        }),
+    } as any;
+    return { handlers, emitted, socket, io };
+}
+
+describe('clipboardHandler', () => {
+    it('forwards a machine push to the user room with ALL fields intact', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('user1', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+
+        handlers.get('clipboard-push')!({
+            payload: 'ciphertext-b64',
+            enc: true,
+            truncated: true,
+            totalBytes: 300000,
+        });
+
+        expect(emitted).toEqual([{
+            room: 'user:user1:user-scoped',
+            event: 'clipboard-push',
+            // The relay rebuilds the payload — every client-decoded field must
+            // survive the rebuild (the terminal-output `enc`-drop bug class).
+            data: {
+                sourceType: 'machine',
+                machineId: 'm1',
+                payload: 'ciphertext-b64',
+                enc: true,
+                truncated: true,
+                totalBytes: 300000,
+            },
+        }]);
+    });
+
+    it('forwards a session push stamped with the CONNECTION sessionId', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('user1', socket, io, { connectionType: 'session-scoped', sessionId: 's1' });
+
+        // Body tries to spoof identity fields — the relay must use the
+        // authenticated connection's identity, not the body's.
+        handlers.get('clipboard-push')!({
+            payload: 'p',
+            enc: true,
+            sessionId: 'someone-elses-session',
+            machineId: 'spoofed-machine',
+            sourceType: 'machine',
+        });
+
+        expect(emitted).toHaveLength(1);
+        expect(emitted[0].data.sourceType).toBe('session');
+        expect(emitted[0].data.sessionId).toBe('s1');
+        expect(emitted[0].data.machineId).toBeUndefined();
+    });
+
+    it('defaults optional flags instead of dropping them undefinedly-typed', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        handlers.get('clipboard-push')!({ payload: 'plain text' });
+        expect(emitted[0].data.enc).toBe(false);
+        expect(emitted[0].data.truncated).toBe(false);
+    });
+
+    it('ignores pushes from user-scoped (web) sockets', () => {
+        const { handlers, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'user-scoped' });
+        expect(handlers.has('clipboard-push')).toBe(false);
+    });
+
+    it('drops malformed payloads', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        handlers.get('clipboard-push')!(undefined);
+        handlers.get('clipboard-push')!({});
+        handlers.get('clipboard-push')!({ payload: 42 });
+        expect(emitted).toHaveLength(0);
+    });
+
+    it('drops oversized payloads (relay hard cap)', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+        handlers.get('clipboard-push')!({ payload: 'x'.repeat(1024 * 1024 + 1) });
+        expect(emitted).toHaveLength(0);
+        // ...but a payload at the cap passes.
+        handlers.get('clipboard-push')!({ payload: 'x'.repeat(1024 * 1024) });
+        expect(emitted).toHaveLength(1);
+    });
+
+    it('ignores machine-scoped connections missing machineId', () => {
+        const { handlers, socket, io } = makeFakes();
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped' });
+        expect(handlers.has('clipboard-push')).toBe(false);
+    });
+});

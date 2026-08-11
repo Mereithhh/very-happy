@@ -3,6 +3,7 @@ import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocke
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
+import { handleClipboardPush } from '@/sync/clipboardPush';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, isSessionDeleted } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
@@ -2156,6 +2157,11 @@ class Sync {
         // Subscribe to message updates
         apiSocket.onMessage('update', this.handleUpdate.bind(this));
         apiSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
+        // copy_to_clipboard tool: daemon/session pushed text for THIS device's
+        // clipboard (decrypt + focus/gesture handling live in clipboardPush).
+        apiSocket.onMessage('clipboard-push', (data) => {
+            void handleClipboardPush(this.encryption, data);
+        });
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {

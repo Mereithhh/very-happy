@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
+import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
@@ -642,6 +643,27 @@ export class ApiSessionClient extends EventEmitter {
      */
     sendSessionDeath() {
         this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+    }
+
+    /**
+     * Push text to the clipboard of every web client the user has open.
+     * Encrypted with the SESSION key (same primitive the message stream uses,
+     * proven to interop with the web's SessionEncryption.decryptRaw); the
+     * server relays it to the user's web clients without reading it.
+     * Returns delivery info for the MCP tool to report back to the model.
+     */
+    pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number } {
+        const prepared = prepareClipboardText(text);
+        if (!this.socket.connected) {
+            return { delivered: false, truncated: prepared.truncated, totalBytes: prepared.totalBytes };
+        }
+        this.socket.emit('clipboard-push', {
+            payload: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, prepared.text)),
+            enc: true,
+            truncated: prepared.truncated,
+            totalBytes: prepared.totalBytes
+        });
+        return { delivered: true, truncated: prepared.truncated, totalBytes: prepared.totalBytes };
     }
 
     /**

@@ -110,6 +110,23 @@ export async function stopDaemonHttp(): Promise<void> {
 }
 
 /**
+ * Push text to the user's web-client clipboard via the local daemon.
+ * Used by the `very-happy mcp` stdio server (terminal-path claude).
+ */
+export async function pushClipboardViaDaemon(text: string): Promise<{
+  delivered: boolean;
+  truncated?: boolean;
+  totalBytes?: number;
+  error?: string;
+}> {
+  const result = await daemonPost('/clipboard', { text });
+  if (result?.error && result.delivered === undefined) {
+    return { delivered: false, error: result.error };
+  }
+  return result;
+}
+
+/**
  * The version check is still quite naive.
  * For instance we are not handling the case where we upgraded happy,
  * the daemon is still running, and it recieves a new message to spawn a new session.

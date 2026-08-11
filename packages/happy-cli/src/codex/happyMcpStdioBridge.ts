@@ -16,6 +16,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
+import { CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from '@/clipboard/limits';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -83,6 +84,33 @@ async function main() {
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Forward copy_to_clipboard to the same per-session HTTP MCP (the session
+  // process pushes the text to the user's web clients over its own socket).
+  server.registerTool(
+    CLIPBOARD_TOOL_NAME,
+    {
+      description: CLIPBOARD_TOOL_DESCRIPTION,
+      title: CLIPBOARD_TOOL_TITLE,
+      inputSchema: {
+        text: z.string().describe("The text to copy to the user's clipboard"),
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        const response = await client.callTool({ name: CLIPBOARD_TOOL_NAME, arguments: args });
+        return response as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to push to clipboard: ${error instanceof Error ? error.message : String(error)}` },
           ],
           isError: true,
         };
