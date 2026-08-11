@@ -5,9 +5,13 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
+import { useTerminalReconcileLoop } from '@/sync/terminalReconcileLoop';
 import './layout.css';
 
 export function AppLayout() {
+  // Singleton terminal reconcile/agent-state poll — lives at layout level so it
+  // keeps running with the sidebar collapsed/unmounted (mobile detail, /board).
+  useTerminalReconcileLoop();
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === '/' || location.pathname === '';

@@ -5,7 +5,7 @@ import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquar
 import { useSessions, useAllMachines, storage } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal, machineListTerminals } from '@/sync/ops';
+import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark } from '@/ui';
 import { Modal } from '@/modal';
@@ -45,61 +45,15 @@ export function Sidebar() {
   const [showNew, setShowNew] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
-  const reconcileTerminals = useTerminalSessions((s) => s.reconcile);
   const machines = useAllMachines({ includeOffline: true });
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
-  // Reconcile the (client-owned) terminal list against each online machine's
-  // REAL live tmux sessions: adopt orphans (created elsewhere / lost records) so
-  // they're visible+deletable instead of leaking, and drop dead records.
-  //
-  // This is also the ONE poll loop for per-terminal Claude agent state: every
-  // `machineListTerminals` result is fed to the terminalAgentState store, so we
-  // don't run a second competing poller against the same RPC. Runs on mount /
-  // online-set change, then every 10s — slowed to 30s while the tab is hidden
-  // rather than paused outright, because the needs_input notification only
-  // matters while the user is away (a fully paused poll could never fire it).
-  const ingestAgentStates = useTerminalAgentStates((s) => s.ingest);
+  // The terminal reconcile / agent-state poll used to live here; it is now the
+  // AppLayout-level singleton (sync/terminalReconcileLoop.ts) so it also runs
+  // with the sidebar collapsed or on mobile detail screens. This component is
+  // a pure consumer of its stores.
   const machinesRef = useRef(machines);
   machinesRef.current = machines;
-  const onlineMachineIds = useMemo(
-    () => machines.filter(isMachineOnline).map((m) => m.id).join(','),
-    [machines],
-  );
-  useEffect(() => {
-    if (!onlineMachineIds) return;
-    let cancelled = false;
-    const poll = () => {
-      for (const id of onlineMachineIds.split(',')) {
-        const m = machinesRef.current.find((x) => x.id === id);
-        const name = (m as any)?.metadata?.displayName || (m as any)?.metadata?.host || id.slice(0, 8);
-        machineListTerminals(id).then((live) => {
-          if (cancelled) return;
-          reconcileTerminals(id, name, live); // null-safe (no-op on failed query)
-          if (live) ingestAgentStates(id, live); // failure → keep last known states
-        });
-      }
-    };
-    poll();
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const schedule = () => {
-      if (timer) clearInterval(timer);
-      const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      timer = setInterval(poll, hidden ? 30_000 : 10_000);
-    };
-    schedule();
-    const onVisibility = () => {
-      schedule();
-      if (document.visibilityState === 'visible') poll();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onlineMachineIds]);
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
