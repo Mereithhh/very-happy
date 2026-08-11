@@ -6,8 +6,10 @@
  * `clipboard-push` event to every web client of the account. This module
  * decrypts it with the matching key and lands it in the OS clipboard:
  *
- *  - page focused → try navigator.clipboard.writeText directly + light toast;
- *  - not focused / write rejected (browser gesture policy, common on mobile) →
+ *  - page focused AND visible → try navigator.clipboard.writeText directly +
+ *    light toast (see clipboardWriteGate for why hidden pages are excluded);
+ *  - not focused / hidden / write rejected (browser gesture policy, common on
+ *    mobile) →
  *    a persistent alert with a "Copy" button, so the write happens inside a
  *    real user gesture.
  *
@@ -18,6 +20,7 @@ import { Modal } from '@/modal';
 import { toast } from '@/ui/Toast';
 import { t } from '@/text';
 import type { Encryption } from '@/sync/encryption/encryption';
+import { canAttemptDirectWrite } from '@/sync/clipboardWriteGate';
 
 /** Defensive plaintext cap — producers already truncate at 256KB UTF-8; this
  *  guards a misbehaving producer from wedging the UI (chars ≥ bytes/4). */
@@ -73,10 +76,12 @@ async function tryWrite(text: string): Promise<boolean> {
 /** Land the text in the clipboard, falling back to a user-gesture button when
  *  a direct write isn't allowed. Exported for reuse/tests. */
 export async function deliverToClipboard(text: string): Promise<void> {
-    // Direct write only stands a chance while the document is focused; even
-    // then some browsers (mobile Safari) reject writes outside a gesture —
-    // any failure falls through to the button path.
-    if (typeof document !== 'undefined' && document.hasFocus() && await tryWrite(text)) {
+    // Direct write only stands a chance while the document is focused AND
+    // visible (see canAttemptDirectWrite); even then some browsers (mobile
+    // Safari) reject writes outside a gesture — any failure falls through to
+    // the button path.
+    const doc = typeof document !== 'undefined' ? document : undefined;
+    if (canAttemptDirectWrite(doc) && await tryWrite(text)) {
         toast.success(t('common.copied'));
         return;
     }
