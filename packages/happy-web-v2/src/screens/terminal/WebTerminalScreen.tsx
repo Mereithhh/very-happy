@@ -10,7 +10,9 @@ import {
   decryptTerminalData,
   machineUploadFile,
   machineSetTerminalTitle,
+  machineScrollTerminal,
 } from '@/sync/ops';
+import { installMobileInputBridge } from './mobileInputBridge';
 import { useSettings } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useIsDesktop } from '@/app/useMediaQuery';
@@ -80,6 +82,10 @@ export function WebTerminalScreen() {
   // Bridge the effect-local sendInput (base64 → socket, honours encryption) out
   // to the assistive key bar handlers below, which live outside the effect.
   const sendInputRef = useRef<((d: string) => void) | null>(null);
+  // Bridge the effect-local output write-hold (freeze/flush) out to the mobile
+  // select-mode toggle, so entering select-mode freezes the screen for stable
+  // native text selection and leaving it flushes buffered output.
+  const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   // Mobile select-mode: touch has one gesture, and by default we spend it on
@@ -139,6 +145,38 @@ export function WebTerminalScreen() {
     // double-writes. Starts at 0; first live chunk is seq 1.
     let lastSeq = 0;
 
+    // ── Selection write-hold ─────────────────────────────────────────────────
+    // While the user is drag-selecting (or mobile select-mode is on), incoming
+    // output is BUFFERED instead of written. Reason (xterm 5.5 source): a
+    // selection is stored in buffer coordinates; any output that scrolls or
+    // redraws the screen mid-drag shifts different text under the highlight, so
+    // with a busy TUI (Claude Code repaints its footer continuously) the user
+    // "can't select" — by mouseup the selected cells hold different content.
+    // Holding writes during the gesture freezes the screen; on release we copy
+    // FIRST, then flush the buffered chunks in order. Bounded: a safety cap
+    // force-flushes so a forgotten select-mode can't buffer unbounded output.
+    const HOLD_MAX_BYTES = 1 * 1024 * 1024;
+    let holdingWrites = false;
+    let heldChunks: Uint8Array[] = [];
+    let heldBytes = 0;
+    const gatedWrite = (data: Uint8Array) => {
+      if (holdingWrites) {
+        heldChunks.push(data);
+        heldBytes += data.byteLength;
+        if (heldBytes > HOLD_MAX_BYTES) flushHeldWrites(true);
+        return;
+      }
+      term.write(data);
+    };
+    const flushHeldWrites = (keepHolding = false) => {
+      if (!keepHolding) holdingWrites = false;
+      const chunks = heldChunks;
+      heldChunks = [];
+      heldBytes = 0;
+      for (const c of chunks) term.write(c);
+    };
+    const beginHoldWrites = () => { holdingWrites = true; };
+
     const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
       if (disposed || e.terminalId !== terminalId) return;
       // Drop anything we've already applied (e.g. a live chunk that overlaps a
@@ -150,10 +188,10 @@ export function WebTerminalScreen() {
       if (e.enc) {
         outChain = outChain.then(async () => {
           const plain = await decryptTerminalData(machineId, e.data);
-          if (plain && !disposed) term.write(b64ToBytes(plain));
+          if (plain && !disposed) gatedWrite(b64ToBytes(plain));
         });
       } else {
-        term.write(b64ToBytes(e.data));
+        gatedWrite(b64ToBytes(e.data));
       }
     };
     const onExit = (e: { terminalId: string; exitCode?: number }) => {
@@ -176,62 +214,13 @@ export function WebTerminalScreen() {
     const dataDisp = term.onData(sendInput);
     sendInputRef.current = sendInput;
 
-    // ── Mobile English-input fix (coarse pointer only) ──────────────────────
-    // Root cause (verified against xterm 5.5 lib/xterm.js CompositionHelper +
-    // CoreBrowserTerminal._inputEvent):
-    //  • Soft keyboards (iOS, Gboard) don't emit clean keypress for letters.
-    //    A letter arrives as keydown(keyCode 229 = "composing") → the char lands
-    //    only via the textarea `input` event, often wrapped in a composition.
-    //  • xterm._keyDown sets `_keyDownSeen=true` (reset only on keyup). Its
-    //    `_inputEvent` then flushes to onData ONLY when
-    //    `e.data && inputType==='insertText' && (!e.composed || !_keyDownSeen)`.
-    //    On mobile the composed `input` has `e.composed===true` AND
-    //    `_keyDownSeen===true`, so that branch is skipped → the char is NEVER
-    //    passed to onData from _inputEvent.
-    //  • The only remaining flush is compositionend → _finalizeComposition. But
-    //    Gboard/iOS predictive text keeps the composition OPEN across a whole
-    //    word (only ending on space/enter/punct), so letters pile up in the
-    //    (now visible, teal) .composition-view bubble and never reach the pty:
-    //    "typing shows nothing / can't get into the terminal".
-    // Fix: on mobile only, own the helper textarea's `input` in the CAPTURE
-    // phase (xterm listens in bubble; it does NOT listen to beforeinput). While
-    // a real IME composition is active (CJK pinyin) we do NOTHING and let
-    // xterm's compositionend path run (that already works — imeFix styles it).
-    // Outside composition, we send inserted text ourselves, delete-backward as
-    // DEL, and keep the textarea empty so xterm's _keyDownSeen/_isComposing
-    // bookkeeping can never strand a character. Desktop is untouched.
-    let imeComposing = false;
-    let mobileBridgeTa: HTMLTextAreaElement | null = null;
-    const onCompStart = () => { imeComposing = true; };
-    const onCompEnd = () => { imeComposing = false; };
-    const onTaInput = (ev: Event) => {
-      if (imeComposing) return; // CJK IME in flight → xterm's compositionend handles it
-      const e = ev as InputEvent;
-      const ta = mobileBridgeTa;
-      if (!ta) return;
-      const type = e.inputType;
-      // NB: we deliberately do NOT handle 'insertCompositionText' — that's the
-      // commit type CJK/predictive IMEs use, and xterm's compositionend path
-      // already handles it correctly (imeFix styles its bubble). We only rescue
-      // the discrete 'insertText' the mobile path strands (see header comment).
-      if (type === 'insertText' || type === 'insertFromPaste') {
-        if (typeof e.data === 'string' && e.data.length) sendInput(e.data);
-      } else if (type === 'deleteContentBackward') {
-        sendInput('\x7f'); // DEL — matches xterm's own backspace-in-textarea handling
-      } else if (type === 'insertLineBreak' || type === 'insertParagraph') {
-        sendInput('\r');
-      } else {
-        return; // unknown editing op → let it be (don't clear)
-      }
-      // Consume so xterm's bubble-phase `input` can't double-send or strand it,
-      // and reset the textarea + xterm composing flags to a clean slate.
-      e.stopImmediatePropagation();
-      ta.value = '';
-      try {
-        const core = (term as any)._core;
-        if (core) { core._keyDownSeen = false; core._keyPressHandled = false; }
-      } catch { /* private API best-effort */ }
-    };
+    // ── Mobile soft-keyboard input bridge (coarse pointer only) ─────────────
+    // v2 diff-engine bridge — see ./mobileInputBridge.ts for the full mechanism
+    // write-up (why v1's "send per inputType + clear the textarea" double-sent
+    // deletes via xterm's _handleAnyTextareaChanges, desynced the OS keyboard's
+    // view of the field, and could strand an undeletable last letter). Installed
+    // after term.open (below, in the IS_COARSE_POINTER block).
+    let mobileBridge: ReturnType<typeof installMobileInputBridge> = null;
 
     const keyDisp = term.onKey(({ key, domEvent }) => {
       if (titled) return;
@@ -311,12 +300,15 @@ export function WebTerminalScreen() {
       const writeMaybeEnc = async (dataB64: string) => {
         if (res.encStream) {
           const plain = await decryptTerminalData(machineId, dataB64);
-          if (plain && !disposed) term.write(b64ToBytes(plain));
+          if (plain && !disposed) gatedWrite(b64ToBytes(plain));
         } else {
-          term.write(b64ToBytes(dataB64));
+          gatedWrite(b64ToBytes(dataB64));
         }
       };
       if (res.mode === 'snapshot') {
+        // A full restore replaces the screen — drop any drag-held chunks (they
+        // predate the snapshot) and write directly.
+        holdingWrites = false; heldChunks = []; heldBytes = 0;
         term.reset();
         await writeMaybeEnc(res.data);
       } else {
@@ -353,6 +345,7 @@ export function WebTerminalScreen() {
           });
           if (disposed || !res.success) return;
           enc = res.encStream === true;
+          tmuxAttached = !!res.tmuxSession;
           await applyOpenResult(res);
           apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
         } finally {
@@ -360,6 +353,62 @@ export function WebTerminalScreen() {
         }
       });
     };
+
+    // ── tmux-native scrollback (wheel / touch scroll) ────────────────────────
+    // Verified mechanism (pty probe + xterm 5.5 src): the daemon's pty runs
+    // `tmux attach`, and tmux switches the OUTER terminal to the ALTERNATE
+    // screen (\x1b[?1049h) for its whole life. In the alt buffer xterm has no
+    // scrollback (`buffer.hasScrollback === false`), so Terminal._bindMouse
+    // converts every wheel tick into Up/Down ARROW KEYS sent to the pty — the
+    // shell cycles command history, nothing scrolls, and (bonus bug) each tick
+    // counts as user input, which CLEARS any selection. The `scrollback: 5000`
+    // renderer option only ever applies to the no-tmux fallback shell.
+    // Fix: intercept the wheel while the alt buffer is active and drive tmux's
+    // own scrollback through a daemon RPC (`terminal-scroll`): enter copy-mode
+    // (-e → auto-exits at bottom) and scroll-up/down; panes whose INNER app is
+    // fullscreen (vim/less, `alternate_on`) get arrow keys instead — the same
+    // semantics tmux itself applies for mouse wheels. While in copy-mode tmux
+    // freezes the view on new output, so "reading scrolled-back content" is
+    // stable by construction. Wheel batching keeps the RPC rate sane; if the
+    // daemon is old (no handler), we permanently fall back to xterm's default.
+    let tmuxAttached = false;
+    let scrollRpcDead = false;
+    let wheelAccum = 0;
+    let wheelFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let scrollInFlight = false;
+    const flushWheel = () => {
+      wheelFlushTimer = null;
+      const lines = Math.trunc(wheelAccum);
+      if (lines === 0 || disposed || !terminalId || scrollRpcDead) return;
+      if (scrollInFlight) { scheduleWheelFlush(); return; }
+      wheelAccum -= lines;
+      scrollInFlight = true;
+      machineScrollTerminal(machineId, terminalId, lines)
+        .then((ok) => { if (!ok) scrollRpcDead = true; })
+        .catch(() => { scrollRpcDead = true; })
+        .finally(() => {
+          scrollInFlight = false;
+          if (Math.trunc(wheelAccum) !== 0) scheduleWheelFlush();
+        });
+    };
+    const scheduleWheelFlush = () => {
+      if (wheelFlushTimer == null) wheelFlushTimer = setTimeout(flushWheel, 60);
+    };
+    term.attachCustomWheelEventHandler((ev) => {
+      if (!tmuxAttached || scrollRpcDead || !terminalId) return true;
+      if (term.buffer.active.type !== 'alternate') return true; // normal buffer → native scrollback
+      if (ev.deltaY === 0 || ev.shiftKey) return true;
+      const termEl = term.element;
+      const rowH = Math.max(6, (termEl?.clientHeight ?? mount.clientHeight) / Math.max(1, term.rows));
+      const dLines = ev.deltaMode === WheelEvent.DOM_DELTA_LINE ? ev.deltaY
+        : ev.deltaMode === WheelEvent.DOM_DELTA_PAGE ? ev.deltaY * term.rows
+        : ev.deltaY / rowH;
+      // RPC contract: lines > 0 scrolls UP (into history); wheel-up is deltaY<0.
+      wheelAccum += -dLines;
+      scheduleWheelFlush();
+      ev.preventDefault();
+      return false; // handled — don't let xterm synthesize arrow keys
+    });
 
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
@@ -377,6 +426,7 @@ export function WebTerminalScreen() {
       }
       terminalId = res.terminalId;
       enc = res.encStream === true;
+      tmuxAttached = !!res.tmuxSession;
       // Serialize the restore behind outChain so any live chunk arriving mid-
       // restore is applied after it (and seq-deduped), never interleaved.
       outChain = outChain.then(() => applyOpenResult(res));
@@ -392,20 +442,44 @@ export function WebTerminalScreen() {
     const offReconnected = apiSocket.onReconnected(() => catchUp());
 
     const host = hostRef.current;
-    const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
-    const onDragLeave = () => host.classList.remove('is-dragover');
-    const onDrop = async (e: DragEvent) => {
-      e.preventDefault(); host.classList.remove('is-dragover');
-      for (const f of Array.from(e.dataTransfer?.files ?? [])) {
+    // Upload files to the machine (→ ~/.happy/uploads/terminal/) and paste the
+    // absolute paths at the cursor. Shared by drag-drop and clipboard paste.
+    // term.paste() uses bracketed paste, so nothing auto-executes. Paths are
+    // single-quoted; the daemon sanitizes names to [\w.-] so no quoting edge.
+    const uploadFilesToTerminal = async (files: File[]) => {
+      for (const f of files) {
         const buf = new Uint8Array(await f.arrayBuffer());
         let bin = ''; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        const r = await machineUploadFile(machineId, f.name, btoa(bin));
-        if (r.success && r.path) term.paste(`'${r.path}' `);
+        const r = await machineUploadFile(machineId, f.name || 'file', btoa(bin));
+        if (r.success && r.path && !disposed) term.paste(`'${r.path}' `);
       }
+    };
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
+    const onDragLeave = () => host.classList.remove('is-dragover');
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault(); host.classList.remove('is-dragover');
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) void uploadFilesToTerminal(files);
     };
     host.addEventListener('dragover', onDragOver);
     host.addEventListener('dragleave', onDragLeave);
     host.addEventListener('drop', onDrop);
+    // ⌘V with FILES on the clipboard (screenshot, Finder copy): upload instead
+    // of pasting garbage. Capture phase on the host runs before xterm's own
+    // 'paste' listener on the textarea (ancestor capture precedes target), so
+    // we can consume file pastes while leaving plain-text paste to xterm's
+    // native bracketed-paste path untouched. Clipboard image files are all
+    // named "image.png" — prefix a timestamp so successive pastes don't
+    // overwrite each other on the machine.
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length === 0) return; // text paste → xterm handles it
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const stamped = files.map((f) => new File([f], `paste-${Date.now().toString(36)}-${f.name || 'file'}`, { type: f.type }));
+      void uploadFilesToTerminal(stamped);
+    };
+    host.addEventListener('paste', onPaste, true);
 
     // ── Mobile (coarse pointer) only: tap-to-focus + soft-keyboard avoidance ──
     // On iOS Safari, xterm's hidden textarea never receives focus from a plain
@@ -514,49 +588,70 @@ export function WebTerminalScreen() {
       host.addEventListener('touchcancel', onTouchDone, { capture: true, passive: true });
       vv?.addEventListener('resize', onViewport);
       vv?.addEventListener('scroll', onViewport);
-      // Wire the mobile English-input bridge to xterm's helper textarea (exists
-      // after term.open above). Capture phase beats xterm's bubble `input`.
-      mobileBridgeTa = term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
-      if (mobileBridgeTa) {
-        // Hint the OS toward a plain text keyboard (no numeric/url/email mode);
-        // enterKeyHint 'send' gives a sensible Return label for a shell prompt.
-        mobileBridgeTa.setAttribute('inputmode', 'text');
-        mobileBridgeTa.setAttribute('enterkeyhint', 'send');
-        mobileBridgeTa.addEventListener('compositionstart', onCompStart, true);
-        mobileBridgeTa.addEventListener('compositionend', onCompEnd, true);
-        mobileBridgeTa.addEventListener('input', onTaInput, true);
-      }
+      // Install the v2 soft-keyboard bridge (diff engine, capture-phase on
+      // term.element — see mobileInputBridge.ts). term.open already ran, so the
+      // helper textarea exists.
+      mobileBridge = installMobileInputBridge(term, sendInput);
     }
 
-    // Desktop: click-to-focus fallback. xterm only focuses its hidden textarea
-    // from its own internal mousedown path — clicks landing on the host's
-    // padding (or after an odd focus loss) miss it and typing goes nowhere
-    // until you hit the canvas exactly. A plain click (tiny displacement, and
-    // no selection made — don't break drag-to-copy) refocuses the terminal.
-    // Capture phase so inner stopPropagation can't eat it.
+    // Desktop: click-to-focus fallback + copy-on-select + selection write-hold.
+    // xterm only focuses its hidden textarea from its own internal mousedown
+    // path — clicks landing on the host's padding (or after an odd focus loss)
+    // miss it and typing goes nowhere until you hit the canvas exactly. A plain
+    // click (tiny displacement, no selection) refocuses the terminal.
+    //
+    // Two selection fixes (both verified against xterm 5.5 src):
+    //  1. mouseup is listened on the DOCUMENT, not the host: xterm's
+    //     SelectionService finishes drags via document-level listeners, so a
+    //     drag released OUTSIDE the terminal still produced a selection — but
+    //     the old host-scoped listener never fired and the copy was silently
+    //     skipped ("selected but nothing on the clipboard").
+    //  2. output is HELD from mousedown to mouseup (gatedWrite above), so a
+    //     busy TUI can't shift different text under the selection mid-drag.
+    //     Copy happens BEFORE the flush, on the exact frozen content selected.
     let mouseX = 0;
     let mouseY = 0;
-    const onMouseDown = (e: MouseEvent) => { mouseX = e.clientX; mouseY = e.clientY; };
-    const onMouseUp = (e: MouseEvent) => {
+    let gestureFromHost = false;
+    const onMouseDown = (e: MouseEvent) => {
+      mouseX = e.clientX; mouseY = e.clientY;
+      gestureFromHost = true;
+      beginHoldWrites();
+    };
+    const onDocMouseUp = (e: MouseEvent) => {
+      if (!gestureFromHost) return;
+      gestureFromHost = false;
       const dx = e.clientX - mouseX;
       const dy = e.clientY - mouseY;
-      if (dx * dx + dy * dy > 5 * 5) {
-        // Drag = a selection was made. Copy-on-select: mirror it to the system
-        // clipboard (mouseup is a user gesture, so writeText is allowed). Keep
-        // the selection visible; don't steal focus. ⌘C / right-click still work.
-        if (term.hasSelection()) {
-          const sel = term.getSelection();
-          if (sel) navigator.clipboard?.writeText(sel).catch(() => {});
-        }
-        return;
+      const dragged = dx * dx + dy * dy > 5 * 5;
+      if (dragged && term.hasSelection()) {
+        // Copy-on-select: mouseup is a user gesture, so writeText is allowed.
+        // Keep the selection visible; don't steal focus. ⌘C/right-click still work.
+        const sel = term.getSelection();
+        if (sel) navigator.clipboard?.writeText(sel).catch(() => {});
       }
-      if (term.hasSelection()) return;
+      // Resume output AFTER the copy so the clipboard got the frozen content.
+      // Don't resume while mobile select-mode holds (handled by its toggle).
+      if (!selectModeRef.current) flushHeldWrites();
+      if (dragged || term.hasSelection()) return;
       refocus(); // also clears a stuck IME composition, not just plain focus
+    };
+    // Safety: a drag released outside the browser window never fires mouseup —
+    // don't leave output frozen. (Mobile select-mode intentionally keeps its
+    // hold; it's released by the toggle.)
+    const onWinBlur = () => {
+      gestureFromHost = false;
+      if (!selectModeRef.current) flushHeldWrites();
     };
     if (!IS_COARSE_POINTER) {
       host.addEventListener('mousedown', onMouseDown, true);
-      host.addEventListener('mouseup', onMouseUp, true);
+      document.addEventListener('mouseup', onDocMouseUp, true);
+      window.addEventListener('blur', onWinBlur);
     }
+    // Mobile select-mode: freeze output for the whole mode — the mode exists
+    // solely to let the OS long-press selection work on stable DOM text, and a
+    // TUI repaint would destroy the native selection outright (row nodes are
+    // replaced). Flushes on toggle-off; the 1MB safety cap above bounds memory.
+    writeHoldRef.current = { begin: beginHoldWrites, flush: () => flushHeldWrites() };
 
     return () => {
       disposed = true;
@@ -573,6 +668,8 @@ export function WebTerminalScreen() {
       host.removeEventListener('dragover', onDragOver);
       host.removeEventListener('dragleave', onDragLeave);
       host.removeEventListener('drop', onDrop);
+      host.removeEventListener('paste', onPaste, true);
+      if (wheelFlushTimer != null) clearTimeout(wheelFlushTimer);
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
         host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
@@ -581,18 +678,16 @@ export function WebTerminalScreen() {
         host.removeEventListener('touchcancel', onTouchDone, { capture: true } as EventListenerOptions);
         vv?.removeEventListener('resize', onViewport);
         vv?.removeEventListener('scroll', onViewport);
-        if (mobileBridgeTa) {
-          mobileBridgeTa.removeEventListener('compositionstart', onCompStart, true);
-          mobileBridgeTa.removeEventListener('compositionend', onCompEnd, true);
-          mobileBridgeTa.removeEventListener('input', onTaInput, true);
-          mobileBridgeTa = null;
-        }
+        mobileBridge?.dispose();
+        mobileBridge = null;
         host.style.maxHeight = '';
       }
       if (!IS_COARSE_POINTER) {
         host.removeEventListener('mousedown', onMouseDown, true);
-        host.removeEventListener('mouseup', onMouseUp, true);
+        document.removeEventListener('mouseup', onDocMouseUp, true);
+        window.removeEventListener('blur', onWinBlur);
       }
+      writeHoldRef.current = null;
       sendInputRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();
@@ -621,11 +716,15 @@ export function WebTerminalScreen() {
     setSelectMode(next);
     const tm = termRef.current;
     if (next) {
+      // Freeze incoming output: a TUI repaint replaces the DOM row nodes and
+      // would destroy the native long-press selection mid-gesture.
+      writeHoldRef.current?.begin();
       // Drop terminal focus so the soft keyboard closes and the OS long-press
       // selection isn't fighting the caret / input.
       tm?.blur?.();
       (tm?.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null)?.blur();
     } else {
+      writeHoldRef.current?.flush();
       tm?.focus();
     }
   };

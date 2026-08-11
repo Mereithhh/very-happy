@@ -261,6 +261,19 @@ export class ApiMachineClient {
             return { type: 'success', ...result, encStream: !!encStream };
         });
 
+        // Scroll a terminal's tmux history (wheel/touch scrollback). The
+        // attach-client pty keeps the outer terminal in the alternate screen,
+        // so the web xterm has no scrollback of its own — the web intercepts
+        // wheel events and drives tmux copy-mode through this RPC instead.
+        // lines > 0 scrolls up (into history), < 0 scrolls down.
+        this.rpcHandlerManager.registerHandler('terminal-scroll', async (params: any) => {
+            const { terminalId, lines } = params || {};
+            if (typeof terminalId === 'string' && typeof lines === 'number') {
+                this.webTerminal.scroll(terminalId, lines);
+            }
+            return { type: 'success' };
+        });
+
         // Permanently destroy a terminal's tmux session (sidebar delete).
         this.rpcHandlerManager.registerHandler('kill-terminal', async (params: any) => {
             const { terminalId } = params || {};
