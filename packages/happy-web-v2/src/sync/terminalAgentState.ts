@@ -1,10 +1,10 @@
 /**
  * terminalAgentState — lightweight store of each web terminal's Claude Code
  * status (`agentState` on `machineListTerminals` items, daemon >= the version
- * that reports it). There is deliberately NO polling loop here: the Sidebar's
- * existing reconcile pass is the single `list-terminals` caller and feeds every
- * result through `ingest()` (see Sidebar.tsx), so we never run two competing
- * poll loops against the same RPC.
+ * that reports it). There is deliberately NO polling loop here: the singleton
+ * reconcile loop is the single `list-terminals` caller and feeds every result
+ * through `ingest()` (see terminalReconcileLoop.ts), so we never run two
+ * competing poll loops against the same RPC.
  *
  * Besides the {terminalId → state} map (consumed by the sidebar dot), ingest
  * owns the alerting side effects:
@@ -23,14 +23,20 @@ import { t } from '@/text';
 import type { MachineTerminal, TerminalAgentState } from '@/sync/ops';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 
-interface Entry {
+export interface TerminalAgentEntry {
   machineId: string;
   state: TerminalAgentState;
+  /** Working directory reported by the daemon (newer daemons only). */
+  cwd?: string;
+  /** When we first observed the CURRENT state (ingest-side clock). */
+  since?: number;
+  /** tmux session_activity in ms (newer daemons only). */
+  activityAt?: number;
 }
 
 interface TerminalAgentStates {
   /** terminalId → last known agent state (only terminals whose daemon reports it). */
-  states: Record<string, Entry>;
+  states: Record<string, TerminalAgentEntry>;
   /** Feed one machine's `machineListTerminals` result. Callers must skip
    *  failed queries (null) — old values are silently kept on failure. */
   ingest(machineId: string, terminals: MachineTerminal[]): void;
@@ -80,7 +86,7 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
   states: {},
   ingest: (machineId, terminals) => {
     const prev = get().states;
-    const next: Record<string, Entry> = {};
+    const next: Record<string, TerminalAgentEntry> = {};
     let changed = false;
 
     // Entries owned by OTHER machines carry over untouched; this machine's
@@ -94,10 +100,27 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
       const state = term.agentState;
       if (!state) continue; // old daemon → stay unknown, keep current UI
       const before = prev[term.id];
-      if (before && before.machineId === machineId && before.state === state) {
+      if (
+        before &&
+        before.machineId === machineId &&
+        before.state === state &&
+        before.cwd === term.cwd &&
+        before.activityAt === term.activityAt
+      ) {
         next[term.id] = before; // keep identity, avoid churn
+      } else if (before && before.machineId === machineId && before.state === state) {
+        // Same state, refreshed extras (cwd / tmux activity) — keep `since`
+        // (it marks the state transition, not the freshest listing).
+        next[term.id] = { ...before, cwd: term.cwd, activityAt: term.activityAt };
+        changed = true;
       } else {
-        next[term.id] = { machineId, state };
+        next[term.id] = {
+          machineId,
+          state,
+          cwd: term.cwd,
+          activityAt: term.activityAt,
+          since: Date.now(),
+        };
         changed = true;
         // Alert only on a real transition INTO needs_input — not on the first
         // observation after load, so reopening the app doesn't replay alerts.
