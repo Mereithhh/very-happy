@@ -12,7 +12,10 @@
  *
  * Suppression: if the user has ANY non-machine client that is active
  * (connected + not backgrounded), suppress the push — they can see in-app
- * indicators (unread dots, tab title counter) instead.
+ * indicators (unread dots, tab title counter) instead. Account webhooks are
+ * exempt: they feed an external channel (group chat), not the device the user
+ * is looking at, so they dispatch before (and regardless of) the presence
+ * check.
  *
  * "Active" is determined by socket.data.appState:
  *   - Clients send `app-state: { state: 'active' | 'background' }` via socket.
@@ -33,49 +36,6 @@ import {
     sendWebhook,
 } from "@/app/push/webhookNotify";
 import { log } from "@/utils/log";
-
-async function fetchTokensAndSend(params: {
-    userId: string;
-    sessionId: string;
-    title: string;
-    body: string;
-    data: Record<string, unknown>;
-    channelId: string;
-}): Promise<void> {
-    const tokens = await db.accountPushToken.findMany({
-        where: { accountId: params.userId }
-    });
-
-    if (tokens.length === 0) {
-        log({ module: 'push' }, `No push tokens for user ${params.userId} session ${params.sessionId} — skipped`);
-        return;
-    }
-
-    // Tokens are heterogeneous: Web Push subscriptions are stored as a
-    // `webpush:`-prefixed JSON blob, everything else is an Expo push token.
-    // Account webhooks (`webhook:` prefix) are NOT sent here — they dispatch
-    // unconditionally in dispatchSessionEventPush, before presence
-    // suppression (a webhook feeds a group chat / external system, which
-    // must hear about completions even while a happy tab sits open).
-    const expoTokens = tokens.filter(t => !t.token.startsWith('webpush:') && !t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
-    const webTokens = tokens.filter(t => t.token.startsWith('webpush:'));
-
-    await Promise.all([
-        sendExpo(params, expoTokens),
-        sendWeb(params, webTokens),
-    ]);
-}
-
-/** Account webhooks, presence-independent (see note in fetchTokensAndSend). */
-async function dispatchAccountWebhooks(params: {
-    userId: string; sessionId: string; title: string; body: string; data: Record<string, unknown>;
-}): Promise<void> {
-    const webhookTokens = await db.accountPushToken.findMany({
-        where: { accountId: params.userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } }
-    });
-    if (webhookTokens.length === 0) return;
-    await sendWebhooks(params, webhookTokens);
-}
 
 async function sendExpo(
     params: { userId: string; sessionId: string; title: string; body: string; data: Record<string, unknown>; channelId: string },
@@ -150,8 +110,10 @@ async function sendWeb(
 /**
  * Account webhooks: POST a generic `{title, message}` JSON to the user's own
  * endpoint (e.g. a notify-gateway ingest URL that forwards to a group chat).
- * Same trigger and presence-based suppression as the other push channels;
- * best-effort — failures are logged, never retried, never thrown.
+ * Same trigger as the other push channels but PRESENCE-INDEPENDENT: an open
+ * happy tab suppresses device pushes, never webhooks — the external channel
+ * must hear about completions either way. Best-effort — failures are logged,
+ * never retried, never thrown.
  */
 async function sendWebhooks(
     params: { userId: string; sessionId: string; body: string; data: Record<string, unknown> },
@@ -188,18 +150,32 @@ export async function dispatchSessionEventPush(params: {
     body: string;
     data?: Record<string, unknown>;
 }): Promise<void> {
-    const { userId, sessionId, title, body, data } = params;
-
-    // Webhooks fire regardless of presence: they notify an external channel
-    // (e.g. an IM group), not the device the user is looking at.
-    // Fire-and-forget: a slow webhook target (up to the 5s fetch timeout)
-    // must not delay device pushes below.
-    void dispatchAccountWebhooks({ userId, sessionId, title, body, data: { sessionId, ...(data ?? {}) } })
-        .catch((error) => {
-            log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
-        });
+    const { userId, sessionId, title, body } = params;
+    const data = { sessionId, ...(params.data ?? {}) };
 
     try {
+        // ONE token fetch for every channel. Tokens are heterogeneous: account
+        // webhooks are `webhook:`-prefixed, Web Push subscriptions are stored
+        // as a `webpush:`-prefixed JSON blob, everything else is an Expo push
+        // token. Splitting one findMany (instead of a second webhook-only
+        // query) keeps the per-event DB cost at a single query even for users
+        // with no webhook configured.
+        const tokens = await db.accountPushToken.findMany({
+            where: { accountId: userId }
+        });
+        const webhookTokens = tokens.filter(t => t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
+        const expoTokens = tokens.filter(t => !t.token.startsWith(WEBHOOK_TOKEN_PREFIX) && !t.token.startsWith('webpush:'));
+        const webTokens = tokens.filter(t => t.token.startsWith('webpush:'));
+
+        // Webhooks fire regardless of presence: they notify an external channel
+        // (e.g. an IM group), not the device the user is looking at.
+        // Fire-and-forget: a slow webhook target (up to the 5s fetch timeout)
+        // must not delay device pushes below.
+        void sendWebhooks({ userId, sessionId, body, data }, webhookTokens)
+            .catch((error) => {
+                log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
+            });
+
         try {
             if (await isUserActive(userId)) {
                 log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active (device pushes only; webhooks already sent)`);
@@ -209,14 +185,15 @@ export async function dispatchSessionEventPush(params: {
             log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
         }
 
-        await fetchTokensAndSend({
-            userId,
-            sessionId,
-            title,
-            body,
-            data: { sessionId, ...(data ?? {}) },
-            channelId: 'messages'
-        });
+        if (expoTokens.length === 0 && webTokens.length === 0) {
+            log({ module: 'push' }, `No push tokens for user ${userId} session ${sessionId} — skipped`);
+            return;
+        }
+
+        await Promise.all([
+            sendExpo({ userId, sessionId, title, body, data, channelId: 'messages' }, expoTokens),
+            sendWeb({ userId, sessionId, title, body, data }, webTokens),
+        ]);
     } catch (error) {
         log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
     }
