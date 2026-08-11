@@ -24,6 +24,14 @@ import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
 import { parseWebPushToken, sendWebPush } from "@/app/push/webPush";
+import {
+    WEBHOOK_TOKEN_PREFIX,
+    buildWebhookPayload,
+    logWebhookResult,
+    mapKindToWebhookEvent,
+    parseWebhookToken,
+    sendWebhook,
+} from "@/app/push/webhookNotify";
 import { log } from "@/utils/log";
 
 async function fetchTokensAndSend(params: {
@@ -44,13 +52,16 @@ async function fetchTokensAndSend(params: {
     }
 
     // Tokens are heterogeneous: Web Push subscriptions are stored as a
-    // `webpush:`-prefixed JSON blob, everything else is an Expo push token.
-    const expoTokens = tokens.filter(t => !t.token.startsWith('webpush:'));
+    // `webpush:`-prefixed JSON blob, account webhooks as a `webhook:`-prefixed
+    // JSON blob, everything else is an Expo push token.
+    const expoTokens = tokens.filter(t => !t.token.startsWith('webpush:') && !t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
     const webTokens = tokens.filter(t => t.token.startsWith('webpush:'));
+    const webhookTokens = tokens.filter(t => t.token.startsWith(WEBHOOK_TOKEN_PREFIX));
 
     await Promise.all([
         sendExpo(params, expoTokens),
         sendWeb(params, webTokens),
+        sendWebhooks(params, webhookTokens),
     ]);
 }
 
@@ -122,6 +133,40 @@ async function sendWeb(
     }));
 
     log({ module: 'push' }, `Web push for user ${params.userId} session ${params.sessionId}: ok=${okCount} pruned=${gone} of ${tokens.length}`);
+}
+
+/**
+ * Account webhooks: POST a generic `{title, message}` JSON to the user's own
+ * endpoint (e.g. a notify-gateway ingest URL that forwards to a group chat).
+ * Same trigger and presence-based suppression as the other push channels;
+ * best-effort — failures are logged, never retried, never thrown.
+ */
+async function sendWebhooks(
+    params: { userId: string; sessionId: string; body: string; data: Record<string, unknown> },
+    tokens: { id: string; token: string }[],
+): Promise<void> {
+    if (tokens.length === 0) return;
+
+    const event = mapKindToWebhookEvent(params.data.kind);
+    const payload = buildWebhookPayload({ body: params.body, data: params.data });
+
+    await Promise.all(tokens.map(async (t) => {
+        const config = parseWebhookToken(t.token);
+        if (!config) {
+            // Malformed stored webhook config — prune it (mirrors web push).
+            void db.accountPushToken.deleteMany({ where: { id: t.id } });
+            return;
+        }
+        if (!event || !payload) {
+            log({ module: 'push' }, `Webhook skipped for user ${params.userId} session ${params.sessionId}: unmapped kind ${String(params.data.kind)}`);
+            return;
+        }
+        if (!config.events.includes(event)) {
+            return; // User opted out of this event category.
+        }
+        const res = await sendWebhook(config.url, payload);
+        logWebhookResult(params.userId, params.sessionId, res);
+    }));
 }
 
 export async function dispatchSessionEventPush(params: {

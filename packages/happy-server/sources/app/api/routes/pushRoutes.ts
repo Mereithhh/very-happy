@@ -3,6 +3,14 @@ import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { dispatchSessionEventPush } from "@/app/push/pushDispatch";
 import { getVapidPublicKey, webPushConfigured } from "@/app/push/webPush";
+import {
+    WEBHOOK_EVENTS,
+    WEBHOOK_TOKEN_PREFIX,
+    WEBHOOK_URL_MAX_LENGTH,
+    buildWebhookToken,
+    parseWebhookToken,
+    validateWebhookUrl,
+} from "@/app/push/webhookNotify";
 import { buildSessionEventEphemeral, eventRouter } from "@/app/events/eventRouter";
 
 export function pushRoutes(app: Fastify) {
@@ -26,6 +34,9 @@ export function pushRoutes(app: Fastify) {
                 200: z.object({
                     success: z.literal(true)
                 }),
+                400: z.object({
+                    error: z.string()
+                }),
                 500: z.object({
                     error: z.literal('Failed to register push token')
                 })
@@ -35,6 +46,12 @@ export function pushRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { token } = request.body;
+
+        // Webhook configs have their own endpoint with URL validation and
+        // replace semantics — don't let them sneak in unvalidated here.
+        if (token.startsWith(WEBHOOK_TOKEN_PREFIX)) {
+            return reply.code(400).send({ error: 'Use /v1/webhook to configure webhook notifications' });
+        }
 
         try {
             await db.accountPushToken.upsert({
@@ -147,6 +164,91 @@ export function pushRoutes(app: Fastify) {
             data: { ...(data ?? {}), kind }
         });
 
+        return reply.send({ success: true });
+    });
+
+    // Account webhook notification config.
+    // Stored in AccountPushToken as a `webhook:`-prefixed JSON blob (same
+    // zero-migration trick as `webpush:`). Replace semantics: an account has
+    // at most one webhook — POST deletes any existing `webhook:` rows before
+    // creating the new one, so repeated saves never accumulate.
+    const webhookConfigSchema = z.object({
+        url: z.string(),
+        events: z.array(z.enum(WEBHOOK_EVENTS)),
+    });
+
+    app.get('/v1/webhook', {
+        schema: {
+            response: {
+                200: z.object({
+                    webhook: webhookConfigSchema.nullable()
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const rows = await db.accountPushToken.findMany({
+            where: {
+                accountId: request.userId,
+                token: { startsWith: WEBHOOK_TOKEN_PREFIX }
+            }
+        });
+        const webhook = rows.map(r => parseWebhookToken(r.token)).find(c => c !== null) ?? null;
+        return reply.send({ webhook });
+    });
+
+    app.post('/v1/webhook', {
+        schema: {
+            body: z.object({
+                url: z.string().min(1).max(WEBHOOK_URL_MAX_LENGTH),
+                events: z.array(z.enum(WEBHOOK_EVENTS)).max(WEBHOOK_EVENTS.length).optional()
+            }),
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                }),
+                400: z.object({
+                    error: z.string()
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const url = request.body.url.trim();
+        const invalid = validateWebhookUrl(url);
+        if (invalid) {
+            return reply.code(400).send({ error: invalid });
+        }
+        const events = [...new Set(request.body.events ?? [...WEBHOOK_EVENTS])];
+        const token = buildWebhookToken({ url, events });
+        await db.$transaction([
+            db.accountPushToken.deleteMany({
+                where: { accountId: userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } }
+            }),
+            db.accountPushToken.create({
+                data: { accountId: userId, token }
+            })
+        ]);
+        return reply.send({ success: true });
+    });
+
+    app.delete('/v1/webhook', {
+        schema: {
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        await db.accountPushToken.deleteMany({
+            where: {
+                accountId: request.userId,
+                token: { startsWith: WEBHOOK_TOKEN_PREFIX }
+            }
+        });
         return reply.send({ success: true });
     });
 
