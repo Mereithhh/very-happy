@@ -23,7 +23,8 @@
  *  - enterKeyHint="send" labels the Return key; Enter sends, Shift+Enter (hw
  *    keyboard) inserts a newline — newlines become CRs on send;
  *  - IME guard: Enter mid-composition confirms the candidate, never sends
- *    (same composingRef + isImeComposingEvent pattern as the chat composer);
+ *    (same useImeGuard hook as the chat composer; the send button checks the
+ *    live composing flag too);
  *  - the send button preventDefaults mousedown so tapping it never blurs the
  *    textarea (the keyboard stays up for the next line);
  *  - autocapitalize/autocorrect/spellcheck off: this is a command line, and
@@ -32,9 +33,9 @@
  *  - empty send is allowed on purpose: it's a bare Enter — confirming a TUI
  *    prompt ("press enter to continue") is a first-class flow.
  */
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useLayoutEffect, useState, type RefObject } from 'react';
 import { CornerDownLeft } from 'lucide-react';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import { useTranslation } from '@/i18n/useTranslation';
 
 const MAX_TA_HEIGHT = 120;
@@ -53,7 +54,7 @@ export function TermInputBar({
 }) {
     const { t } = useTranslation();
     const [text, setText] = useState('');
-    const composingRef = useRef(false);
+    const ime = useImeGuard();
 
     // Auto-grow like the chat composer: single line normally, expands for
     // pasted multi-line commands up to a cap.
@@ -65,6 +66,11 @@ export function TermInputBar({
     }, [text, inputRef]);
 
     const doSend = () => {
+        // Same guard as the Enter path: a send-button tap mid-composition
+        // would ship a half-composed line (the OS keyboard's "confirm" tap can
+        // land on the button). The composition commits into the textarea; the
+        // user taps send again for the final text.
+        if (ime.isComposing()) return;
         onSend(text);
         setText('');
     };
@@ -76,7 +82,7 @@ export function TermInputBar({
             return;
         }
         // IME guard — Enter mid-composition commits the candidate, never sends.
-        if (e.key === 'Enter' && !e.shiftKey && !composingRef.current && !isImeComposingEvent(e)) {
+        if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
             e.preventDefault();
             doSend();
         }
@@ -97,10 +103,8 @@ export function TermInputBar({
                 spellCheck={false}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKeyDown}
-                onCompositionStart={() => (composingRef.current = true)}
-                // One tick late: some browsers deliver the composition-
-                // committing keydown AFTER compositionend (see chat composer).
-                onCompositionEnd={() => setTimeout(() => (composingRef.current = false), 0)}
+                onCompositionStart={ime.onCompositionStart}
+                onCompositionEnd={ime.onCompositionEnd}
             />
             <button
                 type="button"

@@ -24,7 +24,7 @@ import {
     getAvailablePermissionModes,
     getEffortLevelsForModel,
 } from '@/components/modelModeOptions';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import { ModeMenu } from './ModeMenu';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
@@ -49,7 +49,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const composingRef = useRef(false);
+    const ime = useImeGuard();
     const [text, setText] = useState(session?.draft ?? '');
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
@@ -172,10 +172,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         // IME guard — never send mid-composition (critical for Chinese input).
-        // isImeComposingEvent also catches keyCode 229 (Safari fires the
-        // composition-committing Enter AFTER compositionend with isComposing
-        // false); composingRef covers browsers that misreport both.
-        if (e.key === 'Enter' && !e.shiftKey && !composingRef.current && !isImeComposingEvent(e)) {
+        // useImeGuard combines the local composing flag, isComposing/'Process'
+        // on the event, and the post-compositionend window (Safari fires the
+        // committing Enter AFTER compositionend with isComposing false).
+        if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
             if (enterToSend) {
                 e.preventDefault();
                 void doSend();
@@ -275,11 +275,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}
-                    onCompositionStart={() => (composingRef.current = true)}
-                    // Reset one tick late: some browsers deliver the
-                    // composition-committing keydown AFTER compositionend —
-                    // it must still count as composing (no accidental send).
-                    onCompositionEnd={() => setTimeout(() => (composingRef.current = false), 0)}
+                    onCompositionStart={ime.onCompositionStart}
+                    onCompositionEnd={ime.onCompositionEnd}
                     aria-label={t('common.message' as any)}
                 />
                 {isWorking ? (

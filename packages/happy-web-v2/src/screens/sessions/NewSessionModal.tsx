@@ -8,7 +8,7 @@ import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import './newsession.css';
 
 const AGENTS = ['claude', 'codex', 'gemini', 'openclaw'] as const;
@@ -41,6 +41,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [agent, setAgent] = useState<(typeof AGENTS)[number]>('claude');
   const [initialCommand, setInitialCommand] = useState('');
+  const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
 
   const canCreate = !!machineId && directory.trim().length > 0 && !busy;
@@ -211,10 +212,12 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setInitialCommand(e.target.value)}
               placeholder={t('newSession.initialCommandPlaceholder' as any)}
               rows={2}
+              onCompositionStart={ime.onCompositionStart}
+              onCompositionEnd={ime.onCompositionEnd}
               onKeyDown={(e) => {
                 // ⌘/Ctrl+Enter from the field = create, matching the send gesture.
                 // IME guard: a composition-committing Enter must not create.
-                if (isImeComposingEvent(e)) return;
+                if (ime.isGuarded(e)) return;
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void onCreate(); }
               }}
             />

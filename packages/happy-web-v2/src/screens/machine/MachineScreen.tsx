@@ -23,7 +23,7 @@ import {
   machineSpawnNewSession,
 } from '@/sync/ops';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import '@/screens/settings/settings.css';
@@ -37,6 +37,7 @@ export function MachineScreen() {
   const allSessions = useAllSessions();
 
   const [pathInput, setPathInput] = useState('');
+  const ime = useImeGuard();
   const [spawning, setSpawning] = useState(false);
   const [stopping, setStopping] = useState(false);
 
@@ -191,9 +192,11 @@ export function MachineScreen() {
                     placeholder="~/code/project"
                     value={pathInput}
                     onChange={(e) => setPathInput(e.target.value)}
+                    onCompositionStart={ime.onCompositionStart}
+                    onCompositionEnd={ime.onCompositionEnd}
                     onKeyDown={(e) => {
                       // IME guard: committing a CJK composition must not spawn.
-                      if (isImeComposingEvent(e)) return;
+                      if (ime.isGuarded(e)) return;
                       if (e.key === 'Enter') spawn();
                     }}
                   />

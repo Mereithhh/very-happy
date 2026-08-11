@@ -10,7 +10,7 @@ import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot, type Status } from '@/ui';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import './header.css';
 
 // Session is "connected" when its agent is online AND our relay socket is up.
@@ -40,6 +40,7 @@ export function ChatHeader({
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
+    const ime = useImeGuard();
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat' as any);
@@ -66,7 +67,7 @@ export function ChatHeader({
 
     const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
         // IME guard: committing a CJK composition must not save/close the editor.
-        if (isImeComposingEvent(e)) return;
+        if (ime.isGuarded(e)) return;
         if (e.key === 'Enter') {
             e.preventDefault();
             void save();
@@ -96,6 +97,8 @@ export function ChatHeader({
                             autoFocus
                             placeholder={t('session.renamePlaceholder' as any)}
                             onChange={(e) => setDraft(e.target.value)}
+                            onCompositionStart={ime.onCompositionStart}
+                            onCompositionEnd={ime.onCompositionEnd}
                             onKeyDown={onKey}
                             disabled={saving}
                         />

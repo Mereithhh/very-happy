@@ -17,7 +17,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
-import { isImeComposingEvent } from '@/utils/ime';
+import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import './commandpalette.css';
 
@@ -49,6 +49,7 @@ export function CommandPalette() {
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const ime = useImeGuard();
   const [active, setActive] = useState(0);
   const [showNewSession, setShowNewSession] = useState(false);
 
@@ -256,7 +257,7 @@ export function CommandPalette() {
       // IME guard: while a CJK composition is active, Enter/arrows/Escape
       // operate the candidate window — they must not run items, move the
       // selection, or close the palette.
-      if (isImeComposingEvent(e)) return;
+      if (ime.isGuarded(e)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         close();
@@ -271,7 +272,7 @@ export function CommandPalette() {
         runItem(filtered[active]);
       }
     },
-    [filtered, active, close, runItem],
+    [filtered, active, close, runItem, ime],
   );
 
   // render grouped list (dividers by group label)
@@ -303,7 +304,16 @@ export function CommandPalette() {
             if (e.target === e.currentTarget) close();
           }}
         >
-          <div className="cp-panel" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
+          <div
+            className="cp-panel"
+            role="dialog"
+            aria-modal="true"
+            onKeyDown={onKeyDown}
+            // Composition events bubble from the search input; tracking them
+            // here keeps the panel-level key guard IME-aware.
+            onCompositionStart={ime.onCompositionStart}
+            onCompositionEnd={ime.onCompositionEnd}
+          >
             <div className="cp-search">
               <Search size={16} className="cp-search-icon" />
               <input
