@@ -66,6 +66,10 @@ export interface ClientToServerEvents {
     mode?: 'local' | 'remote';
   }) => void
   'session-end': (data: { sid: string, time: number }) => void,
+  // Clipboard push: session → server → all of the user's web clients.
+  // `payload` is the clipboard text, encrypted with the session key when
+  // `enc` is true. `truncated`/`totalBytes` describe producer-side capping.
+  'clipboard-push': (data: { payload: string, enc?: boolean, truncated?: boolean, totalBytes?: number }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     result: 'error'
   } | {

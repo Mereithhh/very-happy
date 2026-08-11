@@ -4,6 +4,7 @@ import * as tmp from 'tmp';
 import axios from 'axios';
 
 import { ApiClient } from '@/api/api';
+import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
@@ -770,13 +771,22 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // Start control server
+    // Start control server. The clipboard push needs the machine socket, which
+    // is created further down — late-bind through a ref so /clipboard picked up
+    // the client once it exists (requests before that get delivered: false).
+    let apiMachineRef: ApiMachineClient | null = null;
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
-      onHappySessionWebhook
+      onHappySessionWebhook,
+      pushClipboard: (text: string) => {
+        if (!apiMachineRef) {
+          return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
+        }
+        return apiMachineRef.pushClipboard(text);
+      }
     });
 
     // Write initial daemon state (no lock needed for state file)
@@ -827,6 +837,7 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    apiMachineRef = apiMachine;
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({

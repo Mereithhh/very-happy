@@ -9,6 +9,7 @@ import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
+import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { WebTerminalManager } from '@/terminal/webTerminal';
@@ -52,6 +53,10 @@ interface DaemonToServerEvents {
     // reconnect (see open-terminal `fromSeq`).
     'terminal-output': (data: { terminalId: string, data: string, seq: number, enc?: boolean }) => void;
     'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
+    // Clipboard push: daemon → server → all of the user's web clients.
+    // `payload` is the clipboard text, encrypted with the per-machine key when
+    // `enc` is true (same primitive as the terminal byte stream).
+    'clipboard-push': (data: { payload: string, enc?: boolean, truncated?: boolean, totalBytes?: number }) => void;
     'machine-alive': (data: {
         machineId: string;
         time: number;
@@ -148,6 +153,25 @@ export class ApiMachineClient {
         }
         (this.socket as any)?.emit(event, out);
     });
+
+    /**
+     * Push text to the clipboard of every web client the user has open
+     * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
+     * Encrypted with the per-machine key; the server relays without reading.
+     */
+    pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number; error?: string } {
+        const prepared = prepareClipboardText(text);
+        if (!this.socket?.connected) {
+            return { delivered: false, truncated: prepared.truncated, totalBytes: prepared.totalBytes, error: 'daemon is not connected to the server' };
+        }
+        this.socket.emit('clipboard-push', {
+            payload: encodeBase64(encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, prepared.text)),
+            enc: true,
+            truncated: prepared.truncated,
+            totalBytes: prepared.totalBytes
+        });
+        return { delivered: true, truncated: prepared.truncated, totalBytes: prepared.totalBytes };
+    }
 
     /** Encrypt one base64 terminal payload with the per-machine key (same scheme
      *  as the live output stream) → base64 ciphertext. Used for both live output

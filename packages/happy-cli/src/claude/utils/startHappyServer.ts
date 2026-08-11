@@ -14,8 +14,14 @@ import { z } from "zod";
 import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
+import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from "@/clipboard/limits";
 
-function createMcpServer(handler: (title: string) => Promise<{ success: boolean; error?: string }>): McpServer {
+interface HappyMcpHandlers {
+    changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
+    copyToClipboard: (text: string) => Promise<{ delivered: boolean; truncated: boolean; totalBytes: number; error?: string }>;
+}
+
+function createMcpServer(handlers: HappyMcpHandlers): McpServer {
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
@@ -28,7 +34,7 @@ function createMcpServer(handler: (title: string) => Promise<{ success: boolean;
             title: z.string().describe('The new title for the chat session'),
         },
     }, async (args) => {
-        const response = await handler(args.title);
+        const response = await handlers.changeTitle(args.title);
         logger.debug('[happyMCP] Response:', response);
 
         if (response.success) {
@@ -54,28 +60,69 @@ function createMcpServer(handler: (title: string) => Promise<{ success: boolean;
         }
     });
 
+    mcp.registerTool(CLIPBOARD_TOOL_NAME, {
+        description: CLIPBOARD_TOOL_DESCRIPTION,
+        title: CLIPBOARD_TOOL_TITLE,
+        inputSchema: {
+            text: z.string().describe('The text to copy to the user\'s clipboard'),
+        },
+    }, async (args) => {
+        const response = await handlers.copyToClipboard(args.text);
+        logger.debug('[happyMCP] copy_to_clipboard response:', response);
+
+        if (response.delivered) {
+            const note = response.truncated
+                ? ` (truncated to ${CLIPBOARD_MAX_BYTES / 1024}KB — original was ${response.totalBytes} bytes)`
+                : '';
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Sent to the user's clipboard on their currently open device(s)${note}. If the page was not focused, they may need to tap a confirmation button.`,
+                }],
+                isError: false,
+            };
+        }
+        return {
+            content: [{
+                type: 'text',
+                text: `Failed to push to clipboard: ${response.error || 'not connected to the server'}`,
+            }],
+            isError: true,
+        };
+    });
+
     return mcp;
 }
 
 export async function startHappyServer(client: ApiSessionClient) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
 
-    const handler = async (title: string) => {
-        logger.debug('[happyMCP] Changing title to:', title);
-        try {
-            client.sendClaudeSessionMessage({
-                type: 'summary',
-                summary: title,
-                leafUuid: randomUUID()
-            });
-            return { success: true };
-        } catch (error) {
-            return { success: false, error: String(error) };
-        }
+    const handlers: HappyMcpHandlers = {
+        changeTitle: async (title: string) => {
+            logger.debug('[happyMCP] Changing title to:', title);
+            try {
+                client.sendClaudeSessionMessage({
+                    type: 'summary',
+                    summary: title,
+                    leafUuid: randomUUID()
+                });
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: String(error) };
+            }
+        },
+        copyToClipboard: async (text: string) => {
+            logger.debug(`[happyMCP] Pushing ${text.length} chars to clipboard`);
+            try {
+                return client.pushClipboard(text);
+            } catch (error) {
+                return { delivered: false, truncated: false, totalBytes: 0, error: String(error) };
+            }
+        },
     };
 
     const server = createServer(async (req, res) => {
-        const mcp = createMcpServer(handler);
+        const mcp = createMcpServer(handlers);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -106,7 +153,7 @@ export async function startHappyServer(client: ApiSessionClient) {
 
     return {
         url: baseUrl.toString(),
-        toolNames: ['change_title'],
+        toolNames: ['change_title', CLIPBOARD_TOOL_NAME],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             server.close();
