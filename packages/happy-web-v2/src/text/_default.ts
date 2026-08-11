@@ -994,6 +994,13 @@ export const en = {
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
         keybarLabel: 'Terminal keys',
+        // Mobile key bar: hide the soft keyboard (blur the terminal)
+        hideKeyboard: 'Hide keyboard',
+        // Mobile key bar: toggle line-input mode (compose a whole line in a
+        // plain textarea — IME/dictation friendly — and send it on Enter)
+        inputBarToggle: 'Line input',
+        inputBarPlaceholder: 'Type a command · Enter to send',
+        inputBarSend: 'Send',
     },
 
     board: {

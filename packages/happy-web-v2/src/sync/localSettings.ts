@@ -29,6 +29,12 @@ export const LocalSettingsSchema = z.object({
     // What `/` shows when nothing is open: the classic empty-detail placeholder
     // ('normal') or the global Task Board ('board'). Device-local on purpose.
     homeView: z.enum(['normal', 'board']).describe('Home screen when nothing is open: empty detail or the task board'),
+    // Web terminal (mobile): line-input mode — a plain textarea below the key
+    // bar composes whole lines (IME/dictation-friendly, no xterm composition
+    // quirks) and sends them to the pty on Enter, instead of per-key input
+    // through xterm's hidden textarea. Device-local on purpose: it's an
+    // input-hardware preference (phone vs desktop), not an account preference.
+    terminalInputBarMode: z.boolean().describe('Use the line-input bar (compose + send) instead of per-key input in the mobile web terminal'),
 });
 
 //
@@ -67,6 +73,9 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarWidth: null,
     // Safe default: existing users keep the current home screen.
     homeView: 'normal',
+    // Default to per-key mode: it's the full-fidelity terminal; users who hit
+    // IME pain opt into the line-input bar from the key bar toggle.
+    terminalInputBarMode: false,
 };
 Object.freeze(localSettingsDefaults);
 

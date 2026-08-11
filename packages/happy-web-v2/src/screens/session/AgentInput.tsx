@@ -33,6 +33,12 @@ import './input.css';
 
 const MAX_TA_HEIGHT = 200;
 
+// Touch-first device — gates the conditional refocus below; desktop keeps the
+// historical unconditional refocus (mouse-clicking Send should return the
+// caret to the textarea).
+const IS_COARSE_POINTER =
+    typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+
 export function AgentInput({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const session = useSession(sessionId);
@@ -90,6 +96,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending) return;
+        // Captured BEFORE the async send: did the textarea own focus (⇒ the
+        // soft keyboard was up) when the user hit send? On iOS, tapping a
+        // button does NOT move focus off the textarea, so this stays true for
+        // the normal "keyboard up, tap send" flow — and false when the user
+        // had already put the keyboard away and taps send afterwards. In that
+        // second case a refocus outside the gesture stack would NOT re-open
+        // the keyboard but WOULD leave "focused textarea, no keyboard" — a
+        // dead state where the next tap fires no focus event and the keyboard
+        // can't be summoned. Mobile-only; desktop always refocuses.
+        const hadFocus = document.activeElement === taRef.current;
         setSending(true);
         setText('');
         clear();
@@ -101,7 +117,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             setText(value);
         } finally {
             setSending(false);
-            requestAnimationFrame(() => taRef.current?.focus());
+            if (hadFocus || !IS_COARSE_POINTER) {
+                requestAnimationFrame(() => taRef.current?.focus());
+            }
         }
     };
 
