@@ -386,10 +386,17 @@ export function WebTerminalScreen() {
       };
       if (res.mode === 'snapshot') {
         // A full restore replaces the screen — drop any drag-held chunks (they
-        // predate the snapshot) and write directly.
+        // predate the snapshot) and write directly. If mobile select-mode is
+        // holding output, re-arm the hold AFTER the one-shot restore: the mode
+        // exists to freeze the screen for native text selection, and a
+        // reconnect/visibility snapshot must not silently unfreeze the live
+        // stream mid-selection (the snapshot itself is fine — it's a single
+        // atomic replace, not a running stream).
+        const keepHolding = selectModeRef.current;
         holdingWrites = false; heldChunks = []; heldBytes = 0;
         term.reset();
         await writeMaybeEnc(res.data);
+        if (keepHolding) holdingWrites = true;
       } else {
         // Replay: apply only chunks newer than what we already have.
         for (const c of res.chunks) {
@@ -448,23 +455,42 @@ export function WebTerminalScreen() {
     // fullscreen (vim/less, `alternate_on`) get arrow keys instead — the same
     // semantics tmux itself applies for mouse wheels. While in copy-mode tmux
     // freezes the view on new output, so "reading scrolled-back content" is
-    // stable by construction. Wheel batching keeps the RPC rate sane; if the
-    // daemon is old (no handler), we permanently fall back to xterm's default.
+    // stable by construction. Wheel batching keeps the RPC rate sane.
+    //
+    // Scroll-RPC health: a failed call is usually TRANSIENT (socket blip,
+    // daemon restarting, RPC timeout) — the daemon's error strings aren't a
+    // stable API for telling "method missing" apart from "unreachable right
+    // now", so instead of disabling scrolling forever on the first error we
+    // back off for a TTL and retry; only a streak of consecutive failures
+    // (genuinely old daemon without the handler) disables it for this mount,
+    // falling back to xterm's default wheel behavior.
+    const SCROLL_RPC_RETRY_MS = 30_000;
+    const SCROLL_RPC_MAX_FAILS = 3;
     let tmuxAttached = false;
-    let scrollRpcDead = false;
+    let scrollRpcDeadUntil = 0;
+    let scrollRpcFails = 0;
+    const scrollRpcDown = () =>
+      scrollRpcFails >= SCROLL_RPC_MAX_FAILS || Date.now() < scrollRpcDeadUntil;
+    const noteScrollRpcFailure = () => {
+      scrollRpcFails += 1;
+      scrollRpcDeadUntil = Date.now() + SCROLL_RPC_RETRY_MS;
+    };
     let wheelAccum = 0;
     let wheelFlushTimer: ReturnType<typeof setTimeout> | null = null;
     let scrollInFlight = false;
     const flushWheel = () => {
       wheelFlushTimer = null;
       const lines = Math.trunc(wheelAccum);
-      if (lines === 0 || disposed || !terminalId || scrollRpcDead) return;
+      if (lines === 0 || disposed || !terminalId || scrollRpcDown()) return;
       if (scrollInFlight) { scheduleWheelFlush(); return; }
       wheelAccum -= lines;
       scrollInFlight = true;
       machineScrollTerminal(machineId, terminalId, lines)
-        .then((ok) => { if (!ok) scrollRpcDead = true; })
-        .catch(() => { scrollRpcDead = true; })
+        .then((ok) => {
+          if (ok) { scrollRpcFails = 0; scrollRpcDeadUntil = 0; }
+          else noteScrollRpcFailure();
+        })
+        .catch(() => noteScrollRpcFailure())
         .finally(() => {
           scrollInFlight = false;
           if (Math.trunc(wheelAccum) !== 0) scheduleWheelFlush();
@@ -474,7 +500,7 @@ export function WebTerminalScreen() {
       if (wheelFlushTimer == null) wheelFlushTimer = setTimeout(flushWheel, 60);
     };
     term.attachCustomWheelEventHandler((ev) => {
-      if (!tmuxAttached || scrollRpcDead || !terminalId) return true;
+      if (!tmuxAttached || scrollRpcDown() || !terminalId) return true;
       if (term.buffer.active.type !== 'alternate') return true; // normal buffer → native scrollback
       if (ev.deltaY === 0 || ev.shiftKey) return true;
       const termEl = term.element;
