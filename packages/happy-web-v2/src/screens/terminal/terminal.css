@@ -288,6 +288,30 @@
   transform: translateY(1px);
 }
 .term-keybar-wide { min-width: 46px; }
+/* ── Keyboard-open compaction (`.term-screen.is-kb`, toggled by onViewport) ──
+   With the soft keyboard up, every vertical pixel is a terminal row Claude's
+   input line needs. Two savings while (and only while) the keyboard is open:
+   1. slim the bars: 34px keys → 28px, halved paddings (~12px back);
+   2. drop the safe-area bottom padding: the bars sit ABOVE the keyboard now —
+      the home-indicator inset they normally clear is covered by the keyboard
+      itself, so on Face-ID devices (PWA) that's up to ~34px of dead space.
+   Keyboard closes → class comes off → full-size bars and safe-area return. */
+.term-screen.is-kb .term-keybar {
+  padding-top: 3px;
+  gap: 5px;
+}
+.term-screen.is-kb .term-bottombars .term-keybar { padding-bottom: 3px; }
+.term-screen.is-kb .term-bottombars > :last-child { padding-bottom: 4px; }
+.term-screen.is-kb .term-keybar-key {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+}
+.term-screen.is-kb .term-keybar-wide { min-width: 40px; }
+.term-screen.is-kb .term-inputbar { padding-top: 4px; padding-bottom: 4px; }
+/* textarea keeps font-size 16px — anything smaller re-triggers iOS focus zoom */
+.term-screen.is-kb .term-inputbar-ta { padding-top: 4px; padding-bottom: 4px; }
+.term-screen.is-kb .term-inputbar-send { width: 32px; height: 32px; }
 /* Ctrl armed (sticky): make it obvious the next letter becomes Ctrl+<letter>. */
 .term-keybar-mod.is-armed {
   background: var(--term-accent);

@@ -11,6 +11,7 @@ import type { Session } from '@/sync/storageTypes';
 import { StatusDot, CyberMark, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
+import { useIsDesktop } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isImeGuardedEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -82,6 +83,7 @@ export function Sidebar() {
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
+  const isDesktop = useIsDesktop();
 
   // Terminal list/agent-state ingestion lives in the AppLayout-level singleton
   // (sync/terminalSync.ts: daemon pushes) so it also runs with the sidebar
@@ -493,9 +495,17 @@ export function Sidebar() {
               <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
             )}
           </button>
-          <button className="sb-icon-btn" title={t('sidebar.collapse')} onClick={toggleCollapsed}>
-            <PanelLeftClose size={17} />
-          </button>
+          {/* Collapse only exists in the two-pane desktop layout. On mobile
+              (single pane) AppLayout ignores `collapsed` entirely, so this
+              button did nothing visible — worse, it silently wrote
+              collapsed=1 to localStorage and the NEXT desktop visit opened
+              with the sidebar unexpectedly collapsed. Same 980px breakpoint
+              as the layout itself, so button and behavior can't disagree. */}
+          {isDesktop && (
+            <button className="sb-icon-btn" title={t('sidebar.collapse')} onClick={toggleCollapsed}>
+              <PanelLeftClose size={17} />
+            </button>
+          )}
           {/* Quick create: spawns directly with the remembered machine/
               directory and the settings defaults; falls back to the full
               dialog only when it can't decide (or always-ask is on). */}
