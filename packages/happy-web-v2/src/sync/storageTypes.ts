@@ -45,6 +45,13 @@ export const MetadataSchema = z.object({
     hostPid: z.number().optional(), // Process ID of the session
     startedBy: z.enum(['daemon', 'terminal']).optional(),
     flavor: z.string().nullish(), // Session flavor/variant identifier
+    /**
+     * Session presentation variant. 'assistant' marks the machine-side
+     * meta-agent session that the /assistant voice view attaches to.
+     * Optional string (not an enum) so future variants and newer clients
+     * pass through unchanged — old clients ignore unknown values by design.
+     */
+    variant: z.string().optional(),
     sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
     dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
     lifecycleState: z.string().optional(),

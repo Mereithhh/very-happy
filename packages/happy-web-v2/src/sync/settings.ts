@@ -34,6 +34,12 @@ export const SettingsSchema = z.object({
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
+    // Voice assistant (B-051). Synced; NO zod .default() — the ghost-pending
+    // footgun documented at promptPresets applies to every synced field.
+    // Defaults live in settingsDefaults only.
+    voiceTtsVoiceId: z.string().nullable().describe('TTS voice id for assistant replies (null = server default)'),
+    voiceReadTextReplies: z.boolean().describe('Also read replies to typed (non-voice) messages aloud'),
+    assistantMachineId: z.string().nullable().describe('Machine hosting the assistant meta-agent session (null = sole online machine)'),
     voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
     voiceBypassToken: z.boolean().describe('Bypass Happy server token and connect directly to ElevenLabs (requires custom agent ID)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
@@ -172,6 +178,9 @@ export const settingsDefaults: Settings = {
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
+    voiceTtsVoiceId: null,
+    voiceReadTextReplies: false,
+    assistantMachineId: null,
     voiceCustomAgentId: null,
     voiceBypassToken: false,
     preferredLanguage: null,
