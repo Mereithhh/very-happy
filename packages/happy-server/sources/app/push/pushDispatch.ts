@@ -143,6 +143,47 @@ async function sendWebhooks(
     }));
 }
 
+/**
+ * Device-only fan-out for non-session events (today: web-terminal agent
+ * transitions arriving via POST /v1/webhook/notify). Same presence rule as
+ * session events — an active tab suppresses device pushes — but no webhook
+ * leg: the caller owns webhook delivery (and its event-subscription filter).
+ * The webhook `events` config deliberately does NOT gate this: device pushes
+ * are their own channel with their own on/off (the subscription itself),
+ * mirroring how chat events treat the two channels independently.
+ */
+export async function dispatchDeviceEventPush(params: {
+    userId: string;
+    title: string;
+    body: string;
+    data?: Record<string, unknown>;
+}): Promise<void> {
+    const { userId, title, body } = params;
+    const data = params.data ?? {};
+    // sendExpo/sendWeb take a sessionId purely as a log label here.
+    const label = typeof data.url === 'string' ? data.url : 'event';
+    try {
+        try {
+            if (await isUserActive(userId)) {
+                log({ module: 'push' }, `Suppressed device event push for user ${userId} (${label}): user active`);
+                return;
+            }
+        } catch (presenceError) {
+            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
+        }
+        const tokens = await db.accountPushToken.findMany({ where: { accountId: userId } });
+        const expoTokens = tokens.filter(t => !t.token.startsWith(WEBHOOK_TOKEN_PREFIX) && !t.token.startsWith('webpush:'));
+        const webTokens = tokens.filter(t => t.token.startsWith('webpush:'));
+        if (expoTokens.length === 0 && webTokens.length === 0) return;
+        await Promise.all([
+            sendExpo({ userId, sessionId: label, title, body, data, channelId: 'messages' }, expoTokens),
+            sendWeb({ userId, sessionId: label, title, body, data }, webTokens),
+        ]);
+    } catch (error) {
+        log({ module: 'push', level: 'error' }, `Device event push dispatch failed: ${error}`);
+    }
+}
+
 export async function dispatchSessionEventPush(params: {
     userId: string;
     sessionId: string;

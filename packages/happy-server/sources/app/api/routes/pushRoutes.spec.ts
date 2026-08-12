@@ -40,7 +40,12 @@ vi.mock("@/app/push/webhookNotify", async (importOriginal) => {
     return { ...actual, sendWebhook: sendWebhookSpy };
 });
 vi.mock("@/storage/db", () => ({ db: dbMock }));
-vi.mock("@/app/push/pushDispatch", () => ({ dispatchSessionEventPush: vi.fn(async () => undefined) }));
+const deviceEventPushSpy = vi.hoisted(() =>
+    vi.fn(async (_params: { userId: string; title: string; body: string; data?: Record<string, unknown> }) => undefined));
+vi.mock("@/app/push/pushDispatch", () => ({
+    dispatchSessionEventPush: vi.fn(async () => undefined),
+    dispatchDeviceEventPush: deviceEventPushSpy,
+}));
 vi.mock("@/app/push/webPush", () => ({ getVapidPublicKey: () => null, webPushConfigured: () => false }));
 vi.mock("@/app/events/eventRouter", () => ({
     eventRouter: { emitEphemeral: vi.fn(), emitUpdate: vi.fn() },
@@ -190,5 +195,30 @@ describe("pushRoutes — POST /v1/webhook/notify event filtering & link", () => 
         const manual = await notify(app, { title: "t" }, user);
         expect(manual.json()).toEqual({ ok: true, delivered: false });
         expect(sendWebhookSpy).not.toHaveBeenCalled();
+    });
+
+    it("fans automatic events out to device pushes — even with NO webhook configured", async () => {
+        deviceEventPushSpy.mockClear();
+        state.pushTokenRows = [];
+        const res = await notify(app, {
+            title: "修 bug 的终端",
+            message: "Claude 等待下一步指令",
+            link: "/terminal/m1?tid=t1",
+            event: "completed",
+        }, nextUser());
+        expect(res.statusCode).toBe(200);
+        expect(deviceEventPushSpy).toHaveBeenCalledTimes(1);
+        const call = deviceEventPushSpy.mock.calls[0][0];
+        expect(call.title).toBe("修 bug 的终端");
+        expect(call.body).toBe("Claude 等待下一步指令");
+        expect(call.data).toEqual({ kind: "completed", url: "/terminal/m1?tid=t1" });
+    });
+
+    it("does NOT device-push manual notifications (no event field)", async () => {
+        deviceEventPushSpy.mockClear();
+        configureWebhook(["completed", "permission"]);
+        const res = await notify(app, { title: "手动通知" }, nextUser());
+        expect(res.statusCode).toBe(200);
+        expect(deviceEventPushSpy).not.toHaveBeenCalled();
     });
 });

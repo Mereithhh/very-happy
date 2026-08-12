@@ -35,6 +35,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Visible half of Web Push: generateSW emits a precache-only worker,
+        // so push/notificationclick handlers live in public/push-sw.js and
+        // are imported here. Without this, pushes arrive and show NOTHING.
+        importScripts: ['push-sw.js'],
         // SPA: serve index.html for navigations; never precache the API/socket.
         navigateFallback: `${BASE}index.html`,
         navigateFallbackDenylist: [/^\/v1\//, /^\/health/],

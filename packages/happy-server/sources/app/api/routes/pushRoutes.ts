@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
-import { dispatchSessionEventPush } from "@/app/push/pushDispatch";
+import { dispatchDeviceEventPush, dispatchSessionEventPush } from "@/app/push/pushDispatch";
 import { getVapidPublicKey, webPushConfigured } from "@/app/push/webPush";
 import {
     WEBHOOK_EVENTS,
@@ -281,6 +281,22 @@ export function pushRoutes(app: Fastify) {
         const userId = request.userId;
         if (!allowNotify.allow(userId)) {
             return reply.code(429).send({ error: 'Too many notifications, slow down' });
+        }
+        // Automatic events (daemon terminal transitions) also fan out to
+        // DEVICE pushes (Expo / Web Push, presence-suppressed) — a phone in
+        // your pocket must hear "claude is waiting" even with no webhook
+        // configured. Fire-and-forget; the webhook leg below is independent
+        // and keeps its own event-subscription filter.
+        if (request.body.event) {
+            void dispatchDeviceEventPush({
+                userId,
+                title: request.body.title,
+                body: request.body.message ?? '',
+                data: {
+                    kind: request.body.event,
+                    ...(request.body.link ? { url: request.body.link } : {}),
+                },
+            }).catch(() => { /* logged inside */ });
         }
         const rows = await db.accountPushToken.findMany({
             where: {
