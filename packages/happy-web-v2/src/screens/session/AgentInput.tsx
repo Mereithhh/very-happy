@@ -257,7 +257,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         <Paperclip size={18} />
                     </button>
                 )}
-                <PresetsMenu onPick={insertPreset} />
+                <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()} />
                 <input
                     ref={fileInputRef}
                     type="file"

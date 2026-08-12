@@ -12,11 +12,21 @@
   z-index: 50;
 }
 .pm-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
   font-family: var(--font-mono);
   font-size: var(--fs-11);
   color: var(--text-faint);
   padding: var(--sp-1) var(--sp-2);
   letter-spacing: 0.04em;
+}
+/* Desktop-only keyboard hint in the head row ("1-9 …") */
+.pm-head-hint {
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
 .pm-item {
   display: flex;
@@ -34,6 +44,14 @@
   font-size: var(--fs-13);
   font-weight: 600;
   color: var(--text);
+}
+/* Digit-select ordinal (desktop only, first 9 items) — machine-layer mono */
+.pm-item-num {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  margin-right: var(--sp-1);
 }
 .pm-item-text {
   font-size: var(--fs-11);

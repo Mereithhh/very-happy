@@ -1239,7 +1239,15 @@ export function WebTerminalScreen() {
           )}
           {/* Prompt presets: desktop entry lives here; touch devices get the
               key-bar entry instead (their keyboard affordances live there). */}
-          {!IS_COARSE_POINTER && <TermPresetsMenu variant="header" onPick={insertPreset} />}
+          {!IS_COARSE_POINTER && (
+            <TermPresetsMenu
+              variant="header"
+              onPick={insertPreset}
+              // Keyboard cancel (Esc / ⌘.) — back to the terminal, matching
+              // where focus lived before the chord opened the menu.
+              onCancel={() => termRef.current?.focus()}
+            />
+          )}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup')}>
