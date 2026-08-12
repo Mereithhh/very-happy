@@ -4,40 +4,83 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
-        expect(planScrollAction(false, false, 3)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
+        expect(planScrollAction(false, false, false, 3)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
     });
 
     it('scrolling down at the live bottom is a no-op', () => {
-        expect(planScrollAction(false, false, -3)).toEqual({ kind: 'none' });
+        expect(planScrollAction(false, false, false, -3)).toEqual({ kind: 'none' });
     });
 
     it('keeps scrolling copy-mode in both directions once in mode', () => {
-        expect(planScrollAction(true, false, 5)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 5 });
-        expect(planScrollAction(true, false, -5)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 5 });
+        expect(planScrollAction(true, false, false, 5)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 5 });
+        expect(planScrollAction(true, false, false, -5)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 5 });
     });
 
     it('copy-mode wins over an inner alternate screen (probing order)', () => {
         // A vim session scrolled back via copy-mode stays in copy-mode.
-        expect(planScrollAction(true, true, -2)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 2 });
+        expect(planScrollAction(true, true, false, -2)).toEqual({ kind: 'copy-scroll', dir: 'down', count: 2 });
+        // …even when that inner app wants the mouse (Claude in copy-mode).
+        expect(planScrollAction(true, true, true, 2)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 2 });
     });
 
-    it('forwards arrow keys when the inner app is fullscreen (vim/less)', () => {
-        expect(planScrollAction(false, true, 2)).toEqual({ kind: 'keys', key: 'Up', count: 2 });
-        expect(planScrollAction(false, true, -4)).toEqual({ kind: 'keys', key: 'Down', count: 4 });
+    it('synthesizes SGR wheel events for a fullscreen app that asked for mouse reporting (Claude Code TUI)', () => {
+        // Arrow keys would walk history / move the cursor in its input box.
+        expect(planScrollAction(false, true, true, 3)).toEqual({ kind: 'mouse-wheel', dir: 'up', count: 3 });
+        expect(planScrollAction(false, true, true, -2)).toEqual({ kind: 'mouse-wheel', dir: 'down', count: 2 });
+    });
+
+    it('forwards arrow keys when the inner app is fullscreen WITHOUT mouse reporting (vim/less)', () => {
+        expect(planScrollAction(false, true, false, 2)).toEqual({ kind: 'keys', key: 'Up', count: 2 });
+        expect(planScrollAction(false, true, false, -4)).toEqual({ kind: 'keys', key: 'Down', count: 4 });
+    });
+
+    it('mouse_any_flag without alternate screen changes nothing (normal-buffer app)', () => {
+        expect(planScrollAction(false, false, true, 3)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
+        expect(planScrollAction(false, false, true, -3)).toEqual({ kind: 'none' });
     });
 
     it('zero / fractional-below-one lines do nothing', () => {
-        expect(planScrollAction(false, false, 0)).toEqual({ kind: 'none' });
-        expect(planScrollAction(false, false, 0.9)).toEqual({ kind: 'none' });
-        expect(planScrollAction(true, false, -0.5)).toEqual({ kind: 'none' });
+        expect(planScrollAction(false, false, false, 0)).toEqual({ kind: 'none' });
+        expect(planScrollAction(false, false, false, 0.9)).toEqual({ kind: 'none' });
+        expect(planScrollAction(true, false, false, -0.5)).toEqual({ kind: 'none' });
     });
 
     it('caps a burst at 200 lines per step', () => {
-        expect(planScrollAction(false, false, 10_000)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 200 });
+        expect(planScrollAction(false, false, false, 10_000)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 200 });
+        expect(planScrollAction(false, true, true, 10_000)).toEqual({ kind: 'mouse-wheel', dir: 'up', count: 200 });
+    });
+});
+
+describe('sgrWheelHexBytes', () => {
+    const decode = (hex: string[]) => hex.map((h) => String.fromCharCode(parseInt(h, 16))).join('');
+
+    it('encodes one WheelUp event at the pane center (SGR, 1-based)', () => {
+        const hex = sgrWheelHexBytes('up', 1, 80, 24);
+        expect(decode(hex)).toBe('\x1b[<64;40;12M');
+    });
+
+    it('encodes WheelDown with button 65', () => {
+        expect(decode(sgrWheelHexBytes('down', 1, 80, 24))).toBe('\x1b[<65;40;12M');
+    });
+
+    it('repeats the event count times, back to back, in one byte list', () => {
+        const hex = sgrWheelHexBytes('up', 3, 80, 24);
+        expect(decode(hex)).toBe('\x1b[<64;40;12M'.repeat(3));
+    });
+
+    it('clamps center coordinates to at least 1 (degenerate pane sizes)', () => {
+        expect(decode(sgrWheelHexBytes('up', 1, 1, 1))).toBe('\x1b[<64;1;1M');
+        expect(decode(sgrWheelHexBytes('up', 1, 0, 0))).toBe('\x1b[<64;1;1M');
+    });
+
+    it('emits two-digit lowercase hex for every byte (tmux send-keys -H format)', () => {
+        for (const b of sgrWheelHexBytes('up', 1, 80, 24)) {
+            expect(b).toMatch(/^[0-9a-f]{2}$/);
+        }
     });
 });
 

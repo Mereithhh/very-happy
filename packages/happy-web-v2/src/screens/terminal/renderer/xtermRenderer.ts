@@ -9,6 +9,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { ClipboardAddon } from '@xterm/addon-clipboard';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
+import { installMouseModeFilter } from '../termMouseModeFilter';
 import type { TerminalRenderer, RendererOptions } from './TerminalRenderer';
 
 export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
@@ -40,6 +41,11 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
     const unicode11 = new Unicode11Addon();
     term.loadAddon(unicode11);
     term.unicode.activeVersion = '11';
+    // Swallow the inner TUI's DECSET mouse-tracking requests (Claude Code's
+    // TUI enables mouse reporting; tmux `mouse off` passes it through) —
+    // otherwise xterm hands the mouse to the app and NATIVE SELECTION DIES
+    // ("drag does nothing"). See termMouseModeFilter.ts for the mechanism.
+    const mouseFilter = installMouseModeFilter(term);
     term.open(opts.mount);
 
     return {
@@ -57,7 +63,7 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
         blur: () => term.blur(),
         hasSelection: () => term.hasSelection(),
         getSelection: () => term.getSelection(),
-        dispose: () => term.dispose(),
+        dispose: () => { mouseFilter.dispose(); term.dispose(); },
         raw: term,
     };
 }

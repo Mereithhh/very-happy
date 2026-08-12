@@ -228,15 +228,28 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
  * Decide how to scroll a tmux pane for a client wheel gesture, mirroring the
  * semantics tmux itself applies to mouse wheels:
  *  - pane already in copy-mode → keep scrolling copy-mode;
- *  - inner app is fullscreen (`alternate_on`, e.g. vim/less) → forward arrow
- *    keys so the APP scrolls (its content isn't in pane history);
+ *  - inner app is fullscreen AND asked for mouse reporting (`alternate_on` +
+ *    `mouse_any_flag`, e.g. the Claude Code TUI ≥2.1.226) → synthesize SGR
+ *    wheel events straight into the pane. Arrow keys are WRONG for these
+ *    apps: in Claude's input box Up/Down walk history / move the cursor —
+ *    the wheel is the only "scroll" input they understand. (The web client
+ *    filters mouse-tracking from its own xterm, so the app never gets wheel
+ *    events any other way.)
+ *  - inner app is fullscreen without mouse reporting (vim/less default) →
+ *    forward arrow keys so the APP scrolls (content isn't in pane history);
  *  - otherwise scrolling UP enters copy-mode (with -e: auto-exits when
  *    scrolled back to the bottom); scrolling DOWN at the bottom is a no-op.
  * Pure so the decision table is unit-testable without tmux.
  * `lines > 0` = scroll up (into history), `lines < 0` = scroll down.
  */
-export function planScrollAction(paneInMode: boolean, alternateOn: boolean, lines: number):
+export function planScrollAction(
+    paneInMode: boolean,
+    alternateOn: boolean,
+    paneWantsMouse: boolean,
+    lines: number,
+):
     | { kind: 'copy-scroll'; dir: 'up' | 'down'; count: number }
+    | { kind: 'mouse-wheel'; dir: 'up' | 'down'; count: number }
     | { kind: 'keys'; key: 'Up' | 'Down'; count: number }
     | { kind: 'none' } {
     // Bound a single step so a burst can't wedge tmux with a huge -N.
@@ -244,9 +257,29 @@ export function planScrollAction(paneInMode: boolean, alternateOn: boolean, line
     if (count === 0) return { kind: 'none' };
     const up = lines > 0;
     if (paneInMode) return { kind: 'copy-scroll', dir: up ? 'up' : 'down', count };
+    if (alternateOn && paneWantsMouse) return { kind: 'mouse-wheel', dir: up ? 'up' : 'down', count };
     if (alternateOn) return { kind: 'keys', key: up ? 'Up' : 'Down', count };
     if (up) return { kind: 'copy-scroll', dir: 'up', count };
     return { kind: 'none' }; // down at the live bottom — nowhere to go
+}
+
+/**
+ * Hex byte arguments for `tmux send-keys -H`: `count` SGR mouse-wheel events
+ * (WheelUp = `CSI < 64;x;y M`, WheelDown = 65) aimed at the pane's center
+ * cell (SGR coordinates are 1-based). One flat byte list → ONE send-keys
+ * invocation delivers the whole burst. `-H` bypasses tmux key-name parsing,
+ * so the pane receives the raw escape bytes exactly as a terminal would send
+ * them. Pure; unit-tested.
+ */
+export function sgrWheelHexBytes(dir: 'up' | 'down', count: number, paneWidth: number, paneHeight: number): string[] {
+    const x = Math.max(1, Math.floor(paneWidth / 2));
+    const y = Math.max(1, Math.floor(paneHeight / 2));
+    const seq = `\x1b[<${dir === 'up' ? 64 : 65};${x};${y}M`;
+    const bytes: string[] = [];
+    for (let i = 0; i < count; i++) {
+        for (const ch of seq) bytes.push(ch.charCodeAt(0).toString(16).padStart(2, '0'));
+    }
+    return bytes;
 }
 
 let tmuxAvailableCache: boolean | null = null;
@@ -536,25 +569,28 @@ export class WebTerminalManager {
                 // tmux hiccup — the pty script's `new-session -A` below still
                 // covers creation; we just lose startup injection this once.
             }
+            // Session-scoped options (mouse off / history-limit — see the
+            // setOpts comment below for rationale) plus the idempotent
+            // server-scoped clipboard ones. Applied on EVERY open — create AND
+            // reattach: the copies kept in the pty script only ever run when
+            // `-A` itself creates the session; with the session pre-existing
+            // the script's exec attach blocks first, so a reattach through the
+            // script alone never (re)applies them (observed in the wild: a
+            // session with `mouse` unset after the pre-create landed). All
+            // idempotent, so re-running on every open is free; if the session
+            // doesn't exist yet because the pre-create failed, these fail
+            // best-effort and the script fallback still covers it.
+            // (`=name:` = exact-match target, see startupInjectionArgs.)
+            const optArgs = [
+                ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
+                ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                ['set-option', '-g', 'set-clipboard', 'on'],
+                ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
+            ];
+            for (const a of optArgs) {
+                try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
+            }
             if (createdNew) {
-                // Session-scoped options for the fresh session (mouse off /
-                // history-limit — see the setOpts comment below for rationale)
-                // plus the idempotent server-scoped clipboard ones. These MUST
-                // run here now: with the session pre-created, the pty script's
-                // `new-session -A` becomes the attach itself and everything
-                // after it in the script is unreachable until detach. The copies
-                // kept in the script only serve the fallback path where the
-                // spawnSync create failed and `-A` does the creating.
-                // (`=name:` = exact-match target, see startupInjectionArgs.)
-                const optArgs = [
-                    ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
-                    ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
-                    ['set-option', '-g', 'set-clipboard', 'on'],
-                    ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
-                ];
-                for (const a of optArgs) {
-                    try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
-                }
                 // Startup command — ONLY into the session we just created. tmux
                 // buffers pane input, so it's fine that the pane's shell may not
                 // have finished starting; it runs the command once it reads.
@@ -832,12 +868,22 @@ export class WebTerminalManager {
         if (session) session.lastTouch = Date.now();
         try {
             const probe = spawnSync('tmux',
-                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}'],
+                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}'],
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
-            const [inMode, altOn] = probe.stdout.trim().split('\t');
-            const action = planScrollAction(inMode === '1', altOn === '1', lines);
+            const [inMode, altOn, wantsMouse, paneW, paneH] = probe.stdout.trim().split('\t');
+            const action = planScrollAction(inMode === '1', altOn === '1', wantsMouse === '1', lines);
             if (action.kind === 'none') return;
+            if (action.kind === 'mouse-wheel') {
+                // The pane's app asked for mouse reporting (Claude Code TUI):
+                // hand it real SGR wheel events at the pane center — arrow keys
+                // would edit its input box instead of scrolling. `-H` writes
+                // the raw bytes; one call carries the whole burst.
+                const hex = sgrWheelHexBytes(action.dir, action.count, Number(paneW) || 80, Number(paneH) || 24);
+                spawnSync('tmux', ['send-keys', '-t', name, '-H', ...hex],
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+                return;
+            }
             if (action.kind === 'keys') {
                 spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
