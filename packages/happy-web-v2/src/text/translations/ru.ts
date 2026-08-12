@@ -673,6 +673,13 @@ export const ru: TranslationStructure = {
         offlineUnableToSpawn: 'Невозможно создать сессию, машина offline',
     },
 
+
+    renameModal: {
+        titleLabel: 'Название',
+        tagsLabel: 'Теги',
+        tagPlaceholder: 'Добавить тег…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Показать архив',
@@ -683,6 +690,11 @@ export const ru: TranslationStructure = {
         filterActive: 'Активные',
         filterArchived: 'Архив',
         noResults: 'Нет подходящих сессий',
+        pinned: 'Закреплённые',
+        pin: 'Закрепить',
+        unpin: 'Открепить',
+        moveUp: 'Вверх',
+        moveDown: 'Вниз',
     },
 
     zen: {

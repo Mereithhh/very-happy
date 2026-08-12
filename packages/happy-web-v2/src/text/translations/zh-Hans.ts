@@ -725,6 +725,13 @@ export const zhHans: TranslationStructure = {
         offlineUnableToSpawn: '无法生成新会话，已离线',
     },
 
+
+    renameModal: {
+        titleLabel: '标题',
+        tagsLabel: '标签',
+        tagPlaceholder: '添加标签…',
+    },
+
     sidebar: {
         collapse: '收起侧栏',
         openSessions: '打开的会话',
@@ -738,6 +745,11 @@ export const zhHans: TranslationStructure = {
         filterActive: '活跃',
         filterArchived: '已归档',
         noResults: '没有匹配的会话',
+        pinned: '已置顶',
+        pin: '置顶',
+        unpin: '取消置顶',
+        moveUp: '上移',
+        moveDown: '下移',
     },
 
     zen: {

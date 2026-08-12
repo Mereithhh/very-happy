@@ -1,0 +1,91 @@
+import { describe, it, expect } from 'vitest';
+import {
+  splitPinnedRows,
+  isPinned,
+  togglePin,
+  movePin,
+  reorderPin,
+  prunePinned,
+  type PinnedRow,
+} from './sidebarPins';
+
+const P = (...keys: string[]): PinnedRow[] => keys.map((key) => ({ key }));
+const R = (...keys: string[]) => keys.map((key) => ({ key }));
+
+describe('splitPinnedRows', () => {
+  it('pinned rows come out in PIN-ARRAY order, rest keeps input order', () => {
+    const rows = R('a', 'b', 'c', 'd');
+    const { pinned, rest } = splitPinnedRows(rows, P('c', 'a'));
+    expect(pinned.map((r) => r.key)).toEqual(['c', 'a']);
+    expect(rest.map((r) => r.key)).toEqual(['b', 'd']);
+  });
+
+  it('pinned keys with no matching row are skipped (deleted/archived/filtered)', () => {
+    const rows = R('a', 'b');
+    const { pinned, rest } = splitPinnedRows(rows, P('ghost', 'b'));
+    expect(pinned.map((r) => r.key)).toEqual(['b']);
+    expect(rest.map((r) => r.key)).toEqual(['a']);
+  });
+
+  it('duplicate pin entries only claim the row once', () => {
+    const rows = R('a', 'b');
+    const { pinned, rest } = splitPinnedRows(rows, P('a', 'a'));
+    expect(pinned.map((r) => r.key)).toEqual(['a']);
+    expect(rest.map((r) => r.key)).toEqual(['b']);
+  });
+
+  it('no pins → everything in rest', () => {
+    const rows = R('a', 'b');
+    const { pinned, rest } = splitPinnedRows(rows, []);
+    expect(pinned).toEqual([]);
+    expect(rest.map((r) => r.key)).toEqual(['a', 'b']);
+  });
+});
+
+describe('togglePin / isPinned', () => {
+  it('pin appends at the END of the pinned section', () => {
+    expect(togglePin(P('a'), 'b')).toEqual(P('a', 'b'));
+  });
+  it('unpin removes', () => {
+    expect(togglePin(P('a', 'b'), 'a')).toEqual(P('b'));
+  });
+  it('isPinned', () => {
+    expect(isPinned(P('a'), 'a')).toBe(true);
+    expect(isPinned(P('a'), 'b')).toBe(false);
+  });
+});
+
+describe('movePin', () => {
+  it('moves up/down one step', () => {
+    expect(movePin(P('a', 'b', 'c'), 'c', -1)).toEqual(P('a', 'c', 'b'));
+    expect(movePin(P('a', 'b', 'c'), 'a', 1)).toEqual(P('b', 'a', 'c'));
+  });
+  it('no-op at the edges and for unknown keys', () => {
+    const pins = P('a', 'b');
+    expect(movePin(pins, 'a', -1)).toBe(pins);
+    expect(movePin(pins, 'b', 1)).toBe(pins);
+    expect(movePin(pins, 'x', 1)).toBe(pins);
+  });
+});
+
+describe('reorderPin', () => {
+  it('moves an entry to a new index (drag semantics)', () => {
+    expect(reorderPin(P('a', 'b', 'c', 'd'), 0, 2)).toEqual(P('b', 'c', 'a', 'd'));
+    expect(reorderPin(P('a', 'b', 'c', 'd'), 3, 0)).toEqual(P('d', 'a', 'b', 'c'));
+  });
+  it('clamps out-of-range targets and no-ops on same index', () => {
+    expect(reorderPin(P('a', 'b'), 0, 99)).toEqual(P('b', 'a'));
+    const pins = P('a', 'b');
+    expect(reorderPin(pins, 1, 1)).toBe(pins);
+    expect(reorderPin(pins, -1, 0)).toBe(pins);
+  });
+});
+
+describe('prunePinned', () => {
+  it('drops keys not in the valid set', () => {
+    expect(prunePinned(P('a', 'dead', 'b'), new Set(['a', 'b']))).toEqual(P('a', 'b'));
+  });
+  it('returns null when nothing changed (no settings write)', () => {
+    expect(prunePinned(P('a'), new Set(['a']))).toBeNull();
+  });
+});
