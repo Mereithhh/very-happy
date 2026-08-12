@@ -29,6 +29,7 @@ import {
   type TermFocusEvent,
   type TermFocusAction,
 } from './termFocusPolicy';
+import { createTermWriteHold } from './termWriteHold';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -226,35 +227,14 @@ export function WebTerminalScreen() {
 
     // ── Selection write-hold ─────────────────────────────────────────────────
     // While the user is drag-selecting (or mobile select-mode is on), incoming
-    // output is BUFFERED instead of written. Reason (xterm 5.5 source): a
-    // selection is stored in buffer coordinates; any output that scrolls or
-    // redraws the screen mid-drag shifts different text under the highlight, so
-    // with a busy TUI (Claude Code repaints its footer continuously) the user
-    // "can't select" — by mouseup the selected cells hold different content.
-    // Holding writes during the gesture freezes the screen; on release we copy
-    // FIRST, then flush the buffered chunks in order. Bounded: a safety cap
-    // force-flushes so a forgotten select-mode can't buffer unbounded output.
-    const HOLD_MAX_BYTES = 1 * 1024 * 1024;
-    let holdingWrites = false;
-    let heldChunks: Uint8Array[] = [];
-    let heldBytes = 0;
-    const gatedWrite = (data: Uint8Array) => {
-      if (holdingWrites) {
-        heldChunks.push(data);
-        heldBytes += data.byteLength;
-        if (heldBytes > HOLD_MAX_BYTES) flushHeldWrites(true);
-        return;
-      }
-      term.write(data);
-    };
-    const flushHeldWrites = (keepHolding = false) => {
-      if (!keepHolding) holdingWrites = false;
-      const chunks = heldChunks;
-      heldChunks = [];
-      heldBytes = 0;
-      for (const c of chunks) term.write(c);
-    };
-    const beginHoldWrites = () => { holdingWrites = true; };
+    // output is BUFFERED instead of written — see ./termWriteHold.ts for the
+    // full mechanism write-up AND the release-path regression story (a stuck
+    // hold froze all output after a right-click: the macOS context menu opens
+    // at mousedown and swallows the mouseup, which made typed CJK never echo —
+    // "中文输入法没法用"). The extracted state machine owns every release path;
+    // this effect only feeds it events (mouse handlers + sendInput below).
+    const writeHold = createTermWriteHold((d) => term.write(d));
+    const gatedWrite = writeHold.gatedWrite;
 
     const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
       if (disposed || e.terminalId !== terminalId) return;
@@ -281,6 +261,11 @@ export function WebTerminalScreen() {
     apiSocket.onMessage('terminal-exit', onExit);
 
     const sendInput = (d: string) => {
+      // Release a stuck gesture write-hold: if a lost mouseup left output
+      // frozen, the user's own input (keystroke, IME commit, paste) must not
+      // have its echo invisibly swallowed. No-op mid-normal-click (mouseup
+      // flushes first) and for the mobile select-mode hold.
+      writeHold.noteUserInput();
       const b64 = strToB64(d);
       if (enc) {
         encryptTerminalData(machineId, b64).then((c) => {
@@ -387,16 +372,15 @@ export function WebTerminalScreen() {
       if (res.mode === 'snapshot') {
         // A full restore replaces the screen — drop any drag-held chunks (they
         // predate the snapshot) and write directly. If mobile select-mode is
-        // holding output, re-arm the hold AFTER the one-shot restore: the mode
-        // exists to freeze the screen for native text selection, and a
-        // reconnect/visibility snapshot must not silently unfreeze the live
-        // stream mid-selection (the snapshot itself is fine — it's a single
-        // atomic replace, not a running stream).
-        const keepHolding = selectModeRef.current;
-        holdingWrites = false; heldChunks = []; heldBytes = 0;
+        // holding output, the hold re-arms AFTER the one-shot restore (handled
+        // inside termWriteHold): the mode exists to freeze the screen for
+        // native text selection, and a reconnect/visibility snapshot must not
+        // silently unfreeze the live stream mid-selection (the snapshot itself
+        // is fine — it's a single atomic replace, not a running stream).
+        writeHold.beginSnapshotRestore();
         term.reset();
         await writeMaybeEnc(res.data);
-        if (keepHolding) holdingWrites = true;
+        writeHold.endSnapshotRestore();
       } else {
         // Replay: apply only chunks newer than what we already have.
         for (const c of res.chunks) {
@@ -776,9 +760,15 @@ export function WebTerminalScreen() {
     let mouseY = 0;
     let gestureFromHost = false;
     const onMouseDown = (e: MouseEvent) => {
+      // Non-primary buttons never arm the gesture/hold: on macOS the NATIVE
+      // context menu opens at right-mousedown and swallows the mouseup — an
+      // armed hold would freeze all output until rescued (the "打不了中文"
+      // regression: frozen echo with a working local pinyin bubble). A right
+      // drag never selects anyway (rightClickSelectsWord acts at mousedown).
+      if (e.button !== 0) return;
       mouseX = e.clientX; mouseY = e.clientY;
       gestureFromHost = true;
-      beginHoldWrites();
+      writeHold.gestureStart(e.button);
     };
     const onDocMouseUp = (e: MouseEvent) => {
       if (!gestureFromHost) return;
@@ -793,8 +783,8 @@ export function WebTerminalScreen() {
         if (sel) navigator.clipboard?.writeText(sel).catch(() => {});
       }
       // Resume output AFTER the copy so the clipboard got the frozen content.
-      // Don't resume while mobile select-mode holds (handled by its toggle).
-      if (!selectModeRef.current) flushHeldWrites();
+      // (termWriteHold keeps holding if mobile select-mode owns a hold too.)
+      writeHold.gestureEnd();
       if (dragged || term.hasSelection()) return;
       refocus(); // also clears a stuck IME composition, not just plain focus
     };
@@ -803,18 +793,39 @@ export function WebTerminalScreen() {
     // hold; it's released by the toggle.)
     const onWinBlur = () => {
       gestureFromHost = false;
-      if (!selectModeRef.current) flushHeldWrites();
+      writeHold.gestureEnd();
+    };
+    // A context menu ends the gesture: once it's open the matching mouseup is
+    // the menu's, not ours (platform-dependent whether the page ever sees it).
+    const onCtxMenu = () => {
+      gestureFromHost = false;
+      writeHold.gestureEnd();
+    };
+    // Lost-mouseup rescue: the pointer moving with NO buttons pressed while a
+    // gesture is still "active" means the mouseup happened where we couldn't
+    // see it (native menu, OS dialog, browser chrome). Cheap: first check
+    // bails when no gesture is in flight.
+    const onDocMouseMove = (e: MouseEvent) => {
+      if (!gestureFromHost || e.buttons !== 0) return;
+      gestureFromHost = false;
+      writeHold.gestureEnd();
     };
     if (!IS_COARSE_POINTER) {
       host.addEventListener('mousedown', onMouseDown, true);
+      host.addEventListener('contextmenu', onCtxMenu, true);
       document.addEventListener('mouseup', onDocMouseUp, true);
+      document.addEventListener('mousemove', onDocMouseMove, true);
       window.addEventListener('blur', onWinBlur);
     }
     // Mobile select-mode: freeze output for the whole mode — the mode exists
     // solely to let the OS long-press selection work on stable DOM text, and a
     // TUI repaint would destroy the native selection outright (row nodes are
-    // replaced). Flushes on toggle-off; the 1MB safety cap above bounds memory.
-    writeHoldRef.current = { begin: beginHoldWrites, flush: () => flushHeldWrites() };
+    // replaced). Flushes on toggle-off; the safety cap in termWriteHold bounds
+    // memory.
+    writeHoldRef.current = {
+      begin: () => writeHold.setModeHold(true),
+      flush: () => writeHold.setModeHold(false),
+    };
 
     return () => {
       disposed = true;
@@ -851,7 +862,9 @@ export function WebTerminalScreen() {
       }
       if (!IS_COARSE_POINTER) {
         host.removeEventListener('mousedown', onMouseDown, true);
+        host.removeEventListener('contextmenu', onCtxMenu, true);
         document.removeEventListener('mouseup', onDocMouseUp, true);
+        document.removeEventListener('mousemove', onDocMouseMove, true);
         window.removeEventListener('blur', onWinBlur);
       }
       writeHoldRef.current = null;
