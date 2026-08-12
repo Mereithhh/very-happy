@@ -12,6 +12,24 @@ body,
   height: 100%;
 }
 
+/* iOS: no rubber-band. The app shell never scrolls (inner containers do), so
+   body overscroll is pure bounce noise — kill it at the root, and stop inner
+   scrollers from CHAINING their edge-scroll into the body (that chaining is
+   what triggers the bounce even with a fixed shell). Also disables
+   pull-to-refresh in the PWA, which is desired: refresh is meaningless here
+   (state is server-pushed) and easy to trigger by accident. */
+html,
+body {
+  overscroll-behavior: none;
+}
+#root [class*='scroll'],
+#root [class*='list'],
+.sb-list,
+.set-scroll,
+.term-host {
+  overscroll-behavior: contain;
+}
+
 /* iOS: use dynamic viewport so the keyboard/toolbar doesn't clip the composer */
 #root {
   min-height: 100dvh;
