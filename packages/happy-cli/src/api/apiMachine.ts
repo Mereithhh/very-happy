@@ -245,8 +245,12 @@ export class ApiMachineClient {
             // `startupCommand` runs ONLY when this open genuinely creates the
             // tmux session (never on re-attach) — see WebTerminalManager.open.
             // Old clients simply don't send it → nothing runs.
-            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand } = params || {};
-            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq, startupCommand });
+            // `resub` (viewer catch-up: don't count a new subscriber) and
+            // `attachOnly` (never create the session — a deleted terminal must
+            // not be resurrected; open throws 'terminal-gone' instead, which
+            // reaches the client as the RPC error) pass through the same way.
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly } = params || {};
+            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq, startupCommand, resub, attachOnly });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
             // client knows whether to encrypt its input / decrypt output.

@@ -7,7 +7,7 @@ import {
   type BoardInput,
 } from './boardItems';
 import type { Session, Machine } from '@/sync/storageTypes';
-import type { TerminalSession } from '@/sync/terminalListOps';
+import type { TerminalSession } from '@/sync/terminalPushOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import type { BoardTask } from '@/sync/boardTaskOps';
 
@@ -166,14 +166,6 @@ describe('terminal mapping', () => {
     expect(t1.cwd).toBe('/srv/app');
     expect(t1.href).toBe('/terminal/m1?tid=t1');
     expect(items.find((i) => i.key === 't:t2')!.status).toBe('working');
-  });
-
-  it('deletion-tombstoned terminals never appear on the board', () => {
-    const items = build({
-      terminals: [mkTerminal({ id: 't1', deletedAt: NOW - 1000 })],
-      agentStates: { t1: entry('needs_input') },
-    });
-    expect(items.find((i) => i.key === 't:t1')).toBeUndefined();
   });
 
   it('shell / idle / unknown (old daemon) → idle, never attention', () => {

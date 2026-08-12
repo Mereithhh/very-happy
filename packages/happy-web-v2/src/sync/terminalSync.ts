@@ -1,35 +1,28 @@
 /**
- * terminalSync — the ONE place terminal lists/agent states enter the app,
- * in two lanes (feature-detected per machine, see terminalPushOps.ts):
+ * terminalSync — the ONE place terminal lists/agent states enter the app.
  *
- *   PUSH lane (new daemons): the daemon tracks its own list and writes every
- *   change into daemonState.webTerminals; the server broadcasts
- *   `update-machine` and the storage store applies it. This module watches
- *   the machines slice and, whenever a machine's trusted snapshot advances
- *   (updatedAt changed), feeds it into useTerminalSessions.applyPush() and
- *   useTerminalAgentStates.ingest(). Zero polling; offline machines are fed
- *   from the server-persisted daemonState the same way.
- *
- *   POLL lane (legacy fallback): machines that are online WITHOUT a trusted
- *   snapshot (old or downgraded daemon) keep the previous behavior verbatim:
- *   `machineListTerminals` every 10s (30s hidden), reconciled into the
- *   KV-backed record list. The lane a machine is in can change at runtime —
- *   the poll cycle re-partitions whenever the machine set (or any machine's
- *   trust) changes.
+ * Push lane (the only lane since the legacy 10s poll was retired, 2026-08):
+ * the daemon tracks its own list and writes every change into
+ * daemonState.webTerminals; the server broadcasts `update-machine` and the
+ * storage store applies it. This module watches the machines slice and,
+ * whenever a machine's trusted snapshot advances (updatedAt changed), feeds
+ * it into useTerminalSessions.applyPush() and useTerminalAgentStates.ingest().
+ * Zero polling; offline machines are fed from the server-persisted
+ * daemonState the same way. Machines without a trusted snapshot (daemon
+ * < 0.2.27, or downgraded) contribute nothing — their terminal list simply
+ * doesn't update (docs/channels.md states the compat floor).
  *
  * Singleton by module-level reference counting: the first mounted
  * `useTerminalSync()` starts it, the last unmount stops it. AppLayout is the
  * one intended caller; the refcount just makes an accidental second mount
- * (StrictMode double-effects, future layouts) harmless. Review red line:
- * `machineListTerminals` must have no other caller (see terminalAgentState.ts).
+ * (StrictMode double-effects, future layouts) harmless.
  */
 import { useEffect } from 'react';
 import { storage } from '@/sync/storage';
 import { machineLabel } from '@/utils/machineUtils';
-import { machineListTerminals } from '@/sync/ops';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
-import { partitionMachinesForSync } from '@/sync/terminalPushOps';
+import { pushedMachineSnapshots } from '@/sync/terminalPushOps';
 import type { Machine } from '@/sync/storageTypes';
 
 function allMachines(): Machine[] {
@@ -44,11 +37,11 @@ function allMachines(): Machine[] {
 let appliedPushVersions = new Map<string, number>();
 
 /** Feed every machine's trusted snapshot into the stores (idempotent per
- *  updatedAt), and demote machines whose snapshot lost trust (downgraded
- *  daemon) back to the legacy path. */
+ *  updatedAt), and drop machines whose snapshot lost trust (downgraded
+ *  daemon) so stale data stops rendering. */
 function syncPushes(): void {
   const machines = allMachines();
-  const { pushed } = partitionMachinesForSync(machines);
+  const pushed = pushedMachineSnapshots(machines);
   const trusted = new Set(pushed.map((p) => p.id));
   for (const { id, snapshot } of pushed) {
     if (appliedPushVersions.get(id) === snapshot.updatedAt) continue;
@@ -64,69 +57,12 @@ function syncPushes(): void {
   }
 }
 
-/** The poll lane's membership, as a change-detection key. */
-function pollIdsKey(): string {
-  return partitionMachinesForSync(allMachines()).pollIds.sort().join(',');
-}
-
-/** One polling cycle for a fixed machine set — the legacy 10s/30s loop,
- *  body unchanged from the pre-push reconcile loop. Returns its cleanup. */
-function startCycle(pollMachineIds: string): () => void {
-  let cancelled = false;
-  const poll = () => {
-    for (const id of pollMachineIds.split(',')) {
-      const m = allMachines().find((x) => x.id === id);
-      const name = m ? machineLabel(m) : id.slice(0, 8);
-      machineListTerminals(id).then((live) => {
-        if (cancelled) return;
-        // The machine may have gained push trust while the RPC was in flight —
-        // a push-fed machine must never be touched by poll results.
-        if (useTerminalSessions.getState().isPushed(id)) return;
-        useTerminalSessions.getState().reconcile(id, name, live); // null-safe (no-op on failed query)
-        if (live) useTerminalAgentStates.getState().ingest(id, live); // failure → keep last known states
-      });
-    }
-  };
-  poll();
-  let timer: ReturnType<typeof setInterval> | null = null;
-  const schedule = () => {
-    if (timer) clearInterval(timer);
-    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-    timer = setInterval(poll, hidden ? 30_000 : 10_000);
-  };
-  schedule();
-  const onVisibility = () => {
-    schedule();
-    if (document.visibilityState === 'visible') poll();
-  };
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
-  return () => {
-    cancelled = true;
-    if (timer) clearInterval(timer);
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
-  };
-}
-
-/** Run both lanes while the refcount is >0: a plain store subscription feeds
- *  pushes and re-partitions the poll cycle whenever the pollable set changes. */
+/** Feed pushes while the refcount is >0: a plain store subscription applies
+ *  every advanced snapshot as `update-machine` broadcasts land. */
 function startLoop(): () => void {
   appliedPushVersions = new Map();
   syncPushes();
-  let currentIds = pollIdsKey();
-  let stopCycle: (() => void) | null = currentIds ? startCycle(currentIds) : null;
-  const unsubscribe = storage.subscribe(() => {
-    syncPushes();
-    const ids = pollIdsKey();
-    if (ids === currentIds) return;
-    currentIds = ids;
-    stopCycle?.();
-    stopCycle = ids ? startCycle(ids) : null;
-  });
-  return () => {
-    unsubscribe();
-    stopCycle?.();
-    stopCycle = null;
-  };
+  return storage.subscribe(() => syncPushes());
 }
 
 let refCount = 0;

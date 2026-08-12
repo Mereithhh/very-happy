@@ -2,10 +2,9 @@
  * terminalAgentState — lightweight store of each web terminal's Claude Code
  * status (`agentState` on the daemon's terminal-list items, daemon >= the
  * version that reports it). There is deliberately NO data acquisition here:
- * the singleton terminal sync (terminalSync.ts) is the only feeder — daemon
- * pushes for new daemons, the legacy `list-terminals` poll for old ones —
- * and every result flows through `ingest()`, so alerts fire exactly once per
- * transition regardless of the transport.
+ * the singleton terminal sync (terminalSync.ts) is the only feeder — every
+ * daemon push flows through `ingest()`, so alerts fire exactly once per
+ * transition.
  *
  * Besides the {terminalId → state} map (consumed by the sidebar dot), ingest
  * owns the alerting side effects:
@@ -38,8 +37,7 @@ export interface TerminalAgentEntry {
 interface TerminalAgentStates {
   /** terminalId → last known agent state (only terminals whose daemon reports it). */
   states: Record<string, TerminalAgentEntry>;
-  /** Feed one machine's `machineListTerminals` result. Callers must skip
-   *  failed queries (null) — old values are silently kept on failure. */
+  /** Feed one machine's pushed terminal list (daemonState.webTerminals). */
   ingest(machineId: string, terminals: MachineTerminal[]): void;
 }
 

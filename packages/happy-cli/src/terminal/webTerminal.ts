@@ -75,8 +75,15 @@ export interface OpenTerminalOptions {
     startupCommand?: string;
     /** Catch-up from a viewer that already holds a subscription (visibility /
      *  reconnect refresh) — do NOT count it as a new subscriber. Old clients
-     *  never send it (legacy = every open counts, conservative). */
+     *  never send it (legacy = every open counts, conservative). Implies
+     *  `attachOnly`. */
     resub?: boolean;
+    /** Attach to an EXISTING terminal only — never create the tmux session.
+     *  Sent by every new-web open except the fresh-create navigation, so a
+     *  deleted terminal can't be resurrected by a lingering screen's catch-up
+     *  or a refresh on its URL (`open` throws 'terminal-gone' instead). Old
+     *  clients never send it (legacy = create-or-attach). */
+    attachOnly?: boolean;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -878,6 +885,23 @@ export class WebTerminalManager {
             return { terminalId: id, tmuxSession: existing.tmuxSession, ...state };
         }
 
+        // Attach-only opens (viewer catch-ups via `resub`, and every new-web
+        // open except the fresh-create one) must NEVER create a session: with
+        // create-or-attach semantics, a terminal deleted from the sidebar was
+        // resurrected by its own still-mounted screen (kill → catch-up open →
+        // `new-session -A` recreated `vh-<id>` → the list push re-adopted it
+        // everywhere — the "terminal won't delete" bug), or by refreshing its
+        // URL. No live pty and no tmux session ⇒ the terminal is gone; fail
+        // honestly and let the client drop the row. ('terminal-gone' is the
+        // contract string the web matches on — see machineOpenTerminal.)
+        if (opts.attachOnly || opts.resub) {
+            const alive = isTmuxAvailable() && spawnSync(
+                'tmux', ['has-session', '-t', `=vh-${id}:`],
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() },
+            ).status === 0;
+            if (!alive) throw new Error('terminal-gone');
+        }
+
         const env = ptyEnv();
         let file: string;
         let args: string[];
@@ -901,22 +925,29 @@ export class WebTerminalManager {
             // `-A` attaches to an existing session. Gated on tmux ≥3.2 — an
             // older tmux rejects the unknown flag and would fail the create.
             const envFlags = tmuxSupportsEnvFlag() ? ['-e', CLAUDE_CLASSIC_RENDERER_ENV] : [];
-            try {
-                // env: THIS call may boot the tmux server, which pins its
-                // environment for the life of the server — without ptyEnv() a
-                // daemon launched from launchd/GUI would hand every session a
-                // PATH missing ~/.local/bin and a C locale (CJK width breakage).
-                // The pty's attach script (below) gets the same env via
-                // pty.spawn, so both creation paths agree. Later tmux calls
-                // pass it too — harmless once the server runs (env doesn't
-                // re-stick), correct when one of them is the first to boot it.
-                const created = spawnSync('tmux',
-                    ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
-                    { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
-                createdNew = created.status === 0;
-            } catch {
-                // tmux hiccup — the pty script's `new-session -A` below still
-                // covers creation; we just lose startup injection this once.
+            // Attach-only opens skip BOTH creation paths (this pre-create and
+            // the pty script's `new-session -A` below): the has-session gate
+            // above said the session exists, and racing a concurrent kill must
+            // fail the attach, not quietly recreate the session.
+            const attachOnly = !!(opts.attachOnly || opts.resub);
+            if (!attachOnly) {
+                try {
+                    // env: THIS call may boot the tmux server, which pins its
+                    // environment for the life of the server — without ptyEnv() a
+                    // daemon launched from launchd/GUI would hand every session a
+                    // PATH missing ~/.local/bin and a C locale (CJK width breakage).
+                    // The pty's attach script (below) gets the same env via
+                    // pty.spawn, so both creation paths agree. Later tmux calls
+                    // pass it too — harmless once the server runs (env doesn't
+                    // re-stick), correct when one of them is the first to boot it.
+                    const created = spawnSync('tmux',
+                        ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                        { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
+                    createdNew = created.status === 0;
+                } catch {
+                    // tmux hiccup — the pty script's `new-session -A` below still
+                    // covers creation; we just lose startup injection this once.
+                }
             }
             // Session-scoped options (mouse off / history-limit — see the
             // setOpts comment below for rationale) plus the idempotent
@@ -1008,8 +1039,14 @@ export class WebTerminalManager {
             // the session (pre-create failed); ignored on the attach path. The
             // value contains no shell metacharacters — safe to inline.
             const envFlagsSh = envFlags.length > 0 ? ` -e ${CLAUDE_CLASSIC_RENDERER_ENV}` : '';
+            // Attach-only: no `new-session -A` fallback either — if the session
+            // died between the has-session gate and here (concurrent kill), the
+            // bare attach fails and the pty exits, instead of resurrecting it.
+            const createFallback = attachOnly
+                ? ''
+                : `tmux new-session -A -d${envFlagsSh} -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `;
             args = ['-c',
-                `tmux new-session -A -d${envFlagsSh} -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
+                createFallback
                 + setOpts
                 + `exec tmux attach-session -d -t ${tmuxSession}`];
         } else {

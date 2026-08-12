@@ -1,14 +1,13 @@
 /**
  * Unit tests for the pushed-terminal-list model: the trust rule (feature
- * detection + downgrade fallback), the sync-lane partition, list composition
- * (pushed ∪ overlay ∪ legacy) and overlay pruning.
+ * detection + downgrade safety), the sync-loop snapshot collection, list
+ * composition (pushes ∪ overlay) and overlay pruning.
  */
 import { describe, it, expect } from 'vitest';
 import type { MachineTerminal } from '@/sync/ops';
-import type { TerminalSession } from '@/sync/terminalListOps';
 import {
   trustedWebTerminals,
-  partitionMachinesForSync,
+  pushedMachineSnapshots,
   composeTerminalList,
   pruneOverlay,
   EMPTY_OVERLAY,
@@ -16,6 +15,7 @@ import {
   RENAME_OVERLAY_TTL_MS,
   REMOVE_OVERLAY_TTL_MS,
   type PushOverlay,
+  type TerminalSession,
 } from './terminalPushOps';
 
 const NOW = 1_800_000_000_000;
@@ -24,8 +24,8 @@ function term(over: Partial<MachineTerminal> = {}): MachineTerminal {
   return { id: 'aaa', title: 'Task A', cwd: '/x', createdAt: NOW - 60_000, activityAt: NOW - 1000, agentState: 'idle', ...over };
 }
 
-function kvRow(over: Partial<TerminalSession> = {}): TerminalSession {
-  return { id: 'kv1', machineId: 'legacy-m', machineName: 'old-box', title: 'Legacy', createdAt: NOW - 90_000, updatedAt: NOW - 90_000, ...over };
+function createdRow(over: Partial<TerminalSession> = {}): TerminalSession {
+  return { id: 'new1', machineId: 'push-m', machineName: 'new-box', title: 'new-box', createdAt: NOW - 1000, updatedAt: NOW - 1000, ...over };
 }
 
 describe('trustedWebTerminals', () => {
@@ -75,23 +75,19 @@ describe('trustedWebTerminals', () => {
   });
 });
 
-describe('partitionMachinesForSync', () => {
-  const pushCapable = { id: 'new-m', active: true, daemonState: { startedAt: NOW - 10, webTerminals: { updatedAt: NOW, terminals: [] } } };
-  const oldOnline = { id: 'old-m', active: true, daemonState: { startedAt: NOW - 10 } };
-  const oldOffline = { id: 'off-m', active: false, daemonState: { startedAt: NOW - 10 } };
-  const offlinePushed = { id: 'offp-m', active: false, daemonState: { startedAt: NOW - 100, webTerminals: { updatedAt: NOW - 50, terminals: [term()] } } };
+describe('pushedMachineSnapshots', () => {
+  const pushCapable = { id: 'new-m', daemonState: { startedAt: NOW - 10, webTerminals: { updatedAt: NOW, terminals: [] } } };
+  const oldDaemon = { id: 'old-m', daemonState: { startedAt: NOW - 10 } };
+  const offlinePushed = { id: 'offp-m', daemonState: { startedAt: NOW - 100, webTerminals: { updatedAt: NOW - 50, terminals: [term()] } } };
 
-  it('pushed machines are never polled; online legacy machines are; offline legacy machines are neither', () => {
-    const { pushed, pollIds } = partitionMachinesForSync([pushCapable, oldOnline, oldOffline, offlinePushed]);
+  it('collects every trusted snapshot; machines without one (old daemons) contribute nothing', () => {
+    const pushed = pushedMachineSnapshots([pushCapable, oldDaemon, offlinePushed]);
     expect(pushed.map((p) => p.id).sort()).toEqual(['new-m', 'offp-m']);
-    expect(pollIds).toEqual(['old-m']);
   });
 
-  it('a downgraded daemon (stale snapshot) falls back to the poll lane', () => {
-    const downgraded = { id: 'down-m', active: true, daemonState: { startedAt: NOW, webTerminals: { updatedAt: NOW - 50, terminals: [] } } };
-    const { pushed, pollIds } = partitionMachinesForSync([downgraded]);
-    expect(pushed).toEqual([]);
-    expect(pollIds).toEqual(['down-m']);
+  it('a downgraded daemon (stale snapshot) is dropped, not rendered stale', () => {
+    const downgraded = { id: 'down-m', daemonState: { startedAt: NOW, webTerminals: { updatedAt: NOW - 50, terminals: [] } } };
+    expect(pushedMachineSnapshots([downgraded])).toEqual([]);
   });
 });
 
@@ -100,10 +96,9 @@ describe('composeTerminalList', () => {
     'push-m': { machineName: 'new-box', terminals: [term({ id: 'aaa' }), term({ id: 'bbb', title: '', createdAt: NOW - 30_000 })] },
   };
 
-  it('renders pushed rows (newest first) with legacy rows for other machines after them', () => {
-    const kv = [kvRow()];
-    const rows = composeTerminalList(kv, pushes, EMPTY_OVERLAY, NOW);
-    expect(rows.map((r) => r.id)).toEqual(['bbb', 'aaa', 'kv1']);
+  it('renders pushed rows newest first, with title fallback and manual semantics', () => {
+    const rows = composeTerminalList(pushes, EMPTY_OVERLAY, NOW);
+    expect(rows.map((r) => r.id)).toEqual(['bbb', 'aaa']);
     const bbb = rows[0];
     expect(bbb.machineId).toBe('push-m');
     expect(bbb.machineName).toBe('new-box');
@@ -114,59 +109,47 @@ describe('composeTerminalList', () => {
     expect(aaa.manual).toBe(true);
   });
 
-  it('drops KV records that belong to a pushed machine (old-web leftovers must not duplicate)', () => {
-    const kv = [kvRow({ id: 'aaa', machineId: 'push-m' }), kvRow()];
-    const rows = composeTerminalList(kv, pushes, EMPTY_OVERLAY, NOW);
-    expect(rows.filter((r) => r.id === 'aaa')).toHaveLength(1);
-    expect(rows.map((r) => r.id)).toContain('kv1');
-  });
-
-  it('keeps legacy tombstones in the list untouched (consumers hide them via activeTerminals)', () => {
-    const kv = [kvRow({ deletedAt: NOW - 1000 })];
-    const rows = composeTerminalList(kv, pushes, EMPTY_OVERLAY, NOW);
-    expect(rows.find((r) => r.id === 'kv1')?.deletedAt).toBe(NOW - 1000);
-  });
-
   it('applies an unexpired rename overlay and marks the row manual', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { title: 'My Name', at: NOW - 1000 } } };
-    const rows = composeTerminalList([], pushes, overlay, NOW);
+    const rows = composeTerminalList(pushes, overlay, NOW);
     expect(rows.find((r) => r.id === 'aaa')!.title).toBe('My Name');
     expect(rows.find((r) => r.id === 'aaa')!.manual).toBe(true);
   });
 
   it('an expired rename overlay stops overriding (honest revert)', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { title: 'My Name', at: NOW - RENAME_OVERLAY_TTL_MS - 1 } } };
-    const rows = composeTerminalList([], pushes, overlay, NOW);
+    const rows = composeTerminalList(pushes, overlay, NOW);
     expect(rows.find((r) => r.id === 'aaa')!.title).toBe('Task A');
   });
 
   it('hides a removed terminal until the TTL, then honestly shows it again', () => {
     const hidden: PushOverlay = { ...EMPTY_OVERLAY, removed: { aaa: NOW - 1000 } };
-    expect(composeTerminalList([], pushes, hidden, NOW).map((r) => r.id)).toEqual(['bbb']);
+    expect(composeTerminalList(pushes, hidden, NOW).map((r) => r.id)).toEqual(['bbb']);
     const expired: PushOverlay = { ...EMPTY_OVERLAY, removed: { aaa: NOW - REMOVE_OVERLAY_TTL_MS - 1 } };
-    expect(composeTerminalList([], pushes, expired, NOW).map((r) => r.id)).toEqual(['bbb', 'aaa']);
+    expect(composeTerminalList(pushes, expired, NOW).map((r) => r.id)).toEqual(['bbb', 'aaa']);
   });
 
   it('shows optimistic creations first, but not once the push carries the id (no duplicates)', () => {
-    const created = kvRow({ id: 'new1', machineId: 'push-m', machineName: 'new-box', createdAt: NOW - 1000 });
-    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [created] };
-    expect(composeTerminalList([], pushes, overlay, NOW).map((r) => r.id)).toEqual(['new1', 'bbb', 'aaa']);
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [createdRow()] };
+    expect(composeTerminalList(pushes, overlay, NOW).map((r) => r.id)).toEqual(['new1', 'bbb', 'aaa']);
     const confirmed = {
       'push-m': { machineName: 'new-box', terminals: [...pushes['push-m'].terminals, term({ id: 'new1', createdAt: NOW - 1000 })] },
     };
-    expect(composeTerminalList([], confirmed, overlay, NOW).filter((r) => r.id === 'new1')).toHaveLength(1);
+    expect(composeTerminalList(confirmed, overlay, NOW).filter((r) => r.id === 'new1')).toHaveLength(1);
+  });
+
+  it('shows an optimistic creation even before its machine\'s first push arrives', () => {
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [createdRow({ machineId: 'unseen-m' })] };
+    expect(composeTerminalList({}, overlay, NOW).map((r) => r.id)).toEqual(['new1']);
   });
 
   it('expires optimistic creations after the TTL (open never happened)', () => {
-    const created = kvRow({ id: 'new1', machineId: 'push-m', createdAt: NOW - CREATE_OVERLAY_TTL_MS - 1 });
-    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [created] };
-    expect(composeTerminalList([], pushes, overlay, NOW).map((r) => r.id)).toEqual(['bbb', 'aaa']);
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [createdRow({ createdAt: NOW - CREATE_OVERLAY_TTL_MS - 1 })] };
+    expect(composeTerminalList(pushes, overlay, NOW).map((r) => r.id)).toEqual(['bbb', 'aaa']);
   });
 
-  it('an empty pushed list still suppresses the machine\'s KV records (push says: no terminals)', () => {
-    const kv = [kvRow({ id: 'stale', machineId: 'push-m' })];
-    const rows = composeTerminalList(kv, { 'push-m': { machineName: 'new-box', terminals: [] } }, EMPTY_OVERLAY, NOW);
-    expect(rows).toEqual([]);
+  it('an empty pushed list renders no rows for that machine', () => {
+    expect(composeTerminalList({ 'push-m': { machineName: 'new-box', terminals: [] } }, EMPTY_OVERLAY, NOW)).toEqual([]);
   });
 });
 
@@ -206,15 +189,15 @@ describe('pruneOverlay', () => {
   });
 
   it('clears a creation once the push carries the id, keeps it while pending', () => {
-    const pending = kvRow({ id: 'new1', machineId: 'push-m', createdAt: NOW - 1000 });
-    const confirmed = kvRow({ id: 'aaa', machineId: 'push-m', createdAt: NOW - 1000 });
+    const pending = createdRow();
+    const confirmed = createdRow({ id: 'aaa' });
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [pending, confirmed] };
     expect(pruneOverlay(overlay, pushes, NOW).created).toEqual([pending]);
   });
 
-  it('clears a creation whose machine fell back to the legacy path', () => {
-    const pending = kvRow({ id: 'new1', machineId: 'other-m', createdAt: NOW - 1000 });
+  it('keeps a creation whose machine has not pushed yet (brand-new machine)', () => {
+    const pending = createdRow({ machineId: 'unseen-m' });
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, created: [pending] };
-    expect(pruneOverlay(overlay, pushes, NOW).created).toEqual([]);
+    expect(pruneOverlay(overlay, pushes, NOW).created).toEqual([pending]);
   });
 });

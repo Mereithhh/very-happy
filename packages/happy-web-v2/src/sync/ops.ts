@@ -309,10 +309,17 @@ export async function machineOpenTerminal(
         startupCommand?: string;
         /** This open is a catch-up from a viewer that already subscribed —
          *  the daemon must not count it as a new subscriber (old daemons
-         *  ignore it = legacy conservative counting). */
+         *  ignore it = legacy conservative counting). Also implies
+         *  `attachOnly` on daemons that understand it. */
         resub?: boolean;
+        /** Attach to an EXISTING terminal only — never create the tmux
+         *  session. Sent by every open except the one that intentionally
+         *  creates the terminal (the fresh-create navigation), so a deleted
+         *  terminal can't be resurrected by a lingering screen or a stale
+         *  URL. Old daemons (< 0.2.29) ignore it = legacy create-or-attach. */
+        attachOnly?: boolean;
     },
-): Promise<OpenTerminalOk | { success: false; error: string }> {
+): Promise<OpenTerminalOk | { success: false; error: string; gone?: boolean }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's
         // encryption key has synced, or it fails with "Machine encryption not found".
@@ -324,8 +331,18 @@ export async function machineOpenTerminal(
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean }
         >(machineId, 'open-terminal', options);
+        // A daemon-side handler error comes back as `{ error }` WITH a
+        // relay-level ok (RpcHandlerManager encrypts the error object as a
+        // normal response), so machineRPC doesn't throw — detect it here.
+        // 'terminal-gone' is the attach-only daemon's (>= 0.2.29) explicit
+        // "this terminal no longer exists" — callers stop retrying and drop
+        // the row instead of rendering a broken screen.
+        const failed = result as unknown as { error?: string };
+        if (typeof failed?.error === 'string') {
+            return { success: false, error: failed.error, gone: failed.error === 'terminal-gone' };
+        }
         // encStream is echoed back only by daemons that support stream encryption
         // (old daemons ignore the flag → falsy → we fall back to plaintext).
         const base = {
@@ -390,14 +407,18 @@ export async function machineScrollTerminal(
     }
 }
 
-/** Permanently destroy a terminal's tmux session on the machine. */
-export async function machineKillTerminal(machineId: string, terminalId: string): Promise<void> {
+/** Permanently destroy a terminal's tmux session on the machine. Returns
+ *  whether the machine acked (false = offline/timeout/error; never throws) —
+ *  a failed kill must surface to the user instead of pretending the terminal
+ *  is gone (the machine would push it right back). */
+export async function machineKillTerminal(machineId: string, terminalId: string): Promise<boolean> {
     try {
-        await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string }>(
+        const r = await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string }>(
             machineId, 'kill-terminal', { terminalId },
         );
+        return (r as unknown as { type?: string })?.type === 'success';
     } catch {
-        // best-effort — the record is removed locally regardless
+        return false;
     }
 }
 
@@ -416,25 +437,10 @@ export interface MachineTerminal {
     agentState?: TerminalAgentState;
 }
 
-/** Ask a machine for its live tmux terminals (cross-device source of truth).
- *  Returns null on RPC failure (offline/timeout) so callers can distinguish
- *  "the machine has no terminals" ([]) from "we couldn't reach it" (null) — the
- *  reconcile pass must NOT reap local records on a failed query. */
-export async function machineListTerminals(machineId: string): Promise<MachineTerminal[] | null> {
-    try {
-        const result = await apiSocket.machineRPC<{ type: 'success'; terminals: MachineTerminal[] }, {}>(
-            machineId, 'list-terminals', {},
-        );
-        return result.terminals ?? [];
-    } catch {
-        return null;
-    }
-}
-
 /** Persist a terminal's title on the machine so every device sees it.
  *  `ifAbsent` (auto-title from first command) won't overwrite a manual rename.
- *  Returns whether the machine acked (false = offline/timeout; never throws) —
- *  callers use it to keep/clear the record's `pendingTitle` flag. */
+ *  The confirming daemon push carries the title back to every device.
+ *  Returns whether the RPC went through (false = offline/timeout; never throws). */
 export async function machineSetTerminalTitle(machineId: string, terminalId: string, title: string, ifAbsent = false): Promise<boolean> {
     try {
         await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string; title: string; ifAbsent: boolean }>(

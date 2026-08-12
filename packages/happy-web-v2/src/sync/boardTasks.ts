@@ -10,9 +10,10 @@
  * lists are merged per-task by `updatedAt` — see boardTaskOps.ts for the
  * full truth model (tombstoned deletes, unioned sessionIds).
  *
- * This module deliberately mirrors terminalSessions.ts (cache fingerprint,
- * debounced push, merge-on-409) so there is exactly one KV-list pattern in
- * the codebase to understand.
+ * This is the codebase's one KV-list pattern (cache fingerprint, debounced
+ * push, merge-on-409) — inherited from the retired KV terminal registry.
+ * Unlike terminals (machine-owned, daemon-pushed), tasks have no machine to
+ * own them, so the client-owned KV model is the right one here.
  */
 import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';

@@ -1,10 +1,10 @@
 /**
  * boardItems — pure derivation of the global Task Board from state the app
- * already holds: chat sessions (socket-pushed), the terminal registry
- * (KV-backed) and per-terminal agent states (fed by the singleton reconcile
- * loop). NO new data source, NO polling, NO store imports — everything comes
- * in as arguments so the mapping stays unit-testable (see boardItems.test.ts,
- * same pattern as terminalListOps.ts).
+ * already holds: chat sessions (socket-pushed), the terminal registry and
+ * per-terminal agent states (both fed by the singleton terminal sync's
+ * daemon pushes). NO new data source, NO polling, NO store imports —
+ * everything comes in as arguments so the mapping stays unit-testable
+ * (see boardItems.test.ts).
  *
  * Status mapping (V1, per the task-board plan):
  *
@@ -25,7 +25,7 @@
  * history view, not the board).
  */
 import type { Session, Machine } from '@/sync/storageTypes';
-import type { TerminalSession } from '@/sync/terminalListOps';
+import type { TerminalSession } from '@/sync/terminalPushOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 
@@ -182,7 +182,6 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   }
 
   for (const tm of terminals) {
-    if (tm.deletedAt) continue; // deletion tombstone — sync bookkeeping, not a board row
     const entry = agentStates[tm.id];
     const online = machineOnline(machines, tm.machineId);
     const lastActivityAt = entry?.activityAt ?? tm.updatedAt ?? tm.createdAt;

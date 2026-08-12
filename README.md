@@ -85,6 +85,8 @@ For anything beyond a quick try, run your own relay so your sessions never leave
    HAPPY_SERVER_URL=https://your-relay.example.com very-happy
    ```
 
+   **Minimum daemon version for web terminals: `very-happy` ≥ 0.2.27.** The web's terminal list is fed entirely by daemon pushes (`daemonState.webTerminals`); the old polling fallback has been removed. An older daemon still runs chat sessions fine, but its web terminal list simply won't appear/update — upgrade the CLI on that machine. Terminal deletion is fully race-free with ≥ 0.2.29 (attach-only opens).
+
 See [`RELEASING.md`](RELEASING.md) for the exact npm + CI release/deploy runbook (tag-driven publish, manual server/web deploy over SSH).
 
 ## How it works
@@ -149,6 +151,8 @@ Very Happy is a fork of [**slopus/happy**](https://github.com/slopus/happy) — 
 1. **服务端** —— `packages/happy-server` 是一个 Node + Postgres 中继，同时托管 Web 应用。配置好环境（数据库、签名密钥、可选邀请码）并部署在 TLS 后。
 2. **Web** —— 构建 `packages/happy-app` 的 Expo Web 应用，从中继（或任意静态托管）提供。
 3. **CLI / daemon** —— 把 CLI 指向你的中继，在每台要控制的机器上运行：`HAPPY_SERVER_URL=https://your-relay.example.com very-happy`
+
+   **Web 终端列表要求 daemon（`very-happy`）≥ 0.2.27**：列表完全由 daemon 推送（`daemonState.webTerminals`）驱动，旧的轮询回退已移除。更老的 daemon 跑聊天会话不受影响，但该机器的 Web 终端列表不会显示/更新——升级那台机器的 CLI 即可。终端删除的完整防复活语义需要 ≥ 0.2.29（attach-only open）。
 
 发布/部署流程见 [`RELEASING.md`](RELEASING.md)。
 

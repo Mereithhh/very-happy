@@ -14,7 +14,6 @@ import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isImeGuardedEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { activeTerminals } from '@/sync/terminalListOps';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
@@ -54,9 +53,9 @@ export function Sidebar() {
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
   // Terminal list/agent-state ingestion lives in the AppLayout-level singleton
-  // (sync/terminalSync.ts: daemon pushes + legacy-poll fallback) so it also
-  // runs with the sidebar collapsed or on mobile detail screens. This
-  // component is a pure consumer of its stores.
+  // (sync/terminalSync.ts: daemon pushes) so it also runs with the sidebar
+  // collapsed or on mobile detail screens. This component is a pure consumer
+  // of its stores.
 
   const attentionCount = useBoardAttentionCount();
 
@@ -75,11 +74,10 @@ export function Sidebar() {
         tags: s.metadata?.tags,
       }));
     // terminals are always "live"; hidden only by the archived-only filter
-    // (activeTerminals: deletion tombstones are sync bookkeeping, not rows)
     const termRows: Row[] =
       filter === 'archived'
         ? []
-        : activeTerminals(terminals).map((tm) => ({
+        : terminals.map((tm) => ({
             key: `t:${tm.id}`,
             kind: 'terminal',
             ts: tm.createdAt,
@@ -199,8 +197,9 @@ export function Sidebar() {
   // periodic write-back so the synced list doesn't accumulate ghosts. A key
   // is only pruned after being missing in TWO consecutive sweeps — guards
   // against transient emptiness while machine/terminal state is still
-  // loading (a too-eager prune would sync the loss to every device).
-  const terminalsInitialized = useTerminalSessions((s) => s.initialized);
+  // loading (a too-eager prune would sync the loss to every device). The
+  // terminal list derives from the machines slice (daemon pushes), so
+  // isDataReady is the same load gate for both key kinds.
   const missingPinsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const sweep = () => {
@@ -212,14 +211,10 @@ export function Sidebar() {
       for (const s of Object.values(st.sessions)) {
         if (s.active) valid.add(s.id);
       }
-      const termState = useTerminalSessions.getState();
-      for (const tm of activeTerminals(termState.terminals)) valid.add(`t:${tm.id}`);
+      for (const tm of useTerminalSessions.getState().terminals) valid.add(`t:${tm.id}`);
       const missingNow = new Set<string>();
       for (const p of pinned) {
-        if (valid.has(p.key)) continue;
-        // terminal keys are only judged once the terminal store has loaded
-        if (p.key.startsWith('t:') && !termState.initialized) continue;
-        missingNow.add(p.key);
+        if (!valid.has(p.key)) missingNow.add(p.key);
       }
       const confirmed = new Set([...missingNow].filter((k) => missingPinsRef.current.has(k)));
       missingPinsRef.current = missingNow;
@@ -229,7 +224,7 @@ export function Sidebar() {
     };
     const iv = setInterval(sweep, 60_000);
     return () => clearInterval(iv);
-  }, [terminalsInitialized]);
+  }, []);
 
   // ----- rename modal (title + tags) -----
   const [renameTarget, setRenameTarget] = useState<Row | null>(null);
@@ -618,7 +613,12 @@ function SidebarRow({
   // confirms included, live in rowActions.ts and are shared with the board.
   const onArchiveOrDelete = () =>
     isTerminal
-      ? confirmDeleteTerminal(row.machineId!, row.terminalId!)
+      ? confirmDeleteTerminal(row.machineId!, row.terminalId!, () => {
+          // Leaving the screen BEFORE the kill: a mounted terminal screen (or
+          // a refresh on its URL) would otherwise re-open the id and recreate
+          // the killed tmux session (see rowActions.confirmDeleteTerminal).
+          if (selected) navigate('/');
+        })
       : confirmArchiveSession(row.session!);
   const onDeleteSession = () =>
     confirmDeleteSession(row.session!, () => {
