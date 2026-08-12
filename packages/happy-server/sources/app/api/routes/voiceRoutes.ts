@@ -1,8 +1,18 @@
 import { z } from "zod";
 import * as crypto from "crypto";
+import { Readable } from "node:stream";
 import { VoiceConversationResponseSchema, VoiceUsageResponseSchema } from "@slopus/happy-wire";
 import { type Fastify } from "../types";
 import { log } from "@/utils/log";
+import { createAccountRateLimiter } from "@/app/push/webhookNotify";
+import {
+    createTimedCache,
+    fetchSlimVoices,
+    proxyTts,
+    validateTtsText,
+    type FetchLike,
+    type SlimVoice,
+} from "@/app/voice/ttsProxy";
 
 const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
@@ -283,7 +293,9 @@ export function voiceRoutes(app: Fastify) {
             const type = mimeType || 'audio/webm';
             const ext = type.includes('mp4') || type.includes('mpeg') ? 'mp4' : type.includes('wav') ? 'wav' : 'webm';
             const form = new FormData();
-            form.append('model_id', 'scribe_v1');
+            // scribe_v1 is deprecated upstream; v2 keeps the same interface
+            // (batch STT, eats webm/opus directly).
+            form.append('model_id', 'scribe_v2');
             form.append('file', new Blob([buffer], { type }), `audio.${ext}`);
             if (languageCode) form.append('language_code', languageCode);
 
@@ -305,6 +317,122 @@ export function voiceRoutes(app: Fastify) {
         } catch (error) {
             log({ module: 'voice' }, `STT error for user ${userId}: ${error}`);
             return reply.code(500).send({ error: 'Transcription failed' });
+        }
+    });
+
+    // Per-account TTS rate limit — same in-memory limiter school as
+    // POST /v1/webhook/notify (see webhookNotify.ts).
+    const allowTts = createAccountRateLimiter({ max: 60, windowMs: 60_000 });
+    // Voices list barely changes; 60s module-level cache is plenty for a
+    // single-instance deployment.
+    const voicesCache = createTimedCache<SlimVoice[]>(60_000);
+
+    /**
+     * Text-to-speech streaming proxy. The client posts short text; we forward
+     * to ElevenLabs' streaming TTS endpoint with the server's API key and pipe
+     * the audio/mpeg bytes straight through. If the client disconnects
+     * mid-stream we abort the upstream fetch so we stop paying for audio
+     * nobody is listening to.
+     */
+    app.post('/v1/voice/tts', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                text: z.string(),
+                voiceId: z.string().optional(),
+                modelId: z.string().optional(),
+            }),
+            // No response schema: 200 is a raw audio/mpeg stream and error
+            // statuses pass the upstream code through, neither of which fits
+            // the zod type provider's fixed status-code union.
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { text, voiceId, modelId } = request.body;
+
+        const validation = validateTtsText(text);
+        if (!validation.ok) {
+            return reply.code(400).send({ error: validation.error });
+        }
+
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(501).send({ error: 'voice not configured' });
+        }
+
+        if (!allowTts.allow(userId)) {
+            return reply.code(429).send({ error: 'Too many TTS requests, slow down' });
+        }
+
+        // Client gone → abort the upstream fetch. 'close' also fires after a
+        // normal completion, where the extra abort is a harmless no-op.
+        const abort = new AbortController();
+        request.raw.on('close', () => abort.abort());
+
+        try {
+            const result = await proxyTts({
+                apiKey: elevenLabsApiKey,
+                text,
+                voiceId,
+                modelId,
+                signal: abort.signal,
+                fetchImpl: fetch as unknown as FetchLike,
+            });
+            if (result.kind === 'upstream_error') {
+                log({ module: 'voice' }, `TTS upstream failed for user ${userId}: ${result.status} ${result.detail.slice(0, 200)}`);
+                return reply.code(result.status).send({ error: 'TTS failed' });
+            }
+            if (!result.body) {
+                log({ module: 'voice' }, `TTS upstream returned no body for user ${userId}`);
+                return reply.code(502).send({ error: 'TTS failed' });
+            }
+            reply.header('Content-Type', 'audio/mpeg');
+            return reply.send(Readable.fromWeb(result.body as any));
+        } catch (error) {
+            if (abort.signal.aborted) {
+                // Client disconnected; nothing left to answer.
+                return;
+            }
+            log({ module: 'voice' }, `TTS error for user ${userId}: ${error}`);
+            return reply.code(502).send({ error: 'TTS failed' });
+        }
+    });
+
+    /**
+     * Slim voices list for the TTS voice picker. Proxies ElevenLabs
+     * GET /v1/voices, strips it down to what the client needs, and caches the
+     * result for 60s.
+     */
+    app.get('/v1/voice/tts/voices', {
+        preHandler: app.authenticate,
+        // No response schema: error statuses pass the upstream code through,
+        // which doesn't fit the zod type provider's fixed status-code union.
+        // The 200 shape is {voices: SlimVoice[]} (see slimVoices()).
+    }, async (request, reply) => {
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(501).send({ error: 'voice not configured' });
+        }
+
+        const cached = voicesCache.get();
+        if (cached) {
+            return reply.send({ voices: cached });
+        }
+
+        try {
+            const result = await fetchSlimVoices({
+                apiKey: elevenLabsApiKey,
+                fetchImpl: fetch as unknown as FetchLike,
+            });
+            if (!result.ok) {
+                log({ module: 'voice' }, `Voices list failed: ${result.status}`);
+                return reply.code(result.status).send({ error: 'Failed to list voices' });
+            }
+            voicesCache.set(result.voices);
+            return reply.send({ voices: result.voices });
+        } catch (error) {
+            log({ module: 'voice' }, `Voices list error: ${error}`);
+            return reply.code(502).send({ error: 'Failed to list voices' });
         }
     });
 }
