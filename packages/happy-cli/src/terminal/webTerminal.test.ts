@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -372,6 +372,48 @@ describe('deriveAutoTitle', () => {
 
     it('keeps meaningful shell-set titles (e.g. "dir: cmd" style)', () => {
         expect(deriveAutoTitle('~/code: vim foo.ts', HOST)).toBe('code: vim foo.ts');
+    });
+});
+
+describe('terminalListSignature', () => {
+    const item = (over: Partial<TerminalListItem> = {}): TerminalListItem => ({
+        id: 'a', title: 'T', cwd: '/x', createdAt: 1000, activityAt: 5000, agentState: 'idle', ...over,
+    });
+
+    it('is stable for identical lists and insensitive to order', () => {
+        const a = [item({ id: 'a' }), item({ id: 'b' })];
+        const b = [item({ id: 'b' }), item({ id: 'a' })];
+        expect(terminalListSignature(a)).toBe(terminalListSignature(b));
+    });
+
+    it('changes on membership, title, cwd and agentState changes', () => {
+        const base = terminalListSignature([item()]);
+        expect(terminalListSignature([])).not.toBe(base);
+        expect(terminalListSignature([item(), item({ id: 'b' })])).not.toBe(base);
+        expect(terminalListSignature([item({ title: 'other' })])).not.toBe(base);
+        expect(terminalListSignature([item({ cwd: '/y' })])).not.toBe(base);
+        expect(terminalListSignature([item({ agentState: 'working' })])).not.toBe(base);
+        expect(terminalListSignature([item({ agentState: undefined })])).not.toBe(base);
+    });
+
+    it('quantizes activityAt: within one bucket no change, across buckets change', () => {
+        const t0 = 10 * ACTIVITY_SIGNATURE_BUCKET_MS;
+        const base = terminalListSignature([item({ activityAt: t0 })]);
+        // Continuous output inside the same minute must NOT re-push.
+        expect(terminalListSignature([item({ activityAt: t0 + ACTIVITY_SIGNATURE_BUCKET_MS - 1 })])).toBe(base);
+        // Crossing the bucket boundary is a change (at most one push a minute).
+        expect(terminalListSignature([item({ activityAt: t0 + ACTIVITY_SIGNATURE_BUCKET_MS })])).not.toBe(base);
+    });
+
+    it('treats absent optional fields consistently (undefined == missing)', () => {
+        const explicit: TerminalListItem = { id: 'a', title: undefined, cwd: undefined, createdAt: undefined, activityAt: undefined, agentState: undefined };
+        const bare: TerminalListItem = { id: 'a' };
+        expect(terminalListSignature([explicit])).toBe(terminalListSignature([bare]));
+    });
+
+    it('does not confuse field boundaries (title vs cwd)', () => {
+        expect(terminalListSignature([item({ title: 'ab', cwd: 'c' })]))
+            .not.toBe(terminalListSignature([item({ title: 'a', cwd: 'bc' })]));
     });
 });
 

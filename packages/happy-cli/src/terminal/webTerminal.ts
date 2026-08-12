@@ -32,6 +32,18 @@
  * driven from apiMachine; live output is pushed via the injected emit callback.
  * If tmux isn't installed we fall back to the login shell directly (no local
  * attach / no background survival, but the terminal still works).
+ *
+ * ── List push (Stage 2: daemon-driven terminal list) ─────────────────────────
+ * The manager also runs ONE internal list-tracking loop (startListTracking):
+ * every tick it rebuilds the cross-device list (tmux membership + @vh_title
+ * follow + agent classification + activity) and fires the callback only when
+ * the list SIGNATURE changed (terminalListSignature — activityAt quantized so
+ * raw output alone can't turn it into a metronome). Event kicks (open / kill /
+ * exit / rename / live OSC title via headless onTitleChange) refresh within
+ * LIST_KICK_DEBOUNCE_MS instead of waiting for the tick. apiMachine writes each
+ * changed list into daemonState.webTerminals, which the server persists and
+ * broadcasts — clients consume the push instead of polling `list-terminals`
+ * (the RPC remains for old clients; both return the same item shape).
  */
 import * as pty from 'node-pty';
 import { randomBytes } from 'node:crypto';
@@ -115,6 +127,31 @@ const HEADLESS_SCROLLBACK = 5000;
  *  sidebar's periodic `list-terminals` poll. */
 const TMUX_PROBE_TIMEOUT_MS = 1500;
 
+/**
+ * ── List tracking (daemon-side push) ─────────────────────────────────────────
+ * Cadence of the ONE internal list refresh: tmux membership + titles + agent
+ * classification, computed once per tick regardless of how many clients are
+ * connected (the old model re-probed per client per 10s poll). 10s keeps the
+ * needs_input notification latency of the old poll while making the cost
+ * client-count-independent; event kicks (title change, open/kill/exit,
+ * rename) refresh sooner.
+ */
+const LIST_TRACK_INTERVAL_MS = 10_000;
+
+/** Debounce for event kicks so a burst (e.g. several OSC title updates in one
+ *  claude turn) coalesces into one refresh+push. */
+const LIST_KICK_DEBOUNCE_MS = 250;
+
+/**
+ * activityAt granularity inside the list SIGNATURE. Continuous pty output
+ * would otherwise change the snapshot every tick and turn the "push only on
+ * change" contract into a 10s metronome of daemonState writes. Quantized to
+ * 60s buckets: a busy terminal pushes at most once a minute for activity
+ * alone; any real change (title/agent/membership) still pushes immediately —
+ * and carries the EXACT activityAt (only the signature is quantized).
+ */
+export const ACTIVITY_SIGNATURE_BUCKET_MS = 60_000;
+
 /** Timeout for the synchronous `tmux new-session -d` in open(). More generous
  *  than the probe timeout: the very first session may also have to boot the
  *  tmux server. On timeout we just fall back to the pty script's `-A` create
@@ -173,6 +210,38 @@ export function startupInjectionArgs(tmuxSession: string, command: string): stri
  *  - shell:       plain shell, no agent TUI detected.
  */
 export type AgentState = 'working' | 'needs_input' | 'idle' | 'shell';
+
+/** One terminal in the cross-device list — the shape `list-terminals` returns
+ *  AND the shape pushed through daemonState.webTerminals (identical on
+ *  purpose: poll and push describe the same thing). */
+export interface TerminalListItem {
+    id: string;
+    title?: string;
+    cwd?: string;
+    createdAt?: number;
+    activityAt?: number;
+    agentState?: AgentState;
+}
+
+/**
+ * Canonical change signature of a terminal list. Two lists with the same
+ * signature must not trigger a push. Order-insensitive (sorted by id);
+ * `activityAt` participates only at ACTIVITY_SIGNATURE_BUCKET_MS granularity
+ * (see that constant). Pure; unit-tested.
+ */
+export function terminalListSignature(items: TerminalListItem[]): string {
+    const canon = [...items]
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .map((t) => [
+            t.id,
+            t.title ?? '',
+            t.cwd ?? '',
+            t.createdAt ?? 0,
+            Math.floor((t.activityAt ?? 0) / ACTIVITY_SIGNATURE_BUCKET_MS),
+            t.agentState ?? '',
+        ]);
+    return JSON.stringify(canon);
+}
 
 const SHELL_COMMANDS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
 
@@ -510,6 +579,10 @@ class TerminalSession {
      *  (eligible for pty reap once idle), but the tmux session still survives. */
     subscribers = 0;
     lastTouch = Date.now();
+    /** Last pty OUTPUT timestamp — the daemon-side activity truth for a live
+     *  session (the pty stream passes through us anyway). tmux
+     *  `#{session_activity}` remains the fallback for cold sessions. */
+    lastOutputAt?: number;
     cols: number;
     rows: number;
 
@@ -529,9 +602,18 @@ class TerminalSession {
         this.headless.loadAddon(this.serializer);
     }
 
+    /** Fires when the inner app's OSC title reaches the authoritative screen
+     *  (requires tmux `set-titles on` for the session — see the open() options
+     *  — so tmux re-emits the pane title to its attach client). Zero-cost
+     *  event: no subprocess, the bytes were flowing through us anyway. */
+    onTitleChange(cb: (title: string) => void): void {
+        this.headless.onTitleChange(cb);
+    }
+
     /** Record one pty output chunk: bump seq, feed the authoritative screen,
      *  push to the ring. Returns the assigned seq so the caller can emit it. */
     ingest(dataUtf8: string, dataBase64: string): number {
+        this.lastOutputAt = Date.now();
         this.headless.write(dataUtf8);
         this.seq += 1;
         const chunk: OutputChunk = { seq: this.seq, data: dataBase64 };
@@ -615,11 +697,93 @@ export class WebTerminalManager {
     private emit: EmitFn;
     private reaper: ReturnType<typeof setInterval>;
 
+    // ── List tracking (daemon-side push) ────────────────────────────────────
+    // ONE internal refresh loop owns the cross-device terminal list: tmux
+    // membership + title follow + agent classification, computed once per
+    // LIST_TRACK_INTERVAL_MS tick — never multiplied by client count. Event
+    // kicks (open/kill/exit/rename/OSC title) refresh sooner via a short
+    // debounce. The callback fires ONLY when the list signature changes.
+    private listChangedCb: ((terminals: TerminalListItem[]) => void) | null = null;
+    private listTrackTimer: ReturnType<typeof setInterval> | null = null;
+    private listKickTimer: ReturnType<typeof setTimeout> | null = null;
+    private lastListSignature: string | null = null;
+
     constructor(emit: EmitFn) {
         this.emit = emit;
         // Periodically detach orphaned+idle ptys (detach only — tmux session lives).
         this.reaper = setInterval(() => this.reapIdle(), REAP_INTERVAL_MS);
         this.reaper.unref?.();
+    }
+
+    /**
+     * Start (or re-target) list tracking. `cb` receives the full list whenever
+     * the tracked signature changes. Idempotent: calling again just swaps the
+     * callback (used on socket reconnect). The caller typically pairs this
+     * with primeListSignature() after shipping an initial snapshot itself.
+     */
+    startListTracking(cb: (terminals: TerminalListItem[]) => void, intervalMs = LIST_TRACK_INTERVAL_MS): void {
+        this.listChangedCb = cb;
+        if (!this.listTrackTimer) {
+            this.listTrackTimer = setInterval(() => this.listTrackTick(), intervalMs);
+            this.listTrackTimer.unref?.();
+        }
+    }
+
+    /** Stop tracking (tests / shutdown). */
+    stopListTracking(): void {
+        this.listChangedCb = null;
+        if (this.listTrackTimer) { clearInterval(this.listTrackTimer); this.listTrackTimer = null; }
+        if (this.listKickTimer) { clearTimeout(this.listKickTimer); this.listKickTimer = null; }
+    }
+
+    /** Seed the change signature from a list the caller already delivered by
+     *  other means (the connect-time daemonState write carries the initial
+     *  snapshot), so the first tick doesn't re-push an identical list. */
+    primeListSignature(list: TerminalListItem[]): void {
+        this.lastListSignature = terminalListSignature(list);
+    }
+
+    /**
+     * The current cross-device list: tmux truth (membership, cwd, titles,
+     * cold-session activity, agent states — see listSessions) overlaid with
+     * what only the live pty stream knows (fresher activityAt).
+     */
+    buildTerminalList(): TerminalListItem[] {
+        const list = this.listSessions();
+        for (const item of list) {
+            const live = this.terminals.get(item.id);
+            if (live?.lastOutputAt) {
+                item.activityAt = Math.max(item.activityAt ?? 0, live.lastOutputAt);
+            }
+        }
+        return list;
+    }
+
+    /** Event kick: schedule a near-immediate refresh (debounced so bursts —
+     *  e.g. several OSC title updates in one claude turn — coalesce). No-op
+     *  without a tracking callback. */
+    private kickListRefresh(): void {
+        if (!this.listChangedCb || this.listKickTimer) return;
+        this.listKickTimer = setTimeout(() => {
+            this.listKickTimer = null;
+            this.listTrackTick();
+        }, LIST_KICK_DEBOUNCE_MS);
+        this.listKickTimer.unref?.();
+    }
+
+    /** One tracking tick: rebuild the list, compare signatures, fire on change. */
+    private listTrackTick(): void {
+        const cb = this.listChangedCb;
+        if (!cb) return;
+        try {
+            const list = this.buildTerminalList();
+            const sig = terminalListSignature(list);
+            if (sig === this.lastListSignature) return;
+            this.lastListSignature = sig;
+            cb(list);
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] list track tick failed: ${e}`);
+        }
     }
 
     /** Detach ptys that have NO subscribers and have been idle past the timeout.
@@ -758,6 +922,14 @@ export class WebTerminalManager {
             const optArgs = [
                 ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
                 ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                // Re-emit the pane's title to the attach client (OSC 0), with
+                // the raw pane_title as the string. This is what makes the
+                // headless Terminal's onTitleChange fire for LIVE sessions —
+                // a zero-subprocess title event feeding the list tracker —
+                // instead of waiting for the next tmux poll. Session-scoped;
+                // the web xterm also sees the OSC, which is inert there.
+                ['set-option', '-t', `=${tmuxSession}:`, 'set-titles', 'on'],
+                ['set-option', '-t', `=${tmuxSession}:`, 'set-titles-string', '#{pane_title}'],
                 ['set-option', '-g', 'set-clipboard', 'on'],
                 ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
             ];
@@ -815,6 +987,8 @@ export class WebTerminalManager {
             const setOpts = [
                 `tmux set-option -t ${tmuxSession} mouse off`,
                 `tmux set-option -t ${tmuxSession} history-limit 2000`,
+                `tmux set-option -t ${tmuxSession} set-titles on`,
+                `tmux set-option -t ${tmuxSession} set-titles-string '#{pane_title}'`,
                 `tmux set-option -g set-clipboard on`,
                 `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,
             ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
@@ -858,6 +1032,13 @@ export class WebTerminalManager {
         session.subscribers = 1;
         this.terminals.set(id, session);
 
+        // Live title events: the inner app's OSC title (re-emitted by tmux —
+        // `set-titles` above) reaches the headless screen with zero subprocess
+        // cost. The kick's refresh does the actual pane_title→@vh_title follow
+        // through the ONE existing listSessions path, so there's no second
+        // title-writing code path to keep consistent.
+        session.onTitleChange(() => this.kickListRefresh());
+
         // Every pty chunk: ingest into the authoritative screen + ring (assigning
         // a seq), then relay to subscribers tagged with that seq. The guard
         // ensures a stale pty replaced by a re-attach can't emit for this id.
@@ -872,9 +1053,15 @@ export class WebTerminalManager {
             this.terminals.delete(id);
             session.dispose();
             this.emit('terminal-exit', { terminalId: id, exitCode });
+            // The tmux session usually died with its client (shell exit) —
+            // refresh the tracked list so the terminal vanishes everywhere.
+            this.kickListRefresh();
         });
 
         logger.debug(`[WEB TERMINAL] opened ${id} (${file} ${args.join(' ')}) ${cols}x${rows} cwd=${cwd}`);
+        // Membership may have changed (a genuinely new tmux session) — let the
+        // tracker see it now instead of at the next tick.
+        this.kickListRefresh();
         // A brand-new session has an empty screen — always a (trivial) snapshot.
         const state = session.subscribeState(undefined);
         return { terminalId: id, tmuxSession, ...state };
@@ -945,6 +1132,9 @@ export class WebTerminalManager {
             // tmux gone / session already dead
         }
         logger.debug(`[WEB TERMINAL] killed session vh-${terminalId}`);
+        // Deletion propagates by ABSENCE from the pushed list — refresh now so
+        // every device converges without tombstone bookkeeping.
+        this.kickListRefresh();
     }
 
     /**
@@ -971,7 +1161,7 @@ export class WebTerminalManager {
      * FOLLOWS Claude Code's live task summary at poll cadence. Works for cold
      * sessions too (reaped pty / daemon restart) — it's pure tmux state.
      */
-    listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> {
+    listSessions(): TerminalListItem[] {
         if (!isTmuxAvailable()) return [];
         try {
             const env = ptyEnv();
@@ -980,7 +1170,7 @@ export class WebTerminalManager {
                 { encoding: 'utf8', env });
             if (r.status !== 0 || !r.stdout) return [];
             const hostname = os.hostname();
-            const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> = [];
+            const out: TerminalListItem[] = [];
             for (const line of r.stdout.split('\n')) {
                 const s = parseSessionListLine(line);
                 if (!s || !s.name.startsWith('vh-')) continue;
@@ -1150,6 +1340,8 @@ export class WebTerminalManager {
             if (!ifAbsent) {
                 try { spawnSync('tmux', ['set-option', '-t', name, '@vh_title_manual', '1'], { stdio: 'ignore', env: ptyEnv() }); } catch { /* best-effort */ }
             }
+            // A rename must reach other devices immediately, not at tick cadence.
+            this.kickListRefresh();
             return true;
         } catch {
             return false; // session gone

@@ -12,7 +12,7 @@ import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
-import { WebTerminalManager } from '@/terminal/webTerminal';
+import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
@@ -497,6 +497,41 @@ export class ApiMachineClient {
         }
     }
 
+    // ── Terminal-list push ──────────────────────────────────────────────────
+    // Always holds the freshest list the tracker produced; the chained write
+    // below reads THIS at write time (not a stale closure), so out-of-order
+    // CAS retries can never land an older snapshot over a newer one.
+    private latestTerminalList: TerminalListItem[] | null = null;
+    // Serializes terminal-list daemonState writes: two overlapping
+    // updateDaemonState calls would CAS-race and the retry of the FIRST could
+    // rewrite an older webTerminals value after the second already landed.
+    private terminalPushChain: Promise<void> = Promise.resolve();
+
+    /** Push the tracked terminal list into daemonState.webTerminals (server
+     *  persists + broadcasts `update-machine`). Skipped while disconnected —
+     *  the connect handler re-ships a full snapshot anyway. */
+    private pushTerminalList(terminals: TerminalListItem[]): void {
+        this.latestTerminalList = terminals;
+        if (!this.socket?.connected) return;
+        this.terminalPushChain = this.terminalPushChain
+            .then(async () => {
+                const list = this.latestTerminalList;
+                if (!list) return;
+                this.latestTerminalList = null;
+                await this.updateDaemonState((state) => ({
+                    ...state,
+                    // The daemon is connected and pushing — 'running' is the truth
+                    // even in the (unreachable) case of a null prior state.
+                    status: state?.status ?? 'running',
+                    webTerminals: { updatedAt: Date.now(), terminals: list },
+                }));
+                logger.debug(`[API MACHINE] Pushed terminal list (${list.length} terminals)`);
+            })
+            .catch((err) => {
+                logger.debug('[API MACHINE] Terminal list push failed:', err);
+            });
+    }
+
     /**
      * Update machine metadata
      * Currently unused, changes from the mobile client are more likely
@@ -578,13 +613,28 @@ export class ApiMachineClient {
                 this.reconnectInterval = null;
             }
 
-            this.updateDaemonState((state) => ({
-                ...state,
-                status: 'running',
-                pid: process.pid,
-                httpPort: this.machine.daemonState?.httpPort,
-                startedAt: Date.now()
-            }));
+            // Terminal-list push channel: the CONNECT write itself carries the
+            // full current snapshot, stamped with the SAME clock reading as
+            // `startedAt`. Consumers trust webTerminals only when
+            // updatedAt >= startedAt (i.e. written by this daemon run), so
+            // shipping both in one write means there is never a window where
+            // this run's startedAt is visible but its terminal list is not —
+            // a reconnect can't flap clients back to the polling fallback.
+            const initialTerminals = this.webTerminal.buildTerminalList();
+            this.webTerminal.primeListSignature(initialTerminals);
+            this.updateDaemonState((state) => {
+                const now = Date.now();
+                return {
+                    ...state,
+                    status: 'running',
+                    pid: process.pid,
+                    httpPort: this.machine.daemonState?.httpPort,
+                    startedAt: now,
+                    webTerminals: { updatedAt: now, terminals: initialTerminals },
+                };
+            });
+            // From here on, only CHANGES push (signature diff inside the manager).
+            this.webTerminal.startListTracking((terminals) => this.pushTerminalList(terminals));
 
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.syncResumeSessionRpcRegistration();
@@ -735,6 +785,7 @@ export class ApiMachineClient {
 
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
+        this.webTerminal.stopListTracking();
         this.stopKeepAlive();
         if (this.reconnectInterval) {
             clearInterval(this.reconnectInterval);
