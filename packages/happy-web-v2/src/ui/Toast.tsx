@@ -9,16 +9,29 @@ import {
 } from 'react';
 
 type ToastTone = 'success' | 'error' | 'info';
+
+interface ToastOptions {
+  /** run when the toast body is clicked (the toast dismisses after) —
+   *  the click IS a user gesture, so clipboard writes are allowed inside */
+  onAction?: () => void;
+  /** don't auto-dismiss; renders an explicit ✕ to close without acting */
+  sticky?: boolean;
+}
+
 interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
+  onAction?: () => void;
+  sticky?: boolean;
 }
 
 interface ToastApi {
-  show: (message: string, tone?: ToastTone) => void;
+  show: (message: string, tone?: ToastTone, opts?: ToastOptions) => void;
   success: (message: string) => void;
   error: (message: string) => void;
+  /** sticky, clickable toast — for actions that need a user gesture */
+  action: (message: string, onAction: () => void) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -26,9 +39,10 @@ const ToastContext = createContext<ToastApi | null>(null);
 // module-level bridge so non-React code (data layer) can toast too
 let externalShow: ToastApi['show'] | null = null;
 export const toast: ToastApi = {
-  show: (m, t) => externalShow?.(m, t),
+  show: (m, t, o) => externalShow?.(m, t, o),
   success: (m) => externalShow?.(m, 'success'),
   error: (m) => externalShow?.(m, 'error'),
+  action: (m, onAction) => externalShow?.(m, 'info', { onAction, sticky: true }),
 };
 
 let seq = 0;
@@ -47,13 +61,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const show = useCallback(
-    (message: string, tone: ToastTone = 'info') => {
+    (message: string, tone: ToastTone = 'info', opts?: ToastOptions) => {
       const id = ++seq;
-      setItems((prev) => [...prev, { id, tone, message }]);
-      timers.current.set(
-        id,
-        setTimeout(() => dismiss(id), 4000),
-      );
+      setItems((prev) => [...prev, { id, tone, message, onAction: opts?.onAction, sticky: opts?.sticky }]);
+      if (!opts?.sticky) {
+        timers.current.set(
+          id,
+          setTimeout(() => dismiss(id), 4000),
+        );
+      }
     },
     [dismiss],
   );
@@ -69,6 +85,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     show,
     success: (m) => show(m, 'success'),
     error: (m) => show(m, 'error'),
+    action: (m, onAction) => show(m, 'info', { onAction, sticky: true }),
   };
 
   return (
@@ -76,8 +93,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="vh-toasts" role="region" aria-live="polite">
         {items.map((t) => (
-          <div key={t.id} className={`vh-toast vh-toast--${t.tone}`} onClick={() => dismiss(t.id)}>
+          <div
+            key={t.id}
+            className={`vh-toast vh-toast--${t.tone}${t.onAction ? ' vh-toast--action' : ''}`}
+            onClick={() => {
+              t.onAction?.();
+              dismiss(t.id);
+            }}
+          >
             {t.message}
+            {t.sticky && (
+              <button
+                type="button"
+                className="vh-toast-x"
+                aria-label="dismiss"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismiss(t.id);
+                }}
+              >
+                ×
+              </button>
+            )}
           </div>
         ))}
       </div>

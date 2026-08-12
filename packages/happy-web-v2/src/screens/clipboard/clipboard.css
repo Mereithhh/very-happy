@@ -1,0 +1,230 @@
+/* Clipboard history panel — tokens only (Console discipline): panel = bg-1
+ * floating surface (shadow-pop), rows step to bg-2 on hover, editor sits on
+ * bg-0 like an input well. Danger tone marks the destructive clear-all; the
+ * accent stays reserved for LIVE. Mirrors notifications.css form factor:
+ * desktop floating panel, <980px fullscreen. */
+
+.ch-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1600; /* same shelf as the notification panel: above chrome, below toast (2000) and modal (4000) */
+}
+.ch-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+.ch-panel {
+  position: absolute;
+  top: 10vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 520px;
+  max-width: calc(100vw - 16px);
+  max-height: min(620px, 80vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.ch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.ch-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+.ch-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.ch-head-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  transition: background var(--motion-fast);
+}
+.ch-head-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+/* clear-all stays visibly destructive — content may be sensitive */
+.ch-head-btn--danger {
+  color: var(--danger);
+}
+.ch-head-btn--danger:hover {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.ch-head-btn--icon {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+}
+
+.ch-list {
+  overflow-y: auto;
+  padding: var(--sp-1);
+}
+.ch-empty {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+}
+
+.ch-row {
+  border-radius: var(--r-sm);
+}
+.ch-row.is-expanded {
+  background: var(--bg-2);
+}
+.ch-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast);
+}
+.ch-row-main:hover {
+  background: var(--bg-2);
+}
+.ch-row-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--bg-2);
+}
+.ch-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ch-row-preview {
+  font-size: var(--fs-13);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.ch-row-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.ch-row-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  transition: background var(--motion-fast);
+}
+.ch-row-btn:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+.ch-row-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) var(--sp-2);
+}
+.ch-row-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--sp-2);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.ch-row-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ch-row-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.ch-row-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--danger);
+  font-size: var(--fs-12);
+  transition: background var(--motion-fast);
+}
+.ch-row-delete:hover {
+  background: var(--danger-dim);
+}
+
+/* mobile (< AppLayout's 980px two-pane breakpoint): fullscreen panel */
+@media (max-width: 979px) {
+  .ch-panel {
+    inset: 0;
+    top: 0;
+    left: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ch-row-main {
+    padding: var(--sp-3) var(--sp-2);
+  }
+}

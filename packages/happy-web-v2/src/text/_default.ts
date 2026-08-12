@@ -570,10 +570,28 @@ export const en = {
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
         actionOpenSettings: 'Open settings',
+        actionClipboardHistory: 'Clipboard history',
         renamePromptTitle: 'Rename chat',
         hintNavigate: '↑↓ to navigate',
         hintSelect: '↵ to select',
         hintClose: 'esc to close',
+    },
+
+    // copy_to_clipboard pushes: receive toasts + the history panel
+    clipboard: {
+        copiedPreview: ({ preview }: { preview: string }) => `Copied: ${preview}`,
+        tapToCopy: ({ preview }: { preview: string }) => `Clipboard received — tap to copy: ${preview}`,
+        historyTitle: 'Clipboard history',
+        historyOpenSubtitle: 'Review, edit and re-copy received text',
+        historyEmpty: 'Nothing received yet',
+        clearAll: 'Clear all',
+        clearAllConfirm: 'Delete all received clipboard entries? They may contain sensitive text and cannot be recovered.',
+        expand: 'Expand',
+        collapse: 'Collapse',
+        autoCopyTitle: 'Auto-copy on receive',
+        autoCopySubtitle: 'Silently write incoming pushes into this device\'s clipboard; when off or blocked by the browser, a tap-to-copy toast shows instead',
+        sourceMachine: 'Machine',
+        sourceSession: 'Session',
     },
 
     server: {
