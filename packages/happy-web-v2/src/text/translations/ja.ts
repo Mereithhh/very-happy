@@ -658,6 +658,13 @@ export const ja: TranslationStructure = {
         offlineUnableToSpawn: 'オフラインのため新しいセッションを生成できません',
     },
 
+
+    renameModal: {
+        titleLabel: 'タイトル',
+        tagsLabel: 'タグ',
+        tagPlaceholder: 'タグを追加…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'アーカイブを表示',
@@ -668,6 +675,11 @@ export const ja: TranslationStructure = {
         filterActive: 'アクティブ',
         filterArchived: 'アーカイブ',
         noResults: '一致するセッションがありません',
+        pinned: 'ピン留め',
+        pin: 'ピン留め',
+        unpin: 'ピン留め解除',
+        moveUp: '上へ移動',
+        moveDown: '下へ移動',
     },
 
     zen: {

@@ -657,6 +657,13 @@ export const es: TranslationStructure = {
         offlineUnableToSpawn: 'No se puede crear nueva sesión, desconectado',
     },
 
+
+    renameModal: {
+        titleLabel: 'Título',
+        tagsLabel: 'Etiquetas',
+        tagPlaceholder: 'Añadir etiqueta…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostrar archivadas',
@@ -667,6 +674,11 @@ export const es: TranslationStructure = {
         filterActive: 'Activas',
         filterArchived: 'Archivadas',
         noResults: 'No hay sesiones coincidentes',
+        pinned: 'Fijadas',
+        pin: 'Fijar',
+        unpin: 'Dejar de fijar',
+        moveUp: 'Subir',
+        moveDown: 'Bajar',
     },
 
     zen: {

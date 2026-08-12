@@ -1,14 +1,15 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal } from 'lucide-react';
-import { useSessions, storage } from '@/sync/storage';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
+import { useSessions, useSetting, storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
+import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
-import { StatusDot, CyberMark } from '@/ui';
+import { StatusDot, CyberMark, TagChip, TagOverflowChip } from '@/ui';
 import { Modal } from '@/modal';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
@@ -19,6 +20,9 @@ import { activeTerminals } from '@/sync/terminalListOps';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
+import { RenameModal } from './RenameModal';
+import { splitPinnedRows, togglePin, movePin, reorderPin, prunePinned, type PinnedRow } from './sidebarPins';
+import { parseSidebarQuery, rowMatchesSidebarQuery, sidebarQueryIsEmpty } from './sidebarSearch';
 import './sidebar.css';
 
 function rowHref(r: Row): string {
@@ -36,6 +40,7 @@ interface Row {
   machineId?: string;
   title: string;
   subtitle: string;
+  tags?: string[];
 }
 
 export function Sidebar() {
@@ -69,6 +74,7 @@ export function Sidebar() {
         session: s,
         title: getSessionName(s),
         subtitle: getSessionSubtitle(s),
+        tags: s.metadata?.tags,
       }));
     // terminals are always "live"; hidden only by the archived-only filter
     // (activeTerminals: deletion tombstones are sync bookkeeping, not rows)
@@ -85,17 +91,172 @@ export function Sidebar() {
             subtitle: tm.machineName,
           }));
     const all = [...termRows, ...sessRows];
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      return all.filter((r) => r.title.toLowerCase().includes(q) || r.subtitle.toLowerCase().includes(q));
-    }
-    return all;
+    // Search with `#tag` syntax: `#foo` filters by tag (prefix match), the
+    // free-text remainder keeps the substring-on-title/subtitle behavior.
+    const parsed = parseSidebarQuery(query);
+    if (sidebarQueryIsEmpty(parsed)) return all;
+    return all.filter((r) => rowMatchesSidebarQuery(r, parsed));
   }, [sessions, terminals, query, filter]);
 
+  // ----- pinned rows -----
+  // Synced settings field `pinnedRows` — array order IS the pinned section's
+  // display order (cross-device). Pins only shape the ACTIVE list; archived
+  // rows can't be pinned and the archived view stays a plain list.
+  const pinnedSetting = useSetting('pinnedRows');
+  const setPinnedSetting = useCallback((next: PinnedRow[]) => {
+    sync.applySettings({ pinnedRows: next });
+  }, []);
+  const pinsApply = filter === 'active';
+  const { pinned: pinnedRows, rest: restRows } = useMemo(() => {
+    if (!rows || !pinsApply) return { pinned: [] as Row[], rest: (rows ?? []) as Row[] };
+    return splitPinnedRows(rows, pinnedSetting ?? []);
+  }, [rows, pinnedSetting, pinsApply]);
+
+  // Drag-reorder inside the pinned section (fine pointers only; coarse
+  // pointers use the row menu's move up/down instead). Pointer-event
+  // hand-rolled — same school as SidebarResizeHandle, no dnd dependency.
+  // While a drag is live, `dragKeys` is the optimistic order; the settings
+  // write happens once, on drop.
+  const pinSectRef = useRef<HTMLDivElement | null>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dragKeys, setDragKeys] = useState<string[] | null>(null);
+  const dragKeysRef = useRef<string[] | null>(null);
+
+  const displayPinned = useMemo(() => {
+    if (!dragKeys) return pinnedRows;
+    const byKey = new Map(pinnedRows.map((r) => [r.key, r]));
+    return dragKeys.map((k) => byKey.get(k)).filter((r): r is Row => !!r);
+  }, [pinnedRows, dragKeys]);
+
+  const onPinPointerDown = (e: React.PointerEvent, key: string) => {
+    if (e.button !== 0) return;
+    if (pinnedRows.length < 2) return;
+    // Search narrows the visible pinned subset — a drag there would reorder
+    // against a partial picture; disable it (the full list is one Esc away).
+    if (query.trim()) return;
+    if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
+    if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
+    const startY = e.clientY;
+    const state = { active: false };
+    const startOrder = pinnedRows.map((r) => r.key);
+    const onMove = (ev: PointerEvent) => {
+      if (!state.active) {
+        if (Math.abs(ev.clientY - startY) < 6) return;
+        state.active = true;
+        dragKeysRef.current = startOrder.slice();
+        setDragKey(key);
+        setDragKeys(dragKeysRef.current);
+      }
+      ev.preventDefault();
+      const sect = pinSectRef.current;
+      const cur = dragKeysRef.current;
+      if (!sect || !cur) return;
+      const from = cur.indexOf(key);
+      if (from < 0) return;
+      // Insertion index = how many OTHER rows have their midpoint above the
+      // pointer (measured from the live DOM, which renders `cur`'s order).
+      let target = 0;
+      for (const el of Array.from(sect.querySelectorAll<HTMLElement>('[data-pinkey]'))) {
+        if (el.dataset.pinkey === key) continue;
+        const r = el.getBoundingClientRect();
+        if (ev.clientY > r.top + r.height / 2) target++;
+      }
+      if (target !== from) {
+        const next = reorderPin(cur.map((k) => ({ key: k })), from, target).map((p) => p.key);
+        dragKeysRef.current = next;
+        setDragKeys(next);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const finalKeys = dragKeysRef.current;
+      dragKeysRef.current = null;
+      setDragKey(null);
+      setDragKeys(null);
+      if (!state.active || !finalKeys) return;
+      // The release lands on a row button — swallow the click it would
+      // produce so a drag never doubles as "open this conversation".
+      const swallow = (ce: MouseEvent) => {
+        ce.stopPropagation();
+        ce.preventDefault();
+      };
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true } as any), 150);
+      // Commit: reordered visible keys first, then any stored entries whose
+      // rows aren't materialized right now (e.g. a machine's terminals not
+      // loaded yet) — a drag must not silently drop them.
+      const visible = new Set(finalKeys);
+      const carried = (pinnedSetting ?? []).filter((p) => !visible.has(p.key));
+      setPinnedSetting([...finalKeys.map((k) => ({ key: k })), ...carried]);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  // Prune pins whose target is gone (deleted session, archived session, dead
+  // terminal). Rendering already skips them (splitPinnedRows); this is the
+  // periodic write-back so the synced list doesn't accumulate ghosts. A key
+  // is only pruned after being missing in TWO consecutive sweeps — guards
+  // against transient emptiness while machine/terminal state is still
+  // loading (a too-eager prune would sync the loss to every device).
+  const terminalsInitialized = useTerminalSessions((s) => s.initialized);
+  const missingPinsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const sweep = () => {
+      const st = storage.getState();
+      if (!st.isDataReady) return;
+      const pinned = st.settings.pinnedRows ?? [];
+      if (pinned.length === 0) return;
+      const valid = new Set<string>();
+      for (const s of Object.values(st.sessions)) {
+        if (s.active) valid.add(s.id);
+      }
+      const termState = useTerminalSessions.getState();
+      for (const tm of activeTerminals(termState.terminals)) valid.add(`t:${tm.id}`);
+      const missingNow = new Set<string>();
+      for (const p of pinned) {
+        if (valid.has(p.key)) continue;
+        // terminal keys are only judged once the terminal store has loaded
+        if (p.key.startsWith('t:') && !termState.initialized) continue;
+        missingNow.add(p.key);
+      }
+      const confirmed = new Set([...missingNow].filter((k) => missingPinsRef.current.has(k)));
+      missingPinsRef.current = missingNow;
+      if (confirmed.size === 0) return;
+      const next = prunePinned(pinned, new Set(pinned.map((p) => p.key).filter((k) => !confirmed.has(k))));
+      if (next) sync.applySettings({ pinnedRows: next });
+    };
+    const iv = setInterval(sweep, 60_000);
+    return () => clearInterval(iv);
+  }, [terminalsInitialized]);
+
+  // ----- rename modal (title + tags) -----
+  const [renameTarget, setRenameTarget] = useState<Row | null>(null);
+  // Suggestions: every tag currently in use across sessions (case-insensitive
+  // dedupe, first-seen casing wins), most-used first.
+  const allTags = useMemo(() => {
+    const counts = new Map<string, { tag: string; n: number }>();
+    for (const s of sessions ?? []) {
+      if (typeof s === 'string') continue;
+      for (const tag of s.metadata?.tags ?? []) {
+        const k = tag.toLowerCase();
+        const cur = counts.get(k);
+        if (cur) cur.n++;
+        else counts.set(k, { tag, n: 1 });
+      }
+    }
+    return [...counts.values()].sort((a, b) => b.n - a.n).map((x) => x.tag);
+  }, [sessions]);
+
   // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
-  // jumps to that conversation. Mirrors the v1 power-user shortcut.
-  const rowsRef = useRef<Row[] | null>(rows);
-  rowsRef.current = rows;
+  // jumps to that conversation. Mirrors the v1 power-user shortcut. Order =
+  // what's on screen: pinned section first, then the activity list.
+  const displayRows = rows === null ? null : [...displayPinned, ...restRows];
+  const rowsRef = useRef<Row[] | null>(displayRows);
+  rowsRef.current = displayRows;
   useEffect(() => {
     let holdTimer: ReturnType<typeof setTimeout> | null = null;
     const clear = () => {
@@ -138,12 +299,9 @@ export function Sidebar() {
         if (target) {
           e.preventDefault();
           e.stopPropagation();
-          void (async () => {
-            const next = await Modal.prompt(t('common.rename' as any), undefined, { defaultValue: target.title });
-            if (next == null) return;
-            if (target.kind === 'terminal') useTerminalSessions.getState().rename(target.terminalId!, next);
-            else await sessionUpdateTitle(target.session!.id, next).catch(() => {});
-          })();
+          // Opens the rename modal (title + tags) instead of the old
+          // single-line prompt — same dialog as the row menu's Rename.
+          setRenameTarget(target);
         }
         return;
       }
@@ -249,14 +407,55 @@ export function Sidebar() {
       </div>
 
       <div className="sb-list">
-        {rows === null ? (
+        {displayRows === null ? (
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading' as any)}
           </div>
-        ) : rows.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <div className="sb-empty">{query ? t('sidebar.noResults' as any) : t('newSession.empty' as any)}</div>
         ) : (
-          rows.map((r, i) => <SidebarRow key={r.key} row={r} badge={cmdHeld && i < 9 ? i + 1 : undefined} />)
+          <>
+            {displayPinned.length > 0 && (
+              <div className={`sb-pin-sect${dragKey ? ' is-dragging' : ''}`} ref={pinSectRef}>
+                <div className="sb-sect-head mono">
+                  <Pin size={11} /> {t('sidebar.pinned')}
+                </div>
+                {displayPinned.map((r, i) => (
+                  <div
+                    key={r.key}
+                    data-pinkey={r.key}
+                    className={`sb-pin-item${dragKey === r.key ? ' is-drag' : ''}`}
+                    onPointerDown={(e) => onPinPointerDown(e, r.key)}
+                  >
+                    <SidebarRow
+                      row={r}
+                      badge={cmdHeld && i < 9 ? i + 1 : undefined}
+                      pinned
+                      canMoveUp={i > 0}
+                      canMoveDown={i < displayPinned.length - 1}
+                      onTogglePin={() => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key))}
+                      onMovePin={(dir) => setPinnedSetting(movePin(pinnedSetting ?? [], r.key, dir))}
+                      onRenameRequest={() => setRenameTarget(r)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            {restRows.map((r, i) => {
+              const badgeIdx = displayPinned.length + i;
+              return (
+                <SidebarRow
+                  key={r.key}
+                  row={r}
+                  badge={cmdHeld && badgeIdx < 9 ? badgeIdx + 1 : undefined}
+                  onTogglePin={
+                    pinsApply ? () => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key)) : undefined
+                  }
+                  onRenameRequest={() => setRenameTarget(r)}
+                />
+              );
+            })}
+          </>
         )}
       </div>
 
@@ -267,16 +466,66 @@ export function Sidebar() {
       </footer>
 
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
+      {renameTarget && (
+        <RenameModal
+          defaultTitle={renameTarget.title}
+          tags={renameTarget.kind === 'session' ? renameTarget.session!.metadata?.tags ?? [] : undefined}
+          suggestions={allTags}
+          onClose={() => setRenameTarget(null)}
+          onSave={async (title, tags) => {
+            const target = renameTarget;
+            if (target.kind === 'terminal') {
+              const clean = title.trim();
+              // v1: terminals are title-only (tags need daemon-side tmux
+              // storage — see RenameModal's header note).
+              if (clean && clean !== target.title) {
+                useTerminalSessions.getState().rename(target.terminalId!, clean);
+              }
+              return;
+            }
+            const s = target.session!;
+            // Only write what actually changed: title and tags ride the same
+            // update-metadata round-trip (sessionUpdateTitleTags), and a
+            // no-op save must not bump the metadata version.
+            const changes: { title?: string; tags?: string[] } = {};
+            if (title.trim() !== target.title) changes.title = title;
+            const curTags = s.metadata?.tags ?? [];
+            if (tags && JSON.stringify(tags) !== JSON.stringify(curTags)) changes.tags = tags;
+            if (changes.title !== undefined || changes.tags !== undefined) {
+              await sessionUpdateTitleTags(s.id, changes).catch(() => {});
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
+function SidebarRow({
+  row,
+  badge,
+  pinned,
+  canMoveUp,
+  canMoveDown,
+  onTogglePin,
+  onMovePin,
+  onRenameRequest,
+}: {
+  row: Row;
+  badge?: number;
+  pinned?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  /** undefined → pinning not available here (archived view). */
+  onTogglePin?: () => void;
+  /** Menu fallback for coarse pointers (no touch drag) — pinned rows only. */
+  onMovePin?: (dir: -1 | 1) => void;
+  onRenameRequest: () => void;
+}) {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
   const { t } = useTranslation();
-  const renameTerminal = useTerminalSessions((s) => s.rename);
   const removeTerminal = useTerminalSessions((s) => s.remove);
 
   const isTerminal = row.kind === 'terminal';
@@ -318,13 +567,6 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
     isTerminal
       ? navigate(`/terminal/${row.machineId}?tid=${row.terminalId}`)
       : navigate(`/session/${row.session!.id}`);
-
-  const onRename = async () => {
-    const next = await Modal.prompt(t('common.rename' as any), undefined, { defaultValue: row.title });
-    if (next == null) return;
-    if (isTerminal) renameTerminal(row.terminalId!, next);
-    else await sessionUpdateTitle(row.session!.id, next).catch(() => {});
-  };
 
   const onArchiveOrDelete = async () => {
     if (isTerminal) {
@@ -405,7 +647,17 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
           )}
         </span>
         <span className="sb-row-text">
-          <span className="sb-row-title">{row.title}</span>
+          <span className="sb-row-title-line">
+            <span className="sb-row-title">{row.title}</span>
+            {row.tags && row.tags.length > 0 && (
+              <span className="sb-row-tags">
+                {row.tags.slice(0, 2).map((tag) => (
+                  <TagChip key={tag} tag={tag} small />
+                ))}
+                {row.tags.length > 2 && <TagOverflowChip count={row.tags.length - 2} small />}
+              </span>
+            )}
+          </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
@@ -418,9 +670,40 @@ function SidebarRow({ row, badge }: { row: Row; badge?: number }) {
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className="vh-menu" align="end" sideOffset={4}>
-            <DropdownMenu.Item className="vh-menu-item" onSelect={onRename}>
+            <DropdownMenu.Item className="vh-menu-item" onSelect={onRenameRequest}>
               {t('common.rename' as any)}
             </DropdownMenu.Item>
+            {onTogglePin && (
+              <DropdownMenu.Item className="vh-menu-item" onSelect={onTogglePin}>
+                {pinned ? (
+                  <>
+                    <PinOff size={15} /> {t('sidebar.unpin')}
+                  </>
+                ) : (
+                  <>
+                    <Pin size={15} /> {t('sidebar.pin')}
+                  </>
+                )}
+              </DropdownMenu.Item>
+            )}
+            {pinned && onMovePin && (
+              <>
+                <DropdownMenu.Item
+                  className="vh-menu-item"
+                  disabled={!canMoveUp}
+                  onSelect={() => onMovePin(-1)}
+                >
+                  <ArrowUp size={15} /> {t('sidebar.moveUp')}
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  className="vh-menu-item"
+                  disabled={!canMoveDown}
+                  onSelect={() => onMovePin(1)}
+                >
+                  <ArrowDown size={15} /> {t('sidebar.moveDown')}
+                </DropdownMenu.Item>
+              </>
+            )}
             <DropdownMenu.Item className="vh-menu-item is-danger" onSelect={onArchiveOrDelete}>
               {isTerminal ? t('common.delete' as any) : t('sidebar.filterArchived' as any)}
             </DropdownMenu.Item>

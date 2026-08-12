@@ -657,6 +657,13 @@ export const zhHant: TranslationStructure = {
         offlineUnableToSpawn: '無法生成新工作階段，已離線',
     },
 
+
+    renameModal: {
+        titleLabel: '標題',
+        tagsLabel: '標籤',
+        tagPlaceholder: '新增標籤…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: '顯示已封存',
@@ -667,6 +674,11 @@ export const zhHant: TranslationStructure = {
         filterActive: '活躍',
         filterArchived: '已封存',
         noResults: '沒有符合的對話',
+        pinned: '已置頂',
+        pin: '置頂',
+        unpin: '取消置頂',
+        moveUp: '上移',
+        moveDown: '下移',
     },
 
     zen: {

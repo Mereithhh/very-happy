@@ -1,0 +1,128 @@
+/*
+ * Session-tag chips + the 6 tag hue slots (--tagc-N-*).
+ *
+ * Palette rules (Console-coordinated): low saturation, quiet fills — a tag is
+ * metadata, never a status light. --accent (phosphor teal) still means LIVE
+ * only, so no slot lands on the accent hue. Hue slots are assigned by a
+ * stable hash of the tag text (utils/tags.ts tagHueIndex); TAG_HUE_COUNT must
+ * match the number of slots here.
+ *
+ * Theme plumbing mirrors styles/tokens.css: dark is the default, light
+ * overrides via [data-theme='light'] and the system fallback media query.
+ */
+
+:root,
+:root[data-theme='dark'] {
+  --tagc-0-fg: hsl(215 45% 72%);
+  --tagc-0-bg: hsl(215 45% 55% / 0.13);
+  --tagc-0-bd: hsl(215 45% 55% / 0.3);
+  --tagc-1-fg: hsl(160 38% 66%);
+  --tagc-1-bg: hsl(160 40% 50% / 0.12);
+  --tagc-1-bd: hsl(160 40% 50% / 0.3);
+  --tagc-2-fg: hsl(45 48% 66%);
+  --tagc-2-bg: hsl(45 50% 55% / 0.12);
+  --tagc-2-bd: hsl(45 50% 55% / 0.3);
+  --tagc-3-fg: hsl(280 38% 76%);
+  --tagc-3-bg: hsl(280 40% 60% / 0.13);
+  --tagc-3-bd: hsl(280 40% 60% / 0.3);
+  --tagc-4-fg: hsl(340 45% 75%);
+  --tagc-4-bg: hsl(340 45% 58% / 0.13);
+  --tagc-4-bd: hsl(340 45% 58% / 0.3);
+  --tagc-5-fg: hsl(95 32% 66%);
+  --tagc-5-bg: hsl(95 35% 50% / 0.12);
+  --tagc-5-bd: hsl(95 35% 50% / 0.3);
+}
+
+:root[data-theme='light'] {
+  --tagc-0-fg: hsl(215 48% 32%);
+  --tagc-0-bg: hsl(215 45% 40% / 0.1);
+  --tagc-0-bd: hsl(215 45% 38% / 0.28);
+  --tagc-1-fg: hsl(160 45% 24%);
+  --tagc-1-bg: hsl(160 42% 34% / 0.1);
+  --tagc-1-bd: hsl(160 42% 32% / 0.28);
+  --tagc-2-fg: hsl(42 60% 26%);
+  --tagc-2-bg: hsl(45 55% 40% / 0.12);
+  --tagc-2-bd: hsl(45 55% 36% / 0.3);
+  --tagc-3-fg: hsl(280 38% 36%);
+  --tagc-3-bg: hsl(280 38% 44% / 0.1);
+  --tagc-3-bd: hsl(280 38% 42% / 0.28);
+  --tagc-4-fg: hsl(340 48% 34%);
+  --tagc-4-bg: hsl(340 45% 44% / 0.1);
+  --tagc-4-bd: hsl(340 45% 42% / 0.28);
+  --tagc-5-fg: hsl(95 42% 24%);
+  --tagc-5-bg: hsl(95 38% 34% / 0.11);
+  --tagc-5-bd: hsl(95 38% 32% / 0.28);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --tagc-0-fg: hsl(215 48% 32%);
+    --tagc-0-bg: hsl(215 45% 40% / 0.1);
+    --tagc-0-bd: hsl(215 45% 38% / 0.28);
+    --tagc-1-fg: hsl(160 45% 24%);
+    --tagc-1-bg: hsl(160 42% 34% / 0.1);
+    --tagc-1-bd: hsl(160 42% 32% / 0.28);
+    --tagc-2-fg: hsl(42 60% 26%);
+    --tagc-2-bg: hsl(45 55% 40% / 0.12);
+    --tagc-2-bd: hsl(45 55% 36% / 0.3);
+    --tagc-3-fg: hsl(280 38% 36%);
+    --tagc-3-bg: hsl(280 38% 44% / 0.1);
+    --tagc-3-bd: hsl(280 38% 42% / 0.28);
+    --tagc-4-fg: hsl(340 48% 34%);
+    --tagc-4-bg: hsl(340 45% 44% / 0.1);
+    --tagc-4-bd: hsl(340 45% 42% / 0.28);
+    --tagc-5-fg: hsl(95 42% 24%);
+    --tagc-5-bg: hsl(95 38% 34% / 0.11);
+    --tagc-5-bd: hsl(95 38% 32% / 0.28);
+  }
+}
+
+.vh-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 140px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.vh-tag--h0 { color: var(--tagc-0-fg); background: var(--tagc-0-bg); border-color: var(--tagc-0-bd); }
+.vh-tag--h1 { color: var(--tagc-1-fg); background: var(--tagc-1-bg); border-color: var(--tagc-1-bd); }
+.vh-tag--h2 { color: var(--tagc-2-fg); background: var(--tagc-2-bg); border-color: var(--tagc-2-bd); }
+.vh-tag--h3 { color: var(--tagc-3-fg); background: var(--tagc-3-bg); border-color: var(--tagc-3-bd); }
+.vh-tag--h4 { color: var(--tagc-4-fg); background: var(--tagc-4-bg); border-color: var(--tagc-4-bd); }
+.vh-tag--h5 { color: var(--tagc-5-fg); background: var(--tagc-5-bg); border-color: var(--tagc-5-bd); }
+.vh-tag--more {
+  color: var(--text-faint);
+}
+.vh-tag--sm {
+  font-size: var(--fs-11);
+  padding: 0 5px;
+  max-width: 96px;
+}
+.vh-tag--btn {
+  cursor: pointer;
+}
+.vh-tag--btn:hover {
+  filter: brightness(1.15);
+}
+.vh-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vh-tag-x {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  opacity: 0.65;
+  margin-right: -2px;
+}
+.vh-tag-x:hover {
+  opacity: 1;
+}

@@ -657,6 +657,13 @@ export const ca: TranslationStructure = {
         offlineUnableToSpawn: 'No es pot crear una nova sessió, fora de línia',
     },
 
+
+    renameModal: {
+        titleLabel: 'Títol',
+        tagsLabel: 'Etiquetes',
+        tagPlaceholder: 'Afegeix etiqueta…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Mostra arxivades',
@@ -667,6 +674,11 @@ export const ca: TranslationStructure = {
         filterActive: 'Actives',
         filterArchived: 'Arxivades',
         noResults: 'Cap sessió coincident',
+        pinned: 'Fixades',
+        pin: 'Fixar',
+        unpin: 'Deixar de fixar',
+        moveUp: 'Mou amunt',
+        moveDown: 'Mou avall',
     },
 
     zen: {

@@ -673,6 +673,13 @@ export const pl: TranslationStructure = {
         offlineUnableToSpawn: 'Nie można utworzyć nowej sesji, offline',
     },
 
+
+    renameModal: {
+        titleLabel: 'Tytuł',
+        tagsLabel: 'Tagi',
+        tagPlaceholder: 'Dodaj tag…',
+    },
+
     sidebar: {
         sessionsTitle: 'Happy',
         showArchived: 'Pokaż zarchiwizowane',
@@ -683,6 +690,11 @@ export const pl: TranslationStructure = {
         filterActive: 'Aktywne',
         filterArchived: 'Zarchiwizowane',
         noResults: 'Brak pasujących sesji',
+        pinned: 'Przypięte',
+        pin: 'Przypnij',
+        unpin: 'Odepnij',
+        moveUp: 'Przenieś w górę',
+        moveDown: 'Przenieś w dół',
     },
 
     zen: {

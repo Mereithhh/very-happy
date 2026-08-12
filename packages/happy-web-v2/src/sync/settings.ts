@@ -87,6 +87,13 @@ export const SettingsSchema = z.object({
     newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw)'),
     newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
+    // Sidebar pinned rows. key = session id, or `t:<terminalId>` for web
+    // terminals; ARRAY ORDER is the display order of the pinned section.
+    // Synced; NO zod .default() (ghost-pending footgun above) — the default
+    // lives in settingsDefaults.
+    pinnedRows: z.array(z.object({
+        key: z.string(),
+    })).describe('Sidebar pinned rows (session id or t:<terminalId>), array order = display order'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -166,6 +173,7 @@ export const settingsDefaults: Settings = {
     newSessionAgent: 'claude',
     newSessionAlwaysAsk: false,
     agentDefaultOverrides: {},
+    pinnedRows: [],
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);

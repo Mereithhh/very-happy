@@ -9,4 +9,5 @@ export { EmptyState } from './EmptyState';
 export { Item, ItemGroup, ItemList } from './Item';
 export { Toast, ToastProvider, useToast, toast } from './Toast';
 export { CyberMark } from './CyberMark';
+export { TagChip, TagOverflowChip } from './TagChip';
 export { ThemeProvider, useTheme, type ThemePreference } from './theme';

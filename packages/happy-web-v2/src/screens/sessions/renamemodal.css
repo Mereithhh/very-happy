@@ -1,0 +1,42 @@
+/* Rename modal (title + tag chips editor). Reuses the newsession.css shell
+ * (ns-backdrop / ns-card / ns-label / ns-input / ns-actions). */
+
+.rn-card {
+  max-width: 380px;
+}
+
+/* chips + inline input share one bordered "field" */
+.rn-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.rn-tags:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.rn-tag-input {
+  flex: 1;
+  min-width: 90px;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 3px 2px;
+  font-size: var(--fs-13);
+  color: var(--text);
+}
+.rn-tag-input::placeholder {
+  color: var(--text-faint);
+}
+
+.rn-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}

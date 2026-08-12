@@ -61,6 +61,13 @@ export const MetadataSchema = z.object({
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
     /**
+     * User-assigned tags for this session (sidebar chips + `#tag` search).
+     * Optional only — NO zod .default([]): clients that never touched tags
+     * must not write an empty array into metadata. Edited via the rename
+     * modal (sessionUpdateTitleTags); rides inside encrypted metadata.
+     */
+    tags: z.array(z.string()).optional(),
+    /**
      * Task Board V2: latest daemon-side LLM analysis of this session
      * (happy-cli boardAnalyzer, opt-in). Absent until the machine-local
      * `boardLlm` toggle produces a first verdict. NO zod .default() —

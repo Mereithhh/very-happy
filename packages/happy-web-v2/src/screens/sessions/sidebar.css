@@ -229,6 +229,60 @@
     color: var(--text);
   }
 }
+/* pinned section: small section head + hairline separating it from the
+ * activity-ordered remainder */
+.sb-pin-sect {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--sp-1);
+  margin-bottom: var(--sp-1);
+}
+.sb-pin-sect.is-dragging {
+  user-select: none;
+}
+.sb-sect-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: var(--sp-2) var(--sp-4) 2px;
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+.sb-pin-item.is-drag {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-2);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  opacity: 0.9;
+}
+/* the whole pinned row is the drag surface on fine pointers */
+@media (pointer: fine) {
+  .sb-pin-sect.is-dragging .sb-row-main,
+  .sb-pin-sect.is-dragging .sb-row-menu {
+    cursor: grabbing;
+  }
+}
+
+/* tag chips share the title line; the title keeps priority and ellipsizes,
+ * chips never shrink */
+.sb-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.sb-row-title-line .sb-row-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.sb-row-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .sb-loading {
   display: flex;
   align-items: center;
@@ -289,6 +343,10 @@
 }
 .vh-menu-item.is-danger {
   color: var(--danger);
+}
+.vh-menu-item[data-disabled] {
+  color: var(--text-faint);
+  pointer-events: none;
 }
 
 .sb-row-badge {

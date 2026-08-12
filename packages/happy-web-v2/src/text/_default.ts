@@ -719,6 +719,13 @@ export const en = {
         offlineUnableToSpawn: 'Unable to spawn new session, offline',
     },
 
+
+    renameModal: {
+        titleLabel: 'Title',
+        tagsLabel: 'Tags',
+        tagPlaceholder: 'Add tag…',
+    },
+
     sidebar: {
         collapse: 'Collapse sidebar',
         openSessions: 'Open sessions',
@@ -732,6 +739,11 @@ export const en = {
         filterActive: 'Active',
         filterArchived: 'Archived',
         noResults: 'No matching sessions',
+        pinned: 'Pinned',
+        pin: 'Pin',
+        unpin: 'Unpin',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
     },
 
     zen: {

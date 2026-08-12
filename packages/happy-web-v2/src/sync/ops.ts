@@ -765,7 +765,26 @@ export async function sessionUpdateTitle(
     title: string,
     maxRetries: number = 3
 ): Promise<void> {
-    const trimmed = title.trim();
+    await sessionUpdateTitleTags(sessionId, { title }, maxRetries);
+}
+
+/**
+ * Write title (`metadata.summary`) and/or tags (`metadata.tags`) in ONE
+ * `update-metadata` round-trip — the rename modal edits both together, and a
+ * single write avoids a pointless second version bump + conflict window.
+ *
+ * `title === undefined` / `tags === undefined` leave that field untouched;
+ * an empty title clears the summary, an empty tags array deletes the field
+ * (optional-only in MetadataSchema — never store a ghost `[]`).
+ *
+ * Same optimistic-concurrency/rebase semantics as the original
+ * sessionUpdateTitle (see the version-mismatch comments below).
+ */
+export async function sessionUpdateTitleTags(
+    sessionId: string,
+    changes: { title?: string; tags?: string[] },
+    maxRetries: number = 3
+): Promise<void> {
     const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
     if (!sessionEncryption) {
         throw new Error(`Session encryption not found for ${sessionId}`);
@@ -793,19 +812,29 @@ export async function sessionUpdateTitle(
     let baseMetadata: Metadata = initial.metadata;
     let expectedVersion = initial.metadataVersion;
 
-    const applySummary = (base: Metadata): Metadata => {
+    const applyChanges = (base: Metadata): Metadata => {
         const next: Metadata = { ...base };
-        if (trimmed.length === 0) {
-            delete next.summary;
-        } else {
-            next.summary = { text: trimmed, updatedAt: Date.now() };
+        if (changes.title !== undefined) {
+            const trimmed = changes.title.trim();
+            if (trimmed.length === 0) {
+                delete next.summary;
+            } else {
+                next.summary = { text: trimmed, updatedAt: Date.now() };
+            }
+        }
+        if (changes.tags !== undefined) {
+            if (changes.tags.length === 0) {
+                delete next.tags;
+            } else {
+                next.tags = changes.tags;
+            }
         }
         return next;
     };
 
     let retryCount = 0;
     while (retryCount <= maxRetries) {
-        const nextMetadata = applySummary(baseMetadata);
+        const nextMetadata = applyChanges(baseMetadata);
 
         const encryptedMetadata = await sessionEncryption.encryptMetadata(nextMetadata);
         const result = await apiSocket.emitWithAck<{
@@ -844,7 +873,7 @@ export async function sessionUpdateTitle(
         }
     }
 
-    throw new Error(`Failed to update session title after ${maxRetries} retries due to version conflicts`);
+    throw new Error(`Failed to update session title/tags after ${maxRetries} retries due to version conflicts`);
 }
 
 /**
