@@ -46,6 +46,14 @@ export interface WebhookConfig {
 export interface WebhookPayload {
     title: string;
     message: string;
+    /**
+     * Session id, duplicated as a top-level field for receivers that parse
+     * JSON. Generic gateways (e.g. apodex-bot generic) only read
+     * title/message and will DROP this field — that is why the id is also
+     * embedded in the message text as a fixed, parseable last line
+     * (`session: <id>`), which survives any text-only relay.
+     */
+    sessionId?: string;
 }
 
 //
@@ -190,11 +198,29 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Base URL of the web UI, for building clickable session links in webhook
+ * messages. The server does NOT reliably know its own public web origin
+ * (HAPPY_INJECT_HTML_CONFIG is arbitrary JSON injected into the webapp's
+ * HTML, not an authoritative origin, and it isn't plumbed into this module),
+ * so this is an explicit opt-in env: set `HAPPY_WEB_URL` (e.g.
+ * `https://happy.mereith.com`) on the server to get URL lines; unset, the
+ * message still carries the bare `session: <id>` line. Read per-call so
+ * tests can toggle it.
+ */
+export function webhookWebUrlBase(): string | null {
+    const raw = process.env.HAPPY_WEB_URL;
+    if (!raw || raw.trim().length === 0) return null;
+    return raw.trim().replace(/\/+$/, '');
+}
+
+/**
  * Build the generic `{title, message}` webhook payload from the session-event
  * push we already have (title/body/data come from the CLI daemon; we do NOT
  * extend the daemon payload for this). `data.sessionTitle` is the session
  * summary or the cwd's last path segment; `data.tool` / `data.provider` are
- * present on permission events.
+ * present on permission events; `data.sessionId` is injected by
+ * `dispatchSessionEventPush` and drives the session link / `session: <id>`
+ * trailer (see `webhookWebUrlBase` for the HAPPY_WEB_URL opt-in).
  *
  * The receiving gateway renders `title` as the message heading — `message`
  * must not repeat it as a heading of its own.
@@ -231,9 +257,23 @@ export function buildWebhookPayload(push: {
             break;
     }
 
+    const sessionId = typeof push.data.sessionId === 'string' && push.data.sessionId.trim().length > 0
+        ? push.data.sessionId.trim()
+        : null;
+
     const lines = [headline, `会话：${truncate(rawTitle, 200)}`];
     if (provider) lines.push(`Agent：${provider}`);
-    return { title, message: lines.join('\n') };
+    if (sessionId) {
+        const base = webhookWebUrlBase();
+        if (base) lines.push(`链接：${base}/session/${sessionId}`);
+        // Fixed, machine-parseable LAST line. External automation (e.g. the
+        // Tanka quote-reply dispatcher) extracts the id from here — keep the
+        // exact `session: <id>` format stable.
+        lines.push(`session: ${sessionId}`);
+    }
+    const payload: WebhookPayload = { title, message: lines.join('\n') };
+    if (sessionId) payload.sessionId = sessionId;
+    return payload;
 }
 
 //

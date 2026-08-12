@@ -13,13 +13,12 @@
  *   (`POST /spawn-session` via `spawnDaemonSession`), same as the web's
  *   machine RPC path ends up doing on this machine. Only `directory` is
  *   sent, so older daemons that predate agent/env params still work.
- * - The first message reuses the exact web semantics (see web-v2
- *   `sync.sendMessage` + commit 388019d4): encrypt the user envelope
- *   `{ role: 'user', content: { type: 'text', text } }` with the SESSION
- *   key and POST it to `/v3/sessions/:id/messages` — the same REST outbox
- *   the web client flushes through. The session key comes from
+ * - The first message rides the shared sessionMessage primitive (exact web
+ *   semantics — see that module's header). The session key comes from
  *   `~/.happy/sessions.json`, which the daemon persists from the session's
- *   `/session-started` webhook BEFORE it answers `/spawn-session`.
+ *   `/session-started` webhook BEFORE it answers `/spawn-session`; we
+ *   tolerate a slow daemon with a bounded 15s poll. For messaging an
+ *   ALREADY-running session, see `very-happy send` (send.ts).
  * - Daemon-not-running is a hard error (same semantics as the web: you
  *   cannot spawn on an offline machine). We deliberately do NOT call
  *   `ensureDaemonRunning()` here: automation running a dev build would
@@ -33,16 +32,16 @@
  */
 
 import chalk from 'chalk'
-import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
-import axios from 'axios'
-import { configuration } from '@/configuration'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from '@/daemon/controlClient'
-import { readCredentials, readPersistedSessions } from '@/persistence'
-import { decodeBase64, encodeBase64, encrypt } from '@/api/encryption'
-import { delay } from '@/utils/time'
+import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
 import { logger } from '@/ui/logger'
+
+// Re-exported for back-compat (tests and external imports historically used
+// `spawn.ts` as the home of this helper; the implementation now lives in the
+// shared sessionMessage module).
+export { sessionWebUrl } from './sessionMessage'
 
 export interface SpawnCommandOptions {
     dir?: string
@@ -83,10 +82,6 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
     return options
 }
 
-export function sessionWebUrl(sessionId: string): string {
-    return `${configuration.webappUrl.replace(/\/+$/, '')}/session/${sessionId}`
-}
-
 function printHelp() {
     console.log(`
 ${chalk.bold('happy spawn')} - Spawn a remote session via the local daemon (for automation)
@@ -114,68 +109,13 @@ ${chalk.bold('Exit codes:')}
 }
 
 /**
- * Wait for the daemon to persist the freshly spawned session's encryption
- * key into ~/.happy/sessions.json. Normally it is already there when
- * /spawn-session returns (the webhook precedes the spawn response), but we
- * tolerate slow disks / racy daemons with a bounded poll.
- */
-async function waitForSessionKey(sessionId: string, timeoutMs: number) {
-    const deadline = Date.now() + timeoutMs
-    while (true) {
-        const entry = readPersistedSessions()[sessionId]
-        if (entry) return entry
-        if (Date.now() >= deadline) {
-            throw new Error(
-                `Session ${sessionId} was spawned but its encryption key never appeared in ${configuration.sessionsFile}. ` +
-                `The daemon may be too old to persist session keys — send the message from the web UI instead.`
-            )
-        }
-        await delay(200)
-    }
-}
-
-/**
- * Send the first user message to a spawned session. Mirrors the web's
- * sendMessage: session-key-encrypted user envelope POSTed to the v3
- * messages endpoint; the running session picks it up via its socket.
+ * Send the first user message to a spawned session: wait (bounded) for the
+ * daemon to persist the fresh session's key, then push via the shared
+ * sessionMessage primitive.
  */
 async function sendFirstMessage(sessionId: string, text: string): Promise<void> {
-    const credentials = await readCredentials()
-    if (!credentials) {
-        throw new Error('Not authenticated. Run `happy auth login` first.')
-    }
-
     const persisted = await waitForSessionKey(sessionId, 15_000)
-
-    const envelope = {
-        role: 'user' as const,
-        content: {
-            type: 'text' as const,
-            text
-        },
-        meta: {
-            sentFrom: 'cli'
-        }
-    }
-
-    const encrypted = encodeBase64(encrypt(
-        decodeBase64(persisted.encryptionKey),
-        persisted.encryptionVariant,
-        envelope
-    ))
-
-    await axios.post(
-        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(sessionId)}/messages`,
-        { messages: [{ content: encrypted, localId: randomUUID() }] },
-        {
-            headers: {
-                'Authorization': `Bearer ${credentials.token}`,
-                'Content-Type': 'application/json',
-                'X-Happy-Client': `cli-spawn/${configuration.currentCliVersion}`
-            },
-            timeout: 30_000
-        }
-    )
+    await sendUserMessage(sessionId, persisted, text, 'cli-spawn')
 }
 
 export async function handleSpawnCommand(args: string[]): Promise<never> {
