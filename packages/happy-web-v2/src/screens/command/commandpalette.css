@@ -9,7 +9,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 12vh var(--sp-4) var(--sp-4);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
 }
 
@@ -23,7 +23,7 @@
   background: var(--bg-1);
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
-  box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
   animation: cp-pop var(--motion-fast) ease-out;
 }

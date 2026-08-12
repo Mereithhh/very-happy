@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-4);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
 }
 .tmux-card {
@@ -18,7 +18,7 @@
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 .tmux-head {

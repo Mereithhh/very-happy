@@ -129,7 +129,7 @@
   padding: 2px 10px;
   font-size: 12px;
   pointer-events: none;
-  box-shadow: 0 4px 16px -4px rgba(0,0,0,0.6);
+  box-shadow: var(--shadow-pop);
 }
 .sb-icon-btn.is-active {
   color: var(--accent);
@@ -295,6 +295,10 @@
   border-color: var(--accent);
   font-weight: 600;
 }
+/* Drag overlay sits ON the always-dark pane — like the xterm THEME and the
+   pane scrollbar above, it keeps dark-theme constants (phosphor teal) instead
+   of theme vars: light-theme --accent/--accent-2 are darkened teals that would
+   go near-invisible on the dark canvas. */
 .term-host.is-dragover::after {
   content: 'Drop to upload';
   position: absolute;
@@ -302,10 +306,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed var(--accent);
+  border: 2px dashed #34e2c4; /* dark --accent */
   border-radius: var(--r-md);
   background: rgba(52, 226, 196, 0.08);
-  color: var(--accent-2);
+  color: #34e2c4; /* dark --accent-2 */
   font-family: var(--font-mono);
   font-size: var(--fs-13);
   pointer-events: none;

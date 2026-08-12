@@ -8,6 +8,27 @@
  *  - --accent-2 is teal-as-text/border (dark: same as accent; light: darkened for contrast).
  *  - Dark is the brand default; light is "the terminal by day".
  *  - Surfaces are matte black, layered by lightness — no shadows in dark mode.
+ *
+ * ── Surface coloring discipline (2026-08 color audit) ─────────────────────────
+ * Every visible surface sits on the bg ladder — NO raw color literals in
+ * component CSS/TSX. Which step:
+ *  - --bg-0  app floor: screen/page background, detail-pane floor, code-block canvas.
+ *  - --bg-1  panel: sidebar, cards, modal/palette/dropdown panels, grouped lists.
+ *  - --bg-2  raised: inputs, composer, chips, toasts, secondary buttons, hover-on-bg-1.
+ *  - --bg-3  pressed/hover-on-bg-2.
+ *  - --line / --line-2  every border and hairline divider.
+ *  - text ladder: --text / --text-dim / --text-faint. Teal as text/border = --accent-2.
+ *  - overlays: backdrop dim = --scrim; floating-panel shadows = --shadow-pop
+ *    (dropdown/toast/hint) or --shadow-modal (modal/palette/auth card).
+ *  - fills: text on --accent fill = --accent-ink; on --danger fill = --danger-ink.
+ * Exemptions (the ONLY places literals are allowed; full list in
+ * happy/references/very-happy-design-tokens.md):
+ *  - the always-dark terminal pane: xterm THEME in WebTerminalScreen.tsx,
+ *    imeFix.ts, the pane scrollbar + drag-overlay in terminal.css (all keep
+ *    dark-theme constants because the pane doesn't flip with the theme);
+ *  - white glyphs on a black image scrim (.ci-att-remove);
+ *  - shiki syntax token colors (backgrounds are still forced to bg tokens);
+ *  - PWA manifest theme/background color (no media queries there; brand dark).
  */
 
 :root,
@@ -38,9 +59,16 @@
   --danger: #ff6b6b;
   --warn-dim: rgba(230, 180, 80, 0.14);
   --danger-dim: rgba(255, 107, 107, 0.14);
+  --danger-ink: #1c0606; /* text/icon on --danger fill (dark danger is light-ish red) */
 
   /* lift */
   --shadow-lift: none;
+
+  /* overlays: backdrop dim + floating-layer shadows (portals CAN'T layer by
+     lightness alone, so dark mode allows these two shadows and nothing else) */
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 12px 32px -14px rgba(0, 0, 0, 0.6); /* dropdown / toast / hint */
+  --shadow-modal: 0 24px 64px -24px rgba(0, 0, 0, 0.7); /* modal / palette / auth card */
 
   /* backdrop (grid + glow + vignette) */
   --bd-glow: rgba(52, 226, 196, 0.16);
@@ -78,9 +106,15 @@
   --danger: #b52f35;
   --warn-dim: rgba(132, 92, 9, 0.12);
   --danger-dim: rgba(181, 47, 53, 0.1);
+  --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
   /* gray-on-gray layering carries depth by value; shadow is a whisper */
   --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
+
+  /* overlays: slate-tinted (same hue family as --text), never pure black */
+  --scrim: rgba(26, 32, 40, 0.32);
+  --shadow-pop: 0 2px 6px rgba(26, 32, 40, 0.08), 0 12px 32px -12px rgba(26, 32, 40, 0.25);
+  --shadow-modal: 0 2px 8px rgba(26, 32, 40, 0.08), 0 32px 80px -28px rgba(26, 32, 40, 0.35);
 
   --bd-glow: rgba(12, 138, 118, 0.08);
   --bd-grid: rgba(40, 70, 110, 0.05);
@@ -111,7 +145,11 @@
     --danger: #b52f35;
     --warn-dim: rgba(132, 92, 9, 0.12);
     --danger-dim: rgba(181, 47, 53, 0.1);
+    --danger-ink: #ffffff;
     --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
+    --scrim: rgba(26, 32, 40, 0.32);
+    --shadow-pop: 0 2px 6px rgba(26, 32, 40, 0.08), 0 12px 32px -12px rgba(26, 32, 40, 0.25);
+    --shadow-modal: 0 2px 8px rgba(26, 32, 40, 0.08), 0 32px 80px -28px rgba(26, 32, 40, 0.35);
     --bd-glow: rgba(12, 138, 118, 0.08);
     --bd-grid: rgba(40, 70, 110, 0.05);
     --bd-vig: rgba(80, 90, 110, 0.045);
