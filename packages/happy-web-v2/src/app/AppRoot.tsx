@@ -25,6 +25,7 @@ const WebTerminalScreen = lazy(() => import('@/screens/terminal/WebTerminalScree
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
+const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -101,6 +102,11 @@ const router = createBrowserRouter(
     {
       element: <RequireAuth />,
       children: [
+        // Full-screen voice form — a SIBLING of the AppLayout tree on purpose:
+        // AppLayout always renders the sidebar/rail chrome on desktop, and the
+        // assistant is designed as a chromeless second form (mobile-first,
+        // logo-centered). Sits inside RequireAuth so sync is restored.
+        { path: '/assistant', element: <Lazy><AssistantScreen /></Lazy> },
         {
           path: '/',
           element: <AppLayout />,

@@ -9,6 +9,7 @@ import {
   Pencil,
   Archive,
   ClipboardList,
+  AudioLines,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -193,6 +194,14 @@ export function CommandPalette() {
         run: archiveCurrent,
       });
     }
+    out.push({
+      key: 'action:assistant',
+      group: 'actions',
+      title: t('commandPalette.actionAssistant'),
+      icon: <AudioLines size={16} />,
+      haystack: (t('commandPalette.actionAssistant') as string).toLowerCase(),
+      run: () => navigate('/assistant'),
+    });
     out.push({
       key: 'action:clipboard-history',
       group: 'actions',

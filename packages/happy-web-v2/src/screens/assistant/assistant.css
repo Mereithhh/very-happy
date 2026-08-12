@@ -1,0 +1,462 @@
+/*
+ * /assistant — full-screen voice form (B-051).
+ * Console design language: everything on the bg token ladder, no raw colors.
+ * --accent appears ONLY on live semantics: listening (mic open) and speaking
+ * (reply playing). idle/thinking stay on the text ladder.
+ * Mobile-first; desktop centers at ~560px.
+ */
+
+.as-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg-0);
+  color: var(--text);
+  overflow: hidden;
+  /* mic level from useHoldToTalk (0..1); consumed by the listening ring */
+  --as-level: 0;
+}
+
+.as-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── header ── */
+.as-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+.as-header-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.as-header-machine {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 7px;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-header-spacer {
+  flex: 1;
+}
+.as-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.as-icon-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+/* ── center stage ── */
+.as-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+.as-state-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-faint);
+  min-height: 16px;
+}
+.as-state-label[data-live='true'] {
+  color: var(--accent-2);
+}
+
+/* ── logo shell (state animations live here, glyph is a slot) ── */
+.as-logo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.as-logo-glyph {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58%;
+  height: 58%;
+  border-radius: 50%;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  transition: color 200ms ease, border-color 200ms ease;
+}
+.as-logo[data-state='listening'] .as-logo-glyph,
+.as-logo[data-state='speaking'] .as-logo-glyph {
+  color: var(--accent-2);
+  border-color: var(--accent-dim);
+}
+
+/* idle: breathing glow */
+.as-logo-halo {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.as-logo[data-state='idle'] .as-logo-halo {
+  opacity: 0.5;
+  animation: as-breathe 4.2s ease-in-out infinite;
+}
+
+/* listening: accent rings scaled by mic level */
+.as-logo-wave {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+}
+.as-logo[data-state='listening'] .as-logo-wave {
+  opacity: calc(0.35 + var(--as-level) * 0.65);
+  transform: scale(calc(0.94 + var(--as-level) * 0.12));
+  transition: transform 90ms linear, opacity 90ms linear;
+}
+.as-logo-wave--outer {
+  inset: 0;
+  border-width: 1px;
+}
+.as-logo[data-state='listening'] .as-logo-wave--outer {
+  opacity: calc(0.15 + var(--as-level) * 0.45);
+  transform: scale(calc(0.97 + var(--as-level) * 0.18));
+}
+
+/* thinking: rotating thin arc */
+.as-logo-arc {
+  position: absolute;
+  inset: 2%;
+  opacity: 0;
+  pointer-events: none;
+}
+.as-logo-arc circle {
+  stroke: var(--text-dim);
+  stroke-dasharray: 22 78; /* thin arc segment */
+  stroke-linecap: round;
+}
+.as-logo[data-state='thinking'] .as-logo-arc {
+  opacity: 1;
+  animation: as-rotate 1.6s linear infinite;
+}
+
+/* speaking: waveform bars */
+.as-logo-bars {
+  position: absolute;
+  bottom: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  opacity: 0;
+  pointer-events: none;
+}
+.as-logo-bars span {
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.as-logo[data-state='speaking'] .as-logo-bars {
+  opacity: 1;
+}
+.as-logo[data-state='speaking'] .as-logo-bars span {
+  animation: as-bar 900ms ease-in-out infinite;
+}
+.as-logo[data-state='speaking'] .as-logo-bars span:nth-child(2) {
+  animation-delay: 120ms;
+}
+.as-logo[data-state='speaking'] .as-logo-bars span:nth-child(3) {
+  animation-delay: 240ms;
+}
+.as-logo[data-state='speaking'] .as-logo-bars span:nth-child(4) {
+  animation-delay: 360ms;
+}
+.as-logo[data-state='speaking'] .as-logo-bars span:nth-child(5) {
+  animation-delay: 480ms;
+}
+
+@keyframes as-breathe {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.04);
+  }
+}
+@keyframes as-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes as-bar {
+  0%,
+  100% {
+    height: 5px;
+  }
+  50% {
+    height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .as-logo[data-state='idle'] .as-logo-halo,
+  .as-logo[data-state='thinking'] .as-logo-arc,
+  .as-logo[data-state='speaking'] .as-logo-bars span {
+    animation: none;
+  }
+  .as-logo[data-state='listening'] .as-logo-wave {
+    transform: none;
+    transition: opacity 200ms ease;
+  }
+  .as-logo[data-state='thinking'] .as-logo-arc {
+    opacity: 0.6;
+  }
+}
+
+/* ── conversation strip ── */
+.as-convo {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 72px;
+  max-height: 34dvh;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+.as-convo-user {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+}
+.as-convo-user::before {
+  content: '> ';
+}
+.as-convo-assistant {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.as-convo-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.as-ticker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-faint);
+  min-height: 15px;
+}
+.as-ticker[data-running='true'] {
+  color: var(--text-dim);
+}
+
+/* ── bottom controls ── */
+.as-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+}
+.as-unlock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.as-unlock-btn:hover {
+  background: var(--bg-3);
+}
+
+.as-ptt {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.as-ptt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.as-ptt[data-recording='true'] {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-2);
+  transform: scale(1.06);
+}
+.as-ptt-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.as-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.as-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.as-input:focus {
+  border-color: var(--accent);
+}
+.as-input::placeholder {
+  color: var(--text-faint);
+}
+.as-send-btn,
+.as-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 12px;
+  font-size: 13px;
+  flex: none;
+}
+.as-send-btn:hover,
+.as-reset-btn:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.as-send-btn:disabled,
+.as-reset-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── gate / picker states ── */
+.as-gate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 24px;
+}
+.as-gate-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.as-gate-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 380px;
+  line-height: 1.6;
+}
+.as-gate-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-dim);
+}
+.as-machine-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  cursor: pointer;
+}
+.as-machine-btn:hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+}

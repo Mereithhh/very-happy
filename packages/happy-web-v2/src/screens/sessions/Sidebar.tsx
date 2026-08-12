@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2 } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2, AudioLines } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
@@ -485,6 +485,15 @@ export function Sidebar() {
               the palette itself. */}
           <button className="sb-icon-btn sb-search-btn" title={t('sidebar.openSearch')} onClick={openCommandPalette}>
             <Search size={17} />
+          </button>
+          {/* form switch: the Siri-like voice assistant (B-051). The assistant
+              screen carries the mirror button in the same top-left slot. */}
+          <button
+            className="sb-icon-btn"
+            title={t('assistant.title')}
+            onClick={() => navigate('/assistant')}
+          >
+            <AudioLines size={17} />
           </button>
           <button
             className="sb-icon-btn sb-board-btn"

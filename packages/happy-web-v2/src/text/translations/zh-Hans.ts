@@ -586,10 +586,39 @@ export const zhHans: TranslationStructure = {
         actionArchiveSession: '归档当前对话',
         actionOpenSettings: '打开设置',
         actionClipboardHistory: '剪贴板历史',
+        actionAssistant: '语音助手',
         renamePromptTitle: '重命名对话',
         hintNavigate: '↑↓ 移动',
         hintSelect: '↵ 选择',
         hintClose: 'esc 关闭',
+    },
+
+    // /assistant — 语音助手第二形态（B-051）
+    assistant: {
+        title: '语音助手',
+        back: '返回',
+        holdToTalk: '按住说话',
+        enableVoice: '启用语音',
+        newConversation: '新对话',
+        textPlaceholder: '或输入文字…',
+        send: '发送',
+        retry: '重试',
+        connecting: '正在准备助手会话…',
+        stateIdle: '待命',
+        stateListening: '正在聆听…',
+        stateTranscribing: '正在转写…',
+        stateThinking: '思考中…',
+        stateSpeaking: '正在播报…',
+        noMachineTitle: '没有在线机器',
+        noMachineDesc: '助手运行在你的某台机器上。先在机器上启动 happy daemon，再回到这里。',
+        chooseMachine: '选择运行助手的机器',
+        upgradeCliTitle: '需要升级 CLI',
+        upgradeCliDesc: ({ version, current }: { version: string; current: string }) =>
+            `语音助手需要该机器上的 very-happy-cli ≥ ${version}（当前 ${current}）。升级后重启 daemon。`,
+        spawnError: '助手会话启动失败',
+        micError: '麦克风不可用，请检查浏览器权限',
+        ttsUnavailable: '语音播报不可用，已切换纯文字模式',
+        ttsTruncated: '播报已截断，全文见屏幕',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
@@ -966,6 +995,17 @@ export const zhHans: TranslationStructure = {
     },
 
     settingsVoice: {
+        // Voice settings page (web v2, B-051 assistant TTS)
+        title: '语音',
+        subtitle: '助手音色与播报',
+        voice: '音色',
+        voiceDefault: '服务器默认',
+        preview: '试听',
+        voicesUnavailable: '音色列表不可用——服务器未升级或未配置语音',
+        readTextReplies: '文字消息也朗读',
+        readTextRepliesHint: '语音消息的回复始终朗读',
+        assistantMachine: '助手机器',
+        assistantMachineAuto: '自动（唯一在线机器）',
         // Voice settings screen
         languageTitle: '语言',
         languageDescription: '选择您希望语音助手交互使用的语言。此设置将在您的所有设备间同步。',
