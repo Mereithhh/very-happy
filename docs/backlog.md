@@ -63,7 +63,8 @@
 | B-042 | worktree 会话 UI（NewSessionDraft 已有 sessionType 字段零 UI）+ 新建会话最近路径/目录补全 | ux | UX走查#19 | todo | 与 Owner 的 worktree 工作流直接相关 |
 | B-043 | 看板过滤/批量操作（按机器/tag；多选；清空 ended）；移动端断点统一（860/980 夹缝）+ PWA manifest 解除 portrait 锁定 | ux | UX走查#16#20 | todo | |
 | B-044 | 长会话性能：ChatList 虚拟化 + lineDiff LCS 无尺寸上限保护 | debt | UX走查#21 | todo | 触发条件：单会话 >2k 条实测卡 |
-| B-045 | 快捷指令快捷键：⌘. 弹 presets 菜单（聊天+终端）+ 数字键直选 | ux | Owner 2026-08-13 | doing | 终端页需 capture 拦截防 xterm 吞键 |
+| B-045 | 快捷指令快捷键：⌘./Ctrl+. 弹 presets 菜单（聊天+终端）+ 数字键直选 | ux | Owner 2026-08-13 | done | Shipped e81f25b2；Safari 的 ⌘. 是停止加载可能被截走（主力 Chrome/PWA 无碍） |
+| B-048 | Web Push 通知栏修复：v2 generateSW 丢了 push/notificationclick 处理器（订阅成功但推送永不显示）+ 终端事件接设备推送（dispatchDeviceEventPush，在线抑制） | bug | Owner 问题引出 2026-08-13 | done | Shipped e81f25b2；deploy 顺带修 electron postinstall 头号 flaky |
 | B-046 | 移动端会话详情页通知铃铛入口（现在只在根侧栏；详情页靠提示音） | ux | Owner 问题引出 2026-08-13 | todo | 等 Owner 真机用两天再定是否要 |
 | B-047 | 文件浏览器：终端/聊天会话浏览 cwd 目录与文件内容（daemon 机器 RPC fs-list/fs-read + 终端抽屉 + FilesPanel 浏览模式） | feat | Owner 2026-08-13 | doing | 旧 daemon 降级提示；读上限 512KB |
 
