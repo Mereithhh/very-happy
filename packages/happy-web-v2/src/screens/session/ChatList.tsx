@@ -158,8 +158,8 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         return (
             <div className="cl cl--empty">
                 <EmptyState
-                    title={t('session.chat.emptyTitle' as any)}
-                    description={t('session.chat.emptyDescription' as any)}
+                    title={t('session.chat.emptyTitle')}
+                    description={t('session.chat.emptyDescription')}
                 />
             </div>
         );
@@ -169,7 +169,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         return (
             <div className="cl cl--loading">
                 <Spinner size={20} />
-                <span>{t('session.chat.loadingMessages' as any)}</span>
+                <span>{t('session.chat.loadingMessages')}</span>
             </div>
         );
     }
@@ -191,7 +191,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                                 loading={isLoadingOlder}
                                 onClick={() => void sync.loadOlderMessages(sessionId)}
                             >
-                                {isLoadingOlder ? t('session.chat.loadingOlder' as any) : t('session.chat.loadOlder' as any)}
+                                {isLoadingOlder ? t('session.chat.loadingOlder') : t('session.chat.loadOlder')}
                             </Button>
                         </div>
                     )}
@@ -216,8 +216,8 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                     type="button"
                     className="cl-jump"
                     onClick={() => scrollToBottom(true)}
-                    aria-label={t('session.chat.jumpToLatest' as any)}
-                    title={t('session.chat.jumpToLatest' as any)}
+                    aria-label={t('session.chat.jumpToLatest')}
+                    title={t('session.chat.jumpToLatest')}
                 >
                     <ChevronDown size={18} />
                 </button>

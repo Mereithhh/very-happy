@@ -32,7 +32,7 @@ export function SignupScreen() {
   const usernameError = useMemo(() => {
     if (!touched.u) return null;
     if (username.trim().length < MIN_USERNAME) {
-      return t('signup.errorUsernameShort' as any, { count: MIN_USERNAME } as any) as string;
+      return t('signup.errorUsernameShort', { count: MIN_USERNAME });
     }
     return null;
   }, [touched.u, username, t]);
@@ -40,14 +40,14 @@ export function SignupScreen() {
   const passwordError = useMemo(() => {
     if (!touched.p) return null;
     if (password.length < MIN_PASSWORD) {
-      return t('signup.errorPasswordShort' as any, { count: MIN_PASSWORD } as any) as string;
+      return t('signup.errorPasswordShort', { count: MIN_PASSWORD });
     }
     return null;
   }, [touched.p, password, t]);
 
   const confirmError = useMemo(() => {
     if (!touched.c || confirm.length === 0) return null;
-    if (confirm !== password) return t('signup.errorMismatch' as any) as string;
+    if (confirm !== password) return t('signup.errorMismatch');
     return null;
   }, [touched.c, confirm, password, t]);
 
@@ -73,23 +73,23 @@ export function SignupScreen() {
       const token = await authGetToken(secret, inviteCode);
       await setAccountCredentials(username, password, secretB64, { token, secret: secretB64 });
       await login(token, secretB64);
-      toast.success(t('signup.success' as any) as string);
+      toast.success(t('signup.success'));
       navigate('/', { replace: true });
     } catch (err: any) {
       if (err instanceof AccountAuthError) {
-        if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken' as any) as string);
-        else if (err.code === 'rate-limited') setServerError(t('signup.errorRateLimited' as any) as string);
-        else setServerError(t('signup.errorGeneric' as any) as string);
+        if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken'));
+        else if (err.code === 'rate-limited') setServerError(t('signup.errorRateLimited'));
+        else setServerError(t('signup.errorGeneric'));
       } else {
         const status = err?.response?.status;
         const code = err?.response?.data?.error ?? err?.response?.data?.code;
         if (status === 403 && (code === 'invite-required' || /invite/i.test(String(code))))
-          setServerError(t('signup.errorInviteRequired' as any) as string);
+          setServerError(t('signup.errorInviteRequired'));
         else if (status === 403 && (code === 'signup-closed' || /closed/i.test(String(code))))
-          setServerError(t('signup.errorSignupClosed' as any) as string);
+          setServerError(t('signup.errorSignupClosed'));
         else if (status === 429 || status === 403)
-          setServerError(t('signup.errorRateLimited' as any) as string);
-        else setServerError(t('signup.errorGeneric' as any) as string);
+          setServerError(t('signup.errorRateLimited'));
+        else setServerError(t('signup.errorGeneric'));
       }
     } finally {
       setBusy(false);
@@ -104,53 +104,53 @@ export function SignupScreen() {
           <CyberMark size={40} glow />
           <div className="auth-wordmark">very happy</div>
         </div>
-        <div className="auth-eyebrow eyebrow">{t('signup.title' as any)}</div>
+        <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 
         <Input
-          label={t('signup.username' as any) as string}
+          label={t('signup.username')}
           autoFocus
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value.toLowerCase())}
           onBlur={() => setTouched((s) => ({ ...s, u: true }))}
-          placeholder={t('signup.usernamePlaceholder' as any) as string}
+          placeholder={t('signup.usernamePlaceholder')}
           error={usernameError}
         />
         <Input
-          label={t('signup.password' as any) as string}
+          label={t('signup.password')}
           type="password"
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onBlur={() => setTouched((s) => ({ ...s, p: true }))}
-          placeholder={t('signup.passwordPlaceholder' as any) as string}
+          placeholder={t('signup.passwordPlaceholder')}
           error={passwordError}
         />
         <Input
-          label={t('signup.confirm' as any) as string}
+          label={t('signup.confirm')}
           type="password"
           autoComplete="new-password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           onBlur={() => setTouched((s) => ({ ...s, c: true }))}
-          placeholder={t('signup.confirmPlaceholder' as any) as string}
+          placeholder={t('signup.confirmPlaceholder')}
           error={confirmError}
         />
         <Input
-          label={t('signup.inviteCode' as any) as string}
+          label={t('signup.inviteCode')}
           autoComplete="off"
           value={invite}
           onChange={(e) => setInvite(e.target.value)}
-          placeholder={t('signup.inviteCodePlaceholder' as any) as string}
+          placeholder={t('signup.inviteCodePlaceholder')}
           error={serverError}
         />
 
         <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
-          {t('signup.submit' as any)}
+          {t('signup.submit')}
         </Button>
 
         <button type="button" className="auth-alt" onClick={() => navigate('/login')}>
-          {t('signup.haveAccount' as any)}
+          {t('signup.haveAccount')}
         </button>
       </form>
     </div>

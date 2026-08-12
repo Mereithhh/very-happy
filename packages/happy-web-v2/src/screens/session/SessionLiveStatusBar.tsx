@@ -38,18 +38,18 @@ export function SessionLiveStatusBar({ sessionId }: { sessionId: string }) {
         return (
             <div className="lsb lsb--permission" role="status">
                 <ShieldAlert size={14} />
-                <span>{t('session.chat.needsPermission' as any)}</span>
+                <span>{t('session.chat.needsPermission')}</span>
             </div>
         );
     }
 
     const label =
         kind === 'tool'
-            ? t('session.chat.runningTool' as any, {
+            ? t('session.chat.runningTool', {
                 name: runningTool!.name,
                 seconds: formatElapsed(elapsed),
             })
-            : t('session.chat.thinking' as any, { seconds: formatElapsed(elapsed) });
+            : t('session.chat.thinking', { seconds: formatElapsed(elapsed) });
 
     return (
         <div className="lsb lsb--live" role="status" aria-live="polite">

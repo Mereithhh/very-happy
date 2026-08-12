@@ -20,7 +20,7 @@ import type { Session } from '@/sync/storageTypes';
  *  local flip, then kill the CLI; only if it's already dead force-archive via
  *  the server. Rolls back on failure. */
 export async function confirmArchiveSession(session: Session): Promise<void> {
-  const ok = await Modal.confirm(t('sidebar.archiveConfirm' as any), undefined, {
+  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
     confirmText: t('common.archive'),
     destructive: true,
   });
@@ -69,7 +69,7 @@ export async function confirmDeleteSession(
  *  machine AND drops the registry record — removing the record alone used to
  *  orphan the tmux session forever. */
 export async function confirmDeleteTerminal(machineId: string, terminalId: string): Promise<void> {
-  const ok = await Modal.confirm(t('terminal.deleteTitle' as any), t('terminal.deleteMessage' as any), {
+  const ok = await Modal.confirm(t('terminal.deleteTitle'), t('terminal.deleteMessage'), {
     confirmText: t('common.delete'),
     destructive: true,
   });

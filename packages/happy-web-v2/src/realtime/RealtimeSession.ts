@@ -2,6 +2,7 @@
 // active voice session" to gate some behavior; always "no".
 export interface VoiceSession {
   id: string;
+  sendTextMessage: (text: string) => void;
 }
 
 export function getVoiceSession(): VoiceSession | null {

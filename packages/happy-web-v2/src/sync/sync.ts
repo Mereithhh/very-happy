@@ -46,7 +46,7 @@ import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
-import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
+import { DecryptedArtifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
 import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
@@ -117,7 +117,6 @@ class Sync {
     private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
     private sessionQueueProcessing = new Set<string>();
     private sessionMessageLocks = new Map<string, AsyncLock>();
-    private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
     private settingsSync: InvalidateSync;
@@ -138,9 +137,6 @@ class Sync {
     private backgroundSendStartedAt: number | null = null;
     revenueCatInitialized = false;
 
-    // Generic locking mechanism
-    private recalculationLockCount = 0;
-    private lastRecalculationTime = 0;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);

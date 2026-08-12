@@ -70,7 +70,7 @@ function AgentText({
                     <button type="button" className="msg-thinking-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                         <span className="msg-thinking-emoji" aria-hidden>💭</span>
-                        <span>{durationLabel ?? t('session.chat.thinkingLabel' as any)}</span>
+                        <span>{durationLabel ?? t('session.chat.thinkingLabel')}</span>
                     </button>
                     {open && (
                         <div className="msg-thinking-body">
@@ -118,7 +118,7 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
     let subtle = false;
     switch (ev.type) {
         case 'switch':
-            label = t('message.switchedToMode' as any, { mode: ev.mode });
+            label = t('message.switchedToMode', { mode: ev.mode });
             break;
         case 'message':
             // Title-change / plan-mode / turn / compaction system notes — keep subtle.
@@ -126,8 +126,8 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
             subtle = true;
             break;
         case 'limit-reached':
-            label = t('message.usageLimitUntil' as any, {
-                time: formatUnixTime(ev.endsAt) || t('message.unknownTime' as any),
+            label = t('message.usageLimitUntil', {
+                time: formatUnixTime(ev.endsAt) || t('message.unknownTime'),
             });
             break;
         case 'ready':
@@ -135,7 +135,7 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
             // final agent-text MessageMetaRow — nothing to render as an event line.
             return null;
         default:
-            label = t('message.unknownEvent' as any);
+            label = t('message.unknownEvent');
     }
     return (
         <div className="msg msg--event">

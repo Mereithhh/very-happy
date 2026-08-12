@@ -140,7 +140,7 @@ class ApiSocket {
         return () => this.messageHandlers.delete(event);
     }
 
-    offMessage(event: string, handler: (data: any) => void) {
+    offMessage(event: string, _handler: (data: any) => void) {
         this.messageHandlers.delete(event);
     }
 

@@ -85,7 +85,7 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                     aria-expanded={expanded}
                 >
                     <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
-                    <span className="tg-summary">{t('session.chat.usedTools' as any, { count: tools.length })}</span>
+                    <span className="tg-summary">{t('session.chat.usedTools', { count: tools.length })}</span>
                     {running ? (
                         <span className="tg-elapsed tg-elapsed--live">
                             <StatusDot status="thinking" size={7} pulse />
@@ -94,7 +94,7 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                     ) : state === 'error' || state === 'mixed' ? (
                         <span className="tg-elapsed tg-elapsed--err">
                             <AlertTriangle size={12} />
-                            {t('session.chat.toolError' as any)}
+                            {t('session.chat.toolError')}
                         </span>
                     ) : null}
                 </button>

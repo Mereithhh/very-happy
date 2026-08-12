@@ -2,7 +2,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
-import { FeedResponse, FeedResponseSchema, FeedItem } from './feedTypes';
+import { FeedResponseSchema, FeedItem } from './feedTypes';
 import { log } from '@/log';
 
 /**

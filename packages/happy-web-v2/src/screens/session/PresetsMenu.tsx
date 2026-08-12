@@ -21,15 +21,15 @@ export function PresetsMenu({ onPick }: { onPick: (text: string) => void }) {
                 <button
                     type="button"
                     className="ci-icon-btn"
-                    aria-label={t('session.chat.presets' as any)}
-                    title={t('session.chat.presets' as any)}
+                    aria-label={t('session.chat.presets')}
+                    title={t('session.chat.presets')}
                 >
                     <BookMarked size={18} />
                 </button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
                 <DropdownMenu.Content className="pm-content" sideOffset={6} align="start" side="top">
-                    <div className="pm-head">{t('session.chat.presetsTitle' as any)}</div>
+                    <div className="pm-head">{t('session.chat.presetsTitle')}</div>
                     {presets.map((p) => (
                         <DropdownMenu.Item key={p.id} className="pm-item" onSelect={() => onPick(p.text)}>
                             <span className="pm-item-title">{p.title}</span>

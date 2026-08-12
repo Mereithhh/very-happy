@@ -1,5 +1,5 @@
 import { deriveKey } from "@/encryption/deriveKey";
-import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryptor } from "./encryptor";
+import { AES256Encryption, SecretBoxEncryption, Encryptor, Decryptor } from "./encryptor";
 import { encodeHex } from "@/encryption/hex";
 import { EncryptionCache } from "./encryptionCache";
 import { SessionEncryption } from "./sessionEncryption";

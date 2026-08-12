@@ -16,47 +16,47 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const sections: Section[] = [
     {
-      title: t('tmuxHelp.mouse' as any),
+      title: t('tmuxHelp.mouse'),
       items: [
-        { keys: t('tmuxHelp.keyWheel' as any), label: t('tmuxHelp.labelWheel' as any) },
-        { keys: t('tmuxHelp.keyClick' as any), label: t('tmuxHelp.labelClick' as any) },
-        { keys: t('tmuxHelp.keyShiftDrag' as any), label: t('tmuxHelp.labelShiftDrag' as any) },
+        { keys: t('tmuxHelp.keyWheel'), label: t('tmuxHelp.labelWheel') },
+        { keys: t('tmuxHelp.keyClick'), label: t('tmuxHelp.labelClick') },
+        { keys: t('tmuxHelp.keyShiftDrag'), label: t('tmuxHelp.labelShiftDrag') },
       ],
     },
     {
-      title: t('tmuxHelp.prefix' as any),
-      note: t('tmuxHelp.prefixNote' as any),
-      items: [{ keys: 'Ctrl-b', label: t('tmuxHelp.labelPrefix' as any) }],
+      title: t('tmuxHelp.prefix'),
+      note: t('tmuxHelp.prefixNote'),
+      items: [{ keys: 'Ctrl-b', label: t('tmuxHelp.labelPrefix') }],
     },
     {
-      title: t('tmuxHelp.scrollback' as any),
+      title: t('tmuxHelp.scrollback'),
       items: [
-        { keys: 'Ctrl-b  [', label: t('tmuxHelp.labelEnterCopy' as any) },
-        { keys: '↑ ↓  PgUp', label: t('tmuxHelp.labelScroll' as any) },
-        { keys: 'q', label: t('tmuxHelp.labelQuit' as any) },
+        { keys: 'Ctrl-b  [', label: t('tmuxHelp.labelEnterCopy') },
+        { keys: '↑ ↓  PgUp', label: t('tmuxHelp.labelScroll') },
+        { keys: 'q', label: t('tmuxHelp.labelQuit') },
       ],
     },
     {
-      title: t('tmuxHelp.panes' as any),
+      title: t('tmuxHelp.panes'),
       items: [
-        { keys: 'Ctrl-b  %', label: t('tmuxHelp.labelSplitV' as any) },
-        { keys: 'Ctrl-b  "', label: t('tmuxHelp.labelSplitH' as any) },
-        { keys: 'Ctrl-b  ←↑↓→', label: t('tmuxHelp.labelMovePanes' as any) },
-        { keys: 'Ctrl-b  z', label: t('tmuxHelp.labelZoom' as any) },
-        { keys: 'Ctrl-b  x', label: t('tmuxHelp.labelClosePane' as any) },
+        { keys: 'Ctrl-b  %', label: t('tmuxHelp.labelSplitV') },
+        { keys: 'Ctrl-b  "', label: t('tmuxHelp.labelSplitH') },
+        { keys: 'Ctrl-b  ←↑↓→', label: t('tmuxHelp.labelMovePanes') },
+        { keys: 'Ctrl-b  z', label: t('tmuxHelp.labelZoom') },
+        { keys: 'Ctrl-b  x', label: t('tmuxHelp.labelClosePane') },
       ],
     },
     {
-      title: t('tmuxHelp.windows' as any),
+      title: t('tmuxHelp.windows'),
       items: [
-        { keys: 'Ctrl-b  c', label: t('tmuxHelp.labelNewWindow' as any) },
-        { keys: 'Ctrl-b  n / p', label: t('tmuxHelp.labelNextPrev' as any) },
-        { keys: 'Ctrl-b  0–9', label: t('tmuxHelp.labelJump' as any) },
+        { keys: 'Ctrl-b  c', label: t('tmuxHelp.labelNewWindow') },
+        { keys: 'Ctrl-b  n / p', label: t('tmuxHelp.labelNextPrev') },
+        { keys: 'Ctrl-b  0–9', label: t('tmuxHelp.labelJump') },
       ],
     },
     {
-      title: t('tmuxHelp.session' as any),
-      items: [{ keys: 'Ctrl-b  d', label: t('tmuxHelp.labelDetach' as any) }],
+      title: t('tmuxHelp.session'),
+      items: [{ keys: 'Ctrl-b  d', label: t('tmuxHelp.labelDetach') }],
     },
   ];
 
@@ -64,7 +64,7 @@ export function TmuxHelpModal({ onClose }: { onClose: () => void }) {
     <div className="tmux-backdrop" onClick={onClose}>
       <div className="tmux-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="tmux-head">
-          <span className="tmux-title">{t('tmuxHelp.title' as any)}</span>
+          <span className="tmux-title">{t('tmuxHelp.title')}</span>
           <button className="tmux-close" onClick={onClose} aria-label="close">
             <X size={16} />
           </button>

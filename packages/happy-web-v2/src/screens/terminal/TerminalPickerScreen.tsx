@@ -4,7 +4,7 @@ import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { activeTerminals } from '@/sync/terminalListOps';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { ItemList, ItemGroup, Item, EmptyState, StatusDot, Button } from '@/ui';
+import { ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useIsDesktop } from '@/app/useMediaQuery';
 
@@ -30,21 +30,21 @@ export function TerminalPickerScreen() {
       {!isDesktop && (
         <header className="term-header">
           <button className="term-back" onClick={() => navigate('/')}>
-            <ChevronLeft size={18} /> {t('common.back' as any)}
+            <ChevronLeft size={18} /> {t('common.back')}
           </button>
         </header>
       )}
       <div style={{ padding: 'var(--sp-6)', overflowY: 'auto', flex: 1 }}>
-        <h2 style={{ marginTop: 0 }}>{t('newSessionModal.terminalTitle' as any)}</h2>
+        <h2 style={{ marginTop: 0 }}>{t('newSessionModal.terminalTitle')}</h2>
         {machines.length === 0 ? (
           <EmptyState
             compact
-            title={t('machine.noMachines' as any)}
-            description={t('machine.noMachinesDescription' as any)}
+            title={t('machine.noMachines')}
+            description={t('machine.noMachinesDescription')}
           />
         ) : (
           <ItemList>
-            <ItemGroup title={t('newSessionModal.terminalSubtitle' as any)}>
+            <ItemGroup title={t('newSessionModal.terminalSubtitle')}>
               {machines.map((m) => {
                 const online = isMachineOnline(m);
                 const name = machineLabel(m);
@@ -62,7 +62,7 @@ export function TerminalPickerScreen() {
             </ItemGroup>
 
             {terminals.length > 0 && (
-              <ItemGroup title={t('sidebar.openSessions' as any)}>
+              <ItemGroup title={t('sidebar.openSessions')}>
                 {terminals.map((term) => (
                   <Item
                     key={term.id}

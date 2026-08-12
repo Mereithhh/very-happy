@@ -57,11 +57,11 @@ export function CodeView({
                         type="button"
                         className="cv-copy"
                         onClick={onCopy}
-                        aria-label={t('common.copy' as any)}
-                        title={t('common.copy' as any)}
+                        aria-label={t('common.copy')}
+                        title={t('common.copy')}
                     >
                         {copied ? <Check size={13} /> : <Copy size={13} />}
-                        <span>{copied ? t('markdown.codeCopied' as any) : t('common.copy' as any)}</span>
+                        <span>{copied ? t('markdown.codeCopied') : t('common.copy')}</span>
                     </button>
                 )}
             </div>

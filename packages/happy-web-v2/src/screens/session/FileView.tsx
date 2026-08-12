@@ -26,21 +26,21 @@ export function FileView({ sessionId, fullPath }: { sessionId: string; fullPath:
         return (
             <div className="fp-fileview fp-fileview--center">
                 <Spinner size={18} />
-                <span>{t('session.chat.loadingFile' as any)}</span>
+                <span>{t('session.chat.loadingFile')}</span>
             </div>
         );
     }
     if (!entry) {
         return (
             <div className="fp-fileview fp-fileview--center">
-                <span>{t('session.chat.loadingFile' as any)}</span>
+                <span>{t('session.chat.loadingFile')}</span>
             </div>
         );
     }
     if (entry.isBinary || entry.content == null) {
         return (
             <div className="fp-fileview fp-fileview--center">
-                <span>{t('session.chat.binaryFile' as any)}</span>
+                <span>{t('session.chat.binaryFile')}</span>
             </div>
         );
     }

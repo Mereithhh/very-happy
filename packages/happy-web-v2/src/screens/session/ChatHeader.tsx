@@ -43,7 +43,7 @@ export function ChatHeader({
     const ime = useImeGuard();
 
     const meta = session?.metadata;
-    const title = meta?.summary?.text?.trim() || t('session.newChat' as any);
+    const title = meta?.summary?.text?.trim() || t('session.newChat');
     const host = meta?.host;
     const cwd = meta?.path;
     const status = connectionStatus(session?.presence, socketStatus);
@@ -83,7 +83,7 @@ export function ChatHeader({
                     type="button"
                     className="ch-back"
                     onClick={() => (onBack ? onBack() : navigate('/'))}
-                    aria-label={t('common.back' as any)}
+                    aria-label={t('common.back')}
                 >
                     <ArrowLeft size={18} />
                 </button>
@@ -95,22 +95,22 @@ export function ChatHeader({
                             className="ch-rename-input"
                             value={draft}
                             autoFocus
-                            placeholder={t('session.renamePlaceholder' as any)}
+                            placeholder={t('session.renamePlaceholder')}
                             onChange={(e) => setDraft(e.target.value)}
                             onCompositionStart={ime.onCompositionStart}
                             onCompositionEnd={ime.onCompositionEnd}
                             onKeyDown={onKey}
                             disabled={saving}
                         />
-                        <button type="button" className="ch-icon" onClick={() => void save()} aria-label={t('common.save' as any)}>
+                        <button type="button" className="ch-icon" onClick={() => void save()} aria-label={t('common.save')}>
                             <Check size={16} />
                         </button>
-                        <button type="button" className="ch-icon" onClick={() => setEditing(false)} aria-label={t('common.cancel' as any)}>
+                        <button type="button" className="ch-icon" onClick={() => setEditing(false)} aria-label={t('common.cancel')}>
                             <X size={16} />
                         </button>
                     </div>
                 ) : (
-                    <button type="button" className="ch-title-btn" onClick={startEdit} title={t('session.renameTitle' as any)}>
+                    <button type="button" className="ch-title-btn" onClick={startEdit} title={t('session.renameTitle')}>
                         <span className="ch-title">{title}</span>
                         <Pencil size={13} className="ch-title-pencil" />
                     </button>
@@ -131,8 +131,8 @@ export function ChatHeader({
                     type="button"
                     className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
                     onClick={onToggleFiles}
-                    aria-label={t('session.chat.files' as any)}
-                    title={t('session.chat.files' as any)}
+                    aria-label={t('session.chat.files')}
+                    title={t('session.chat.files')}
                     aria-pressed={filesOpen}
                 >
                     <FolderTree size={16} />

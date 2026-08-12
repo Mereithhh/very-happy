@@ -330,7 +330,7 @@ export function Sidebar() {
               <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
             )}
           </button>
-          <button className="sb-icon-btn" title={t('sidebar.collapse' as any)} onClick={toggleCollapsed}>
+          <button className="sb-icon-btn" title={t('sidebar.collapse')} onClick={toggleCollapsed}>
             <PanelLeftClose size={17} />
           </button>
           {/* Quick create: spawns directly with the remembered machine/
@@ -342,7 +342,7 @@ export function Sidebar() {
             items={[
               {
                 key: 'chat',
-                label: t('newSessionModal.chatTitle' as any),
+                label: t('newSessionModal.chatTitle'),
                 icon: MessageSquare,
                 onSelect: () => void createChatOrConfigure(navigate, () => setShowNew(true)),
               },
@@ -354,13 +354,13 @@ export function Sidebar() {
               },
               {
                 key: 'terminal',
-                label: t('newSessionModal.terminalTitle' as any),
+                label: t('newSessionModal.terminalTitle'),
                 icon: TerminalSquare,
                 onSelect: () => createTerminalOrPick(navigate),
               },
             ]}
           >
-            <button className="sb-icon-btn" title={t('sidebar.newSession' as any)}>
+            <button className="sb-icon-btn" title={t('sidebar.newSession')}>
               <Plus size={18} />
             </button>
           </ActionDropdownMenu>
@@ -372,7 +372,7 @@ export function Sidebar() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('sidebar.searchPlaceholder' as any)}
+          placeholder={t('sidebar.searchPlaceholder')}
           className="sb-search-input"
         />
         {query && (
@@ -389,7 +389,7 @@ export function Sidebar() {
             className={`sb-filter-btn${filter === f ? ' is-on' : ''}`}
             onClick={() => setFilter(f)}
           >
-            {t(`sidebar.filter${f[0].toUpperCase()}${f.slice(1)}` as any)}
+            {t(f === 'active' ? 'sidebar.filterActive' : 'sidebar.filterArchived')}
           </button>
         ))}
         {/* Board lives on the header icon (badge included) — a third tab in
@@ -399,10 +399,10 @@ export function Sidebar() {
       <div className="sb-list">
         {displayRows === null ? (
           <div className="sb-loading">
-            <StatusDot status="thinking" pulse /> {t('common.loading' as any)}
+            <StatusDot status="thinking" pulse /> {t('common.loading')}
           </div>
         ) : displayRows.length === 0 ? (
-          <div className="sb-empty">{query ? t('sidebar.noResults' as any) : t('newSession.empty' as any)}</div>
+          <div className="sb-empty">{query ? t('sidebar.noResults') : t('sidebar.empty')}</div>
         ) : (
           <>
             {displayPinned.length > 0 && (
@@ -451,7 +451,7 @@ export function Sidebar() {
 
       <footer className="sb-footer">
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
-          <Settings size={16} /> {t('tabs.settings' as any)}
+          <Settings size={16} /> {t('tabs.settings')}
         </button>
       </footer>
 

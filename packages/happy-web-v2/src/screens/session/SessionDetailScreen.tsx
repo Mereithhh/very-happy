@@ -40,8 +40,8 @@ export function SessionDetailScreen() {
     if (!id) {
         return (
             <EmptyState
-                title={t('common.error' as any)}
-                actions={<Button onClick={() => navigate('/')}>{t('common.back' as any)}</Button>}
+                title={t('common.error')}
+                actions={<Button onClick={() => navigate('/')}>{t('common.back')}</Button>}
             />
         );
     }
@@ -50,9 +50,9 @@ export function SessionDetailScreen() {
     if (!session) {
         return (
             <EmptyState
-                title={t('session.chat.loadingMessages' as any)}
+                title={t('session.chat.loadingMessages')}
                 description={`Session ${id}`}
-                actions={<Button variant="ghost" onClick={() => navigate('/')}>{t('common.back' as any)}</Button>}
+                actions={<Button variant="ghost" onClick={() => navigate('/')}>{t('common.back')}</Button>}
             />
         );
     }

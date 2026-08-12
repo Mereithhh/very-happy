@@ -7,9 +7,7 @@ import { InvalidateSync } from '@/utils/sync';
 import { sessionBash } from './ops';
 import { GitStatus } from './storageTypes';
 import { storage } from './storage';
-import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
-import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 
 
@@ -234,47 +232,6 @@ export class GitStatusSync {
         };
     }
 
-    /**
-     * Parse git status porcelain output into structured data using simple-git parsers
-     * (Legacy v1 fallback method - kept for compatibility)
-     */
-    private parseGitStatus(
-        branchName: string | null, 
-        porcelainOutput: string,
-        diffStatOutput: string = '',
-        stagedDiffStatOutput: string = ''
-    ): GitStatus {
-        // Parse status using simple-git parser
-        const statusSummary = parseStatusSummary(porcelainOutput);
-        const counts = getStatusCounts(statusSummary);
-        const repoIsDirty = isDirty(statusSummary);
-
-        // Parse diff statistics
-        const unstagedDiff = parseNumStat(diffStatOutput);
-        const stagedDiff = parseNumStat(stagedDiffStatOutput);
-        const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = mergeDiffSummaries(stagedDiff, unstagedDiff);
-        
-        // Calculate totals
-        const linesAdded = stagedAdded + unstagedAdded;
-        const linesRemoved = stagedRemoved + unstagedRemoved;
-        const linesChanged = linesAdded + linesRemoved;
-
-        return {
-            branch: branchName || null,
-            isDirty: repoIsDirty,
-            modifiedCount: counts.modified,
-            untrackedCount: counts.untracked,
-            stagedCount: counts.staged,
-            stagedLinesAdded: stagedAdded,
-            stagedLinesRemoved: stagedRemoved,
-            unstagedLinesAdded: unstagedAdded,
-            unstagedLinesRemoved: unstagedRemoved,
-            linesAdded,
-            linesRemoved,
-            linesChanged,
-            lastUpdatedAt: Date.now()
-        };
-    }
 
 }
 

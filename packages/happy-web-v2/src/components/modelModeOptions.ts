@@ -1,4 +1,5 @@
 import type { Metadata } from '@/sync/storageTypes';
+import type { SimpleTranslationKey } from '@/text';
 import { hackModes } from '@/sync/modeHacks';
 import { getCodeAgentDefaults } from '@/sync/agentDefaults';
 
@@ -17,7 +18,7 @@ export type ModelModeKey = string;
 
 export type AgentFlavor = 'claude' | 'codex' | 'gemini' | string | null | undefined;
 
-type Translate = (key: any) => string;
+type Translate = (key: SimpleTranslationKey) => string;
 
 type MetadataOption = {
     code: string;

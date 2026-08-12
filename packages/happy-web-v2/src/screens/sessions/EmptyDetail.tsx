@@ -9,11 +9,11 @@ export function EmptyDetail() {
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <EmptyState
-        title={t('emptyState.pickUpTitle' as any)}
-        description={t('emptyState.pickUpDescription' as any)}
+        title={t('emptyState.pickUpTitle')}
+        description={t('emptyState.pickUpDescription')}
         actions={
           <Button variant="primary" onClick={() => createTerminalOrPick(navigate)}>
-            {t('emptyState.newSession' as any)}
+            {t('emptyState.newSession')}
           </Button>
         }
       />

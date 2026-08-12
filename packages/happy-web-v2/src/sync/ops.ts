@@ -119,9 +119,6 @@ interface SessionRipgrepResponse {
 }
 
 // Kill session operation types
-interface SessionKillRequest {
-    // No parameters needed
-}
 
 interface SessionKillResponse {
     success: boolean;

@@ -95,7 +95,7 @@ export function WebTerminalScreen() {
   const renameTerminal = useTerminalSessions((s) => s.rename);
   const autoTitle = useTerminalSessions((s) => s.autoTitle);
   const meta = terminals.find((x) => x.id === tid);
-  const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle' as any);
+  const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
 
   // Latest synced startup command, readable inside the terminal effect without
   // adding `settings` to its deps (that would tear down a live terminal on any
@@ -1011,7 +1011,7 @@ export function WebTerminalScreen() {
 
   const onRename = async () => {
     if (!tid) return;
-    const next = await Modal.prompt(t('common.rename' as any), undefined, { defaultValue: title });
+    const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
     if (next != null) renameTerminal(tid, next);
   };
 
@@ -1082,16 +1082,16 @@ export function WebTerminalScreen() {
             <ChevronLeft size={18} />
           </button>
         )}
-        <button className="term-title" onClick={onRename} title={t('common.rename' as any)}>
+        <button className="term-title" onClick={onRename} title={t('common.rename')}>
           <span className="term-title-text">{title}</span>
           <Pencil size={13} className="term-title-edit" />
         </button>
         <div className="term-header-right">
-          {connecting && <span className="term-connecting mono">{t('common.loading' as any)}</span>}
+          {connecting && <span className="term-connecting mono">{t('common.loading')}</span>}
           {!isDesktop && (
             <button
               className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}
-              title={t('terminal.selectMode' as any)}
+              title={t('terminal.selectMode')}
               aria-pressed={selectMode}
               onClick={toggleSelectMode}
             >
@@ -1100,7 +1100,7 @@ export function WebTerminalScreen() {
           )}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup' as any)}>
+              <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup')}>
                 <ListPlus size={18} />
               </button>
             </DropdownMenu.Trigger>
@@ -1117,7 +1117,7 @@ export function WebTerminalScreen() {
                     className="vh-menu-item"
                     onSelect={() => navigateTo('/settings/snippets')}
                   >
-                    {t('settingsSnippets.addCommand' as any)}
+                    {t('settingsSnippets.addCommand')}
                   </DropdownMenu.Item>
                 )}
               </DropdownMenu.Content>
@@ -1125,7 +1125,7 @@ export function WebTerminalScreen() {
           </DropdownMenu.Root>
           <button
             className="sb-icon-btn"
-            title={t('tmuxHelp.title' as any)}
+            title={t('tmuxHelp.title')}
             onClick={() => setShowHelp(true)}
           >
             <HelpCircle size={18} />
@@ -1133,7 +1133,7 @@ export function WebTerminalScreen() {
         </div>
       </header>
       <div ref={hostRef} className={`term-host${selectMode ? ' is-selecting' : ''}`}>
-        {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint' as any)}</div>}
+        {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
         <div ref={innerRef} className="term-host-inner" />
       </div>
       {IS_COARSE_POINTER && !selectMode && (

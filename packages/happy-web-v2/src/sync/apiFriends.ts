@@ -4,9 +4,6 @@ import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
 import {
     UserProfile,
-    UserResponse,
-    FriendsResponse,
-    UsersSearchResponse,
     UserResponseSchema,
     FriendsResponseSchema,
     UsersSearchResponseSchema
