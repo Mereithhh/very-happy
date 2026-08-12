@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
-import { useAllMachines, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { normalizeAgentKey } from '@/sync/agentDefaults';
+import { recordRecentMachinePath } from '@/app/newChat';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
@@ -48,10 +50,12 @@ export function NewSessionModal({
   const [presets, setPresets] = useSettingMutable('sessionPathPresets');
   const list = (presets as PathPreset[] | undefined) ?? [];
 
+  const defaultAgent = useSetting('newSessionAgent');
+
   const [machineId, setMachineId] = useState(online[0]?.id ?? '');
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
-  const [agent, setAgent] = useState<(typeof AGENTS)[number]>('claude');
+  const [agent, setAgent] = useState<(typeof AGENTS)[number]>(() => normalizeAgentKey(defaultAgent));
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
@@ -120,6 +124,9 @@ export function NewSessionModal({
     try {
       const sessionId = await spawn(false);
       if (sessionId) {
+        // Teach the quick "+" path: the next new chat reuses this
+        // machine+directory directly, without this dialog.
+        recordRecentMachinePath(machineId, resolveDir(trimmed));
         onSpawned?.(sessionId);
         // Optional initial instruction: fire it as the first chat message once
         // the session exists. sendMessage awaits the sessions-sync queue, so it

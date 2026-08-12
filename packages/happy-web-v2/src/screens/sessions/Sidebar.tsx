@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import { useSessions, storage } from '@/sync/storage';
 import { createTerminalOrPick } from '@/app/newTerminal';
+import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
@@ -197,8 +198,17 @@ export function Sidebar() {
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className="vh-menu" align="end" sideOffset={6}>
-                <DropdownMenu.Item className="vh-menu-item" onSelect={() => setShowNew(true)}>
+                {/* Quick create: spawns directly with the remembered machine/
+                    directory and the settings defaults; falls back to the full
+                    dialog only when it can't decide (or always-ask is on). */}
+                <DropdownMenu.Item
+                  className="vh-menu-item"
+                  onSelect={() => void createChatOrConfigure(navigate, () => setShowNew(true))}
+                >
                   <MessageSquare size={15} /> {t('newSessionModal.chatTitle' as any)}
+                </DropdownMenu.Item>
+                <DropdownMenu.Item className="vh-menu-item" onSelect={() => setShowNew(true)}>
+                  <SlidersHorizontal size={15} /> {t('newSessionModal.advancedTitle')}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item className="vh-menu-item" onSelect={() => createTerminalOrPick(navigate)}>
                   <TerminalSquare size={15} /> {t('newSessionModal.terminalTitle' as any)}
