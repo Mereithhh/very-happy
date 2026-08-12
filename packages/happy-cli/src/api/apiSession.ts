@@ -504,6 +504,10 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
+        // Passive observation tap (boardAnalyzer): every raw line headed for
+        // the server, both the SDK pipeline (remote) and the JSONL scanner
+        // (local). Listeners must be cheap and never throw into this path.
+        this.emit('claude-session-message', body);
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
@@ -531,6 +535,9 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
+        // Turn-end tap (boardAnalyzer): single choke point both launchers
+        // (local + remote) route through, for every end status.
+        this.emit('turn-ended', status);
         const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {

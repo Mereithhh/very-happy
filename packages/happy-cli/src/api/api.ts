@@ -304,6 +304,32 @@ export class ApiClient {
   }
 
   /**
+   * Read a single value from the account KV store (same HTTP endpoint the
+   * web app uses). Returns null when the key does not exist or on ANY
+   * failure — callers (boardAnalyzer) treat KV as best-effort context.
+   */
+  async kvGet(key: string): Promise<{ key: string; value: string; version: number } | null> {
+    try {
+      const response = await axios.get(
+        `${configuration.serverUrl}/v1/kv/${encodeURIComponent(key)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`
+          },
+          timeout: 5000,
+          validateStatus: (s) => s === 200 || s === 404
+        }
+      );
+      if (response.status === 404) return null;
+      return response.data as { key: string; value: string; version: number };
+    } catch (error) {
+      logger.debug(`[API] kvGet(${key}) failed:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Register a vendor API token with the server
    * The token is sent as a JSON string - server handles encryption
    */

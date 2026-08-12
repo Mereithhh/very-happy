@@ -33,6 +33,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
 import { TitleGenerator } from './utils/titleGenerator';
+import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/boardAnalyzer';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -322,6 +323,37 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // triggers a one-shot `claude -p --model haiku` call; fire-and-forget.
     const titleGenerator = new TitleGenerator(session);
 
+    // Task Board V2 analyzer (LLM bypass, same contract as titleGenerator).
+    // Opt-in via machine-local settings (`boardLlm: true` in
+    // ~/.happy/settings.json) — the synced web settings blob is client-side
+    // encrypted, so the CLI cannot read a synced toggle. Disabled = all
+    // methods are no-ops; nothing is spawned and no tokens are burned.
+    const boardAnalyzer = new BoardAnalyzer(session, {
+        enabled: settings?.boardLlm === true,
+        fetchTasks: async (): Promise<BoardTaskRef[] | null> => {
+            // Board task titles live in account KV `vh.board-tasks.v1` as plain
+            // base64 JSON (same non-e2e convention as `vh.terminal-sessions`).
+            const item = await api.kvGet('vh.board-tasks.v1');
+            if (!item) return null;
+            try {
+                const parsed = JSON.parse(Buffer.from(item.value, 'base64').toString('utf8')) as {
+                    tasks?: Array<{ id?: unknown; title?: unknown; status?: unknown }>
+                };
+                if (!Array.isArray(parsed.tasks)) return null;
+                return parsed.tasks
+                    .filter((t) => typeof t?.id === 'string' && typeof t?.title === 'string' && t.status === 'open')
+                    .map((t) => ({ id: t.id as string, title: t.title as string }));
+            } catch {
+                return null;
+            }
+        },
+        rateLimiter: new FileRateLimiter(resolve(configuration.happyHomeDir, 'board-analyzer-rate.json')),
+    });
+    // Passive taps: raw Claude lines (assistant tail + TodoWrite snapshots)
+    // and turn ends. Both listeners are cheap and swallow their own errors.
+    session.on('claude-session-message', (body) => boardAnalyzer.noteClaudeMessage(body));
+    session.on('turn-ended', () => boardAnalyzer.onTurnEnd());
+
     // Remote-mode session scanner: catches user-typed prompts that
     // appeared in the Claude JSONL while we weren't looking — typically
     // because the user opened `claude --resume <id>` in a terminal next
@@ -350,6 +382,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Local path (user-typed prompt in `claude --resume <id>`):
             // attempt auto-title on the first such prompt.
             titleGenerator.maybeGenerate(content);
+            boardAnalyzer.noteUserMessage(content);
             session.sendClaudeSessionMessage(raw);
         },
     });
@@ -484,6 +517,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // Remote path (prompt sent from the app/web): attempt auto-title
             // on the first message of a title-less session. Fire-and-forget.
             titleGenerator.maybeGenerate(message.content.text);
+            boardAnalyzer.noteUserMessage(message.content.text);
         }
 
         // Claim every file attachment that arrived strictly before this text.

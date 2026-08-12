@@ -328,6 +328,19 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  /**
+   * Task Board V2: latest LLM analysis of this session (boardAnalyzer).
+   * Rides the normal metadata sync to every device; absent until the
+   * daemon-local `boardLlm` opt-in produces a first verdict.
+   */
+  board?: {
+    /** board task (KV vh.board-tasks.v1) this session was classified under */
+    taskId?: string,
+    attention?: 'none' | 'review' | 'blocked',
+    /** one-line Chinese progress note */
+    progress?: string,
+    analyzedAt: number,
+  }
 };
 
 export type AgentState = {

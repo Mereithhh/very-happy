@@ -45,6 +45,14 @@ interface Settings {
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string
+  /**
+   * Task Board V2 opt-in: let sessions on this machine run the boardAnalyzer
+   * LLM bypass (one-shot `claude -p --model haiku` per session, throttled).
+   * Machine-local ON PURPOSE: the synced web settings blob is client-side
+   * encrypted and the CLI cannot read it — the web settings page tells users
+   * to flip this here. Absent/false = disabled (never burn tokens silently).
+   */
+  boardLlm?: boolean
 }
 
 const defaultSettings: Settings = {
