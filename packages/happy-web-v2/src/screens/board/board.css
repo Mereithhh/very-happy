@@ -253,6 +253,27 @@
 .bd-lane {
   border-bottom: 1px solid var(--line);
 }
+/* lane drag-reorder (fine pointers; header = drag handle) */
+.bd-lanes.is-dragging {
+  user-select: none;
+}
+.bd-lane.is-drag {
+  position: relative;
+  z-index: 2;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  opacity: 0.9;
+}
+.bd-lane.is-drag > .bd-lane-head {
+  background: var(--bg-2);
+}
+@media (pointer: fine) {
+  .bd-lane[data-laneid] > .bd-lane-head {
+    cursor: grab;
+  }
+  .bd-lanes.is-dragging .bd-lane[data-laneid] > .bd-lane-head {
+    cursor: grabbing;
+  }
+}
 .bd-lane-head {
   display: flex;
   align-items: center;

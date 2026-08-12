@@ -15,13 +15,13 @@
  * and records the spawned sessionId on the task (manual mapping — the LLM's
  * metadata.board.taskId only claims sessions no task claims manually).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronLeft, Plus, Rocket, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { useBoardTasks, type BoardTask } from '@/sync/boardTasks';
-import { visibleTasks } from '@/sync/boardTaskOps';
+import { planOrderWrites, visibleTasks } from '@/sync/boardTaskOps';
 import { Modal } from '@/modal';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { useBoardItems } from './useBoardItems';
@@ -116,12 +116,18 @@ function TaskLane({
   task,
   items,
   now,
+  dragging,
   onDispatch,
+  onHeadPointerDown,
 }: {
   task: BoardTask;
   items: BoardItem[];
   now: number;
+  /** this lane is the one being dragged right now */
+  dragging?: boolean;
   onDispatch: (task: BoardTask) => void;
+  /** lane-header drag handle (fine pointers; no-op on touch) */
+  onHeadPointerDown?: (e: React.PointerEvent, taskId: string) => void;
 }) {
   const { t } = useTranslation();
   const setStatus = useBoardTasks((s) => s.setStatus);
@@ -137,8 +143,11 @@ function TaskLane({
   }
 
   return (
-    <section className="bd-lane">
-      <header className="bd-lane-head">
+    <section className={`bd-lane${dragging ? ' is-drag' : ''}`} data-laneid={task.id}>
+      <header
+        className="bd-lane-head"
+        onPointerDown={onHeadPointerDown ? (e) => onHeadPointerDown(e, task.id) : undefined}
+      >
         <div className="bd-lane-titles">
           <span className="bd-lane-title">{task.title}</span>
           {task.description && <span className="bd-lane-desc">{task.description}</span>}
@@ -210,6 +219,95 @@ export function TaskBoardScreen() {
     () => (layout === 'tasks' ? groupBoardItems(items, visibleTasks(tasks)) : null),
     [layout, items, tasks],
   );
+
+  // ----- lane drag-reorder (fine pointers; coarse pointers use the lane
+  // menu's move up/down instead). Same hand-rolled pointer-event school as
+  // the sidebar's pinned section: 6px activation threshold, midpoint
+  // insertion measured from the live DOM, optimistic order in state while
+  // the drag is live, ONE store write on drop (planOrderWrites → usually a
+  // single task's fractional key).
+  const applyOrders = useBoardTasks((s) => s.applyOrders);
+  const lanesRef = useRef<HTMLDivElement | null>(null);
+  const [laneDragId, setLaneDragId] = useState<string | null>(null);
+  const [laneDragIds, setLaneDragIds] = useState<string[] | null>(null);
+  const laneDragIdsRef = useRef<string[] | null>(null);
+
+  const displayLanes = useMemo(() => {
+    if (!grouped) return null;
+    if (!laneDragIds) return grouped.lanes;
+    const byId = new Map(grouped.lanes.map((l) => [l.task.id, l]));
+    return laneDragIds.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> => !!l);
+  }, [grouped, laneDragIds]);
+
+  const onLaneHeadPointerDown = (e: React.PointerEvent, taskId: string) => {
+    if (e.button !== 0) return;
+    const lanes = grouped?.lanes ?? [];
+    if (lanes.length < 2) return;
+    if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
+    // buttons / menus inside the header are not drag handles
+    if ((e.target as HTMLElement).closest('button, [role="menu"]')) return;
+    const startY = e.clientY;
+    const state = { active: false };
+    const startOrder = lanes.map((l) => l.task.id);
+    const taskById = new Map(lanes.map((l) => [l.task.id, l.task]));
+    const onMove = (ev: PointerEvent) => {
+      if (!state.active) {
+        if (Math.abs(ev.clientY - startY) < 6) return;
+        state.active = true;
+        laneDragIdsRef.current = startOrder.slice();
+        setLaneDragId(taskId);
+        setLaneDragIds(laneDragIdsRef.current);
+      }
+      ev.preventDefault();
+      const sect = lanesRef.current;
+      const cur = laneDragIdsRef.current;
+      if (!sect || !cur) return;
+      const from = cur.indexOf(taskId);
+      if (from < 0) return;
+      // Insertion index = how many OTHER lanes have their midpoint above the
+      // pointer (live DOM renders `cur`'s order; the ungrouped lane carries
+      // no data-laneid and stays pinned at the tail).
+      let target = 0;
+      for (const el of Array.from(sect.querySelectorAll<HTMLElement>('[data-laneid]'))) {
+        if (el.dataset.laneid === taskId) continue;
+        const r = el.getBoundingClientRect();
+        if (ev.clientY > r.top + r.height / 2) target++;
+      }
+      if (target !== from) {
+        const next = cur.slice();
+        next.splice(from, 1);
+        next.splice(target, 0, taskId);
+        laneDragIdsRef.current = next;
+        setLaneDragIds(next);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const finalIds = laneDragIdsRef.current;
+      laneDragIdsRef.current = null;
+      setLaneDragId(null);
+      setLaneDragIds(null);
+      if (!state.active || !finalIds) return;
+      // The release may land on a header button — swallow the click it would
+      // produce so a drag never doubles as "dispatch"/"mark done".
+      const swallow = (ce: MouseEvent) => {
+        ce.stopPropagation();
+        ce.preventDefault();
+      };
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true } as any), 150);
+      if (finalIds.join('\n') === startOrder.join('\n')) return; // dropped back in place
+      const seq = finalIds
+        .map((id) => taskById.get(id))
+        .filter((t): t is BoardTask => !!t);
+      applyOrders(planOrderWrites(seq, taskId));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
 
   return (
     <div className="bd">
@@ -283,17 +381,19 @@ export function TaskBoardScreen() {
           />
         </div>
       ) : (
-        <div className="bd-lanes">
+        <div className={`bd-lanes${laneDragId ? ' is-dragging' : ''}`} ref={lanesRef}>
           {grouped!.lanes.length === 0 && (
             <div className="bd-col-empty bd-lanes-empty">{t('board.noTasks')}</div>
           )}
-          {grouped!.lanes.map((lane) => (
+          {displayLanes!.map((lane) => (
             <TaskLane
               key={lane.task.id}
               task={lane.task}
               items={lane.items}
               now={now}
+              dragging={laneDragId === lane.task.id}
               onDispatch={setDispatchTask}
+              onHeadPointerDown={onLaneHeadPointerDown}
             />
           ))}
           <section className="bd-lane bd-lane--ungrouped">

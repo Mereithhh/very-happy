@@ -18,7 +18,7 @@ import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
-import { mergeBoardTasks, type BoardTask } from '@/sync/boardTaskOps';
+import { mergeBoardTasks, orderKeyBetween, type BoardTask } from '@/sync/boardTaskOps';
 
 export type { BoardTask } from '@/sync/boardTaskOps';
 
@@ -135,11 +135,17 @@ interface BoardTasksState {
   initialize(): Promise<void>;
   create(title: string, description?: string): BoardTask;
   setStatus(id: string, status: 'open' | 'done'): void;
+  /** Edit title/description — a record mutation (bumps updatedAt). */
+  update(id: string, changes: { title?: string; description?: string }): void;
   /** Tombstone delete — propagates across devices, see boardTaskOps.ts. */
   remove(id: string): void;
   /** Record a dispatched session under a task (manual mapping — wins over
    *  the LLM's metadata.board.taskId fallback). */
   attachSession(id: string, sessionId: string): void;
+  /** Apply fractional order keys (from planOrderWrites). Bumps orderAt only —
+   *  NOT updatedAt — so a reorder can never beat a concurrent content edit
+   *  in the per-task merge. */
+  applyOrders(writes: Array<{ id: string; order: string }>): void;
 }
 
 export const useBoardTasks = create<BoardTasksState>((set, get) => ({
@@ -179,6 +185,13 @@ export const useBoardTasks = create<BoardTasksState>((set, get) => ({
   },
   create: (title, description) => {
     const now = Date.now();
+    // New task goes to the TOP of the board: order key before the smallest
+    // existing one (legacy unkeyed tasks sort after keyed ones anyway).
+    let minOrder: string | null = null;
+    for (const t of get().tasks) {
+      if (t.status === 'deleted' || t.order == null) continue;
+      if (minOrder === null || t.order < minOrder) minOrder = t.order;
+    }
     const task: BoardTask = {
       id: newId(),
       title: title.trim(),
@@ -186,6 +199,8 @@ export const useBoardTasks = create<BoardTasksState>((set, get) => ({
       status: 'open',
       createdAt: now,
       updatedAt: now,
+      order: orderKeyBetween(null, minOrder),
+      orderAt: now,
     };
     const next = [task, ...get().tasks];
     persistLocal(next);
@@ -200,6 +215,20 @@ export const useBoardTasks = create<BoardTasksState>((set, get) => ({
         ? { ...t, status, updatedAt: now }
         : t,
     );
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+  },
+  update: (id, changes) => {
+    const now = Date.now();
+    const next = get().tasks.map((t) => {
+      if (t.id !== id || t.status === 'deleted') return t;
+      const title = changes.title !== undefined ? changes.title.trim() : t.title;
+      const description =
+        changes.description !== undefined ? changes.description.trim() || undefined : t.description;
+      if (title === t.title && description === t.description) return t;
+      return { ...t, title: title || t.title, description, updatedAt: now };
+    });
     persistLocal(next);
     set({ tasks: next });
     scheduleKvPush();
@@ -221,6 +250,19 @@ export const useBoardTasks = create<BoardTasksState>((set, get) => ({
       if (t.id !== id || t.status === 'deleted') return t;
       if (t.sessionIds?.includes(sessionId)) return t;
       return { ...t, sessionIds: [...(t.sessionIds ?? []), sessionId], updatedAt: now };
+    });
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+  },
+  applyOrders: (writes) => {
+    if (writes.length === 0) return;
+    const now = Date.now();
+    const byId = new Map(writes.map((w) => [w.id, w.order]));
+    const next = get().tasks.map((t) => {
+      const order = byId.get(t.id);
+      if (order === undefined || t.status === 'deleted' || t.order === order) return t;
+      return { ...t, order, orderAt: now };
     });
     persistLocal(next);
     set({ tasks: next });
