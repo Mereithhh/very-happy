@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { PartialTranslationStructure } from '../_default';
 
 /**
  * Spanish plural helper function
@@ -12,46 +12,17 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 /**
  * Spanish translations for the Happy app
- * Must match the exact structure of the English translations
+ * Partial: only real translations live here; missing keys fall back to English (see ../index.ts)
  */
-export const es: TranslationStructure = {
+export const es: PartialTranslationStructure = {
     board: {
-        title: 'Task Board',
-        filterLabel: 'Board',
-        attention: 'Needs attention',
-        working: 'Working',
-        idleEnded: 'Idle / ended',
-        emptyAttention: 'Nothing needs you',
-        emptyWorking: 'Nothing running',
-        emptyIdle: 'Nothing idle',
-        machineOffline: 'machine offline',
-        endedTag: 'ended',
-        waitingFor: ({ duration }: { duration: string }) => `waiting ${duration}`,
-        agoSuffix: 'ago',
-        viewArchived: 'View archived →',
-        layoutStatus: 'Status',
-        layoutTasks: 'Tasks',
-        newTask: 'New task',
-        taskTitlePlaceholder: 'Task title',
-        taskDescriptionPlaceholder: 'Description — prefills the first message of dispatched sessions',
-        createTask: 'Create',
-        dispatch: 'Dispatch',
-        markDone: 'Mark done',
         editTask: 'Editar tarea',
-        deleteTask: 'Delete task',
-        deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
-        ungrouped: 'Ungrouped',
-        emptyLane: 'Nothing here yet',
-        noTasks: 'No tasks yet — create one and dispatch sessions onto it',
-        llmReview: 'review',
-        llmBlocked: 'blocked',
     },
     tabs: {
         // Tab navigation labels
         inbox: 'Bandeja',
         sessions: 'Terminales',
         settings: 'Configuración',
-        terminal: 'Terminal',
     },
 
     inbox: {
@@ -59,51 +30,6 @@ export const es: TranslationStructure = {
         emptyTitle: 'Bandeja vacía',
         emptyDescription: 'Conéctate con amigos para empezar a compartir sesiones',
         updates: 'Actualizaciones',
-        laneNeedsApproval: 'Needs approval',
-        laneInProgress: 'In progress',
-        laneToReview: 'To review',
-        laneOther: 'Other',
-    },
-
-    notifications: {
-        title: 'Notifications',
-        settingsSubtitle: 'Browser alerts for session events (web)',
-        webOnly: 'Web only',
-        webOnlyDescription: 'Browser notifications are only available on the web app.',
-        browserNotifications: 'Browser Notifications',
-        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
-        enable: 'Enable Notifications',
-        enabledOn: 'On — alerts will show when this tab is unfocused',
-        enabledOff: 'Off',
-        unsupported: 'Not supported in this browser',
-        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
-        types: 'Alert Types',
-        typesDescription: 'Choose which session events trigger a notification.',
-        type_permission_request: 'Permission requests',
-        type_permission_request_desc: 'A session is asking to run a tool',
-        type_reply_done: 'Reply finished',
-        type_reply_done_desc: 'The agent finished responding',
-        type_input_needed: 'Input needed',
-        type_input_needed_desc: 'A session is waiting for your input',
-        type_error: 'Errors',
-        type_error_desc: 'A session ran into an error',
-        quietHours: 'Do Not Disturb',
-        quietHoursDescription: 'Silence notifications during a set time window.',
-        quietHoursEnable: 'Enable quiet hours',
-        quietHoursStart: 'From',
-        quietHoursEnd: 'To',
-        webhook: 'Webhook Notifications',
-        webhookDescription: 'The server POSTs a {"title","message"} JSON to your own HTTPS endpoint when a session needs you — e.g. a notify gateway that forwards to your group chat. One webhook per account; saving replaces the previous one.',
-        webhookUrl: 'Webhook URL',
-        webhookUrlPlaceholder: 'https://ntfy.example.com/api/ingest/<token>',
-        webhookEventCompleted: 'Task completed',
-        webhookEventCompletedDesc: 'The agent finished its turn and the session is idle',
-        webhookEventPermission: 'Needs attention',
-        webhookEventPermissionDesc: 'Permission requests and clarifying questions',
-        webhookRemove: 'Remove webhook',
-        webhookSaved: 'Webhook saved',
-        webhookRemoved: 'Webhook removed',
-        unknownSession: 'Session',
     },
 
     common: {
@@ -112,9 +38,7 @@ export const es: TranslationStructure = {
         authenticate: 'Autenticar',
         save: 'Guardar',
         saveAs: 'Guardar como',
-        error: 'Error',
         success: 'Éxito',
-        ok: 'OK',
         continue: 'Continuar',
         back: 'Atrás',
         create: 'Crear',
@@ -122,7 +46,6 @@ export const es: TranslationStructure = {
         reset: 'Restablecer',
         logout: 'Cerrar sesión',
         yes: 'Sí',
-        no: 'No',
         discard: 'Descartar',
         version: 'Versión',
         copied: 'Copiado',
@@ -155,7 +78,6 @@ export const es: TranslationStructure = {
         connected: 'conectado',
         connecting: 'conectando',
         disconnected: 'desconectado',
-        error: 'error',
         online: 'en línea',
         offline: 'desconectado',
         lastSeen: ({ time }: { time: string }) => `visto por última vez ${time}`,
@@ -166,9 +88,7 @@ export const es: TranslationStructure = {
     },
     liveStatus: {
         thinking: ({ elapsed }: { elapsed: string }) => `Pensando ${elapsed}`,
-        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: 'Esperando permiso',
-        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -189,12 +109,10 @@ export const es: TranslationStructure = {
         title: 'Configuración',
         connectedAccounts: 'Cuentas conectadas',
         connectAccount: 'Conectar cuenta',
-        github: 'GitHub',
         machines: 'Máquinas',
         showOfflineMachines: ({ count }: { count: number }) => count === 1 ? 'Mostrar 1 máquina sin conexión' : `Mostrar ${count} máquinas sin conexión`,
         hideOfflineMachines: 'Ocultar máquinas sin conexión',
         features: 'Características',
-        social: 'Social',
         account: 'Cuenta',
         accountSubtitle: 'Gestiona los detalles de tu cuenta',
         appearance: 'Apariencia',
@@ -212,7 +130,6 @@ export const es: TranslationStructure = {
         reportIssue: 'Reportar un problema',
         privacyPolicy: 'Política de privacidad',
         termsOfService: 'Términos de servicio',
-        eula: 'EULA',
         supportUs: 'Apóyanos',
         supportUsSubtitlePro: '¡Gracias por su apoyo!',
         supportUsSubtitle: 'Apoya el desarrollo del proyecto',
@@ -233,20 +150,6 @@ export const es: TranslationStructure = {
     },
 
     settingsAppearance: {
-        homeView: 'Home Screen',
-        homeViewDescription: 'What the app shows when nothing is open.',
-        homeViewOptions: {
-            normal: 'Recents',
-            board: 'Task Board',
-        },
-        homeViewDescriptions: {
-            normal: 'The classic empty screen with quick actions',
-            board: 'Every agent and terminal at a glance',
-        },
-        boardLlm: 'Board AI Analysis',
-        boardLlmDescription: 'AI progress notes, attention flags and task grouping on the Task Board are produced by the Happy daemon (a local one-shot haiku call, throttled). Off by default so no tokens are spent silently.',
-        boardLlmHowTo: 'Configure on the daemon machine',
-        boardLlmHowToDetail: 'Set "boardLlm": true in ~/.happy/settings.json on each machine that should analyze its sessions, then restart sessions there.',
         // Appearance settings screen
         theme: 'Tema',
         themeDescription: 'Elige tu esquema de colores preferido',
@@ -274,10 +177,6 @@ export const es: TranslationStructure = {
         wrapLinesInDiffsDescription: 'Ajustar líneas largas en lugar de desplazamiento horizontal en vistas de diferencias',
         diffStyle: 'Vista de diferencias',
         diffStyleDescription: 'Mostrar diferencias en una sola columna (unified) o lado a lado (split). La vista split solo funciona en web.',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
         alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
         alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
         avatarStyle: 'Estilo de avatar',
@@ -291,12 +190,6 @@ export const es: TranslationStructure = {
     },
 
     settingsFeatures: {
-        // Features settings screen
-        safety: 'Safety',
-        changeApplicationDescription: 'Controls how new sessions start. Review-first modes (Plan / read-only) propose changes for you to approve before they are applied; auto-apply modes (Accept Edits / Bypass / YOLO) write changes without asking. This is a per-device preference and only sets the starting mode — you can still change it per session. For per-agent defaults, see Settings → Agents.',
-        reviewChangesFirst: 'Review Changes First',
-        reviewChangesFirstEnabled: 'New sessions start in a review-first mode',
-        reviewChangesFirstDisabled: 'New sessions use the per-agent default mode',
         experiments: 'Experimentos',
         experimentsDescription: 'Habilitar características experimentales que aún están en desarrollo. Estas características pueden ser inestables o cambiar sin aviso.',
         experimentalFeatures: 'Características experimentales',
@@ -310,7 +203,6 @@ export const es: TranslationStructure = {
         commandPalette: 'Paleta de comandos',
         commandPaletteEnabled: 'Presione ⌘K para abrir',
         commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
-        markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
         hideInactiveSessions: 'Ocultar sesiones inactivas',
         hideInactiveSessionsSubtitle: 'Muestra solo los chats activos en tu lista',
@@ -353,16 +245,10 @@ export const es: TranslationStructure = {
         userNotFound: 'Usuario no encontrado',
         sessionDeleted: 'La sesión ha sido eliminada',
         sessionDeletedDescription: 'Esta sesión ha sido eliminada permanentemente',
-
-        // Error functions with context
-        fieldError: ({ field, reason }: { field: string; reason: string }) =>
-            `${field}: ${reason}`,
         validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
             `${field} debe estar entre ${min} y ${max}`,
         retryIn: ({ seconds }: { seconds: number }) =>
             `Intenta en ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`,
-        errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
-            `${message} (Error ${code})`,
         disconnectServiceFailed: ({ service }: { service: string }) => 
             `Falló al desconectar ${service}`,
         connectServiceFailed: ({ service }: { service: string }) =>
@@ -423,44 +309,6 @@ export const es: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'Escriba un comando o busque...',
-        // Categories
-        categorySessions: 'Sessions',
-        categoryRecentSessions: 'Recent Sessions',
-        categoryNavigation: 'Navigation',
-        categorySystem: 'System',
-        categoryTerminals: 'Terminals',
-        categoryDeveloper: 'Developer',
-        // Commands
-        newSession: 'New Session',
-        newSessionSubtitle: 'Start a new chat session',
-        viewAllSessions: 'View All Sessions',
-        viewAllSessionsSubtitle: 'Browse your chat history',
-        settings: 'Settings',
-        settingsSubtitle: 'Configure your preferences',
-        account: 'Account',
-        accountSubtitle: 'Manage your account',
-        connectDevice: 'Connect Device',
-        connectDeviceSubtitle: 'Connect a new device via web',
-        signOut: 'Sign Out',
-        signOutSubtitle: 'Sign out of your account',
-        developerMenu: 'Developer Menu',
-        developerMenuSubtitle: 'Access developer tools',
-        switchToSession: 'Switch to session',
-        // ⌘K palette (navigate/actions)
-        empty: 'No matches',
-        groupActions: 'Actions',
-        groupSessions: 'Chats',
-        groupTerminals: 'Terminals',
-        actionNewChat: 'New chat',
-        actionNewChatAdvanced: 'New chat (choose options)…',
-        actionNewTerminal: 'New terminal',
-        actionRenameSession: 'Rename current chat',
-        actionArchiveSession: 'Archive current chat',
-        actionOpenSettings: 'Open settings',
-        renamePromptTitle: 'Rename chat',
-        hintNavigate: '↑↓ to navigate',
-        hintSelect: '↵ to select',
-        hintClose: 'esc to close',
     },
 
     server: {
@@ -508,18 +356,9 @@ export const es: TranslationStructure = {
         quickActions: 'Acciones rápidas',
         viewMachine: 'Ver máquina',
         viewMachineSubtitle: 'Ver detalles de máquina y sesiones',
-        resumeSession: 'Resume Session',
-        resumeSessionSubtitle: 'Resume this session on the same machine',
-        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
-        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
-        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
-        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
-        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'Terminar inmediatamente la sesión',
         archiveSessionSubtitle: 'Archivar esta sesión y detenerla',
         metadata: 'Metadatos',
-        host: 'Host',
         path: 'Ruta',
         operatingSystem: 'Sistema operativo',
         processId: 'ID del proceso',
@@ -560,28 +399,7 @@ export const es: TranslationStructure = {
         },
     },
 
-    newSessionModal: {
-        // Used by NewSessionModal component
-        eyebrow: 'NEW SESSION',
-        heading: 'Start something',
-        chatTitle: 'New chat',
-        advancedTitle: 'New chat (choose options)…',
-        chatSubtitle: 'Let Claude or Codex start working on a machine',
-        terminalTitle: 'Web terminal',
-        terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
-    },
-
-    emptyState: {
-        // Used by EmptyDetailPane component
-        pickUpTitle: 'Pick up where you left off',
-        pickUpDescription: 'Select a conversation on the left, or start a new one on any connected machine.',
-        newSession: 'New session',
-        openWebTerminal: 'Open web terminal',
-    },
-
     agentInput: {
-        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
-        interruptAndSend: 'Interrupt and send',
         chip: {
             mode: 'modo',
             model: 'modelo',
@@ -597,12 +415,6 @@ export const es: TranslationStructure = {
             badgeAcceptAllEdits: 'Aceptar todas las ediciones',
             badgeBypassAllPermissions: 'Omitir todos los permisos',
             badgePlanMode: 'Modo de planificación',
-        },
-        agent: {
-            claude: 'Claude',
-            codex: 'Codex',
-            gemini: 'Gemini',
-            openclaw: 'OpenClaw',
         },
         model: {
             title: 'MODELO',
@@ -620,16 +432,6 @@ export const es: TranslationStructure = {
             badgeReadOnly: 'Read Only Mode',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
-        },
-        codexModel: {
-            title: 'CODEX MODEL',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimal',
-            gpt5Low: 'GPT-5 Low',
-            gpt5Medium: 'GPT-5 Medium',
-            gpt5High: 'GPT-5 High',
         },
         geminiPermissionMode: {
             title: 'MODO DE PERMISOS GEMINI',
@@ -694,7 +496,6 @@ export const es: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => count === 1 ? 'Se editó 1 archivo' : `Se editaron ${count} archivos`,
         readFiles: ({ count }: { count: number }) => count === 1 ? 'Se leyó 1 archivo' : `Se leyeron ${count} archivos`,
         ranCommands: ({ count }: { count: number }) => count === 1 ? 'Se ejecutó 1 comando' : `Se ejecutaron ${count} comandos`,
@@ -702,7 +503,6 @@ export const es: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => count === 1 ? 'Se obtuvo 1 URL' : `Se obtuvieron ${count} URLs`,
         ranTasks: ({ count }: { count: number }) => count === 1 ? 'Se ejecutó 1 tarea' : `Se ejecutaron ${count} tareas`,
         usedTools: ({ count }: { count: number }) => count === 1 ? 'Se usó 1 herramienta' : `Se usaron ${count} herramientas`,
-        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -710,7 +510,6 @@ export const es: TranslationStructure = {
             description: 'Descripción',
             inputParams: 'Parámetros de entrada',
             output: 'Salida',
-            error: 'Error',
             completed: 'Herramienta completada exitosamente',
             noOutput: 'No se produjo salida',
             running: 'La herramienta está ejecutándose...',
@@ -726,7 +525,6 @@ export const es: TranslationStructure = {
         },
         names: {
             task: 'Tarea',
-            terminal: 'Terminal',
             searchFiles: 'Buscar archivos',
             search: 'Buscar',
             searchContent: 'Buscar contenido',
@@ -746,7 +544,6 @@ export const es: TranslationStructure = {
             question: 'Pregunta',
         },
         desc: {
-            terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
             searchPattern: ({ pattern }: { pattern: string }) => `Buscar(patrón: ${pattern})`,
             searchPath: ({ basename }: { basename: string }) => `Buscar(ruta: ${basename})`,
             fetchUrlHost: ({ host }: { host: string }) => `Obtener URL(url: ${host})`,
@@ -826,10 +623,8 @@ export const es: TranslationStructure = {
         // Bring your own agent
         byoTitle: 'Trae tu propio agente',
         byoDescription: 'Usa tu propio agente de ElevenLabs en lugar del predeterminado de Happy. No se requiere suscripción — conéctate directamente con tu propia cuenta de ElevenLabs. Tu agente debe definir dos herramientas de cliente: messageClaudeCode (envía texto al agente de código) y processPermissionRequest (permite o deniega el uso de herramientas). Recibe el contexto de la sesión a través de la variable dinámica {{initialConversationContext}}.',
-        customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: 'No configurado',
         customAgentIdDescription: 'Ingresa tu ElevenLabs Agent ID. Déjalo vacío para usar el predeterminado de Happy.',
-        customAgentIdPlaceholder: 'e.g. abc123def456',
         bypassToken: 'Conexión directa',
         bypassTokenSubtitle: 'Omite el servidor de Happy, conéctate directamente a ElevenLabs',
         promptGuideTitle: 'Guía de prompt del agente',
@@ -859,7 +654,6 @@ export const es: TranslationStructure = {
         passwordChange: 'Cambia la contraseña de tu cuenta',
         profile: 'Perfil',
         name: 'Nombre',
-        github: 'GitHub',
         tapToDisconnect: 'Toque para desconectar',
         server: 'Servidor',
         backup: 'Copia de seguridad',
@@ -937,12 +731,6 @@ export const es: TranslationStructure = {
         clientSideProcessing: 'Procesamiento del lado del cliente',
         linkProcessedLocally: 'Enlace procesado localmente en el navegador',
         linkProcessedOnDevice: 'Enlace procesado localmente en el dispositivo',
-        // Web terminal (tmux) quick commands & drag-upload overlay
-        quickCommands: 'Quick commands',
-        quickCommandsEmpty: 'No commands yet. Add them in Settings → Snippets.',
-        uploadingFile: 'Uploading…',
-        dropToUpload: 'Drop to upload',
-        pathWillBePasted: 'path will be pasted into the terminal',
     },
 
     modals: {
@@ -987,18 +775,6 @@ export const es: TranslationStructure = {
         linkOrRestoreAccount: 'Vincular o restaurar cuenta',
         loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
         loginWithPassword: 'Iniciar sesión con contraseña',
-        // WelcomeInstall landing card (web)
-        installForkTitle: 'A friendly fork of Happy',
-        installIntro: 'Very Happy builds on Happy and trades end-to-end encryption for password-based, multi-device convenience.',
-        installFeaturePassword: 'Password sign-in, any device',
-        installFeatureSync: 'Multi-device sync',
-        installFeatureTerminal: 'Web terminal over tmux',
-        installFeatureModels: 'Latest models + reworked UI',
-        installHeading: 'USE IT ON YOUR OWN COMPUTER',
-        installStep1: 'Install Claude Code so the `claude` command is on your PATH.',
-        installStep2: 'Install the CLI from npm:',
-        installStep3: 'Run it on the machine you want to control — pre-configured to this server.',
-        installNote: 'Server-trusted: your sessions are relayed through this server, whose operator can read them. Only sign up if you trust them.',
     },
 
     passwordLogin: {
@@ -1045,7 +821,6 @@ export const es: TranslationStructure = {
         offlineUnableToSpawn: 'El lanzador está deshabilitado mientras la máquina está desconectada',
         offlineHelp: '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `happy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g happy@latest`',
         launchNewSessionInDirectory: 'Iniciar nueva sesión en directorio',
-        daemon: 'Daemon',
         status: 'Estado',
         stopDaemon: 'Detener daemon',
         lastKnownPid: 'Último PID conocido',
@@ -1055,7 +830,6 @@ export const es: TranslationStructure = {
         daemonStateVersion: 'Versión del estado del daemon',
         activeSessions: ({ count }: { count: number }) => `Sesiones activas (${count})`,
         machineGroup: 'Máquina',
-        host: 'Host',
         machineId: 'ID de máquina',
         username: 'Nombre de usuario',
         homeDirectory: 'Directorio principal',
@@ -1215,7 +989,6 @@ export const es: TranslationStructure = {
         last30Days: 'Últimos 30 días',
         totalTokens: 'Tokens totales',
         totalCost: 'Costo total',
-        tokens: 'Tokens',
         cost: 'Costo',
         usageOverTime: 'Uso a lo largo del tiempo',
         byModel: 'Por modelo',
@@ -1243,92 +1016,6 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
-    },
-
-
-    // Channels â settings hub for external integrations. English placeholder
-    // (not yet translated for this locale).
-    settingsChannels: {
-        title: 'Channels',
-        subtitle: 'Webhooks, automation CLI and chat integrations',
-        movedTitle: 'Webhook notifications have moved',
-        movedSubtitle: 'Configure your account webhook under Settings → Channels',
-        cliTitle: 'Automation CLI (inbound)',
-        cliIntro: 'Scripts and bots on the machine that runs your daemon can start sessions and talk to them — no extra credentials, the CLI reuses the daemon\'s. The daemon must be running to spawn.',
-        cliSpawnLabel: 'Start a new session in a directory. Without --json it prints a clickable session URL; with --json it emits {"sessionId","url"}:',
-        cliSpawnExit: 'Exit codes: 0 success · 1 spawn failed (no session created) · 2 session created but the first message failed (the URL is still printed).',
-        cliSendLabel: 'Push a follow-up message into a session that is already running (it must have been spawned by this machine\'s daemon — the session key lives in ~/.happy/sessions.json):',
-        cliSendExit: 'Exit codes: 0 delivered · 1 anything else (bad arguments, unknown session or missing key, send failed). Use --prompt-file <path> instead of --prompt for long or multi-line text.',
-        mcpTitle: 'Clipboard tool (MCP)',
-        mcpIntro: 'Give a plain claude CLI — for example one running inside a Happy web terminal — a copy_to_clipboard tool that pushes text to the clipboard of every web client you have open. Register it once per machine:',
-        imTitle: 'IM adapter pattern',
-        imIntro: 'Any chat app can become a remote control for Happy. Every webhook notification ends with a fixed, machine-parseable last line — "session: <id>" — that survives text-only relays. An adapter (our Tanka integration is the reference) forwards notifications into a group chat, listens to its own IM, and when you quote-reply to a notification it extracts the session id from that line and pipes your reply back with "very-happy send". Fresh tasks are started from chat via "very-happy spawn".',
-        imDocs: 'Full documentation',
-        imDocsSubtitle: 'docs/channels.md — webhook contract, CLI reference, adapter example',
-    },
-
-    settingsSnippets: {
-        navTitle: 'Snippets',
-        navSubtitle: 'Prompt presets + terminal commands',
-        editorTitleLabel: 'TITLE',
-        editorTitlePlaceholder: 'optional, first line if blank',
-        editorCancel: 'Cancel',
-        editorSave: 'Save',
-        editPreset: 'Edit preset',
-        newPreset: 'New preset',
-        editCommand: 'Edit command',
-        newCommand: 'New command',
-        deleteTitle: 'Delete?',
-        deleteConfirm: 'Delete',
-        presetsGroup: 'Prompt presets',
-        presetsFooter: 'Tap the bookmark icon in the composer to insert one; you can edit it before sending.',
-        addPreset: 'Add preset',
-        commandsGroup: 'Terminal commands',
-        commandsFooter: 'Tap the command icon in the web terminal; the command is inserted (not auto-run — press Enter to confirm).',
-        addCommand: 'Add command',
-        startupGroup: 'Terminal startup command',
-        startupFooter: 'Runs automatically when a NEW web terminal is created — never again when reattaching to an existing session. Leave empty to disable.',
-        startupPlaceholder: 'e.g. cd ~/code && claude — empty = off',
-    },
-
-    tmuxHelp: {
-        heading: 'Shortcuts',
-        mouse: 'Mouse',
-        prefix: 'Prefix',
-        prefixNote: 'Press Ctrl-b, release, then the key',
-        scrollback: 'Scrollback',
-        panes: 'Panes',
-        windows: 'Windows',
-        session: 'Session',
-        keyWheel: 'Wheel',
-        labelWheel: 'Wheel scrolls history',
-        keyClick: 'Click',
-        labelClick: 'Click panes & windows',
-        keyShiftDrag: 'Shift+Drag',
-        labelShiftDrag: 'Select to copy',
-        labelPrefix: 'Prefix for every command',
-        labelEnterCopy: 'Enter copy mode',
-        labelScroll: 'Scroll',
-        labelQuit: 'Quit copy mode',
-        labelSplitV: 'Split vertically',
-        labelSplitH: 'Split horizontally',
-        labelMovePanes: 'Move between panes',
-        labelZoom: 'Zoom toggle',
-        labelClosePane: 'Close pane',
-        labelNewWindow: 'New window',
-        labelNextPrev: 'Next / prev',
-        labelJump: 'Jump by number',
-        labelDetach: 'Detach — keeps running',
-    },
-
-    shortcuts: {
-        eyebrow: 'KEYBOARD',
-        title: 'Keyboard shortcuts',
-        search: 'Search',
-        switchSession: 'Switch to session',
-        renameSession: 'Rename current session',
-        goBack: 'Go back',
-        showHelp: 'Show this help',
     },
 
 } as const;

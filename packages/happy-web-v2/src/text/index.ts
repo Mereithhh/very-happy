@@ -1,4 +1,4 @@
-import { en, type Translations, type TranslationStructure } from './_default';
+import { en, type Translations, type PartialTranslationStructure } from './_default';
 import { ru } from './translations/ru';
 import { pl } from './translations/pl';
 import { es } from './translations/es';
@@ -10,7 +10,7 @@ import { zhHant } from './translations/zh-Hant';
 import { ja } from './translations/ja';
 import * as Localization from 'expo-localization';
 import { loadSettings } from '@/sync/persistence';
-import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
+import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -62,31 +62,41 @@ export type TranslationKey = NestedKeys<Translations>;
 export type TranslationParams<K extends TranslationKey> = GetParams<GetValue<Translations, K>>;
 
 /**
+ * Keys whose value is a plain string (no interpolation params). A union of
+ * these keys can be passed to t() without a second argument, so this is the
+ * right constraint for generic "translate(key)" callbacks.
+ */
+export type SimpleTranslationKey = {
+    [K in TranslationKey]: GetValue<Translations, K> extends string ? K : never
+}[TranslationKey];
+
+/**
  * Re-export language types and configuration
  */
 export type { SupportedLanguage } from './_all';
 export { SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE, getLanguageNativeName, getLanguageEnglishName } from './_all';
 
 /**
- * Translation objects for all supported languages
- * Each language must match the exact structure of the English translations
- * All languages defined in SUPPORTED_LANGUAGES must be imported and included here
+ * Translation objects for all supported languages.
+ *
+ * en (source of truth) and zh-Hans (primary translation) are complete
+ * (TranslationStructure, enforced in their own files). Minor languages are
+ * PartialTranslationStructure: they only carry real translations, and any
+ * missing key falls back to English inside t(). Adding a new key only
+ * requires touching _default.ts and zh-Hans.ts.
  */
-const translations: Record<SupportedLanguage, TranslationStructure> = {
+const translations: Record<SupportedLanguage, PartialTranslationStructure> = {
     en,
-    ru, // TypeScript will enforce that ru matches the TranslationStructure type exactly
-    pl, // TypeScript will enforce that pl matches the TranslationStructure type exactly
-    es, // TypeScript will enforce that es matches the TranslationStructure type exactly
-    it, // TypeScript will enforce that it matches the TranslationStructure type exactly
-    pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
-    ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
-    'zh-Hans': zhHans, // TypeScript will enforce that zh matches the TranslationStructure type exactly
-'zh-Hant': zhHant, // TypeScript will enforce that zh-Hant matches the TranslationStructure type exactly
-    ja, // TypeScript will enforce that ja matches the TranslationStructure type exactly
+    ru,
+    pl,
+    es,
+    it,
+    pt,
+    ca,
+    'zh-Hans': zhHans,
+    'zh-Hant': zhHant,
+    ja,
 };
-
-// Compile-time check: ensure all supported languages have translations
-const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
 
 //
 // Resolve language

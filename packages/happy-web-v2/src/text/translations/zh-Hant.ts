@@ -5,7 +5,7 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import type { PartialTranslationStructure } from "../_default";
 
 /**
  * Chinese plural helper function
@@ -16,7 +16,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
     return count === 1 ? singular : plural;
 }
 
-export const zhHant: TranslationStructure = {
+export const zhHant: PartialTranslationStructure = {
     board: {
         title: '任務看板',
         filterLabel: '看板',
@@ -67,47 +67,6 @@ export const zhHant: TranslationStructure = {
         laneOther: '其他',
     },
 
-    notifications: {
-        title: 'Notifications',
-        settingsSubtitle: 'Browser alerts for session events (web)',
-        webOnly: 'Web only',
-        webOnlyDescription: 'Browser notifications are only available on the web app.',
-        browserNotifications: 'Browser Notifications',
-        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
-        enable: 'Enable Notifications',
-        enabledOn: 'On — alerts will show when this tab is unfocused',
-        enabledOff: 'Off',
-        unsupported: 'Not supported in this browser',
-        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
-        types: 'Alert Types',
-        typesDescription: 'Choose which session events trigger a notification.',
-        type_permission_request: 'Permission requests',
-        type_permission_request_desc: 'A session is asking to run a tool',
-        type_reply_done: 'Reply finished',
-        type_reply_done_desc: 'The agent finished responding',
-        type_input_needed: 'Input needed',
-        type_input_needed_desc: 'A session is waiting for your input',
-        type_error: 'Errors',
-        type_error_desc: 'A session ran into an error',
-        quietHours: 'Do Not Disturb',
-        quietHoursDescription: 'Silence notifications during a set time window.',
-        quietHoursEnable: 'Enable quiet hours',
-        quietHoursStart: 'From',
-        quietHoursEnd: 'To',
-        webhook: 'Webhook Notifications',
-        webhookDescription: 'The server POSTs a {"title","message"} JSON to your own HTTPS endpoint when a session needs you — e.g. a notify gateway that forwards to your group chat. One webhook per account; saving replaces the previous one.',
-        webhookUrl: 'Webhook URL',
-        webhookUrlPlaceholder: 'https://ntfy.example.com/api/ingest/<token>',
-        webhookEventCompleted: 'Task completed',
-        webhookEventCompletedDesc: 'The agent finished its turn and the session is idle',
-        webhookEventPermission: 'Needs attention',
-        webhookEventPermissionDesc: 'Permission requests and clarifying questions',
-        webhookRemove: 'Remove webhook',
-        webhookSaved: 'Webhook saved',
-        webhookRemoved: 'Webhook removed',
-        unknownSession: 'Session',
-    },
-
     common: {
         // Simple string constants
         cancel: '取消',
@@ -130,7 +89,6 @@ export const zhHant: TranslationStructure = {
         copied: '已複製',
         copy: '複製',
         scanning: '掃描中...',
-        urlPlaceholder: 'https://example.com',
         home: '首頁',
         message: '訊息',
         files: '檔案',
@@ -167,7 +125,6 @@ export const zhHant: TranslationStructure = {
     },
     liveStatus: {
         thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
-        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: '等待授權',
         reconnecting: '連線中斷，正在重連…',
     },
@@ -190,7 +147,6 @@ export const zhHant: TranslationStructure = {
         title: '設定',
         connectedAccounts: '已連結帳戶',
         connectAccount: '連結帳戶',
-        github: 'GitHub',
         machines: '裝置',
         showOfflineMachines: ({ count }: { count: number }) => `顯示 ${count} 台離線裝置`,
         hideOfflineMachines: '隱藏離線裝置',
@@ -274,10 +230,6 @@ export const zhHant: TranslationStructure = {
         wrapLinesInDiffsDescription: '在差異檢視中換行顯示長行而不是水平捲動',
         diffStyle: '差異檢視',
         diffStyleDescription: '以單欄（unified）或並排（split）顯示差異。split 檢視僅在 Web 上可用。',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
         alwaysShowContextSize: '始終顯示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制時也顯示上下文使用情況',
         avatarStyle: '頭像風格',
@@ -353,10 +305,6 @@ export const zhHant: TranslationStructure = {
         userNotFound: '未找到使用者',
         sessionDeleted: '工作階段已被刪除',
         sessionDeletedDescription: '此工作階段已被永久刪除',
-
-        // Error functions with context
-        fieldError: ({ field, reason }: { field: string; reason: string }) =>
-            `${field}: ${reason}`,
         validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
             `${field} 必須在 ${min} 和 ${max} 之間`,
         retryIn: ({ seconds }: { seconds: number }) =>
@@ -508,14 +456,6 @@ export const zhHant: TranslationStructure = {
         quickActions: '快速操作',
         viewMachine: '查看裝置',
         viewMachineSubtitle: '查看裝置詳情和工作階段',
-        resumeSession: 'Resume Session',
-        resumeSessionSubtitle: 'Resume this session on the same machine',
-        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
-        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
-        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
-        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
-        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: '立即終止工作階段',
         archiveSessionSubtitle: '封存此工作階段並停止它',
         metadata: '中繼資料',
@@ -598,12 +538,6 @@ export const zhHant: TranslationStructure = {
             badgeBypassAllPermissions: '繞過所有權限',
             badgePlanMode: '計畫模式',
         },
-        agent: {
-            claude: 'Claude',
-            codex: 'Codex',
-            gemini: 'Gemini',
-            openclaw: 'OpenClaw',
-        },
         model: {
             title: '模型',
             configureInCli: '在 CLI 設定中配置模型',
@@ -623,9 +557,6 @@ export const zhHant: TranslationStructure = {
         },
         codexModel: {
             title: 'CODEX 模型',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
             gpt5Minimal: 'GPT-5 極簡',
             gpt5Low: 'GPT-5 低',
             gpt5Medium: 'GPT-5 中',
@@ -694,7 +625,6 @@ export const zhHant: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `編輯了 ${count} 個檔案`,
         readFiles: ({ count }: { count: number }) => `讀取了 ${count} 個檔案`,
         ranCommands: ({ count }: { count: number }) => `執行了 ${count} 個指令`,
@@ -702,7 +632,6 @@ export const zhHant: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `取得了 ${count} 個 URL`,
         ranTasks: ({ count }: { count: number }) => `執行了 ${count} 個任務`,
         usedTools: ({ count }: { count: number }) => `使用了 ${count} 個工具`,
-        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -826,10 +755,8 @@ export const zhHant: TranslationStructure = {
         // Bring your own agent
         byoTitle: '使用自己的代理',
         byoDescription: '使用您自己的 ElevenLabs 代理取代 Happy 預設代理。無需訂閱 — 直接使用您自己的 ElevenLabs 帳戶連線。您的代理必須定義兩個用戶端工具：messageClaudeCode（向編碼代理傳送文字）和 processPermissionRequest（允許或拒絕工具使用）。透過 {{initialConversationContext}} 動態變數接收工作階段上下文。',
-        customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: '未設定',
         customAgentIdDescription: '輸入您的 ElevenLabs Agent ID。留空則使用 Happy 預設代理。',
-        customAgentIdPlaceholder: 'e.g. abc123def456',
         bypassToken: '直接連線',
         bypassTokenSubtitle: '跳過 Happy 伺服器，直接連線到 ElevenLabs',
         promptGuideTitle: '代理提示詞指南',
@@ -859,7 +786,6 @@ export const zhHant: TranslationStructure = {
         passwordChange: '變更您的帳戶密碼',
         profile: '個人資料',
         name: '姓名',
-        github: 'GitHub',
         tapToDisconnect: '點擊中斷連線',
         server: '伺服器',
         backup: '備份',

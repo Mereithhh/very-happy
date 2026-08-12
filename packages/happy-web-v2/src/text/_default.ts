@@ -376,6 +376,7 @@ export const en = {
         createDirTitle: 'Create directory?',
         createDirMessage: ({ directory }: { directory: string }) => `Directory ${directory} doesn't exist yet. Create it?`,
         title: 'Start New Session',
+        startSession: 'Start Session',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
@@ -740,6 +741,7 @@ export const en = {
         filterAll: 'All',
         filterActive: 'Active',
         filterArchived: 'Archived',
+        empty: 'No sessions yet',
         noResults: 'No matching sessions',
         pinned: 'Pinned',
         pin: 'Pin',
@@ -1165,6 +1167,8 @@ export const en = {
     },
 
     machine: {
+        noMachines: 'No machines connected',
+        noMachinesDescription: 'Start the Happy daemon on a computer to see it here.',
         launchNewSessionInDirectory: 'Launch New Session in Directory',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
         offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`',
@@ -1532,10 +1536,10 @@ export type Translations = typeof en;
  */
 export type TranslationStructure = {
     readonly [K in keyof Translations]: {
-        readonly [P in keyof Translations[K]]: Translations[K][P] extends string 
-            ? string 
-            : Translations[K][P] extends (...args: any[]) => string 
-                ? Translations[K][P] 
+        readonly [P in keyof Translations[K]]: Translations[K][P] extends string
+            ? string
+            : Translations[K][P] extends (...args: any[]) => string
+                ? Translations[K][P]
                 : Translations[K][P] extends object
                     ? {
                         readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
@@ -1545,3 +1549,20 @@ export type TranslationStructure = {
                     : Translations[K][P]
     }
 };
+
+/**
+ * Deep-partial variant of TranslationStructure for minor languages.
+ *
+ * Minor-language files only carry REAL translations: any key they omit falls
+ * back to English at runtime (see t() in index.ts). Only en (source of truth)
+ * and zh-Hans (primary translation) are required to be complete.
+ * Adding a new key therefore only touches _default.ts and zh-Hans.ts.
+ */
+type DeepPartialTranslations<T> = {
+    readonly [K in keyof T]?: T[K] extends string
+        ? string
+        : T[K] extends (...args: any[]) => string
+            ? T[K]
+            : DeepPartialTranslations<T[K]>;
+};
+export type PartialTranslationStructure = DeepPartialTranslations<TranslationStructure>;
