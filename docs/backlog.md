@@ -24,6 +24,9 @@
 | B-003 | RpcHandlerManager 把 handler 错误编码为 `{error}` 正常响应——多数 ops 封装当成功（假 ack 面） | bug | 车道退役批遗留观察 | todo | 已修 openTerminal/killTerminal 两处，其余 RPC 封装待收口 |
 | B-004 | 终端会话标签（@vh_tags 走 daemon 链路） | feat | 置顶标签批遗留 | todo | RenameModal 已留位 |
 | B-005 | 渲染层 ghostty-web spike 复查 | debt | 渲染调研定论 | todo | 触发条件：0.5.0 发版+IME issue 关闭+内存损坏关闭 |
+| B-006 | 看板任务生命周期重构（哲学：以任务完成管理，不以 claude 状态管理） | feat | Owner 2026-08-13 | doing | spec: specs/2026-08-board-task-lifecycle.md |
+| B-007 | dida365（滴答清单）任务双向联动 | feat | Owner 2026-08-13 | todo | 等 Owner 的 dida365 skill/CLI 就绪；走 channels 适配器模式 |
+| B-008 | 更好的通知系统（分级/聚合） | feat | Owner 2026-08-13 | todo | 与 B-006/B-007 一体规划 |
 
 ## 近期完成
 
