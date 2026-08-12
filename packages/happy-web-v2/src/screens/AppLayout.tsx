@@ -5,9 +5,11 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
+import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts } from '@/app/viewShortcuts';
+import { useNotificationGenerator } from '@/app/useNotificationGenerator';
 import './layout.css';
 
 export function AppLayout() {
@@ -19,6 +21,10 @@ export function AppLayout() {
   // reason: must work with the sidebar collapsed/unmounted.
   useNewTerminalShortcuts();
   useCloseViewShortcuts();
+  // Notification-center local producer: watches board lifecycle transitions,
+  // appends inbox entries + rings the chime. Layout level so it observes
+  // everything regardless of which screen is open.
+  useNotificationGenerator();
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === '/' || location.pathname === '';
@@ -66,6 +72,8 @@ export function AppLayout() {
             >
               <PanelLeft size={18} />
             </button>
+            {/* collapsed rail keeps the notification entry point visible */}
+            <NotificationBell />
           </div>
           <main className="app-detail">
             <Outlet />

@@ -9,6 +9,7 @@ import {
   Bot,
   Bookmark,
   Bell,
+  Volume2,
   BarChart3,
   Stethoscope,
   LogOut,
@@ -79,6 +80,19 @@ import {
   formatMinute,
 } from '@/sync/notificationPrefs';
 import { getNotificationPermission, requestNotificationPermission } from '@/sync/webNotifications';
+import {
+  useSoundPrefs,
+  updateSoundPrefs,
+  setSoundEventEnabled,
+  getSoundPrefs,
+} from '@/sync/soundPrefs';
+import { playChime, CHIME_VOICES, type ChimeVoice } from '@/utils/chimes';
+import {
+  useRetentionDays,
+  setRetentionDays,
+  RETENTION_DAY_OPTIONS,
+} from '@/sync/localNotificationStore';
+import type { SoundEvent } from '@/sync/notificationInbox';
 import { setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type WebhookEvent } from '@/sync/apiWebhook';
 import type { NotifType } from '@/sync/feedTypes';
@@ -1218,6 +1232,152 @@ function Channels() {
   );
 }
 
+// --- notification sound (WebAudio chime — device-local, no OS permission) ---
+
+const CHIME_VOICE_LABEL: Record<ChimeVoice, SimpleTranslationKey> = {
+  ding: 'notifications.voiceDing',
+  duo: 'notifications.voiceDuo',
+  woodblock: 'notifications.voiceWoodblock',
+  melody: 'notifications.voiceMelody',
+};
+
+const SOUND_EVENTS: SoundEvent[] = ['permission', 'question', 'done'];
+
+const SOUND_EVENT_LABEL: Record<SoundEvent, SimpleTranslationKey> = {
+  permission: 'notifications.soundEventPermission',
+  question: 'notifications.soundEventQuestion',
+  done: 'notifications.soundEventDone',
+};
+
+const SOUND_EVENT_DESC: Record<SoundEvent, SimpleTranslationKey> = {
+  permission: 'notifications.soundEventPermissionDesc',
+  question: 'notifications.soundEventQuestionDesc',
+  done: 'notifications.soundEventDoneDesc',
+};
+
+/** Chime settings. Rendered even where browser Notifications are unsupported —
+ *  WebAudio needs no permission, only a first user gesture (autoplay policy;
+ *  the settings clicks themselves unlock it). */
+function SoundGroups() {
+  const { t } = useTranslation();
+  const prefs = useSoundPrefs();
+
+  // Preview reads prefs from the store (not the render closure) so the value
+  // just committed by the same interaction is what plays.
+  const preview = (voice?: ChimeVoice) => {
+    const cur = getSoundPrefs();
+    playChime(voice ?? cur.voice, cur.volume);
+  };
+
+  return (
+    <>
+      <ItemGroup title={t('notifications.sound')} footer={t('notifications.soundDescription')}>
+        <Item
+          title={t('notifications.soundEnable')}
+          right={
+            <Toggle
+              checked={prefs.enabled}
+              onChange={(v) => updateSoundPrefs({ enabled: v })}
+              label={t('notifications.soundEnable')}
+            />
+          }
+        />
+        <Item
+          title={t('notifications.soundVolume')}
+          right={
+            <input
+              type="range"
+              className="set-range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(prefs.volume * 100)}
+              disabled={!prefs.enabled}
+              aria-label={t('notifications.soundVolume')}
+              onChange={(e) => updateSoundPrefs({ volume: Number(e.target.value) / 100 })}
+              onPointerUp={() => preview()}
+              onKeyUp={(e) => {
+                if (e.key.startsWith('Arrow')) preview();
+              }}
+            />
+          }
+        />
+      </ItemGroup>
+
+      <ItemGroup title={t('notifications.soundVoice')} footer={t('notifications.soundVoiceDescription')}>
+        {CHIME_VOICES.map((voice) => (
+          <Item
+            key={voice}
+            title={t(CHIME_VOICE_LABEL[voice])}
+            selected={prefs.voice === voice}
+            onClick={() => {
+              updateSoundPrefs({ voice });
+              preview(voice);
+            }}
+            right={
+              <span className="set-voice-right">
+                <button
+                  type="button"
+                  className="set-voice-preview"
+                  title={t('notifications.soundPreview')}
+                  aria-label={t('notifications.soundPreview')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    preview(voice);
+                  }}
+                >
+                  <Volume2 size={15} />
+                </button>
+                {prefs.voice === voice && <Check size={16} />}
+              </span>
+            }
+          />
+        ))}
+      </ItemGroup>
+
+      <ItemGroup title={t('notifications.soundEvents')} footer={t('notifications.soundEventsDescription')}>
+        {SOUND_EVENTS.map((ev) => (
+          <Item
+            key={ev}
+            title={t(SOUND_EVENT_LABEL[ev])}
+            subtitle={t(SOUND_EVENT_DESC[ev])}
+            right={
+              <Toggle
+                checked={prefs.events[ev]}
+                disabled={!prefs.enabled}
+                onChange={(v) => setSoundEventEnabled(ev, v)}
+                label={t(SOUND_EVENT_LABEL[ev])}
+              />
+            }
+          />
+        ))}
+      </ItemGroup>
+    </>
+  );
+}
+
+/** Notification-center behaviour: how long entries stay in the bell panel. */
+function InboxGroup() {
+  const { t } = useTranslation();
+  const days = useRetentionDays();
+  return (
+    <ItemGroup
+      title={t('notifications.inboxGroup')}
+      footer={t('notifications.inboxRetentionDescription')}
+    >
+      {RETENTION_DAY_OPTIONS.map((d) => (
+        <Item
+          key={d}
+          title={t('notifications.retentionDays', { days: d })}
+          selected={days === d}
+          right={days === d ? <Check size={16} /> : undefined}
+          onClick={() => setRetentionDays(d)}
+        />
+      ))}
+    </ItemGroup>
+  );
+}
+
 function Notifications() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -1235,6 +1395,9 @@ function Notifications() {
           <ItemGroup title={t('notifications.webOnly')}>
             <Item title={t('notifications.unsupported')} />
           </ItemGroup>
+          {/* the chime + notification center work without the Notification API */}
+          <SoundGroups />
+          <InboxGroup />
           <WebhookMovedGroup />
         </ItemList>
       </Page>
@@ -1365,6 +1528,8 @@ function Notifications() {
           )}
         </ItemGroup>
 
+        <SoundGroups />
+        <InboxGroup />
         <WebhookMovedGroup />
       </ItemList>
     </Page>

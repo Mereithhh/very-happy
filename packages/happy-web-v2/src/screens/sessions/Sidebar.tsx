@@ -17,6 +17,7 @@ import { isImeGuardedEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount, useBoardItems } from '@/screens/board/useBoardItems';
+import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
 import { RenameModal } from './RenameModal';
@@ -495,6 +496,9 @@ export function Sidebar() {
               <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
             )}
           </button>
+          {/* Notification center: bell + unread badge + panel (self-contained;
+              the collapsed desktop rail carries its own instance). */}
+          <NotificationBell />
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote

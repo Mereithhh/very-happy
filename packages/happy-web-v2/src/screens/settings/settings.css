@@ -295,3 +295,60 @@ input.set-value:focus {
   gap: var(--sp-2);
   font-size: var(--fs-13);
 }
+
+/* ---- notification sound (chime) controls ---- */
+
+/* token-styled range slider (volume) — same track/thumb in both themes */
+.set-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 140px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  outline: none;
+}
+.set-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-pill);
+  background: var(--accent-2);
+  border: none;
+  cursor: pointer;
+}
+.set-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-pill);
+  background: var(--accent-2);
+  border: none;
+  cursor: pointer;
+}
+.set-range:disabled {
+  opacity: 0.4;
+}
+.set-range:disabled::-webkit-slider-thumb {
+  cursor: default;
+}
+
+.set-voice-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.set-voice-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  transition: background var(--motion-fast);
+}
+.set-voice-preview:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
