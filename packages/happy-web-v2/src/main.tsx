@@ -13,6 +13,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 
 import { AppRoot } from './app/AppRoot.tsx';
+import { installStaleBundleReload } from './app/staleBundleReload.ts';
 
 // Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
 // so a client still running the previous shell hits "Failed to fetch
@@ -27,6 +28,8 @@ window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault(); // suppress the error overlay/throw; we're recovering
   window.location.reload();
 });
+
+installStaleBundleReload();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
