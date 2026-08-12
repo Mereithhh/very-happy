@@ -1,10 +1,11 @@
 /**
  * terminalAgentState — lightweight store of each web terminal's Claude Code
- * status (`agentState` on `machineListTerminals` items, daemon >= the version
- * that reports it). There is deliberately NO polling loop here: the singleton
- * reconcile loop is the single `list-terminals` caller and feeds every result
- * through `ingest()` (see terminalReconcileLoop.ts), so we never run two
- * competing poll loops against the same RPC.
+ * status (`agentState` on the daemon's terminal-list items, daemon >= the
+ * version that reports it). There is deliberately NO data acquisition here:
+ * the singleton terminal sync (terminalSync.ts) is the only feeder — daemon
+ * pushes for new daemons, the legacy `list-terminals` poll for old ones —
+ * and every result flows through `ingest()`, so alerts fire exactly once per
+ * transition regardless of the transport.
  *
  * Besides the {terminalId → state} map (consumed by the sidebar dot), ingest
  * owns the alerting side effects:

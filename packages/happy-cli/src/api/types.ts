@@ -157,6 +157,20 @@ export const MachineMetadataSchema = z.object({
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
 
 /**
+ * One web terminal in the machine's pushed terminal list (same item shape the
+ * `list-terminals` RPC returns, so old polling clients and the push describe
+ * the same thing).
+ */
+export const WebTerminalListItemSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  cwd: z.string().optional(),
+  createdAt: z.number().optional(),
+  activityAt: z.number().optional(),
+  agentState: z.enum(['working', 'needs_input', 'idle', 'shell']).optional(),
+})
+
+/**
  * Daemon state - dynamic runtime information (frequently updated)
  */
 export const DaemonStateSchema = z.object({
@@ -172,7 +186,27 @@ export const DaemonStateSchema = z.object({
     z.union([
       z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
       z.string() // Forward compatibility
-    ]).optional()
+    ]).optional(),
+  /**
+   * Push channel for this machine's web-terminal list (see
+   * terminal/webTerminal.ts list tracking). The daemon rewrites this field
+   * whenever the tracked list signature changes; the server persists it with
+   * the rest of daemonState and broadcasts `update-machine`, so every web
+   * client gets the terminal list/titles/agent states pushed instead of
+   * polling `list-terminals` — and an OFFLINE machine's last list stays
+   * readable from the server's persisted copy.
+   *
+   * Trust rule for consumers: the snapshot is only authoritative when
+   * `updatedAt >= startedAt` — i.e. it was written by the CURRENT daemon run.
+   * A downgraded daemon spreads the stale field forward (`{...state}`) but
+   * bumps `startedAt` on connect without restamping `updatedAt`, which is
+   * exactly what makes clients fall back to polling. Old clients ignore the
+   * field entirely.
+   */
+  webTerminals: z.object({
+    updatedAt: z.number(),
+    terminals: z.array(WebTerminalListItemSchema),
+  }).optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>

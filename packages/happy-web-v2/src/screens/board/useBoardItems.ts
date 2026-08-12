@@ -1,7 +1,7 @@
 /**
  * Store-facing hooks for the Task Board. The mapping itself lives in
  * boardItems.ts (pure, unit-tested); these hooks only wire the existing
- * stores in — no new data source, no polling (the singleton reconcile loop
+ * stores in — no new data source, no polling (the singleton terminal sync
  * in AppLayout keeps terminal state fresh for every consumer).
  */
 import { useEffect, useMemo, useState } from 'react';

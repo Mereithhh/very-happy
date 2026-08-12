@@ -31,6 +31,7 @@ export default defineConfig({
                         'src/claude/claude.integration.test.ts',
                         'src/codex/codex.integration.test.ts',
                         'src/sandbox/network.integration.test.ts',
+                        'src/terminal/webTerminal.tracker.integration.test.ts',
                     ],
                     setupFiles: ['./src/testing/integration.setup.empty.ts'],
                     sequence: {
