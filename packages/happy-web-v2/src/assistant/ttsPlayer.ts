@@ -37,6 +37,8 @@ export class TtsPlayer {
     private source: AudioBufferSourceNode | null = null;
     private pumping = false;
     private disposed = false;
+    /** resolver of the in-flight playOne() playback promise (null when idle) */
+    private playbackDone: (() => void) | null = null;
 
     constructor(private callbacks: TtsPlayerCallbacks) {}
 
@@ -61,6 +63,14 @@ export class TtsPlayer {
                 // already stopped
             }
             this.source = null;
+        }
+        // CRITICAL: onended was nulled above, so the promise playOne() is
+        // awaiting would otherwise never settle — the pump would deadlock and
+        // every future enqueue would be silently dropped. Resolve it here.
+        if (this.playbackDone) {
+            const done = this.playbackDone;
+            this.playbackDone = null;
+            done();
         }
         this.callbacks.onSpeakingChange(false);
     }
@@ -90,7 +100,18 @@ export class TtsPlayer {
 
     private async playOne(utterance: TtsUtterance): Promise<void> {
         const ctx = getAssistantAudioContext();
-        if (!ctx || ctx.state !== 'running') return; // not unlocked — skip silently
+        if (!ctx) return; // Web Audio unavailable — skip silently
+        if (ctx.state !== 'running') {
+            // iOS suspends the context on interruptions (phone call / Siri).
+            // The page keeps its unlock privilege, so resume() succeeds without
+            // a fresh gesture — try it before giving up on the utterance.
+            try {
+                await ctx.resume();
+            } catch {
+                // fall through; state check below decides
+            }
+            if ((ctx.state as AudioContextState) !== 'running') return;
+        }
 
         const result = await this.callbacks.synthesize(utterance.text);
         if (this.disposed) return;
@@ -112,19 +133,24 @@ export class TtsPlayer {
         if (this.disposed || this.state.playingId !== utterance.id) return;
 
         await new Promise<void>((resolve) => {
+            const finish = () => {
+                if (this.playbackDone === finish) this.playbackDone = null;
+                resolve(); // resolving twice is a no-op, so stop() racing onended is safe
+            };
+            this.playbackDone = finish;
             const source = ctx.createBufferSource();
             source.buffer = buffer;
             source.connect(ctx.destination);
             source.onended = () => {
                 if (this.source === source) this.source = null;
-                resolve();
+                finish();
             };
             this.source = source;
             try {
                 source.start();
             } catch {
                 this.source = null;
-                resolve();
+                finish();
             }
         });
     }

@@ -255,7 +255,10 @@
   }
 }
 
-/* ── conversation strip ── */
+/* ── conversation strip ──
+   Unified left alignment (the stage centers everything else): the user echo
+   and the reply read as one transcript column, with breathing room so the
+   text never hugs the viewport edge. */
 .as-convo {
   width: 100%;
   display: flex;
@@ -264,7 +267,8 @@
   min-height: 72px;
   max-height: 34dvh;
   overflow-y: auto;
-  padding: 0 4px;
+  padding: 0 12px;
+  text-align: left;
 }
 .as-convo-user {
   font-family: var(--font-mono, ui-monospace, monospace);

@@ -604,6 +604,7 @@ export const en = {
         micError: 'Microphone unavailable — check browser permissions',
         ttsUnavailable: 'Voice replies unavailable — continuing in text-only mode',
         ttsTruncated: 'Speech truncated — full reply is on screen',
+        audioUnlockFailed: 'Audio could not be enabled — tap "Enable voice" to try again',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel

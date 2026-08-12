@@ -125,7 +125,11 @@ export const ApiNewFeedPostSchema = z.object({
     body: FeedBodySchema,
     cursor: z.string(),
     createdAt: z.number(),
-    repeatKey: z.string().nullable()
+    // nullish, NOT nullable: the server's buildNewFeedPostUpdate omits the
+    // field entirely — requiring it made zod reject EVERY live feed push
+    // ("Invalid update data"). Old-client-tolerates-missing-fields is a
+    // design requirement (CLAUDE.md rule 4).
+    repeatKey: z.string().nullish()
 });
 
 // KV batch update schema for real-time KV updates

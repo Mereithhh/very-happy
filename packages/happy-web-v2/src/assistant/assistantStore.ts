@@ -48,6 +48,12 @@ interface AssistantStoreState {
     markTtsNoticeShown: () => void;
     setLastTurnSource: (v: 'voice' | 'text') => void;
     setLastTtsTruncated: (v: boolean) => void;
+    /**
+     * Re-probe TTS availability (entering the screen / new conversation):
+     * the 'unsupported' verdict is sticky ONLY within a visit — the server may
+     * have been upgraded/configured since, so each visit gets a fresh chance.
+     */
+    resetTtsGate: () => void;
     /** "new conversation": clear per-conversation transients */
     resetConversation: () => void;
 }
@@ -70,8 +76,16 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
     markTtsNoticeShown: () => set({ ttsNoticeShown: true }),
     setLastTurnSource: (v) => set({ lastTurnSource: v }),
     setLastTtsTruncated: (v) => set({ lastTtsTruncated: v }),
+    resetTtsGate: () => set({ ttsAvailability: 'unknown', ttsNoticeShown: false }),
     resetConversation: () =>
-        set({ lastTurnSource: null, lastTtsTruncated: false, recorderState: 'idle', speaking: false }),
+        set({
+            lastTurnSource: null,
+            lastTtsTruncated: false,
+            recorderState: 'idle',
+            speaking: false,
+            ttsAvailability: 'unknown',
+            ttsNoticeShown: false,
+        }),
 }));
 
 /**

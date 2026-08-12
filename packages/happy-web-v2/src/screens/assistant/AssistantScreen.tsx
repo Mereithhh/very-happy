@@ -74,7 +74,7 @@ export function AssistantScreen() {
     const [spawnError, setSpawnError] = useState<string | null>(null);
 
     const spawnAssistant = useCallback(
-        async (machineId: string) => {
+        async (machineId: string, opts?: { forceNew?: boolean }) => {
             if (spawningRef.current) return;
             spawningRef.current = true;
             setSpawnError(null);
@@ -85,6 +85,9 @@ export function AssistantScreen() {
                     approvedNewDirectoryCreation: true,
                     agent: 'claude',
                     variant: 'assistant',
+                    // "new conversation": daemon stops the old assistant process
+                    // and spawns fresh (old daemons ignore the field)
+                    ...(opts?.forceNew ? { forceNew: true } : {}),
                 });
                 if (res.type === 'success') {
                     useAssistantStore.getState().setSessionId(res.sessionId);
@@ -128,20 +131,29 @@ export function AssistantScreen() {
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
     const voiceReadTextReplies = useSetting('voiceReadTextReplies');
 
-    // ── TTS player (per credentials/voice; queue semantics in ttsQueue.ts) ──
+    // ── TTS player (created ONCE per visit; queue semantics in ttsQueue.ts) ──
+    // credentials/voice/toast/t reach the callbacks through refs (optionsRef
+    // precedent in useHoldToTalk): recreating the player on any of their
+    // identity changes would dispose it MID-PLAYBACK — a toast popping (or
+    // auto-expiring) must never cut off the reply being spoken.
     const playerRef = useRef<TtsPlayer | null>(null);
+    const playerEnvRef = useRef({ credentials, voiceTtsVoiceId, toast, t });
+    playerEnvRef.current = { credentials, voiceTtsVoiceId, toast, t };
     useEffect(() => {
-        if (!credentials) return;
         const player = new TtsPlayer({
-            synthesize: (text) =>
-                synthesizeSpeech(credentials, text, { voiceId: voiceTtsVoiceId ?? undefined }),
+            synthesize: (text) => {
+                const { credentials: creds, voiceTtsVoiceId: voiceId } = playerEnvRef.current;
+                if (!creds) return Promise.resolve({ kind: 'error' as const });
+                return synthesizeSpeech(creds, text, { voiceId: voiceId ?? undefined });
+            },
             onSpeakingChange: (v) => useAssistantStore.getState().setSpeaking(v),
             onUnsupported: () => {
                 const st = useAssistantStore.getState();
                 st.setTtsAvailability('unsupported');
                 if (!st.ttsNoticeShown) {
                     st.markTtsNoticeShown();
-                    toast.show(t('assistant.ttsUnavailable'), 'info');
+                    const env = playerEnvRef.current;
+                    env.toast.show(env.t('assistant.ttsUnavailable'), 'info');
                 }
             },
         });
@@ -150,7 +162,7 @@ export function AssistantScreen() {
             player.dispose();
             if (playerRef.current === player) playerRef.current = null;
         };
-    }, [credentials, voiceTtsVoiceId, toast, t]);
+    }, []);
 
     // ── read NEW replies aloud (baseline = ids present on attach/reset) ──
     const baselineRef = useRef<Set<string> | null>(null);
@@ -221,13 +233,20 @@ export function AssistantScreen() {
     // ── audio unlock (per page visit; released on leave) ──
     const onUnlock = useCallback(async () => {
         const ok = await unlockAudioPlayback();
-        useAssistantStore.getState().setAudioUnlocked(true);
         if (!ok) {
-            // context refused to run — keep going, STT still works
-            console.warn('[assistant] audio unlock incomplete');
+            // context refused to run — do NOT mark unlocked: keep the button
+            // visible so the user can retry with a fresh gesture. STT still works.
+            console.warn('[assistant] audio unlock failed — context not running');
+            const env = playerEnvRef.current;
+            env.toast.error(env.t('assistant.audioUnlockFailed'));
+            return;
         }
+        useAssistantStore.getState().setAudioUnlocked(true);
     }, []);
     useEffect(() => {
+        // fresh probe per visit: an 'unsupported' verdict from a previous visit
+        // (old server / unconfigured) must not outlive the screen — W3
+        useAssistantStore.getState().resetTtsGate();
         return () => {
             releaseAudioKeepAlive();
             const st = useAssistantStore.getState();
@@ -237,7 +256,7 @@ export function AssistantScreen() {
         };
     }, []);
 
-    // ── new conversation: archive + respawn ──
+    // ── new conversation: forceNew respawn, then archive the old session ──
     const [resetting, setResetting] = useState(false);
     const onNewConversation = useCallback(async () => {
         if (!machine || resetting) return;
@@ -245,12 +264,20 @@ export function AssistantScreen() {
         try {
             playerRef.current?.stop();
             const st = useAssistantStore.getState();
-            const current = st.sessionId;
+            const previous = st.sessionId;
             st.resetConversation();
             st.setSessionId(null);
             baselineRef.current = null;
-            if (current) await sessionArchive(current);
-            await spawnAssistant(machine.id);
+            // forceNew: the daemon stops the old assistant process and spawns
+            // fresh, so we don't depend on archive-before-spawn ordering (an
+            // old daemon would just return the existing session — same as before).
+            await spawnAssistant(machine.id, { forceNew: true });
+            // archive the replaced session AFTER the new one exists (list
+            // hygiene); skip if spawn failed or the daemon reused the same id.
+            const fresh = useAssistantStore.getState().sessionId;
+            if (previous && fresh && previous !== fresh) {
+                await sessionArchive(previous);
+            }
         } finally {
             setResetting(false);
         }

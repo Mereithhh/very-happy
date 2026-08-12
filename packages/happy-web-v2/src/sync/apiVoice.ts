@@ -7,6 +7,7 @@ import {
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
+import { classifyTtsErrorStatus } from './ttsStatus';
 import { config } from '@/config';
 
 export type { VoiceConversationResponse, VoiceUsageResponse };
@@ -87,7 +88,7 @@ export type TtsSynthesisResult =
     | { kind: 'unsupported'; status: number }
     /** 429 — rate limited (60/min); skip this utterance, keep voice mode */
     | { kind: 'rate-limited' }
-    /** anything else (400 bad text, upstream 401/403, 5xx, network) */
+    /** anything else (400 bad text, upstream 502, 5xx, network) */
     | { kind: 'error'; status?: number };
 
 export async function synthesizeSpeech(
@@ -113,12 +114,9 @@ export async function synthesizeSpeech(
         if (response.ok) {
             return { kind: 'ok', data: await response.arrayBuffer() };
         }
-        if (response.status === 404 || response.status === 501) {
-            return { kind: 'unsupported', status: response.status };
-        }
-        if (response.status === 429) {
-            return { kind: 'rate-limited' };
-        }
+        const kind = classifyTtsErrorStatus(response.status);
+        if (kind === 'unsupported') return { kind: 'unsupported', status: response.status };
+        if (kind === 'rate-limited') return { kind: 'rate-limited' };
         return { kind: 'error', status: response.status };
     } catch {
         return { kind: 'error' };
@@ -151,7 +149,7 @@ export async function fetchTtsVoices(credentials: AuthCredentials): Promise<TtsV
             const data = (await response.json()) as { voices?: TtsVoice[] };
             return { kind: 'ok', voices: Array.isArray(data.voices) ? data.voices : [] };
         }
-        if (response.status === 404 || response.status === 501) {
+        if (classifyTtsErrorStatus(response.status) === 'unsupported') {
             return { kind: 'unsupported', status: response.status };
         }
         return { kind: 'error', status: response.status };

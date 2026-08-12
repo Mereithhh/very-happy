@@ -160,6 +160,12 @@ export interface SpawnSessionOptions {
      * compatibility is a design requirement).
      */
     variant?: string;
+    /**
+     * Skip the daemon-side variant-singleton dedupe: stop any existing process
+     * for this variant and spawn a brand-new one ("new conversation"). Old
+     * daemons ignore the unknown field and may return the existing session.
+     */
+    forceNew?: boolean;
 }
 
 // Options for forking a Claude session on a machine
@@ -219,7 +225,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -233,10 +239,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             parentSessionId?: string,
             forkedFromMessageId?: string,
             variant?: string,
+            forceNew?: boolean,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew }
         );
         return result;
     } catch (error) {

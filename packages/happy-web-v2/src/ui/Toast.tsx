@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -81,12 +82,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     };
   }, [show]);
 
-  const api: ToastApi = {
-    show,
-    success: (m) => show(m, 'success'),
-    error: (m) => show(m, 'error'),
-    action: (m, onAction) => show(m, 'info', { onAction, sticky: true }),
-  };
+  // Stable identity on purpose: consumers put `toast` in effect deps, and a
+  // fresh object every render (each toast add/expiry re-renders the provider)
+  // would tear those effects down — e.g. disposing the assistant TTS player.
+  const api: ToastApi = useMemo(
+    () => ({
+      show,
+      success: (m) => show(m, 'success'),
+      error: (m) => show(m, 'error'),
+      action: (m, onAction) => show(m, 'info', { onAction, sticky: true }),
+    }),
+    [show],
+  );
 
   return (
     <ToastContext.Provider value={api}>

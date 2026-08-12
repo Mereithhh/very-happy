@@ -619,6 +619,7 @@ export const zhHans: TranslationStructure = {
         micError: '麦克风不可用，请检查浏览器权限',
         ttsUnavailable: '语音播报不可用，已切换纯文字模式',
         ttsTruncated: '播报已截断，全文见屏幕',
+        audioUnlockFailed: '音频启用失败，请再点一次「启用语音」',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
