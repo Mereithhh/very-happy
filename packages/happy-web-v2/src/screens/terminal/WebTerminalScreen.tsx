@@ -30,6 +30,7 @@ import {
   type TermFocusAction,
 } from './termFocusPolicy';
 import { createTermWriteHold } from './termWriteHold';
+import { createTermStreamSync } from './termStreamSync';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -236,12 +237,24 @@ export function WebTerminalScreen() {
     let titled = false;
     let outChain: Promise<void> = Promise.resolve();
     // Daemon-authoritative screen model: the daemon assigns a monotonic `seq`
-    // to every output chunk. We track the highest seq we've applied so that on a
-    // socket reconnect we can ask for `fromSeq=lastSeq` and the daemon replays
-    // only the gap (or sends a fresh snapshot if the gap scrolled out of its
-    // ring). Chunks are deduped by seq so a replayed-then-live overlap never
-    // double-writes. Starts at 0; first live chunk is seq 1.
-    let lastSeq = 0;
+    // to every output chunk; `sync` (see ./termStreamSync.ts for the full
+    // failure-mode write-up) tracks the highest seq applied so a catch-up can
+    // ask for `fromSeq=lastSeq`, dedups replay/live overlap, refuses to write
+    // across a hole (a lost chunk desyncs xterm from tmux's delta redraws →
+    // ghost chars / stale regions), and — critically — RESETS the baseline on
+    // a snapshot, because the daemon restarts a recreated session's seq at 0
+    // and the old Math.max baseline then silently dropped ALL further output
+    // (frozen screen, no echo).
+    const sync = createTermStreamSync();
+    // Chunks that arrive before the open RPC resolves. We can't attribute them
+    // yet (a NEW terminal's id is assigned by the daemon, and the RPC ack's
+    // payload decrypt is async, so socket events can be processed first) —
+    // dropping them was a real race: the daemon computes the open snapshot,
+    // then streams chunks immediately, and losing those first redraw deltas
+    // left the screen stuck on pre-switch content. Bounded; a dropped overflow
+    // surfaces as a seq gap after the flush and heals via catchUp.
+    const EARLY_OUTPUT_MAX = 512;
+    let earlyOutput: Array<{ terminalId: string; data: string; seq?: number; enc?: boolean }> | null = [];
 
     // ── Selection write-hold ─────────────────────────────────────────────────
     // While the user is drag-selecting (or mobile select-mode is on), incoming
@@ -254,14 +267,16 @@ export function WebTerminalScreen() {
     const writeHold = createTermWriteHold((d) => term.write(d));
     const gatedWrite = writeHold.gatedWrite;
 
-    const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
-      if (disposed || e.terminalId !== terminalId) return;
-      // Drop anything we've already applied (e.g. a live chunk that overlaps a
-      // reconnect replay). seq is monotonic per terminal on the daemon.
-      if (typeof e.seq === 'number') {
-        if (e.seq <= lastSeq) return;
-        lastSeq = e.seq;
-      }
+    // Apply one output chunk: seq bookkeeping SYNCHRONOUSLY (so chunks arriving
+    // during an async decrypt still dedup against the right baseline), write
+    // queued on outChain. 'gap' chunks are NOT written — writing across a hole
+    // tears escape sequences and permanently desyncs xterm from tmux's delta
+    // redraws (ghost characters backspace can never remove) — the catch-up
+    // replays the hole from the daemon's ring instead.
+    const applyLiveChunk = (e: { data: string; seq?: number; enc?: boolean }) => {
+      const decision = sync.liveChunk(e.seq);
+      if (decision === 'dup') return;
+      if (decision === 'gap') { catchUp(); return; }
       if (e.enc) {
         outChain = outChain.then(async () => {
           const plain = await decryptTerminalData(machineId, e.data);
@@ -270,6 +285,16 @@ export function WebTerminalScreen() {
       } else {
         gatedWrite(b64ToBytes(e.data));
       }
+    };
+    const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
+      if (disposed) return;
+      if (!terminalId) {
+        // Open still in flight — stash instead of dropping (see earlyOutput).
+        if (earlyOutput && earlyOutput.length < EARLY_OUTPUT_MAX) earlyOutput.push(e);
+        return;
+      }
+      if (e.terminalId !== terminalId) return;
+      applyLiveChunk(e);
     };
     const onExit = (e: { terminalId: string; exitCode?: number }) => {
       if (disposed || e.terminalId !== terminalId) return;
@@ -385,12 +410,19 @@ export function WebTerminalScreen() {
       scheduleFit();
     });
 
-    // Apply an open-terminal result to the xterm screen. The daemon owns the
-    // screen, so a `snapshot` fully restores it (reset + write) and a `replay`
-    // just fills the gap after a reconnect (write each chunk in seq order, no
-    // reset). onOutput's seq dedup guards against overlap with live chunks that
-    // land during this async decrypt. Sets `lastSeq` to the daemon's baseline.
-    const applyOpenResult = async (res: Extract<Awaited<ReturnType<typeof machineOpenTerminal>>, { success: true }>) => {
+    // Digest an open-terminal result: ALL seq bookkeeping happens synchronously
+    // here (so live chunks racing the restore dedup against the right
+    // baseline), and the returned closure performs the actual screen writes —
+    // the caller decides where it runs (initial open queues it on outChain;
+    // catchUp awaits it inside its own outChain slot so it lands BEFORE any
+    // live-chunk writes queued while the RPC was in flight). `seqAtCall` is
+    // the baseline when the RPC was issued — see termStreamSync.snapshotApplied
+    // for why a snapshot ASSIGNS the baseline instead of maxing it (a daemon-
+    // side session recreation restarts seq at 0; maxing froze the terminal).
+    const applyOpenResult = (
+      res: Extract<Awaited<ReturnType<typeof machineOpenTerminal>>, { success: true }>,
+      seqAtCall: number,
+    ): (() => Promise<void>) => {
       const writeMaybeEnc = async (dataB64: string) => {
         if (res.encStream) {
           const plain = await decryptTerminalData(machineId, dataB64);
@@ -400,28 +432,30 @@ export function WebTerminalScreen() {
         }
       };
       if (res.mode === 'snapshot') {
-        // A full restore replaces the screen — drop any drag-held chunks (they
-        // predate the snapshot) and write directly. If mobile select-mode is
-        // holding output, the hold re-arms AFTER the one-shot restore (handled
-        // inside termWriteHold): the mode exists to freeze the screen for
-        // native text selection, and a reconnect/visibility snapshot must not
-        // silently unfreeze the live stream mid-selection (the snapshot itself
-        // is fine — it's a single atomic replace, not a running stream).
-        writeHold.beginSnapshotRestore();
-        term.reset();
-        await writeMaybeEnc(res.data);
-        writeHold.endSnapshotRestore();
-      } else {
-        // Replay: apply only chunks newer than what we already have.
-        for (const c of res.chunks) {
-          if (c.seq <= lastSeq) continue;
-          await writeMaybeEnc(c.data);
-          lastSeq = c.seq;
-        }
+        sync.snapshotApplied(res.seq, seqAtCall);
+        return async () => {
+          // A full restore replaces the screen — drop any drag-held chunks
+          // (they predate the snapshot) and write directly. If mobile
+          // select-mode is holding output, the hold re-arms AFTER the one-shot
+          // restore (handled inside termWriteHold): the mode exists to freeze
+          // the screen for native text selection, and a reconnect/visibility
+          // snapshot must not silently unfreeze the live stream mid-selection
+          // (the snapshot itself is fine — it's a single atomic replace, not a
+          // running stream).
+          writeHold.beginSnapshotRestore();
+          term.reset();
+          await writeMaybeEnc(res.data);
+          writeHold.endSnapshotRestore();
+        };
       }
-      // The daemon's current seq is our new baseline (covers the snapshot case
-      // and any chunks the replay didn't include).
-      lastSeq = Math.max(lastSeq, res.seq);
+      // Replay: apply only chunks newer than what we already have (decided
+      // NOW, against the current baseline); then the daemon's reported seq
+      // covers anything the replay didn't include.
+      const fresh = res.chunks.filter((c) => sync.replayChunk(c.seq));
+      sync.replayDone(res.seq);
+      return async () => {
+        for (const c of fresh) await writeMaybeEnc(c.data);
+      };
     };
 
     // Catch up to the daemon's authoritative screen by re-subscribing with
@@ -434,22 +468,38 @@ export function WebTerminalScreen() {
     // stale terminal on return. Idempotent: in-flight guard + seq dedup make
     // overlapping triggers (visible + reconnected firing together) harmless; if
     // the socket isn't back yet the RPC just fails and the next trigger retries.
+    // `catchUpAgain` replaces silent coalescing: a trigger landing while a
+    // catch-up is already in flight (e.g. a gap chunk whose hole the in-flight
+    // response was computed too early to cover) queues exactly one follow-up
+    // run, so the resync converges instead of stranding the miss until the
+    // next unrelated trigger.
     let catchingUp = false;
-    const catchUp = () => {
-      if (disposed || !terminalId || catchingUp) return;
+    let catchUpAgain = false;
+    const catchUp = (opts?: { forceSnapshot?: boolean }) => {
+      if (disposed || !terminalId) return;
+      if (catchingUp) { catchUpAgain = true; return; }
       catchingUp = true;
       outChain = outChain.then(async () => {
         try {
+          const seqAtCall = sync.lastSeq;
           const res = await machineOpenTerminal(machineId, {
-            terminalId, cols: term.cols, rows: term.rows, fromSeq: lastSeq, encStream: true,
+            terminalId, cols: term.cols, rows: term.rows,
+            // forceSnapshot (the blank-screen belt) omits fromSeq so the daemon
+            // must send a full snapshot rather than an (empty-looking) replay.
+            fromSeq: opts?.forceSnapshot ? undefined : seqAtCall,
+            encStream: true,
           });
           if (disposed || !res.success) return;
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
-          await applyOpenResult(res);
+          // Restore runs INSIDE this outChain slot: live chunks that arrived
+          // during the RPC queued their writes after it, and their seqs were
+          // accepted after seqAtCall so the snapshot baseline keeps them.
+          await applyOpenResult(res, seqAtCall)();
           apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
         } finally {
           catchingUp = false;
+          if (catchUpAgain && !disposed) { catchUpAgain = false; catchUp(); }
         }
       });
     };
@@ -529,6 +579,22 @@ export function WebTerminalScreen() {
       return false; // handled — don't let xterm synthesize arrow keys
     });
 
+    // Blank-screen belt (defense in depth behind the seq fixes): if the mount's
+    // restore left the screen with NO text at all while the daemon reports a
+    // live tmux session, something upstream returned an empty snapshot (e.g. a
+    // just-recreated session whose tmux attach repaint got lost) — force one
+    // full re-snapshot. tmux always paints a status line, so an attached
+    // session is never legitimately all-blank for long.
+    let blankCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    const isScreenBlank = () => {
+      const buf = term.buffer.active;
+      for (let y = 0; y < buf.length; y++) {
+        const line = buf.getLine(y);
+        if (line && line.translateToString(true).trim().length > 0) return false;
+      }
+      return true;
+    };
+
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       safeFit();
@@ -539,6 +605,7 @@ export function WebTerminalScreen() {
       });
       if (disposed) return;
       if (!res.success) {
+        earlyOutput = null; // nothing will ever consume the stash
         term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
         setConnecting(false);
         return;
@@ -546,14 +613,34 @@ export function WebTerminalScreen() {
       terminalId = res.terminalId;
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;
-      // Serialize the restore behind outChain so any live chunk arriving mid-
-      // restore is applied after it (and seq-deduped), never interleaved.
-      outChain = outChain.then(() => applyOpenResult(res));
+      // Seq bookkeeping is synchronous in applyOpenResult; the restore itself
+      // is serialized behind outChain so any live chunk arriving mid-restore
+      // is applied after it (and seq-deduped), never interleaved.
+      outChain = outChain.then(applyOpenResult(res, 0));
+      // Flush chunks that raced the open (see earlyOutput): emitted by the
+      // daemon right after it computed the snapshot, but processed here before
+      // terminalId was known. They funnel through the normal seq rules, and
+      // their writes queue AFTER the restore above — order preserved.
+      const stashed = earlyOutput ?? [];
+      earlyOutput = null;
+      for (const e of stashed) {
+        if (e.terminalId === terminalId) applyLiveChunk(e);
+      }
       setConnecting(false);
       requestAnimationFrame(doFit);
       // Don't steal focus from the line-input bar (input-bar mode): this runs
       // async after mount, and the bar may already own the keyboard.
       if (!(IS_COARSE_POINTER && focusStateRef.current.barMode)) term.focus();
+      // Arm the blank-screen belt once the restore (and stash flush) has been
+      // written; give late tmux-attach repaint chunks a moment to land first.
+      outChain = outChain.then(() => {
+        if (disposed || !res.tmuxSession) return;
+        blankCheckTimer = setTimeout(() => {
+          blankCheckTimer = null;
+          if (disposed || !isScreenBlank()) return;
+          catchUp({ forceSnapshot: true });
+        }, 800);
+      });
     })();
 
     // On socket reconnect (dropped then back), re-subscribe with fromSeq=lastSeq.
@@ -874,6 +961,7 @@ export function WebTerminalScreen() {
       host.removeEventListener('drop', onDrop);
       host.removeEventListener('paste', onPaste, true);
       if (wheelFlushTimer != null) clearTimeout(wheelFlushTimer);
+      if (blankCheckTimer != null) clearTimeout(blankCheckTimer);
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
         host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
