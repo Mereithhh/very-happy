@@ -114,6 +114,14 @@
 }
 
 :root {
+  /* terminal pane — stays dark in BOTH themes (the terminal is the floor).
+     --term-bg = dark bg-0, --term-line = dark line: the pane keeps the dark
+     theme's vocabulary even on light chrome, so it reads as an intentional
+     framed terminal, not a hole. The xterm theme in WebTerminalScreen.tsx
+     hardcodes the same values (xterm can't resolve CSS vars) — keep in sync. */
+  --term-bg: #06080c;
+  --term-line: #2c3543;
+
   /* fonts */
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
