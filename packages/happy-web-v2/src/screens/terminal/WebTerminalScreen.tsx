@@ -991,9 +991,12 @@ export function WebTerminalScreen() {
       // every CJK-IME key ("只能英文输入") and the next English key commits the
       // aborted preedit as a stray letter. refocus()'s blur heal does NOT
       // reach this state (no browser composition → blur fires nothing); the
-      // guard detects it on the next keydown and resets the helper. Also
-      // clears settled composition residue from the helper textarea (desktop
-      // only — mobileInputBridge OWNS the textarea model on coarse pointers).
+      // guard detects the sustained helper-vs-event contradiction on keydown
+      // and resets helper FLAGS only — it never writes the textarea while
+      // focused (a programmatic write under a live composition cancels it
+      // eventlessly, i.e. manufactures the very stuck state). Residue is
+      // cleared at blur, once the helper settles (desktop only —
+      // mobileInputBridge OWNS the textarea model on coarse pointers).
       // Full failure-mode write-up in ./imeStuckGuard.ts.
       imeGuard = installImeStuckGuard(term);
     }
