@@ -234,12 +234,8 @@ export function Sidebar() {
             {t(`sidebar.filter${f[0].toUpperCase()}${f.slice(1)}` as any)}
           </button>
         ))}
-        {/* board entry in the filter row — the mobile way in (the header icon
-            also works); full-screen with its own back nav */}
-        <button className="sb-filter-btn sb-filter-board" onClick={() => navigate('/board')}>
-          {t('board.filterLabel')}
-          {attentionCount > 0 && <span className="sb-filter-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>}
-        </button>
+        {/* Board lives on the header icon (badge included) — a third tab in
+            the active/archived filter row read as clutter and was removed. */}
       </div>
 
       <div className="sb-list">
