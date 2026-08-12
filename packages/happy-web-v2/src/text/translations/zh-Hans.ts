@@ -39,6 +39,7 @@ export const zhHans: TranslationStructure = {
         createTask: '创建',
         dispatch: '下发',
         markDone: '标记完成',
+        editTask: '编辑任务',
         deleteTask: '删除任务',
         deleteTaskConfirm: ({ title }: { title: string }) => `删除任务「${title}」？相关会话会保留，只是变成未归类。`,
         ungrouped: '未归类',
@@ -139,6 +140,8 @@ export const zhHans: TranslationStructure = {
         retry: '重试',
         delete: '删除',
         optional: '可选的',
+        open: '打开',
+        archive: '归档',
     },
 
     profile: {

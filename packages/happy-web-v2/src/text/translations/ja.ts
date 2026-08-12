@@ -40,6 +40,7 @@ export const ja: TranslationStructure = {
         createTask: 'Create',
         dispatch: 'Dispatch',
         markDone: 'Mark done',
+        editTask: 'タスクを編集',
         deleteTask: 'Delete task',
         deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
         ungrouped: 'Ungrouped',
@@ -138,6 +139,8 @@ export const ja: TranslationStructure = {
         retry: '再試行',
         delete: '削除',
         optional: '任意',
+        open: '開く',
+        archive: 'アーカイブ',
         saveAs: '名前を付けて保存',
     },
 

@@ -48,6 +48,7 @@ export const pl: TranslationStructure = {
         createTask: 'Create',
         dispatch: 'Dispatch',
         markDone: 'Mark done',
+        editTask: 'Edytuj zadanie',
         deleteTask: 'Delete task',
         deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
         ungrouped: 'Ungrouped',
@@ -147,6 +148,8 @@ export const pl: TranslationStructure = {
         retry: 'Ponów',
         delete: 'Usuń',
         optional: 'opcjonalnie',
+        open: 'Otwórz',
+        archive: 'Archiwizuj',
     },
 
     profile: {

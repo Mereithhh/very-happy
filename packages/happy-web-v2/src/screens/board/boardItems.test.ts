@@ -371,6 +371,16 @@ describe('V2: groupBoardItems (task swimlanes)', () => {
     expect(lanes[1].items.map((i) => i.key)).toEqual(['sAttn', 'sIdle']);
   });
 
+  it('lanes with fractional order keys sort by key, before legacy unkeyed lanes', () => {
+    const { lanes } = groupBoardItems([], [
+      task({ id: 'legacyNew', createdAt: NOW - 1_000 }),
+      task({ id: 'second', order: 'k', createdAt: NOW - 90_000 }),
+      task({ id: 'legacyOld', createdAt: NOW - 50_000 }),
+      task({ id: 'first', order: 'V', createdAt: NOW - 20_000 }),
+    ]);
+    expect(lanes.map((l) => l.task.id)).toEqual(['first', 'second', 'legacyNew', 'legacyOld']);
+  });
+
   it('a session double-dispatched onto two tasks goes to the first lane only', () => {
     const s = mkSession({ id: 's1' });
     const items = build({ sessions: [s] });

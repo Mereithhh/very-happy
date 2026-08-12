@@ -27,7 +27,7 @@
 import type { Session, Machine } from '@/sync/storageTypes';
 import type { TerminalSession } from '@/sync/terminalListOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
-import type { BoardTask } from '@/sync/boardTaskOps';
+import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
 
@@ -60,6 +60,8 @@ export interface BoardItem {
   /** V2: LLM task classification (grouping FALLBACK only — the manual
    *  dispatch mapping in BoardTask.sessionIds wins) */
   llmTaskId?: string;
+  /** terminals only: the owning machine (card actions need it) */
+  machineId?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -212,6 +214,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       attentionSince,
       href: `/terminal/${tm.machineId}?tid=${tm.id}`,
       detail,
+      machineId: tm.machineId,
     });
   }
 
@@ -262,13 +265,15 @@ export interface BoardLanes {
  * one sort rule across both layouts, not two.
  *
  * Lanes: open tasks only (a 'done'/'deleted' task's sessions fall back to
- * ungrouped), newest first. Empty lanes are kept — a freshly created task
- * with nothing dispatched yet must be visible to dispatch onto.
+ * ungrouped), in board order (compareTaskOrder: fractional `order` keys first,
+ * legacy unkeyed tasks after them newest-first). Empty lanes are kept — a
+ * freshly created task with nothing dispatched yet must be visible to
+ * dispatch onto.
  */
 export function groupBoardItems(items: BoardItem[], tasks: BoardTask[]): BoardLanes {
   const lanes: BoardLane[] = tasks
     .filter((t) => t.status === 'open')
-    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .sort(compareTaskOrder)
     .map((task) => ({ task, items: [] }));
 
   const manualLaneBySession = new Map<string, BoardLane>();

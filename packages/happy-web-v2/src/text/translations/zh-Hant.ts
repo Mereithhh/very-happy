@@ -39,6 +39,7 @@ export const zhHant: TranslationStructure = {
         createTask: '建立',
         dispatch: '派發',
         markDone: '標記完成',
+        editTask: '編輯任務',
         deleteTask: '刪除任務',
         deleteTaskConfirm: ({ title }: { title: string }) => `刪除任務「${title}」？相關會話會保留，只是變成未歸類。`,
         ungrouped: '未歸類',
@@ -138,6 +139,8 @@ export const zhHant: TranslationStructure = {
         retry: '重試',
         delete: '刪除',
         optional: '選填',
+        open: '開啟',
+        archive: '封存',
     },
 
     profile: {

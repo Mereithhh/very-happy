@@ -108,6 +108,8 @@ export const en = {
         retry: 'Retry',
         delete: 'Delete',
         optional: 'optional',
+        open: 'Open',
+        archive: 'Archive',
     },
 
     profile: {
@@ -1055,6 +1057,7 @@ export const en = {
         createTask: 'Create',
         dispatch: 'Dispatch',
         markDone: 'Mark done',
+        editTask: 'Edit task',
         deleteTask: 'Delete task',
         deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
         ungrouped: 'Ungrouped',
