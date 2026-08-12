@@ -1,6 +1,8 @@
 /**
- * Brand mark — the geometric "very happy" face. Mark background = text color,
- * face fill = currentColor of the surface, so it auto-inverts per theme.
+ * Brand mark — the winking terminal window ("very happy" 2026-08 logo).
+ * Left eye = prompt chevron ❯, right eye = block cursor ▮, plus the smile —
+ * same geometry family as public/icon-512.png (master in skills tmp/vh-logo).
+ * All strokes/fills use var(--accent) so it adapts per theme.
  */
 export function CyberMark({ size = 28, glow = false }: { size?: number; glow?: boolean }) {
   return (
@@ -12,13 +14,19 @@ export function CyberMark({ size = 28, glow = false }: { size?: number; glow?: b
       aria-hidden
       style={glow ? { filter: 'drop-shadow(0 0 6px var(--accent-glow))' } : undefined}
     >
-      <rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="var(--accent)" strokeWidth="2" />
-      <circle cx="11" cy="13" r="1.8" fill="var(--accent)" />
-      <circle cx="21" cy="13" r="1.8" fill="var(--accent)" />
+      <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="var(--accent)" strokeWidth="2" />
       <path
-        d="M10 19c1.6 2.6 4 3.9 6 3.9s4.4-1.3 6-3.9"
+        d="M9 9.6 12.9 12.3 9 15.1"
         stroke="var(--accent)"
-        strokeWidth="2"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="19.1" y="9.2" width="3.9" height="6" rx="0.9" fill="var(--accent)" />
+      <path
+        d="M9.2 19.5C11 22 13.8 23.4 16 23.4s5-1.4 6.8-3.9"
+        stroke="var(--accent)"
+        strokeWidth="2.1"
         strokeLinecap="round"
       />
     </svg>
