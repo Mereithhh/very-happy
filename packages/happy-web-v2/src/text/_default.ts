@@ -738,9 +738,17 @@ export const en = {
         hideArchived: 'Hide archived',
         newSession: 'New session',
         searchPlaceholder: 'Search sessions',
+        // coarse-pointer header icon that opens the ⌘K palette
+        openSearch: 'Search',
         filterAll: 'All',
         filterActive: 'Active',
         filterArchived: 'Archived',
+        // view switch (列表/状态/归档) + status-view lifecycle sections
+        viewList: 'List',
+        viewStatus: 'Status',
+        groupWaiting: 'Waiting on me',
+        groupRunning: 'Running',
+        groupDoneToday: 'Done today',
         empty: 'No sessions yet',
         noResults: 'No matching sessions',
         moveToTop: 'Move to top',

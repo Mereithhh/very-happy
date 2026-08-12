@@ -19,7 +19,23 @@ import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
+import {
+  parseSidebarQuery,
+  sidebarQueryIsEmpty,
+  tagsMatchSidebarQuery,
+} from '@/screens/sessions/sidebarSearch';
 import './commandpalette.css';
+
+/**
+ * Programmatic open — the palette owns its open state; UI entry points that
+ * can't press ⌘K (the sidebar's coarse-pointer search icon) dispatch this
+ * event instead. Window event, not a store: the palette is a singleton and
+ * nothing else needs to observe the state.
+ */
+const OPEN_EVENT = 'vh:command-palette-open';
+export function openCommandPalette() {
+  window.dispatchEvent(new Event(OPEN_EVENT));
+}
 
 type CommandItem = {
   key: string;
@@ -29,6 +45,8 @@ type CommandItem = {
   icon: React.ReactNode;
   /** lower-cased haystack for substring matching */
   haystack: string;
+  /** session tags — `#tag` query terms filter on these (sidebar grammar) */
+  tags?: string[];
   /** optional keyboard-shortcut hint rendered on the row's right edge */
   hint?: string;
   run: () => void | Promise<void>;
@@ -80,6 +98,13 @@ export function CommandPalette() {
     };
     window.addEventListener('keydown', onKeyDown, true); // capture
     return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  // programmatic open (sidebar's mobile search icon)
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
 
   // focus input on open
@@ -188,6 +213,7 @@ export function CommandPalette() {
         subtitle: sub,
         icon: <MessageSquare size={16} />,
         haystack: `${title} ${sub} ${path}`.toLowerCase(),
+        tags: s.metadata?.tags,
         run: () => navigate(`/session/${s.id}`),
       });
     }
@@ -219,12 +245,17 @@ export function CommandPalette() {
   ]);
 
   // ── filter + sort by match position (actions always kept above nav on ties) ──
+  // The sidebar's `#tag` grammar applies here too (the search box the palette
+  // replaced supported it): `#foo` terms AND-filter on session tags, the
+  // free-text remainder keeps the substring match over the haystack. Items
+  // without tags (actions, terminals) simply fail any tag constraint.
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
+    const parsed = parseSidebarQuery(query);
+    if (sidebarQueryIsEmpty(parsed)) return items;
     const groupOrder: Record<CommandItem['group'], number> = { actions: 0, sessions: 1, terminals: 2 };
     return items
-      .map((it) => ({ it, score: matchScore(it.haystack, q) }))
+      .filter((it) => tagsMatchSidebarQuery(it.tags, parsed))
+      .map((it) => ({ it, score: matchScore(it.haystack, parsed.text) }))
       .filter((x) => x.score >= 0)
       .sort((a, b) => a.score - b.score || groupOrder[a.it.group] - groupOrder[b.it.group])
       .map((x) => x.it);

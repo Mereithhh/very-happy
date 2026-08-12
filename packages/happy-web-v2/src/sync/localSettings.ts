@@ -36,6 +36,14 @@ export const LocalSettingsSchema = z.object({
     // setting on that device. Renderers treat 'status' as 'lifecycle'.
     // Device-local like homeView — a view preference, not account state.
     boardLayout: z.enum(['status', 'tasks', 'lifecycle']).describe('Task board layout: lifecycle columns or per-task swimlanes (status = legacy alias of lifecycle)'),
+    // Sidebar display mode: 'list' (full manual order) or 'status' (lifecycle
+    // groups fed by the board classifier). The sidebar's third segment —
+    // archived — is deliberately NOT representable here: it's a filter over a
+    // different data set, not a display mode, and remembering it would strand
+    // users in the archive view on every reload. Device-local like boardLayout.
+    // Enum values are only ever ADDED (safeParse parses the whole blob — see
+    // the boardLayout note above).
+    sidebarView: z.enum(['list', 'status']).describe('Sidebar display mode: manual-order list or lifecycle status groups'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -82,6 +90,8 @@ export const localSettingsDefaults: LocalSettings = {
     homeView: 'normal',
     // Default = the lifecycle view (management by task completion).
     boardLayout: 'lifecycle',
+    // Existing users keep the current sidebar (manual-order list).
+    sidebarView: 'list',
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
