@@ -3,7 +3,9 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: #0b0e13; /* terminal stays dark in both themes */
+  /* Chrome floor, theme-aware — the DARK part is the framed .term-host pane
+     below, not this wrapper. Matches .app-detail / .picker (both bg-0). */
+  background: var(--bg-0);
 }
 .term-header {
   display: flex;
@@ -60,8 +62,41 @@
   position: relative;
   overflow: hidden;
   display: flex;
+  /* The terminal pane itself — dark in BOTH themes (--term-bg, see tokens.css).
+     Mobile default: edge-to-edge (every column counts); the header's and key
+     bar's hairlines are the seams. Desktop (≥600px) reframes it below. */
+  background: var(--term-bg);
   padding: 6px 8px;
   padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+/* Desktop / tablet: framed pane (cmux-style) — the terminal is a rounded card
+   with a hairline frame floating on the chrome floor, same border/radius
+   vocabulary as sidebar cards and the chat composer. In light theme the dark
+   card gets --shadow-lift so the dark-on-light seam reads as elevation, not a
+   hole. Focus = teal ring (accent means LIVE — the pane owning the keyboard). */
+@media (min-width: 600px) {
+  .term-host {
+    margin: var(--sp-2);
+    border: 1px solid var(--term-line);
+    border-radius: var(--r-md);
+    padding: var(--sp-2) var(--sp-3);
+    box-shadow: var(--shadow-lift);
+    transition: border-color var(--motion-fast);
+  }
+  /* Focused = faintly charged frame, not a neon ring: the terminal owns the
+     keyboard ~whenever this screen is open, so full-accent here would be a
+     permanent shout. The blinking teal cursor already carries "live". */
+  .term-host:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--term-line));
+  }
+}
+/* Scrollback scrollbar (no-tmux fallback shell) styled to the pane, not the OS. */
+.term-host .xterm-viewport::-webkit-scrollbar { width: 10px; }
+.term-host .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+.term-host .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #232c3a; /* dark --bg-3: scrollbar lives on the always-dark pane */
+  border: 2px solid #06080c; /* = --term-bg */
+  border-radius: 5px;
 }
 /* Mobile: keep the last row clear of the home indicator / rounded corners.
    Coarse-pointer only so desktop layout is untouched. */
@@ -150,14 +185,14 @@
   flex: 0 0 1px;
   align-self: stretch;
   margin: 4px 2px;
-  background: var(--line, #263041);
+  background: var(--line);
 }
 /* System keys (not pty keys): slightly dimmer so they read as chrome. */
-.term-keybar-sys { color: var(--text-dim, #9aa7b8); }
+.term-keybar-sys { color: var(--text-dim); }
 .term-keybar-sys.is-armed {
-  background: var(--accent, #34e2c4);
-  color: #04110e;
-  border-color: var(--accent, #34e2c4);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
 }
 
 /* ── Line-input bar (mobile input-bar mode) ────────────────────────────────
@@ -170,20 +205,20 @@
   gap: 8px;
   align-items: flex-end;
   padding: 6px 8px;
-  background: var(--bg-1, #0f141b);
-  border-top: 1px solid var(--line, #1c2430);
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
   touch-action: manipulation;
 }
 .term-inputbar-ta {
   flex: 1;
   min-width: 0;
   resize: none;
-  border: 1px solid var(--line, #263041);
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--accent, #34e2c4) 4%, #0d1118);
-  color: var(--text, #e8edf4);
-  caret-color: var(--accent, #34e2c4);
-  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-2));
+  color: var(--text);
+  caret-color: var(--accent);
+  font-family: var(--font-mono);
   /* ≥16px: anything smaller makes iOS auto-zoom the page on focus. */
   font-size: 16px;
   line-height: 1.35;
@@ -191,10 +226,10 @@
   max-height: 120px;
   overflow-y: auto;
 }
-.term-inputbar-ta::placeholder { color: var(--text-faint, #5b6675); }
+.term-inputbar-ta::placeholder { color: var(--text-faint); }
 .term-inputbar-ta:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent, #34e2c4) 55%, #263041);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
 }
 .term-inputbar-send {
   flex: 0 0 auto;
@@ -203,15 +238,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--accent, #34e2c4);
+  border: 1px solid var(--accent);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--accent, #34e2c4) 16%, #141a22);
-  color: var(--accent, #34e2c4);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+  color: var(--accent);
   -webkit-tap-highlight-color: transparent;
 }
 .term-inputbar-send:active {
-  background: var(--accent, #34e2c4);
-  color: #04110e;
+  background: var(--accent);
+  color: var(--accent-ink);
   transform: translateY(1px);
 }
 
@@ -229,8 +264,8 @@
   flex-shrink: 0;
   padding: 6px 8px;
   padding-bottom: calc(6px + env(safe-area-inset-bottom));
-  background: var(--bg-1, #0f141b);
-  border-top: 1px solid var(--line, #1c2430);
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -248,11 +283,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line, #263041);
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--accent, #34e2c4) 6%, #141a22);
-  color: var(--text, #e8edf4);
-  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-2));
+  color: var(--text);
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1;
   user-select: none;
@@ -260,15 +295,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 .term-keybar-key:active {
-  background: color-mix(in srgb, var(--accent, #34e2c4) 22%, #141a22);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-2));
   transform: translateY(1px);
 }
 .term-keybar-wide { min-width: 46px; }
 /* Ctrl armed (sticky): make it obvious the next letter becomes Ctrl+<letter>. */
 .term-keybar-mod.is-armed {
-  background: var(--accent, #34e2c4);
-  color: #04110e;
-  border-color: var(--accent, #34e2c4);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
   font-weight: 600;
 }
 .term-host.is-dragover::after {

@@ -42,11 +42,29 @@ function b64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+// Console-token-derived xterm theme. Hardcoded hexes, NOT CSS vars — xterm
+// paints from these strings directly and can't resolve var() (same reason as
+// TERM_FONT below). Values map to src/styles/tokens.css; keep in sync:
+//   background = --term-bg (dark --bg-0: the terminal is the floor, both themes)
+//   foreground/brightWhite = --text · brightBlack = --text-faint
+//   red = --danger · yellow = --warn · cyan = --accent (phosphor teal IS our
+//   cyan — the one identity mapping; green stays a REAL green so TUIs keep
+//   their success-vs-live distinction) · cursor = --accent on --accent-ink.
+// All non-dim colors clear WCAG AA (≥4.5:1) on #06080C; brightBlack is the
+// conventional "dim" slot (= --text-faint) and is exempt by design.
 const THEME = {
-  background: '#0B0E13', foreground: '#E8EDF4', cursor: '#34E2C4', cursorAccent: '#04110E',
-  selectionBackground: 'rgba(52,226,196,0.25)', black: '#0B0E13', brightBlack: '#5B6675',
-  red: '#FF6B6B', green: '#34E2C4', yellow: '#E6B450', blue: '#7AA2D6', magenta: '#C792EA',
-  cyan: '#34E2C4', white: '#E8EDF4',
+  background: '#06080C', foreground: '#E8EDF4',
+  cursor: '#34E2C4', cursorAccent: '#04110E',
+  selectionBackground: 'rgba(52,226,196,0.24)',
+  selectionInactiveBackground: 'rgba(52,226,196,0.13)',
+  black: '#10161F', brightBlack: '#5B6675',
+  red: '#FF6B6B', brightRed: '#FF9B94',
+  green: '#68D26E', brightGreen: '#8BE890',
+  yellow: '#E6B450', brightYellow: '#F2C97D',
+  blue: '#7AA2D6', brightBlue: '#9FC0EF',
+  magenta: '#C792EA', brightMagenta: '#DDB3F8',
+  cyan: '#34E2C4', brightCyan: '#7CEEDD',
+  white: '#B7C2D0', brightWhite: '#E8EDF4',
 };
 
 // Explicit mono stack — NOT the --font-mono CSS var: xterm measures glyph size
