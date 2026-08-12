@@ -87,13 +87,29 @@ export const SettingsSchema = z.object({
     newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw)'),
     newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
-    // Sidebar pinned rows. key = session id, or `t:<terminalId>` for web
-    // terminals; ARRAY ORDER is the display order of the pinned section.
-    // Synced; NO zod .default() (ghost-pending footgun above) — the default
-    // lives in settingsDefaults.
+    // Legacy sidebar pinned rows (superseded by sidebarOrder). Kept in the
+    // schema for wire compatibility with old clients/stored blobs, and still
+    // read/written ONLY while sidebarOrder is empty (pre-materialization):
+    // it drives the legacy pinned-on-top display and is the migration input
+    // for the first drag's materialization. Once sidebarOrder is non-empty
+    // this field is never written again (same treatment as lastUsed*).
     pinnedRows: z.array(z.object({
         key: z.string(),
-    })).describe('Sidebar pinned rows (session id or t:<terminalId>), array order = display order'),
+    })).describe('Legacy sidebar pinned rows; superseded by sidebarOrder'),
+    // FULL manual sidebar order. Each entry maps a row key (session id, or
+    // `t:<terminalId>` for a web terminal) to a lexicographic fractional
+    // order key (boardTaskOps.orderKeyBetween). Rows without an entry render
+    // on top (newest first) until dragged; empty array = manual ordering not
+    // materialized yet (legacy pinnedRows display still applies). Merge is
+    // FIELD-level last-write-wins: two devices dragging concurrently
+    // overwrite each other's whole table — accepted, drags are a
+    // low-frequency single-user gesture and the loser only reverts to a
+    // coherent earlier order (never corrupts). Synced; NO zod .default()
+    // (ghost-pending footgun above) — the default lives in settingsDefaults.
+    sidebarOrder: z.array(z.object({
+        key: z.string(),
+        order: z.string(),
+    })).describe('Sidebar manual order: row key → fractional order key; rows without an entry render on top'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -174,6 +190,7 @@ export const settingsDefaults: Settings = {
     newSessionAlwaysAsk: false,
     agentDefaultOverrides: {},
     pinnedRows: [],
+    sidebarOrder: [],
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);
