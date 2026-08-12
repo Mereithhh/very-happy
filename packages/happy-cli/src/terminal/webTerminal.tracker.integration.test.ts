@@ -105,6 +105,24 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         expect(pushes.length).toBeGreaterThanOrEqual(3);
     }, 60_000);
 
+    it('open() applies the native-feel session options (status bar off)', async () => {
+        const TID4 = 'trkopts1';
+        mgr.open({ terminalId: TID4, cols: 80, rows: 24, cwd: dir });
+        try {
+            // Session-scoped `status off` is part of the per-open option batch
+            // (native-terminal feel: the web header owns the title, the green
+            // bar is tmux noise). `show-options -t` prints the session value.
+            const r = spawnSync('tmux', ['show-options', '-t', `=vh-${TID4}:`, 'status'], { encoding: 'utf8' });
+            expect(r.status).toBe(0);
+            expect(r.stdout.trim()).toBe('status off');
+            // And the pane got the full client height back (no bar row eaten).
+            const h = spawnSync('tmux', ['display-message', '-p', '-t', `=vh-${TID4}:`, '#{pane_height}'], { encoding: 'utf8' });
+            expect(h.stdout.trim()).toBe('24');
+        } finally {
+            mgr.killSession(TID4);
+        }
+    }, 30_000);
+
     it('attach-only opens never resurrect a killed terminal (the delete-resurrection bug)', async () => {
         const TID2 = 'trkgone1';
         mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
