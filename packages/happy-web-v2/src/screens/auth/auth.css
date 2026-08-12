@@ -18,7 +18,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: var(--sp-8) var(--sp-6);
-  box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--shadow-modal);
 }
 .auth-brand {
   display: flex;

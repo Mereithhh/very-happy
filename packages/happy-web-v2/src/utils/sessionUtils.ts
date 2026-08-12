@@ -33,8 +33,9 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: false,
             statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
             shouldShowStatus: true,
-            statusColor: '#999',
-            statusDotColor: '#999'
+            // status colors are CSS token refs — never raw literals (design tokens.css)
+            statusColor: 'var(--text-faint)',
+            statusDotColor: 'var(--text-faint)'
         };
     }
 
@@ -45,8 +46,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: true,
             statusText: t('status.permissionRequired'),
             shouldShowStatus: true,
-            statusColor: '#FF9500',
-            statusDotColor: '#FF9500',
+            statusColor: 'var(--warn)',
+            statusDotColor: 'var(--warn)',
             isPulsing: true
         };
     }
@@ -57,8 +58,8 @@ export function useSessionStatus(session: Session): SessionStatus {
             isConnected: true,
             statusText: vibingMessage,
             shouldShowStatus: true,
-            statusColor: '#007AFF',
-            statusDotColor: '#007AFF',
+            statusColor: 'var(--accent)',
+            statusDotColor: 'var(--accent)',
             isPulsing: true
         };
     }
@@ -68,8 +69,8 @@ export function useSessionStatus(session: Session): SessionStatus {
         isConnected: true,
         statusText: t('status.online'),
         shouldShowStatus: false,
-        statusColor: '#34C759',
-        statusDotColor: '#34C759'
+        statusColor: 'var(--accent)',
+        statusDotColor: 'var(--accent)'
     };
 }
 

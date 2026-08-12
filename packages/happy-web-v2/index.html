@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Very Happy</title>
     <meta name="description" content="Claude Code, from any browser." />
+    <!-- browser chrome tint follows the theme: dark bg-0 / light bg-0 -->
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#06080c" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#e8eaed" />
     <meta name="theme-color" content="#06080c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -24,7 +27,10 @@
         transition: opacity 0.25s ease;
       }
       @media (prefers-color-scheme: light) {
-        #vh-splash { background: #edf0f4; }
+        /* light bg-0 + light accent (tokens.css) — the splash pre-paints
+           before the stylesheet loads, so the values are inlined */
+        #vh-splash { background: #e8eaed; }
+        #vh-splash .mark { border-color: #0c8a76; }
       }
       #vh-splash .mark {
         width: 44px;

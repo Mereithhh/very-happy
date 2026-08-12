@@ -8,16 +8,16 @@ import React from 'react';
 import { t } from '@/text';
 
 // Icon factory functions
-const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;
-const ICON_TERMINAL = (size: number = 24, color: string = '#000') => <Octicons name="terminal" size={size} color={color} />;
-const ICON_SEARCH = (size: number = 24, color: string = '#000') => <Octicons name="search" size={size} color={color} />;
-const ICON_READ = (size: number = 24, color: string = '#000') => <Octicons name="eye" size={size} color={color} />;
-const ICON_EDIT = (size: number = 24, color: string = '#000') => <Octicons name="file-diff" size={size} color={color} />;
-const ICON_WEB = (size: number = 24, color: string = '#000') => <Ionicons name="globe-outline" size={size} color={color} />;
-const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name="exit-outline" size={size} color={color} />;
-const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
-const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
-const ICON_QUESTION = (size: number = 24, color: string = '#000') => <Ionicons name="help-circle-outline" size={size} color={color} />;
+const ICON_TASK = (size: number = 24, color: string = 'currentColor') => <Octicons name="rocket" size={size} color={color} />;
+const ICON_TERMINAL = (size: number = 24, color: string = 'currentColor') => <Octicons name="terminal" size={size} color={color} />;
+const ICON_SEARCH = (size: number = 24, color: string = 'currentColor') => <Octicons name="search" size={size} color={color} />;
+const ICON_READ = (size: number = 24, color: string = 'currentColor') => <Octicons name="eye" size={size} color={color} />;
+const ICON_EDIT = (size: number = 24, color: string = 'currentColor') => <Octicons name="file-diff" size={size} color={color} />;
+const ICON_WEB = (size: number = 24, color: string = 'currentColor') => <Ionicons name="globe-outline" size={size} color={color} />;
+const ICON_EXIT = (size: number = 24, color: string = 'currentColor') => <Ionicons name="exit-outline" size={size} color={color} />;
+const ICON_TODO = (size: number = 24, color: string = 'currentColor') => <Ionicons name="bulb-outline" size={size} color={color} />;
+const ICON_REASONING = (size: number = 24, color: string = 'currentColor') => <Octicons name="light-bulb" size={size} color={color} />;
+const ICON_QUESTION = (size: number = 24, color: string = 'currentColor') => <Ionicons name="help-circle-outline" size={size} color={color} />;
 
 function getPatchFiles(input: any): string[] {
     if (input?.changes && typeof input.changes === 'object' && !Array.isArray(input.changes)) {

@@ -324,7 +324,7 @@
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
   padding: 4px;
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-pop);
   z-index: 1500;
 }
 .vh-menu-item {

@@ -31,12 +31,14 @@
   min-width: max-content;
   white-space: pre;
 }
-/* subtle tints so syntax-highlight token colors stay readable on top */
+/* subtle tints so syntax-highlight token colors stay readable on top —
+   derived from the theme's own accent/danger so light mode tints with its
+   darkened teal/red instead of the dark theme's phosphor values */
 .dv-row--add {
-  background: rgba(52, 226, 196, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .dv-row--del {
-  background: rgba(255, 107, 107, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 .dv-no {
   flex: none;

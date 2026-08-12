@@ -45,6 +45,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
+  /* exemption: white glyph on a black scrim OVER an image thumbnail — the
+     backdrop is arbitrary image content, not a themed surface */
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
 }
@@ -136,7 +138,7 @@
 }
 .ci-send--abort {
   background: var(--danger);
-  color: #fff;
+  color: var(--danger-ink);
 }
 .ci-send--abort:not(:disabled):hover {
   background: var(--danger);

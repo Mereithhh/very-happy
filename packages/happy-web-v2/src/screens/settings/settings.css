@@ -116,6 +116,20 @@
   font-size: var(--fs-12);
   color: var(--text-dim);
 }
+/* the quiet-hours <input type="time"> reuses .set-value — without an explicit
+   surface the UA paints its default (near-white) field background */
+input.set-value {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 3px 8px;
+  color: var(--text);
+}
+input.set-value:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 
 /* inline editor card (snippets) */
 .set-editor {
