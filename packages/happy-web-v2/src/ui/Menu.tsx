@@ -21,6 +21,39 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { LucideIcon } from 'lucide-react';
 
+/**
+ * Focus give-back for the web terminal.
+ *
+ * Opening one of these menus while typing in the terminal steals focus: the
+ * trigger pointerdown lands on a non-focusable row/card, focus falls to
+ * <body>, and on close Radix restores it to the trigger button (dropdown) or
+ * leaves it on body (context menu — verified with real pointer input against
+ * radix 2.2.16). Typing — including IME input — then goes NOWHERE until the
+ * user clicks the terminal canvas again. Remember the last real focus owner
+ * and, if it was the terminal's hidden textarea, give focus back when the menu
+ * closes. Deliberately restricted to the xterm textarea: restoring to
+ * arbitrary inputs would fight modals that open from menu items (Rename).
+ */
+let lastFocusOwner: Element | null = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'focusin',
+    (e) => {
+      const t = e.target as Element | null;
+      // menu items/content briefly take focus while open — not an "owner"
+      if (t && t !== document.body && !t.closest('.vh-menu')) lastFocusOwner = t;
+    },
+    true,
+  );
+}
+function giveFocusBackToTerminal(e: Event) {
+  const el = lastFocusOwner as HTMLElement | null;
+  if (el && el.isConnected && el.classList.contains('xterm-helper-textarea')) {
+    e.preventDefault(); // suppress Radix's trigger/body restore
+    el.focus();
+  }
+}
+
 export interface MenuItemDef {
   key: string;
   label: string;
@@ -58,7 +91,12 @@ export function ActionDropdownMenu({
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="vh-menu" align={align} sideOffset={sideOffset}>
+        <DropdownMenu.Content
+          className="vh-menu"
+          align={align}
+          sideOffset={sideOffset}
+          onCloseAutoFocus={giveFocusBackToTerminal}
+        >
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <DropdownMenu.Separator className="vh-menu-sep" />}
@@ -91,7 +129,7 @@ export function ActionContextMenu({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="vh-menu">
+        <ContextMenu.Content className="vh-menu" onCloseAutoFocus={giveFocusBackToTerminal}>
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <ContextMenu.Separator className="vh-menu-sep" />}
