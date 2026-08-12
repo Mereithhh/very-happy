@@ -50,33 +50,39 @@
   color-scheme: dark;
 }
 
+/* Light = macOS-native gray chrome (cmux by day), NOT paper-white. Every
+   surface is a cool-neutral gray; panels layer by a step of gray, not by
+   white + shadow. Text is dark slate, never pure black. All text/bg pairs
+   pass WCAG AA (4.5:1) on every surface bg-0..bg-3; accent as a non-text
+   indicator passes 3:1. */
 :root[data-theme='light'] {
-  --bg-0: #edf0f4; /* faintly cool paper-white, not pure white */
-  --bg-1: #ffffff;
-  --bg-2: #f5f7fa;
-  --bg-3: #e8ecf2;
-  --line: #e4e8ee;
-  --line-2: #cfd6df;
+  --bg-0: #e8eaed; /* app floor — deepest gray */
+  --bg-1: #eff1f4; /* sidebar / panel — one gray step up */
+  --bg-2: #f6f7f9; /* raised card / input — lightest, still not white */
+  --bg-3: #e0e3e8; /* hover / pressed — dips below the floor */
+  --line: #d6dae0; /* hairline divider on gray */
+  --line-2: #c2c8d1; /* stronger border */
 
-  --text: #101720;
-  --text-dim: #52606e;
-  --text-faint: #8a93a0;
+  --text: #1a2028; /* dark slate, not pure black */
+  --text-dim: #49535f;
+  --text-faint: #5b646f; /* ≥4.5:1 on every surface incl. bg-3 */
 
-  --accent: #15c2a6; /* fill darker so it reads on white */
-  --accent-2: #0a8772; /* teal-as-text/border, readable on white */
-  --accent-press: #0e9f88;
-  --accent-dim: rgba(21, 194, 166, 0.14);
-  --accent-ink: #04130f;
-  --accent-glow: rgba(21, 194, 166, 0.28);
+  --accent: #0c8a76; /* deep teal: ≥3:1 on all grays (focus/live indicator) */
+  --accent-2: #096a5a; /* teal-as-text/border, ≥4.5:1 on all grays */
+  --accent-press: #0a7263;
+  --accent-dim: rgba(12, 138, 118, 0.13);
+  --accent-ink: #021009; /* text on accent fill (4.5:1 on --accent) */
+  --accent-glow: rgba(12, 138, 118, 0.24);
 
-  --warn: #a8770f;
-  --danger: #d9484d;
-  --warn-dim: rgba(168, 119, 15, 0.12);
-  --danger-dim: rgba(217, 72, 77, 0.1);
+  --warn: #845c09;
+  --danger: #b52f35;
+  --warn-dim: rgba(132, 92, 9, 0.12);
+  --danger-dim: rgba(181, 47, 53, 0.1);
 
-  --shadow-lift: 0 1px 2px rgba(16, 22, 32, 0.05), 0 12px 32px -20px rgba(16, 22, 32, 0.35);
+  /* gray-on-gray layering carries depth by value; shadow is a whisper */
+  --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
 
-  --bd-glow: rgba(21, 194, 166, 0.1);
+  --bd-glow: rgba(12, 138, 118, 0.08);
   --bd-grid: rgba(40, 70, 110, 0.05);
   --bd-vig: rgba(80, 90, 110, 0.045);
 
@@ -86,27 +92,27 @@
 /* follow system when no explicit data-theme is set */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg-0: #edf0f4;
-    --bg-1: #ffffff;
-    --bg-2: #f5f7fa;
-    --bg-3: #e8ecf2;
-    --line: #e4e8ee;
-    --line-2: #cfd6df;
-    --text: #101720;
-    --text-dim: #52606e;
-    --text-faint: #8a93a0;
-    --accent: #15c2a6;
-    --accent-2: #0a8772;
-    --accent-press: #0e9f88;
-    --accent-dim: rgba(21, 194, 166, 0.14);
-    --accent-ink: #04130f;
-    --accent-glow: rgba(21, 194, 166, 0.28);
-    --warn: #a8770f;
-    --danger: #d9484d;
-    --warn-dim: rgba(168, 119, 15, 0.12);
-    --danger-dim: rgba(217, 72, 77, 0.1);
-    --shadow-lift: 0 1px 2px rgba(16, 22, 32, 0.05), 0 12px 32px -20px rgba(16, 22, 32, 0.35);
-    --bd-glow: rgba(21, 194, 166, 0.1);
+    --bg-0: #e8eaed;
+    --bg-1: #eff1f4;
+    --bg-2: #f6f7f9;
+    --bg-3: #e0e3e8;
+    --line: #d6dae0;
+    --line-2: #c2c8d1;
+    --text: #1a2028;
+    --text-dim: #49535f;
+    --text-faint: #5b646f;
+    --accent: #0c8a76;
+    --accent-2: #096a5a;
+    --accent-press: #0a7263;
+    --accent-dim: rgba(12, 138, 118, 0.13);
+    --accent-ink: #021009;
+    --accent-glow: rgba(12, 138, 118, 0.24);
+    --warn: #845c09;
+    --danger: #b52f35;
+    --warn-dim: rgba(132, 92, 9, 0.12);
+    --danger-dim: rgba(181, 47, 53, 0.1);
+    --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
+    --bd-glow: rgba(12, 138, 118, 0.08);
     --bd-grid: rgba(40, 70, 110, 0.05);
     --bd-vig: rgba(80, 90, 110, 0.045);
     color-scheme: light;
@@ -115,12 +121,11 @@
 
 :root {
   /* terminal pane — stays dark in BOTH themes (the terminal is the floor).
-     --term-bg = dark bg-0, --term-line = dark line: the pane keeps the dark
-     theme's vocabulary even on light chrome, so it reads as an intentional
-     framed terminal, not a hole. The xterm theme in WebTerminalScreen.tsx
-     hardcodes the same values (xterm can't resolve CSS vars) — keep in sync. */
+     --term-bg = dark bg-0: the pane keeps the dark theme's vocabulary even on
+     light chrome, so it reads as an intentional dark stage, not a hole. The
+     xterm theme in WebTerminalScreen.tsx hardcodes the same value (xterm can't
+     resolve CSS vars) — keep in sync. */
   --term-bg: #06080c;
-  --term-line: #2c3543;
 
   /* fonts */
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;

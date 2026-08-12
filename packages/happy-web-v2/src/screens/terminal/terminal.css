@@ -3,8 +3,8 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  /* Chrome floor, theme-aware — the DARK part is the framed .term-host pane
-     below, not this wrapper. Matches .app-detail / .picker (both bg-0). */
+  /* Chrome floor, theme-aware — the DARK part is the .term-host pane below,
+     not this wrapper. Matches .app-detail / .picker (both bg-0). */
   background: var(--bg-0);
 }
 .term-header {
@@ -63,31 +63,20 @@
   overflow: hidden;
   display: flex;
   /* The terminal pane itself — dark in BOTH themes (--term-bg, see tokens.css).
-     Mobile default: edge-to-edge (every column counts); the header's and key
-     bar's hairlines are the seams. Desktop (≥600px) reframes it below. */
+     Edge-to-edge at every width (a framed 8px gutter was tried and rejected:
+     it read as wasted padding). The chrome hairlines — the header's
+     border-bottom and the sidebar's border-right — are the only seams; on the
+     light-gray chrome the dark pane reads as an intentional dark stage.
+     No focus ring either: the terminal owns the keyboard ~whenever this screen
+     is open, and the blinking teal cursor already carries "live". */
   background: var(--term-bg);
   padding: 6px 8px;
   padding-bottom: max(6px, env(safe-area-inset-bottom));
 }
-/* Desktop / tablet: framed pane (cmux-style) — the terminal is a rounded card
-   with a hairline frame floating on the chrome floor, same border/radius
-   vocabulary as sidebar cards and the chat composer. In light theme the dark
-   card gets --shadow-lift so the dark-on-light seam reads as elevation, not a
-   hole. Focus = teal ring (accent means LIVE — the pane owning the keyboard). */
+/* Desktop / tablet: same edge-to-edge, just roomier inner padding. */
 @media (min-width: 600px) {
   .term-host {
-    margin: var(--sp-2);
-    border: 1px solid var(--term-line);
-    border-radius: var(--r-md);
     padding: var(--sp-2) var(--sp-3);
-    box-shadow: var(--shadow-lift);
-    transition: border-color var(--motion-fast);
-  }
-  /* Focused = faintly charged frame, not a neon ring: the terminal owns the
-     keyboard ~whenever this screen is open, so full-accent here would be a
-     permanent shout. The blinking teal cursor already carries "live". */
-  .term-host:focus-within {
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--term-line));
   }
 }
 /* Scrollback scrollbar (no-tmux fallback shell) styled to the pane, not the OS. */
