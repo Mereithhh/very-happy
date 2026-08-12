@@ -1,6 +1,6 @@
 # Task Board 生命周期视图（以任务完成为中心的管理翻转）
 
-> 状态：Final
+> 状态：Shipped（2026-08-13 合入 main）
 > 日期：2026-08-12 ｜ 关联 backlog：（Owner 直述需求，本次派工；与 B-002 的 task board 域相邻）
 > 出处/前身：`specs/2026-08-task-board.md`（V1 状态列 + V2 泳道，Shipped）——本 spec 翻转其默认视图，不推翻其机制。
 
