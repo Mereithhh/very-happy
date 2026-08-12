@@ -40,6 +40,17 @@ export function sidebarQueryIsEmpty(q: ParsedSidebarQuery): boolean {
   return !q.text && q.tags.length === 0 && !q.requireAnyTag;
 }
 
+/** The tag half of the grammar on its own — shared with the command palette,
+ *  whose free-text matching runs over a different haystack (title+sub+path). */
+export function tagsMatchSidebarQuery(tags: string[] | undefined, q: ParsedSidebarQuery): boolean {
+  const rowTags = (tags ?? []).map((t) => t.toLowerCase());
+  if (q.requireAnyTag && rowTags.length === 0) return false;
+  for (const term of q.tags) {
+    if (!rowTags.some((t) => t === term || t.startsWith(term))) return false;
+  }
+  return true;
+}
+
 export function rowMatchesSidebarQuery(
   row: { title: string; subtitle: string; tags?: string[] },
   q: ParsedSidebarQuery,
@@ -49,10 +60,5 @@ export function rowMatchesSidebarQuery(
       row.title.toLowerCase().includes(q.text) || row.subtitle.toLowerCase().includes(q.text);
     if (!hit) return false;
   }
-  const rowTags = (row.tags ?? []).map((t) => t.toLowerCase());
-  if (q.requireAnyTag && rowTags.length === 0) return false;
-  for (const term of q.tags) {
-    if (!rowTags.some((t) => t === term || t.startsWith(term))) return false;
-  }
-  return true;
+  return tagsMatchSidebarQuery(row.tags, q);
 }

@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, Pencil, Archive, Trash2 } from 'lucide-react';
-import { useSessions, useSetting, storage } from '@/sync/storage';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2 } from 'lucide-react';
+import { useSessions, useSetting, useLocalSettingMutable, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
@@ -15,19 +15,21 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { isImeGuardedEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
-import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
+import { useBoardAttentionCount, useBoardItems } from '@/screens/board/useBoardItems';
+import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
-import { parseSidebarQuery, rowMatchesSidebarQuery, sidebarQueryIsEmpty } from './sidebarSearch';
+import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import './sidebar.css';
 
 function rowHref(r: Row): string {
   return r.kind === 'terminal' ? `/terminal/${r.machineId}?tid=${r.terminalId}` : `/session/${r.session!.id}`;
 }
 
-type Filter = 'active' | 'archived';
+/** 列表 (manual order) / 状态 (lifecycle groups) / 归档 — see the filter row. */
+type View = 'list' | 'status' | 'archived';
 
 interface Row {
   key: string;
@@ -43,13 +45,39 @@ interface Row {
   tags?: string[];
 }
 
+function sessionRow(s: Session): Row {
+  return {
+    key: s.id,
+    kind: 'session',
+    ts: s.updatedAt || s.activeAt || s.createdAt,
+    createdAt: s.createdAt,
+    session: s,
+    title: getSessionName(s),
+    subtitle: getSessionSubtitle(s),
+    tags: s.metadata?.tags,
+  };
+}
+
 export function Sidebar() {
   const navigate = useNavigate();
   const sessions = useSessions();
   const socket = useSocketStatus();
   const { t } = useTranslation();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<Filter>('active');
+  // Three segments, ONE state: 列表/状态 are display modes over the active
+  // set, 归档 is a filter over a different set — but three parallel segments
+  // is the simplest surface. Only the display modes persist
+  // (localSettings.sidebarView, an enum that can't even hold 'archived');
+  // the archive view intentionally resets to the remembered mode on reload
+  // so nobody gets stranded there.
+  const [savedView, setSavedView] = useLocalSettingMutable('sidebarView');
+  const [view, setView] = useState<View>(savedView);
+  const selectView = useCallback(
+    (v: View) => {
+      setView(v);
+      if (v !== 'archived') setSavedView(v);
+    },
+    [setSavedView],
+  );
   const [showNew, setShowNew] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
@@ -66,20 +94,11 @@ export function Sidebar() {
     if (!sessions) return null;
     const sessRows = sessions
       .filter((s): s is Session => typeof s !== 'string')
-      .filter((s) => (filter === 'archived' ? !s.active : s.active))
-      .map<Row>((s) => ({
-        key: s.id,
-        kind: 'session',
-        ts: s.updatedAt || s.activeAt || s.createdAt,
-        createdAt: s.createdAt,
-        session: s,
-        title: getSessionName(s),
-        subtitle: getSessionSubtitle(s),
-        tags: s.metadata?.tags,
-      }));
-    // terminals are always "live"; hidden only by the archived-only filter
+      .filter((s) => (view === 'archived' ? !s.active : s.active))
+      .map(sessionRow);
+    // terminals are always "live"; hidden only by the archived-only view
     const termRows: Row[] =
-      filter === 'archived'
+      view === 'archived'
         ? []
         : terminals.map((tm) => ({
             key: `t:${tm.id}`,
@@ -91,13 +110,29 @@ export function Sidebar() {
             title: tm.title || tm.machineName,
             subtitle: tm.machineName,
           }));
-    const all = [...termRows, ...sessRows];
-    // Search with `#tag` syntax: `#foo` filters by tag (prefix match), the
-    // free-text remainder keeps the substring-on-title/subtitle behavior.
-    const parsed = parseSidebarQuery(query);
-    if (sidebarQueryIsEmpty(parsed)) return all;
-    return all.filter((r) => rowMatchesSidebarQuery(r, parsed));
-  }, [sessions, terminals, query, filter]);
+    return [...termRows, ...sessRows];
+  }, [sessions, terminals, view]);
+
+  // ----- status mode (lifecycle groups) -----
+  // The board's derivation IS the sidebar's: useBoardItems carries lifecycle
+  // (boardItems.lifecycleOf) + the board's total order, and
+  // groupRowsByLifecycle only maps row keys onto that verdict — there is no
+  // second classifier, so sidebar and board can never disagree.
+  const boardItems = useBoardItems();
+  const statusGroups = useMemo(
+    () => (view === 'status' && rows ? groupRowsByLifecycle(rows, boardItems) : null),
+    [view, rows, boardItems],
+  );
+  // 已完成(今日): sessions completed via the board's ✓ in the last 24h (same
+  // window and source as the board's Done column). Collapsed by default so
+  // the live groups keep the space. Date.now() in the memo is fine — session
+  // changes are what re-derive it; the window edge doesn't need a live clock.
+  const [completedOpen, setCompletedOpen] = useState(false);
+  const completedRows = useMemo<Row[]>(() => {
+    if (view !== 'status' || !sessions) return [];
+    const list = sessions.filter((s): s is Session => typeof s !== 'string');
+    return completedTodaySessions(list, Date.now()).map(sessionRow);
+  }, [view, sessions]);
 
   // ----- manual order -----
   // Synced settings field `sidebarOrder` — FULL manual ordering: every row
@@ -110,14 +145,27 @@ export function Sidebar() {
   // archived view stays a plain activity list.
   const orderSetting = useSetting('sidebarOrder');
   const pinnedSetting = useSetting('pinnedRows'); // legacy, pre-materialization only
-  const orderApplies = filter === 'active';
+  // Manual order shapes ONLY the list view; in status view the order is the
+  // lifecycle verdict (not draggable), archived stays a plain activity list.
+  const orderApplies = view === 'list';
   const displayRows = useMemo<Row[] | null>(() => {
     if (!rows) return null;
+    if (view === 'status') {
+      if (!statusGroups) return null;
+      // The flat visible sequence — must mirror the rendered section order
+      // exactly (⌘1-9 badges and move-up/down read positions from it).
+      // Collapsed 已完成 rows are NOT visible, so they don't take numbers.
+      return [
+        ...statusGroups.waiting,
+        ...statusGroups.running,
+        ...(completedOpen ? completedRows : []),
+      ];
+    }
     if (!orderApplies) return rows;
     if ((orderSetting ?? []).length > 0) return sortRowsByManualOrder(rows, orderSetting!);
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
     return [...pinned, ...rest];
-  }, [rows, orderSetting, pinnedSetting, orderApplies]);
+  }, [rows, view, statusGroups, completedRows, completedOpen, orderSetting, pinnedSetting, orderApplies]);
 
   // Commit a reorder: `seqKeys` = the final VISIBLE sequence, `movedKey` =
   // the row the user moved. Reads settings from the store (not the render
@@ -157,10 +205,9 @@ export function Sidebar() {
 
   const onRowPointerDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0) return;
-    if (!orderApplies) return; // archived view: plain list, nothing to order
-    // Search narrows the visible rows — a drop position computed against a
-    // partial picture would surprise; disable (the full list is one Esc away).
-    if (query.trim()) return;
+    // Only the list view is orderable: status order is the lifecycle verdict,
+    // archived is a plain activity list.
+    if (!orderApplies) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
     const list = listRef.current;
@@ -376,6 +423,50 @@ export function Sidebar() {
     };
   }, [navigate]);
 
+  // Render model: list/archived = one unlabeled section; status = the three
+  // lifecycle sections. `rows` holds only the VISIBLE rows (collapsed 已完成
+  // → []), `count` the section's real size for the header.
+  const sections = useMemo(() => {
+    if (view === 'status' && statusGroups) {
+      return [
+        {
+          id: 'waiting',
+          label: t('sidebar.groupWaiting') as string | undefined,
+          count: statusGroups.waiting.length,
+          rows: statusGroups.waiting,
+          collapsible: false,
+          open: true,
+        },
+        {
+          id: 'running',
+          label: t('sidebar.groupRunning') as string | undefined,
+          count: statusGroups.running.length,
+          rows: statusGroups.running,
+          collapsible: false,
+          open: true,
+        },
+        {
+          id: 'completed',
+          label: t('sidebar.groupDoneToday') as string | undefined,
+          count: completedRows.length,
+          rows: completedOpen ? completedRows : [],
+          collapsible: true,
+          open: completedOpen,
+        },
+      ];
+    }
+    return [
+      {
+        id: 'all',
+        label: undefined as string | undefined,
+        count: displayRows?.length ?? 0,
+        rows: displayRows ?? [],
+        collapsible: false,
+        open: true,
+      },
+    ];
+  }, [view, statusGroups, completedRows, completedOpen, displayRows, t]);
+
   return (
     <div className="sb">
       <header className="sb-header">
@@ -385,6 +476,13 @@ export function Sidebar() {
         </div>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
+          {/* Coarse pointers can't press ⌘K — this icon opens the command
+              palette (which replaced the sidebar search box; #tag included).
+              CSS shows it on coarse pointers only: desktop learned ⌘K from
+              the palette itself. */}
+          <button className="sb-icon-btn sb-search-btn" title={t('sidebar.openSearch')} onClick={openCommandPalette}>
+            <Search size={17} />
+          </button>
           <button
             className="sb-icon-btn sb-board-btn"
             title={t('board.title')}
@@ -432,33 +530,27 @@ export function Sidebar() {
         </div>
       </header>
 
-      <div className="sb-search">
-        <Search size={15} className="sb-search-icon" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('sidebar.searchPlaceholder')}
-          className="sb-search-input"
-        />
-        {query && (
-          <button className="sb-search-clear" onClick={() => setQuery('')} aria-label="clear">
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
+      {/* The search box is gone — ⌘K (mobile: the header icon) covers search,
+          #tag grammar included. Its row folded into the view switch below, so
+          the net chrome above the list SHRANK by one row. */}
       <div className="sb-filter" role="tablist">
-        {(['active', 'archived'] as Filter[]).map((f) => (
+        {(['list', 'status', 'archived'] as View[]).map((v) => (
           <button
-            key={f}
-            className={`sb-filter-btn${filter === f ? ' is-on' : ''}`}
-            onClick={() => setFilter(f)}
+            key={v}
+            className={`sb-filter-btn${view === v ? ' is-on' : ''}`}
+            onClick={() => selectView(v)}
           >
-            {t(f === 'active' ? 'sidebar.filterActive' : 'sidebar.filterArchived')}
+            {t(
+              v === 'list'
+                ? 'sidebar.viewList'
+                : v === 'status'
+                  ? 'sidebar.viewStatus'
+                  : 'sidebar.filterArchived',
+            )}
           </button>
         ))}
-        {/* Board lives on the header icon (badge included) — a third tab in
-            the active/archived filter row read as clutter and was removed. */}
+        {/* Board lives on the header icon (badge included) — a fourth tab in
+            this row read as clutter and was removed. */}
       </div>
 
       <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
@@ -466,32 +558,61 @@ export function Sidebar() {
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
           </div>
-        ) : displayRows.length === 0 ? (
-          <div className="sb-empty">{query ? t('sidebar.noResults') : t('sidebar.empty')}</div>
+        ) : sections.every((sec) => sec.count === 0) ? (
+          <div className="sb-empty">{t('sidebar.empty')}</div>
         ) : (
           <>
-            {displayRows.map((r, i) => {
-              // Menu reorder only where a drop is allowed: active view, no
-              // search narrowing the sequence.
-              const canReorder = orderApplies && !query.trim();
-              return (
-                <div
-                  key={r.key}
-                  data-dragkey={r.key}
-                  className={`sb-drag-item${dragKey === r.key ? ' is-drag' : ''}`}
-                  onPointerDown={(e) => onRowPointerDown(e, r.key)}
-                >
-                  <SidebarRow
-                    row={r}
-                    badge={cmdHeld && i < 9 ? i + 1 : undefined}
-                    canMoveUp={i > 0}
-                    canMoveDown={i < displayRows.length - 1}
-                    onMove={canReorder ? (dir) => moveRow(r.key, i, dir) : undefined}
-                    onRenameRequest={() => setRenameTarget(r)}
-                  />
+            {(() => {
+              // Flat row index ACROSS sections — must mirror displayRows
+              // exactly (⌘1-9 badges + move-up/down read rowsRef positions).
+              let flat = 0;
+              return sections.map((sec) => (
+                <div key={sec.id} className="sb-section">
+                  {sec.label !== undefined &&
+                    (sec.collapsible ? (
+                      // Only 已完成 is collapsible; it's the only section with
+                      // this header variant, so the toggle can be direct.
+                      <button
+                        className="sb-section-head sb-section-head--toggle"
+                        onClick={() => setCompletedOpen((o) => !o)}
+                        aria-expanded={sec.open}
+                      >
+                        <ChevronRight
+                          size={11}
+                          className={`sb-section-chevron${sec.open ? ' is-open' : ''}`}
+                        />
+                        <span className="sb-section-label">{sec.label}</span>
+                        <span className="sb-section-count mono">{sec.count}</span>
+                      </button>
+                    ) : (
+                      <div className="sb-section-head">
+                        <span className="sb-section-label">{sec.label}</span>
+                        <span className="sb-section-count mono">{sec.count}</span>
+                      </div>
+                    ))}
+                  {sec.rows.map((r) => {
+                    const i = flat++;
+                    return (
+                      <div
+                        key={r.key}
+                        data-dragkey={r.key}
+                        className={`sb-drag-item${dragKey === r.key ? ' is-drag' : ''}`}
+                        onPointerDown={(e) => onRowPointerDown(e, r.key)}
+                      >
+                        <SidebarRow
+                          row={r}
+                          badge={cmdHeld && i < 9 ? i + 1 : undefined}
+                          canMoveUp={i > 0}
+                          canMoveDown={i < displayRows.length - 1}
+                          onMove={orderApplies ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          onRenameRequest={() => setRenameTarget(r)}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              ));
+            })()}
             {dragKey && dropLineY != null && (
               <div className="sb-drop-line" style={{ top: dropLineY }} aria-hidden />
             )}

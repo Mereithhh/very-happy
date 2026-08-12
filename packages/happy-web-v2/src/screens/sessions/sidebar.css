@@ -41,56 +41,21 @@
   color: var(--text);
 }
 
-.sb-search {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-3) var(--sp-4) var(--sp-2);
-  padding: 0 10px;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-}
-.sb-search:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
-.sb-search-icon {
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-.sb-search-input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  padding: 8px 0;
-  font-size: var(--fs-13);
-  color: var(--text);
-  min-width: 0;
-}
-.sb-search-clear {
-  color: var(--text-faint);
-  display: inline-flex;
-}
-.sb-search-clear:hover {
-  color: var(--text);
+/* Search lives in the ⌘K command palette; this header icon is the way in for
+ * coarse pointers only — desktop has the shortcut. */
+.sb-search-btn {
+  display: none;
 }
 
-/* touch: 16px floor stops iOS focus auto-zoom on the search field; header
- * icons, the clear button, filter segments and dropdown rows get
- * finger-sized hit areas. */
+/* touch: header icons, filter segments and dropdown rows get finger-sized
+ * hit areas; the palette search icon appears (no ⌘K on a touch keyboard). */
 @media (pointer: coarse) {
-  .sb-search-input {
-    font-size: var(--fs-16);
+  .sb-search-btn {
+    display: inline-flex;
   }
   .sb-icon-btn {
     width: 38px;
     height: 38px;
-  }
-  .sb-search-clear {
-    padding: 10px 8px;
-    margin-right: -8px;
   }
   .sb-filter-btn {
     padding: 8px 0;
@@ -100,11 +65,11 @@
   }
 }
 
-/* filter segmented */
+/* filter segmented (view switch: 列表 / 状态 / 归档) */
 .sb-filter {
   display: flex;
   gap: 4px;
-  margin: 0 var(--sp-4) var(--sp-2);
+  margin: var(--sp-3) var(--sp-4) var(--sp-2);
   padding: 3px;
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -136,6 +101,40 @@
 }
 .sb-list.is-dragging {
   user-select: none;
+}
+
+/* status view: compact lifecycle section headers (mono = machine layer) */
+.sb-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 5px var(--sp-4) 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  text-align: left;
+}
+.sb-section + .sb-section > .sb-section-head {
+  margin-top: var(--sp-2);
+}
+.sb-section-count {
+  color: var(--text-faint);
+}
+.sb-section-head--toggle {
+  cursor: pointer;
+}
+.sb-section-head--toggle:hover {
+  color: var(--text-dim);
+}
+.sb-section-chevron {
+  flex-shrink: 0;
+  transition: transform var(--motion-fast);
+}
+.sb-section-chevron.is-open {
+  transform: rotate(90deg);
 }
 .sb-row {
   display: flex;
