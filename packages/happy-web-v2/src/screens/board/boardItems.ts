@@ -31,6 +31,37 @@ import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
 
+//
+// Lifecycle view (the default board): management flips from process state to
+// task completion. Only two live buckets — an agent is either running or the
+// item is waiting on the user ("跑完没收货 = 等我看"); DONE is not a status
+// but an explicit user action that removes the item and leaves a record
+// (buildCompletedEntries). The four-state BoardStatus above is retired to a
+// per-card badge + the intra-column ordering source; its derivation stays.
+//
+
+export type BoardLifecycle = 'running' | 'waiting';
+
+/** Why a waiting item needs the user — drives the card's reason badge and
+ *  the urgent-band/reap-band split inside the waiting column. */
+export type WaitReason =
+  | 'permission' // pending permission request (urgent)
+  | 'review' // LLM suggests a look (urgent)
+  | 'blocked' // LLM says it's stuck (urgent)
+  | 'needsInput' // terminal needs input (urgent)
+  | 'idle' // agent finished / awaits new input, not marked done (reap)
+  | 'ended' // process died un-archived, within 24h (reap)
+  | 'machineOffline'; // terminal's machine offline, within 24h (reap)
+
+/** Reasons that make a waiting item urgent (blocked on the user right now)
+ *  vs. the reap band ("finished — collect it"). */
+export const URGENT_WAIT_REASONS: ReadonlySet<WaitReason> = new Set([
+  'permission',
+  'review',
+  'blocked',
+  'needsInput',
+]);
+
 /** Structured one-liner under the title; the card translates it (pure module
  *  — no i18n imports here). */
 export type BoardDetail =
@@ -62,6 +93,10 @@ export interface BoardItem {
   llmTaskId?: string;
   /** terminals only: the owning machine (card actions need it) */
   machineId?: string;
+  /** lifecycle view: running (agent working) or waiting (needs the user) */
+  lifecycle: BoardLifecycle;
+  /** set iff lifecycle === 'waiting' */
+  waitReason?: WaitReason;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -146,6 +181,48 @@ function classifySession(s: Session, now: number): { status: BoardStatus } | nul
   return null; // older history — not the board's business
 }
 
+/**
+ * The lifecycle classifier — the decision table (each row is a unit test in
+ * boardItems.test.ts):
+ *
+ * | kind     | status    | extra                      | lifecycle | waitReason     |
+ * |----------|-----------|----------------------------|-----------|----------------|
+ * | session  | attention | pending permission request | waiting   | permission     |
+ * | session  | attention | llmAttention='review'      | waiting   | review         |
+ * | session  | attention | llmAttention='blocked'     | waiting   | blocked        |
+ * | session  | working   |                            | running   | —              |
+ * | session  | idle      |                            | waiting   | idle           |
+ * | session  | ended     | (24h window)               | waiting   | ended          |
+ * | terminal | attention | needs_input                | waiting   | needsInput     |
+ * | terminal | working   |                            | running   | —              |
+ * | terminal | idle      | idle/shell/unknown         | waiting   | idle           |
+ * | terminal | ended     | machine offline (24h)      | waiting   | machineOffline |
+ *
+ * A pending permission request outranks an LLM verdict on the same session
+ * (matching classifySession, which lets the request drive detail/since).
+ */
+export function lifecycleOf(
+  item: Pick<BoardItem, 'kind' | 'status' | 'detail' | 'llmAttention'>,
+): { lifecycle: BoardLifecycle; waitReason?: WaitReason } {
+  if (item.status === 'working') return { lifecycle: 'running' };
+  if (item.status === 'attention') {
+    if (item.kind === 'terminal') return { lifecycle: 'waiting', waitReason: 'needsInput' };
+    // Session: a tool detail means a real permission request is pending;
+    // otherwise the attention came from the LLM verdict. A request without a
+    // tool name still classifies as permission (the fallback).
+    if (item.detail?.kind === 'tool') return { lifecycle: 'waiting', waitReason: 'permission' };
+    if (item.llmAttention) return { lifecycle: 'waiting', waitReason: item.llmAttention };
+    return { lifecycle: 'waiting', waitReason: 'permission' };
+  }
+  if (item.status === 'ended') {
+    return {
+      lifecycle: 'waiting',
+      waitReason: item.detail?.kind === 'machineOffline' ? 'machineOffline' : 'ended',
+    };
+  }
+  return { lifecycle: 'waiting', waitReason: 'idle' };
+}
+
 export function buildBoardItems(input: BoardInput): BoardItem[] {
   const { sessions, terminals, agentStates, machines, now } = input;
   const items: BoardItem[] = [];
@@ -163,6 +240,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       cwd: formatCwd(s.metadata?.path, s.metadata?.homeDir),
       lastActivityAt,
       href: `/session/${s.id}`,
+      lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
     const board = s.metadata?.board;
     if (board?.progress) item.progress = board.progress;
@@ -178,6 +256,9 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
         item.attentionSince = board?.analyzedAt ?? lastActivityAt;
       }
     }
+    const lc = lifecycleOf(item);
+    item.lifecycle = lc.lifecycle;
+    if (lc.waitReason) item.waitReason = lc.waitReason;
     items.push(item);
   }
 
@@ -202,7 +283,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       // idle / shell / undefined (old daemon — unknown is NOT attention)
       status = 'idle';
     }
-    items.push({
+    const termItem: BoardItem = {
       key: `t:${tm.id}`,
       kind: 'terminal',
       status,
@@ -214,7 +295,12 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       href: `/terminal/${tm.machineId}?tid=${tm.id}`,
       detail,
       machineId: tm.machineId,
-    });
+      lifecycle: 'running', // placeholder — assigned by lifecycleOf below
+    };
+    const lc = lifecycleOf(termItem);
+    termItem.lifecycle = lc.lifecycle;
+    if (lc.waitReason) termItem.waitReason = lc.waitReason;
+    items.push(termItem);
   }
 
   // Total order (a consistent comparator — mixing per-group rules without a
@@ -232,6 +318,75 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     return d !== 0 ? d : a.key.localeCompare(b.key);
   });
   return items;
+}
+
+//
+// Lifecycle columns + completion records (the default view).
+//
+
+export interface LifecycleColumns {
+  running: BoardItem[];
+  waiting: BoardItem[];
+}
+
+/**
+ * Split already-sorted board items into the lifecycle columns. Filters ONLY —
+ * no re-sort: buildBoardItems' total order (attention longest-wait first →
+ * working → idle newest-first → ended newest-first) already yields exactly
+ * the wanted waiting order: urgent band (permission/needsInput/review/blocked,
+ * longest-waiting on top) followed by the reap band (idle/ended, most recent
+ * first). One sort rule across every layout, not two.
+ */
+export function buildLifecycleColumns(items: BoardItem[]): LifecycleColumns {
+  return {
+    running: items.filter((i) => i.lifecycle === 'running'),
+    waiting: items.filter((i) => i.lifecycle === 'waiting'),
+  };
+}
+
+/** A row in the Done column — a lightweight completion record, not a live
+ *  board item. Sessions come from `metadata.completedAt` (stamped by the ✓
+ *  action before the archive), tasks from BoardTask status==='done'. */
+export interface CompletedEntry {
+  key: string; // `done:s:<sessionId>` / `done:task:<taskId>`
+  kind: 'session' | 'task';
+  title: string;
+  /** completion moment (drives the window + newest-first order) */
+  at: number;
+  /** session records open the archived session; task records aren't links */
+  href?: string;
+}
+
+/** completion records older than this fall off (same 24h horizon as ended
+ *  items — the board shows operations in flight plus today's harvest; older
+ *  history lives in the sidebar's archived filter / the KV task list) */
+export const DONE_WINDOW_MS = ENDED_WINDOW_MS;
+
+export function buildCompletedEntries(
+  sessions: Session[],
+  tasks: BoardTask[],
+  now: number,
+): CompletedEntry[] {
+  const entries: CompletedEntry[] = [];
+  for (const s of sessions) {
+    const at = s.metadata?.completedAt;
+    if (!at || now - at > DONE_WINDOW_MS) continue;
+    entries.push({
+      key: `done:s:${s.id}`,
+      kind: 'session',
+      title: s.metadata?.summary?.text ?? '',
+      at,
+      href: `/session/${s.id}`,
+    });
+  }
+  for (const t of tasks) {
+    if (t.status !== 'done') continue;
+    const at = t.updatedAt ?? t.createdAt;
+    if (now - at > DONE_WINDOW_MS) continue;
+    entries.push({ key: `done:task:${t.id}`, kind: 'task', title: t.title, at });
+  }
+  entries.sort((a, b) => (b.at - a.at !== 0 ? b.at - a.at : a.key.localeCompare(b.key)));
+  return entries;
 }
 
 //

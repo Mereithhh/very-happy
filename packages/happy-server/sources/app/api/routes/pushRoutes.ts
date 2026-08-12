@@ -7,8 +7,12 @@ import {
     WEBHOOK_EVENTS,
     WEBHOOK_TOKEN_PREFIX,
     WEBHOOK_URL_MAX_LENGTH,
+    buildManualWebhookPayload,
     buildWebhookToken,
+    createAccountRateLimiter,
+    logWebhookResult,
     parseWebhookToken,
+    sendWebhook,
     validateWebhookUrl,
 } from "@/app/push/webhookNotify";
 import { buildSessionEventEphemeral, eventRouter } from "@/app/events/eventRouter";
@@ -231,6 +235,60 @@ export function pushRoutes(app: Fastify) {
             })
         ]);
         return reply.send({ success: true });
+    });
+
+    // Manual webhook notification (web-initiated, e.g. "mark done" on the
+    // task board). The web CANNOT post to the user's webhook itself — the URL
+    // is server-side state and delivery must go through the SSRF guard — so
+    // it asks the server to forward a small {title,message} through the
+    // account's configured webhook. No events-category filtering: the
+    // completed/permission toggles gate AUTOMATIC events; an explicit user
+    // action is always wanted. Best-effort like every webhook send.
+    // Rate-limited per account so a scripted client can't turn the server
+    // into a request cannon.
+    const allowNotify = createAccountRateLimiter({ max: 30, windowMs: 60_000 });
+
+    app.post('/v1/webhook/notify', {
+        schema: {
+            body: z.object({
+                title: z.string().min(1).max(200),
+                message: z.string().max(1000).optional(),
+                sessionId: z.string().max(200).optional(),
+                taskId: z.string().max(200).optional(),
+            }),
+            response: {
+                200: z.object({
+                    ok: z.literal(true),
+                    // false = no webhook configured, or delivery failed
+                    delivered: z.boolean()
+                }),
+                429: z.object({
+                    error: z.string()
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        if (!allowNotify.allow(userId)) {
+            return reply.code(429).send({ error: 'Too many notifications, slow down' });
+        }
+        const rows = await db.accountPushToken.findMany({
+            where: {
+                accountId: userId,
+                token: { startsWith: WEBHOOK_TOKEN_PREFIX }
+            }
+        });
+        const config = rows.map(r => parseWebhookToken(r.token)).find(c => c !== null) ?? null;
+        if (!config) {
+            // Not an error: a user without a webhook clicking "done" should
+            // never see a failure — the notification is simply not wired up.
+            return reply.send({ ok: true, delivered: false });
+        }
+        const payload = buildManualWebhookPayload(request.body);
+        const res = await sendWebhook(config.url, payload);
+        logWebhookResult(userId, request.body.sessionId ?? '-', res);
+        return reply.send({ ok: true, delivered: res.ok });
     });
 
     app.delete('/v1/webhook', {

@@ -179,6 +179,95 @@
   color: var(--danger);
 }
 
+/* the card root is a div[role=button] (the ✓ inside forbids a real <button>
+ * root) — give it the keyboard focus ring a button would have had */
+.bd-card:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- one-click mark-done (✓) ---- */
+.bd-card-done {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -4px 0; /* don't stretch the head row */
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--bg-1);
+  flex-shrink: 0;
+  cursor: pointer;
+  opacity: 0; /* hover-revealed on fine pointers */
+  transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+.bd-card:hover .bd-card-done,
+.bd-card:focus-within .bd-card-done {
+  opacity: 1;
+}
+.bd-card-done:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+  background: var(--bg-2);
+}
+@media (pointer: coarse) {
+  /* no hover on touch — the ✓ is always visible */
+  .bd-card-done {
+    opacity: 1;
+  }
+}
+
+/* ---- Done column: completion records ---- */
+.bd-done-toggle {
+  width: 100%;
+  cursor: pointer;
+  background: transparent;
+}
+.bd-done-toggle .bd-col-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.bd-col--done .bd-col-list {
+  gap: 2px;
+}
+.bd-done-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  text-align: left;
+}
+.bd-done-entry--link {
+  cursor: pointer;
+  background: transparent;
+}
+.bd-done-entry--link:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.bd-done-kind {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.bd-done-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-done-time {
+  flex-shrink: 0;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
 .bd-archived-link {
   align-self: flex-start;
   font-size: var(--fs-11);

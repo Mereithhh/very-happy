@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     WEBHOOK_TOKEN_PREFIX,
+    buildManualWebhookPayload,
     buildWebhookPayload,
     buildWebhookToken,
+    createAccountRateLimiter,
     mapKindToWebhookEvent,
     parseWebhookToken,
     validateWebhookUrl,
@@ -216,5 +218,98 @@ describe('buildWebhookPayload session link', () => {
         expect(p!.sessionId).toBeUndefined();
         expect(p!.message).not.toContain('session:');
         expect(p!.message).not.toContain('链接：');
+    });
+});
+
+describe('buildManualWebhookPayload', () => {
+    const originalWebUrl = process.env.HAPPY_WEB_URL;
+    afterEach(() => {
+        if (originalWebUrl === undefined) {
+            delete process.env.HAPPY_WEB_URL;
+        } else {
+            process.env.HAPPY_WEB_URL = originalWebUrl;
+        }
+    });
+
+    it('builds title/message with the session trailer as the LAST line', () => {
+        delete process.env.HAPPY_WEB_URL;
+        const p = buildManualWebhookPayload({
+            title: '✅ 已完成 · fix tests',
+            message: '已确认完成。',
+            sessionId: 'sess-1',
+        });
+        expect(p.title).toBe('✅ 已完成 · fix tests');
+        expect(p.sessionId).toBe('sess-1');
+        const lines = p.message.split('\n');
+        expect(lines[0]).toBe('已确认完成。');
+        expect(lines[lines.length - 1]).toBe('session: sess-1');
+        expect(p.message).not.toContain('链接：');
+    });
+
+    it('adds a link line when HAPPY_WEB_URL is set', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com/';
+        const p = buildManualWebhookPayload({ title: 't', sessionId: 'sess-2' });
+        expect(p.message).toContain('链接：https://happy.example.com/session/sess-2');
+        const lines = p.message.split('\n');
+        expect(lines[lines.length - 1]).toBe('session: sess-2');
+    });
+
+    it('puts the task line BEFORE the session trailer (session stays last)', () => {
+        delete process.env.HAPPY_WEB_URL;
+        const p = buildManualWebhookPayload({
+            title: 't',
+            taskId: 'task-9',
+            sessionId: 'sess-3',
+        });
+        const lines = p.message.split('\n');
+        expect(lines[lines.length - 2]).toBe('task: task-9');
+        expect(lines[lines.length - 1]).toBe('session: sess-3');
+    });
+
+    it('task-only notification carries the task line and no session field', () => {
+        const p = buildManualWebhookPayload({ title: 't', taskId: 'task-1' });
+        expect(p.sessionId).toBeUndefined();
+        expect(p.message).toBe('task: task-1');
+    });
+
+    it('trims and caps title/message, tolerates empty message', () => {
+        const p = buildManualWebhookPayload({
+            title: '  ' + 'x'.repeat(500),
+            message: 'y'.repeat(2000),
+        });
+        expect(p.title.length).toBe(200);
+        const lines = p.message.split('\n');
+        expect(lines[0].length).toBe(1000);
+        const empty = buildManualWebhookPayload({ title: 't' });
+        expect(empty.message).toBe('');
+    });
+});
+
+describe('createAccountRateLimiter', () => {
+    it('allows up to max within the window, then rejects', () => {
+        const limiter = createAccountRateLimiter({ max: 3, windowMs: 1000 });
+        const t0 = 1_000_000;
+        expect(limiter.allow('a', t0)).toBe(true);
+        expect(limiter.allow('a', t0 + 1)).toBe(true);
+        expect(limiter.allow('a', t0 + 2)).toBe(true);
+        expect(limiter.allow('a', t0 + 3)).toBe(false);
+    });
+
+    it('window slides: old hits expire and free capacity', () => {
+        const limiter = createAccountRateLimiter({ max: 2, windowMs: 1000 });
+        const t0 = 1_000_000;
+        expect(limiter.allow('a', t0)).toBe(true);
+        expect(limiter.allow('a', t0 + 100)).toBe(true);
+        expect(limiter.allow('a', t0 + 200)).toBe(false);
+        // t0 hit expires at t0+1001
+        expect(limiter.allow('a', t0 + 1001)).toBe(true);
+    });
+
+    it('accounts are isolated', () => {
+        const limiter = createAccountRateLimiter({ max: 1, windowMs: 1000 });
+        const t0 = 1_000_000;
+        expect(limiter.allow('a', t0)).toBe(true);
+        expect(limiter.allow('b', t0)).toBe(true);
+        expect(limiter.allow('a', t0 + 1)).toBe(false);
     });
 });

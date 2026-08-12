@@ -29,9 +29,13 @@ export const LocalSettingsSchema = z.object({
     // What `/` shows when nothing is open: the classic empty-detail placeholder
     // ('normal') or the global Task Board ('board'). Device-local on purpose.
     homeView: z.enum(['normal', 'board']).describe('Home screen when nothing is open: empty detail or the task board'),
-    // Task board layout: V1 status columns or V2 per-task swimlanes.
+    // Task board layout: 'lifecycle' (default: running / waiting-on-me / done)
+    // or 'tasks' (per-task swimlanes). 'status' is the RETIRED V1 four-state
+    // layout — it must stay in the enum: localSettings is parsed as one blob
+    // (safeParse below), so dropping a stored value would reset EVERY local
+    // setting on that device. Renderers treat 'status' as 'lifecycle'.
     // Device-local like homeView — a view preference, not account state.
-    boardLayout: z.enum(['status', 'tasks']).describe('Task board layout: status columns or per-task swimlanes'),
+    boardLayout: z.enum(['status', 'tasks', 'lifecycle']).describe('Task board layout: lifecycle columns or per-task swimlanes (status = legacy alias of lifecycle)'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -76,8 +80,8 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarWidth: null,
     // Safe default: existing users keep the current home screen.
     homeView: 'normal',
-    // Safe default: the V1 status columns everyone already knows.
-    boardLayout: 'status',
+    // Default = the lifecycle view (management by task completion).
+    boardLayout: 'lifecycle',
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
