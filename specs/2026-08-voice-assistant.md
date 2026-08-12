@@ -97,18 +97,19 @@ assistant session 就是一个普通 happy session（`agent: claude`），特殊
    `HAPPY_SESSION_VARIANT=assistant` env（复用 extraEnv 透传管道）通知被
    spawn 的 CLI 进程——runClaude 据此让 Happy MCP 注册管理工具面、给 session
    metadata 打 `variant:'assistant'` 标记（web 用它找到 assistant session）。
-3. **单例语义**（实现期修订：固定 tag 幂等在 dataKey 凭据下**不成立**——
-   `getOrCreateSession` 每次启动生成新 session key，而 server 对已存在 tag
-   保留首次 `dataEncryptionKey`，直接复用 tag 会 key 错位解不开）。实际机制为
-   daemon 三级单例：① 存活 assistant 进程 → 直接返回其 sessionId；
-   ② sessions.json 有历史 assistant → `HAPPY_RECONNECT_*` 带原 key 重连
-   （JSONL 尚在则 `--resume` 续上下文）；③ 全新 → fresh spawn + 固定 tag
-   `vh-assistant-<machineId>`。已知残余边缘：server 有旧 tag 行但本机
-   sessions.json 已丢 key（>14 天未用/清空 ~/.happy）时 fresh spawn 会命中
-   旧行解密错位——接受（重装场景，删旧 session 即恢复）。
-   web 侧「新对话」= archive 旧的 + spawn 新的，记忆在文件里不丢。
-   注意 `POST /v1/sessions/:id/archive` 语义是 `active=false`（仍可 resume），
-   不是完整 lifecycle archive——对「新对话」够用。
+3. **单例语义**（v3，回扫定稿）：固定 tag 方案整体废弃——两轮修订后确认
+   find-or-create 固定 tag 在 dataKey 凭据下必然产生「server 留旧行 + 每次
+   启动新 key」的永久解密错位（14 天 sessions.json 清理后必现），且使
+   「新对话」结构性不可能（永远命中同一行）。最终机制：
+   - session tag 一律 randomUUID（assistant 不特殊），fresh spawn = 全新行
+     全新 key，错位类问题整类消除；
+   - 单例由 daemon 保证：**in-flight 锁**（并发 spawn 合流）→ 存活 assistant
+     进程（TrackedSession 于 spawn 时即打 variant 标，不等 webhook 回填）→
+     sessions.json re-attach（`HAPPY_RECONNECT_*` 带原 key；`--resume` 的
+     claudeSessionId 从 server 拉最新 metadata，本地快照是旧的）→ 全新 spawn；
+   - **`forceNew: true`** spawn 参数（旧 daemon 忽略）：停掉存活 assistant、
+     清 sessions.json 条目、全新 spawn——web「新对话」走这条 + archive 旧行
+     做列表卫生（archive 仅 `active=false`，对此用途足够）。
 
 **上下文 compact**：直接吃 Claude Code 自带 auto-compact；「新对话」按钮
 提供手动清零。CLAUDE.md 指导 assistant 在压缩前把要紧事写进 journal。

@@ -69,7 +69,13 @@
 | B-047 | 文件浏览器：终端/聊天会话浏览 cwd 目录与文件内容（daemon 机器 RPC fs-list/fs-read + 终端抽屉 + FilesPanel 浏览模式） | feat | Owner 2026-08-13 | done | Shipped 02cb8543 / cli v0.2.33；spec Shipped |
 | B-049 | 剪贴板体验重设计：默认静默复制+可点 toast 兜底（不再弹阻断 modal）+ 历史面板（50 条/32KB 护栏/编辑再复制/清空） | ux | Owner 2026-08-13 | done | Shipped；入口 ⌘K+设置 Channels；历史每设备本地不同步 |
 | B-050 | 新 logo「会眨眼的终端窗口」+ 整套应用图标（gpt-image 探索方向 + Pillow 按 token 重建主源） | ux | Owner 2026-08-13 | done | Shipped；候选在 skills/tmp/vh-logo/；7 条设计感提案待 Owner 挑 |
-| B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | 大改动，先出 spec（specs/2026-08-voice-assistant.md）；本会话主导 |
+| B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
+| B-052 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
+| B-053 | assistant 会话在侧栏/board 特判：meta-agent 常驻会话混进任务流是噪音（裸路径+自动标题+「等我看」列） | ux | B-051 E2E 走查#7 | todo | metadata.variant 已有，纯前端过滤/标签 |
+| B-054 | assistant 版本门控 dev 逃生门：dev 构建恒 0.1.0 被 ≥0.2.34 挡住，本地联调要 hack machine metadata | debt | B-051 E2E 走查#3 | todo | dev override（env/localStorage）或特判 0.1.0 |
+| B-055 | 复核 assistant 会话 dangerouslySkipPermissions=true 的来源与取舍：语音场景免审批合理，但需 Owner 确认留痕（工具面里 kill/terminal_send 已有口头确认纪律） | debt | B-051 E2E 走查#8 | todo | 查 spawn 链路谁注入的 |
+| B-056 | /board 在 devtools emulate 切换后首进偶发主线程阻塞 >40s（一次复现，二次不可）| bug | B-051 E2E 走查#5 | todo | 低置信度观察项，遇到再深挖 |
+| B-057 | B-051 回扫 cleanup 遗留：版本比较器与既有 semver 工具重复、tmux format 字符串复制+ptyEnv 缺漏、web recorderState 死代码、session_archive 手搓 REST（有现成封装）、TTS 2000 上限 web/server 两处硬编码应进 happy-wire | debt | code-review 回扫 | todo | 一批小清理，攒着下批做 |
 
 ## 近期完成
 
