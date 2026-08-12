@@ -566,10 +566,28 @@ export const zhHans: TranslationStructure = {
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
         actionOpenSettings: '打开设置',
+        actionClipboardHistory: '剪贴板历史',
         renamePromptTitle: '重命名对话',
         hintNavigate: '↑↓ 移动',
         hintSelect: '↵ 选择',
         hintClose: 'esc 关闭',
+    },
+
+    // copy_to_clipboard pushes: receive toasts + the history panel
+    clipboard: {
+        copiedPreview: ({ preview }: { preview: string }) => `已复制：${preview}`,
+        tapToCopy: ({ preview }: { preview: string }) => `收到剪贴板内容，点击复制：${preview}`,
+        historyTitle: '剪贴板历史',
+        historyOpenSubtitle: '回看、编辑并再次复制收到的内容',
+        historyEmpty: '还没有收到过内容',
+        clearAll: '全部清空',
+        clearAllConfirm: '删除全部收到的剪贴板内容？其中可能包含敏感文本，删除后无法恢复。',
+        expand: '展开',
+        collapse: '收起',
+        autoCopyTitle: '收到时自动复制',
+        autoCopySubtitle: '收到推送时静默写入本机剪贴板；关闭或被浏览器拦截时改为"点击复制"提示',
+        sourceMachine: '机器',
+        sourceSession: '会话',
     },
 
     server: {

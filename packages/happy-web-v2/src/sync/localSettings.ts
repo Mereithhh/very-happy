@@ -50,6 +50,11 @@ export const LocalSettingsSchema = z.object({
     // through xterm's hidden textarea. Device-local on purpose: it's an
     // input-hardware preference (phone vs desktop), not an account preference.
     terminalInputBarMode: z.boolean().describe('Use the line-input bar (compose + send) instead of per-key input in the mobile web terminal'),
+    // copy_to_clipboard pushes: silently write into this device's clipboard on
+    // arrival (toast only). Off = every push lands in history + a clickable
+    // "tap to copy" toast instead. Device-local on purpose: whether a browser
+    // may auto-write its clipboard is a per-device trust/capability choice.
+    clipboardAutoCopy: z.boolean().describe('Auto-copy incoming clipboard pushes into this device\'s clipboard'),
 });
 
 //
@@ -95,6 +100,9 @@ export const localSettingsDefaults: LocalSettings = {
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
+    // Default on: the tool exists to land text in the clipboard without
+    // ceremony; the failure path degrades to the tap-to-copy toast.
+    clipboardAutoCopy: true,
 };
 Object.freeze(localSettingsDefaults);
 

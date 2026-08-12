@@ -21,6 +21,7 @@ import {
   Cable,
   ExternalLink,
   BookOpen,
+  ClipboardList,
 } from 'lucide-react';
 import {
   ItemList,
@@ -98,6 +99,7 @@ import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type Webhoo
 import type { NotifType } from '@/sync/feedTypes';
 import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
 import { getServerInfo } from '@/sync/serverConfig';
+import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { CodeView } from '@/screens/session/CodeView';
 import './settings.css';
 
@@ -1213,6 +1215,7 @@ function Channels() {
             <p className="set-note">{t('settingsChannels.mcpIntro')}</p>
             <CodeView code={MCP_CMD} lang="bash" />
           </div>
+          <ClipboardReceiveItems />
         </ItemGroup>
 
         <ItemGroup title={t('settingsChannels.imTitle')}>
@@ -1229,6 +1232,36 @@ function Channels() {
         </ItemGroup>
       </ItemList>
     </Page>
+  );
+}
+
+/** Receive-side behaviour of the clipboard MCP tool: the device-local
+ *  auto-copy toggle + the entry point to the received-content history panel
+ *  (the ⌘K "Clipboard history" action opens the same panel). */
+function ClipboardReceiveItems() {
+  const { t } = useTranslation();
+  const [autoCopy, setAutoCopy] = useLocalSettingMutable('clipboardAutoCopy');
+  return (
+    <>
+      <Item
+        title={t('clipboard.autoCopyTitle')}
+        subtitle={t('clipboard.autoCopySubtitle')}
+        right={
+          <Toggle
+            checked={autoCopy}
+            onChange={setAutoCopy}
+            label={t('clipboard.autoCopyTitle')}
+          />
+        }
+      />
+      <Item
+        title={t('clipboard.historyTitle')}
+        subtitle={t('clipboard.historyOpenSubtitle')}
+        left={<ClipboardList size={18} />}
+        right={<ChevronRight size={16} />}
+        onClick={openClipboardHistory}
+      />
+    </>
   );
 }
 

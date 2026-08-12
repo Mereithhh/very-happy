@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Pencil,
   Archive,
+  ClipboardList,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -19,6 +20,7 @@ import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
+import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import {
   parseSidebarQuery,
   sidebarQueryIsEmpty,
@@ -191,6 +193,14 @@ export function CommandPalette() {
         run: archiveCurrent,
       });
     }
+    out.push({
+      key: 'action:clipboard-history',
+      group: 'actions',
+      title: t('commandPalette.actionClipboardHistory'),
+      icon: <ClipboardList size={16} />,
+      haystack: (t('commandPalette.actionClipboardHistory') as string).toLowerCase(),
+      run: openClipboardHistory,
+    });
     out.push({
       key: 'action:settings',
       group: 'actions',

@@ -5,6 +5,7 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
+import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
@@ -119,6 +120,8 @@ export function AppLayout() {
     <>
       {shell}
       <CommandPalette />
+      {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
+      <ClipboardHistoryPanel />
     </>
   );
 }
