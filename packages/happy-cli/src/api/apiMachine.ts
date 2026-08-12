@@ -281,10 +281,11 @@ export class ApiMachineClient {
             return { type: 'success' };
         });
 
-        // List this machine's live tmux terminals (source of truth for the
-        // cross-device terminal list — any device queries this over the relay).
+        // List this machine's live tmux terminals. LEGACY polling path: new
+        // clients consume daemonState.webTerminals pushes instead; this RPC
+        // stays for old clients and returns the SAME list the push carries.
         this.rpcHandlerManager.registerHandler('list-terminals', async () => {
-            return { type: 'success', terminals: this.webTerminal.listSessions() };
+            return { type: 'success', terminals: this.webTerminal.buildTerminalList() };
         });
 
         // Persist a terminal's title on the machine so every device sees it.
