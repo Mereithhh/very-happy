@@ -530,6 +530,24 @@ export const zhHans: TranslationStructure = {
         },
     },
 
+    // 机器文件浏览器（终端抽屉 + 会话文件面板「浏览」）
+    fsBrowser: {
+        browseTab: '浏览',
+        breadcrumbs: '路径',
+        showHidden: '显示隐藏文件',
+        hideHidden: '不显示隐藏文件',
+        empty: '空目录',
+        retry: '重试',
+        copyPath: '复制路径',
+        loadFailed: '加载失败',
+        notFound: '路径在这台机器上不存在',
+        permissionDenied: '没有权限访问',
+        unsupported: '无法浏览文件——机器离线，或 daemon 版本过旧（请升级 very-happy-cli 到 ≥ 0.2.33）',
+        listTruncated: ({ count }: { count: number }) => `目录条目过多，仅显示前 ${count} 项`,
+        fileTruncated: ({ size }: { size: string }) => `预览已截断——完整文件 ${size}`,
+        binaryFile: ({ size }: { size: string }) => `二进制文件（${size}）——不支持预览`,
+    },
+
     commandPalette: {
         placeholder: '输入命令或搜索...',
         // Categories

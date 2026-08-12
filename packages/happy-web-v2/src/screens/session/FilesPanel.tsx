@@ -1,19 +1,23 @@
 /**
  * FilesPanel — project file tree + changed-files view for a session. Desktop
  * renders it as a right sidebar; mobile as a full-screen overlay (controlled by
- * the parent). Selecting a file opens it inline via FileView.
+ * the parent). Selecting a file opens it inline via FileView. The third tab
+ * ("Browse") is the machine file browser (fs-list / fs-read RPCs), rooted at
+ * the session's working directory.
  */
 import { useMemo, useState } from 'react';
 import { ChevronRight, FileText, RefreshCw, X } from 'lucide-react';
 import type { GitFileStatus } from '@/sync/gitStatusFiles';
 import type { ProjectFile } from '@/sync/projectFiles';
+import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
+import { FsBrowser } from '../files/FsBrowser';
 import { FileView } from './FileView';
 import { useSessionFiles } from './useFiles';
 import './files.css';
 
-type Tab = 'changed' | 'all';
+type Tab = 'changed' | 'all' | 'browse';
 
 type TreeNode = {
     name: string;
@@ -105,8 +109,14 @@ const STATUS_CLASS: Record<GitFileStatus['status'], string> = {
 export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
     const { t } = useTranslation();
     const { projectFiles, gitStatusFiles, isLoading, isFetching, refresh } = useSessionFiles(sessionId, true);
+    const session = useSession(sessionId);
     const [tab, setTab] = useState<Tab>('changed');
     const [selected, setSelected] = useState<string | null>(null);
+
+    // Machine + working directory for the Browse tab (missing while metadata
+    // is still syncing, or on legacy sessions without a machineId).
+    const browseMachineId = session?.metadata?.machineId ?? null;
+    const browsePath = session?.metadata?.path ?? null;
 
     const tree = useMemo(() => buildTree(projectFiles?.files ?? []), [projectFiles]);
 
@@ -144,60 +154,79 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                     >
                         {t('session.chat.fileTree')}
                     </button>
+                    <button
+                        type="button"
+                        className={`fp-tab${effectiveTab === 'browse' ? ' is-active' : ''}`}
+                        onClick={() => setTab('browse')}
+                    >
+                        {t('fsBrowser.browseTab')}
+                    </button>
                 </div>
-                <button type="button" className="fp-icon" onClick={() => void refresh()} aria-label={t('session.chat.refresh')} title={t('session.chat.refresh')}>
-                    <RefreshCw size={14} className={isFetching ? 'fp-spin' : undefined} />
-                </button>
+                {effectiveTab !== 'browse' && (
+                    <button type="button" className="fp-icon" onClick={() => void refresh()} aria-label={t('session.chat.refresh')} title={t('session.chat.refresh')}>
+                        <RefreshCw size={14} className={isFetching ? 'fp-spin' : undefined} />
+                    </button>
+                )}
                 <button type="button" className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles')} title={t('session.chat.closeFiles')}>
                     <X size={16} />
                 </button>
             </div>
 
             <div className="fp-body">
-                <div className="fp-list">
-                    {isLoading ? (
-                        <div className="fp-empty"><Spinner size={16} /></div>
-                    ) : effectiveTab === 'changed' ? (
-                        changed.length === 0 ? (
-                            <div className="fp-empty">{t('session.chat.noFiles')}</div>
-                        ) : (
-                            changed.map((f) => (
-                                <button
-                                    key={f.fullPath}
-                                    type="button"
-                                    className={`fp-row${selected === f.fullPath ? ' fp-row--active' : ''}`}
-                                    onClick={() => setSelected(f.fullPath)}
-                                    title={f.fullPath}
-                                >
-                                    <span className={`fp-status ${STATUS_CLASS[f.status]}`}>{f.status[0].toUpperCase()}</span>
-                                    <span className="fp-name">{f.fileName}</span>
-                                    {(f.linesAdded > 0 || f.linesRemoved > 0) && (
-                                        <span className="fp-diffstat">
-                                            <span className="fp-add">+{f.linesAdded}</span>
-                                            <span className="fp-del">-{f.linesRemoved}</span>
-                                        </span>
-                                    )}
-                                </button>
-                            ))
-                        )
-                    ) : (projectFiles?.files.length ?? 0) === 0 ? (
-                        <div className="fp-empty">{t('session.chat.noFiles')}</div>
+                {effectiveTab === 'browse' ? (
+                    browseMachineId && browsePath ? (
+                        <FsBrowser machineId={browseMachineId} initialPath={browsePath} />
                     ) : (
-                        [...tree.children.values()].sort(sortNodes).map((c) => (
-                            <TreeRow key={c.path} node={c} depth={0} onPick={setSelected} selected={selected} />
-                        ))
-                    )}
-                </div>
-                {selected && (
-                    <div className="fp-viewer">
-                        <div className="fp-viewer-head">
-                            <span className="fp-viewer-path">{selected}</span>
-                            <button type="button" className="fp-icon" onClick={() => setSelected(null)} aria-label={t('common.back')}>
-                                <X size={14} />
-                            </button>
+                        <div className="fp-empty">{t('session.chat.noFiles')}</div>
+                    )
+                ) : (
+                    <>
+                        <div className="fp-list">
+                            {isLoading ? (
+                                <div className="fp-empty"><Spinner size={16} /></div>
+                            ) : effectiveTab === 'changed' ? (
+                                changed.length === 0 ? (
+                                    <div className="fp-empty">{t('session.chat.noFiles')}</div>
+                                ) : (
+                                    changed.map((f) => (
+                                        <button
+                                            key={f.fullPath}
+                                            type="button"
+                                            className={`fp-row${selected === f.fullPath ? ' fp-row--active' : ''}`}
+                                            onClick={() => setSelected(f.fullPath)}
+                                            title={f.fullPath}
+                                        >
+                                            <span className={`fp-status ${STATUS_CLASS[f.status]}`}>{f.status[0].toUpperCase()}</span>
+                                            <span className="fp-name">{f.fileName}</span>
+                                            {(f.linesAdded > 0 || f.linesRemoved > 0) && (
+                                                <span className="fp-diffstat">
+                                                    <span className="fp-add">+{f.linesAdded}</span>
+                                                    <span className="fp-del">-{f.linesRemoved}</span>
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))
+                                )
+                            ) : (projectFiles?.files.length ?? 0) === 0 ? (
+                                <div className="fp-empty">{t('session.chat.noFiles')}</div>
+                            ) : (
+                                [...tree.children.values()].sort(sortNodes).map((c) => (
+                                    <TreeRow key={c.path} node={c} depth={0} onPick={setSelected} selected={selected} />
+                                ))
+                            )}
                         </div>
-                        <FileView sessionId={sessionId} fullPath={selected} />
-                    </div>
+                        {selected && (
+                            <div className="fp-viewer">
+                                <div className="fp-viewer-head">
+                                    <span className="fp-viewer-path">{selected}</span>
+                                    <button type="button" className="fp-icon" onClick={() => setSelected(null)} aria-label={t('common.back')}>
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                                <FileView sessionId={sessionId} fullPath={selected} />
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
