@@ -1441,6 +1441,12 @@ export const zhHans: TranslationStructure = {
         cliMissing: ({ cli }: { cli: string }) => `未找到 ${cli}——远程会话将失败`,
         cliHint: '若机器在线但缺少某个 CLI，请确保守护进程启动时其 PATH 包含该 CLI（如 ~/.local/bin）。',
         never: '从未',
+        developer: '开发者',
+        developerFooter: '仅本设备生效的排障开关。非排障时请保持关闭。',
+        verboseLogging: '详细网络日志',
+        verboseLoggingDescription: '记录所有 socket 请求与响应',
+        consoleLogging: '控制台输出',
+        consoleLoggingDescription: '在生产构建中启用 console 日志',
     },
 
 } as const;

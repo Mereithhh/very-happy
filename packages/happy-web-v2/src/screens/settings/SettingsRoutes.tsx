@@ -11,7 +11,6 @@ import {
   Bell,
   BarChart3,
   Stethoscope,
-  KeyRound,
   LogOut,
   Check,
   Plus,
@@ -41,7 +40,6 @@ import {
   useProfile,
   useAllMachines,
   useSocketStatus,
-  useRealtimeStatus,
 } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import {
@@ -59,7 +57,6 @@ import {
   type ModeOption,
 } from '@/components/modelModeOptions';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
-import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
@@ -76,6 +73,7 @@ import {
   formatMinute,
 } from '@/sync/notificationPrefs';
 import { getNotificationPermission, requestNotificationPermission } from '@/sync/webNotifications';
+import { setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type WebhookEvent } from '@/sync/apiWebhook';
 import type { NotifType } from '@/sync/feedTypes';
 import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
@@ -217,13 +215,6 @@ function Overview() {
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/diagnostics')}
           />
-          <Item
-            title={t('settingsAccount.password' as any)}
-            subtitle={t('settingsAccount.passwordChange' as any)}
-            left={<KeyRound size={18} />}
-            right={<ChevronRight size={16} />}
-            onClick={() => navigate('/settings/password')}
-          />
         </ItemGroup>
 
         <ItemGroup title={t('settingsAccount.dangerZone' as any) as string}>
@@ -248,10 +239,9 @@ function Appearance() {
   const navigate = useNavigate();
   const { t, lang, setLanguage } = useTranslation();
   const { preference, setPreference } = useTheme();
-  const [diffStyle, setDiffStyle] = useSettingMutable('diffStyle');
-  const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
-  const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
-  const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
+  // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
+  // reads. (The legacy `showLineNumbers` schema key has no web consumer.)
+  const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbersInToolViews');
   const [, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
@@ -363,53 +353,6 @@ function Appearance() {
           footer={t('settingsAppearance.displayDescription' as any) as string}
         >
           <Item
-            title={t('settingsAppearance.diffStyle' as any)}
-            subtitle={t('settingsAppearance.diffStyleDescription' as any)}
-            right={
-              <div className="set-seg">
-                {(['unified', 'split'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`set-seg__btn${diffStyle === s ? ' is-active' : ''}`}
-                    onClick={() => setDiffStyle(s)}
-                  >
-                    {t(`settingsAppearance.diffStyleOptions.${s}` as any)}
-                  </button>
-                ))}
-              </div>
-            }
-          />
-          <Item
-            title={t('settingsAppearance.avatarStyle' as any)}
-            subtitle={t('settingsAppearance.avatarStyleDescription' as any)}
-            right={
-              <div className="set-seg">
-                {(['gradient', 'pixelated'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`set-seg__btn${avatarStyle === s ? ' is-active' : ''}`}
-                    onClick={() => setAvatarStyle(s)}
-                  >
-                    {t(`settingsAppearance.avatarOptions.${s}` as any)}
-                  </button>
-                ))}
-              </div>
-            }
-          />
-          <Item
-            title={t('settingsAppearance.expandTodoLists' as any)}
-            subtitle={t('settingsAppearance.expandTodoListsDescription' as any)}
-            right={
-              <Toggle
-                checked={expandTodos}
-                onChange={setExpandTodos}
-                label={t('settingsAppearance.expandTodoLists' as any) as string}
-              />
-            }
-          />
-          <Item
             title={t('settingsAppearance.showLineNumbersInDiffs' as any)}
             subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription' as any)}
             right={
@@ -436,43 +379,10 @@ function Account() {
   const { logout, credentials } = useAuth();
   const toast = useToast();
   const profile = useProfile();
-  const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
-
-  const [revealSecret, setRevealSecret] = useState(false);
-  const [pushOn, setPushOn] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted');
-  const [pushBusy, setPushBusy] = useState(false);
 
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
   const serverInfo = getServerInfo();
-  const secretFormatted = credentials?.secret ? formatSecretKeyForBackup(credentials.secret) : null;
-
-  async function copySecret() {
-    if (!credentials?.secret) return;
-    try {
-      await navigator.clipboard.writeText(credentials.secret);
-      toast.success(t('settingsAccount.secretKeyCopied' as any) as string);
-    } catch {
-      toast.error(t('settingsAccount.secretKeyCopyFailed' as any) as string);
-    }
-  }
-
-  async function togglePush(on: boolean) {
-    if (!credentials) return;
-    setPushBusy(true);
-    try {
-      if (on) {
-        const ok = await enableWebPush(credentials);
-        setPushOn(ok);
-        if (ok) toast.success(t('common.success' as any) as string);
-      } else {
-        await disableWebPush(credentials);
-        setPushOn(false);
-      }
-    } finally {
-      setPushBusy(false);
-    }
-  }
 
   async function onDisconnectGithub() {
     if (!credentials) return;
@@ -571,59 +481,6 @@ function Account() {
             ))}
           </ItemGroup>
         )}
-
-        {secretFormatted && (
-          <ItemGroup
-            title={t('settingsAccount.backup' as any) as string}
-            footer={t('settingsAccount.backupDescription' as any) as string}
-          >
-            <Item
-              title={t('settingsAccount.secretKey' as any)}
-              subtitle={revealSecret ? t('settingsAccount.tapToHide' as any) : t('settingsAccount.tapToReveal' as any)}
-              detail={revealSecret ? secretFormatted : undefined}
-              onClick={() => setRevealSecret((v) => !v)}
-            />
-            {revealSecret && (
-              <Item title={t('settingsAccount.secretKeyLabel' as any)} onClick={copySecret} />
-            )}
-          </ItemGroup>
-        )}
-
-        {isWebPushSupported() && (
-          <ItemGroup
-            title={t('notifications.browserNotifications' as any) as string}
-            footer={t('notifications.masterDescription' as any) as string}
-          >
-            <Item
-              title={t('notifications.enable' as any)}
-              subtitle={pushOn ? t('notifications.enabledOn' as any) : t('notifications.enabledOff' as any)}
-              right={
-                pushBusy ? (
-                  <Spinner size={14} />
-                ) : (
-                  <Toggle checked={pushOn} onChange={togglePush} label={t('notifications.enable' as any) as string} />
-                )
-              }
-            />
-          </ItemGroup>
-        )}
-
-        <ItemGroup
-          title={t('settingsAccount.privacy' as any) as string}
-          footer={t('settingsAccount.privacyDescription' as any) as string}
-        >
-          <Item
-            title={t('settingsAccount.analytics' as any)}
-            subtitle={analyticsOptOut ? t('settingsAccount.analyticsDisabled' as any) : t('settingsAccount.analyticsEnabled' as any)}
-            right={
-              <Toggle
-                checked={!analyticsOptOut}
-                onChange={(v) => setAnalyticsOptOut(!v)}
-                label={t('settingsAccount.analytics' as any) as string}
-              />
-            }
-          />
-        </ItemGroup>
 
         <ItemGroup title={t('settingsAccount.dangerZone' as any) as string}>
           <Item
@@ -1485,8 +1342,11 @@ function Diagnostics() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const socket = useSocketStatus();
-  const realtime = useRealtimeStatus();
   const machines = useAllMachines({ includeOffline: true });
+  // Developer/troubleshooting toggles — device-local, consumed by
+  // apiSocket.isVerboseLogging() and utils/consoleLogging respectively.
+  const [verboseLogging, setVerboseLogging] = useLocalSettingMutable('verboseLogging');
+  const [consoleLogging, setConsoleLogging] = useLocalSettingMutable('consoleLoggingEnabled');
 
   const socketTone =
     socket.status === 'connected' ? 'connected' : socket.status === 'connecting' ? 'thinking' : 'offline';
@@ -1509,10 +1369,6 @@ function Diagnostics() {
             }
             left={<StatusDot status={socketTone as any} pulse={socket.status === 'connected'} />}
             right={<span className="set-value">{statusLabel(t, socket.status)}</span>}
-          />
-          <Item
-            title={t('diagnostics.realtime' as any)}
-            right={<span className="set-value">{statusLabel(t, realtime)}</span>}
           />
         </ItemGroup>
 
@@ -1551,6 +1407,39 @@ function Diagnostics() {
           )}
         </ItemGroup>
         <div className="set-note">{t('diagnostics.cliHint' as any)}</div>
+
+        <ItemGroup
+          title={t('diagnostics.developer' as any) as string}
+          footer={t('diagnostics.developerFooter' as any) as string}
+        >
+          <Item
+            title={t('diagnostics.verboseLogging' as any)}
+            subtitle={t('diagnostics.verboseLoggingDescription' as any)}
+            right={
+              <Toggle
+                checked={verboseLogging}
+                onChange={setVerboseLogging}
+                label={t('diagnostics.verboseLogging' as any) as string}
+              />
+            }
+          />
+          <Item
+            title={t('diagnostics.consoleLogging' as any)}
+            subtitle={t('diagnostics.consoleLoggingDescription' as any)}
+            right={
+              <Toggle
+                checked={consoleLogging}
+                onChange={(v) => {
+                  setConsoleLogging(v);
+                  // Apply immediately — initConsoleLogging only reads the
+                  // stored value once at startup.
+                  setConsoleOutputEnabled(v);
+                }}
+                label={t('diagnostics.consoleLogging' as any) as string}
+              />
+            }
+          />
+        </ItemGroup>
       </ItemList>
     </Page>
   );
