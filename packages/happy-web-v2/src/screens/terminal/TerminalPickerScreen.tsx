@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { TerminalSquare, Plus, ChevronLeft } from 'lucide-react';
 import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { activeTerminals } from '@/sync/terminalListOps';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -16,13 +15,15 @@ export function TerminalPickerScreen() {
   const navigate = useNavigate();
   const machines = useAllMachines({ includeOffline: true });
   const createTerminal = useTerminalSessions((s) => s.create);
-  const terminals = activeTerminals(useTerminalSessions((s) => s.terminals));
+  const terminals = useTerminalSessions((s) => s.terminals);
   const { t } = useTranslation();
   const isDesktop = useIsDesktop();
 
   const openNew = (machineId: string, name: string) => {
     const term = createTerminal(machineId, name);
-    navigate(`/terminal/${machineId}?tid=${term.id}`);
+    // fresh=1: the ONE open allowed to create the tmux session (see
+    // WebTerminalScreen) — every other open is attach-only.
+    navigate(`/terminal/${machineId}?tid=${term.id}&fresh=1`);
   };
 
   return (

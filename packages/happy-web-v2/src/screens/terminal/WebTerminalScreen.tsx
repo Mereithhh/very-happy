@@ -85,7 +85,7 @@ const IS_COARSE_POINTER =
 
 export function WebTerminalScreen() {
   const { machineId } = useParams<{ machineId: string }>();
-  const [params] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
   const tid = params.get('tid') ?? undefined;
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
@@ -93,7 +93,6 @@ export function WebTerminalScreen() {
   const settings = useSettings();
   const terminals = useTerminalSessions((s) => s.terminals);
   const renameTerminal = useTerminalSessions((s) => s.rename);
-  const autoTitle = useTerminalSessions((s) => s.autoTitle);
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
 
@@ -104,6 +103,23 @@ export function WebTerminalScreen() {
   // reattaches (→ never re-run) — the client can't know which it is.
   const startupCommandRef = useRef(settings.terminalStartupCommand);
   startupCommandRef.current = settings.terminalStartupCommand;
+
+  // `fresh=1` marks the ONE navigation allowed to CREATE the tmux session
+  // (the new-terminal flow that just made the optimistic row). Every other
+  // mount — sidebar/palette navigation, a refresh on this URL, catch-up
+  // resubscribes — opens attach-only, so a deleted terminal can't be
+  // resurrected by its own screen. The param is stripped (history replace)
+  // once the create-open succeeds; read via a ref so the strip doesn't
+  // retrigger the terminal effect.
+  const freshRef = useRef(false);
+  freshRef.current = params.get('fresh') === '1';
+  const clearFreshRef = useRef(() => {});
+  clearFreshRef.current = () => {
+    if (params.get('fresh') !== '1') return;
+    const next = new URLSearchParams(params);
+    next.delete('fresh');
+    setSearchParams(next, { replace: true });
+  };
 
   const hostRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -332,7 +348,7 @@ export function WebTerminalScreen() {
     // FALLBACK auto-title from the first typed line — plain-shell terminals
     // only. The PRIMARY auto-title is the daemon following the pane's OSC
     // title into @vh_title (Claude Code's TUI sets it to a live task summary;
-    // reconcile pulls it back every poll). This onKey capture only makes sense
+    // the daemon push carries it back). This onKey capture only makes sense
     // when the first Enter really submits a SHELL COMMAND; with a startup
     // command configured the terminal boots straight into claude and the first
     // typed line is the user's first PROMPT (long/CJK/noise) — skip it there
@@ -346,7 +362,9 @@ export function WebTerminalScreen() {
       if (domEvent.key === 'Enter') {
         const tt = titleBuf.trim();
         if (tt && tid) {
-          autoTitle(tid, tt.slice(0, 60));
+          // ifAbsent write to the machine only — the confirming daemon push
+          // carries the title back (an optimistic local value could disagree
+          // with what ifAbsent actually kept).
           machineSetTerminalTitle(machineId, terminalId, tt.slice(0, 60), true).catch(() => {});
         }
         titled = true;
@@ -475,8 +493,18 @@ export function WebTerminalScreen() {
     // next unrelated trigger.
     let catchingUp = false;
     let catchUpAgain = false;
+    // The daemon said the terminal no longer exists (deleted on another
+    // device / expired): stop every further catch-up — retrying can't bring
+    // it back, and on an old create-or-attach daemon it would RECREATE it.
+    let gone = false;
+    const onGone = () => {
+      gone = true;
+      if (tid) useTerminalSessions.getState().remove(tid);
+      // Raw (unlocalized) line, same style as shell output/daemon errors.
+      term.writeln('\r\n\x1b[38;2;255;107;107m✗ terminal no longer exists on this machine\x1b[0m');
+    };
     const catchUp = (opts?: { forceSnapshot?: boolean }) => {
-      if (disposed || !terminalId) return;
+      if (disposed || gone || !terminalId) return;
       if (catchingUp) { catchUpAgain = true; return; }
       catchingUp = true;
       outChain = outChain.then(async () => {
@@ -490,9 +518,16 @@ export function WebTerminalScreen() {
             encStream: true,
             // Catch-up, not a new viewer: don't inflate the daemon's
             // subscriber count (the mount-time open below already counted us).
+            // Implies attach-only on daemons >= 0.2.29 — a catch-up must never
+            // recreate a tmux session that was killed while we were away.
             resub: true,
+            attachOnly: true,
           });
-          if (disposed || !res.success) return;
+          if (disposed) return;
+          if (!res.success) {
+            if (res.gone) onGone();
+            return;
+          }
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
           // Restore runs INSIDE this outChain slot: live chunks that arrived
@@ -601,18 +636,31 @@ export function WebTerminalScreen() {
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
       safeFit();
+      const isFresh = freshRef.current;
       const res = await machineOpenTerminal(machineId, {
         terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
         // Runs only if the daemon CREATES the session (see startupCommandRef).
         startupCommand: startupCommandRef.current,
+        // Only the fresh-create navigation may create the tmux session; any
+        // other mount (sidebar nav, URL refresh) attaches to what exists —
+        // a deleted terminal's stale URL must not resurrect it (>= 0.2.29;
+        // older daemons keep create-or-attach).
+        attachOnly: !isFresh,
       });
       if (disposed) return;
       if (!res.success) {
         earlyOutput = null; // nothing will ever consume the stash
-        term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
+        if (res.gone) {
+          onGone();
+        } else {
+          term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
+        }
         setConnecting(false);
         return;
       }
+      // The create intent was consumed — strip `fresh` from the URL so a
+      // later refresh of this tab re-attaches instead of re-creating.
+      if (isFresh) clearFreshRef.current();
       terminalId = res.terminalId;
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;
@@ -996,7 +1044,7 @@ export function WebTerminalScreen() {
       term.dispose();
       termRef.current = null;
     };
-  }, [machineId, tid, autoTitle]);
+  }, [machineId, tid]);
 
   const runCommand = (command: string) => {
     const tm = termRef.current;

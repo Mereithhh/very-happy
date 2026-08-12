@@ -22,7 +22,9 @@ export function createTerminalOrPick(navigate: NavigateFunction): void {
   const m = soleOnlineMachine(Object.values(storage.getState().machines));
   if (m) {
     const term = useTerminalSessions.getState().create(m.id, machineLabel(m));
-    navigate(`/terminal/${m.id}?tid=${term.id}`);
+    // fresh=1: the ONE open allowed to create the tmux session (see
+    // WebTerminalScreen) — every other open is attach-only.
+    navigate(`/terminal/${m.id}?tid=${term.id}&fresh=1`);
   } else {
     navigate('/terminal');
   }

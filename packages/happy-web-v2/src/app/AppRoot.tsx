@@ -14,7 +14,6 @@ import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
-import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useLocalSetting } from '@/sync/storage';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -134,8 +133,6 @@ export function AppRoot() {
           await syncRestore(stored);
           if (cancelled) return;
           setCreds(stored);
-          // server-backed terminal list (cross-device, unified with chat sessions)
-          void useTerminalSessions.getState().initialize();
         }
       } catch (e) {
         console.error('[bootstrap] restore failed', e);

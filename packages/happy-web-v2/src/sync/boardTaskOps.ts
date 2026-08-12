@@ -1,7 +1,7 @@
 /**
  * Pure list operations for the board-task registry (Task Board V2). No
  * zustand / auth / network imports so the merge semantics stay unit-testable
- * (boardTaskOps.test.ts) — same pattern as terminalListOps.ts.
+ * (boardTaskOps.test.ts).
  *
  * Truth model: KV `vh.board-tasks.v1` holds ONE blob for the whole list,
  * version-checked. On a conflict (another device wrote first) the two lists

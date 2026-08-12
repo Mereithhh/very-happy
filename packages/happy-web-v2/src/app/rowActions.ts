@@ -65,16 +65,33 @@ export async function confirmDeleteSession(
   return true;
 }
 
-/** Delete a web terminal (confirm first): destroys its tmux session on the
- *  machine AND drops the registry record — removing the record alone used to
- *  orphan the tmux session forever. */
-export async function confirmDeleteTerminal(machineId: string, terminalId: string): Promise<void> {
+/** Delete a web terminal (confirm first): kills its tmux session on the
+ *  machine; the daemon's next push confirms the deletion by absence, and the
+ *  optimistic overlay hides the row meanwhile.
+ *
+ *  `onConfirmed` runs BEFORE the kill and must navigate away when the deleted
+ *  terminal is the open one: a still-mounted terminal screen re-opens the id
+ *  on its next catch-up (and a refresh on its URL re-mounts it), which used to
+ *  recreate the killed tmux session — the "terminal won't delete" bug.
+ *
+ *  A failed kill (machine offline / RPC error) is surfaced, not swallowed:
+ *  hiding the row anyway would be a lie the machine's push immediately undoes. */
+export async function confirmDeleteTerminal(
+  machineId: string,
+  terminalId: string,
+  onConfirmed?: () => void,
+): Promise<void> {
   const ok = await Modal.confirm(t('terminal.deleteTitle'), t('terminal.deleteMessage'), {
     confirmText: t('common.delete'),
     destructive: true,
   });
   if (!ok) return;
-  await machineKillTerminal(machineId, terminalId);
+  onConfirmed?.();
+  const killed = await machineKillTerminal(machineId, terminalId);
+  if (!killed) {
+    Modal.alert(t('common.error'), t('sessionInfo.failedToKillSession'));
+    return;
+  }
   useTerminalSessions.getState().remove(terminalId);
 }
 

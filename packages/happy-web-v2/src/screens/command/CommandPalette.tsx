@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { activeTerminals } from '@/sync/terminalListOps';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
@@ -193,8 +192,8 @@ export function CommandPalette() {
       });
     }
 
-    // Terminals (nav) — activeTerminals: deletion tombstones aren't targets
-    for (const term of activeTerminals(terminals)) {
+    // Terminals (nav)
+    for (const term of terminals) {
       const sub = term.machineName;
       out.push({
         key: `terminal:${term.id}`,

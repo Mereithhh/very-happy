@@ -104,4 +104,42 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // signature gate means none of them were identical repeats.
         expect(pushes.length).toBeGreaterThanOrEqual(3);
     }, 60_000);
+
+    it('attach-only opens never resurrect a killed terminal (the delete-resurrection bug)', async () => {
+        const TID2 = 'trkgone1';
+        mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
+        await waitFor(
+            () => pushes.some((l) => l.some((t) => t.id === TID2)),
+            15_000, `open() membership push for ${TID2}`,
+        );
+        mgr.killSession(TID2);
+        await waitFor(
+            () => pushes[pushes.length - 1]?.every((t) => t.id !== TID2),
+            15_000, 'kill push (absence)',
+        );
+
+        // A lingering screen's catch-up (`resub`) and any attach-only open must
+        // FAIL — with create-or-attach they used to recreate `vh-<id>` and the
+        // push re-adopted the "deleted" terminal everywhere.
+        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, resub: true }))
+            .toThrow('terminal-gone');
+        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, attachOnly: true }))
+            .toThrow('terminal-gone');
+        expect(spawnSync('tmux', ['has-session', '-t', `=vh-${TID2}:`], { stdio: 'ignore' }).status).not.toBe(0);
+
+        // Attach-only DOES attach when the tmux session exists without a live
+        // pty (daemon restart / idle-reaped pty): create one out-of-band.
+        const TID3 = 'trkext1';
+        expect(spawnSync('tmux', ['new-session', '-d', '-s', `vh-${TID3}`], { stdio: 'ignore' }).status).toBe(0);
+        const attached = mgr.open({ terminalId: TID3, cols: 80, rows: 24, cwd: dir, attachOnly: true });
+        expect(attached.terminalId).toBe(TID3);
+        expect(attached.tmuxSession).toBe(`vh-${TID3}`);
+        mgr.killSession(TID3);
+
+        // Legacy compat: an open WITHOUT the flags keeps create-or-attach
+        // (old clients still create through the same RPC).
+        const recreated = mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
+        expect(recreated.terminalId).toBe(TID2);
+        mgr.killSession(TID2);
+    }, 60_000);
 });

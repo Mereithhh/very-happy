@@ -1,9 +1,8 @@
 /**
- * Pure operations for the PUSHED terminal list — the daemon-driven model that
- * replaces per-client `list-terminals` polling for new daemons. No zustand /
- * network imports so every rule here is unit-testable.
+ * Pure operations for the daemon-pushed terminal list. No zustand / network
+ * imports so every rule here is unit-testable.
  *
- * Truth model: a new daemon tracks its own tmux `vh-*` list (membership,
+ * Truth model: the daemon tracks its own tmux `vh-*` list (membership,
  * titles, agent states, activity) and writes each CHANGE into
  * `daemonState.webTerminals`. The server persists daemonState and broadcasts
  * `update-machine`, so:
@@ -12,14 +11,17 @@
  *   - offline machines: the server's persisted daemonState still carries the
  *     last list — display works with zero client-side storage.
  *
+ * This is the ONLY lane since the legacy poll+KV path was retired (2026-08):
+ * the web requires a push-capable daemon (>= 0.2.27). A machine whose daemon
+ * predates that simply shows no terminals (see the trust rule below).
+ *
  * Trust rule (feature detection + downgrade safety): the snapshot counts only
  * when `updatedAt >= startedAt`, i.e. it was written by the CURRENT daemon
  * run. New daemons stamp both with the same clock reading in their connect
  * write, so trust never flaps across reconnects. A daemon DOWNGRADED to a
  * pre-push version spreads the stale field forward (`{...state}`) but bumps
- * `startedAt` without restamping — the rule fails and the client falls back
- * to the legacy poll+KV path for that machine. Old daemons never have the
- * field at all.
+ * `startedAt` without restamping — the rule fails and the machine's terminals
+ * are not rendered (stale data must not masquerade as live).
  *
  * Optimistic overlay: pushes round-trip through the daemon (~RPC + push), so
  * local mutations render immediately via a small overlay that the next
@@ -30,12 +32,23 @@
  *   - renames: the new title, shown until the push carries it back or the TTL
  *     expires (rename never landed — honest revert);
  *   - removed: a killed terminal hidden until the push confirms its absence
- *     or the TTL expires (kill never landed — the row honestly returns; this
- *     intentionally differs from the legacy tombstone model, which hid a
- *     terminal forever even when the kill RPC never reached the machine).
+ *     or the TTL expires (kill never landed — the row honestly returns, so a
+ *     failed kill can never hide a live terminal forever).
  */
 import type { MachineTerminal } from '@/sync/ops';
-import type { TerminalSession } from '@/sync/terminalListOps';
+
+/** One rendered terminal row (derived from a push or the optimistic overlay). */
+export interface TerminalSession {
+  id: string; // tmux session = vh-<id>, also the relay terminalId
+  machineId: string;
+  machineName: string;
+  title: string;
+  /** Titled (manual rename or daemon auto-title): the pushed @vh_title set. */
+  manual?: boolean;
+  createdAt: number;
+  /** Last known activity (pushed tmux session_activity, or creation). */
+  updatedAt?: number;
+}
 
 /** A trusted webTerminals snapshot read out of a machine's daemonState. */
 export interface PushedSnapshot {
@@ -69,9 +82,10 @@ export const REMOVE_OVERLAY_TTL_MS = 30_000;
 
 /**
  * Read a machine's daemonState into a trusted snapshot, or null when the
- * machine must be handled by the legacy poll+KV path. See the module header
- * for the trust rule. Tolerant of any daemonState shape (it's untyped JSON
- * from the wire): malformed items are dropped, a malformed container is null.
+ * machine has none (old daemon, downgraded daemon, malformed state). See the
+ * module header for the trust rule. Tolerant of any daemonState shape (it's
+ * untyped JSON from the wire): malformed items are dropped, a malformed
+ * container is null.
  */
 export function trustedWebTerminals(daemonState: any): PushedSnapshot | null {
   const wt = daemonState?.webTerminals;
@@ -84,27 +98,21 @@ export function trustedWebTerminals(daemonState: any): PushedSnapshot | null {
   return { updatedAt: wt.updatedAt, terminals };
 }
 
-/**
- * Feature-detect partition for the sync loop: machines with a trusted
- * snapshot are PUSH-fed; machines that are online WITHOUT one keep the legacy
- * 10s poll (old or downgraded daemons). Offline machines without a snapshot
- * are neither (their KV records remain the only display source).
- */
-export function partitionMachinesForSync(
-  machines: Array<{ id: string; active: boolean; daemonState: any }>,
-): { pushed: Array<{ id: string; snapshot: PushedSnapshot }>; pollIds: string[] } {
+/** Every machine's trusted snapshot, for the sync loop. Machines without one
+ *  (old/downgraded daemons) are simply absent — nothing is rendered for them. */
+export function pushedMachineSnapshots(
+  machines: Array<{ id: string; daemonState: any }>,
+): Array<{ id: string; snapshot: PushedSnapshot }> {
   const pushed: Array<{ id: string; snapshot: PushedSnapshot }> = [];
-  const pollIds: string[] = [];
   for (const m of machines) {
     const snapshot = trustedWebTerminals(m.daemonState);
     if (snapshot) pushed.push({ id: m.id, snapshot });
-    else if (m.active) pollIds.push(m.id);
   }
-  return { pushed, pollIds };
+  return pushed;
 }
 
-/** Map one pushed terminal into the store's row shape. Same title fallback
- *  and `manual` semantics as legacy orphan adoption (terminalListOps). */
+/** Map one pushed terminal into the store's row shape. An empty daemon title
+ *  falls back to the machine name; a set title marks the row `manual`. */
 function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): TerminalSession {
   const title = (t.title ?? '').trim();
   return {
@@ -120,15 +128,12 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
 
 /**
  * Compose the single list consumers render:
- *   1. optimistic creations (newest, mirroring legacy create()'s prepend),
+ *   1. optimistic creations (newest, prepended — a just-created terminal shows
+ *      immediately even before its machine's first push arrives),
  *   2. pushed rows per machine (created-desc, machines in stable id order),
- *      with rename/remove overlays applied,
- *   3. legacy KV rows for machines WITHOUT a push (old daemons + offline
- *      machines that never pushed) — tombstones ride along untouched and are
- *      hidden by activeTerminals() at the consumers, exactly as before.
+ *      with rename/remove overlays applied.
  */
 export function composeTerminalList(
-  kv: TerminalSession[],
   pushes: Record<string, MachinePush>,
   overlay: PushOverlay,
   now: number,
@@ -152,16 +157,14 @@ export function composeTerminalList(
     }
   }
   const created = overlay.created.filter(
-    (c) => pushes[c.machineId] && !pushedIds.has(c.id) && now - c.createdAt <= CREATE_OVERLAY_TTL_MS,
+    (c) => !pushedIds.has(c.id) && now - c.createdAt <= CREATE_OVERLAY_TTL_MS,
   );
-  const legacy = kv.filter((t) => !pushes[t.machineId]);
-  return [...created, ...rows, ...legacy];
+  return [...created, ...rows];
 }
 
 /**
  * Drop overlay entries the latest pushes have confirmed (or that expired):
- *   - created: id appeared in a push, or TTL passed, or its machine fell back
- *     to the legacy path (the KV record — if any — takes over there);
+ *   - created: id appeared in a push, or TTL passed;
  *   - renames: the pushed title caught up, or TTL passed, or the terminal is
  *     gone from the pushes;
  *   - removed: the id vanished from the pushes (kill confirmed) or TTL passed.
@@ -178,7 +181,7 @@ export function pruneOverlay(
   }
 
   const created = overlay.created.filter(
-    (c) => pushes[c.machineId] && !byId.has(c.id) && now - c.createdAt <= CREATE_OVERLAY_TTL_MS,
+    (c) => !byId.has(c.id) && now - c.createdAt <= CREATE_OVERLAY_TTL_MS,
   );
 
   const renames: PushOverlay['renames'] = {};
