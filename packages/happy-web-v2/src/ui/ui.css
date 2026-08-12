@@ -424,3 +424,61 @@
 .vh-toast--info {
   border-left-color: var(--text-faint);
 }
+
+/* copy button (CopyButton.tsx) — chat-wide copy affordance */
+.vh-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast),
+    opacity var(--motion-fast);
+}
+.vh-copy:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+/* touch: the chip is ~20px tall — give it a real tap target */
+@media (pointer: coarse) {
+  .vh-copy {
+    padding: 8px 10px;
+  }
+}
+
+/* overlay variant — floats top-right inside a .vh-copyhost (position:relative).
+ * Hover-revealed on fine pointers; always visible (dimmed) on coarse. */
+.vh-copyhost {
+  position: relative;
+}
+.vh-copy--overlay {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.vh-copy--overlay:hover {
+  background: var(--bg-3);
+}
+@media (hover: hover) and (pointer: fine) {
+  .vh-copy--overlay {
+    opacity: 0;
+  }
+  .vh-copyhost:hover .vh-copy--overlay,
+  .vh-copy--overlay:focus-visible {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .vh-copy--overlay {
+    opacity: 0.75;
+    padding: 6px;
+  }
+}

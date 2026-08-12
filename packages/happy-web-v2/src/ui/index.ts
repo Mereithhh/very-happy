@@ -8,6 +8,7 @@ export { Badge, Chip } from './Badge';
 export { EmptyState } from './EmptyState';
 export { Item, ItemGroup, ItemList } from './Item';
 export { ToastProvider, useToast, toast } from './Toast';
+export { CopyButton } from './CopyButton';
 export { CyberMark } from './CyberMark';
 export { TagChip, TagOverflowChip } from './TagChip';
 export { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from './Menu';

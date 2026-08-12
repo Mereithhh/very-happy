@@ -1,8 +1,11 @@
 /**
  * CommandView — a shell command and its captured output, terminal-styled.
  * stdout is capped with max-height + vertical scroll; long lines scroll
- * horizontally; everything is monospace.
+ * horizontally; everything is monospace. Both the command line and the
+ * output area carry a copy overlay (raw text, not the clipped view).
  */
+import { CopyButton } from '@/ui/CopyButton';
+import { commandOutputText } from './toolInfo';
 import './command.css';
 
 export function CommandView({
@@ -19,15 +22,21 @@ export function CommandView({
     const hasOutput = !!(stdout?.trim() || stderr?.trim() || error?.trim());
     return (
         <div className="cmd">
-            <div className="cmd-line">
-                <span className="cmd-prompt">$</span>
-                <span className="cmd-cmd">{command}</span>
+            <div className="vh-copyhost">
+                <div className="cmd-line">
+                    <span className="cmd-prompt">$</span>
+                    <span className="cmd-cmd">{command}</span>
+                </div>
+                <CopyButton text={command} className="vh-copy--overlay" />
             </div>
             {hasOutput && (
-                <div className="cmd-out">
-                    {stdout?.trim() ? <pre className="cmd-stream">{stdout}</pre> : null}
-                    {stderr?.trim() ? <pre className="cmd-stream cmd-stream--err">{stderr}</pre> : null}
-                    {error?.trim() ? <pre className="cmd-stream cmd-stream--err">{error}</pre> : null}
+                <div className="vh-copyhost">
+                    <div className="cmd-out">
+                        {stdout?.trim() ? <pre className="cmd-stream">{stdout}</pre> : null}
+                        {stderr?.trim() ? <pre className="cmd-stream cmd-stream--err">{stderr}</pre> : null}
+                        {error?.trim() ? <pre className="cmd-stream cmd-stream--err">{error}</pre> : null}
+                    </div>
+                    <CopyButton text={() => commandOutputText({ stdout, stderr, error })} className="vh-copy--overlay" />
                 </div>
             )}
         </div>

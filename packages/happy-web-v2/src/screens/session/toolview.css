@@ -78,6 +78,11 @@
 .tv-query-in {
   color: var(--text-faint);
 }
+/* output block: relative host for the copy overlay (the <pre> itself is the
+ * scroll container, so the button must sit on a wrapper to stay pinned) */
+.tv-out {
+  min-width: 0;
+}
 .tv-results {
   margin: 0;
   padding: var(--sp-2) var(--sp-3);

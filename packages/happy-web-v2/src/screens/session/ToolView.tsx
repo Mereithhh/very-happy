@@ -9,6 +9,7 @@ import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
+import { CopyButton } from '@/ui/CopyButton';
 import { trimIdent } from '@/utils/trimIdent';
 import { CommandView } from './CommandView';
 import { CodeView } from './CodeView';
@@ -31,6 +32,17 @@ function Section({ label, children, defaultOpen = true }: { label: string; child
                 <span>{label}</span>
             </button>
             {open && <div className="tv-section-body">{children}</div>}
+        </div>
+    );
+}
+
+// Tool output text block with a copy overlay. Copies the RAW text passed in —
+// the same full string resultToText() produced, never a clipped rendering.
+function OutputText({ text }: { text: string }) {
+    return (
+        <div className="tv-out vh-copyhost">
+            <pre className="tv-results">{text}</pre>
+            <CopyButton text={text} className="vh-copy--overlay" />
         </div>
     );
 }
@@ -98,7 +110,7 @@ function ReadView({ tool }: { tool: ToolCall }) {
     if (content == null || content.trim() === '') {
         return filePath ? <div className="tv-path">{filePath}</div> : <DefaultView tool={tool} />;
     }
-    return <CodeView code={content} lang={langForPath(filePath)} copyable={false} showLineNumbers />;
+    return <CodeView code={content} lang={langForPath(filePath)} showLineNumbers />;
 }
 
 // ── NotebookEdit ──────────────────────────────────────────────────────────────
@@ -147,7 +159,7 @@ function SearchView({ tool }: { tool: ToolCall }) {
                 <span className="tv-query-text">{pattern ?? path ?? tool.name}</span>
                 {pattern && path && <span className="tv-query-in">{path}</span>}
             </div>
-            {out.trim() && <pre className="tv-results">{out}</pre>}
+            {out.trim() && <OutputText text={out} />}
         </div>
     );
 }
@@ -171,7 +183,7 @@ function TaskView({ message }: { message: ToolCallMessage }) {
             {prompt && <div className="tv-task-prompt">{prompt}</div>}
             {out.trim() && (
                 <Section label={t('tools.fullView.output')} defaultOpen={false}>
-                    <pre className="tv-results">{out}</pre>
+                    <OutputText text={out} />
                 </Section>
             )}
         </div>
@@ -193,7 +205,7 @@ function WebView({ tool }: { tool: ToolCall }) {
                     <span className="tv-query-text">{query ?? tool.name}</span>
                 )}
             </div>
-            {out.trim() && <pre className="tv-results">{out}</pre>}
+            {out.trim() && <OutputText text={out} />}
         </div>
     );
 }
@@ -211,16 +223,16 @@ function DefaultView({ tool }: { tool: ToolCall }) {
         <div className="tv-stack">
             {hasInput && (
                 <Section label={t('tools.fullView.inputParams')} defaultOpen={!out}>
-                    <CodeView code={prettyInput(tool.input)} lang="json" copyable={false} />
+                    <CodeView code={prettyInput(tool.input)} lang="json" />
                 </Section>
             )}
             {error && <div className="tg-error">{error}</div>}
             {out && !error && (
                 <Section label={t('tools.fullView.output')} defaultOpen>
                     {outIsJson ? (
-                        <CodeView code={out} lang="json" copyable={false} />
+                        <CodeView code={out} lang="json" />
                     ) : (
-                        <pre className="tv-results">{out}</pre>
+                        <OutputText text={out} />
                     )}
                 </Section>
             )}

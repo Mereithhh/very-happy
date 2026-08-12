@@ -18,24 +18,16 @@
   color: var(--text-faint);
   text-transform: lowercase;
 }
-.cv-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-11);
-  color: var(--text-dim);
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.cv-copy:hover {
-  background: var(--bg-3);
-  color: var(--text);
-}
-/* touch: the copy chip is ~20px tall — give it a real tap target */
-@media (pointer: coarse) {
-  .cv-copy {
-    padding: 8px 10px;
+/* base chip styles come from .vh-copy (ui.css); here only the reveal policy:
+ * fine pointer — appears when hovering the code block (or when focused);
+ * coarse pointer — always visible (small persistent tap target). */
+@media (hover: hover) and (pointer: fine) {
+  .cv .cv-copy {
+    opacity: 0;
+  }
+  .cv:hover .cv-copy,
+  .cv-copy:focus-visible {
+    opacity: 1;
   }
 }
 .cv-pre {

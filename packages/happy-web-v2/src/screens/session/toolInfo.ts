@@ -142,6 +142,21 @@ export function resultToText(result: unknown): string {
     return String(result);
 }
 
+/**
+ * Combined raw command output (stdout + stderr + error) for copy-to-clipboard.
+ * Mirrors the order CommandView renders the streams in; whitespace-only
+ * streams are skipped so copying never yields stray blank blocks.
+ */
+export function commandOutputText(parts: {
+    stdout?: string | null;
+    stderr?: string | null;
+    error?: string | null;
+}): string {
+    return [parts.stdout, parts.stderr, parts.error]
+        .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+        .join('\n');
+}
+
 /** Strip an `mcp__server__tool` name into a readable `{ server, tool }`. */
 export function parseMcpName(name: string): { server: string; tool: string } | null {
     if (!name.startsWith('mcp__')) return null;

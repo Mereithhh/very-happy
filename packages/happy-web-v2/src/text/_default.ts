@@ -227,7 +227,7 @@ export const en = {
         showLineNumbersInToolViews: 'Show Line Numbers in Tool Views',
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
         wrapLinesInDiffs: 'Wrap Lines in Diffs',
-        wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
+        wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views (touch devices; desktop always scrolls)',
         diffStyle: 'Diff View',
         diffStyleDescription: 'Show diffs as a single column (unified) or side-by-side (split). Split view is web-only.',
         diffStyleOptions: {
@@ -1224,6 +1224,7 @@ export const en = {
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `Switched to ${mode} mode`,
         unknownEvent: 'Unknown event',
+        copyMessage: 'Copy message',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
     },
