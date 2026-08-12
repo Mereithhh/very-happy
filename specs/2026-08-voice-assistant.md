@@ -1,6 +1,6 @@
 # 语音助手第二形态（Voice Assistant / 调度中心）
 
-> 状态：Final
+> 状态：Shipped（实现合并 `ab2eaa87`/CLI `3f5e5f8c` 后 merge/web `42cc8290`/回扫修复 `f787b974`；真机验收 V-022~026 待清）
 > 日期：2026-08-13 ｜ 关联 backlog：B-051 ｜ 出处：Owner draft 设想（/goal 2026-08-13）
 > 定稿依据：代码摸底（Explore agent 六项）+ 业界调研（pipecat/LiveKit/OpenAI
 > Realtime/ElevenLabs 2025-26 现状/OpenClaw 调度/Letta 记忆），两报告结论收敛。
