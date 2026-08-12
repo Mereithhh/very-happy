@@ -74,9 +74,18 @@ export const SettingsSchema = z.object({
         path: z.string(),
         label: z.string().optional(),
     })).describe('Saved working-directory presets for new sessions'),
-    lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
-    lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
-    lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
+    // Legacy "remember last selection" fields. Kept in the schema for wire
+    // compatibility with old clients/stored blobs, but deliberately NOT read
+    // anywhere: new-session defaults come from agentDefaultOverrides (explicit
+    // settings) only, so a one-off model pick can never silently become the
+    // default for every future session.
+    lastUsedAgent: z.string().nullable().describe('Legacy; unused. New sessions use newSessionAgent'),
+    lastUsedPermissionMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
+    lastUsedModelMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
+    // Quick new-chat flow. Synced; NO zod .default() (ghost-pending footgun
+    // above) — defaults live in settingsDefaults.
+    newSessionAgent: z.string().describe('Agent used by quick new-chat creation (claude/codex/gemini/openclaw)'),
+    newSessionAlwaysAsk: z.boolean().describe('Always open the full options dialog on new chat instead of quick-creating'),
     agentDefaultOverrides: AgentDefaultOverridesSchema.describe('User-selected agent defaults. Missing values use code defaults and are not sent as agent metadata.'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
@@ -154,6 +163,8 @@ export const settingsDefaults: Settings = {
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
+    newSessionAgent: 'claude',
+    newSessionAlwaysAsk: false,
     agentDefaultOverrides: {},
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };

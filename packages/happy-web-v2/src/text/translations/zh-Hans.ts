@@ -517,6 +517,7 @@ export const zhHans: TranslationStructure = {
         groupSessions: '对话',
         groupTerminals: '终端',
         actionNewChat: '新建对话',
+        actionNewChatAdvanced: '新建对话（自定义选项）…',
         actionNewTerminal: '新建终端',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
@@ -629,6 +630,7 @@ export const zhHans: TranslationStructure = {
         eyebrow: '新会话',
         heading: '开始点什么',
         chatTitle: '新会话',
+        advancedTitle: '新会话（自定义选项）…',
         chatSubtitle: '在某台机器上让 Claude / Codex 开始干活',
         terminalTitle: '网页终端',
         terminalSubtitle: '在已连接的机器上打开一个终端（tmux）',
@@ -1417,6 +1419,11 @@ export const zhHans: TranslationStructure = {
         useCodeDefault: '使用默认',
         codeDefaultSuffix: '（默认）',
         noOverrides: '使用内置默认',
+        newSessions: '新建会话',
+        newSessionsFooter: '新会话会直接在你最近使用的机器和目录上创建。模型、投入档位与权限来自下方各智能体的默认设置——未显式设置时不会下发任何值，跟随机器上 CLI 自身的配置（例如 claude 里的 /model）。完整选项对话框仍可通过「新会话（自定义选项）」打开。',
+        defaultAgent: '默认智能体',
+        alwaysAsk: '总是询问',
+        alwaysAskDescription: '每次新建会话都打开完整选项对话框，而不是直接创建',
     },
 
     // Diagnostics / health screen.

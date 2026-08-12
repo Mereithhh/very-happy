@@ -509,6 +509,7 @@ export const en = {
         groupSessions: 'Chats',
         groupTerminals: 'Terminals',
         actionNewChat: 'New chat',
+        actionNewChatAdvanced: 'New chat (choose options)…',
         actionNewTerminal: 'New terminal',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
@@ -621,6 +622,9 @@ export const en = {
         eyebrow: 'NEW SESSION',
         heading: 'Start something',
         chatTitle: 'New chat',
+        // The full options dialog, reachable from the "+" menu / palette now
+        // that plain "New chat" quick-creates with the remembered defaults.
+        advancedTitle: 'New chat (choose options)…',
         chatSubtitle: 'Let Claude or Codex start working on a machine',
         terminalTitle: 'Web terminal',
         terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
@@ -1442,6 +1446,12 @@ export const en = {
         useCodeDefault: 'Use default',
         codeDefaultSuffix: ' (default)',
         noOverrides: 'Using built-in defaults',
+        // Quick new-chat group (sidebar "+" / palette direct creation).
+        newSessions: 'New chat creation',
+        newSessionsFooter: 'New chats are created instantly on your most recent machine and directory. Model, effort and permission come from the per-agent defaults below — with no override set, nothing is sent and the machine\'s own CLI configuration applies (e.g. /model in claude). The full dialog stays available under "New chat (choose options)".',
+        defaultAgent: 'Default agent',
+        alwaysAsk: 'Always ask',
+        alwaysAskDescription: 'Open the full options dialog on every new chat instead of creating instantly',
     },
 
     // Diagnostics / health screen.

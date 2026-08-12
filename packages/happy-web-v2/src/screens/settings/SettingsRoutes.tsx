@@ -44,6 +44,7 @@ import {
 import { sync } from '@/sync/sync';
 import {
   agentKeys,
+  normalizeAgentKey,
   type AgentKey,
   type AgentDefaultField,
   resolveAgentDefaultConfig,
@@ -564,11 +565,53 @@ function AgentField({
   );
 }
 
+/** Which agent the quick "+" flow spawns — same expand-in-place pattern as AgentField. */
+function NewSessionAgentField({
+  value,
+  onPick,
+}: {
+  value: AgentKey;
+  onPick: (agent: AgentKey) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Item
+        title={t('settingsAgents.defaultAgent')}
+        right={<span className="set-value">{value}</span>}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <div className="set-options">
+          {agentKeys.map((a) => (
+            <Item
+              key={a}
+              title={a}
+              selected={value === a}
+              right={value === a ? <Check size={16} /> : undefined}
+              onClick={() => {
+                onPick(a);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Agents() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
   const [overrides, setOverrides] = useSettingMutable('agentDefaultOverrides');
+  // Quick new-chat flow (sidebar "+" / palette): which agent it spawns, and
+  // whether to always open the full options dialog instead.
+  const [newSessionAgent, setNewSessionAgent] = useSettingMutable('newSessionAgent');
+  const [alwaysAsk, setAlwaysAsk] = useSettingMutable('newSessionAlwaysAsk');
+  const quickAgent = normalizeAgentKey(newSessionAgent);
 
   const translate = useCallback((k: any) => t(k), [t]);
 
@@ -600,6 +643,23 @@ function Agents() {
         }
       />
       <ItemList>
+        <ItemGroup
+          title={t('settingsAgents.newSessions')}
+          footer={t('settingsAgents.newSessionsFooter')}
+        >
+          <NewSessionAgentField value={quickAgent} onPick={(a) => setNewSessionAgent(a)} />
+          <Item
+            title={t('settingsAgents.alwaysAsk')}
+            subtitle={t('settingsAgents.alwaysAskDescription')}
+            right={
+              <Toggle
+                checked={alwaysAsk === true}
+                onChange={setAlwaysAsk}
+                label={t('settingsAgents.alwaysAsk')}
+              />
+            }
+          />
+        </ItemGroup>
         {agentKeys.map((agent) => {
           const resolved = resolveAgentDefaultConfig(overrides, agent);
           const codeDefaults = resolveAgentDefaultConfig({}, agent);

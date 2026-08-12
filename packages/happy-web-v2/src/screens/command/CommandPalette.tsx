@@ -14,6 +14,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { activeTerminals } from '@/sync/terminalListOps';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
+import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -136,6 +137,16 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewChat'),
       icon: <Plus size={16} />,
       haystack: (t('commandPalette.actionNewChat') as string).toLowerCase(),
+      // Quick create (same flow as the sidebar "+"): spawn directly, fall
+      // back to the full dialog only when the quick path can't decide.
+      run: () => void createChatOrConfigure(navigate, () => setShowNewSession(true)),
+    });
+    out.push({
+      key: 'action:new-chat-advanced',
+      group: 'actions',
+      title: t('commandPalette.actionNewChatAdvanced'),
+      icon: <MessageSquare size={16} />,
+      haystack: (t('commandPalette.actionNewChatAdvanced') as string).toLowerCase(),
       run: () => setShowNewSession(true),
     });
     if (currentSessionId) {
