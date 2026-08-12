@@ -21,6 +21,9 @@
 |---|---|---|---|---|---|
 | B-001 | daemon 重连后 setRPCHandlers 方法不重注册——根治后删除「server 部署后必须 vh-update」流程项 | bug | PROCESS.md §4 | todo | reconnect 时重注册 open-terminal 等 |
 | B-002 | `[happy]` 下发的任务在 task board 标注来源（P3） | feat | specs/2026-08-tanka-channel.md | todo | |
+| B-003 | RpcHandlerManager 把 handler 错误编码为 `{error}` 正常响应——多数 ops 封装当成功（假 ack 面） | bug | 车道退役批遗留观察 | todo | 已修 openTerminal/killTerminal 两处，其余 RPC 封装待收口 |
+| B-004 | 终端会话标签（@vh_tags 走 daemon 链路） | feat | 置顶标签批遗留 | todo | RenameModal 已留位 |
+| B-005 | 渲染层 ghostty-web spike 复查 | debt | 渲染调研定论 | todo | 触发条件：0.5.0 发版+IME issue 关闭+内存损坏关闭 |
 
 ## 近期完成
 
