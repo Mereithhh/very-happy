@@ -131,6 +131,11 @@
   overflow-y: auto;
   min-height: 0;
   padding-bottom: var(--sp-4);
+  /* anchor for the drag insertion line (.sb-drop-line) */
+  position: relative;
+}
+.sb-list.is-dragging {
+  user-select: none;
 }
 .sb-row {
   display: flex;
@@ -236,9 +241,6 @@
   padding-bottom: var(--sp-1);
   margin-bottom: var(--sp-1);
 }
-.sb-pin-sect.is-dragging {
-  user-select: none;
-}
 .sb-sect-head {
   display: flex;
   align-items: center;
@@ -249,17 +251,43 @@
   letter-spacing: 0.06em;
   color: var(--text-faint);
 }
-.sb-pin-item.is-drag {
+/* every row (pinned AND activity list) is a drag surface on fine pointers */
+.sb-drag-item.is-drag {
   position: relative;
   z-index: 1;
   background: var(--bg-2);
   box-shadow: inset 0 0 0 1px var(--line-2);
   opacity: 0.9;
 }
-/* the whole pinned row is the drag surface on fine pointers */
+/* pointer below the divider: releasing a pinned row here UNPINS it */
+.sb-drag-item.is-drop-out {
+  opacity: 0.55;
+  outline: 1px dashed var(--line-2);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+/* pointer below the divider with an unpinned row: releasing does nothing
+ * (the activity list has no manual slots) */
+.sb-drag-item.is-drop-none {
+  opacity: 0.55;
+  box-shadow: none;
+}
+/* insertion line: the manual-zone slot the drop would take. Accent = the
+ * live manipulation point (same family as selection/focus), not decoration. */
+.sb-drop-line {
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  height: 2px;
+  margin-top: -1px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 2;
+  pointer-events: none;
+}
 @media (pointer: fine) {
-  .sb-pin-sect.is-dragging .sb-row-main,
-  .sb-pin-sect.is-dragging .sb-row-menu {
+  .sb-list.is-dragging .sb-row-main,
+  .sb-list.is-dragging .sb-row-menu {
     cursor: grabbing;
   }
 }

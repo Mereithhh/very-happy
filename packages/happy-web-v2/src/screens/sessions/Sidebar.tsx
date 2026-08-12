@@ -18,7 +18,7 @@ import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
 import { RenameModal } from './RenameModal';
-import { splitPinnedRows, togglePin, movePin, reorderPin, prunePinned, type PinnedRow } from './sidebarPins';
+import { splitPinnedRows, togglePin, movePin, upsertPinAt, isPinned, prunePinned, type PinnedRow } from './sidebarPins';
 import { parseSidebarQuery, rowMatchesSidebarQuery, sidebarQueryIsEmpty } from './sidebarSearch';
 import './sidebar.css';
 
@@ -108,70 +108,112 @@ export function Sidebar() {
     return splitPinnedRows(rows, pinnedSetting ?? []);
   }, [rows, pinnedSetting, pinsApply]);
 
-  // Drag-reorder inside the pinned section (fine pointers only; coarse
-  // pointers use the row menu's move up/down instead). Pointer-event
-  // hand-rolled — same school as SidebarResizeHandle, no dnd dependency.
-  // While a drag is live, `dragKeys` is the optimistic order; the settings
-  // write happens once, on drop.
-  const pinSectRef = useRef<HTMLDivElement | null>(null);
+  // Drag ANY row (fine pointers only; coarse pointers use the row menu's
+  // pin / move up/down instead). Pointer-event hand-rolled — same school as
+  // SidebarResizeHandle, no dnd dependency.
+  //
+  // Semantics: picking a row up means "manual ordering". While dragging, an
+  // accent insertion line tracks the drop slot inside the MANUAL zone (the
+  // pinned section, plus the slot that creates it when empty). Dropping there
+  // upserts the row into `pinnedRows` (synced) at that position — for an
+  // unpinned row that both pins it and places it. Dropping below the divider
+  // is the automatic zone: a pinned row is unpinned (returns to activity
+  // order), an unpinned row is a no-op (activity order has no manual slots —
+  // there is nothing to store). The list stays put during the drag; only the
+  // line moves. The settings write happens once, on drop.
+  const listRef = useRef<HTMLDivElement | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
-  const [dragKeys, setDragKeys] = useState<string[] | null>(null);
-  const dragKeysRef = useRef<string[] | null>(null);
+  // pin = insertion index in the pinned section (counted over the OTHER
+  // pinned rows); auto = below the divider (unpin / no-op).
+  const [dropKind, setDropKind] = useState<'pin' | 'auto' | null>(null);
+  const [dropLineY, setDropLineY] = useState<number | null>(null);
 
-  const displayPinned = useMemo(() => {
-    if (!dragKeys) return pinnedRows;
-    const byKey = new Map(pinnedRows.map((r) => [r.key, r]));
-    return dragKeys.map((k) => byKey.get(k)).filter((r): r is Row => !!r);
-  }, [pinnedRows, dragKeys]);
-
-  const onPinPointerDown = (e: React.PointerEvent, key: string) => {
+  const onRowPointerDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0) return;
-    if (pinnedRows.length < 2) return;
-    // Search narrows the visible pinned subset — a drag there would reorder
-    // against a partial picture; disable it (the full list is one Esc away).
+    if (!pinsApply) return; // archived view: plain list, nothing to order
+    // Search narrows the visible rows — a drop position computed against a
+    // partial picture would surprise; disable (the full list is one Esc away).
     if (query.trim()) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
+    const list = listRef.current;
+    if (!list) return;
     const startY = e.clientY;
-    const state = { active: false };
-    const startOrder = pinnedRows.map((r) => r.key);
+    const state = { active: false, lastY: startY, raf: 0, drop: null as null | { kind: 'pin'; index: number } | { kind: 'auto' } };
+
+    // Recompute the drop target + insertion line from a pointer Y. Rows are
+    // measured from the live DOM ([data-dragkey], DOM order = pinned section
+    // then the activity list); the dragged row itself doesn't count.
+    const update = (clientY: number) => {
+      const els = Array.from(list.querySelectorAll<HTMLElement>('[data-dragkey]'));
+      const others = els.filter((el) => el.dataset.dragkey !== key);
+      const pinCount = others.filter((el) => el.dataset.pinnedrow === '1').length;
+      let idx = 0;
+      for (const el of others) {
+        const r = el.getBoundingClientRect();
+        if (clientY > r.top + r.height / 2) idx++;
+        else break; // DOM order — midpoints are monotone
+      }
+      const listRect = list.getBoundingClientRect();
+      const yOf = (el: HTMLElement, edge: 'top' | 'bottom') =>
+        (edge === 'top' ? el.getBoundingClientRect().top : el.getBoundingClientRect().bottom) -
+        listRect.top +
+        list.scrollTop;
+      if (idx <= pinCount) {
+        state.drop = { kind: 'pin', index: idx };
+        setDropKind('pin');
+        // line at the boundary the drop would insert into
+        if (idx < pinCount) setDropLineY(yOf(others[idx], 'top'));
+        else if (pinCount > 0) setDropLineY(yOf(others[pinCount - 1], 'bottom'));
+        // empty manual zone (no pins, or the dragged row is the only pin):
+        // the slot sits above the first row of the list
+        else setDropLineY(els[0] ? yOf(els[0], 'top') : 0);
+      } else {
+        state.drop = { kind: 'auto' };
+        setDropKind('auto');
+        setDropLineY(null);
+      }
+    };
+
+    // Edge auto-scroll: without it a row can't be dragged to the top of a
+    // list longer than the viewport. rAF loop while the drag is live.
+    const EDGE = 28;
+    const STEP = 7;
+    const autoScroll = () => {
+      if (!state.active) return;
+      const rect = list.getBoundingClientRect();
+      let d = 0;
+      if (state.lastY < rect.top + EDGE) d = -STEP;
+      else if (state.lastY > rect.bottom - EDGE) d = STEP;
+      if (d !== 0) {
+        const before = list.scrollTop;
+        list.scrollTop = before + d;
+        if (list.scrollTop !== before) update(state.lastY);
+      }
+      state.raf = requestAnimationFrame(autoScroll);
+    };
+
     const onMove = (ev: PointerEvent) => {
       if (!state.active) {
         if (Math.abs(ev.clientY - startY) < 6) return;
         state.active = true;
-        dragKeysRef.current = startOrder.slice();
         setDragKey(key);
-        setDragKeys(dragKeysRef.current);
+        state.raf = requestAnimationFrame(autoScroll);
       }
       ev.preventDefault();
-      const sect = pinSectRef.current;
-      const cur = dragKeysRef.current;
-      if (!sect || !cur) return;
-      const from = cur.indexOf(key);
-      if (from < 0) return;
-      // Insertion index = how many OTHER rows have their midpoint above the
-      // pointer (measured from the live DOM, which renders `cur`'s order).
-      let target = 0;
-      for (const el of Array.from(sect.querySelectorAll<HTMLElement>('[data-pinkey]'))) {
-        if (el.dataset.pinkey === key) continue;
-        const r = el.getBoundingClientRect();
-        if (ev.clientY > r.top + r.height / 2) target++;
-      }
-      if (target !== from) {
-        const next = reorderPin(cur.map((k) => ({ key: k })), from, target).map((p) => p.key);
-        dragKeysRef.current = next;
-        setDragKeys(next);
-      }
+      state.lastY = ev.clientY;
+      update(ev.clientY);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      const finalKeys = dragKeysRef.current;
-      dragKeysRef.current = null;
+      cancelAnimationFrame(state.raf);
+      const drop = state.drop;
       setDragKey(null);
-      setDragKeys(null);
-      if (!state.active || !finalKeys) return;
+      setDropKind(null);
+      setDropLineY(null);
+      if (!state.active) return;
       // The release lands on a row button — swallow the click it would
       // produce so a drag never doubles as "open this conversation".
       const swallow = (ce: MouseEvent) => {
@@ -180,12 +222,24 @@ export function Sidebar() {
       };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true } as any), 150);
-      // Commit: reordered visible keys first, then any stored entries whose
-      // rows aren't materialized right now (e.g. a machine's terminals not
-      // loaded yet) — a drag must not silently drop them.
-      const visible = new Set(finalKeys);
-      const carried = (pinnedSetting ?? []).filter((p) => !visible.has(p.key));
-      setPinnedSetting([...finalKeys.map((k) => ({ key: k })), ...carried]);
+      const cur = pinnedSetting ?? [];
+      if (drop?.kind === 'pin') {
+        // Commit: upsert into the VISIBLE pinned order at the drop index, then
+        // carry any stored entries whose rows aren't materialized right now
+        // (e.g. a machine's terminals not loaded yet) — a drag must not
+        // silently drop them.
+        const visibleKeys = pinnedRows.map((r) => r.key);
+        const visible = new Set(visibleKeys);
+        const next = upsertPinAt(visibleKeys.map((k) => ({ key: k })), key, drop.index);
+        const carried = cur.filter((p) => p.key !== key && !visible.has(p.key));
+        const changed =
+          next.length + carried.length !== cur.length ||
+          [...next, ...carried].some((p, i) => p.key !== cur[i]?.key);
+        if (changed) setPinnedSetting([...next, ...carried]);
+      } else if (drop?.kind === 'auto' && isPinned(cur, key)) {
+        // dragged out of the manual zone → unpin (row returns to activity order)
+        setPinnedSetting(cur.filter((p) => p.key !== key));
+      }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -234,7 +288,7 @@ export function Sidebar() {
   // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
   // jumps to that conversation. Mirrors the v1 power-user shortcut. Order =
   // what's on screen: pinned section first, then the activity list.
-  const displayRows = rows === null ? null : [...displayPinned, ...restRows];
+  const displayRows = rows === null ? null : [...pinnedRows, ...restRows];
   const rowsRef = useRef<Row[] | null>(displayRows);
   rowsRef.current = displayRows;
   useEffect(() => {
@@ -391,7 +445,7 @@ export function Sidebar() {
             the active/archived filter row read as clutter and was removed. */}
       </div>
 
-      <div className="sb-list">
+      <div className={`sb-list${dragKey ? ' is-dragging' : ''}`} ref={listRef}>
         {displayRows === null ? (
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
@@ -400,24 +454,31 @@ export function Sidebar() {
           <div className="sb-empty">{query ? t('sidebar.noResults') : t('sidebar.empty')}</div>
         ) : (
           <>
-            {displayPinned.length > 0 && (
-              <div className={`sb-pin-sect${dragKey ? ' is-dragging' : ''}`} ref={pinSectRef}>
+            {pinnedRows.length > 0 && (
+              <div className="sb-pin-sect">
                 <div className="sb-sect-head mono">
                   <Pin size={11} /> {t('sidebar.pinned')}
                 </div>
-                {displayPinned.map((r, i) => (
+                {pinnedRows.map((r, i) => (
                   <div
                     key={r.key}
-                    data-pinkey={r.key}
-                    className={`sb-pin-item${dragKey === r.key ? ' is-drag' : ''}`}
-                    onPointerDown={(e) => onPinPointerDown(e, r.key)}
+                    data-dragkey={r.key}
+                    data-pinnedrow="1"
+                    className={`sb-drag-item${
+                      dragKey === r.key
+                        ? dropKind === 'auto'
+                          ? ' is-drag is-drop-out' // released here → unpins
+                          : ' is-drag'
+                        : ''
+                    }`}
+                    onPointerDown={(e) => onRowPointerDown(e, r.key)}
                   >
                     <SidebarRow
                       row={r}
                       badge={cmdHeld && i < 9 ? i + 1 : undefined}
                       pinned
                       canMoveUp={i > 0}
-                      canMoveDown={i < displayPinned.length - 1}
+                      canMoveDown={i < pinnedRows.length - 1}
                       onTogglePin={() => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key))}
                       onMovePin={(dir) => setPinnedSetting(movePin(pinnedSetting ?? [], r.key, dir))}
                       onRenameRequest={() => setRenameTarget(r)}
@@ -427,19 +488,34 @@ export function Sidebar() {
               </div>
             )}
             {restRows.map((r, i) => {
-              const badgeIdx = displayPinned.length + i;
+              const badgeIdx = pinnedRows.length + i;
               return (
-                <SidebarRow
+                <div
                   key={r.key}
-                  row={r}
-                  badge={cmdHeld && badgeIdx < 9 ? badgeIdx + 1 : undefined}
-                  onTogglePin={
-                    pinsApply ? () => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key)) : undefined
-                  }
-                  onRenameRequest={() => setRenameTarget(r)}
-                />
+                  data-dragkey={r.key}
+                  className={`sb-drag-item${
+                    dragKey === r.key
+                      ? dropKind === 'auto'
+                        ? ' is-drag is-drop-none' // released here → no-op
+                        : ' is-drag'
+                      : ''
+                  }`}
+                  onPointerDown={(e) => onRowPointerDown(e, r.key)}
+                >
+                  <SidebarRow
+                    row={r}
+                    badge={cmdHeld && badgeIdx < 9 ? badgeIdx + 1 : undefined}
+                    onTogglePin={
+                      pinsApply ? () => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key)) : undefined
+                    }
+                    onRenameRequest={() => setRenameTarget(r)}
+                  />
+                </div>
               );
             })}
+            {dragKey && dropLineY != null && (
+              <div className="sb-drop-line" style={{ top: dropLineY }} aria-hidden />
+            )}
           </>
         )}
       </div>
