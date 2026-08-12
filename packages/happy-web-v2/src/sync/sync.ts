@@ -53,6 +53,8 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem, FeedBody } from './feedTypes';
 import { decryptNotificationEnc } from './encryption/notificationDecrypt';
 import { maybeShowNotification } from './webNotifications';
+import { maybePlayNotificationSound } from './notificationChime';
+import { soundEventOfNotifType } from './notificationInbox';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
@@ -2740,6 +2742,15 @@ class Sync {
             if (feedItem.body && feedItem.body.kind === 'notification') {
                 notifyUnreadMessage();
                 this.maybeRaiseWebNotification(feedItem.body);
+                // Chime (independent of the browser-Notification permission and
+                // of decryption — the type/session ride in plaintext). The gate
+                // handles prefs, quiet hours, self-view and the cross-lane
+                // cooldown against the board-transition producer.
+                maybePlayNotificationSound({
+                    event: soundEventOfNotifType(feedItem.body.notifType),
+                    key: feedItem.body.sessionId,
+                    href: `/session/${feedItem.body.sessionId}`,
+                });
             }
         }
     }

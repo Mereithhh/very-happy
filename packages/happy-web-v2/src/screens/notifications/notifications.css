@@ -1,0 +1,212 @@
+/* Notification center — bell badge + panel. Tokens only (Console discipline):
+ * panel = bg-1 floating surface (shadow-pop like dropdowns/toasts), rows step
+ * to bg-2 on hover. Unread markers use --danger like the board's attention
+ * badge (accent stays reserved for LIVE); category icons use the status
+ * ladder (warn = permission, danger = error), never accent-as-decoration. */
+
+.nc-bell-btn {
+  position: relative;
+}
+/* the collapsed desktop rail hosts a bell too — space it under the expander */
+.app-rail .nc-bell-btn {
+  margin-top: var(--sp-2);
+}
+.nc-bell-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent-ink);
+  background: var(--danger);
+  border-radius: var(--r-pill);
+}
+
+.nc-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1600; /* above app chrome (sidebar drop-line 1500), below toast (2000) and modal (4000) */
+}
+.nc-backdrop {
+  position: absolute;
+  inset: 0;
+  /* desktop: invisible click-away area (dropdown semantics, no dimming) */
+  background: transparent;
+}
+.nc-panel {
+  position: absolute;
+  top: var(--nc-top, 56px);
+  left: var(--nc-left, 8px);
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  max-height: min(520px, calc(100vh - var(--nc-top, 56px) - 16px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.nc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.nc-head-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+.nc-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.nc-head-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  transition: background var(--motion-fast);
+}
+.nc-head-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.nc-head-btn--icon {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+}
+/* the explicit close button only matters on the fullscreen (mobile) form */
+.nc-close {
+  display: none;
+}
+
+.nc-list {
+  overflow-y: auto;
+  padding: var(--sp-1);
+}
+.nc-empty {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-13);
+}
+
+.nc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background var(--motion-fast);
+}
+.nc-row:hover {
+  background: var(--bg-2);
+}
+.nc-row-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--bg-2);
+}
+.nc-cat-permission {
+  color: var(--warn);
+  background: var(--warn-dim);
+}
+.nc-cat-error {
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+.nc-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nc-row-title {
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nc-row.is-unread .nc-row-title {
+  color: var(--text);
+  font-weight: 600;
+}
+.nc-row-detail {
+  font-size: var(--fs-12);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nc-row-meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 1px;
+}
+.nc-row-time {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.nc-row-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+}
+
+/* mobile (< AppLayout's 980px two-pane breakpoint): fullscreen panel */
+@media (max-width: 979px) {
+  .nc-backdrop {
+    background: var(--scrim);
+  }
+  .nc-panel {
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nc-close {
+    display: inline-flex;
+  }
+  .nc-row {
+    padding: var(--sp-3) var(--sp-2);
+  }
+}
