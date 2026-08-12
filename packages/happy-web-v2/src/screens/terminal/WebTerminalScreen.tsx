@@ -32,6 +32,13 @@ import {
 } from './termFocusPolicy';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
+import {
+  createViewportStabilizer,
+  computeKbAvail,
+  pickTermTypography,
+  MOBILE_TYPO_BASE,
+  type TermTypography,
+} from './termKbViewport';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -381,8 +388,18 @@ export function WebTerminalScreen() {
     // Debounce refits to the next frame so a burst of resize ticks collapses into
     // one fit AFTER layout settles — otherwise the xterm canvas keeps its old
     // (too-tall) size mid-resize and the host shows a scrollbar instead of reflowing.
+    //
+    // Keyboard-animation gate: while the soft keyboard is sliding (kbStabilizer
+    // burst in flight), the per-frame maxHeight updates fire the ResizeObserver
+    // every frame — refitting on each one stacked 5-8 full reflow chains
+    // (fit → rows change → terminal-resize RPC → tmux reflow) inside one
+    // 250ms animation = the first-open judder. During the burst refits are
+    // suppressed; the stabilizer's onStable runs exactly one (kbStableFit,
+    // defined with the viewport handlers below). Desktop never has a burst.
     let fitRaf = 0;
+    const kbStabilizer = createViewportStabilizer({ onStable: () => kbStableFit() });
     const scheduleFit = () => {
+      if (kbStabilizer.pending()) return;
       if (fitRaf) cancelAnimationFrame(fitRaf);
       fitRaf = requestAnimationFrame(() => {
         fitRaf = 0;
@@ -827,9 +844,16 @@ export function WebTerminalScreen() {
     // window.visualViewport shrinks — so the keyboard covers the bottom of the
     // terminal (including the input line). Cap the host's height to the visible
     // viewport portion MINUS the bottom bars (key bar / line-input bar), so the
-    // bars themselves stay visible above the keyboard; the ResizeObserver →
-    // scheduleFit chain then shrinks the xterm grid (and tmux rows follow via
-    // terminal-resize).
+    // bars themselves stay visible above the keyboard.
+    //
+    // The keyboard open/close is an ANIMATION and vv fires resize on many of
+    // its frames. Per frame only CHEAP work runs: the CSS maxHeight tracks the
+    // keyboard (bars stay visible, no transition — a lagging host would leave
+    // the bars underneath the rising keyboard), plus the `is-kb` compaction
+    // class (pure CSS, slims the bars). The EXPENSIVE chain — FitAddon refit →
+    // rows change → terminal-resize RPC → tmux reflow — runs ONCE per burst in
+    // kbStableFit (scheduleFit is gated on the stabilizer above): that chain
+    // running on every animation frame was the first-open judder.
     //
     // Layout RESTORE runs on two channels, because the visualViewport one alone
     // is not reliable on iOS:
@@ -846,9 +870,51 @@ export function WebTerminalScreen() {
     // scroll offset behind after the keyboard closes.
     const vv = window.visualViewport;
     let kbLayoutActive = false; // we shrank the host for the keyboard
+    // Keyboard-state typography (coarse only): small viewports drop to compact
+    // type for 2-3 extra rows. Setting term.options re-measures cell metrics,
+    // so only write on an actual change.
+    const applyTypography = (typo: TermTypography): void => {
+      if (term.options.fontSize === typo.fontSize && term.options.lineHeight === typo.lineHeight) return;
+      term.options.fontSize = typo.fontSize;
+      term.options.lineHeight = typo.lineHeight;
+    };
+    const setKbClass = (on: boolean) => screenRef.current?.classList.toggle('is-kb', on);
+    // Per-frame (cheap): follow the keyboard with CSS only. Returns whether the
+    // keyboard layout is engaged (avail can be ≤60 mid-animation on tiny
+    // landscape viewports — then leave the layout alone, same as before).
+    const applyKbMaxHeight = (): void => {
+      if (!vv) return;
+      const avail = computeKbAvail({
+        vvHeight: vv.height,
+        vvOffsetTop: vv.offsetTop,
+        hostTop: host.getBoundingClientRect().top,
+        barsHeight: bottomBarsRef.current?.offsetHeight ?? 0,
+      });
+      if (avail > 60) {
+        kbLayoutActive = true;
+        host.style.maxHeight = `${avail}px`;
+      }
+    };
+    // Once per burst (expensive): final typography + final maxHeight (the
+    // is-kb bar slimming and a typography change both move the numbers), ONE
+    // fit + resize RPC, then pin the view to the bottom — rows just shrank,
+    // and in a normal-buffer shell xterm can be left mid-scrollback with the
+    // prompt (Claude's input line) below the fold. scrollToBottom is a no-op
+    // in the tmux alt buffer (no scrollback there).
+    function kbStableFit() {
+      if (disposed || !kbLayoutActive || !vv) return;
+      applyTypography(pickTermTypography(vv.height));
+      applyKbMaxHeight();
+      doFit();
+      term.scrollToBottom();
+    }
     const restoreLayout = () => {
+      kbStabilizer.cancel(); // close animation ends here; nothing left to fit
+      setKbClass(false); // before the guard: a tiny-viewport burst can set the
+      // class without ever engaging maxHeight (avail ≤ 60)
       if (!kbLayoutActive && !host.style.maxHeight) return;
       kbLayoutActive = false;
+      applyTypography(MOBILE_TYPO_BASE);
       host.style.maxHeight = '';
       scheduleFit();
       window.scrollTo({ top: 0 });
@@ -864,14 +930,9 @@ export function WebTerminalScreen() {
         restoreLayout();
         return;
       }
-      const hostTop = host.getBoundingClientRect().top;
-      const barsH = bottomBarsRef.current?.offsetHeight ?? 0;
-      const avail = Math.round(vv.offsetTop + vv.height - hostTop - barsH - 8);
-      if (avail > 60) {
-        kbLayoutActive = true;
-        host.style.maxHeight = `${avail}px`;
-        scheduleFit();
-      }
+      setKbClass(true);
+      applyKbMaxHeight();
+      kbStabilizer.sample(vv.height);
     };
     // Restore channel 2: focus left this screen's keyboard owners. Listened on
     // the screen root (capture-free — focusout bubbles) so it covers both the
@@ -1039,6 +1100,8 @@ export function WebTerminalScreen() {
         screenEl?.removeEventListener('focusout', onScreenFocusOut);
         for (const timer of settleTimers) clearTimeout(timer);
         settleTimers.clear();
+        kbStabilizer.cancel();
+        screenEl?.classList.remove('is-kb');
         restoreLayoutRef.current = null;
         mobileBridge?.dispose();
         mobileBridge = null;
