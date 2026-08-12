@@ -8,6 +8,7 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
+import { registerFsHandlers } from '../modules/fs/fsRpc';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
@@ -209,6 +210,10 @@ export class ApiMachineClient {
         });
 
         registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        // Machine-wide file browser (fs-list / fs-read) — lets the web browse
+        // directories and read file contents on this machine (terminal cwd,
+        // session path, anywhere). See modules/fs/fsRpc.ts for scope notes.
+        registerFsHandlers(this.rpcHandlerManager);
     }
 
     setRPCHandlers({

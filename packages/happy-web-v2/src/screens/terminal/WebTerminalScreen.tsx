@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput } from 'lucide-react';
+import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -25,6 +25,7 @@ import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
 import { TmuxHelpModal } from './TmuxHelpModal';
+import { FsBrowser } from '../files/FsBrowser';
 import {
   reduceTermFocus,
   initialTermFocusState,
@@ -143,6 +144,11 @@ export function WebTerminalScreen() {
   const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  // File browser drawer (fs-list / fs-read RPCs). Overlay, not an inline
+  // sidebar — opening it must NOT resize the terminal (a refit would trigger
+  // the whole rows-change → resize-RPC → tmux-reflow chain for nothing).
+  // Mounted only while open, so FsBrowser picks up the freshest pushed cwd.
+  const [filesOpen, setFilesOpen] = useState(false);
   // Mobile select-mode: touch has one gesture, and by default we spend it on
   // scrolling (drag → synthetic wheel). Toggling this hands the gesture back to
   // the browser so the OS long-press text selection works on the DOM-rendered
@@ -1248,6 +1254,14 @@ export function WebTerminalScreen() {
               onCancel={() => termRef.current?.focus()}
             />
           )}
+          <button
+            className={`sb-icon-btn${filesOpen ? ' is-active' : ''}`}
+            title={t('session.chat.files')}
+            aria-pressed={filesOpen}
+            onClick={() => setFilesOpen((v) => !v)}
+          >
+            <FolderOpen size={18} />
+          </button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup')}>
@@ -1351,6 +1365,30 @@ export function WebTerminalScreen() {
         </div>
       )}
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
+      {filesOpen && machineId && (
+        <>
+          {/* Scrim only materializes on narrow viewports (CSS) — desktop keeps
+              the terminal interactive next to the drawer, like sd-files. */}
+          <div className="term-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
+          <aside className="term-files">
+            <div className="term-files-head">
+              <span className="term-files-title">{t('session.chat.files')}</span>
+              <button
+                type="button"
+                className="sb-icon-btn"
+                onClick={() => setFilesOpen(false)}
+                aria-label={t('session.chat.closeFiles')}
+                title={t('session.chat.closeFiles')}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {/* Start where the terminal lives: the pushed tmux pane cwd; a
+                terminal without one (old daemon push) starts at home. */}
+            <FsBrowser machineId={machineId} initialPath={meta?.cwd || '~'} />
+          </aside>
+        </>
+      )}
     </div>
   );
 }

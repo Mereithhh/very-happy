@@ -45,6 +45,8 @@ export interface TerminalSession {
   title: string;
   /** Titled (manual rename or daemon auto-title): the pushed @vh_title set. */
   manual?: boolean;
+  /** Pushed tmux pane cwd — the file browser's starting directory. */
+  cwd?: string;
   createdAt: number;
   /** Last known activity (pushed tmux session_activity, or creation). */
   updatedAt?: number;
@@ -121,6 +123,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
     machineName,
     title: title || machineName || 'Terminal',
     manual: !!title,
+    cwd: t.cwd,
     createdAt: t.createdAt ?? 0,
     updatedAt: t.activityAt ?? t.createdAt,
   };

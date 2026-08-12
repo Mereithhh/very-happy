@@ -516,6 +516,24 @@ export const en = {
         },
     },
 
+    // Machine file browser (terminal drawer + session files panel "Browse")
+    fsBrowser: {
+        browseTab: 'Browse',
+        breadcrumbs: 'Path',
+        showHidden: 'Show hidden files',
+        hideHidden: 'Hide hidden files',
+        empty: 'Empty directory',
+        retry: 'Retry',
+        copyPath: 'Copy path',
+        loadFailed: 'Failed to load',
+        notFound: 'Path does not exist on this machine',
+        permissionDenied: 'Permission denied',
+        unsupported: 'Cannot browse files — the machine is offline, or its daemon is too old (upgrade very-happy-cli to ≥ 0.2.33)',
+        listTruncated: ({ count }: { count: number }) => `Large directory — showing the first ${count} entries`,
+        fileTruncated: ({ size }: { size: string }) => `Preview truncated — full file is ${size}`,
+        binaryFile: ({ size }: { size: string }) => `Binary file (${size}) — no preview`,
+    },
+
     commandPalette: {
         placeholder: 'Type a command or search...',
         // Categories

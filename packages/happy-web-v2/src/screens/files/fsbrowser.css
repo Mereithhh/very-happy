@@ -1,0 +1,223 @@
+/* FsBrowser — machine file browser (terminal drawer + session files panel).
+   Token-only styling per the Console design language (see tokens.css). */
+
+.fsb {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-1);
+}
+.fsb-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.fsb-crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  font-size: var(--fs-11);
+}
+.fsb-crumbs::-webkit-scrollbar {
+  display: none;
+}
+.fsb-crumb-seg {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.fsb-crumb {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  padding: 2px 3px;
+  border-radius: var(--r-sm);
+}
+.fsb-crumb:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.fsb-crumb.is-current {
+  color: var(--text);
+}
+.fsb-crumb-sep {
+  color: var(--text-faint);
+}
+.fsb-iconbtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.fsb-iconbtn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.fsb-iconbtn.is-active {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.fsb-spin {
+  animation: fsb-rot 0.9s linear infinite;
+}
+@keyframes fsb-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fsb-spin {
+    animation: none;
+  }
+}
+
+.fsb-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-1) 0;
+}
+.fsb-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  padding: 4px var(--sp-3);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.fsb-row:hover {
+  background: var(--bg-2);
+}
+.fsb-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.fsb-icon--dir {
+  color: var(--text-dim);
+}
+.fsb-name {
+  font-family: var(--font-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.fsb-meta {
+  flex: none;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  min-width: 52px;
+  text-align: right;
+}
+.fsb-meta--time {
+  min-width: 84px;
+}
+.fsb-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-3);
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+  text-align: center;
+}
+.fsb-retry {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  padding: 4px var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.fsb-retry:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.fsb-notice {
+  margin: var(--sp-1) var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-11);
+  color: var(--warn);
+  background: var(--warn-dim);
+  border-radius: var(--r-sm);
+}
+
+/* touch: bump hit targets (same rationale as files.css) */
+@media (pointer: coarse) {
+  .fsb-iconbtn {
+    width: 36px;
+    height: 36px;
+  }
+  .fsb-row {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+}
+
+/* ── Viewer ── */
+.fsb-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-1);
+}
+.fsb-viewer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.fsb-viewer-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.fsb-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-2);
+}
+.fsb-viewer-body--img {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.fsb-img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.fsb-caption {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
