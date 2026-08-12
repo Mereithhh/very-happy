@@ -1,7 +1,9 @@
 # 语音助手第二形态（Voice Assistant / 调度中心）
 
-> 状态：Draft
+> 状态：Final
 > 日期：2026-08-13 ｜ 关联 backlog：B-051 ｜ 出处：Owner draft 设想（/goal 2026-08-13）
+> 定稿依据：代码摸底（Explore agent 六项）+ 业界调研（pipecat/LiveKit/OpenAI
+> Realtime/ElevenLabs 2025-26 现状/OpenClaw 调度/Letta 记忆），两报告结论收敛。
 
 ## 背景
 
@@ -143,20 +145,38 @@ assistant session 就是一个普通 happy session（`agent: claude`），特殊
                 POST /v1/voice/tts（新）──► ElevenLabs TTS 流式 ──► <audio> 播放
 ```
 
-- **录音**：`MediaRecorder`，`audio/webm;codecs=opus` 优先、iOS Safari 回退
-  `audio/mp4`（`isTypeSupported` 探测）；按住说话用 Pointer Events
-  （`pointerdown/up/cancel` + `setPointerCapture`），压住 `contextmenu` 与
-  长按选择（`touch-action:none`、`user-select:none`）；<500ms 松手判误触丢弃。
+- **录音**（业界调研收敛的坑位清单，全部纳入验收）：`MediaRecorder` mime 按
+  `['audio/webm;codecs=opus','audio/mp4;codecs=mp4a.40.2','audio/mp4']`
+  `isTypeSupported` 探测（iOS Safari 18.4 前只有 mp4/AAC），没命中则省略
+  options；**回读 `recorder.mimeType` 随 Blob 上传**；`start()` try/catch。
+  每次按下**新建** MediaRecorder（iOS pause/resume 有空 dataavailable bug）；
+  录完 `track.stop()` 全释放（否则后续录音可能静音）。按住说话用 Pointer
+  Events（`pointerdown/up` + `setPointerCapture`，**`pointercancel` 必须当
+  取消处理**，漏掉=录音永不停止）；按钮 CSS 四件套 `touch-action:none;
+  user-select:none; -webkit-user-select:none; -webkit-touch-callout:none` +
+  `contextmenu` preventDefault；`visibilitychange`/`track.onmute` 一律当取消；
+  <500ms 松手判误触丢弃。
+- **STT**：现有 `/v1/voice/transcribe`，模型 `scribe_v1`→**`scribe_v2`**
+  （v1 官方已 deprecated；接口形状不变，webm/opus 直接吃）。
 - **TTS（新 server 端点，零新依赖，voiceRoutes 范式）**：
   - `POST /v1/voice/tts` `{text, voiceId?, modelId?}` → 裸 fetch ElevenLabs
-    `/v1/text-to-speech/{voiceId}/stream`（`eleven_turbo_v2_5`/multilingual，
-    调研定）→ 以 `audio/mpeg` 流式透传（Fastify `reply.send(stream)`）。
-    文本上限 ~2k chars（超长截断到句边界 + 前端提示）。
-  - `GET /v1/voice/tts/voices` → 代理 ElevenLabs voices 列表（name/preview），
-    给设置页音色选择用。
-- **播放与自动播放限制**：每轮 TTS 播放都发生在「按住说话」这个用户手势
-  之后的同一交互链上；首次进入 assistant 形态时用一次点击手势解锁
-  AudioContext/audio 元素（静音 play() 预热），iOS Safari 稳妥。
+    `/v1/text-to-speech/{voiceId}/stream`，默认模型 **`eleven_flash_v2_5`**
+    （turbo 系已废弃；flash ~75ms 支持中文）→ `audio/mpeg` 流式透传，
+    客户端断开 abort 上游。文本上限 2000 chars（400，截断策略在前端做）。
+    每账号 60 req/min 限流。无 key 返 501。
+  - `GET /v1/voice/tts/voices` → 代理 voices 列表（name/preview 瘦身），60s
+    内存缓存，给设置页音色选择用。
+  - Phase 2 备选已确认可行：ElevenLabs **single-use token**（15min 一次性，
+    `tts_websocket`/`realtime_scribe` 类型）让浏览器直连 WS、音频不过
+    server——与零新依赖约束咬合，压延迟时再上。
+- **播放与自动播放限制**（iOS 坑位清单）：进入 assistant 形态首次交互做一次
+  显式「启用语音」tap（挂 `click`/`touchend`，pointerdown 在 WebKit 不算完整
+  手势）：静音 wav data-URL 喂**常驻复用的 `<audio>` 元素** play 一次 +
+  `audioCtx.resume()` 双解锁。TTS 播放走 **AudioContext**（fetch 整段 mp3 →
+  `decodeAudioData` → BufferSource；录播共存时 `<audio>` 元素可能被路由到
+  听筒变「铁罐音」）；**不用 speechSynthesis**。页面加载后跑 unmute-ios-audio
+  手法（循环静音 `<audio>` 把会话变媒体播放），规避 iOS 硬件静音拨片静掉
+  Web Audio。Phase 1 整段 mp3 后播（回复短，可接受）；句级流水线是 Phase 2。
 - **播报策略**：只朗读 assistant 的**文本回复**（工具调用过程不读）；界面上
   等宽小字滚动显示工具活动（`session_spawn ✓` 之类），朗读与视觉分工。
   回复太长（>~600 chars）只朗读首段 + 提示「详情在屏幕上」。
@@ -187,9 +207,12 @@ assistant session 就是一个普通 happy session（`agent: claude`），特殊
 | 层 | 载体 | 读写方 |
 |---|---|---|
 | 工作记忆 | assistant session 上下文本身（+auto-compact） | Claude Code |
-| 个人记忆 | `~/.happy/assistant/memory/personal.md`（Owner symlink 到 agent-system context 即完成对应） | assistant 经 `memory_update` 或直接 Edit；随时更新 |
+| 个人记忆 | `~/.happy/assistant/memory/personal.md`（Owner symlink 到 agent-system context 即完成对应）——**硬字符上限 ~2K、带时间戳的事实条目、更新用改条目不追加**（Letta/MemGPT 收敛形态：index always-loaded, body on-demand） | assistant 经 `memory_update` 或直接 Edit；随时更新 |
 | 工作日志 | `~/.happy/assistant/memory/journal/YYYY-MM-DD.md` | assistant 追加；compact 前固化要点 |
 | 领域知识 | `~/code/github/skills`（已在机器上） | assistant 只读，grep 检索；CLAUDE.md 声明「可用但不推荐直接操作，优先派 session」 |
+
+写入纪律（进 CLAUDE.md 模板）：**default to no-op**——明确教什么时候不写
+记忆；语音场景一切重活异步（记忆整理不挡回复）。
 
 ### 5. 设置
 
