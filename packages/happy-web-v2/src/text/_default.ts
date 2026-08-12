@@ -1466,6 +1466,12 @@ export const en = {
         cliMissing: ({ cli }: { cli: string }) => `${cli} not found — remote sessions will fail`,
         cliHint: 'If a CLI is missing while the machine is online, make sure the daemon launches with the CLI on its PATH (e.g. ~/.local/bin).',
         never: 'Never',
+        developer: 'Developer',
+        developerFooter: 'Troubleshooting toggles for this device only. Leave off unless you are debugging.',
+        verboseLogging: 'Verbose network logging',
+        verboseLoggingDescription: 'Log all socket requests and responses',
+        consoleLogging: 'Console output',
+        consoleLoggingDescription: 'Enable console logging in production builds',
     },
 
 } as const;
