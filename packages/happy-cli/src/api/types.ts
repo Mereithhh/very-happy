@@ -363,6 +363,13 @@ export type Metadata = {
   parentSessionId?: string
   forkedFromMessageId?: string
   /**
+   * B-051: session variant. 'assistant' marks the machine's meta-agent
+   * (dispatcher / voice assistant) session — fixed cwd ~/.happy/assistant,
+   * singleton tag, assistant MCP tool surface. Absent on normal sessions;
+   * old clients ignore the field (plain TS metadata, no zod).
+   */
+  variant?: 'assistant' | string
+  /**
    * Task Board V2: latest LLM analysis of this session (boardAnalyzer).
    * Rides the normal metadata sync to every device; absent until the
    * daemon-local `boardLlm` opt-in produces a first verdict.
