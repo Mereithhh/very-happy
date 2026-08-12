@@ -16,6 +16,8 @@ import {
 import { installMobileInputBridge, toPtyText } from './mobileInputBridge';
 import { installImeStuckGuard } from './imeStuckGuard';
 import { TermInputBar } from './TermInputBar';
+import { TermPresetsMenu } from './TermPresetsMenu';
+import { presetPasteText } from './termPresetPaste';
 import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useIsDesktop } from '@/app/useMediaQuery';
@@ -1137,6 +1139,15 @@ export function WebTerminalScreen() {
     else tm.focus();
   };
 
+  // Prompt preset → terminal input. Same channel as quick commands (bracketed
+  // paste — never auto-executes; the user presses Enter to send), with the
+  // text normalized (see ./termPresetPaste) so a trailing newline can never
+  // double as an auto-submit on paste paths without bracketed paste.
+  const insertPreset = (text: string) => {
+    const paste = presetPasteText(text);
+    if (paste) runCommand(paste);
+  };
+
   const onRename = async () => {
     if (!tid) return;
     const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
@@ -1226,6 +1237,9 @@ export function WebTerminalScreen() {
               <TextSelect size={18} />
             </button>
           )}
+          {/* Prompt presets: desktop entry lives here; touch devices get the
+              key-bar entry instead (their keyboard affordances live there). */}
+          {!IS_COARSE_POINTER && <TermPresetsMenu variant="header" onPick={insertPreset} />}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup')}>
@@ -1291,6 +1305,7 @@ export function WebTerminalScreen() {
             >
               <TextCursorInput size={16} />
             </button>
+            <TermPresetsMenu variant="keybar" onPick={insertPreset} />
             <span className="term-keybar-sep" aria-hidden />
             <button
               type="button"

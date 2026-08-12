@@ -1043,6 +1043,8 @@ export const zhHans: TranslationStructure = {
         inputBarToggle: '输入行模式',
         inputBarPlaceholder: '输入命令 · 回车发送',
         inputBarSend: '发送',
+        presets: '提示词预设',
+        presetsTitle: '提示词预设',
     },
 
     modals: {
