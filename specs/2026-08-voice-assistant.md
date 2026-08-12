@@ -97,9 +97,18 @@ assistant session 就是一个普通 happy session（`agent: claude`），特殊
    `HAPPY_SESSION_VARIANT=assistant` env（复用 extraEnv 透传管道）通知被
    spawn 的 CLI 进程——runClaude 据此让 Happy MCP 注册管理工具面、给 session
    metadata 打 `variant:'assistant'` 标记（web 用它找到 assistant session）。
-3. **单例语义**：session 创建带固定 tag `vh-assistant-<machineId>`，吃 server
-   `@@unique([accountId, tag])` 去重——重复 spawn 幂等返回同一 session；web 侧
-   「新对话」= archive 旧的 + spawn 新的（新 tag 带时间戳），记忆在文件里不丢。
+3. **单例语义**（实现期修订：固定 tag 幂等在 dataKey 凭据下**不成立**——
+   `getOrCreateSession` 每次启动生成新 session key，而 server 对已存在 tag
+   保留首次 `dataEncryptionKey`，直接复用 tag 会 key 错位解不开）。实际机制为
+   daemon 三级单例：① 存活 assistant 进程 → 直接返回其 sessionId；
+   ② sessions.json 有历史 assistant → `HAPPY_RECONNECT_*` 带原 key 重连
+   （JSONL 尚在则 `--resume` 续上下文）；③ 全新 → fresh spawn + 固定 tag
+   `vh-assistant-<machineId>`。已知残余边缘：server 有旧 tag 行但本机
+   sessions.json 已丢 key（>14 天未用/清空 ~/.happy）时 fresh spawn 会命中
+   旧行解密错位——接受（重装场景，删旧 session 即恢复）。
+   web 侧「新对话」= archive 旧的 + spawn 新的，记忆在文件里不丢。
+   注意 `POST /v1/sessions/:id/archive` 语义是 `active=false`（仍可 resume），
+   不是完整 lifecycle archive——对「新对话」够用。
 
 **上下文 compact**：直接吃 Claude Code 自带 auto-compact；「新对话」按钮
 提供手动清零。CLAUDE.md 指导 assistant 在压缩前把要紧事写进 journal。
