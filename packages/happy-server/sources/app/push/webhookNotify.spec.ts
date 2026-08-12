@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
     WEBHOOK_TOKEN_PREFIX,
     buildWebhookPayload,
@@ -171,5 +171,50 @@ describe('buildWebhookPayload', () => {
     it('returns null for unmapped kinds', () => {
         expect(buildWebhookPayload({ body: 'x', data: { kind: 'error' } })).toBeNull();
         expect(buildWebhookPayload({ body: 'x', data: {} })).toBeNull();
+    });
+});
+
+describe('buildWebhookPayload session link', () => {
+    const originalWebUrl = process.env.HAPPY_WEB_URL;
+    afterEach(() => {
+        if (originalWebUrl === undefined) {
+            delete process.env.HAPPY_WEB_URL;
+        } else {
+            process.env.HAPPY_WEB_URL = originalWebUrl;
+        }
+    });
+
+    it('adds sessionId field and a parseable session trailer line', () => {
+        delete process.env.HAPPY_WEB_URL;
+        const p = buildWebhookPayload({
+            body: 'my-project',
+            data: { kind: 'done', sessionId: 'sess-abc-123', sessionTitle: 'my-project' },
+        });
+        expect(p!.sessionId).toBe('sess-abc-123');
+        const lines = p!.message.split('\n');
+        // The session trailer is the LAST line and its format is a contract
+        // with external dispatchers — keep `session: <id>` exact.
+        expect(lines[lines.length - 1]).toBe('session: sess-abc-123');
+        // No HAPPY_WEB_URL → no link line.
+        expect(p!.message).not.toContain('链接：');
+    });
+
+    it('adds a session URL line when HAPPY_WEB_URL is set (trailing slash trimmed)', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com/';
+        const p = buildWebhookPayload({
+            body: 'my-project',
+            data: { kind: 'permission', sessionId: 'sess-abc-123', tool: 'Bash' },
+        });
+        expect(p!.message).toContain('链接：https://happy.example.com/session/sess-abc-123');
+        const lines = p!.message.split('\n');
+        expect(lines[lines.length - 1]).toBe('session: sess-abc-123');
+    });
+
+    it('omits sessionId field and trailer when data has no sessionId', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com';
+        const p = buildWebhookPayload({ body: 'x', data: { kind: 'done' } });
+        expect(p!.sessionId).toBeUndefined();
+        expect(p!.message).not.toContain('session:');
+        expect(p!.message).not.toContain('链接：');
     });
 });
