@@ -286,17 +286,29 @@ export function buildWebhookPayload(push: {
  * quote-reply adapters route on it). Task-scoped notifications get a
  * `task: <id>` line; it sits BEFORE the session line so the session trailer
  * stays last.
+ *
+ * `link` is a web-app PATH (must start with '/', e.g. `/terminal/<machineId>
+ * ?tid=<terminalId>` from the daemon's web-terminal notifications): it is
+ * appended as a clickable `链接：<base><path>` line right after the message —
+ * only when HAPPY_WEB_URL is configured (same opt-in as the session link).
  */
 export function buildManualWebhookPayload(input: {
     title: string;
     message?: string;
     sessionId?: string;
     taskId?: string;
+    link?: string;
 }): WebhookPayload {
     const title = truncate(input.title.trim(), 200);
     const lines: string[] = [];
     const message = input.message?.trim();
     if (message) lines.push(truncate(message, 1000));
+
+    const link = input.link?.trim() || null;
+    if (link && link.startsWith('/')) {
+        const base = webhookWebUrlBase();
+        if (base) lines.push(`链接：${base}${link}`);
+    }
 
     const sessionId = input.sessionId?.trim() || null;
     const taskId = input.taskId?.trim() || null;

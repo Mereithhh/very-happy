@@ -58,6 +58,7 @@ import { logger } from '@/ui/logger';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { configuration } from '@/configuration';
+import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
 
 // ── Kill tombstones ──────────────────────────────────────────────────────────
 // A deleted terminal's id is remembered here so that a STALE CLIENT (an old
@@ -769,8 +770,19 @@ export class WebTerminalManager {
     private listKickTimer: ReturnType<typeof setTimeout> | null = null;
     private lastListSignature: string | null = null;
 
-    constructor(emit: EmitFn) {
+    // ── Agent-transition notifications ──────────────────────────────────────
+    // Every tick's agentState observations also feed a transition tracker
+    // (terminalNotify.ts): working→idle / working|idle→needs_input transitions
+    // — debounced, cooled down, eligibility-gated — surface through `onNotify`
+    // so the daemon can push a webhook notification for bare-tmux claude runs
+    // (the web-terminal counterpart of the session path's push-event). No
+    // callback ⇒ tracking is skipped entirely.
+    private readonly onNotify: ((n: TerminalNotification) => void) | null;
+    private notifyTracker = new TerminalNotifyTracker();
+
+    constructor(emit: EmitFn, onNotify?: (n: TerminalNotification) => void) {
         this.emit = emit;
+        this.onNotify = onNotify ?? null;
         // Periodically detach orphaned+idle ptys (detach only — tmux session lives).
         this.reaper = setInterval(() => this.reapIdle(), REAP_INTERVAL_MS);
         this.reaper.unref?.();
@@ -832,18 +844,40 @@ export class WebTerminalManager {
         this.listKickTimer.unref?.();
     }
 
-    /** One tracking tick: rebuild the list, compare signatures, fire on change. */
+    /** One tracking tick: rebuild the list, feed the notification tracker,
+     *  compare signatures, fire on change. The tracker is fed BEFORE the
+     *  signature short-circuit: stability confirmation needs the repeat
+     *  observations of an UNCHANGED list too. */
     private listTrackTick(): void {
         const cb = this.listChangedCb;
         if (!cb) return;
         try {
             const list = this.buildTerminalList();
+            this.trackNotifications(list);
             const sig = terminalListSignature(list);
             if (sig === this.lastListSignature) return;
             this.lastListSignature = sig;
             cb(list);
         } catch (e) {
             logger.debug(`[WEB TERMINAL] list track tick failed: ${e}`);
+        }
+    }
+
+    /** Feed this tick's agentState observations into the transition tracker
+     *  and surface any resulting notification events. Disappeared terminals
+     *  are pruned so per-terminal state can't leak. Never throws. */
+    private trackNotifications(list: TerminalListItem[]): void {
+        if (!this.onNotify) return;
+        const now = Date.now();
+        this.notifyTracker.prune(list.map((t) => t.id));
+        for (const item of list) {
+            const event = this.notifyTracker.observe(item.id, item.agentState, now);
+            if (!event) continue;
+            try {
+                this.onNotify({ terminalId: item.id, title: item.title || 'Terminal', event });
+            } catch (e) {
+                logger.debug(`[WEB TERMINAL] notify callback failed: ${e}`);
+            }
         }
     }
 
@@ -1261,6 +1295,8 @@ export class WebTerminalManager {
         // Tombstone the id so stale clients can't legacy-create it back.
         this.tombstones[terminalId] = Date.now();
         saveTombstones(this.tombstones);
+        // Drop its notification state — a killed terminal must never fire.
+        this.notifyTracker.remove(terminalId);
         logger.debug(`[WEB TERMINAL] killed session vh-${terminalId}`);
         // Deletion propagates by ABSENCE from the pushed list — refresh now so
         // every device converges without tombstone bookkeeping.

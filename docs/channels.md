@@ -53,6 +53,14 @@ permission request, or clarifying question — the server POSTs a small generic
 JSON to your endpoint. Designed for notify-gateway style receivers, but any
 HTTPS endpoint accepting the JSON works.
 
+Web terminals (bare tmux claude, no session channel) feed the same webhook:
+the daemon watches each terminal's agent state at list-track cadence and, on a
+stable working→idle / →needs_input transition (2-tick debounce, ≥60s
+per-terminal cooldown, only after the terminal has been seen working), POSTs
+`/v1/webhook/notify` with `event` + a `/terminal/<machineId>?tid=<id>` link —
+so the account's `events` toggles gate these exactly like session events.
+Terminal notifications carry no `session:` trailer (there is no session).
+
 ### Management API
 
 All three endpoints require the account bearer token
@@ -63,7 +71,7 @@ All three endpoints require the account bearer token
 | `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null}` |
 | `POST`   | `/v1/webhook` | `{"url": "...", "events": ["completed","permission"]}` | Create **or replace** (an account has at most one webhook). `events` optional; defaults to both. 400 with `{"error": "..."}` on invalid URL. |
 | `DELETE` | `/v1/webhook` | —                                               | Remove the webhook. |
-| `POST`   | `/v1/webhook/notify` | `{"title": "...", "message"?: "...", "sessionId"?: "...", "taskId"?: "..."}` | Manual notification: the server forwards `{title, message}` through the account's webhook (the web's "mark done" ✓ uses this — `✅ 已完成 · <名>`). Not gated by `events` (an explicit user action is always wanted). Returns `{"ok": true, "delivered": bool}`; `delivered:false` when no webhook is configured or delivery failed. Rate-limited per account (30/min → 429). `sessionId` adds the link line + `session: <id>` trailer; `taskId` adds a `task: <id>` line **before** the session trailer. |
+| `POST`   | `/v1/webhook/notify` | `{"title": "...", "message"?: "...", "sessionId"?: "...", "taskId"?: "...", "event"?: "completed"\|"permission", "link"?: "/<web path>"}` | Notification forwarder: the server pushes `{title, message}` through the account's webhook. Without `event` it is a MANUAL notification (the web's "mark done" ✓ uses this — `✅ 已完成 · <名>`), not gated by `events` (an explicit user action is always wanted). With `event` it is an AUTOMATIC one (the daemon's web-terminal agent-state notifications use this) and IS filtered by the webhook config's `events` — unsubscribed events return `delivered:false` without sending. Returns `{"ok": true, "delivered": bool}`; `delivered:false` when no webhook is configured, the event is unsubscribed, or delivery failed. Rate-limited per account (30/min → 429). `sessionId` adds the link line + `session: <id>` trailer; `taskId` adds a `task: <id>` line **before** the session trailer; `link` (a web-app path starting with `/`, ≤300 chars, e.g. `/terminal/<machineId>?tid=<terminalId>`) appends a `链接：<HAPPY_WEB_URL><link>` line right after the message (omitted when `HAPPY_WEB_URL` is unset). Old clients send neither new field and keep the legacy behavior. |
 
 Event categories:
 

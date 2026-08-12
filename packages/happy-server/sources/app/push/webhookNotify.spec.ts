@@ -283,6 +283,53 @@ describe('buildManualWebhookPayload', () => {
         const empty = buildManualWebhookPayload({ title: 't' });
         expect(empty.message).toBe('');
     });
+
+    it('appends a 链接 line for a web-app `link` path when HAPPY_WEB_URL is set', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com/';
+        const p = buildManualWebhookPayload({
+            title: '修 bug 的终端',
+            message: 'Claude 等待下一步指令',
+            link: '/terminal/m1?tid=abc123',
+        });
+        const lines = p.message.split('\n');
+        expect(lines[0]).toBe('Claude 等待下一步指令');
+        expect(lines[1]).toBe('链接：https://happy.example.com/terminal/m1?tid=abc123');
+        expect(p.sessionId).toBeUndefined();
+    });
+
+    it('omits the link line when HAPPY_WEB_URL is unset (no half-built URL)', () => {
+        delete process.env.HAPPY_WEB_URL;
+        const p = buildManualWebhookPayload({
+            title: 't',
+            message: 'm',
+            link: '/terminal/m1?tid=abc123',
+        });
+        expect(p.message).toBe('m');
+    });
+
+    it('ignores a non-path link (defense in depth behind the route schema)', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com';
+        const p = buildManualWebhookPayload({
+            title: 't',
+            message: 'm',
+            link: 'https://evil.example.com/phish',
+        });
+        expect(p.message).toBe('m');
+    });
+
+    it('keeps the session trailer LAST when both link and sessionId are present', () => {
+        process.env.HAPPY_WEB_URL = 'https://happy.example.com';
+        const p = buildManualWebhookPayload({
+            title: 't',
+            message: 'm',
+            link: '/board',
+            sessionId: 'sess-7',
+        });
+        const lines = p.message.split('\n');
+        expect(lines[0]).toBe('m');
+        expect(lines[1]).toBe('链接：https://happy.example.com/board');
+        expect(lines[lines.length - 1]).toBe('session: sess-7');
+    });
 });
 
 describe('createAccountRateLimiter', () => {
