@@ -276,6 +276,76 @@ export function buildWebhookPayload(push: {
     return payload;
 }
 
+/**
+ * Build the payload for a MANUAL notification (web-initiated, e.g. the user
+ * clicking "mark done" on the task board) — as opposed to the daemon-driven
+ * session events above. The caller supplies title/message; this function
+ * appends the same structured trailer lines the event payload carries:
+ * an optional clickable link (HAPPY_WEB_URL opt-in) and the stable,
+ * machine-parseable `session: <id>` LAST line (docs/channels.md contract —
+ * quote-reply adapters route on it). Task-scoped notifications get a
+ * `task: <id>` line; it sits BEFORE the session line so the session trailer
+ * stays last.
+ */
+export function buildManualWebhookPayload(input: {
+    title: string;
+    message?: string;
+    sessionId?: string;
+    taskId?: string;
+}): WebhookPayload {
+    const title = truncate(input.title.trim(), 200);
+    const lines: string[] = [];
+    const message = input.message?.trim();
+    if (message) lines.push(truncate(message, 1000));
+
+    const sessionId = input.sessionId?.trim() || null;
+    const taskId = input.taskId?.trim() || null;
+    if (sessionId) {
+        const base = webhookWebUrlBase();
+        if (base) lines.push(`链接：${base}/session/${sessionId}`);
+    }
+    if (taskId) lines.push(`task: ${taskId}`);
+    if (sessionId) lines.push(`session: ${sessionId}`);
+
+    const payload: WebhookPayload = { title, message: lines.join('\n') };
+    if (sessionId) payload.sessionId = sessionId;
+    return payload;
+}
+
+//
+// Per-account rate limiting (in-memory, zero-dependency — same school as the
+// IP limiters in accountAuthRoutes/unlockRoutes, but keyed by account and
+// extracted here so it is unit-testable).
+//
+
+export interface AccountRateLimiter {
+    /** true = allowed (and counted); false = over the limit right now */
+    allow(accountId: string, now?: number): boolean;
+}
+
+export function createAccountRateLimiter(opts: { max: number; windowMs: number }): AccountRateLimiter {
+    const hits = new Map<string, number[]>();
+    return {
+        allow(accountId: string, now: number = Date.now()): boolean {
+            const cutoff = now - opts.windowMs;
+            const list = (hits.get(accountId) ?? []).filter(t => t > cutoff);
+            if (list.length >= opts.max) {
+                hits.set(accountId, list);
+                return false;
+            }
+            list.push(now);
+            hits.set(accountId, list);
+            // Opportunistic cleanup so idle accounts don't accumulate forever.
+            if (hits.size > 10_000) {
+                for (const [k, v] of hits) {
+                    if (v.every(t => t <= cutoff)) hits.delete(k);
+                }
+            }
+            return true;
+        }
+    };
+}
+
 //
 // Delivery
 //
