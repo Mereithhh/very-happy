@@ -136,6 +136,18 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'send') {
+    try {
+      const { handleSendCommand } = await import('./commands/send');
+      await handleSendCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'resume') {
     try {
       await handleResumeCommand(args.slice(1));
@@ -705,6 +717,8 @@ ${chalk.bold('Usage:')}
   happy resume            Resume a previous Happy session by Happy session ID
   happy spawn             Spawn a remote session via the local daemon and
                             print its web URL (for automation; see spawn --help)
+  happy send              Send a message into an existing session
+                            (for automation; see send --help)
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP)
   happy acp               Start a generic ACP-compatible agent
