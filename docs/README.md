@@ -2,6 +2,18 @@
 
 This folder documents how Happy works internally, with a focus on protocol, backend architecture, deployment, and the CLI tool. Start here.
 
+## 项目管理（本 fork，中文）
+
+以文档为载体的项目管理体系，入口是仓库根 `CLAUDE.md`（agent 工作指南：门禁/铁律/热区）：
+
+- `PROCESS.md`：迭代流程——批次制 / 质量门禁 / 发布 / 验收 / 沉淀。
+- `backlog.md`：需求层，一切输入一项一行（主 agent 单写者；不用 GitHub Issues，理由见其头注）。
+- `../specs/`：设计层，大改动前置 spec（模板与 draft→final→shipped 生命周期见 `specs/README.md`）。
+- `verify-queue.md`：验收层，留真机验证项登记与清账。
+- `channels.md`：对外集成契约（webhook 出站 + spawn/send/MCP 入站）。
+
+`plans/` 是上游（slopus/happy）遗留的 plan 档案，只读；新设计一律进 `../specs/`。
+
 ## Index
 - protocol.md: Wire protocol (WebSocket), payload formats, sequencing, and concurrency rules.
 - realtime-sync-and-rpc.md: High-level overview of realtime socket management and RPC control flow.
