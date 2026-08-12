@@ -14,10 +14,13 @@
 
 ## 1. 输入 → Backlog
 
-- 全部输入（实报 bug / 想法 / 评审发现 / 留验收项）进 **GitHub Issues**（repo 已私有）。
-  Label：`bug` / `ux` / `feat` / `debt` / `verify`（留真机验证项）。
-- Owner 在对话里说的需求，主 agent 负责当场建 issue（不靠记忆）。
-- 产品内 task board 管"会话/任务运行态"，Issues 管"产品迭代项"——两者不混。
+- 全部输入（实报 bug / 想法 / 评审发现 / 技术债）进 **`docs/backlog.md`**（一项一行，
+  类型 `bug`/`ux`/`feat`/`debt`）；留真机验证项另进 **`docs/verify-queue.md`**。
+  > 2026-08 修订：原定 GitHub Issues，实证零使用（零 issue 零 label）后改文件化——
+  > 状态与代码同 commit、agent 零网络凭据可读写、可 grep；理由详见 backlog.md 头注。
+- **单写者纪律**：backlog.md 只由主 agent（或 Owner）写；Owner 在对话里说的需求，
+  主 agent 当场记入（不靠记忆）；实现 agent 只读不写。
+- 产品内 task board 管"会话/任务运行态"，backlog.md 管"产品迭代项"——两者不混。
 
 ## 2. 批次制（Release Train）
 
@@ -25,16 +28,17 @@
 
 ```
 triage（分独立/冲突域）
-  → 并行实现（每事项一个 worktree + 分支；大改动先出 plan 文档定稿）
+  → 并行实现（每事项一个 worktree + 分支；大改动先出 spec 定稿，见 specs/README.md）
   → 主 agent 逐个 review + merge（含冲突解决）
   → 集成门禁（见 §3）
   → 发布（见 §4）
-  → 验收（自动化 E2E + 真机清单建 verify issue）
+  → 验收（自动化 E2E + 真机清单登记 docs/verify-queue.md）
   → 沉淀（见 §6）
 ```
 
 - **大改动前置设计**：动协议/状态模型/存储语义的（如推送化、seq 记账），
-  先由 Plan agent 出实现计划文档、主 agent 定稿，再派实现。小改直接做。
+  先由 Plan agent 出 spec（`specs/`，模板与生命周期见 `specs/README.md`）、
+  主 agent 定稿，再派实现。小改直接做。spec shipped 后回标状态，留档不删。
 - **每批结束跑一次 high-effort code-review 全量回扫**（对本批 diff）：
   2026-08 实证一次回扫抓出 11 个 CONFIRMED 真问题。发现项当场修或建 issue。
 
@@ -67,12 +71,15 @@ triage（分独立/冲突域）
 ## 5. 验收
 
 - **自动化能验的当批验掉**（E2E 冒烟：spawn/send/webhook/剪贴板链路都有先例脚本手法）。
-- **自动化验不了的**（真机 IME/触屏/视觉观感）：当批产出「留真机验证」清单 → 建 `verify` issue，
-  **下一批开始前先清账**——不许无限堆积。
+- **自动化验不了的**（真机 IME/触屏/视觉观感）：当批产出「留真机验证」清单 →
+  登记 `docs/verify-queue.md`，**下一批开始前先清账**——不许无限堆积；
+  验证不通过当场转 backlog.md 建 bug 项。
 - 浏览器验证注意 SW 缓存混版（硬刷新/unregister 后再判断"没生效"）。
 
 ## 6. 沉淀（每批必做）
 
+- repo 内落账：`docs/backlog.md` 本批做完的项标 done 移入「近期完成」；
+  留真机验证项登记 `docs/verify-queue.md`；本批的 spec 回标 Shipped + commit。
 - `skills/happy/references/very-happy-build-state.md` 追加本批节（现状、根因、教训、版本号）。
 - 稳定事实变更同步 `skills/happy/SKILL.md`；设计 token 变更同步 design-tokens.md。
 - 新坑进"坑"清单——判据：下个 agent 不知道会再踩的，才值得写。
