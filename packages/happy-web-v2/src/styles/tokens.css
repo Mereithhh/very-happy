@@ -164,6 +164,17 @@
      xterm theme in WebTerminalScreen.tsx hardcodes the same value (xterm can't
      resolve CSS vars) — keep in sync. */
   --term-bg: #06080c;
+  /* terminal-adjacent chrome (key bar / line-input bar): these sit directly ON
+     the always-dark pane, so they keep dark-theme constants in BOTH themes —
+     a light-theme bar over the dark canvas reads as glare (user-reported).
+     Values mirror the dark theme's bg-1/bg-2/line/text/dim + phosphor accent. */
+  --term-chrome-bg: #0e141b;
+  --term-chrome-panel: #181f2a;
+  --term-chrome-line: #2c3543;
+  --term-chrome-fg: #e8edf4;
+  --term-chrome-dim: #8a93a0;
+  --term-accent: #34e2c4;
+  --term-accent-ink: #04110e;
 
   /* fonts */
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;

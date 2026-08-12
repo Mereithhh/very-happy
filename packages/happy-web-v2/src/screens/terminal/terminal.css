@@ -174,12 +174,12 @@
   flex: 0 0 1px;
   align-self: stretch;
   margin: 4px 2px;
-  background: var(--line);
+  background: var(--term-chrome-line);
 }
 /* System keys (not pty keys): slightly dimmer so they read as chrome. */
-.term-keybar-sys { color: var(--text-dim); }
+.term-keybar-sys { color: var(--term-chrome-dim); }
 .term-keybar-sys.is-armed {
-  background: var(--accent);
+  background: var(--term-accent);
   color: var(--accent-ink);
   border-color: var(--accent);
 }
@@ -194,19 +194,19 @@
   gap: 8px;
   align-items: flex-end;
   padding: 6px 8px;
-  background: var(--bg-1);
-  border-top: 1px solid var(--line);
+  background: var(--term-chrome-bg);
+  border-top: 1px solid var(--term-chrome-line);
   touch-action: manipulation;
 }
 .term-inputbar-ta {
   flex: 1;
   min-width: 0;
   resize: none;
-  border: 1px solid var(--line);
+  border: 1px solid var(--term-chrome-line);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--accent) 4%, var(--bg-2));
-  color: var(--text);
-  caret-color: var(--accent);
+  background: color-mix(in srgb, var(--term-accent) 5%, var(--term-chrome-panel));
+  color: var(--term-chrome-fg);
+  caret-color: var(--term-accent);
   font-family: var(--font-mono);
   /* ≥16px: anything smaller makes iOS auto-zoom the page on focus. */
   font-size: 16px;
@@ -215,10 +215,10 @@
   max-height: 120px;
   overflow-y: auto;
 }
-.term-inputbar-ta::placeholder { color: var(--text-faint); }
+.term-inputbar-ta::placeholder { color: var(--term-chrome-dim); }
 .term-inputbar-ta:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-color: color-mix(in srgb, var(--term-accent) 55%, var(--term-chrome-line));
 }
 .term-inputbar-send {
   flex: 0 0 auto;
@@ -227,15 +227,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--term-accent);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
-  color: var(--accent);
+  background: color-mix(in srgb, var(--term-accent) 16%, var(--term-chrome-panel));
+  color: var(--term-accent);
   -webkit-tap-highlight-color: transparent;
 }
 .term-inputbar-send:active {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--term-accent);
+  color: var(--term-accent-ink);
   transform: translateY(1px);
 }
 
@@ -253,8 +253,8 @@
   flex-shrink: 0;
   padding: 6px 8px;
   padding-bottom: calc(6px + env(safe-area-inset-bottom));
-  background: var(--bg-1);
-  border-top: 1px solid var(--line);
+  background: var(--term-chrome-bg);
+  border-top: 1px solid var(--term-chrome-line);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -272,10 +272,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--term-chrome-line);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-2));
-  color: var(--text);
+  background: color-mix(in srgb, var(--term-accent) 8%, var(--term-chrome-panel));
+  color: var(--term-chrome-fg);
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1;
@@ -284,15 +284,15 @@
   -webkit-tap-highlight-color: transparent;
 }
 .term-keybar-key:active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--bg-2));
+  background: color-mix(in srgb, var(--term-accent) 22%, var(--term-chrome-panel));
   transform: translateY(1px);
 }
 .term-keybar-wide { min-width: 46px; }
 /* Ctrl armed (sticky): make it obvious the next letter becomes Ctrl+<letter>. */
 .term-keybar-mod.is-armed {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
+  background: var(--term-accent);
+  color: var(--term-accent-ink);
+  border-color: var(--term-accent);
   font-weight: 600;
 }
 /* Drag overlay sits ON the always-dark pane — like the xterm THEME and the
