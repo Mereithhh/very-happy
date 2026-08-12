@@ -4,12 +4,14 @@
  *
  * Seeds the real zustand stores (sessions + web terminals) with fake data and
  * renders the REAL <Sidebar/> with no login and no server, so pointer
- * interactions (pin drag-reorder, drag-to-pin) can be driven by a real
- * pointer (chrome-devtools) against the exact code path production uses.
+ * interactions (full-list drag reorder, first-drag materialization) can be
+ * driven by a real pointer (chrome-devtools) against the exact code path
+ * production uses.
  *
  * Settings writes still go through sync.applySettings → applySettingsLocal,
- * so the committed `pinnedRows` order is observable from the console via the
- * existing spine harness: `vhStorage.getState().settings.pinnedRows`.
+ * so the committed manual order is observable from the console via the
+ * existing spine harness: `vhStorage.getState().settings.sidebarOrder`
+ * (legacy pre-materialization pins: `.settings.pinnedRows`).
  * (The network push behind it fails without credentials — irrelevant here.)
  */
 import { useEffect, useState } from 'react';

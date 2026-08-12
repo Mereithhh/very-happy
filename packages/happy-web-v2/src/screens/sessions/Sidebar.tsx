@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, Pin, PinOff, ArrowUp, ArrowDown, Pencil, Archive, Trash2 } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, Pencil, Archive, Trash2 } from 'lucide-react';
 import { useSessions, useSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
@@ -18,7 +18,8 @@ import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount } from '@/screens/board/useBoardItems';
 import { NewSessionModal } from './NewSessionModal';
 import { RenameModal } from './RenameModal';
-import { splitPinnedRows, togglePin, movePin, upsertPinAt, isPinned, prunePinned, type PinnedRow } from './sidebarPins';
+import { splitPinnedRows } from './sidebarPins';
+import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
 import { parseSidebarQuery, rowMatchesSidebarQuery, sidebarQueryIsEmpty } from './sidebarSearch';
 import './sidebar.css';
 
@@ -32,6 +33,8 @@ interface Row {
   key: string;
   kind: 'terminal' | 'session';
   ts: number;
+  /** creation time — orders the unkeyed "new rows" zone (newest first) */
+  createdAt: number;
   session?: Session;
   terminalId?: string;
   machineId?: string;
@@ -68,6 +71,7 @@ export function Sidebar() {
         key: s.id,
         kind: 'session',
         ts: s.updatedAt || s.activeAt || s.createdAt,
+        createdAt: s.createdAt,
         session: s,
         title: getSessionName(s),
         subtitle: getSessionSubtitle(s),
@@ -81,6 +85,7 @@ export function Sidebar() {
             key: `t:${tm.id}`,
             kind: 'terminal',
             ts: tm.createdAt,
+            createdAt: tm.createdAt,
             terminalId: tm.id,
             machineId: tm.machineId,
             title: tm.title || tm.machineName,
@@ -94,43 +99,65 @@ export function Sidebar() {
     return all.filter((r) => rowMatchesSidebarQuery(r, parsed));
   }, [sessions, terminals, query, filter]);
 
-  // ----- pinned rows -----
-  // Synced settings field `pinnedRows` — array order IS the pinned section's
-  // display order (cross-device). Pins only shape the ACTIVE list; archived
-  // rows can't be pinned and the archived view stays a plain list.
-  const pinnedSetting = useSetting('pinnedRows');
-  const setPinnedSetting = useCallback((next: PinnedRow[]) => {
-    sync.applySettings({ pinnedRows: next });
-  }, []);
-  const pinsApply = filter === 'active';
-  const { pinned: pinnedRows, rest: restRows } = useMemo(() => {
-    if (!rows || !pinsApply) return { pinned: [] as Row[], rest: (rows ?? []) as Row[] };
-    return splitPinnedRows(rows, pinnedSetting ?? []);
-  }, [rows, pinnedSetting, pinsApply]);
+  // ----- manual order -----
+  // Synced settings field `sidebarOrder` — FULL manual ordering: every row
+  // key maps to a fractional order key; unkeyed rows (new sessions/terminals)
+  // render on top, newest first. While it's still empty the legacy
+  // `pinnedRows` display applies (pinned section on top, activity order
+  // below — section header removed); the FIRST drag materializes the whole
+  // visible sequence into keys, folding the legacy pins in at their top
+  // positions (mergeLegacyPinned). Ordering only shapes the ACTIVE list; the
+  // archived view stays a plain activity list.
+  const orderSetting = useSetting('sidebarOrder');
+  const pinnedSetting = useSetting('pinnedRows'); // legacy, pre-materialization only
+  const orderApplies = filter === 'active';
+  const displayRows = useMemo<Row[] | null>(() => {
+    if (!rows) return null;
+    if (!orderApplies) return rows;
+    if ((orderSetting ?? []).length > 0) return sortRowsByManualOrder(rows, orderSetting!);
+    const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
+    return [...pinned, ...rest];
+  }, [rows, orderSetting, pinnedSetting, orderApplies]);
 
-  // Drag ANY row (fine pointers only; coarse pointers use the row menu's
-  // pin / move up/down instead). Pointer-event hand-rolled — same school as
-  // SidebarResizeHandle, no dnd dependency.
-  //
-  // Semantics: picking a row up means "manual ordering". While dragging, an
-  // accent insertion line tracks the drop slot inside the MANUAL zone (the
-  // pinned section, plus the slot that creates it when empty). Dropping there
-  // upserts the row into `pinnedRows` (synced) at that position — for an
-  // unpinned row that both pins it and places it. Dropping below the divider
-  // is the automatic zone: a pinned row is unpinned (returns to activity
-  // order), an unpinned row is a no-op (activity order has no manual slots —
-  // there is nothing to store). The list stays put during the drag; only the
-  // line moves. The settings write happens once, on drop.
+  // Commit a reorder: `seqKeys` = the final VISIBLE sequence, `movedKey` =
+  // the row the user moved. Reads settings from the store (not the render
+  // closure) — a drag can outlive a re-render. First commit materializes
+  // everything (legacy pins folded in); afterwards the plan is minimal
+  // (usually a single entry). Invisible keyed entries are carried untouched.
+  const commitSeq = useCallback((seqKeys: string[], movedKey: string) => {
+    const st = storage.getState().settings;
+    const cur = st.sidebarOrder ?? [];
+    const next =
+      cur.length === 0
+        ? planSidebarOrder([], mergeLegacyPinned(seqKeys, (st.pinnedRows ?? []).map((p) => p.key)), movedKey)
+        : planSidebarOrder(cur, seqKeys, movedKey);
+    if (next !== cur) sync.applySettings({ sidebarOrder: next });
+  }, []);
+
+  // Menu fallback (the only reorder path on coarse pointers): swap with the
+  // adjacent row in the full visible list.
+  const moveRow = useCallback((key: string, index: number, dir: -1 | 1) => {
+    const list = rowsRef.current;
+    if (!list) return;
+    const j = index + dir;
+    if (j < 0 || j >= list.length || list[index]?.key !== key) return;
+    const keys = list.map((r) => r.key);
+    [keys[index], keys[j]] = [keys[j], keys[index]];
+    commitSeq(keys, key);
+  }, [commitSeq]);
+
+  // Drag ANY row to ANY position (fine pointers only; coarse pointers use the
+  // row menu's move up/down instead). Pointer-event hand-rolled — same school
+  // as SidebarResizeHandle, no dnd dependency. While dragging, an accent
+  // insertion line tracks the drop slot; the list stays put (insertion-line
+  // model, no live reorder) and the settings write happens once, on drop.
   const listRef = useRef<HTMLDivElement | null>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
-  // pin = insertion index in the pinned section (counted over the OTHER
-  // pinned rows); auto = below the divider (unpin / no-op).
-  const [dropKind, setDropKind] = useState<'pin' | 'auto' | null>(null);
   const [dropLineY, setDropLineY] = useState<number | null>(null);
 
   const onRowPointerDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0) return;
-    if (!pinsApply) return; // archived view: plain list, nothing to order
+    if (!orderApplies) return; // archived view: plain list, nothing to order
     // Search narrows the visible rows — a drop position computed against a
     // partial picture would surprise; disable (the full list is one Esc away).
     if (query.trim()) return;
@@ -139,40 +166,30 @@ export function Sidebar() {
     const list = listRef.current;
     if (!list) return;
     const startY = e.clientY;
-    const state = { active: false, lastY: startY, raf: 0, drop: null as null | { kind: 'pin'; index: number } | { kind: 'auto' } };
+    const state = { active: false, lastY: startY, raf: 0, drop: null as number | null };
 
-    // Recompute the drop target + insertion line from a pointer Y. Rows are
-    // measured from the live DOM ([data-dragkey], DOM order = pinned section
-    // then the activity list); the dragged row itself doesn't count.
+    // Recompute the drop index + insertion line from a pointer Y. Rows are
+    // measured from the live DOM ([data-dragkey], DOM order = display order);
+    // the dragged row itself doesn't count, so `drop` is the insertion index
+    // over the OTHER rows.
     const update = (clientY: number) => {
       const els = Array.from(list.querySelectorAll<HTMLElement>('[data-dragkey]'));
       const others = els.filter((el) => el.dataset.dragkey !== key);
-      const pinCount = others.filter((el) => el.dataset.pinnedrow === '1').length;
       let idx = 0;
       for (const el of others) {
         const r = el.getBoundingClientRect();
         if (clientY > r.top + r.height / 2) idx++;
         else break; // DOM order — midpoints are monotone
       }
+      state.drop = idx;
       const listRect = list.getBoundingClientRect();
       const yOf = (el: HTMLElement, edge: 'top' | 'bottom') =>
         (edge === 'top' ? el.getBoundingClientRect().top : el.getBoundingClientRect().bottom) -
         listRect.top +
         list.scrollTop;
-      if (idx <= pinCount) {
-        state.drop = { kind: 'pin', index: idx };
-        setDropKind('pin');
-        // line at the boundary the drop would insert into
-        if (idx < pinCount) setDropLineY(yOf(others[idx], 'top'));
-        else if (pinCount > 0) setDropLineY(yOf(others[pinCount - 1], 'bottom'));
-        // empty manual zone (no pins, or the dragged row is the only pin):
-        // the slot sits above the first row of the list
-        else setDropLineY(els[0] ? yOf(els[0], 'top') : 0);
-      } else {
-        state.drop = { kind: 'auto' };
-        setDropKind('auto');
-        setDropLineY(null);
-      }
+      if (others.length === 0) setDropLineY(0);
+      else if (idx < others.length) setDropLineY(yOf(others[idx], 'top'));
+      else setDropLineY(yOf(others[others.length - 1], 'bottom'));
     };
 
     // Edge auto-scroll: without it a row can't be dragged to the top of a
@@ -211,9 +228,8 @@ export function Sidebar() {
       cancelAnimationFrame(state.raf);
       const drop = state.drop;
       setDragKey(null);
-      setDropKind(null);
       setDropLineY(null);
-      if (!state.active) return;
+      if (!state.active || drop === null) return;
       // The release lands on a row button — swallow the click it would
       // produce so a drag never doubles as "open this conversation".
       const swallow = (ce: MouseEvent) => {
@@ -222,59 +238,60 @@ export function Sidebar() {
       };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true } as any), 150);
-      const cur = pinnedSetting ?? [];
-      if (drop?.kind === 'pin') {
-        // Commit: upsert into the VISIBLE pinned order at the drop index, then
-        // carry any stored entries whose rows aren't materialized right now
-        // (e.g. a machine's terminals not loaded yet) — a drag must not
-        // silently drop them.
-        const visibleKeys = pinnedRows.map((r) => r.key);
-        const visible = new Set(visibleKeys);
-        const next = upsertPinAt(visibleKeys.map((k) => ({ key: k })), key, drop.index);
-        const carried = cur.filter((p) => p.key !== key && !visible.has(p.key));
-        const changed =
-          next.length + carried.length !== cur.length ||
-          [...next, ...carried].some((p, i) => p.key !== cur[i]?.key);
-        if (changed) setPinnedSetting([...next, ...carried]);
-      } else if (drop?.kind === 'auto' && isPinned(cur, key)) {
-        // dragged out of the manual zone → unpin (row returns to activity order)
-        setPinnedSetting(cur.filter((p) => p.key !== key));
-      }
+      // Final visible sequence = the other rows (live DOM order) with the
+      // dragged row inserted at the drop index. commitSeq materializes /
+      // plans the order keys and writes settings once.
+      const keys = Array.from(list.querySelectorAll<HTMLElement>('[data-dragkey]'))
+        .map((el) => el.dataset.dragkey!)
+        .filter((k) => k !== key);
+      const idx = Math.max(0, Math.min(keys.length, drop));
+      keys.splice(idx, 0, key);
+      commitSeq(keys, key);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   };
 
-  // Prune pins whose target is gone (deleted session, archived session, dead
-  // terminal). Rendering already skips them (splitPinnedRows); this is the
-  // periodic write-back so the synced list doesn't accumulate ghosts. A key
-  // is only pruned after being missing in TWO consecutive sweeps — guards
-  // against transient emptiness while machine/terminal state is still
-  // loading (a too-eager prune would sync the loss to every device). The
-  // terminal list derives from the machines slice (daemon pushes), so
-  // isDataReady is the same load gate for both key kinds.
-  const missingPinsRef = useRef<Set<string>>(new Set());
+  // Prune order entries whose target is gone (deleted session, archived
+  // session, dead terminal). Rendering already skips them (unmatched keys
+  // never produce rows); this is the periodic write-back so the synced list
+  // doesn't accumulate ghosts. A key is only pruned after being missing in
+  // TWO consecutive sweeps — guards against transient emptiness while
+  // machine/terminal state is still loading (a too-eager prune would sync
+  // the loss to every device). The terminal list derives from the machines
+  // slice (daemon pushes), so isDataReady is the same load gate for both key
+  // kinds. Pre-materialization the same sweep prunes the legacy pinnedRows
+  // (still the live model then); post-materialization that field is frozen.
+  const missingKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const sweep = () => {
       const st = storage.getState();
       if (!st.isDataReady) return;
-      const pinned = st.settings.pinnedRows ?? [];
-      if (pinned.length === 0) return;
+      const order = st.settings.sidebarOrder ?? [];
+      const legacyPinned = st.settings.pinnedRows ?? [];
+      const target: Array<{ key: string }> = order.length > 0 ? order : legacyPinned;
+      if (target.length === 0) return;
       const valid = new Set<string>();
       for (const s of Object.values(st.sessions)) {
         if (s.active) valid.add(s.id);
       }
       for (const tm of useTerminalSessions.getState().terminals) valid.add(`t:${tm.id}`);
       const missingNow = new Set<string>();
-      for (const p of pinned) {
-        if (!valid.has(p.key)) missingNow.add(p.key);
+      for (const e of target) {
+        if (!valid.has(e.key)) missingNow.add(e.key);
       }
-      const confirmed = new Set([...missingNow].filter((k) => missingPinsRef.current.has(k)));
-      missingPinsRef.current = missingNow;
+      const confirmed = new Set([...missingNow].filter((k) => missingKeysRef.current.has(k)));
+      missingKeysRef.current = missingNow;
       if (confirmed.size === 0) return;
-      const next = prunePinned(pinned, new Set(pinned.map((p) => p.key).filter((k) => !confirmed.has(k))));
-      if (next) sync.applySettings({ pinnedRows: next });
+      const keep = new Set(target.map((e) => e.key).filter((k) => !confirmed.has(k)));
+      if (order.length > 0) {
+        const next = pruneEntries(order, keep);
+        if (next) sync.applySettings({ sidebarOrder: next });
+      } else {
+        const next = pruneEntries(legacyPinned, keep);
+        if (next) sync.applySettings({ pinnedRows: next });
+      }
     };
     const iv = setInterval(sweep, 60_000);
     return () => clearInterval(iv);
@@ -287,8 +304,7 @@ export function Sidebar() {
 
   // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
   // jumps to that conversation. Mirrors the v1 power-user shortcut. Order =
-  // what's on screen: pinned section first, then the activity list.
-  const displayRows = rows === null ? null : [...pinnedRows, ...restRows];
+  // exactly what's on screen (displayRows) — manual order included.
   const rowsRef = useRef<Row[] | null>(displayRows);
   rowsRef.current = displayRows;
   useEffect(() => {
@@ -454,60 +470,23 @@ export function Sidebar() {
           <div className="sb-empty">{query ? t('sidebar.noResults') : t('sidebar.empty')}</div>
         ) : (
           <>
-            {pinnedRows.length > 0 && (
-              <div className="sb-pin-sect">
-                <div className="sb-sect-head mono">
-                  <Pin size={11} /> {t('sidebar.pinned')}
-                </div>
-                {pinnedRows.map((r, i) => (
-                  <div
-                    key={r.key}
-                    data-dragkey={r.key}
-                    data-pinnedrow="1"
-                    className={`sb-drag-item${
-                      dragKey === r.key
-                        ? dropKind === 'auto'
-                          ? ' is-drag is-drop-out' // released here → unpins
-                          : ' is-drag'
-                        : ''
-                    }`}
-                    onPointerDown={(e) => onRowPointerDown(e, r.key)}
-                  >
-                    <SidebarRow
-                      row={r}
-                      badge={cmdHeld && i < 9 ? i + 1 : undefined}
-                      pinned
-                      canMoveUp={i > 0}
-                      canMoveDown={i < pinnedRows.length - 1}
-                      onTogglePin={() => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key))}
-                      onMovePin={(dir) => setPinnedSetting(movePin(pinnedSetting ?? [], r.key, dir))}
-                      onRenameRequest={() => setRenameTarget(r)}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-            {restRows.map((r, i) => {
-              const badgeIdx = pinnedRows.length + i;
+            {displayRows.map((r, i) => {
+              // Menu reorder only where a drop is allowed: active view, no
+              // search narrowing the sequence.
+              const canReorder = orderApplies && !query.trim();
               return (
                 <div
                   key={r.key}
                   data-dragkey={r.key}
-                  className={`sb-drag-item${
-                    dragKey === r.key
-                      ? dropKind === 'auto'
-                        ? ' is-drag is-drop-none' // released here → no-op
-                        : ' is-drag'
-                      : ''
-                  }`}
+                  className={`sb-drag-item${dragKey === r.key ? ' is-drag' : ''}`}
                   onPointerDown={(e) => onRowPointerDown(e, r.key)}
                 >
                   <SidebarRow
                     row={r}
-                    badge={cmdHeld && badgeIdx < 9 ? badgeIdx + 1 : undefined}
-                    onTogglePin={
-                      pinsApply ? () => setPinnedSetting(togglePin(pinnedSetting ?? [], r.key)) : undefined
-                    }
+                    badge={cmdHeld && i < 9 ? i + 1 : undefined}
+                    canMoveUp={i > 0}
+                    canMoveDown={i < displayRows.length - 1}
+                    onMove={canReorder ? (dir) => moveRow(r.key, i, dir) : undefined}
                     onRenameRequest={() => setRenameTarget(r)}
                   />
                 </div>
@@ -559,12 +538,10 @@ export function Sidebar() {
 function rowMenuItems(opts: {
   t: ReturnType<typeof useTranslation>['t'];
   isTerminal: boolean;
-  pinned?: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onRename: () => void;
-  onTogglePin?: () => void;
-  onMovePin?: (dir: -1 | 1) => void;
+  onMove?: (dir: -1 | 1) => void;
   onArchiveOrDelete: () => void;
   onDeleteSession?: () => void;
 }): MenuItemDef[] {
@@ -572,16 +549,10 @@ function rowMenuItems(opts: {
   const items: MenuItemDef[] = [
     { key: 'rename', label: t('common.rename'), icon: Pencil, onSelect: opts.onRename },
   ];
-  if (opts.onTogglePin) {
-    items.push({
-      key: 'pin',
-      label: opts.pinned ? t('sidebar.unpin') : t('sidebar.pin'),
-      icon: opts.pinned ? PinOff : Pin,
-      onSelect: opts.onTogglePin,
-    });
-  }
-  if (opts.pinned && opts.onMovePin) {
-    const move = opts.onMovePin;
+  if (opts.onMove) {
+    // Full-list adjacent swap — the reorder path for coarse pointers (no
+    // touch drag), harmless extra on desktop.
+    const move = opts.onMove;
     items.push(
       {
         key: 'move-up',
@@ -622,22 +593,19 @@ function rowMenuItems(opts: {
 function SidebarRow({
   row,
   badge,
-  pinned,
   canMoveUp,
   canMoveDown,
-  onTogglePin,
-  onMovePin,
+  onMove,
   onRenameRequest,
 }: {
   row: Row;
   badge?: number;
-  pinned?: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
-  /** undefined → pinning not available here (archived view). */
-  onTogglePin?: () => void;
-  /** Menu fallback for coarse pointers (no touch drag) — pinned rows only. */
-  onMovePin?: (dir: -1 | 1) => void;
+  /** Adjacent swap in the full visible list — the menu reorder fallback for
+   *  coarse pointers. undefined → reordering unavailable (archived view /
+   *  search narrowing). */
+  onMove?: (dir: -1 | 1) => void;
   onRenameRequest: () => void;
 }) {
   const navigate = useNavigate();
@@ -705,12 +673,10 @@ function SidebarRow({
   const menuItems = rowMenuItems({
     t,
     isTerminal,
-    pinned,
     canMoveUp,
     canMoveDown,
     onRename: onRenameRequest,
-    onTogglePin,
-    onMovePin,
+    onMove,
     onArchiveOrDelete: () => void onArchiveOrDelete(),
     onDeleteSession: () => void onDeleteSession(),
   });

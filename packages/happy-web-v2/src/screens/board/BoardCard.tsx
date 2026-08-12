@@ -1,11 +1,12 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, Archive, Check, MessageSquare, Pencil, Pin, PinOff, TerminalSquare, Trash2 } from 'lucide-react';
+import { ArrowUpRight, ArrowUpToLine, Archive, Check, MessageSquare, Pencil, TerminalSquare, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useSetting, storage } from '@/sync/storage';
+import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { isPinned, togglePin } from '@/screens/sessions/sidebarPins';
+import { upsertPinAt } from '@/screens/sessions/sidebarPins';
+import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
 import { confirmArchiveSession, confirmDeleteTerminal, markSessionDone } from '@/app/rowActions';
 import type { BoardItem } from './boardItems';
 
@@ -43,13 +44,22 @@ export function BoardCard({
   const title = item.title || t('session.newChat');
   const KindIcon = item.kind === 'terminal' ? TerminalSquare : MessageSquare;
 
-  // Sidebar pin — board item keys are the SAME keys the pinned section uses
-  // (session id / `t:<terminalId>`), so pinning from the board just works.
-  const pinnedSetting = useSetting('pinnedRows');
-  const pinned = isPinned(pinnedSetting ?? [], item.key);
-  const onTogglePin = useCallback(() => {
-    sync.applySettings({ pinnedRows: togglePin(pinnedSetting ?? [], item.key) });
-  }, [pinnedSetting, item.key]);
+  // Move to the top of the sidebar's manual order — board item keys are the
+  // SAME keys the sidebar uses (session id / `t:<terminalId>`), so this just
+  // works. Pre-materialization (empty sidebarOrder) it writes the legacy
+  // pinnedRows top slot instead, which the first drag's materialization folds
+  // in — see sidebarOrder.ts.
+  const onMoveToTop = useCallback(() => {
+    const st = storage.getState().settings;
+    const cur = st.sidebarOrder ?? [];
+    if (cur.length > 0) {
+      const next = moveEntryToTop(cur, item.key);
+      if (next !== cur) sync.applySettings({ sidebarOrder: next });
+    } else {
+      const next = upsertPinAt(st.pinnedRows ?? [], item.key, 0);
+      if (next !== (st.pinnedRows ?? [])) sync.applySettings({ pinnedRows: next });
+    }
+  }, [item.key]);
 
   // Mark done — the one-click completion (Owner boundary: no confirm dialog
   // for sessions; the terminal variant is a tmux kill and keeps its confirm).
@@ -78,10 +88,10 @@ export function BoardCard({
       onSelect: () => navigate(item.href),
     },
     {
-      key: 'pin',
-      label: pinned ? t('sidebar.unpin') : t('sidebar.pin'),
-      icon: pinned ? PinOff : Pin,
-      onSelect: onTogglePin,
+      key: 'move-top',
+      label: t('sidebar.moveToTop'),
+      icon: ArrowUpToLine,
+      onSelect: onMoveToTop,
     },
   ];
   if (onRenameRequest) {
