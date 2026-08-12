@@ -15,13 +15,23 @@ import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from "@/clipboard/limits";
+import { ASSISTANT_TOOL_NAMES, registerAssistantTools } from "@/assistant/assistantTools";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     copyToClipboard: (text: string) => Promise<{ delivered: boolean; truncated: boolean; totalBytes: number; error?: string }>;
 }
 
-function createMcpServer(handlers: HappyMcpHandlers): McpServer {
+export interface StartHappyServerOptions {
+    /**
+     * B-051: assistant-variant sessions additionally get the machine
+     * management tool surface (sessions_* / terminal_* / memory_update).
+     * Normal sessions keep exactly the stock two tools.
+     */
+    assistant?: boolean;
+}
+
+function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions): McpServer {
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
@@ -91,11 +101,15 @@ function createMcpServer(handlers: HappyMcpHandlers): McpServer {
         };
     });
 
+    if (options?.assistant) {
+        registerAssistantTools(mcp);
+    }
+
     return mcp;
 }
 
-export async function startHappyServer(client: ApiSessionClient) {
-    logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
+export async function startHappyServer(client: ApiSessionClient, options?: StartHappyServerOptions) {
+    logger.debug(`[happyMCP] server:start sessionId=${client.sessionId} assistant=${!!options?.assistant}`);
 
     const handlers: HappyMcpHandlers = {
         changeTitle: async (title: string) => {
@@ -122,7 +136,7 @@ export async function startHappyServer(client: ApiSessionClient) {
     };
 
     const server = createServer(async (req, res) => {
-        const mcp = createMcpServer(handlers);
+        const mcp = createMcpServer(handlers, options);
         try {
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: undefined
@@ -153,7 +167,11 @@ export async function startHappyServer(client: ApiSessionClient) {
 
     return {
         url: baseUrl.toString(),
-        toolNames: ['change_title', CLIPBOARD_TOOL_NAME],
+        toolNames: [
+            'change_title',
+            CLIPBOARD_TOOL_NAME,
+            ...(options?.assistant ? ASSISTANT_TOOL_NAMES : []),
+        ],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             server.close();

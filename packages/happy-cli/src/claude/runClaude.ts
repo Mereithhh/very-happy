@@ -34,6 +34,7 @@ import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
 import { TitleGenerator } from './utils/titleGenerator';
 import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/boardAnalyzer';
+import { bootstrapAssistantHome } from '@/assistant/bootstrap';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -60,7 +61,25 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
     
     const workingDirectory = process.cwd();
-    const sessionTag = randomUUID();
+
+    // B-051: assistant variant (meta-agent / dispatcher session). The daemon
+    // injects HAPPY_SESSION_VARIANT=assistant at spawn time (spawn options
+    // `variant: 'assistant'`); it flips three things here: a fixed session
+    // tag (singleton per machine, computed below once machineId is known),
+    // `variant: 'assistant'` in the session metadata, and the assistant MCP
+    // management tool surface.
+    const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
+    if (isAssistantVariant) {
+        // Defensive re-bootstrap: the daemon already did this before spawning,
+        // but a manually-launched assistant (HAPPY_SESSION_VARIANT=assistant
+        // happy claude) should not start with a missing CLAUDE.md. Never
+        // overwrites existing files.
+        try {
+            await bootstrapAssistantHome();
+        } catch (error) {
+            logger.debug('[START] Assistant home bootstrap failed:', error);
+        }
+    }
 
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
@@ -100,6 +119,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
     logger.debug(`Using machineId: ${machineId}`);
 
+    // Session tag: normally a fresh UUID per launch (each run = new session
+    // row). The assistant variant uses a FIXED per-machine tag so the server's
+    // @@unique([accountId, tag]) makes repeated spawns land on the same
+    // session row (singleton). NOTE the dataKey caveat: getOrCreateSession
+    // generates a fresh session key per launch and the server keeps the FIRST
+    // dataEncryptionKey for an existing tag — so tag reuse only decrypts
+    // cleanly when the daemon re-attaches via HAPPY_RECONNECT_* (which carries
+    // the original key; see daemon/run.ts assistant handling).
+    const sessionTag = isAssistantVariant ? `vh-assistant-${machineId}` : randomUUID();
+
     // Create machine if it doesn't exist
     await api.getOrCreateMachine({
         machineId,
@@ -131,6 +160,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        ...(isAssistantVariant ? { variant: 'assistant' as const } : {}),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)
@@ -387,8 +417,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         },
     });
 
-    // Start Happy MCP server
-    const happyServer = await startHappyServer(session);
+    // Start Happy MCP server (assistant variant additionally registers the
+    // machine management tool surface — see assistant/assistantTools.ts)
+    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
