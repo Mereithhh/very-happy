@@ -63,6 +63,7 @@ All three endpoints require the account bearer token
 | `GET`    | `/v1/webhook` | —                                               | `{"webhook": {"url", "events"} \| null}` |
 | `POST`   | `/v1/webhook` | `{"url": "...", "events": ["completed","permission"]}` | Create **or replace** (an account has at most one webhook). `events` optional; defaults to both. 400 with `{"error": "..."}` on invalid URL. |
 | `DELETE` | `/v1/webhook` | —                                               | Remove the webhook. |
+| `POST`   | `/v1/webhook/notify` | `{"title": "...", "message"?: "...", "sessionId"?: "...", "taskId"?: "..."}` | Manual notification: the server forwards `{title, message}` through the account's webhook (the web's "mark done" ✓ uses this — `✅ 已完成 · <名>`). Not gated by `events` (an explicit user action is always wanted). Returns `{"ok": true, "delivered": bool}`; `delivered:false` when no webhook is configured or delivery failed. Rate-limited per account (30/min → 429). `sessionId` adds the link line + `session: <id>` trailer; `taskId` adds a `task: <id>` line **before** the session trailer. |
 
 Event categories:
 
