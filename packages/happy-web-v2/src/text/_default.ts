@@ -253,6 +253,14 @@ export const en = {
             normal: 'The classic empty screen with quick actions',
             board: 'Every agent and terminal at a glance',
         },
+        // Task Board V2 — daemon-side LLM analysis (progress notes / attention
+        // flags / task classification). Informational only: the toggle lives on
+        // the daemon machine, NOT here — the synced settings blob is encrypted
+        // client-side and the CLI cannot read it.
+        boardLlm: 'Board AI Analysis',
+        boardLlmDescription: 'AI progress notes, attention flags and task grouping on the Task Board are produced by the Happy daemon (a local one-shot haiku call, throttled). Off by default so no tokens are spent silently.',
+        boardLlmHowTo: 'Configure on the daemon machine',
+        boardLlmHowToDetail: 'Set "boardLlm": true in ~/.happy/settings.json on each machine that should analyze its sessions, then restart sessions there.',
     },
 
     settingsFeatures: {
@@ -1022,6 +1030,23 @@ export const en = {
         // rendered after a compact duration, e.g. "3m ago"
         agoSuffix: 'ago',
         viewArchived: 'View archived →',
+        // ---- V2: task swimlanes + dispatch ----
+        layoutStatus: 'Status',
+        layoutTasks: 'Tasks',
+        newTask: 'New task',
+        taskTitlePlaceholder: 'Task title',
+        taskDescriptionPlaceholder: 'Description — prefills the first message of dispatched sessions',
+        createTask: 'Create',
+        dispatch: 'Dispatch',
+        markDone: 'Mark done',
+        deleteTask: 'Delete task',
+        deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
+        ungrouped: 'Ungrouped',
+        emptyLane: 'Nothing here yet',
+        noTasks: 'No tasks yet — create one and dispatch sessions onto it',
+        // LLM attention badges (metadata.board.attention)
+        llmReview: 'review',
+        llmBlocked: 'blocked',
     },
 
     modals: {

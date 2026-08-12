@@ -323,6 +323,19 @@ function Appearance() {
           ))}
         </ItemGroup>
 
+        {/* Task Board V2 — LLM analysis is a DAEMON-side opt-in; the synced
+            settings blob is client-side encrypted and the CLI can't read it,
+            so there is deliberately no toggle here — only the pointer. */}
+        <ItemGroup
+          title={t('settingsAppearance.boardLlm')}
+          footer={t('settingsAppearance.boardLlmDescription')}
+        >
+          <Item
+            title={t('settingsAppearance.boardLlmHowTo')}
+            subtitle={t('settingsAppearance.boardLlmHowToDetail')}
+          />
+        </ItemGroup>
+
         <ItemGroup
           title={t('settingsLanguage.title' as any) as string}
           footer={t('settingsLanguage.description' as any) as string}

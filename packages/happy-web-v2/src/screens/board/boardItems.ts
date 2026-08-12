@@ -27,6 +27,7 @@
 import type { Session, Machine } from '@/sync/storageTypes';
 import type { TerminalSession } from '@/sync/terminalListOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
+import type { BoardTask } from '@/sync/boardTaskOps';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
 
@@ -51,6 +52,14 @@ export interface BoardItem {
   attentionSince?: number;
   href: string;
   detail?: BoardDetail;
+  /** V2: one-line progress note from the daemon-side LLM analysis */
+  progress?: string;
+  /** V2: LLM attention verdict ('review'/'blocked' → badge; folds into the
+   *  attention column for online sessions — V1 gates unchanged) */
+  llmAttention?: 'review' | 'blocked';
+  /** V2: LLM task classification (grouping FALLBACK only — the manual
+   *  dispatch mapping in BoardTask.sessionIds wins) */
+  llmTaskId?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -111,8 +120,19 @@ function machineOnline(machines: Machine[], machineId: string | undefined): bool
   return !!m && m.active; // unknown machine → treated as offline
 }
 
+/** 'review'/'blocked' verdict from the daemon-side analyzer, or undefined. */
+function llmAttentionOf(s: Session): 'review' | 'blocked' | undefined {
+  const a = s.metadata?.board?.attention;
+  return a === 'review' || a === 'blocked' ? a : undefined;
+}
+
 function classifySession(s: Session, now: number): { status: BoardStatus } | null {
-  if (s.presence === 'online' && sessionHasPendingRequests(s)) return { status: 'attention' };
+  // V2: an LLM 'review'/'blocked' verdict folds into attention, but ONLY for
+  // online sessions — the V1 presence gate stays, so a dead session's stale
+  // verdict can't park it in the attention column forever.
+  if (s.presence === 'online' && (sessionHasPendingRequests(s) || llmAttentionOf(s))) {
+    return { status: 'attention' };
+  }
   if (s.active && s.thinking) return { status: 'working' };
   if (s.active && s.presence === 'online') return { status: 'idle' };
   const endedAt = s.updatedAt || s.activeAt || s.createdAt;
@@ -138,10 +158,19 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       lastActivityAt,
       href: `/session/${s.id}`,
     };
+    const board = s.metadata?.board;
+    if (board?.progress) item.progress = board.progress;
+    if (board?.taskId) item.llmTaskId = board.taskId;
+    item.llmAttention = llmAttentionOf(s);
     if (cls.status === 'attention') {
-      const req = earliestRequest(s, lastActivityAt);
-      item.attentionSince = req.at;
-      if (req.tool) item.detail = { kind: 'tool', name: req.tool };
+      if (sessionHasPendingRequests(s)) {
+        const req = earliestRequest(s, lastActivityAt);
+        item.attentionSince = req.at;
+        if (req.tool) item.detail = { kind: 'tool', name: req.tool };
+      } else {
+        // LLM-flagged only: waiting since the verdict was produced.
+        item.attentionSince = board?.analyzedAt ?? lastActivityAt;
+      }
     }
     items.push(item);
   }
@@ -197,4 +226,67 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
     return d !== 0 ? d : a.key.localeCompare(b.key);
   });
   return items;
+}
+
+//
+// V2: swimlane grouping — board items regrouped by board task.
+//
+
+export interface BoardLane {
+  task: BoardTask;
+  items: BoardItem[];
+}
+
+export interface BoardLanes {
+  lanes: BoardLane[];
+  /** everything not claimed by a task: terminals + unclassified sessions */
+  ungrouped: BoardItem[];
+}
+
+/**
+ * Group already-sorted board items into per-task swimlanes.
+ *
+ * Membership, in priority order:
+ *  1. manual dispatch mapping (task.sessionIds) — a session dispatched from a
+ *     task card belongs to that task, full stop;
+ *  2. the LLM's metadata.board.taskId — fallback ONLY for sessions no task
+ *     claims manually (the model classifies, the human overrides).
+ * Terminals never map to tasks (V2.5) and always land in ungrouped. A session
+ * manually claimed by several tasks (double dispatch) goes to the first by
+ * lane order. Items keep their buildBoardItems order inside a lane, so each
+ * lane reads attention → working → idle/ended exactly like the status view —
+ * one sort rule across both layouts, not two.
+ *
+ * Lanes: open tasks only (a 'done'/'deleted' task's sessions fall back to
+ * ungrouped), newest first. Empty lanes are kept — a freshly created task
+ * with nothing dispatched yet must be visible to dispatch onto.
+ */
+export function groupBoardItems(items: BoardItem[], tasks: BoardTask[]): BoardLanes {
+  const lanes: BoardLane[] = tasks
+    .filter((t) => t.status === 'open')
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .map((task) => ({ task, items: [] }));
+
+  const manualLaneBySession = new Map<string, BoardLane>();
+  const laneByTaskId = new Map<string, BoardLane>();
+  for (const lane of lanes) {
+    laneByTaskId.set(lane.task.id, lane);
+    for (const sid of lane.task.sessionIds ?? []) {
+      if (!manualLaneBySession.has(sid)) manualLaneBySession.set(sid, lane);
+    }
+  }
+
+  const ungrouped: BoardItem[] = [];
+  for (const item of items) {
+    if (item.kind !== 'session') {
+      ungrouped.push(item);
+      continue;
+    }
+    const lane =
+      manualLaneBySession.get(item.key) ??
+      (item.llmTaskId ? laneByTaskId.get(item.llmTaskId) : undefined);
+    if (lane) lane.items.push(item);
+    else ungrouped.push(item);
+  }
+  return { lanes, ungrouped };
 }

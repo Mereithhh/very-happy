@@ -1,0 +1,229 @@
+/**
+ * Board-task registry (Task Board V2): the boss's high-level task list,
+ * server-backed in the account KV store (key `vh.board-tasks.v1`, plain
+ * base64 JSON — same non-e2e convention as `vh.terminal-sessions`, which is
+ * what lets the daemon-side boardAnalyzer read task titles) with an MMKV
+ * blob as the instant offline cache.
+ *
+ * Mutations update local state + cache immediately (optimistic) and push to
+ * KV in the background. The blob is version-checked; on a conflict the two
+ * lists are merged per-task by `updatedAt` — see boardTaskOps.ts for the
+ * full truth model (tombstoned deletes, unioned sessionIds).
+ *
+ * This module deliberately mirrors terminalSessions.ts (cache fingerprint,
+ * debounced push, merge-on-409) so there is exactly one KV-list pattern in
+ * the codebase to understand.
+ */
+import { create } from 'zustand';
+import { getCurrentAuth } from '@/auth/AuthContext';
+import { MMKV } from '@/storage/mmkv-web';
+import { kvGet, kvSet } from '@/sync/apiKv';
+import { mergeBoardTasks, type BoardTask } from '@/sync/boardTaskOps';
+
+export type { BoardTask } from '@/sync/boardTaskOps';
+
+const mmkv = new MMKV();
+const CACHE_KEY = 'board-tasks-cache-v1';
+const KV_KEY = 'vh.board-tasks.v1';
+
+interface CacheBlob {
+  /** fingerprint of the account (auth token) that wrote this cache */
+  account?: string | null;
+  tasks: BoardTask[];
+}
+
+/** Non-cryptographic fingerprint (FNV-1a) of the auth token — only answers
+ *  "did the same account write this cache?" (cross-account leak guard). */
+function accountFingerprint(token: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < token.length; i++) {
+    h ^= token.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+let cachedAccount: string | null | undefined;
+
+function load(): BoardTask[] {
+  try {
+    const raw = mmkv.getString(CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CacheBlob;
+    cachedAccount = parsed.account ?? null;
+    return Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistLocal(list: BoardTask[]) {
+  try {
+    const auth = getCurrentAuth();
+    const account = auth?.credentials
+      ? accountFingerprint(auth.credentials.token)
+      : (cachedAccount ?? null);
+    cachedAccount = account;
+    mmkv.set(CACHE_KEY, JSON.stringify({ account, tasks: list } satisfies CacheBlob));
+  } catch {
+    /* best-effort */
+  }
+}
+
+function toB64(json: string): string {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+}
+function fromB64(b64: string): string {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function parseKvTasks(valueB64: string): BoardTask[] {
+  const parsed = JSON.parse(fromB64(valueB64)) as { tasks?: BoardTask[] };
+  return Array.isArray(parsed.tasks) ? parsed.tasks : [];
+}
+
+function newId(): string {
+  try {
+    const c = (globalThis as any).crypto;
+    if (c?.randomUUID) return (c.randomUUID() as string).replace(/-/g, '').slice(0, 12);
+  } catch {
+    /* fall through */
+  }
+  return Math.random().toString(36).slice(2, 14);
+}
+
+let kvVersion: number | undefined;
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Push the CURRENT store list to KV (debounced). On a version conflict
+ *  (another device wrote first) merge their list with ours per-task and push
+ *  the merged view — a blind re-push would clobber the other device. */
+function scheduleKvPush() {
+  const auth = getCurrentAuth();
+  if (!auth?.credentials) return; // not logged in → local cache only
+  const creds = auth.credentials;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    const snapshot = () => useBoardTasks.getState().tasks;
+    try {
+      const value = toB64(JSON.stringify({ tasks: snapshot() }));
+      kvVersion = await kvSet(creds, KV_KEY, value, kvVersion ?? -1);
+    } catch (e: any) {
+      try {
+        const fresh = await kvGet(creds, KV_KEY);
+        const remote = fresh ? parseKvTasks(fresh.value) : [];
+        const merged = mergeBoardTasks(snapshot(), remote);
+        persistLocal(merged);
+        useBoardTasks.setState({ tasks: merged });
+        kvVersion = fresh?.version ?? -1;
+        const value = toB64(JSON.stringify({ tasks: merged }));
+        kvVersion = await kvSet(creds, KV_KEY, value, kvVersion);
+      } catch {
+        console.warn('[boardTasks] KV push failed', e?.message);
+      }
+    }
+  }, 400);
+}
+
+interface BoardTasksState {
+  tasks: BoardTask[];
+  initialized: boolean;
+  /** Load the server-backed list (call once per board mount). Merges into local cache. */
+  initialize(): Promise<void>;
+  create(title: string, description?: string): BoardTask;
+  setStatus(id: string, status: 'open' | 'done'): void;
+  /** Tombstone delete — propagates across devices, see boardTaskOps.ts. */
+  remove(id: string): void;
+  /** Record a dispatched session under a task (manual mapping — wins over
+   *  the LLM's metadata.board.taskId fallback). */
+  attachSession(id: string, sessionId: string): void;
+}
+
+export const useBoardTasks = create<BoardTasksState>((set, get) => ({
+  tasks: load(),
+  initialized: false,
+  initialize: async () => {
+    const auth = getCurrentAuth();
+    if (!auth?.credentials) return;
+    // Same defense-in-depth as the terminal registry: a cache that outlived a
+    // logout must not merge a stranger's tasks into THIS account's KV list.
+    const fp = accountFingerprint(auth.credentials.token);
+    if (cachedAccount !== fp) {
+      cachedAccount = fp;
+      if (get().tasks.length > 0) {
+        set({ tasks: [] });
+        persistLocal([]);
+      }
+    }
+    try {
+      const item = await kvGet(auth.credentials, KV_KEY);
+      if (item) {
+        kvVersion = item.version;
+        const remote = parseKvTasks(item.value);
+        const merged = mergeBoardTasks(get().tasks, remote);
+        persistLocal(merged);
+        set({ tasks: merged, initialized: true });
+        if (JSON.stringify(merged) !== JSON.stringify(remote)) scheduleKvPush();
+      } else {
+        kvVersion = -1;
+        set({ initialized: true });
+        if (get().tasks.length) scheduleKvPush();
+      }
+    } catch (e: any) {
+      console.warn('[boardTasks] KV load failed; using local cache', e?.message);
+      set({ initialized: true });
+    }
+  },
+  create: (title, description) => {
+    const now = Date.now();
+    const task: BoardTask = {
+      id: newId(),
+      title: title.trim(),
+      description: description?.trim() || undefined,
+      status: 'open',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = [task, ...get().tasks];
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+    return task;
+  },
+  setStatus: (id, status) => {
+    const now = Date.now();
+    const next = get().tasks.map((t) =>
+      t.id === id && t.status !== 'deleted' && t.status !== status
+        ? { ...t, status, updatedAt: now }
+        : t,
+    );
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+  },
+  remove: (id) => {
+    const now = Date.now();
+    const next = get().tasks.map((t) =>
+      t.id === id && t.status !== 'deleted'
+        ? { ...t, status: 'deleted' as const, updatedAt: now }
+        : t,
+    );
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+  },
+  attachSession: (id, sessionId) => {
+    const now = Date.now();
+    const next = get().tasks.map((t) => {
+      if (t.id !== id || t.status === 'deleted') return t;
+      if (t.sessionIds?.includes(sessionId)) return t;
+      return { ...t, sessionIds: [...(t.sessionIds ?? []), sessionId], updatedAt: now };
+    });
+    persistLocal(next);
+    set({ tasks: next });
+    scheduleKvPush();
+  },
+}));

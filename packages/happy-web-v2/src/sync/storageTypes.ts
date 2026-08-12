@@ -60,6 +60,20 @@ export const MetadataSchema = z.object({
      */
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
+    /**
+     * Task Board V2: latest daemon-side LLM analysis of this session
+     * (happy-cli boardAnalyzer, opt-in). Absent until the machine-local
+     * `boardLlm` toggle produces a first verdict. NO zod .default() —
+     * optional only, so clients that never saw the field don't write one.
+     */
+    board: z.object({
+        /** board task (KV vh.board-tasks.v1) this session was classified under */
+        taskId: z.string().optional(),
+        attention: z.enum(['none', 'review', 'blocked']).optional(),
+        /** one-line progress note (Chinese) */
+        progress: z.string().optional(),
+        analyzedAt: z.number(),
+    }).optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

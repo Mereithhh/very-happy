@@ -2,12 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   buildBoardItems,
   formatCwd,
+  groupBoardItems,
   ENDED_WINDOW_MS,
   type BoardInput,
 } from './boardItems';
 import type { Session, Machine } from '@/sync/storageTypes';
 import type { TerminalSession } from '@/sync/terminalListOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
+import type { BoardTask } from '@/sync/boardTaskOps';
 
 const NOW = 1_700_000_000_000;
 
@@ -250,5 +252,126 @@ describe('ordering', () => {
     const b = mkSession({ id: 'a-first', updatedAt: NOW - 1000 });
     const items = build({ sessions: [a, b] });
     expect(items.map((i) => i.key)).toEqual(['a-first', 'b-second']);
+  });
+});
+
+describe('V2: metadata.board (LLM analysis) on session items', () => {
+  function withBoard(id: string, board: NonNullable<Session['metadata']>['board'], over: Partial<Session> = {}): Session {
+    const s = mkSession({ id, ...over });
+    s.metadata = { ...s.metadata!, board };
+    return s;
+  }
+
+  it('progress + llmTaskId surface on the item; attention:none adds no badge', () => {
+    const s = withBoard('s1', { taskId: 'task1', attention: 'none', progress: '修复登录中', analyzedAt: NOW - 1000 });
+    const [item] = build({ sessions: [s] });
+    expect(item.progress).toBe('修复登录中');
+    expect(item.llmTaskId).toBe('task1');
+    expect(item.llmAttention).toBeUndefined();
+    expect(item.status).toBe('idle'); // 'none' does not elevate
+  });
+
+  it('LLM blocked/review folds an ONLINE session into attention, since = analyzedAt', () => {
+    const s = withBoard('s1', { attention: 'blocked', progress: '卡在权限确认', analyzedAt: NOW - 90_000 });
+    const [item] = build({ sessions: [s] });
+    expect(item.status).toBe('attention');
+    expect(item.llmAttention).toBe('blocked');
+    expect(item.attentionSince).toBe(NOW - 90_000);
+  });
+
+  it('a pending permission request wins the attention detail over the LLM verdict', () => {
+    const s = withBoard(
+      's1',
+      { attention: 'review', progress: 'x', analyzedAt: NOW - 5_000 },
+      { agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 60_000 } } } },
+    );
+    const [item] = build({ sessions: [s] });
+    expect(item.status).toBe('attention');
+    expect(item.attentionSince).toBe(NOW - 60_000);
+    expect(item.detail).toEqual({ kind: 'tool', name: 'Bash' });
+  });
+
+  it('V1 gate unchanged: a stale LLM verdict cannot park a DEAD session in attention', () => {
+    const s = withBoard(
+      's1',
+      { attention: 'blocked', progress: 'x', analyzedAt: NOW - 5_000 },
+      { active: false, presence: NOW - 60_000, updatedAt: NOW - 60_000 },
+    );
+    const [item] = build({ sessions: [s] });
+    expect(item.status).toBe('ended');
+    expect(item.llmAttention).toBe('blocked'); // badge still shows on the card
+  });
+});
+
+describe('V2: groupBoardItems (task swimlanes)', () => {
+  function task(over: Partial<BoardTask> & { id: string }): BoardTask {
+    return { title: `Task ${over.id}`, status: 'open', createdAt: NOW - 1000, ...over };
+  }
+
+  it('manual dispatch mapping wins over the LLM taskId; unclaimed LLM matches group as fallback', () => {
+    const sManual = mkSession({ id: 'sA' });
+    const sLlm = mkSession({ id: 'sB' });
+    sLlm.metadata = { ...sLlm.metadata!, board: { taskId: 't2', analyzedAt: NOW } };
+    // LLM says sA belongs to t2, but t1 manually claims it → manual wins.
+    sManual.metadata = { ...sManual.metadata!, board: { taskId: 't2', analyzedAt: NOW } };
+    const items = build({ sessions: [sManual, sLlm] });
+    const { lanes, ungrouped } = groupBoardItems(items, [
+      task({ id: 't1', sessionIds: ['sA'] }),
+      task({ id: 't2' }),
+    ]);
+    const t1 = lanes.find((l) => l.task.id === 't1')!;
+    const t2 = lanes.find((l) => l.task.id === 't2')!;
+    expect(t1.items.map((i) => i.key)).toEqual(['sA']);
+    expect(t2.items.map((i) => i.key)).toEqual(['sB']);
+    expect(ungrouped).toHaveLength(0);
+  });
+
+  it('terminals and unclassified sessions land in ungrouped; empty lanes are kept', () => {
+    const s = mkSession({ id: 's1' });
+    const items = build({
+      sessions: [s],
+      terminals: [mkTerminal({ id: 'tm1' })],
+    });
+    const { lanes, ungrouped } = groupBoardItems(items, [task({ id: 't1' })]);
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0].items).toHaveLength(0);
+    expect(ungrouped.map((i) => i.key).sort()).toEqual(['s1', 't:tm1']);
+  });
+
+  it('only open tasks form lanes; a done task\'s sessions fall back to ungrouped', () => {
+    const s = mkSession({ id: 's1' });
+    const items = build({ sessions: [s] });
+    const { lanes, ungrouped } = groupBoardItems(items, [
+      task({ id: 't1', status: 'done', sessionIds: ['s1'] }),
+    ]);
+    expect(lanes).toHaveLength(0);
+    expect(ungrouped.map((i) => i.key)).toEqual(['s1']);
+  });
+
+  it('lanes are newest task first; items keep board order inside a lane', () => {
+    const sAttn = mkSession({
+      id: 'sAttn',
+      agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 60_000 } } },
+    });
+    const sIdle = mkSession({ id: 'sIdle' });
+    const items = build({ sessions: [sIdle, sAttn] });
+    const { lanes } = groupBoardItems(items, [
+      task({ id: 'older', createdAt: NOW - 10_000, sessionIds: ['sAttn', 'sIdle'] }),
+      task({ id: 'newer', createdAt: NOW - 1_000 }),
+    ]);
+    expect(lanes.map((l) => l.task.id)).toEqual(['newer', 'older']);
+    // attention before idle — same order as the status view
+    expect(lanes[1].items.map((i) => i.key)).toEqual(['sAttn', 'sIdle']);
+  });
+
+  it('a session double-dispatched onto two tasks goes to the first lane only', () => {
+    const s = mkSession({ id: 's1' });
+    const items = build({ sessions: [s] });
+    const { lanes } = groupBoardItems(items, [
+      task({ id: 'newer', createdAt: NOW - 1_000, sessionIds: ['s1'] }),
+      task({ id: 'older', createdAt: NOW - 10_000, sessionIds: ['s1'] }),
+    ]);
+    expect(lanes[0].items.map((i) => i.key)).toEqual(['s1']);
+    expect(lanes[1].items).toHaveLength(0);
   });
 });
