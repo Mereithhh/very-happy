@@ -194,20 +194,20 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             {/* selector row */}
             <div className="ci-modes">
                 <ModeMenu
-                    label={t('session.chat.modelLabel' as any)}
+                    label={t('session.chat.modelLabel')}
                     options={models}
                     value={modelKey}
                     onChange={(k) => setMode('updateSessionModelMode', k)}
                 />
                 <ModeMenu
-                    label={t('session.chat.permissionLabel' as any)}
+                    label={t('session.chat.permissionLabel')}
                     options={permModes}
                     value={permKey}
                     onChange={(k) => setMode('updateSessionPermissionMode', k)}
                 />
                 {efforts.length > 0 && (
                     <ModeMenu
-                        label={t('session.chat.effortLabel' as any)}
+                        label={t('session.chat.effortLabel')}
                         options={efforts}
                         value={effortKey}
                         onChange={(k) => setMode('updateSessionEffortLevel', k)}
@@ -225,7 +225,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                 type="button"
                                 className="ci-att-remove"
                                 onClick={() => remove(a.id)}
-                                aria-label={t('common.delete' as any)}
+                                aria-label={t('common.delete')}
                             >
                                 <X size={12} />
                             </button>
@@ -251,8 +251,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         type="button"
                         className="ci-icon-btn"
                         onClick={onPickFiles}
-                        aria-label={t('session.chat.attach' as any)}
-                        title={t('session.chat.attach' as any)}
+                        aria-label={t('session.chat.attach')}
+                        title={t('session.chat.attach')}
                     >
                         <Paperclip size={18} />
                     </button>
@@ -271,13 +271,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     className="ci-textarea"
                     value={text}
                     rows={1}
-                    placeholder={t('session.inputPlaceholder' as any)}
+                    placeholder={t('session.inputPlaceholder')}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={onKeyDown}
                     onPaste={onPaste}
                     onCompositionStart={ime.onCompositionStart}
                     onCompositionEnd={ime.onCompositionEnd}
-                    aria-label={t('common.message' as any)}
+                    aria-label={t('common.message')}
                 />
                 {isWorking ? (
                     <button
@@ -285,8 +285,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         className="ci-send ci-send--abort"
                         onClick={() => void doAbort()}
                         disabled={aborting}
-                        aria-label={t('session.chat.stop' as any)}
-                        title={t('session.chat.stop' as any)}
+                        aria-label={t('session.chat.stop')}
+                        title={t('session.chat.stop')}
                     >
                         <Square size={16} fill="currentColor" />
                     </button>
@@ -296,8 +296,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         className="ci-send"
                         onClick={() => void doSend()}
                         disabled={!canSend}
-                        aria-label={t('session.chat.send' as any)}
-                        title={t('session.chat.send' as any)}
+                        aria-label={t('session.chat.send')}
+                        title={t('session.chat.send')}
                     >
                         <Send size={16} />
                     </button>
@@ -309,20 +309,20 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <span className={`ci-conn ci-conn--${connected ? 'on' : 'off'}`}>
                     <span className="ci-conn-dot" />
                     {connected
-                        ? t('session.chat.connected' as any)
+                        ? t('session.chat.connected')
                         : online
-                            ? t('session.chat.reconnecting' as any)
-                            : t('session.chat.disconnected' as any)}
+                            ? t('session.chat.reconnecting')
+                            : t('session.chat.disconnected')}
                 </span>
                 <span className="ci-spacer" />
-                <span className={`ci-meter ci-meter--${meterTone}`} title={t('session.chat.contextMeter' as any, { percent: percentUsed })}>
+                <span className={`ci-meter ci-meter--${meterTone}`} title={t('session.chat.contextMeter', { percent: percentUsed })}>
                     <span className="ci-meter-track">
                         <span className="ci-meter-fill" style={{ width: `${percentUsed}%` }} />
                     </span>
-                    <span className="ci-meter-label">{t('session.chat.contextLeft' as any, { percent: 100 - percentUsed })}</span>
+                    <span className="ci-meter-label">{t('session.chat.contextLeft', { percent: 100 - percentUsed })}</span>
                 </span>
                 <span className="ci-hint">
-                    {enterToSend ? t('session.chat.enterToSend' as any) : t('session.chat.shiftEnterToSend' as any)}
+                    {enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}
                 </span>
             </div>
         </div>

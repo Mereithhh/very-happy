@@ -36,6 +36,7 @@ import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
+import type { SimpleTranslationKey } from '@/text';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
 import {
   useSettingMutable,
@@ -159,49 +160,49 @@ function Overview() {
 
   async function onLogout() {
     const ok = await Modal.confirm(
-      t('settingsAccount.logout' as any) as string,
-      t('settingsAccount.logoutConfirm' as any) as string,
-      { confirmText: t('common.logout' as any) as string, destructive: true },
+      t('settingsAccount.logout'),
+      t('settingsAccount.logoutConfirm'),
+      { confirmText: t('common.logout'), destructive: true },
     );
     if (ok) await logout();
   }
 
   return (
     <Page>
-      <Header title={t('settings.title' as any) as string} onBack={() => navigate('/')} />
+      <Header title={t('settings.title')} onBack={() => navigate('/')} />
       <ItemList>
         <ItemGroup>
           <Item
-            title={t('settings.account' as any)}
-            subtitle={t('settings.accountSubtitle' as any)}
+            title={t('settings.account')}
+            subtitle={t('settings.accountSubtitle')}
             left={<User size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/account')}
           />
           <Item
-            title={t('settings.appearance' as any)}
-            subtitle={t('settings.appearanceSubtitle' as any)}
+            title={t('settings.appearance')}
+            subtitle={t('settings.appearanceSubtitle')}
             left={<Palette size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/appearance')}
           />
           <Item
-            title={t('settingsAgents.title' as any)}
-            subtitle={t('settingsAgents.subtitle' as any)}
+            title={t('settingsAgents.title')}
+            subtitle={t('settingsAgents.subtitle')}
             left={<Bot size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/agents')}
           />
           <Item
-            title={t('settingsSnippets.navTitle' as any)}
-            subtitle={t('settingsSnippets.navSubtitle' as any)}
+            title={t('settingsSnippets.navTitle')}
+            subtitle={t('settingsSnippets.navSubtitle')}
             left={<Bookmark size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/snippets')}
           />
           <Item
-            title={t('notifications.title' as any)}
-            subtitle={t('notifications.settingsSubtitle' as any)}
+            title={t('notifications.title')}
+            subtitle={t('notifications.settingsSubtitle')}
             left={<Bell size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/notifications')}
@@ -214,25 +215,25 @@ function Overview() {
             onClick={() => navigate('/settings/channels')}
           />
           <Item
-            title={t('settings.usage' as any)}
-            subtitle={t('settings.usageSubtitle' as any)}
+            title={t('settings.usage')}
+            subtitle={t('settings.usageSubtitle')}
             left={<BarChart3 size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/usage')}
           />
           <Item
-            title={t('diagnostics.title' as any)}
-            subtitle={t('diagnostics.subtitle' as any)}
+            title={t('diagnostics.title')}
+            subtitle={t('diagnostics.subtitle')}
             left={<Stethoscope size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/diagnostics')}
           />
         </ItemGroup>
 
-        <ItemGroup title={t('settingsAccount.dangerZone' as any) as string}>
+        <ItemGroup title={t('settingsAccount.dangerZone')}>
           <Item
-            title={t('settingsAccount.logout' as any)}
-            subtitle={t('settingsAccount.logoutSubtitle' as any)}
+            title={t('settingsAccount.logout')}
+            subtitle={t('settingsAccount.logoutSubtitle')}
             left={<LogOut size={18} />}
             destructive
             onClick={onLogout}
@@ -261,18 +262,18 @@ function Appearance() {
   const themeOpts: { key: 'system' | 'dark' | 'light'; label: string; desc: string }[] = [
     {
       key: 'system',
-      label: t('settingsAppearance.themeOptions.adaptive' as any) as string,
-      desc: t('settingsAppearance.themeDescriptions.adaptive' as any) as string,
+      label: t('settingsAppearance.themeOptions.adaptive'),
+      desc: t('settingsAppearance.themeDescriptions.adaptive'),
     },
     {
       key: 'light',
-      label: t('settingsAppearance.themeOptions.light' as any) as string,
-      desc: t('settingsAppearance.themeDescriptions.light' as any) as string,
+      label: t('settingsAppearance.themeOptions.light'),
+      desc: t('settingsAppearance.themeDescriptions.light'),
     },
     {
       key: 'dark',
-      label: t('settingsAppearance.themeOptions.dark' as any) as string,
-      desc: t('settingsAppearance.themeDescriptions.dark' as any) as string,
+      label: t('settingsAppearance.themeOptions.dark'),
+      desc: t('settingsAppearance.themeDescriptions.dark'),
     },
   ];
 
@@ -288,14 +289,14 @@ function Appearance() {
   return (
     <Page>
       <Header
-        title={t('settings.appearance' as any) as string}
-        subtitle={t('settings.appearanceSubtitle' as any) as string}
+        title={t('settings.appearance')}
+        subtitle={t('settings.appearanceSubtitle')}
         onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
-          title={t('settingsAppearance.theme' as any) as string}
-          footer={t('settingsAppearance.themeDescription' as any) as string}
+          title={t('settingsAppearance.theme')}
+          footer={t('settingsAppearance.themeDescription')}
         >
           {themeOpts.map((o) => (
             <Item
@@ -339,12 +340,12 @@ function Appearance() {
         </ItemGroup>
 
         <ItemGroup
-          title={t('settingsLanguage.title' as any) as string}
-          footer={t('settingsLanguage.description' as any) as string}
+          title={t('settingsLanguage.title')}
+          footer={t('settingsLanguage.description')}
         >
           <Item
-            title={t('settingsLanguage.automatic' as any)}
-            subtitle={t('settingsLanguage.automaticSubtitle' as any)}
+            title={t('settingsLanguage.automatic')}
+            subtitle={t('settingsLanguage.automaticSubtitle')}
             onClick={() => pickLanguage(null)}
           />
           {langCodes.map((code) => (
@@ -361,17 +362,17 @@ function Appearance() {
         </ItemGroup>
 
         <ItemGroup
-          title={t('settingsAppearance.display' as any) as string}
-          footer={t('settingsAppearance.displayDescription' as any) as string}
+          title={t('settingsAppearance.display')}
+          footer={t('settingsAppearance.displayDescription')}
         >
           <Item
-            title={t('settingsAppearance.showLineNumbersInDiffs' as any)}
-            subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription' as any)}
+            title={t('settingsAppearance.showLineNumbersInDiffs')}
+            subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription')}
             right={
               <Toggle
                 checked={showLineNumbers}
                 onChange={setShowLineNumbers}
-                label={t('settingsAppearance.showLineNumbersInDiffs' as any) as string}
+                label={t('settingsAppearance.showLineNumbersInDiffs')}
               />
             }
           />
@@ -399,42 +400,42 @@ function Account() {
   async function onDisconnectGithub() {
     if (!credentials) return;
     const ok = await Modal.confirm(
-      t('modals.disconnectGithub' as any) as string,
-      t('modals.disconnectGithubConfirm' as any) as string,
-      { confirmText: t('modals.disconnect' as any) as string, destructive: true },
+      t('modals.disconnectGithub'),
+      t('modals.disconnectGithubConfirm'),
+      { confirmText: t('modals.disconnect'), destructive: true },
     );
     if (!ok) return;
     try {
       await disconnectGitHub(credentials);
       await sync.refreshProfile();
-      toast.success(t('common.success' as any) as string);
+      toast.success(t('common.success'));
     } catch {
-      toast.error(t('common.error' as any) as string);
+      toast.error(t('common.error'));
     }
   }
 
   async function onDisconnectService(service: string) {
     if (!credentials) return;
     const ok = await Modal.confirm(
-      t('modals.disconnectService' as any, { service } as any) as string,
-      t('modals.disconnectServiceConfirm' as any, { service } as any) as string,
-      { confirmText: t('modals.disconnect' as any) as string, destructive: true },
+      t('modals.disconnectService', { service }),
+      t('modals.disconnectServiceConfirm', { service }),
+      { confirmText: t('modals.disconnect'), destructive: true },
     );
     if (!ok) return;
     try {
       await disconnectService(credentials, service);
       await sync.refreshProfile();
-      toast.success(t('common.success' as any) as string);
+      toast.success(t('common.success'));
     } catch {
-      toast.error(t('common.error' as any) as string);
+      toast.error(t('common.error'));
     }
   }
 
   async function onLogout() {
     const ok = await Modal.confirm(
-      t('settingsAccount.logout' as any) as string,
-      t('settingsAccount.logoutConfirm' as any) as string,
-      { confirmText: t('common.logout' as any) as string, destructive: true },
+      t('settingsAccount.logout'),
+      t('settingsAccount.logoutConfirm'),
+      { confirmText: t('common.logout'), destructive: true },
     );
     if (ok) await logout();
   }
@@ -444,40 +445,40 @@ function Account() {
   return (
     <Page>
       <Header
-        title={t('settings.account' as any) as string}
-        subtitle={t('settings.accountSubtitle' as any) as string}
+        title={t('settings.account')}
+        subtitle={t('settings.accountSubtitle')}
         onBack={() => navigate('/settings')}
       />
       <ItemList>
-        <ItemGroup title={t('settingsAccount.accountInformation' as any) as string}>
+        <ItemGroup title={t('settingsAccount.accountInformation')}>
           <Item
-            title={t('settingsAccount.status' as any)}
+            title={t('settingsAccount.status')}
             right={
               <Badge tone={credentials ? 'live' : 'muted'}>
-                {credentials ? t('settingsAccount.statusActive' as any) : t('settingsAccount.statusNotAuthenticated' as any)}
+                {credentials ? t('settingsAccount.statusActive') : t('settingsAccount.statusNotAuthenticated')}
               </Badge>
             }
           />
           {profile.id && (
-            <Item title={t('settingsAccount.publicId' as any)} detail={profile.id} />
+            <Item title={t('settingsAccount.publicId')} detail={profile.id} />
           )}
           <Item
-            title={t('settingsAccount.password' as any)}
-            subtitle={t('settingsAccount.passwordChange' as any)}
+            title={t('settingsAccount.password')}
+            subtitle={t('settingsAccount.passwordChange')}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/password')}
           />
-          <Item title={t('settingsAccount.server' as any)} detail={serverInfo.hostname} />
+          <Item title={t('settingsAccount.server')} detail={serverInfo.hostname} />
         </ItemGroup>
 
         {(profile.github || displayName || avatarUrl) && (
-          <ItemGroup title={t('settingsAccount.profile' as any) as string}>
-            {displayName && <Item title={t('settingsAccount.name' as any)} subtitle={displayName} />}
+          <ItemGroup title={t('settingsAccount.profile')}>
+            {displayName && <Item title={t('settingsAccount.name')} subtitle={displayName} />}
             {profile.github && (
               <Item
-                title={t('settingsAccount.github' as any)}
-                subtitle={t('settings.githubConnected' as any, { login: profile.github.login } as any)}
-                detail={t('settingsAccount.tapToDisconnect' as any) as string}
+                title={t('settingsAccount.github')}
+                subtitle={t('settings.githubConnected', { login: profile.github.login })}
+                detail={t('settingsAccount.tapToDisconnect')}
                 left={<Github size={18} />}
                 onClick={onDisconnectGithub}
               />
@@ -486,7 +487,7 @@ function Account() {
               <Item
                 key={s}
                 title={s}
-                detail={t('settingsAccount.tapToDisconnect' as any) as string}
+                detail={t('settingsAccount.tapToDisconnect')}
                 left={<ServerIcon size={18} />}
                 onClick={() => onDisconnectService(s)}
               />
@@ -494,10 +495,10 @@ function Account() {
           </ItemGroup>
         )}
 
-        <ItemGroup title={t('settingsAccount.dangerZone' as any) as string}>
+        <ItemGroup title={t('settingsAccount.dangerZone')}>
           <Item
-            title={t('settingsAccount.logout' as any)}
-            subtitle={t('settingsAccount.logoutSubtitle' as any)}
+            title={t('settingsAccount.logout')}
+            subtitle={t('settingsAccount.logoutSubtitle')}
             left={<LogOut size={18} />}
             destructive
             onClick={onLogout}
@@ -538,8 +539,8 @@ function AgentField({
         title={label}
         right={
           <span className="set-value">
-            {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault' as any)}
-            {!override && (t('settingsAgents.codeDefaultSuffix' as any) as string)}
+            {current?.name ?? resolvedValue ?? t('settingsAgents.useCodeDefault')}
+            {!override && (t('settingsAgents.codeDefaultSuffix'))}
           </span>
         }
         onClick={() => setOpen((v) => !v)}
@@ -547,7 +548,7 @@ function AgentField({
       {open && (
         <div className="set-options">
           <Item
-            title={t('settingsAgents.useCodeDefault' as any)}
+            title={t('settingsAgents.useCodeDefault')}
             subtitle={codeDefault ? options.find((o) => o.key === codeDefault)?.name ?? codeDefault : undefined}
             selected={!override}
             right={!override ? <Check size={16} /> : undefined}
@@ -624,17 +625,17 @@ function Agents() {
   const [alwaysAsk, setAlwaysAsk] = useSettingMutable('newSessionAlwaysAsk');
   const quickAgent = normalizeAgentKey(newSessionAgent);
 
-  const translate = useCallback((k: any) => t(k), [t]);
+  const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
 
   async function clearAll() {
     const ok = await Modal.confirm(
-      t('settingsAgents.clearOverrides' as any) as string,
-      t('settingsAgents.clearOverridesConfirm' as any) as string,
-      { confirmText: t('common.reset' as any) as string, destructive: true },
+      t('settingsAgents.clearOverrides'),
+      t('settingsAgents.clearOverridesConfirm'),
+      { confirmText: t('common.reset'), destructive: true },
     );
     if (!ok) return;
     setOverrides({});
-    toast.success(t('settingsAgents.cleared' as any) as string);
+    toast.success(t('settingsAgents.cleared'));
   }
 
   function pick(agent: AgentKey, field: AgentDefaultField, value: string | null) {
@@ -644,12 +645,12 @@ function Agents() {
   return (
     <Page>
       <Header
-        title={t('settingsAgents.title' as any) as string}
-        subtitle={t('settingsAgents.subtitle' as any) as string}
+        title={t('settingsAgents.title')}
+        subtitle={t('settingsAgents.subtitle')}
         onBack={() => navigate('/settings')}
         right={
           <Button size="sm" variant="ghost" onClick={clearAll}>
-            {t('settingsAgents.clearOverrides' as any)}
+            {t('settingsAgents.clearOverrides')}
           </Button>
         }
       />
@@ -680,7 +681,7 @@ function Agents() {
           return (
             <ItemGroup key={agent} title={agent}>
               <AgentField
-                label={t('settingsAgents.permission' as any) as string}
+                label={t('settingsAgents.permission')}
                 options={permOptions}
                 resolvedValue={resolved.permissionMode}
                 override={getAgentDefaultOverrideValue(overrides, agent, 'permissionMode')}
@@ -689,7 +690,7 @@ function Agents() {
               />
               {modelOptions.length > 0 && (
                 <AgentField
-                  label={t('settingsAgents.model' as any) as string}
+                  label={t('settingsAgents.model')}
                   options={modelOptions}
                   resolvedValue={resolved.modelMode}
                   override={getAgentDefaultOverrideValue(overrides, agent, 'modelMode')}
@@ -699,7 +700,7 @@ function Agents() {
               )}
               {effortOptions.length > 0 && (
                 <AgentField
-                  label={t('settingsAgents.effort' as any) as string}
+                  label={t('settingsAgents.effort')}
                   options={effortOptions}
                   resolvedValue={resolved.effortLevel}
                   override={getAgentDefaultOverrideValue(overrides, agent, 'effortLevel')}
@@ -781,14 +782,14 @@ function Snippets() {
       setCommands(next);
     }
     setEditor(null);
-    toast.success(t('common.success' as any) as string);
+    toast.success(t('common.success'));
   }
 
   async function del(kind: SnippetKind, id: string) {
     const ok = await Modal.confirm(
-      t('settingsSnippets.deleteTitle' as any) as string,
+      t('settingsSnippets.deleteTitle'),
       undefined,
-      { confirmText: t('settingsSnippets.deleteConfirm' as any) as string, destructive: true },
+      { confirmText: t('settingsSnippets.deleteConfirm'), destructive: true },
     );
     if (!ok) return;
     if (kind === 'preset') setPresets((presets ?? []).filter((p) => p.id !== id));
@@ -798,8 +799,8 @@ function Snippets() {
   return (
     <Page>
       <Header
-        title={t('settingsSnippets.navTitle' as any) as string}
-        subtitle={t('settingsSnippets.navSubtitle' as any) as string}
+        title={t('settingsSnippets.navTitle')}
+        subtitle={t('settingsSnippets.navSubtitle')}
         onBack={() => navigate('/settings')}
       />
 
@@ -808,15 +809,15 @@ function Snippets() {
           <span className="eyebrow">
             {editor.kind === 'preset'
               ? editor.id
-                ? t('settingsSnippets.editPreset' as any)
-                : t('settingsSnippets.newPreset' as any)
+                ? t('settingsSnippets.editPreset')
+                : t('settingsSnippets.newPreset')
               : editor.id
-                ? t('settingsSnippets.editCommand' as any)
-                : t('settingsSnippets.newCommand' as any)}
+                ? t('settingsSnippets.editCommand')
+                : t('settingsSnippets.newCommand')}
           </span>
           <Input
-            label={t('settingsSnippets.editorTitleLabel' as any) as string}
-            placeholder={t('settingsSnippets.editorTitlePlaceholder' as any) as string}
+            label={t('settingsSnippets.editorTitleLabel')}
+            placeholder={t('settingsSnippets.editorTitlePlaceholder')}
             value={editor.title}
             onChange={(e) => setEditor({ ...editor, title: e.target.value })}
           />
@@ -828,10 +829,10 @@ function Snippets() {
           />
           <div className="set-editor__row">
             <Button variant="ghost" onClick={() => setEditor(null)}>
-              {t('settingsSnippets.editorCancel' as any)}
+              {t('settingsSnippets.editorCancel')}
             </Button>
             <Button variant="primary" disabled={editor.body.trim().length === 0} onClick={saveEditor}>
-              {t('settingsSnippets.editorSave' as any)}
+              {t('settingsSnippets.editorSave')}
             </Button>
           </div>
         </div>
@@ -839,8 +840,8 @@ function Snippets() {
 
       <ItemList>
         <ItemGroup
-          title={t('settingsSnippets.presetsGroup' as any) as string}
-          footer={t('settingsSnippets.presetsFooter' as any) as string}
+          title={t('settingsSnippets.presetsGroup')}
+          footer={t('settingsSnippets.presetsFooter')}
         >
           {(presets ?? []).map((p) => (
             <Item
@@ -851,7 +852,7 @@ function Snippets() {
                 <button
                   type="button"
                   className="set-header__back"
-                  aria-label={t('common.delete' as any) as string}
+                  aria-label={t('common.delete')}
                   onClick={(e) => {
                     e.stopPropagation();
                     del('preset', p.id);
@@ -864,15 +865,15 @@ function Snippets() {
             />
           ))}
           <Item
-            title={t('settingsSnippets.addPreset' as any)}
+            title={t('settingsSnippets.addPreset')}
             left={<Plus size={18} />}
             onClick={() => openEditor('preset')}
           />
         </ItemGroup>
 
         <ItemGroup
-          title={t('settingsSnippets.commandsGroup' as any) as string}
-          footer={t('settingsSnippets.commandsFooter' as any) as string}
+          title={t('settingsSnippets.commandsGroup')}
+          footer={t('settingsSnippets.commandsFooter')}
         >
           {(commands ?? []).map((c) => (
             <Item
@@ -883,7 +884,7 @@ function Snippets() {
                 <button
                   type="button"
                   className="set-header__back"
-                  aria-label={t('common.delete' as any) as string}
+                  aria-label={t('common.delete')}
                   onClick={(e) => {
                     e.stopPropagation();
                     del('command', c.id);
@@ -896,7 +897,7 @@ function Snippets() {
             />
           ))}
           <Item
-            title={t('settingsSnippets.addCommand' as any)}
+            title={t('settingsSnippets.addCommand')}
             left={<Plus size={18} />}
             onClick={() => openEditor('command')}
           />
@@ -931,6 +932,21 @@ function Snippets() {
 // ===================================================================
 
 const NOTIF_TYPES: NotifType[] = ['permission_request', 'reply_done', 'input_needed', 'error'];
+
+// Per-type i18n keys, spelled out so tsc can verify each one exists.
+const NOTIF_TYPE_LABEL = {
+  permission_request: 'notifications.type_permission_request',
+  reply_done: 'notifications.type_reply_done',
+  input_needed: 'notifications.type_input_needed',
+  error: 'notifications.type_error',
+} as const satisfies Record<NotifType, string>;
+
+const NOTIF_TYPE_DESC = {
+  permission_request: 'notifications.type_permission_request_desc',
+  reply_done: 'notifications.type_reply_done_desc',
+  input_needed: 'notifications.type_input_needed_desc',
+  error: 'notifications.type_error_desc',
+} as const satisfies Record<NotifType, string>;
 
 /**
  * Webhook notifications: the SERVER posts a generic {"title","message"} JSON
@@ -1199,10 +1215,10 @@ function Notifications() {
   if (!supported) {
     return (
       <Page>
-        <Header title={t('notifications.title' as any) as string} onBack={() => navigate('/settings')} />
+        <Header title={t('notifications.title')} onBack={() => navigate('/settings')} />
         <ItemList>
-          <ItemGroup title={t('notifications.webOnly' as any) as string}>
-            <Item title={t('notifications.unsupported' as any)} />
+          <ItemGroup title={t('notifications.webOnly')}>
+            <Item title={t('notifications.unsupported')} />
           </ItemGroup>
           <WebhookMovedGroup />
         </ItemList>
@@ -1239,22 +1255,22 @@ function Notifications() {
   return (
     <Page>
       <Header
-        title={t('notifications.title' as any) as string}
-        subtitle={t('notifications.settingsSubtitle' as any) as string}
+        title={t('notifications.title')}
+        subtitle={t('notifications.settingsSubtitle')}
         onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
-          title={t('notifications.browserNotifications' as any) as string}
+          title={t('notifications.browserNotifications')}
           footer={
             denied
-              ? (t('notifications.permissionDeniedHint' as any) as string)
-              : (t('notifications.masterDescription' as any) as string)
+              ? (t('notifications.permissionDeniedHint'))
+              : (t('notifications.masterDescription'))
           }
         >
           <Item
-            title={t('notifications.enable' as any)}
-            subtitle={prefs.enabled ? t('notifications.enabledOn' as any) : t('notifications.enabledOff' as any)}
+            title={t('notifications.enable')}
+            subtitle={prefs.enabled ? t('notifications.enabledOn') : t('notifications.enabledOff')}
             right={
               busy ? (
                 <Spinner size={14} />
@@ -1263,7 +1279,7 @@ function Notifications() {
                   checked={prefs.enabled}
                   disabled={denied}
                   onChange={toggleMaster}
-                  label={t('notifications.enable' as any) as string}
+                  label={t('notifications.enable')}
                 />
               )
             }
@@ -1271,20 +1287,20 @@ function Notifications() {
         </ItemGroup>
 
         <ItemGroup
-          title={t('notifications.types' as any) as string}
-          footer={t('notifications.typesDescription' as any) as string}
+          title={t('notifications.types')}
+          footer={t('notifications.typesDescription')}
         >
           {NOTIF_TYPES.map((type) => (
             <Item
               key={type}
-              title={t(`notifications.type_${type}` as any)}
-              subtitle={t(`notifications.type_${type}_desc` as any)}
+              title={t(NOTIF_TYPE_LABEL[type])}
+              subtitle={t(NOTIF_TYPE_DESC[type])}
               right={
                 <Toggle
                   checked={prefs.types[type]}
                   disabled={!prefs.enabled}
                   onChange={(v) => setTypeEnabled(type, v)}
-                  label={t(`notifications.type_${type}` as any) as string}
+                  label={t(NOTIF_TYPE_LABEL[type])}
                 />
               }
             />
@@ -1292,24 +1308,24 @@ function Notifications() {
         </ItemGroup>
 
         <ItemGroup
-          title={t('notifications.quietHours' as any) as string}
-          footer={t('notifications.quietHoursDescription' as any) as string}
+          title={t('notifications.quietHours')}
+          footer={t('notifications.quietHoursDescription')}
         >
           <Item
-            title={t('notifications.quietHoursEnable' as any)}
+            title={t('notifications.quietHoursEnable')}
             right={
               <Toggle
                 checked={prefs.quietHours.enabled}
                 disabled={!prefs.enabled}
                 onChange={(v) => setQuietHours({ enabled: v })}
-                label={t('notifications.quietHoursEnable' as any) as string}
+                label={t('notifications.quietHoursEnable')}
               />
             }
           />
           {prefs.quietHours.enabled && (
             <>
               <Item
-                title={t('notifications.quietHoursStart' as any)}
+                title={t('notifications.quietHoursStart')}
                 right={
                   <input
                     type="time"
@@ -1320,7 +1336,7 @@ function Notifications() {
                 }
               />
               <Item
-                title={t('notifications.quietHoursEnd' as any)}
+                title={t('notifications.quietHoursEnd')}
                 right={
                   <input
                     type="time"
@@ -1384,16 +1400,16 @@ function Usage() {
   }, [data]);
 
   const periods: { key: Period; label: string }[] = [
-    { key: 'today', label: t('usage.today' as any) as string },
-    { key: '7days', label: t('usage.last7Days' as any) as string },
-    { key: '30days', label: t('usage.last30Days' as any) as string },
+    { key: 'today', label: t('usage.today') },
+    { key: '7days', label: t('usage.last7Days') },
+    { key: '30days', label: t('usage.last30Days') },
   ];
 
   return (
     <Page>
       <Header
-        title={t('settings.usage' as any) as string}
-        subtitle={t('settings.usageSubtitle' as any) as string}
+        title={t('settings.usage')}
+        subtitle={t('settings.usageSubtitle')}
         onBack={() => navigate('/settings')}
         right={
           <div className="set-seg">
@@ -1413,26 +1429,26 @@ function Usage() {
 
       {loading ? (
         <div className="set-center">
-          <Spinner size={16} /> {t('common.loading' as any)}
+          <Spinner size={16} /> {t('common.loading')}
         </div>
       ) : error || !totals ? (
-        <div className="set-center">{t('usage.noData' as any)}</div>
+        <div className="set-center">{t('usage.noData')}</div>
       ) : totals.totalTokens === 0 ? (
-        <div className="set-center">{t('usage.noData' as any)}</div>
+        <div className="set-center">{t('usage.noData')}</div>
       ) : (
         <>
           <div className="set-stat-row">
             <div className="set-stat">
-              <span className="set-stat__label">{t('usage.totalTokens' as any)}</span>
+              <span className="set-stat__label">{t('usage.totalTokens')}</span>
               <span className="set-stat__value">{formatCompact(totals.totalTokens)}</span>
             </div>
             <div className="set-stat">
-              <span className="set-stat__label">{t('usage.totalCost' as any)}</span>
+              <span className="set-stat__label">{t('usage.totalCost')}</span>
               <span className="set-stat__value">${totals.totalCost.toFixed(2)}</span>
             </div>
           </div>
 
-          <ItemGroup title={t('usage.usageOverTime' as any) as string}>
+          <ItemGroup title={t('usage.usageOverTime')}>
             <div style={{ padding: 'var(--sp-2) var(--sp-3) var(--sp-3)' }}>
               <div className="set-chart">
                 {data!.map((d, i) => {
@@ -1451,14 +1467,14 @@ function Usage() {
             </div>
           </ItemGroup>
 
-          <ItemGroup title={t('usage.byModel' as any) as string}>
+          <ItemGroup title={t('usage.byModel')}>
             {Object.entries(totals.tokensByModel)
               .sort((a, b) => b[1] - a[1])
               .map(([model, tokens]) => (
                 <Item
                   key={model}
                   title={model}
-                  detail={`${formatCompact(tokens)} ${(t('usage.tokens' as any) as string).toLowerCase()}`}
+                  detail={`${formatCompact(tokens)} ${(t('usage.tokens')).toLowerCase()}`}
                   right={<span className="set-value">${(totals.costByModel[model] ?? 0).toFixed(2)}</span>}
                 />
               ))}
@@ -1482,15 +1498,15 @@ function formatCompact(n: number): string {
 function statusLabel(t: any, status: string): string {
   switch (status) {
     case 'connected':
-      return t('diagnostics.statusConnected' as any);
+      return t('diagnostics.statusConnected');
     case 'connecting':
-      return t('diagnostics.statusConnecting' as any);
+      return t('diagnostics.statusConnecting');
     case 'error':
-      return t('diagnostics.statusError' as any);
+      return t('diagnostics.statusError');
     case 'idle':
-      return t('diagnostics.statusIdle' as any);
+      return t('diagnostics.statusIdle');
     default:
-      return t('diagnostics.statusDisconnected' as any);
+      return t('diagnostics.statusDisconnected');
   }
 }
 
@@ -1510,17 +1526,17 @@ function Diagnostics() {
   return (
     <Page>
       <Header
-        title={t('diagnostics.title' as any) as string}
-        subtitle={t('diagnostics.subtitle' as any) as string}
+        title={t('diagnostics.title')}
+        subtitle={t('diagnostics.subtitle')}
         onBack={() => navigate('/settings')}
       />
       <ItemList>
-        <ItemGroup title={t('diagnostics.relay' as any) as string}>
+        <ItemGroup title={t('diagnostics.relay')}>
           <Item
-            title={t('diagnostics.serverSocket' as any)}
+            title={t('diagnostics.serverSocket')}
             subtitle={
               socket.lastConnectedAt
-                ? `${t('diagnostics.lastConnected' as any)}: ${new Date(socket.lastConnectedAt).toLocaleString()}`
+                ? `${t('diagnostics.lastConnected')}: ${new Date(socket.lastConnectedAt).toLocaleString()}`
                 : undefined
             }
             left={<StatusDot status={socketTone as any} pulse={socket.status === 'connected'} />}
@@ -1528,9 +1544,9 @@ function Diagnostics() {
           />
         </ItemGroup>
 
-        <ItemGroup title={t('diagnostics.machinesAndDaemons' as any) as string}>
+        <ItemGroup title={t('diagnostics.machinesAndDaemons')}>
           {machines.length === 0 ? (
-            <Item title={t('diagnostics.noMachines' as any)} />
+            <Item title={t('diagnostics.noMachines')} />
           ) : (
             machines.map((m) => {
               const online = m.active;
@@ -1544,16 +1560,16 @@ function Diagnostics() {
                   title={name}
                   subtitle={
                     claudeMissing
-                      ? (t('diagnostics.cliMissing' as any, { cli: 'claude' } as any) as string)
+                      ? (t('diagnostics.cliMissing', { cli: 'claude' }))
                       : daemonStatus
-                        ? `${t('diagnostics.daemonStatus' as any)}: ${daemonStatus}`
+                        ? `${t('diagnostics.daemonStatus')}: ${daemonStatus}`
                         : undefined
                   }
                   detail={m.metadata?.host}
                   left={<StatusDot status={online ? 'connected' : 'offline'} />}
                   right={
                     <Badge tone={claudeMissing ? 'err' : online ? 'live' : 'muted'}>
-                      {online ? t('diagnostics.online' as any) : t('diagnostics.offline' as any)}
+                      {online ? t('diagnostics.online') : t('diagnostics.offline')}
                     </Badge>
                   }
                   onClick={() => navigate(`/machine/${m.id}`)}
@@ -1562,26 +1578,26 @@ function Diagnostics() {
             })
           )}
         </ItemGroup>
-        <div className="set-note">{t('diagnostics.cliHint' as any)}</div>
+        <div className="set-note">{t('diagnostics.cliHint')}</div>
 
         <ItemGroup
-          title={t('diagnostics.developer' as any) as string}
-          footer={t('diagnostics.developerFooter' as any) as string}
+          title={t('diagnostics.developer')}
+          footer={t('diagnostics.developerFooter')}
         >
           <Item
-            title={t('diagnostics.verboseLogging' as any)}
-            subtitle={t('diagnostics.verboseLoggingDescription' as any)}
+            title={t('diagnostics.verboseLogging')}
+            subtitle={t('diagnostics.verboseLoggingDescription')}
             right={
               <Toggle
                 checked={verboseLogging}
                 onChange={setVerboseLogging}
-                label={t('diagnostics.verboseLogging' as any) as string}
+                label={t('diagnostics.verboseLogging')}
               />
             }
           />
           <Item
-            title={t('diagnostics.consoleLogging' as any)}
-            subtitle={t('diagnostics.consoleLoggingDescription' as any)}
+            title={t('diagnostics.consoleLogging')}
+            subtitle={t('diagnostics.consoleLoggingDescription')}
             right={
               <Toggle
                 checked={consoleLogging}
@@ -1591,7 +1607,7 @@ function Diagnostics() {
                   // stored value once at startup.
                   setConsoleOutputEnabled(v);
                 }}
-                label={t('diagnostics.consoleLogging' as any) as string}
+                label={t('diagnostics.consoleLogging')}
               />
             }
           />
@@ -1618,13 +1634,13 @@ function Password() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean; c?: boolean }>({});
 
-  const usernameError = touched.u && username.trim().length === 0 ? (t('profile.username' as any) as string) : null;
+  const usernameError = touched.u && username.trim().length === 0 ? (t('profile.username')) : null;
   const passwordError =
     touched.p && password.length < MIN_PASSWORD
-      ? (t('setPassword.errorTooShort' as any, { count: MIN_PASSWORD } as any) as string)
+      ? (t('setPassword.errorTooShort', { count: MIN_PASSWORD }))
       : null;
   const confirmError =
-    touched.c && confirm.length > 0 && confirm !== password ? (t('setPassword.errorMismatch' as any) as string) : null;
+    touched.c && confirm.length > 0 && confirm !== password ? (t('setPassword.errorMismatch')) : null;
 
   const canSubmit =
     username.trim().length > 0 && password.length >= MIN_PASSWORD && confirm === password && !busy && !!credentials;
@@ -1637,15 +1653,15 @@ function Password() {
     setServerError(null);
     try {
       await setAccountCredentials(username, password, credentials.secret, credentials);
-      toast.success(t('setPassword.success' as any) as string);
+      toast.success(t('setPassword.success'));
       setPassword('');
       setConfirm('');
       navigate('/settings/account');
     } catch (err: any) {
       if (err instanceof AccountAuthError && err.code === 'username-taken') {
-        setServerError(t('signup.errorUsernameTaken' as any) as string);
+        setServerError(t('signup.errorUsernameTaken'));
       } else {
-        setServerError(t('setPassword.errorSaveFailed' as any) as string);
+        setServerError(t('setPassword.errorSaveFailed'));
       }
       setPassword('');
       setConfirm('');
@@ -1656,11 +1672,11 @@ function Password() {
 
   return (
     <Page>
-      <Header title={t('settingsAccount.password' as any) as string} onBack={() => navigate('/settings')} />
-      <div className="set-note">{t('setPassword.intro' as any)}</div>
+      <Header title={t('settingsAccount.password')} onBack={() => navigate('/settings')} />
+      <div className="set-note">{t('setPassword.intro')}</div>
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <Input
-          label={t('profile.username' as any) as string}
+          label={t('profile.username')}
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value.toLowerCase())}
@@ -1668,27 +1684,27 @@ function Password() {
           error={usernameError}
         />
         <Input
-          label={t('setPassword.passwordLabel' as any) as string}
+          label={t('setPassword.passwordLabel')}
           type="password"
           autoComplete="new-password"
-          placeholder={t('setPassword.passwordPlaceholder' as any) as string}
+          placeholder={t('setPassword.passwordPlaceholder')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onBlur={() => setTouched((s) => ({ ...s, p: true }))}
           error={passwordError}
         />
         <Input
-          label={t('setPassword.confirmLabel' as any) as string}
+          label={t('setPassword.confirmLabel')}
           type="password"
           autoComplete="new-password"
-          placeholder={t('setPassword.confirmPlaceholder' as any) as string}
+          placeholder={t('setPassword.confirmPlaceholder')}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           onBlur={() => setTouched((s) => ({ ...s, c: true }))}
           error={confirmError ?? serverError}
         />
         <Button type="submit" variant="primary" loading={busy} disabled={!canSubmit}>
-          {t('setPassword.save' as any)}
+          {t('setPassword.save')}
         </Button>
       </form>
     </Page>

@@ -5,49 +5,11 @@
  * - Functions with typed object parameters for dynamic text
  */
 
-import { TranslationStructure } from "../_default";
+import type { PartialTranslationStructure } from "../_default";
 
-/**
- * Japanese plural helper function
- * Japanese doesn't have grammatical plurals, so this just returns the appropriate form
- * @param options - Object containing count, singular, and plural forms
- * @returns The appropriate form based on count
- */
-function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
-    return count === 1 ? singular : plural;
-}
-
-export const ja: TranslationStructure = {
+export const ja: PartialTranslationStructure = {
     board: {
-        title: 'Task Board',
-        filterLabel: 'Board',
-        attention: 'Needs attention',
-        working: 'Working',
-        idleEnded: 'Idle / ended',
-        emptyAttention: 'Nothing needs you',
-        emptyWorking: 'Nothing running',
-        emptyIdle: 'Nothing idle',
-        machineOffline: 'machine offline',
-        endedTag: 'ended',
-        waitingFor: ({ duration }: { duration: string }) => `waiting ${duration}`,
-        agoSuffix: 'ago',
-        viewArchived: 'View archived →',
-        layoutStatus: 'Status',
-        layoutTasks: 'Tasks',
-        newTask: 'New task',
-        taskTitlePlaceholder: 'Task title',
-        taskDescriptionPlaceholder: 'Description — prefills the first message of dispatched sessions',
-        createTask: 'Create',
-        dispatch: 'Dispatch',
-        markDone: 'Mark done',
         editTask: 'タスクを編集',
-        deleteTask: 'Delete task',
-        deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
-        ungrouped: 'Ungrouped',
-        emptyLane: 'Nothing here yet',
-        noTasks: 'No tasks yet — create one and dispatch sessions onto it',
-        llmReview: 'review',
-        llmBlocked: 'blocked',
     },
     tabs: {
         // Tab navigation labels
@@ -62,51 +24,6 @@ export const ja: TranslationStructure = {
         emptyTitle: '受信トレイは空です',
         emptyDescription: '友達と接続してセッションを共有しましょう',
         updates: '更新',
-        laneNeedsApproval: 'Needs approval',
-        laneInProgress: 'In progress',
-        laneToReview: 'To review',
-        laneOther: 'Other',
-    },
-
-    notifications: {
-        title: 'Notifications',
-        settingsSubtitle: 'Browser alerts for session events (web)',
-        webOnly: 'Web only',
-        webOnlyDescription: 'Browser notifications are only available on the web app.',
-        browserNotifications: 'Browser Notifications',
-        masterDescription: 'Get alerted when a session needs your attention while this tab is in the background.',
-        enable: 'Enable Notifications',
-        enabledOn: 'On — alerts will show when this tab is unfocused',
-        enabledOff: 'Off',
-        unsupported: 'Not supported in this browser',
-        permissionDeniedHint: 'Notifications are blocked. Enable them for this site in your browser settings.',
-        types: 'Alert Types',
-        typesDescription: 'Choose which session events trigger a notification.',
-        type_permission_request: 'Permission requests',
-        type_permission_request_desc: 'A session is asking to run a tool',
-        type_reply_done: 'Reply finished',
-        type_reply_done_desc: 'The agent finished responding',
-        type_input_needed: 'Input needed',
-        type_input_needed_desc: 'A session is waiting for your input',
-        type_error: 'Errors',
-        type_error_desc: 'A session ran into an error',
-        quietHours: 'Do Not Disturb',
-        quietHoursDescription: 'Silence notifications during a set time window.',
-        quietHoursEnable: 'Enable quiet hours',
-        quietHoursStart: 'From',
-        quietHoursEnd: 'To',
-        webhook: 'Webhook Notifications',
-        webhookDescription: 'The server POSTs a {"title","message"} JSON to your own HTTPS endpoint when a session needs you — e.g. a notify gateway that forwards to your group chat. One webhook per account; saving replaces the previous one.',
-        webhookUrl: 'Webhook URL',
-        webhookUrlPlaceholder: 'https://ntfy.example.com/api/ingest/<token>',
-        webhookEventCompleted: 'Task completed',
-        webhookEventCompletedDesc: 'The agent finished its turn and the session is idle',
-        webhookEventPermission: 'Needs attention',
-        webhookEventPermissionDesc: 'Permission requests and clarifying questions',
-        webhookRemove: 'Remove webhook',
-        webhookSaved: 'Webhook saved',
-        webhookRemoved: 'Webhook removed',
-        unknownSession: 'Session',
     },
 
     common: {
@@ -116,7 +33,6 @@ export const ja: TranslationStructure = {
         save: '保存',
         error: 'エラー',
         success: '成功',
-        ok: 'OK',
         continue: '続行',
         back: '戻る',
         create: '作成',
@@ -130,7 +46,6 @@ export const ja: TranslationStructure = {
         copied: 'コピーしました',
         copy: 'コピー',
         scanning: 'スキャン中...',
-        urlPlaceholder: 'https://example.com',
         home: 'ホーム',
         message: 'メッセージ',
         files: 'ファイル',
@@ -168,9 +83,7 @@ export const ja: TranslationStructure = {
     },
     liveStatus: {
         thinking: ({ elapsed }: { elapsed: string }) => `思考中 ${elapsed}`,
-        runningTool: ({ tool, elapsed }: { tool: string; elapsed: string }) => `${tool} · ${elapsed}`,
         waitingPermission: '権限を待機中',
-        reconnecting: 'Connection lost, reconnecting…',
     },
 
     time: {
@@ -191,7 +104,6 @@ export const ja: TranslationStructure = {
         title: '設定',
         connectedAccounts: '接続済みアカウント',
         connectAccount: 'アカウントを接続',
-        github: 'GitHub',
         machines: 'マシン',
         showOfflineMachines: ({ count }: { count: number }) => `${count} 台のオフラインマシンを表示`,
         hideOfflineMachines: 'オフラインマシンを非表示',
@@ -214,7 +126,6 @@ export const ja: TranslationStructure = {
         reportIssue: '問題を報告',
         privacyPolicy: 'プライバシーポリシー',
         termsOfService: '利用規約',
-        eula: 'EULA',
         supportUs: '開発を支援',
         supportUsSubtitlePro: 'ご支援ありがとうございます！',
         supportUsSubtitle: 'プロジェクト開発を支援',
@@ -234,20 +145,6 @@ export const ja: TranslationStructure = {
     },
 
     settingsAppearance: {
-        homeView: 'Home Screen',
-        homeViewDescription: 'What the app shows when nothing is open.',
-        homeViewOptions: {
-            normal: 'Recents',
-            board: 'Task Board',
-        },
-        homeViewDescriptions: {
-            normal: 'The classic empty screen with quick actions',
-            board: 'Every agent and terminal at a glance',
-        },
-        boardLlm: 'Board AI Analysis',
-        boardLlmDescription: 'AI progress notes, attention flags and task grouping on the Task Board are produced by the Happy daemon (a local one-shot haiku call, throttled). Off by default so no tokens are spent silently.',
-        boardLlmHowTo: 'Configure on the daemon machine',
-        boardLlmHowToDetail: 'Set "boardLlm": true in ~/.happy/settings.json on each machine that should analyze its sessions, then restart sessions there.',
         // Appearance settings screen
         theme: 'テーマ',
         themeDescription: 'お好みの配色を選択',
@@ -275,10 +172,6 @@ export const ja: TranslationStructure = {
         wrapLinesInDiffsDescription: '差分表示で水平スクロールの代わりに長い行を折り返す',
         diffStyle: '差分表示',
         diffStyleDescription: '差分を1列（unified）または横並び（split）で表示します。split 表示は Web 専用です。',
-        diffStyleOptions: {
-            unified: 'Unified',
-            split: 'Split',
-        },
         alwaysShowContextSize: '常にコンテキストサイズを表示',
         alwaysShowContextSizeDescription: '上限に近づいていなくてもコンテキスト使用量を表示',
         avatarStyle: 'アバタースタイル',
@@ -292,12 +185,6 @@ export const ja: TranslationStructure = {
     },
 
     settingsFeatures: {
-        // Features settings screen
-        safety: 'Safety',
-        changeApplicationDescription: 'Controls how new sessions start. Review-first modes (Plan / read-only) propose changes for you to approve before they are applied; auto-apply modes (Accept Edits / Bypass / YOLO) write changes without asking. This is a per-device preference and only sets the starting mode — you can still change it per session. For per-agent defaults, see Settings → Agents.',
-        reviewChangesFirst: 'Review Changes First',
-        reviewChangesFirstEnabled: 'New sessions start in a review-first mode',
-        reviewChangesFirstDisabled: 'New sessions use the per-agent default mode',
         experiments: '実験的機能',
         experimentsDescription: '開発中の実験的機能を有効にします。これらの機能は不安定であったり、予告なく変更される場合があります。',
         experimentalFeatures: '実験的機能',
@@ -354,10 +241,6 @@ export const ja: TranslationStructure = {
         userNotFound: 'ユーザーが見つかりません',
         sessionDeleted: 'セッションは削除されました',
         sessionDeletedDescription: 'このセッションは完全に削除されました',
-
-        // Error functions with context
-        fieldError: ({ field, reason }: { field: string; reason: string }) =>
-            `${field}: ${reason}`,
         validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
             `${field}は${min}から${max}の間である必要があります`,
         retryIn: ({ seconds }: { seconds: number }) =>
@@ -424,44 +307,6 @@ export const ja: TranslationStructure = {
 
     commandPalette: {
         placeholder: 'コマンドを入力または検索...',
-        // Categories
-        categorySessions: 'Sessions',
-        categoryRecentSessions: 'Recent Sessions',
-        categoryNavigation: 'Navigation',
-        categorySystem: 'System',
-        categoryTerminals: 'Terminals',
-        categoryDeveloper: 'Developer',
-        // Commands
-        newSession: 'New Session',
-        newSessionSubtitle: 'Start a new chat session',
-        viewAllSessions: 'View All Sessions',
-        viewAllSessionsSubtitle: 'Browse your chat history',
-        settings: 'Settings',
-        settingsSubtitle: 'Configure your preferences',
-        account: 'Account',
-        accountSubtitle: 'Manage your account',
-        connectDevice: 'Connect Device',
-        connectDeviceSubtitle: 'Connect a new device via web',
-        signOut: 'Sign Out',
-        signOutSubtitle: 'Sign out of your account',
-        developerMenu: 'Developer Menu',
-        developerMenuSubtitle: 'Access developer tools',
-        switchToSession: 'Switch to session',
-        // ⌘K palette (navigate/actions)
-        empty: 'No matches',
-        groupActions: 'Actions',
-        groupSessions: 'Chats',
-        groupTerminals: 'Terminals',
-        actionNewChat: 'New chat',
-        actionNewChatAdvanced: 'New chat (choose options)…',
-        actionNewTerminal: 'New terminal',
-        actionRenameSession: 'Rename current chat',
-        actionArchiveSession: 'Archive current chat',
-        actionOpenSettings: 'Open settings',
-        renamePromptTitle: 'Rename chat',
-        hintNavigate: '↑↓ to navigate',
-        hintSelect: '↵ to select',
-        hintClose: 'esc to close',
     },
 
     server: {
@@ -490,10 +335,7 @@ export const ja: TranslationStructure = {
         archiveSessionConfirm: 'このセッションをアーカイブしてもよろしいですか？',
         happySessionIdCopied: 'Happy Session IDがクリップボードにコピーされました',
         failedToCopySessionId: 'Happy Session IDのコピーに失敗しました',
-        happySessionId: 'Happy Session ID',
-        claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session IDがクリップボードにコピーされました',
-        codexThreadId: 'Codex Thread ID',
         codexThreadIdCopied: 'Codex Thread IDがクリップボードにコピーされました',
         aiProvider: 'AIプロバイダー',
         failedToCopyClaudeCodeSessionId: 'Claude Code Session IDのコピーに失敗しました',
@@ -509,14 +351,6 @@ export const ja: TranslationStructure = {
         quickActions: 'クイックアクション',
         viewMachine: 'マシンを表示',
         viewMachineSubtitle: 'マシンの詳細とセッションを表示',
-        resumeSession: 'Resume Session',
-        resumeSessionSubtitle: 'Resume this session on the same machine',
-        resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
-        resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
-        resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
-        resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
-        resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
         killSessionSubtitle: 'セッションを即座に終了',
         archiveSessionSubtitle: 'このセッションをアーカイブして停止',
         metadata: 'メタデータ',
@@ -524,7 +358,6 @@ export const ja: TranslationStructure = {
         path: 'パス',
         operatingSystem: 'オペレーティングシステム',
         processId: 'プロセスID',
-        happyHome: 'Happy Home',
         copyMetadata: 'メタデータをコピー',
         agentState: 'エージェント状態',
         controlledByUser: 'ユーザーによる制御',
@@ -561,28 +394,7 @@ export const ja: TranslationStructure = {
         },
     },
 
-    newSessionModal: {
-        // Used by NewSessionModal component
-        eyebrow: 'NEW SESSION',
-        heading: 'Start something',
-        chatTitle: 'New chat',
-        advancedTitle: 'New chat (choose options)…',
-        chatSubtitle: 'Let Claude or Codex start working on a machine',
-        terminalTitle: 'Web terminal',
-        terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
-    },
-
-    emptyState: {
-        // Used by EmptyDetailPane component
-        pickUpTitle: 'Pick up where you left off',
-        pickUpDescription: 'Select a conversation on the left, or start a new one on any connected machine.',
-        newSession: 'New session',
-        openWebTerminal: 'Open web terminal',
-    },
-
     agentInput: {
-        workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
-        interruptAndSend: 'Interrupt and send',
         chip: {
             mode: 'モード',
             model: 'モデル',
@@ -598,12 +410,6 @@ export const ja: TranslationStructure = {
             badgeAcceptAllEdits: 'すべての編集を許可',
             badgeBypassAllPermissions: 'すべての権限をバイパス',
             badgePlanMode: 'プランモード',
-        },
-        agent: {
-            claude: 'Claude',
-            codex: 'Codex',
-            gemini: 'Gemini',
-            openclaw: 'OpenClaw',
         },
         model: {
             title: 'モデル',
@@ -695,7 +501,6 @@ export const ja: TranslationStructure = {
     },
 
     toolGroup: {
-        editedFile: 'Edited file',
         editedFiles: ({ count }: { count: number }) => `${count}個のファイルを編集`,
         readFiles: ({ count }: { count: number }) => `${count}個のファイルを読み取り`,
         ranCommands: ({ count }: { count: number }) => `${count}個のコマンドを実行`,
@@ -703,7 +508,6 @@ export const ja: TranslationStructure = {
         fetchedUrls: ({ count }: { count: number }) => `${count}個のURLを取得`,
         ranTasks: ({ count }: { count: number }) => `${count}個のタスクを実行`,
         usedTools: ({ count }: { count: number }) => `${count}個のツールを使用`,
-        workedFor: ({ duration }: { duration: string }) => `Worked ${duration}`,
     },
 
     tools: {
@@ -761,7 +565,6 @@ export const ja: TranslationStructure = {
             editNotebookMode: ({ path, mode }: { path: string; mode: string }) => `ノートブック編集(file: ${path}, mode: ${mode})`,
             todoListCount: ({ count }: { count: number }) => `Todoリスト(count: ${count})`,
             webSearchQuery: ({ query }: { query: string }) => `Web検索(query: ${query})`,
-            grepPattern: ({ pattern }: { pattern: string }) => `grep(pattern: ${pattern})`,
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count}件の編集)`,
             readingFile: ({ file }: { file: string }) => `${file}を読み取り中`,
             writingFile: ({ file }: { file: string }) => `${file}に書き込み中`,
@@ -775,7 +578,6 @@ export const ja: TranslationStructure = {
     files: {
         changes: '変更',
         searchPlaceholder: 'ファイルを検索...',
-        detachedHead: 'detached HEAD',
         summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `ステージ済み ${staged} • 未ステージ ${unstaged}`,
         notRepo: 'Gitリポジトリではありません',
         notUnderGit: 'このディレクトリはGitバージョン管理下にありません',
@@ -827,10 +629,8 @@ export const ja: TranslationStructure = {
         // Bring your own agent
         byoTitle: '自分のエージェントを使う',
         byoDescription: 'Happy のデフォルトの代わりに、独自の ElevenLabs エージェントを使用します。サブスクリプション不要 — 自分の ElevenLabs アカウントで直接接続できます。エージェントには2つのクライアントツールを定義する必要があります: messageClaudeCode（コーディングエージェントにテキストを送信）と processPermissionRequest（ツール使用を許可または拒否）。セッションコンテキストは {{initialConversationContext}} 動的変数を通じて受信されます。',
-        customAgentId: 'ElevenLabs Agent ID',
         customAgentIdNotSet: '未設定',
         customAgentIdDescription: 'ElevenLabs Agent ID を入力してください。空のままにすると Happy のデフォルトが使用されます。',
-        customAgentIdPlaceholder: 'e.g. abc123def456',
         bypassToken: '直接接続',
         bypassTokenSubtitle: 'Happy サーバーをスキップし、ElevenLabs に直接接続',
         promptGuideTitle: 'エージェントプロンプトガイド',
@@ -860,7 +660,6 @@ export const ja: TranslationStructure = {
         passwordChange: 'アカウントのパスワードを変更',
         profile: 'プロフィール',
         name: '名前',
-        github: 'GitHub',
         tapToDisconnect: 'タップして切断',
         server: 'サーバー',
         backup: 'バックアップ',
@@ -938,12 +737,6 @@ export const ja: TranslationStructure = {
         clientSideProcessing: 'クライアントサイド処理',
         linkProcessedLocally: 'リンクはブラウザ内でローカルに処理されました',
         linkProcessedOnDevice: 'リンクはデバイス上でローカルに処理されました',
-        // Web terminal (tmux) quick commands & drag-upload overlay
-        quickCommands: 'Quick commands',
-        quickCommandsEmpty: 'No commands yet. Add them in Settings → Snippets.',
-        uploadingFile: 'Uploading…',
-        dropToUpload: 'Drop to upload',
-        pathWillBePasted: 'path will be pasted into the terminal',
     },
 
     modals: {
@@ -988,18 +781,6 @@ export const ja: TranslationStructure = {
         linkOrRestoreAccount: 'アカウントをリンクまたは復元',
         loginWithMobileApp: 'モバイルアプリでログイン',
         loginWithPassword: 'パスワードでログイン',
-        // WelcomeInstall landing card (web)
-        installForkTitle: 'A friendly fork of Happy',
-        installIntro: 'Very Happy builds on Happy and trades end-to-end encryption for password-based, multi-device convenience.',
-        installFeaturePassword: 'Password sign-in, any device',
-        installFeatureSync: 'Multi-device sync',
-        installFeatureTerminal: 'Web terminal over tmux',
-        installFeatureModels: 'Latest models + reworked UI',
-        installHeading: 'USE IT ON YOUR OWN COMPUTER',
-        installStep1: 'Install Claude Code so the `claude` command is on your PATH.',
-        installStep2: 'Install the CLI from npm:',
-        installStep3: 'Run it on the machine you want to control — pre-configured to this server.',
-        installNote: 'Server-trusted: your sessions are relayed through this server, whose operator can read them. Only sign up if you trust them.',
     },
 
     passwordLogin: {
@@ -1244,91 +1025,6 @@ export const ja: TranslationStructure = {
         friendRequestGeneric: '新しい友達リクエスト',
         friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
         friendAcceptedGeneric: '友達リクエストが承認されました',
-    },
-
-    // Channels â settings hub for external integrations. English placeholder
-    // (not yet translated for this locale).
-    settingsChannels: {
-        title: 'Channels',
-        subtitle: 'Webhooks, automation CLI and chat integrations',
-        movedTitle: 'Webhook notifications have moved',
-        movedSubtitle: 'Configure your account webhook under Settings → Channels',
-        cliTitle: 'Automation CLI (inbound)',
-        cliIntro: 'Scripts and bots on the machine that runs your daemon can start sessions and talk to them — no extra credentials, the CLI reuses the daemon\'s. The daemon must be running to spawn.',
-        cliSpawnLabel: 'Start a new session in a directory. Without --json it prints a clickable session URL; with --json it emits {"sessionId","url"}:',
-        cliSpawnExit: 'Exit codes: 0 success · 1 spawn failed (no session created) · 2 session created but the first message failed (the URL is still printed).',
-        cliSendLabel: 'Push a follow-up message into a session that is already running (it must have been spawned by this machine\'s daemon — the session key lives in ~/.happy/sessions.json):',
-        cliSendExit: 'Exit codes: 0 delivered · 1 anything else (bad arguments, unknown session or missing key, send failed). Use --prompt-file <path> instead of --prompt for long or multi-line text.',
-        mcpTitle: 'Clipboard tool (MCP)',
-        mcpIntro: 'Give a plain claude CLI — for example one running inside a Happy web terminal — a copy_to_clipboard tool that pushes text to the clipboard of every web client you have open. Register it once per machine:',
-        imTitle: 'IM adapter pattern',
-        imIntro: 'Any chat app can become a remote control for Happy. Every webhook notification ends with a fixed, machine-parseable last line — "session: <id>" — that survives text-only relays. An adapter (our Tanka integration is the reference) forwards notifications into a group chat, listens to its own IM, and when you quote-reply to a notification it extracts the session id from that line and pipes your reply back with "very-happy send". Fresh tasks are started from chat via "very-happy spawn".',
-        imDocs: 'Full documentation',
-        imDocsSubtitle: 'docs/channels.md — webhook contract, CLI reference, adapter example',
-    },
-
-    settingsSnippets: {
-        navTitle: 'Snippets',
-        navSubtitle: 'Prompt presets + terminal commands',
-        editorTitleLabel: 'TITLE',
-        editorTitlePlaceholder: 'optional, first line if blank',
-        editorCancel: 'Cancel',
-        editorSave: 'Save',
-        editPreset: 'Edit preset',
-        newPreset: 'New preset',
-        editCommand: 'Edit command',
-        newCommand: 'New command',
-        deleteTitle: 'Delete?',
-        deleteConfirm: 'Delete',
-        presetsGroup: 'Prompt presets',
-        presetsFooter: 'Tap the bookmark icon in the composer to insert one; you can edit it before sending.',
-        addPreset: 'Add preset',
-        commandsGroup: 'Terminal commands',
-        commandsFooter: 'Tap the command icon in the web terminal; the command is inserted (not auto-run — press Enter to confirm).',
-        addCommand: 'Add command',
-        startupGroup: 'Terminal startup command',
-        startupFooter: 'Runs automatically when a NEW web terminal is created — never again when reattaching to an existing session. Leave empty to disable.',
-        startupPlaceholder: 'e.g. cd ~/code && claude — empty = off',
-    },
-
-    tmuxHelp: {
-        heading: 'Shortcuts',
-        mouse: 'Mouse',
-        prefix: 'Prefix',
-        prefixNote: 'Press Ctrl-b, release, then the key',
-        scrollback: 'Scrollback',
-        panes: 'Panes',
-        windows: 'Windows',
-        session: 'Session',
-        keyWheel: 'Wheel',
-        labelWheel: 'Wheel scrolls history',
-        keyClick: 'Click',
-        labelClick: 'Click panes & windows',
-        keyShiftDrag: 'Shift+Drag',
-        labelShiftDrag: 'Select to copy',
-        labelPrefix: 'Prefix for every command',
-        labelEnterCopy: 'Enter copy mode',
-        labelScroll: 'Scroll',
-        labelQuit: 'Quit copy mode',
-        labelSplitV: 'Split vertically',
-        labelSplitH: 'Split horizontally',
-        labelMovePanes: 'Move between panes',
-        labelZoom: 'Zoom toggle',
-        labelClosePane: 'Close pane',
-        labelNewWindow: 'New window',
-        labelNextPrev: 'Next / prev',
-        labelJump: 'Jump by number',
-        labelDetach: 'Detach — keeps running',
-    },
-
-    shortcuts: {
-        eyebrow: 'KEYBOARD',
-        title: 'Keyboard shortcuts',
-        search: 'Search',
-        switchSession: 'Switch to session',
-        renameSession: 'Rename current session',
-        goBack: 'Go back',
-        showHelp: 'Show this help',
     },
 
 } as const;

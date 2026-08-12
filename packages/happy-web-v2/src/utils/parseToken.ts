@@ -1,12 +1,12 @@
 import { decodeBase64 } from "@/encryption/base64";
-import { decodeUTF8, encodeUTF8 } from "@/encryption/text";
+import { decodeUTF8 } from "@/encryption/text";
 
 export function parseToken(token: string) {
     const parts = token.split('.');
     if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
         throw new Error('Invalid token format: expected "header.payload.signature" with non-empty parts');
     }
-    const [header, payload, signature] = parts;
+    const payload = parts[1];
 
     try {
         const sub = JSON.parse(decodeUTF8(decodeBase64(payload))).sub;

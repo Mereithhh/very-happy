@@ -104,15 +104,15 @@ export function NewSessionModal({
     });
     if (res.type === 'requestToApproveDirectoryCreation') {
       const ok = await Modal.confirm(
-        t('newSession.createDirTitle' as any),
-        t('newSession.createDirMessage' as any, { directory: res.directory } as any),
-        { confirmText: t('common.create' as any) },
+        t('newSession.createDirTitle'),
+        t('newSession.createDirMessage', { directory: res.directory }),
+        { confirmText: t('common.create') },
       );
       if (ok) return spawn(true);
       return null;
     }
     if (res.type === 'error') {
-      toast.error(res.errorMessage || t('errors.networkError' as any));
+      toast.error(res.errorMessage || t('errors.networkError'));
       return null;
     }
     return res.sessionId;
@@ -138,7 +138,7 @@ export function NewSessionModal({
         navigate(`/session/${sessionId}`);
       }
     } catch (e: any) {
-      toast.error(e?.message || t('errors.networkError' as any));
+      toast.error(e?.message || t('errors.networkError'));
     } finally {
       setBusy(false);
     }
@@ -147,14 +147,14 @@ export function NewSessionModal({
   return (
     <div className="ns-backdrop" onClick={onClose}>
       <div className="ns-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('newSessionModal.eyebrow' as any)}</div>
-        <div className="ns-title">{t('newSessionModal.chatTitle' as any)}</div>
+        <div className="eyebrow">{t('newSessionModal.eyebrow')}</div>
+        <div className="ns-title">{t('newSessionModal.chatTitle')}</div>
 
         {online.length === 0 ? (
-          <div className="ns-empty">{t('machine.noMachines' as any)}</div>
+          <div className="ns-empty">{t('machine.noMachines')}</div>
         ) : (
           <>
-            <label className="ns-label">{t('newSession.machine' as any)}</label>
+            <label className="ns-label">{t('newSession.machine')}</label>
             <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
               {online.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -163,7 +163,7 @@ export function NewSessionModal({
               ))}
             </select>
 
-            <label className="ns-label">{t('newSession.directory' as any)}</label>
+            <label className="ns-label">{t('newSession.directory')}</label>
 
             {list.length > 0 && (
               <div className="ns-presets">
@@ -178,7 +178,7 @@ export function NewSessionModal({
                     <span className="ns-preset-path">{p.label || p.path}</span>
                     <button
                       className="ns-preset-x"
-                      title={t('common.delete' as any)}
+                      title={t('common.delete')}
                       onClick={(e) => {
                         e.stopPropagation();
                         deletePreset(p.id);
@@ -204,7 +204,7 @@ export function NewSessionModal({
               />
               <button
                 className={`ns-save${matchesEditing ? ' is-saved' : ''}`}
-                title={editingId ? t('newSession.updatePreset' as any) : t('newSession.savePreset' as any)}
+                title={editingId ? t('newSession.updatePreset') : t('newSession.savePreset')}
                 disabled={!trimmed}
                 onClick={savePreset}
               >
@@ -212,7 +212,7 @@ export function NewSessionModal({
               </button>
             </div>
 
-            <label className="ns-label">{t('newSession.agent' as any)}</label>
+            <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
               {AGENTS.map((a) => (
                 <button
@@ -225,12 +225,12 @@ export function NewSessionModal({
               ))}
             </div>
 
-            <label className="ns-label">{t('newSession.initialCommand' as any)}</label>
+            <label className="ns-label">{t('newSession.initialCommand')}</label>
             <textarea
               className="ns-input ns-initial"
               value={initialCommand}
               onChange={(e) => setInitialCommand(e.target.value)}
-              placeholder={t('newSession.initialCommandPlaceholder' as any)}
+              placeholder={t('newSession.initialCommandPlaceholder')}
               rows={2}
               onCompositionStart={ime.onCompositionStart}
               onCompositionEnd={ime.onCompositionEnd}
@@ -246,10 +246,10 @@ export function NewSessionModal({
 
         <div className="ns-actions">
           <Button variant="ghost" onClick={onClose}>
-            {t('common.cancel' as any)}
+            {t('common.cancel')}
           </Button>
           <Button variant="primary" loading={busy} disabled={!canCreate} onClick={onCreate}>
-            {t('common.create' as any)}
+            {t('common.create')}
           </Button>
         </div>
       </div>

@@ -841,7 +841,7 @@ export const knownTools = {
             }
             return null;
         },
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        extractDescription: (_opts: { metadata: Metadata | null, tool: ToolCall }) => {
             return t('tools.desc.showingDiff');
         }
     },
@@ -878,7 +878,7 @@ export const knownTools = {
             }
             return null;
         },
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        extractDescription: (_opts: { metadata: Metadata | null, tool: ToolCall }) => {
             return t('tools.desc.showingDiff');
         }
     },

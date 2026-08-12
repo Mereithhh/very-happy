@@ -19,9 +19,6 @@ class ModalManagerClass implements IModal {
         this.hideAllModalsFn = hideAllModals;
     }
 
-    private generateId(): string {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
-    }
 
     alert(title: string, message?: string, buttons?: AlertButton[]): void {
         if (!this.showModalFn) {

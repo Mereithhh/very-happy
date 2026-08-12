@@ -240,20 +240,6 @@ const rawHyphenatedToolResultSchema = z.object({
 type RawHyphenatedToolResult = z.infer<typeof rawHyphenatedToolResultSchema>;
 
 /**
- * Input schema accepting ALL formats (both hyphenated and canonical)
- * Including Claude's extended thinking content type
- */
-const rawAgentContentInputSchema = z.discriminatedUnion('type', [
-    rawTextContentSchema,           // type: 'text' (canonical)
-    rawToolUseContentSchema,        // type: 'tool_use' (canonical)
-    rawToolResultContentSchema,     // type: 'tool_result' (canonical)
-    rawThinkingContentSchema,       // type: 'thinking' (canonical)
-    rawHyphenatedToolCallSchema,    // type: 'tool-call' (hyphenated)
-    rawHyphenatedToolResultSchema,  // type: 'tool-call-result' (hyphenated)
-]);
-type RawAgentContentInput = z.infer<typeof rawAgentContentInputSchema>;
-
-/**
  * Type-safe transform: Hyphenated tool-call → Canonical tool_use
  * ROBUST: Unknown fields preserved via object spread and .passthrough()
  */
@@ -576,7 +562,7 @@ export type NormalizedMessage = ({
 function normalizeSessionEnvelope(
     envelope: SessionEnvelope,
     localId: string | null,
-    createdAt: number,
+    _createdAt: number,
     meta: MessageMeta | undefined,
 ): NormalizedMessage | null {
     // Session protocol requires turn id on all agent-originated envelopes.

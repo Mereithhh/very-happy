@@ -51,20 +51,20 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
         <div className="perm-req">
             <div className="perm-req-head">
                 <span className="perm-tool">{req.tool}</span>
-                <span className="perm-sub">{t('session.permission.requests' as any, { tool: req.tool })}</span>
+                <span className="perm-sub">{t('session.permission.requests', { tool: req.tool })}</span>
             </div>
             {detail && <CodeView code={detail} lang={req.tool === 'Bash' ? 'bash' : null} copyable={false} />}
             <div className="perm-actions">
                 <Button size="sm" variant="primary" loading={busy === 'approve'} disabled={!!busy} onClick={() => act('approve')}>
-                    {t('session.permission.approve' as any)}
+                    {t('session.permission.approve')}
                 </Button>
                 {mutable && (
                     <Button size="sm" variant="secondary" loading={busy === 'session'} disabled={!!busy} onClick={() => act('session')}>
-                        {t('session.permission.approveForSession' as any)}
+                        {t('session.permission.approveForSession')}
                     </Button>
                 )}
                 <Button size="sm" variant="danger" loading={busy === 'deny'} disabled={!!busy} onClick={() => act('deny')}>
-                    {t('session.permission.deny' as any)}
+                    {t('session.permission.deny')}
                 </Button>
             </div>
         </div>
@@ -102,11 +102,11 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
     };
 
     return (
-        <div className="perm-card" role="alertdialog" aria-label={t('session.permission.title' as any)}>
+        <div className="perm-card" role="alertdialog" aria-label={t('session.permission.title')}>
             <div className="perm-card-head">
                 <ShieldAlert size={16} />
-                <span className="perm-title">{t('session.permission.title' as any)}</span>
-                <span className="perm-count">{t('session.permission.pending' as any, { count: requests.length })}</span>
+                <span className="perm-title">{t('session.permission.title')}</span>
+                <span className="perm-count">{t('session.permission.pending', { count: requests.length })}</span>
             </div>
             <div className="perm-list">
                 {requests.map((r) => (
@@ -116,10 +116,10 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
             {requests.length > 1 && (
                 <div className="perm-batch">
                     <Button size="sm" variant="primary" loading={busyAll === 'approve'} disabled={!!busyAll} onClick={() => batch('approve')}>
-                        {t('session.permission.approveAll' as any)}
+                        {t('session.permission.approveAll')}
                     </Button>
                     <Button size="sm" variant="ghost" loading={busyAll === 'deny'} disabled={!!busyAll} onClick={() => batch('deny')}>
-                        {t('session.permission.denyAll' as any)}
+                        {t('session.permission.denyAll')}
                     </Button>
                 </div>
             )}

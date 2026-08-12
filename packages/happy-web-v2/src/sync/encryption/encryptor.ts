@@ -79,11 +79,9 @@ export class BoxEncryption implements Encryptor, Decryptor {
 }
 
 export class AES256Encryption implements Encryptor, Decryptor {
-    private readonly secretKey: Uint8Array;
     private readonly secretKeyB64: string;
 
     constructor(secretKey: Uint8Array) {
-        this.secretKey = secretKey;
         this.secretKeyB64 = encodeBase64(secretKey);
     }
 

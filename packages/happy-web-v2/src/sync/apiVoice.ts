@@ -13,7 +13,7 @@ export type { VoiceConversationResponse, VoiceUsageResponse };
 
 export async function fetchVoiceCredentials(
     credentials: AuthCredentials,
-    sessionId: string
+    _sessionId: string
 ): Promise<VoiceConversationResponse> {
     const serverUrl = getServerUrl();
 

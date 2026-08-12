@@ -388,6 +388,7 @@ export const zhHans: TranslationStructure = {
         createDirTitle: '创建目录?',
         createDirMessage: ({ directory }: { directory: string }) => `目录 ${directory} 还不存在，要创建吗？`,
         title: '开始新会话',
+        startSession: '开始会话',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',
     },
@@ -747,6 +748,7 @@ export const zhHans: TranslationStructure = {
         filterAll: '全部',
         filterActive: '活跃',
         filterArchived: '已归档',
+        empty: '还没有会话',
         noResults: '没有匹配的会话',
         pinned: '已置顶',
         pin: '置顶',
@@ -1128,6 +1130,8 @@ export const zhHans: TranslationStructure = {
     },
 
     machine: {
+        noMachines: '没有已连接的机器',
+        noMachinesDescription: '在电脑上启动 Happy 守护进程后会显示在这里。',
         launchNewSessionInDirectory: '在目录中启动新会话',
         offlineUnableToSpawn: '设备离线时无法启动',
         offlineHelp: '• 确保您的计算机在线\n• 运行 `happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g happy@latest` 升级',

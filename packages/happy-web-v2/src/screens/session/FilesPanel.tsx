@@ -134,7 +134,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                         className={`fp-tab${effectiveTab === 'changed' ? ' is-active' : ''}`}
                         onClick={() => setTab('changed')}
                     >
-                        {t('session.chat.changedFiles' as any)}
+                        {t('session.chat.changedFiles')}
                         {changed.length > 0 && <span className="fp-tab-count">{changed.length}</span>}
                     </button>
                     <button
@@ -142,13 +142,13 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                         className={`fp-tab${effectiveTab === 'all' ? ' is-active' : ''}`}
                         onClick={() => setTab('all')}
                     >
-                        {t('session.chat.fileTree' as any)}
+                        {t('session.chat.fileTree')}
                     </button>
                 </div>
-                <button type="button" className="fp-icon" onClick={() => void refresh()} aria-label={t('session.chat.refresh' as any)} title={t('session.chat.refresh' as any)}>
+                <button type="button" className="fp-icon" onClick={() => void refresh()} aria-label={t('session.chat.refresh')} title={t('session.chat.refresh')}>
                     <RefreshCw size={14} className={isFetching ? 'fp-spin' : undefined} />
                 </button>
-                <button type="button" className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles' as any)} title={t('session.chat.closeFiles' as any)}>
+                <button type="button" className="fp-icon" onClick={onClose} aria-label={t('session.chat.closeFiles')} title={t('session.chat.closeFiles')}>
                     <X size={16} />
                 </button>
             </div>
@@ -159,7 +159,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                         <div className="fp-empty"><Spinner size={16} /></div>
                     ) : effectiveTab === 'changed' ? (
                         changed.length === 0 ? (
-                            <div className="fp-empty">{t('session.chat.noFiles' as any)}</div>
+                            <div className="fp-empty">{t('session.chat.noFiles')}</div>
                         ) : (
                             changed.map((f) => (
                                 <button
@@ -181,7 +181,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                             ))
                         )
                     ) : (projectFiles?.files.length ?? 0) === 0 ? (
-                        <div className="fp-empty">{t('session.chat.noFiles' as any)}</div>
+                        <div className="fp-empty">{t('session.chat.noFiles')}</div>
                     ) : (
                         [...tree.children.values()].sort(sortNodes).map((c) => (
                             <TreeRow key={c.path} node={c} depth={0} onPick={setSelected} selected={selected} />
@@ -192,7 +192,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                     <div className="fp-viewer">
                         <div className="fp-viewer-head">
                             <span className="fp-viewer-path">{selected}</span>
-                            <button type="button" className="fp-icon" onClick={() => setSelected(null)} aria-label={t('common.back' as any)}>
+                            <button type="button" className="fp-icon" onClick={() => setSelected(null)} aria-label={t('common.back')}>
                                 <X size={14} />
                             </button>
                         </div>

@@ -2,6 +2,28 @@
 
 A type-safe internationalization system using an object-based approach with functions and constants, accessed via the familiar `t('key', params)` API format.
 
+## Language Completeness Policy (web v2)
+
+- **`_default.ts` (en)** is the source of truth and defines the full key set.
+- **`translations/zh-Hans.ts`** is the primary translation and is typed
+  `TranslationStructure` — it must stay complete; tsc enforces it.
+- **All other languages** (ru/pl/es/it/pt/ca/ja/zh-Hant) are typed
+  `PartialTranslationStructure` and only contain REAL translations. Keys they
+  omit fall back to English at runtime inside `t()` (see `index.ts`).
+
+Consequences:
+
+- **Adding a new key only touches two files**: `_default.ts` and `zh-Hans.ts`.
+  Do NOT copy English placeholder text into minor-language files — omit the key
+  and let the fallback serve English.
+- Minor-language entries whose text is identical to English are pruned; the
+  fallback returns the same string, so runtime behavior is unchanged
+  (contract covered by `fallback.test.ts`).
+- Never use `t('key' as any)`. If a key is dynamic, spell the candidates out in
+  a `Record<..., TranslationKey>` map (see `NOTIF_TYPE_LABEL` in
+  `SettingsRoutes.tsx`), or use `SimpleTranslationKey` for generic
+  translate-callback parameters (keys without interpolation params).
+
 ## Overview
 
 This implementation uses **no external libraries** and provides:

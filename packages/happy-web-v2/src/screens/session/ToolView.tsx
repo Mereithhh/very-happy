@@ -68,8 +68,8 @@ function MultiEditView({ tool }: { tool: ToolCall }) {
             {edits.map((e: any, i: number) => (
                 <div key={i} className="tv-multiedit">
                     <div className="tv-multiedit-head">
-                        {t('session.chat.editN' as any, { n: i + 1, total: edits.length })}
-                        {e?.replace_all && <span className="tv-badge">{t('session.chat.replaceAll' as any)}</span>}
+                        {t('session.chat.editN', { n: i + 1, total: edits.length })}
+                        {e?.replace_all && <span className="tv-badge">{t('session.chat.replaceAll')}</span>}
                     </div>
                     <DiffView
                         oldText={trimIdent(asString(e?.old_string) ?? '')}
@@ -165,12 +165,12 @@ function TaskView({ message }: { message: ToolCallMessage }) {
             <div className="tv-task-head">
                 {subtype && <span className="tv-badge">{subtype}</span>}
                 {children.length > 0 && (
-                    <span className="tv-task-count">{t('session.chat.usedTools' as any, { count: children.length })}</span>
+                    <span className="tv-task-count">{t('session.chat.usedTools', { count: children.length })}</span>
                 )}
             </div>
             {prompt && <div className="tv-task-prompt">{prompt}</div>}
             {out.trim() && (
-                <Section label={t('tools.fullView.output' as any)} defaultOpen={false}>
+                <Section label={t('tools.fullView.output')} defaultOpen={false}>
                     <pre className="tv-results">{out}</pre>
                 </Section>
             )}
@@ -210,13 +210,13 @@ function DefaultView({ tool }: { tool: ToolCall }) {
     return (
         <div className="tv-stack">
             {hasInput && (
-                <Section label={t('tools.fullView.inputParams' as any)} defaultOpen={!out}>
+                <Section label={t('tools.fullView.inputParams')} defaultOpen={!out}>
                     <CodeView code={prettyInput(tool.input)} lang="json" copyable={false} />
                 </Section>
             )}
             {error && <div className="tg-error">{error}</div>}
             {out && !error && (
-                <Section label={t('tools.fullView.output' as any)} defaultOpen>
+                <Section label={t('tools.fullView.output')} defaultOpen>
                     {outIsJson ? (
                         <CodeView code={out} lang="json" copyable={false} />
                     ) : (
@@ -224,7 +224,7 @@ function DefaultView({ tool }: { tool: ToolCall }) {
                     )}
                 </Section>
             )}
-            {!hasInput && !out && !error && <div className="tv-empty">{t('tools.fullView.noOutput' as any)}</div>}
+            {!hasInput && !out && !error && <div className="tv-empty">{t('tools.fullView.noOutput')}</div>}
         </div>
     );
 }

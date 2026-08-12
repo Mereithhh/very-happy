@@ -4,8 +4,6 @@ import {
     CustomerInfo as WebCustomerInfo,
     Product as WebProduct,
     Offerings as WebOfferings,
-    Offering as WebOffering,
-    Price as WebPrice,
     ErrorCode,
     PurchasesError,
 } from '@revenuecat/purchases-js';
@@ -139,7 +137,7 @@ class RevenueCatWeb implements RevenueCatInterface {
             }
 
             // Use the SDK's built-in paywall UI (renders Stripe checkout inline)
-            const result = await this.purchases.presentPaywall({
+            await this.purchases.presentPaywall({
                 offering: webOffering,
             });
 

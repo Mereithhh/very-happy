@@ -5,4 +5,7 @@ export const tracking = null as null | {
   identify: (id: string, props?: Record<string, unknown>) => void;
   capture: (event: string, props?: Record<string, unknown>) => void;
   reset: () => void;
+  optIn: () => void;
+  optOut: () => void;
+  screen: (route: string) => void;
 };
