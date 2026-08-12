@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -38,6 +38,30 @@ describe('planScrollAction', () => {
         expect(planScrollAction(false, true, false, -4)).toEqual({ kind: 'keys', key: 'Down', count: 4 });
     });
 
+    it('sends PageUp/PageDown for a fullscreen CLAUDE without mouse reporting (arrows would open its prompt-history browser)', () => {
+        // Verified on claude 2.1.228 + CLAUDE_CODE_DISABLE_MOUSE=1: Up/Down
+        // open "History n/n"; PageUp scrolls the transcript half a screen.
+        expect(planScrollAction(false, true, false, 3, true, 30)).toEqual({ kind: 'page-keys', key: 'PPage', count: 1 });
+        expect(planScrollAction(false, true, false, -3, true, 30)).toEqual({ kind: 'page-keys', key: 'NPage', count: 1 });
+    });
+
+    it('converts lines to half-viewport pages, at least one', () => {
+        // 30-row pane → half page = 15 lines; 45 lines ≈ 3 pages, 1 line → 1 page.
+        expect(planScrollAction(false, true, false, 45, true, 30)).toEqual({ kind: 'page-keys', key: 'PPage', count: 3 });
+        expect(planScrollAction(false, true, false, 1, true, 30)).toEqual({ kind: 'page-keys', key: 'PPage', count: 1 });
+        // Degenerate pane heights never divide by zero.
+        expect(planScrollAction(false, true, false, 5, true, 0)).toEqual({ kind: 'page-keys', key: 'PPage', count: 5 });
+    });
+
+    it('claude WITH mouse reporting still gets synthetic wheel events, not PageUp', () => {
+        expect(planScrollAction(false, true, true, 3, true, 30)).toEqual({ kind: 'mouse-wheel', dir: 'up', count: 3 });
+    });
+
+    it('classic-renderer claude (no alternate screen) takes the copy-mode path — its transcript lives in tmux history', () => {
+        expect(planScrollAction(false, false, false, 3, true, 30)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
+        expect(planScrollAction(false, false, false, -3, true, 30)).toEqual({ kind: 'none' });
+    });
+
     it('mouse_any_flag without alternate screen changes nothing (normal-buffer app)', () => {
         expect(planScrollAction(false, false, true, 3)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 3 });
         expect(planScrollAction(false, false, true, -3)).toEqual({ kind: 'none' });
@@ -52,6 +76,49 @@ describe('planScrollAction', () => {
     it('caps a burst at 200 lines per step', () => {
         expect(planScrollAction(false, false, false, 10_000)).toEqual({ kind: 'copy-scroll', dir: 'up', count: 200 });
         expect(planScrollAction(false, true, true, 10_000)).toEqual({ kind: 'mouse-wheel', dir: 'up', count: 200 });
+    });
+});
+
+describe('looksLikeClaudeCommand', () => {
+    it('matches claude, node (bundled CLI) and bare version strings (argv0 quirk)', () => {
+        expect(looksLikeClaudeCommand('claude')).toBe(true);
+        expect(looksLikeClaudeCommand('node')).toBe(true);
+        expect(looksLikeClaudeCommand('2.1.228')).toBe(true);
+        expect(looksLikeClaudeCommand('2.1')).toBe(true);
+    });
+
+    it('normalizes login-shell dashes, case and whitespace', () => {
+        expect(looksLikeClaudeCommand('-claude')).toBe(true);
+        expect(looksLikeClaudeCommand('  Claude ')).toBe(true);
+    });
+
+    it('rejects shells and fullscreen apps that must keep arrow-key scrolling', () => {
+        for (const cmd of ['zsh', '-zsh', 'bash', 'vim', 'less', 'htop', '', 'python3.12']) {
+            expect(looksLikeClaudeCommand(cmd)).toBe(false);
+        }
+    });
+});
+
+describe('tmuxSupportsNewSessionEnv', () => {
+    it('accepts tmux ≥3.2 (new-session -e)', () => {
+        expect(tmuxSupportsNewSessionEnv('tmux 3.2')).toBe(true);
+        expect(tmuxSupportsNewSessionEnv('tmux 3.2a')).toBe(true);
+        expect(tmuxSupportsNewSessionEnv('tmux 3.6b')).toBe(true);
+        expect(tmuxSupportsNewSessionEnv('tmux next-3.7')).toBe(true);
+        expect(tmuxSupportsNewSessionEnv('tmux master')).toBe(true);
+    });
+
+    it('rejects older tmux and unparseable output (unknown -e would fail the create)', () => {
+        expect(tmuxSupportsNewSessionEnv('tmux 3.1c')).toBe(false);
+        expect(tmuxSupportsNewSessionEnv('tmux 2.9a')).toBe(false);
+        expect(tmuxSupportsNewSessionEnv('')).toBe(false);
+        expect(tmuxSupportsNewSessionEnv('garbage')).toBe(false);
+    });
+});
+
+describe('CLAUDE_CLASSIC_RENDERER_ENV', () => {
+    it('is a single VAR=value token with no shell metacharacters (inlined into the pty script)', () => {
+        expect(CLAUDE_CLASSIC_RENDERER_ENV).toMatch(/^[A-Z_]+=[A-Za-z0-9_]+$/);
     });
 });
 

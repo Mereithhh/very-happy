@@ -300,10 +300,7 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
 
     // Claude Code idle at its input box: the process itself (claude, or node
     // for the bundled CLI) is foreground, or its input-box footer is visible.
-    // Real-world quirk: Claude Code's pane_current_command shows up as its bare
-    // VERSION string (argv0 is versioned, e.g. "2.1.201"), not "claude"/"node" —
-    // so treat a version-like command as the claude process too.
-    const looksLikeClaude = cmd === 'claude' || cmd === 'node' || /^\d+\.\d+(\.\d+)?$/.test(cmd);
+    const looksLikeClaude = looksLikeClaudeCommand(cmd);
     const hasIdleFooter =
         text.includes('? for shortcuts')
         || text.includes('bypass permissions on')
@@ -312,6 +309,18 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
 
     if (isShell) return 'shell';
     return undefined;
+}
+
+/**
+ * Does a `#{pane_current_command}` (or node-pty foreground name) look like the
+ * Claude Code process? Real-world quirk: Claude Code's pane_current_command
+ * shows up as its bare VERSION string (argv0 is versioned, e.g. "2.1.228"),
+ * not "claude"/"node" — so a version-like command counts too. "node" is
+ * included for the bundled CLI. Pure; unit-tested.
+ */
+export function looksLikeClaudeCommand(currentCommand: string): boolean {
+    const cmd = (currentCommand || '').trim().replace(/^-/, '').toLowerCase();
+    return cmd === 'claude' || cmd === 'node' || /^\d+\.\d+(\.\d+)?$/.test(cmd);
 }
 
 /**
@@ -324,11 +333,20 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
  *    apps: in Claude's input box Up/Down walk history / move the cursor —
  *    the wheel is the only "scroll" input they understand. (The web client
  *    filters mouse-tracking from its own xterm, so the app never gets wheel
- *    events any other way.)
+ *    events any other way.) Verified on claude 2.1.228: wheel events scroll
+ *    the transcript regardless of coordinates (input-box row included).
+ *  - inner app is fullscreen WITHOUT mouse reporting but looks like Claude
+ *    Code (older TUI versions / CLAUDE_CODE_DISABLE_MOUSE) → PageUp/PageDown,
+ *    its documented fullscreen scroll keys (half a screen per press — count
+ *    is converted lines→pages). Arrow keys are the trap here: they open the
+ *    input box's history browser ("History n/n"), the exact "wheel edits my
+ *    prompt history" complaint. Verified on 2.1.228 with mouse disabled.
  *  - inner app is fullscreen without mouse reporting (vim/less default) →
  *    forward arrow keys so the APP scrolls (content isn't in pane history);
  *  - otherwise scrolling UP enters copy-mode (with -e: auto-exits when
  *    scrolled back to the bottom); scrolling DOWN at the bottom is a no-op.
+ *    This is also the path a classic-renderer Claude Code takes (alt off →
+ *    its transcript lives in tmux history; see CLAUDE_CLASSIC_RENDERER_ENV).
  * Pure so the decision table is unit-testable without tmux.
  * `lines > 0` = scroll up (into history), `lines < 0` = scroll down.
  */
@@ -337,9 +355,12 @@ export function planScrollAction(
     alternateOn: boolean,
     paneWantsMouse: boolean,
     lines: number,
+    claudeLike = false,
+    paneRows = 24,
 ):
     | { kind: 'copy-scroll'; dir: 'up' | 'down'; count: number }
     | { kind: 'mouse-wheel'; dir: 'up' | 'down'; count: number }
+    | { kind: 'page-keys'; key: 'PPage' | 'NPage'; count: number }
     | { kind: 'keys'; key: 'Up' | 'Down'; count: number }
     | { kind: 'none' } {
     // Bound a single step so a burst can't wedge tmux with a huge -N.
@@ -348,6 +369,13 @@ export function planScrollAction(
     const up = lines > 0;
     if (paneInMode) return { kind: 'copy-scroll', dir: up ? 'up' : 'down', count };
     if (alternateOn && paneWantsMouse) return { kind: 'mouse-wheel', dir: up ? 'up' : 'down', count };
+    if (alternateOn && claudeLike) {
+        // PageUp/PageDown scroll half the viewport per press → convert lines
+        // to pages, always at least one so a small flick still moves.
+        const halfPage = Math.max(1, Math.floor(paneRows / 2));
+        const pages = Math.max(1, Math.round(count / halfPage));
+        return { kind: 'page-keys', key: up ? 'PPage' : 'NPage', count: pages };
+    }
     if (alternateOn) return { kind: 'keys', key: up ? 'Up' : 'Down', count };
     if (up) return { kind: 'copy-scroll', dir: 'up', count };
     return { kind: 'none' }; // down at the live bottom — nowhere to go
@@ -372,6 +400,42 @@ export function sgrWheelHexBytes(dir: 'up' | 'down', count: number, paneWidth: n
     return bytes;
 }
 
+/**
+ * ── Classic-renderer Claude Code in web terminals ────────────────────────────
+ * Claude Code's fullscreen TUI (default since ~2.1.2xx) draws on the pane's
+ * ALTERNATE screen: the transcript lives only inside the app, tmux history
+ * never accumulates, and "scroll back to read earlier output" exists solely
+ * as app-internal scrolling (synthetic SGR wheel / PageUp) — fragile across
+ * claude versions (pre-mouse fullscreen builds turn wheel→arrow-keys into
+ * input-history walking). Claude Code ships an official escape hatch:
+ * CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 selects the classic renderer
+ * (https://code.claude.com/docs/en/fullscreen.md). Verified on 2.1.228 under
+ * tmux 3.6b: alternate_on stays 0, the transcript flows CLEANLY into tmux
+ * history (no repeated frames), pane_title/OSC auto-titles still work, and
+ * the existing copy-mode wheel path (frozen view while reading, auto-exit at
+ * bottom, browser-native selection) reviews the whole transcript.
+ *
+ * So every NEWLY CREATED web-terminal session gets this env var injected via
+ * `new-session -e` (tmux ≥3.2; create-only — ignored on `-A` attach, verified).
+ * It only sets the default: a user can still opt back into fullscreen with
+ * `/tui fullscreen` inside claude, which lands on the SGR wheel path above.
+ * NOTE the tmux window option `alternate-screen off` is NOT a substitute: the
+ * fullscreen renderer then repaints in place and NOTHING ever enters history
+ * (verified — history_size stays 0), which would break scrolling entirely.
+ */
+export const CLAUDE_CLASSIC_RENDERER_ENV = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1';
+
+/** Does this `tmux -V` output support `new-session -e VAR=value` (tmux ≥3.2)?
+ *  Dev builds report "tmux next-X.Y" / "tmux master". Pure; unit-tested. */
+export function tmuxSupportsNewSessionEnv(versionOutput: string): boolean {
+    if (/master/i.test(versionOutput)) return true;
+    const m = /(\d+)\.(\d+)/.exec(versionOutput);
+    if (!m) return false;
+    const maj = Number(m[1]);
+    const min = Number(m[2]);
+    return maj > 3 || (maj === 3 && min >= 2);
+}
+
 let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
     if (tmuxAvailableCache !== null) return tmuxAvailableCache;
@@ -382,6 +446,20 @@ function isTmuxAvailable(): boolean {
         tmuxAvailableCache = false;
     }
     return tmuxAvailableCache;
+}
+
+let tmuxEnvFlagCache: boolean | null = null;
+/** Runtime probe for the `-e` support above; a pre-3.2 tmux would reject the
+ *  whole new-session on an unknown flag, so it must be gated, not assumed. */
+function tmuxSupportsEnvFlag(): boolean {
+    if (tmuxEnvFlagCache !== null) return tmuxEnvFlagCache;
+    try {
+        const r = spawnSync('tmux', ['-V'], { encoding: 'utf8', env: ptyEnv() });
+        tmuxEnvFlagCache = r.status === 0 && tmuxSupportsNewSessionEnv(r.stdout || '');
+    } catch {
+        tmuxEnvFlagCache = false;
+    }
+    return tmuxEnvFlagCache;
 }
 
 function defaultShell(): string {
@@ -642,6 +720,12 @@ export class WebTerminalManager {
             // the startup command; every re-attach (daemon restart, reaped pty,
             // another device) sees "duplicate" and injects nothing.
             let createdNew = false;
+            // Classic-renderer default for claude launched inside this session
+            // (see CLAUDE_CLASSIC_RENDERER_ENV). `-e` is create-only: it sets
+            // the initial pane's environment on creation and is ignored when
+            // `-A` attaches to an existing session. Gated on tmux ≥3.2 — an
+            // older tmux rejects the unknown flag and would fail the create.
+            const envFlags = tmuxSupportsEnvFlag() ? ['-e', CLAUDE_CLASSIC_RENDERER_ENV] : [];
             try {
                 // env: THIS call may boot the tmux server, which pins its
                 // environment for the life of the server — without ptyEnv() a
@@ -652,7 +736,7 @@ export class WebTerminalManager {
                 // pass it too — harmless once the server runs (env doesn't
                 // re-stick), correct when one of them is the first to boot it.
                 const created = spawnSync('tmux',
-                    ['new-session', '-d', '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                    ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
                     { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                 createdNew = created.status === 0;
             } catch {
@@ -717,7 +801,12 @@ export class WebTerminalManager {
             //     modest (2000): the daemon's headless buffer (HEADLESS_SCROLLBACK)
             //     is now the authoritative scrollback the web renders from, so a
             //     100k-line tmux history was mostly dead redundant memory. 2000
-            //     still gives keyboard copy-mode a useful recent window.
+            //     still gives copy-mode a useful recent window — and with the
+            //     classic-renderer claude default (CLAUDE_CLASSIC_RENDERER_ENV)
+            //     this history is where the transcript lands, i.e. the wheel's
+            //     copy-mode review depth. NOTE it only affects panes created
+            //     AFTER it's set; the initial pane keeps the server default,
+            //     which is also 2000 — the option pins that against user configs.
             //  Server-scoped (`-g`, no session-scoped equivalent exists):
             //   - set-clipboard on + terminal-features …:clipboard: make tmux
             //     emit an OSC 52 escape when copying (keyboard copy-mode yank), so
@@ -729,8 +818,13 @@ export class WebTerminalManager {
                 `tmux set-option -g set-clipboard on`,
                 `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,
             ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
+            // The script's `-A` create fallback carries the same `-e` env flag
+            // (see envFlags above): only effective if THIS line is what creates
+            // the session (pre-create failed); ignored on the attach path. The
+            // value contains no shell metacharacters — safe to inline.
+            const envFlagsSh = envFlags.length > 0 ? ` -e ${CLAUDE_CLASSIC_RENDERER_ENV}` : '';
             args = ['-c',
-                `tmux new-session -A -d -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
+                `tmux new-session -A -d${envFlagsSh} -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `
                 + setOpts
                 + `exec tmux attach-session -d -t ${tmuxSession}`];
         } else {
@@ -976,11 +1070,13 @@ export class WebTerminalManager {
         if (session) session.lastTouch = Date.now();
         try {
             const probe = spawnSync('tmux',
-                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}'],
+                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}'],
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
-            const [inMode, altOn, wantsMouse, paneW, paneH] = probe.stdout.trim().split('\t');
-            const action = planScrollAction(inMode === '1', altOn === '1', wantsMouse === '1', lines);
+            const [inMode, altOn, wantsMouse, paneW, paneH, paneCmd] = probe.stdout.trim().split('\t');
+            const action = planScrollAction(
+                inMode === '1', altOn === '1', wantsMouse === '1', lines,
+                looksLikeClaudeCommand(paneCmd || ''), Number(paneH) || 24);
             if (action.kind === 'none') return;
             if (action.kind === 'mouse-wheel') {
                 // The pane's app asked for mouse reporting (Claude Code TUI):
@@ -989,6 +1085,14 @@ export class WebTerminalManager {
                 // the raw bytes; one call carries the whole burst.
                 const hex = sgrWheelHexBytes(action.dir, action.count, Number(paneW) || 80, Number(paneH) || 24);
                 spawnSync('tmux', ['send-keys', '-t', name, '-H', ...hex],
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+                return;
+            }
+            if (action.kind === 'page-keys') {
+                // Fullscreen Claude Code without mouse reporting: PageUp/PageDown
+                // are its documented scroll keys; arrows would open the input
+                // box's prompt-history browser instead of scrolling.
+                spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
                 return;
             }
