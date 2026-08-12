@@ -68,7 +68,7 @@
 | B-046 | 移动端会话详情页通知铃铛入口（现在只在根侧栏；详情页靠提示音） | ux | Owner 问题引出 2026-08-13 | todo | 等 Owner 真机用两天再定是否要 |
 | B-047 | 文件浏览器：终端/聊天会话浏览 cwd 目录与文件内容（daemon 机器 RPC fs-list/fs-read + 终端抽屉 + FilesPanel 浏览模式） | feat | Owner 2026-08-13 | done | Shipped 02cb8543 / cli v0.2.33；spec Shipped |
 | B-049 | 剪贴板体验重设计：默认静默复制+可点 toast 兜底（不再弹阻断 modal）+ 历史面板（50 条/32KB 护栏/编辑再复制/清空） | ux | Owner 2026-08-13 | done | Shipped；入口 ⌘K+设置 Channels；历史每设备本地不同步 |
-| B-050 | 新 logo + 整套应用图标（gpt-image via llm-hub）+ 设计感提案 | ux | Owner 2026-08-13 | doing | agent 进行中；候选存 skills/tmp/vh-logo/ |
+| B-050 | 新 logo「会眨眼的终端窗口」+ 整套应用图标（gpt-image 探索方向 + Pillow 按 token 重建主源） | ux | Owner 2026-08-13 | done | Shipped；候选在 skills/tmp/vh-logo/；7 条设计感提案待 Owner 挑 |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | 大改动，先出 spec（specs/2026-08-voice-assistant.md）；本会话主导 |
 
 ## 近期完成
