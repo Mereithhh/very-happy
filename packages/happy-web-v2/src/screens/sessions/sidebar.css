@@ -348,6 +348,21 @@
   color: var(--text-faint);
   pointer-events: none;
 }
+/* every action item carries a 16px icon: dim by default, red on danger
+ * items (inherits the item's danger color), faint when disabled */
+.vh-menu-ico {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.vh-menu-item.is-danger .vh-menu-ico,
+.vh-menu-item[data-disabled] .vh-menu-ico {
+  color: inherit;
+}
+.vh-menu-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 6px;
+}
 
 .sb-row-badge {
   flex-shrink: 0;

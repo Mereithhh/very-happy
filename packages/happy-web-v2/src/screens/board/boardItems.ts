@@ -60,6 +60,8 @@ export interface BoardItem {
   /** V2: LLM task classification (grouping FALLBACK only — the manual
    *  dispatch mapping in BoardTask.sessionIds wins) */
   llmTaskId?: string;
+  /** terminals only: the owning machine (card actions need it) */
+  machineId?: string;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -212,6 +214,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       attentionSince,
       href: `/terminal/${tm.machineId}?tid=${tm.id}`,
       detail,
+      machineId: tm.machineId,
     });
   }
 

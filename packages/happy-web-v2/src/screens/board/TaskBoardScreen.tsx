@@ -17,13 +17,16 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronLeft, Plus, Rocket, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronLeft, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useLocalSettingMutable } from '@/sync/storage';
+import { useLocalSettingMutable, storage } from '@/sync/storage';
 import { useBoardTasks, type BoardTask } from '@/sync/boardTasks';
 import { planOrderWrites, visibleTasks } from '@/sync/boardTaskOps';
 import { Modal } from '@/modal';
+import { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
+import { collectAllTags, saveRowRename } from '@/app/rowActions';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
+import { RenameModal } from '@/screens/sessions/RenameModal';
 import { useBoardItems } from './useBoardItems';
 import { BoardCard } from './BoardCard';
 import { groupBoardItems, type BoardItem } from './boardItems';
@@ -37,6 +40,7 @@ function Column({
   now,
   tone,
   footer,
+  onCardRenameRequest,
 }: {
   label: string;
   count: number;
@@ -45,6 +49,7 @@ function Column({
   now: number;
   tone?: 'attention';
   footer?: React.ReactNode;
+  onCardRenameRequest?: (item: BoardItem) => void;
 }) {
   return (
     <section className={`bd-col${tone ? ` bd-col--${tone}` : ''}`}>
@@ -56,7 +61,9 @@ function Column({
         {items.length === 0 ? (
           <div className="bd-col-empty">{empty}</div>
         ) : (
-          items.map((item) => <BoardCard key={item.key} item={item} now={now} />)
+          items.map((item) => (
+            <BoardCard key={item.key} item={item} now={now} onRenameRequest={onCardRenameRequest} />
+          ))
         )}
         {footer}
       </div>
@@ -64,24 +71,27 @@ function Column({
   );
 }
 
-/** Minimal title+description form for creating a board task. */
-function NewTaskModal({ onClose }: { onClose: () => void }) {
+/** Minimal title+description form — creates a board task, or edits `task`
+ *  (lane rename) when one is passed. */
+function TaskModal({ task, onClose }: { task?: BoardTask; onClose: () => void }) {
   const { t } = useTranslation();
   const createTask = useBoardTasks((s) => s.create);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const updateTask = useBoardTasks((s) => s.update);
+  const [title, setTitle] = useState(task?.title ?? '');
+  const [description, setDescription] = useState(task?.description ?? '');
   const canCreate = title.trim().length > 0;
 
   function onCreate() {
     if (!canCreate) return;
-    createTask(title, description);
+    if (task) updateTask(task.id, { title, description });
+    else createTask(title, description);
     onClose();
   }
 
   return (
     <div className="bd-modal-backdrop" onClick={onClose}>
       <div className="bd-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="eyebrow">{t('board.newTask')}</div>
+        <div className="eyebrow">{t(task ? 'board.editTask' : 'board.newTask')}</div>
         <input
           className="bd-modal-input"
           value={title}
@@ -104,7 +114,7 @@ function NewTaskModal({ onClose }: { onClose: () => void }) {
             {t('common.cancel')}
           </button>
           <button type="button" className="bd-btn bd-btn--primary" disabled={!canCreate} onClick={onCreate}>
-            {t('board.createTask')}
+            {t(task ? 'common.save' : 'board.createTask')}
           </button>
         </div>
       </div>
@@ -117,17 +127,29 @@ function TaskLane({
   items,
   now,
   dragging,
+  canMoveUp,
+  canMoveDown,
   onDispatch,
+  onEdit,
+  onMove,
   onHeadPointerDown,
+  onCardRenameRequest,
 }: {
   task: BoardTask;
   items: BoardItem[];
   now: number;
   /** this lane is the one being dragged right now */
   dragging?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   onDispatch: (task: BoardTask) => void;
+  /** opens the edit (rename) dialog for this task */
+  onEdit: (task: BoardTask) => void;
+  /** menu fallback for coarse pointers (no touch drag) */
+  onMove: (taskId: string, dir: -1 | 1) => void;
   /** lane-header drag handle (fine pointers; no-op on touch) */
   onHeadPointerDown?: (e: React.PointerEvent, taskId: string) => void;
+  onCardRenameRequest?: (item: BoardItem) => void;
 }) {
   const { t } = useTranslation();
   const setStatus = useBoardTasks((s) => s.setStatus);
@@ -142,44 +164,73 @@ function TaskLane({
     if (ok) remove(task.id);
   }
 
+  // Lane actions as DATA — the header's "…" dropdown and the header
+  // right-click menu render the same list. Move up/down doubles as the
+  // coarse-pointer fallback for the drag-reorder.
+  const menuItems: MenuItemDef[] = [
+    { key: 'dispatch', label: t('board.dispatch') as string, icon: Rocket, onSelect: () => onDispatch(task) },
+    { key: 'edit', label: t('board.editTask') as string, icon: Pencil, onSelect: () => onEdit(task) },
+    {
+      key: 'move-up',
+      label: t('sidebar.moveUp'),
+      icon: ArrowUp,
+      disabled: !canMoveUp,
+      onSelect: () => onMove(task.id, -1),
+    },
+    {
+      key: 'move-down',
+      label: t('sidebar.moveDown'),
+      icon: ArrowDown,
+      disabled: !canMoveDown,
+      onSelect: () => onMove(task.id, 1),
+    },
+    { key: 'done', label: t('board.markDone') as string, icon: Check, onSelect: () => setStatus(task.id, 'done') },
+    {
+      key: 'delete',
+      label: t('board.deleteTask') as string,
+      icon: Trash2,
+      danger: true,
+      separatorBefore: true,
+      onSelect: () => void onDelete(),
+    },
+  ];
+
   return (
     <section className={`bd-lane${dragging ? ' is-drag' : ''}`} data-laneid={task.id}>
-      <header
-        className="bd-lane-head"
-        onPointerDown={onHeadPointerDown ? (e) => onHeadPointerDown(e, task.id) : undefined}
-      >
-        <div className="bd-lane-titles">
-          <span className="bd-lane-title">{task.title}</span>
-          {task.description && <span className="bd-lane-desc">{task.description}</span>}
-        </div>
-        <span className="bd-col-count mono">{items.length}</span>
-        <div className="bd-lane-actions">
-          <button
-            type="button"
-            className="bd-btn bd-btn--primary"
-            title={t('board.dispatch') as string}
-            onClick={() => onDispatch(task)}
-          >
-            <Rocket size={13} /> {t('board.dispatch')}
-          </button>
-          <button
-            type="button"
-            className="bd-btn"
-            title={t('board.markDone') as string}
-            onClick={() => setStatus(task.id, 'done')}
-          >
-            <Check size={13} />
-          </button>
-          <button type="button" className="bd-btn" title={t('board.deleteTask') as string} onClick={onDelete}>
-            <Trash2 size={13} />
-          </button>
-        </div>
-      </header>
+      <ActionContextMenu items={menuItems}>
+        <header
+          className="bd-lane-head"
+          onPointerDown={onHeadPointerDown ? (e) => onHeadPointerDown(e, task.id) : undefined}
+        >
+          <div className="bd-lane-titles">
+            <span className="bd-lane-title">{task.title}</span>
+            {task.description && <span className="bd-lane-desc">{task.description}</span>}
+          </div>
+          <span className="bd-col-count mono">{items.length}</span>
+          <div className="bd-lane-actions">
+            <button
+              type="button"
+              className="bd-btn bd-btn--primary"
+              title={t('board.dispatch') as string}
+              onClick={() => onDispatch(task)}
+            >
+              <Rocket size={13} /> {t('board.dispatch')}
+            </button>
+            <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
+              <button type="button" className="bd-btn" aria-label="actions">
+                <MoreHorizontal size={14} />
+              </button>
+            </ActionDropdownMenu>
+          </div>
+        </header>
+      </ActionContextMenu>
       <div className="bd-lane-cards">
         {items.length === 0 ? (
           <div className="bd-col-empty">{t('board.emptyLane')}</div>
         ) : (
-          items.map((item) => <BoardCard key={item.key} item={item} now={now} />)
+          items.map((item) => (
+            <BoardCard key={item.key} item={item} now={now} onRenameRequest={onCardRenameRequest} />
+          ))
         )}
       </div>
     </section>
@@ -196,6 +247,9 @@ export function TaskBoardScreen() {
   const attachSession = useBoardTasks((s) => s.attachSession);
   const [showNewTask, setShowNewTask] = useState(false);
   const [dispatchTask, setDispatchTask] = useState<BoardTask | null>(null);
+  const [editTask, setEditTask] = useState<BoardTask | null>(null);
+  // card rename (chat session / terminal) — same dialog the sidebar uses
+  const [renameItem, setRenameItem] = useState<BoardItem | null>(null);
 
   // Pull the server-backed task list once per board mount (merges into the
   // local cache; cheap — a single KV GET).
@@ -309,6 +363,19 @@ export function TaskBoardScreen() {
     window.addEventListener('pointercancel', onUp);
   };
 
+  // Coarse-pointer fallback for the drag: swap the lane with its neighbor.
+  const moveLane = (taskId: string, dir: -1 | 1) => {
+    const lanes = grouped?.lanes ?? [];
+    const ids = lanes.map((l) => l.task.id);
+    const from = ids.indexOf(taskId);
+    const to = from + dir;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, taskId);
+    const taskById = new Map(lanes.map((l) => [l.task.id, l.task]));
+    applyOrders(planOrderWrites(ids.map((id) => taskById.get(id)!), taskId));
+  };
+
   return (
     <div className="bd">
       <header className="bd-header">
@@ -359,6 +426,7 @@ export function TaskBoardScreen() {
             empty={t('board.emptyAttention') as string}
             now={now}
             tone="attention"
+            onCardRenameRequest={setRenameItem}
           />
           <Column
             label={t('board.working') as string}
@@ -366,6 +434,7 @@ export function TaskBoardScreen() {
             items={working}
             empty={t('board.emptyWorking') as string}
             now={now}
+            onCardRenameRequest={setRenameItem}
           />
           <Column
             label={t('board.idleEnded') as string}
@@ -373,6 +442,7 @@ export function TaskBoardScreen() {
             items={[...idle, ...ended]}
             empty={t('board.emptyIdle') as string}
             now={now}
+            onCardRenameRequest={setRenameItem}
             footer={
               <button type="button" className="bd-archived-link mono" onClick={() => navigate('/')}>
                 {t('board.viewArchived')}
@@ -385,15 +455,20 @@ export function TaskBoardScreen() {
           {grouped!.lanes.length === 0 && (
             <div className="bd-col-empty bd-lanes-empty">{t('board.noTasks')}</div>
           )}
-          {displayLanes!.map((lane) => (
+          {displayLanes!.map((lane, i) => (
             <TaskLane
               key={lane.task.id}
               task={lane.task}
               items={lane.items}
               now={now}
               dragging={laneDragId === lane.task.id}
+              canMoveUp={i > 0}
+              canMoveDown={i < displayLanes!.length - 1}
               onDispatch={setDispatchTask}
+              onEdit={setEditTask}
+              onMove={moveLane}
               onHeadPointerDown={onLaneHeadPointerDown}
+              onCardRenameRequest={setRenameItem}
             />
           ))}
           <section className="bd-lane bd-lane--ungrouped">
@@ -407,19 +482,47 @@ export function TaskBoardScreen() {
               {grouped!.ungrouped.length === 0 ? (
                 <div className="bd-col-empty">{t('board.emptyLane')}</div>
               ) : (
-                grouped!.ungrouped.map((item) => <BoardCard key={item.key} item={item} now={now} />)
+                grouped!.ungrouped.map((item) => (
+                  <BoardCard key={item.key} item={item} now={now} onRenameRequest={setRenameItem} />
+                ))
               )}
             </div>
           </section>
         </div>
       )}
 
-      {showNewTask && <NewTaskModal onClose={() => setShowNewTask(false)} />}
+      {showNewTask && <TaskModal onClose={() => setShowNewTask(false)} />}
+      {editTask && <TaskModal task={editTask} onClose={() => setEditTask(null)} />}
       {dispatchTask && (
         <NewSessionModal
           onClose={() => setDispatchTask(null)}
           initialCommandDefault={dispatchTask.description || dispatchTask.title}
           onSpawned={(sessionId) => attachSession(dispatchTask.id, sessionId)}
+        />
+      )}
+      {renameItem && (
+        <RenameModal
+          defaultTitle={renameItem.title}
+          tags={
+            renameItem.kind === 'session'
+              ? storage.getState().sessions[renameItem.key]?.metadata?.tags ?? []
+              : undefined
+          }
+          suggestions={collectAllTags(Object.values(storage.getState().sessions))}
+          onClose={() => setRenameItem(null)}
+          onSave={async (title, tags) => {
+            const item = renameItem;
+            if (item.kind === 'terminal') {
+              await saveRowRename(
+                { kind: 'terminal', terminalId: item.key.slice(2), currentTitle: item.title },
+                title,
+              );
+              return;
+            }
+            const session = storage.getState().sessions[item.key];
+            if (!session) return;
+            await saveRowRename({ kind: 'session', session, currentTitle: item.title }, title, tags);
+          }}
         />
       )}
     </div>

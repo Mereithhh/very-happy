@@ -1,16 +1,14 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, Pin, PinOff, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, Pin, PinOff, ArrowUp, ArrowDown, Pencil, Archive, Trash2 } from 'lucide-react';
 import { useSessions, useSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
+import { confirmArchiveSession, confirmDeleteSession, confirmDeleteTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
 import type { Session } from '@/sync/storageTypes';
-import { StatusDot, CyberMark, TagChip, TagOverflowChip } from '@/ui';
-import { Modal } from '@/modal';
+import { StatusDot, CyberMark, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -235,21 +233,8 @@ export function Sidebar() {
 
   // ----- rename modal (title + tags) -----
   const [renameTarget, setRenameTarget] = useState<Row | null>(null);
-  // Suggestions: every tag currently in use across sessions (case-insensitive
-  // dedupe, first-seen casing wins), most-used first.
-  const allTags = useMemo(() => {
-    const counts = new Map<string, { tag: string; n: number }>();
-    for (const s of sessions ?? []) {
-      if (typeof s === 'string') continue;
-      for (const tag of s.metadata?.tags ?? []) {
-        const k = tag.toLowerCase();
-        const cur = counts.get(k);
-        if (cur) cur.n++;
-        else counts.set(k, { tag, n: 1 });
-      }
-    }
-    return [...counts.values()].sort((a, b) => b.n - a.n).map((x) => x.tag);
-  }, [sessions]);
+  // Suggestions: every tag currently in use across sessions, most-used first.
+  const allTags = useMemo(() => collectAllTags(sessions), [sessions]);
 
   // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
   // jumps to that conversation. Mirrors the v1 power-user shortcut. Order =
@@ -348,32 +333,37 @@ export function Sidebar() {
           <button className="sb-icon-btn" title={t('sidebar.collapse' as any)} onClick={toggleCollapsed}>
             <PanelLeftClose size={17} />
           </button>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button className="sb-icon-btn" title={t('sidebar.newSession' as any)}>
-                <Plus size={18} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className="vh-menu" align="end" sideOffset={6}>
-                {/* Quick create: spawns directly with the remembered machine/
-                    directory and the settings defaults; falls back to the full
-                    dialog only when it can't decide (or always-ask is on). */}
-                <DropdownMenu.Item
-                  className="vh-menu-item"
-                  onSelect={() => void createChatOrConfigure(navigate, () => setShowNew(true))}
-                >
-                  <MessageSquare size={15} /> {t('newSessionModal.chatTitle' as any)}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item className="vh-menu-item" onSelect={() => setShowNew(true)}>
-                  <SlidersHorizontal size={15} /> {t('newSessionModal.advancedTitle')}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item className="vh-menu-item" onSelect={() => createTerminalOrPick(navigate)}>
-                  <TerminalSquare size={15} /> {t('newSessionModal.terminalTitle' as any)}
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+          {/* Quick create: spawns directly with the remembered machine/
+              directory and the settings defaults; falls back to the full
+              dialog only when it can't decide (or always-ask is on). */}
+          <ActionDropdownMenu
+            align="end"
+            sideOffset={6}
+            items={[
+              {
+                key: 'chat',
+                label: t('newSessionModal.chatTitle' as any),
+                icon: MessageSquare,
+                onSelect: () => void createChatOrConfigure(navigate, () => setShowNew(true)),
+              },
+              {
+                key: 'advanced',
+                label: t('newSessionModal.advancedTitle'),
+                icon: SlidersHorizontal,
+                onSelect: () => setShowNew(true),
+              },
+              {
+                key: 'terminal',
+                label: t('newSessionModal.terminalTitle' as any),
+                icon: TerminalSquare,
+                onSelect: () => createTerminalOrPick(navigate),
+              },
+            ]}
+          >
+            <button className="sb-icon-btn" title={t('sidebar.newSession' as any)}>
+              <Plus size={18} />
+            </button>
+          </ActionDropdownMenu>
         </div>
       </header>
 
@@ -474,31 +464,88 @@ export function Sidebar() {
           onClose={() => setRenameTarget(null)}
           onSave={async (title, tags) => {
             const target = renameTarget;
-            if (target.kind === 'terminal') {
-              const clean = title.trim();
-              // v1: terminals are title-only (tags need daemon-side tmux
-              // storage — see RenameModal's header note).
-              if (clean && clean !== target.title) {
-                useTerminalSessions.getState().rename(target.terminalId!, clean);
-              }
-              return;
-            }
-            const s = target.session!;
-            // Only write what actually changed: title and tags ride the same
-            // update-metadata round-trip (sessionUpdateTitleTags), and a
-            // no-op save must not bump the metadata version.
-            const changes: { title?: string; tags?: string[] } = {};
-            if (title.trim() !== target.title) changes.title = title;
-            const curTags = s.metadata?.tags ?? [];
-            if (tags && JSON.stringify(tags) !== JSON.stringify(curTags)) changes.tags = tags;
-            if (changes.title !== undefined || changes.tags !== undefined) {
-              await sessionUpdateTitleTags(s.id, changes).catch(() => {});
-            }
+            // shared flow (rowActions.saveRowRename): terminals are
+            // title-only; sessions only write what actually changed.
+            await saveRowRename(
+              target.kind === 'terminal'
+                ? { kind: 'terminal', terminalId: target.terminalId!, currentTitle: target.title }
+                : { kind: 'session', session: target.session!, currentTitle: target.title },
+              title,
+              tags,
+            );
           }}
         />
       )}
     </div>
   );
+}
+
+/**
+ * The row's actions as DATA — one definition consumed by BOTH the "…"
+ * dropdown (all pointers) and the right-click context menu (fine pointers /
+ * long-press). Icon, label, danger tone and disabled state live here only.
+ */
+function rowMenuItems(opts: {
+  t: ReturnType<typeof useTranslation>['t'];
+  isTerminal: boolean;
+  pinned?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onRename: () => void;
+  onTogglePin?: () => void;
+  onMovePin?: (dir: -1 | 1) => void;
+  onArchiveOrDelete: () => void;
+  onDeleteSession?: () => void;
+}): MenuItemDef[] {
+  const { t } = opts;
+  const items: MenuItemDef[] = [
+    { key: 'rename', label: t('common.rename'), icon: Pencil, onSelect: opts.onRename },
+  ];
+  if (opts.onTogglePin) {
+    items.push({
+      key: 'pin',
+      label: opts.pinned ? t('sidebar.unpin') : t('sidebar.pin'),
+      icon: opts.pinned ? PinOff : Pin,
+      onSelect: opts.onTogglePin,
+    });
+  }
+  if (opts.pinned && opts.onMovePin) {
+    const move = opts.onMovePin;
+    items.push(
+      {
+        key: 'move-up',
+        label: t('sidebar.moveUp'),
+        icon: ArrowUp,
+        disabled: !opts.canMoveUp,
+        onSelect: () => move(-1),
+      },
+      {
+        key: 'move-down',
+        label: t('sidebar.moveDown'),
+        icon: ArrowDown,
+        disabled: !opts.canMoveDown,
+        onSelect: () => move(1),
+      },
+    );
+  }
+  items.push({
+    key: 'archive',
+    label: opts.isTerminal ? t('common.delete') : t('common.archive'),
+    icon: opts.isTerminal ? Trash2 : Archive,
+    danger: true,
+    separatorBefore: true,
+    onSelect: opts.onArchiveOrDelete,
+  });
+  if (!opts.isTerminal && opts.onDeleteSession) {
+    items.push({
+      key: 'delete',
+      label: t('common.delete'),
+      icon: Trash2,
+      danger: true,
+      onSelect: opts.onDeleteSession,
+    });
+  }
+  return items;
 }
 
 function SidebarRow({
@@ -526,7 +573,6 @@ function SidebarRow({
   const { id } = useParams();
   const location = useLocation();
   const { t } = useTranslation();
-  const removeTerminal = useTerminalSessions((s) => s.remove);
 
   const isTerminal = row.kind === 'terminal';
   // Terminal rows are focused when the terminal route + tid match (they were
@@ -568,68 +614,33 @@ function SidebarRow({
       ? navigate(`/terminal/${row.machineId}?tid=${row.terminalId}`)
       : navigate(`/session/${row.session!.id}`);
 
-  const onArchiveOrDelete = async () => {
-    if (isTerminal) {
-      // Deleting a terminal destroys its tmux session on the machine — confirm,
-      // then kill on the machine AND drop the record (they were out of sync
-      // before: removing the record alone orphaned the tmux session forever).
-      const ok = await Modal.confirm(t('terminal.deleteTitle' as any), t('terminal.deleteMessage' as any), {
-        confirmText: t('common.delete' as any),
-        destructive: true,
-      });
-      if (!ok) return;
-      await machineKillTerminal(row.machineId!, row.terminalId!);
-      removeTerminal(row.terminalId!);
-    } else {
-      const ok = await Modal.confirm(t('sidebar.archiveConfirm' as any), undefined, {
-        confirmText: t('sidebar.filterArchived' as any),
-        destructive: true,
-      });
-      if (!ok) return;
-      // Mirrors happy-app's performArchive. Server-side archive alone doesn't
-      // stick for a LIVE session: the still-running CLI keeps reporting itself
-      // active and flips the row right back. So: optimistic local flip (row
-      // leaves the active list instantly), then kill the CLI process; only if
-      // it's already dead force-archive via the server. Roll back on failure.
-      const session = row.session!;
-      const wasActive = session.active;
-      if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
-      try {
-        const killResult = await sessionKill(session.id);
-        if (!killResult.success) {
-          await sessionArchive(session.id);
-        }
-      } catch (error) {
-        if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
-        throw error;
-      }
-    }
-  };
+  // Archive (session) / delete (terminal) / permanent delete — the flows,
+  // confirms included, live in rowActions.ts and are shared with the board.
+  const onArchiveOrDelete = () =>
+    isTerminal
+      ? confirmDeleteTerminal(row.machineId!, row.terminalId!)
+      : confirmArchiveSession(row.session!);
+  const onDeleteSession = () =>
+    confirmDeleteSession(row.session!, () => {
+      if (selected) navigate('/');
+    });
 
-  // Permanently delete a session — mirrors happy-app's info-screen flow:
-  // confirm, best-effort kill while the CLI is still connected (the server
-  // rejects deleting a live session), then DELETE. sessionDelete purges the
-  // local copy and tombstones the id, so the kill's straggler update-session
-  // can't resurrect the row (deleted-session race).
-  const onDeleteSession = async () => {
-    const session = row.session!;
-    const ok = await Modal.confirm(
-      t('sessionInfo.deleteSessionConfirm'),
-      t('sessionInfo.deleteSessionWarning'),
-      { confirmText: t('common.delete'), destructive: true },
-    );
-    if (!ok) return;
-    if (selected) navigate('/');
-    if (session.active || session.presence === 'online') {
-      await sessionKill(session.id).catch(() => {});
-    }
-    const result = await sessionDelete(session.id);
-    if (!result.success) {
-      Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToDeleteSession'));
-    }
-  };
+  // ONE item list feeds both the "…" dropdown and the right-click menu.
+  const menuItems = rowMenuItems({
+    t,
+    isTerminal,
+    pinned,
+    canMoveUp,
+    canMoveDown,
+    onRename: onRenameRequest,
+    onTogglePin,
+    onMovePin,
+    onArchiveOrDelete: () => void onArchiveOrDelete(),
+    onDeleteSession: () => void onDeleteSession(),
+  });
 
   return (
+    <ActionContextMenu items={menuItems}>
     <div className={`sb-row${selected ? ' is-selected' : ''}`}>
       <button className="sb-row-main" onClick={open}>
         <span className={`sb-row-icon${isTerminal ? ' sb-row-icon--term' : ''}`}>
@@ -662,59 +673,12 @@ function SidebarRow({
         </span>
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
       </button>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button className="sb-row-menu" aria-label="actions" onClick={(e) => e.stopPropagation()}>
-            <MoreHorizontal size={16} />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="vh-menu" align="end" sideOffset={4}>
-            <DropdownMenu.Item className="vh-menu-item" onSelect={onRenameRequest}>
-              {t('common.rename' as any)}
-            </DropdownMenu.Item>
-            {onTogglePin && (
-              <DropdownMenu.Item className="vh-menu-item" onSelect={onTogglePin}>
-                {pinned ? (
-                  <>
-                    <PinOff size={15} /> {t('sidebar.unpin')}
-                  </>
-                ) : (
-                  <>
-                    <Pin size={15} /> {t('sidebar.pin')}
-                  </>
-                )}
-              </DropdownMenu.Item>
-            )}
-            {pinned && onMovePin && (
-              <>
-                <DropdownMenu.Item
-                  className="vh-menu-item"
-                  disabled={!canMoveUp}
-                  onSelect={() => onMovePin(-1)}
-                >
-                  <ArrowUp size={15} /> {t('sidebar.moveUp')}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  className="vh-menu-item"
-                  disabled={!canMoveDown}
-                  onSelect={() => onMovePin(1)}
-                >
-                  <ArrowDown size={15} /> {t('sidebar.moveDown')}
-                </DropdownMenu.Item>
-              </>
-            )}
-            <DropdownMenu.Item className="vh-menu-item is-danger" onSelect={onArchiveOrDelete}>
-              {isTerminal ? t('common.delete' as any) : t('sidebar.filterArchived' as any)}
-            </DropdownMenu.Item>
-            {!isTerminal && (
-              <DropdownMenu.Item className="vh-menu-item is-danger" onSelect={onDeleteSession}>
-                {t('common.delete')}
-              </DropdownMenu.Item>
-            )}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
+        <button className="sb-row-menu" aria-label="actions" onClick={(e) => e.stopPropagation()}>
+          <MoreHorizontal size={16} />
+        </button>
+      </ActionDropdownMenu>
     </div>
+    </ActionContextMenu>
   );
 }

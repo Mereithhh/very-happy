@@ -48,6 +48,7 @@ export const ru: TranslationStructure = {
         createTask: 'Create',
         dispatch: 'Dispatch',
         markDone: 'Mark done',
+        editTask: 'Изменить задачу',
         deleteTask: 'Delete task',
         deleteTaskConfirm: ({ title }: { title: string }) => `Delete task "${title}"? Its sessions stay, they just become ungrouped.`,
         ungrouped: 'Ungrouped',
@@ -147,6 +148,8 @@ export const ru: TranslationStructure = {
         retry: 'Повторить',
         delete: 'Удалить',
         optional: 'необязательно',
+        open: 'Открыть',
+        archive: 'В архив',
     },
 
     connect: {
