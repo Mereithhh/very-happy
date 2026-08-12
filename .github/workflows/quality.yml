@@ -7,10 +7,7 @@ name: Quality Gates
 #                     但为了并行省墙钟时间，每个依赖它的 job 自己再 build 一次（<30s）。
 #   web-v2            vitest run + vite build（注意：不走 `pnpm build`，那会先跑
 #                     `tsc -b` 撞上存量类型债）。
-#   web-v2-typecheck  tsc --noEmit，⚠️ 目前 non-blocking（continue-on-error）：
-#                     存量 ~490 个 tsc 错误正在清偿（PROCESS.md §3 的红线是
-#                     "只减不增"，用 stash 对照人工把关）。**存量清零后把
-#                     continue-on-error 删掉翻成硬门。**
+#   web-v2-typecheck  tsc --noEmit，硬门（存量债 2026-08-13 已清零，0 错误红线）。
 #   cli               pnpm build + vitest unit（integration 项目要起真 daemon /
 #                     真 Claude 环境，CI 上不跑）+ `node dist/index.mjs --version`
 #                     运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例）。
@@ -79,15 +76,11 @@ jobs:
       - name: Build happy-web-v2 (vite build)
         run: pnpm --filter @slopus/happy-web-v2 exec vite build
 
-  # ⚠️ non-blocking：happy-web-v2 有 ~490 个存量 tsc 错误正在清偿中。
-  # 在此期间本 job 只作观测（红了不挡 merge），"只减不增"仍按 PROCESS.md §3
-  # 用 stash 对照人工把关。存量清零后：删掉下面的 continue-on-error，
-  # 并把 job 名里的 non-blocking 字样去掉，翻成硬门。
+  # 硬门：存量 tsc 债 2026-08-13 清零（492→0），0 错误是红线。
   web-v2-typecheck:
     name: happy-web-v2 typecheck (non-blocking, 存量清零后翻硬)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
