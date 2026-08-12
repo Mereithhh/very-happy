@@ -2,8 +2,8 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Search, Plus, Settings, X, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid } from 'lucide-react';
-import { useSessions, useAllMachines, storage } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
+import { useSessions, storage } from '@/sync/storage';
+import { createTerminalOrPick } from '@/app/newTerminal';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { sessionUpdateTitle, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
 import type { Session } from '@/sync/storageTypes';
@@ -47,15 +47,12 @@ export function Sidebar() {
   const [showNew, setShowNew] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
-  const machines = useAllMachines({ includeOffline: true });
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
   // The terminal reconcile / agent-state poll used to live here; it is now the
   // AppLayout-level singleton (sync/terminalReconcileLoop.ts) so it also runs
   // with the sidebar collapsed or on mobile detail screens. This component is
   // a pure consumer of its stores.
-  const machinesRef = useRef(machines);
-  machinesRef.current = machines;
 
   const attentionCount = useBoardAttentionCount();
 
@@ -122,26 +119,9 @@ export function Sidebar() {
         }
         return;
       }
-      // ⌘/Ctrl+N → new terminal. Browser-reserved in normal tabs (Chrome opens
-      // a new window before the page sees it); works in the installed PWA,
-      // same caveat as ⌘1-9. One online machine → open a terminal there
-      // directly; several → machine picker.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-        setCmdHeld(false);
-        const online = machinesRef.current.filter(isMachineOnline);
-        if (online.length === 1) {
-          const m: any = online[0];
-          const name = m?.metadata?.displayName || m?.metadata?.host || m.id.slice(0, 8);
-          const term = useTerminalSessions.getState().create(m.id, name);
-          navigate(`/terminal/${m.id}?tid=${term.id}`);
-        } else {
-          navigate('/terminal');
-        }
-        return;
-      }
+      // ⌘/Ctrl+N and ⌥N → new terminal: NOT handled here anymore. The listener
+      // moved to the AppLayout-level useNewTerminalShortcuts() hook so it also
+      // works with the sidebar collapsed/unmounted (mobile detail, /board).
       // ⌘/Ctrl+R → rename the currently open conversation/terminal. Unlike
       // ⌘N/⌘1-9, ⌘R IS interceptable via preventDefault (it's page reload, not
       // a browser-window command), so this works in a normal tab too. This
@@ -220,7 +200,7 @@ export function Sidebar() {
                 <DropdownMenu.Item className="vh-menu-item" onSelect={() => setShowNew(true)}>
                   <MessageSquare size={15} /> {t('newSessionModal.chatTitle' as any)}
                 </DropdownMenu.Item>
-                <DropdownMenu.Item className="vh-menu-item" onSelect={() => navigate('/terminal')}>
+                <DropdownMenu.Item className="vh-menu-item" onSelect={() => createTerminalOrPick(navigate)}>
                   <TerminalSquare size={15} /> {t('newSessionModal.terminalTitle' as any)}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
