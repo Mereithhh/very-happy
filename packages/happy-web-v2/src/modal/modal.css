@@ -95,3 +95,16 @@
     padding: 11px 16px;
   }
 }
+
+/* Multiline prompt (e.g. editable clipboard-push fallback): monospace payload,
+   vertical resize only, capped height so huge payloads don't blow the modal. */
+.vh-modal-textarea {
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 96px;
+  max-height: 40dvh;
+  white-space: pre;
+  overflow: auto;
+}

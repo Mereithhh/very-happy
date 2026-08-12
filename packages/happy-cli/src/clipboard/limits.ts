@@ -16,7 +16,10 @@ export const CLIPBOARD_TOOL_NAME = 'copy_to_clipboard';
 export const CLIPBOARD_TOOL_TITLE = 'Copy to User Clipboard';
 export const CLIPBOARD_TOOL_DESCRIPTION =
     'Copy text to the clipboard of the device the user is currently viewing this session from (their web browser, possibly a phone). '
-    + 'Use when the user asks to copy something to their clipboard — e.g. a command output, code snippet, token, URL or file content. '
+    + 'Use this whenever the user wants a piece of text handed to them — not only when they literally say "clipboard". '
+    + 'Trigger phrases include: "copy X", "copy that for me", "give me X", "send me X", "I need X on my phone", '
+    + '"复制给我", "把 X 复制一下", "发我", "给我一份", "复制到剪切板/剪贴板". '
+    + 'Typical payloads: command output, code snippets, tokens/keys, URLs, file contents, commit messages. '
     + 'The text is delivered to every device where the user has the web client open. '
     + `Payloads larger than ${CLIPBOARD_MAX_BYTES / 1024}KB are truncated.`;
 

@@ -86,24 +86,25 @@ export async function deliverToClipboard(text: string): Promise<void> {
         return;
     }
 
-    const preview = text.length > 300 ? `${text.slice(0, 300)}…` : text;
-    Modal.alert(
+    // Editable fallback: the payload is shown in a textarea so the user can
+    // trim/adjust it BEFORE it lands in the clipboard (they asked for exactly
+    // this). Confirm resolves inside the button's click gesture → the write is
+    // allowed everywhere, and we copy the (possibly edited) value.
+    const edited = await Modal.prompt(
         t('common.copy'),
-        preview,
-        [
-            { text: t('common.cancel'), style: 'cancel' },
-            {
-                text: t('common.copy'),
-                onPress: () => {
-                    // Runs inside the button's click gesture → allowed everywhere.
-                    void tryWrite(text).then((ok) => {
-                        if (ok) toast.success(t('common.copied'));
-                        else toast.error(t('common.error'));
-                    });
-                },
-            },
-        ],
+        undefined,
+        {
+            defaultValue: text,
+            multiline: true,
+            confirmText: t('common.copy'),
+            cancelText: t('common.cancel'),
+        },
     );
+    if (edited === null) return; // cancelled
+    void tryWrite(edited).then((ok) => {
+        if (ok) toast.success(t('common.copied'));
+        else toast.error(t('common.error'));
+    });
 }
 
 /** Entry point wired to `apiSocket.onMessage('clipboard-push', …)` in sync. */

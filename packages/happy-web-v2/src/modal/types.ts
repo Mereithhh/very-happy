@@ -38,6 +38,9 @@ export interface PromptModalConfig extends BaseModalConfig {
     cancelText?: string;
     confirmText?: string;
     inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+    /** Render a textarea instead of a single-line input (Enter inserts a
+     *  newline; confirm via the button). For editing multi-line payloads. */
+    multiline?: boolean;
 }
 
 export interface CustomModalConfig extends BaseModalConfig {
@@ -73,6 +76,7 @@ export interface IModal {
         cancelText?: string;
         confirmText?: string;
         inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+        multiline?: boolean;
     }): Promise<string | null>;
     show(config: Omit<CustomModalConfig, 'id' | 'type'>): string;
     hide(id: string): void;

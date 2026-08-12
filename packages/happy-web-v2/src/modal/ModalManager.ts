@@ -120,6 +120,7 @@ class ModalManagerClass implements IModal {
             cancelText?: string;
             confirmText?: string;
             inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+            multiline?: boolean;
         }
     ): Promise<string | null> {
         if (!this.showModalFn) {
@@ -135,7 +136,8 @@ class ModalManagerClass implements IModal {
             defaultValue: options?.defaultValue,
             cancelText: options?.cancelText,
             confirmText: options?.confirmText,
-            inputType: options?.inputType
+            inputType: options?.inputType,
+            multiline: options?.multiline
         } as Omit<ModalConfig, 'id'>);
 
         return new Promise<string | null>((resolve) => {

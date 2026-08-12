@@ -97,7 +97,19 @@ function ModalCard({ config, onClose }: { config: ModalConfig; onClose: () => vo
           <div className="vh-modal-message">{config.message}</div>
         )}
 
-        {config.type === 'prompt' && (
+        {config.type === 'prompt' && (config.multiline ? (
+          <textarea
+            className="vh-modal-input vh-modal-textarea"
+            autoFocus
+            rows={6}
+            placeholder={config.placeholder}
+            value={promptValue}
+            onChange={(e) => setPromptValue(e.target.value)}
+            onCompositionStart={ime.onCompositionStart}
+            onCompositionEnd={ime.onCompositionEnd}
+            // Multiline: Enter inserts a newline; confirm via the button.
+          />
+        ) : (
           <input
             className="vh-modal-input"
             autoFocus
@@ -114,7 +126,7 @@ function ModalCard({ config, onClose }: { config: ModalConfig; onClose: () => vo
               if (e.key === 'Enter') close(() => Modal.resolvePrompt(config.id, promptValue));
             }}
           />
-        )}
+        ))}
 
         <div className="vh-modal-actions">
           {config.type === 'alert' &&
