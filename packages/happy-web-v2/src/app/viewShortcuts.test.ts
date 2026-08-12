@@ -21,17 +21,19 @@ describe('matchCloseViewChord', () => {
     expect(matchCloseViewChord(ev({ key: 'w', code: 'KeyW' }))).toBe(false);
   });
 
+  const fakeInput = { tagName: 'INPUT', classList: { contains: () => false } } as unknown as EventTarget;
+  const fakeXtermTa = {
+    tagName: 'TEXTAREA',
+    classList: { contains: (n: string) => n === 'xterm-helper-textarea' },
+  } as unknown as EventTarget;
+
   it('⌥W leaves ordinary editable targets alone but fires on the xterm textarea', () => {
-    const input = document.createElement('input');
-    expect(matchCloseViewChord(ev({ altKey: true, code: 'KeyW', target: input }))).toBe(false);
-    const ta = document.createElement('textarea');
-    ta.classList.add('xterm-helper-textarea');
-    expect(matchCloseViewChord(ev({ altKey: true, code: 'KeyW', target: ta }))).toBe(true);
+    expect(matchCloseViewChord(ev({ altKey: true, code: 'KeyW', target: fakeInput }))).toBe(false);
+    expect(matchCloseViewChord(ev({ altKey: true, code: 'KeyW', target: fakeXtermTa }))).toBe(true);
   });
 
   it('⌘W fires regardless of target (pure app chord)', () => {
-    const input = document.createElement('input');
-    expect(matchCloseViewChord(ev({ metaKey: true, key: 'w', code: 'KeyW', target: input }))).toBe(true);
+    expect(matchCloseViewChord(ev({ metaKey: true, key: 'w', code: 'KeyW', target: fakeInput }))).toBe(true);
   });
 });
 

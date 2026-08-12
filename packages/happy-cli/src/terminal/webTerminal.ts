@@ -55,6 +55,54 @@ import os from 'node:os';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { logger } from '@/ui/logger';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { configuration } from '@/configuration';
+
+// ── Kill tombstones ──────────────────────────────────────────────────────────
+// A deleted terminal's id is remembered here so that a STALE CLIENT (an old
+// bundle in a forgotten tab/PWA speaking the legacy create-or-attach dialect)
+// can never resurrect it: terminal ids are randomly generated at creation, so
+// a "create" request for a previously-killed id can only come from a stale
+// client replaying history — refuse it. (Field incident 2026-08-13: a phone
+// PWA resurrected a deleted terminal twice; the web-side stale-bundle reload
+// only helps clients new enough to carry it.)
+export const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Prune expired entries (pure; exported for tests). */
+export function pruneTombstones(
+    map: Record<string, number>,
+    now: number,
+    ttlMs: number = TOMBSTONE_TTL_MS,
+): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [id, at] of Object.entries(map)) {
+        if (typeof at === 'number' && now - at < ttlMs) out[id] = at;
+    }
+    return out;
+}
+
+function tombstoneFile(): string {
+    return join(configuration.happyHomeDir, 'terminal-tombstones.json');
+}
+
+function loadTombstones(): Record<string, number> {
+    try {
+        const raw = JSON.parse(readFileSync(tombstoneFile(), 'utf8'));
+        return pruneTombstones(raw && typeof raw === 'object' ? raw : {}, Date.now());
+    } catch {
+        return {};
+    }
+}
+
+function saveTombstones(map: Record<string, number>): void {
+    try {
+        mkdirSync(configuration.happyHomeDir, { recursive: true });
+        writeFileSync(tombstoneFile(), JSON.stringify(pruneTombstones(map, Date.now())));
+    } catch (e) {
+        logger.debug(`[WEB TERMINAL] tombstone save failed: ${e}`);
+    }
+}
 
 export interface OpenTerminalOptions {
     /** Client-owned id → tmux session `vh-<id>`. Reusing it re-subscribes to the
@@ -705,6 +753,8 @@ class TerminalSession {
 
 export class WebTerminalManager {
     private terminals = new Map<string, TerminalSession>();
+    /** killed terminal ids → killedAt; blocks stale-client resurrection. */
+    private tombstones: Record<string, number> = loadTombstones();
     private emit: EmitFn;
     private reaper: ReturnType<typeof setInterval>;
 
@@ -900,6 +950,20 @@ export class WebTerminalManager {
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() },
             ).status === 0;
             if (!alive) throw new Error('terminal-gone');
+        } else if (this.tombstones[id]) {
+            // A CREATE request for a previously-killed id = a stale client
+            // replaying legacy create-or-attach (fresh creates use random
+            // ids). If the tmux session somehow exists (resurrected before
+            // this guard shipped) attach honestly; otherwise refuse — the
+            // terminal stays deleted no matter how old the client is.
+            const alive = isTmuxAvailable() && spawnSync(
+                'tmux', ['has-session', '-t', `=vh-${id}:`],
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() },
+            ).status === 0;
+            if (!alive) {
+                logger.debug(`[WEB TERMINAL] refused stale-client resurrection of tombstoned ${id}`);
+                throw new Error('terminal-gone');
+            }
         }
 
         const env = ptyEnv();
@@ -1194,6 +1258,9 @@ export class WebTerminalManager {
         } catch {
             // tmux gone / session already dead
         }
+        // Tombstone the id so stale clients can't legacy-create it back.
+        this.tombstones[terminalId] = Date.now();
+        saveTombstones(this.tombstones);
         logger.debug(`[WEB TERMINAL] killed session vh-${terminalId}`);
         // Deletion propagates by ABSENCE from the pushed list — refresh now so
         // every device converges without tombstone bookkeeping.

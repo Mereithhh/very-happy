@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, type TerminalListItem } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -459,5 +459,26 @@ describe('parseSessionListLine', () => {
         expect(parsed.name).toBe('vh-abc');
         expect(parsed.cwd).toBe('/x');
         expect(parsed.paneTitle).toBe(`weird${LIST_FIELD_SEP}title`);
+    });
+});
+
+describe('pruneTombstones', () => {
+    it('keeps fresh, drops expired and malformed entries', () => {
+        const now = 1_700_000_000_000;
+        const week = 7 * 24 * 60 * 60 * 1000;
+        const out = pruneTombstones(
+            {
+                fresh: now - 1000,
+                edge: now - week + 1,
+                expired: now - week,
+                junk: 'nope' as unknown as number,
+            },
+            now,
+        );
+        expect(Object.keys(out).sort()).toEqual(['edge', 'fresh']);
+    });
+
+    it('empty in, empty out', () => {
+        expect(pruneTombstones({}, Date.now())).toEqual({});
     });
 });

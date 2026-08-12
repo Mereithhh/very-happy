@@ -19,17 +19,23 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isImeGuardedEvent } from '@/utils/ime';
 
+// Duck-typed (no instanceof DOM classes): keeps the matcher pure and unit-
+// testable in the node test environment, and immune to cross-realm instanceof.
+interface ElementLike {
+  tagName?: string;
+  isContentEditable?: boolean;
+  classList?: { contains(name: string): boolean };
+}
+
 function isXtermTextarea(t: EventTarget | null): boolean {
-  return t instanceof HTMLElement && t.classList.contains('xterm-helper-textarea');
+  const el = t as ElementLike | null;
+  return !!el?.classList?.contains?.('xterm-helper-textarea');
 }
 
 function isEditableTarget(t: EventTarget | null): boolean {
-  if (!(t instanceof HTMLElement)) return false;
-  return (
-    t instanceof HTMLInputElement ||
-    t instanceof HTMLTextAreaElement ||
-    t.isContentEditable
-  );
+  const el = t as ElementLike | null;
+  if (!el) return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
 }
 
 /** Pure chord matcher (exported for tests). Returns whether the event is the
