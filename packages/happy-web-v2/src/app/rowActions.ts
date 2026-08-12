@@ -9,22 +9,19 @@
  */
 import { t } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
-import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionDelete, machineKillTerminal } from '@/sync/ops';
+import { getCurrentAuth } from '@/auth/AuthContext';
+import { notifyWebhook } from '@/sync/apiWebhook';
+import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionDelete, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
 
-/** Archive a chat session (confirm first). Mirrors happy-app's performArchive:
- *  server-side archive alone doesn't stick for a LIVE session — the running
- *  CLI keeps reporting itself active and flips the row back. So: optimistic
- *  local flip, then kill the CLI; only if it's already dead force-archive via
- *  the server. Rolls back on failure. */
-export async function confirmArchiveSession(session: Session): Promise<void> {
-  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
-    confirmText: t('common.archive'),
-    destructive: true,
-  });
-  if (!ok) return;
+/** The kill-first archive itself (no confirm). Mirrors happy-app's
+ *  performArchive: server-side archive alone doesn't stick for a LIVE
+ *  session — the running CLI keeps reporting itself active and flips the row
+ *  back. So: optimistic local flip, then kill the CLI; only if it's already
+ *  dead force-archive via the server. Rolls back on failure. */
+export async function archiveSessionNow(session: Session): Promise<void> {
   const wasActive = session.active;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
   try {
@@ -35,6 +32,52 @@ export async function confirmArchiveSession(session: Session): Promise<void> {
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
     throw error;
+  }
+}
+
+/** Archive a chat session, confirm first (sidebar/menu entry point). */
+export async function confirmArchiveSession(session: Session): Promise<void> {
+  const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
+    confirmText: t('common.archive'),
+    destructive: true,
+  });
+  if (!ok) return;
+  await archiveSessionNow(session);
+}
+
+/**
+ * Mark a session DONE — the board's one-click completion (✓). Deliberately
+ * NO confirm dialog: "标记完成必须一次点击" is an Owner-set boundary.
+ *
+ * Three steps, weakest-first:
+ *  1. completion record: stamp `metadata.completedAt` (best-effort — the
+ *     record must not block the completion; failures only warn). Written
+ *     BEFORE the kill so the CLI's exit-time archive stamp rebases on top of
+ *     it instead of racing it.
+ *  2. kill-first archive (the completion itself — this one may throw).
+ *  3. webhook notification `✅ 已完成 · <title>` via the server's
+ *     /v1/webhook/notify (best-effort by contract; `notify: false` skips it —
+ *     task-level batch completion sends ONE task notification instead).
+ */
+export async function markSessionDone(
+  session: Session,
+  opts?: { notify?: boolean },
+): Promise<void> {
+  try {
+    await sessionMarkCompleted(session.id);
+  } catch (error) {
+    console.warn('[markSessionDone] completion record write failed', error);
+  }
+  await archiveSessionNow(session);
+  if (opts?.notify !== false) {
+    const title = session.metadata?.summary?.text?.trim() || t('session.newChat');
+    const credentials = getCurrentAuth()?.credentials;
+    if (credentials) {
+      void notifyWebhook(credentials, {
+        title: `✅ 已完成 · ${title}`,
+        sessionId: session.id,
+      });
+    }
   }
 }
 

@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildBoardItems,
+  buildCompletedEntries,
+  buildLifecycleColumns,
   formatCwd,
   groupBoardItems,
+  DONE_WINDOW_MS,
   ENDED_WINDOW_MS,
   type BoardInput,
 } from './boardItems';
@@ -382,5 +385,182 @@ describe('V2: groupBoardItems (task swimlanes)', () => {
     ]);
     expect(lanes[0].items.map((i) => i.key)).toEqual(['s1']);
     expect(lanes[1].items).toHaveLength(0);
+  });
+});
+
+//
+// Lifecycle view (2026-08 board-task-lifecycle spec) — the decision table.
+// Each row of the spec's classifier table is one case here.
+//
+
+describe('lifecycle classifier (decision table)', () => {
+  const entry = (state: TerminalAgentEntry['state'], over: Partial<TerminalAgentEntry> = {}): TerminalAgentEntry => ({
+    machineId: 'm1',
+    state,
+    ...over,
+  });
+
+  it('session attention + pending permission request → waiting/permission', () => {
+    const s = mkSession({
+      id: 's1',
+      agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 1000 } } },
+    });
+    const [item] = build({ sessions: [s] });
+    expect(item.lifecycle).toBe('waiting');
+    expect(item.waitReason).toBe('permission');
+  });
+
+  it('session attention + llmAttention=review (no requests) → waiting/review', () => {
+    const s = mkSession({ id: 's1' });
+    (s.metadata as any).board = { attention: 'review', analyzedAt: NOW - 1000 };
+    const [item] = build({ sessions: [s] });
+    expect(item.lifecycle).toBe('waiting');
+    expect(item.waitReason).toBe('review');
+  });
+
+  it('session attention + llmAttention=blocked (no requests) → waiting/blocked', () => {
+    const s = mkSession({ id: 's1' });
+    (s.metadata as any).board = { attention: 'blocked', analyzedAt: NOW - 1000 };
+    const [item] = build({ sessions: [s] });
+    expect(item.lifecycle).toBe('waiting');
+    expect(item.waitReason).toBe('blocked');
+  });
+
+  it('a pending permission request outranks the LLM verdict on the same session', () => {
+    const s = mkSession({
+      id: 's1',
+      agentState: { requests: { r: { tool: 'Edit', arguments: {}, createdAt: NOW - 1000 } } },
+    });
+    (s.metadata as any).board = { attention: 'blocked', analyzedAt: NOW - 5000 };
+    const [item] = build({ sessions: [s] });
+    expect(item.waitReason).toBe('permission');
+  });
+
+  it('session working → running (no waitReason)', () => {
+    const [item] = build({ sessions: [mkSession({ id: 's1', thinking: true })] });
+    expect(item.lifecycle).toBe('running');
+    expect(item.waitReason).toBeUndefined();
+  });
+
+  it('session idle (agent finished, nobody collected) → waiting/idle — the core flip', () => {
+    const [item] = build({ sessions: [mkSession({ id: 's1' })] });
+    expect(item.status).toBe('idle'); // badge source stays intact
+    expect(item.lifecycle).toBe('waiting');
+    expect(item.waitReason).toBe('idle');
+  });
+
+  it('session ended (process died un-archived, within 24h) → waiting/ended', () => {
+    const s = mkSession({ id: 's1', active: true, presence: NOW - 1000, updatedAt: NOW - 1000 });
+    const [item] = build({ sessions: [s] });
+    expect(item.lifecycle).toBe('waiting');
+    expect(item.waitReason).toBe('ended');
+  });
+
+  it('terminal needs_input → waiting/needsInput', () => {
+    const items = build({
+      terminals: [mkTerminal({ id: 't1' })],
+      agentStates: { t1: entry('needs_input', { since: NOW - 1000 }) },
+    });
+    expect(items[0].lifecycle).toBe('waiting');
+    expect(items[0].waitReason).toBe('needsInput');
+  });
+
+  it('terminal working → running', () => {
+    const items = build({
+      terminals: [mkTerminal({ id: 't1' })],
+      agentStates: { t1: entry('working') },
+    });
+    expect(items[0].lifecycle).toBe('running');
+    expect(items[0].waitReason).toBeUndefined();
+  });
+
+  it('terminal shell / idle / unknown → waiting/idle', () => {
+    const items = build({
+      terminals: [mkTerminal({ id: 't1' }), mkTerminal({ id: 't2' }), mkTerminal({ id: 't3' })],
+      agentStates: { t1: entry('shell'), t2: entry('idle') },
+    });
+    for (const i of items) {
+      expect(i.lifecycle).toBe('waiting');
+      expect(i.waitReason).toBe('idle');
+    }
+  });
+
+  it('terminal on an offline machine (within 24h) → waiting/machineOffline', () => {
+    const items = build({
+      machines: [mkMachine('m1', false)],
+      terminals: [mkTerminal({ id: 't1', updatedAt: NOW - 1000 })],
+    });
+    expect(items[0].lifecycle).toBe('waiting');
+    expect(items[0].waitReason).toBe('machineOffline');
+  });
+});
+
+describe('buildLifecycleColumns', () => {
+  it('splits by lifecycle, preserving buildBoardItems order (urgent band before reap band)', () => {
+    const items = build({
+      sessions: [
+        mkSession({ id: 'sIdle', updatedAt: NOW - 50_000 }),
+        mkSession({ id: 'sRun', thinking: true }),
+        mkSession({ id: 'sEnded', active: true, presence: NOW - 1000, updatedAt: NOW - 1000 }),
+        mkSession({
+          id: 'sPerm',
+          agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 10_000 } } },
+        }),
+      ],
+      terminals: [mkTerminal({ id: 'tShell' })],
+      agentStates: { tShell: { machineId: 'm1', state: 'shell' } },
+    });
+    const { running, waiting } = buildLifecycleColumns(items);
+    expect(running.map((i) => i.key)).toEqual(['sRun']);
+    // urgent (attention-derived) first, then idle (recent first), then ended
+    expect(waiting.map((i) => i.key)).toEqual(['sPerm', 'sIdle', 't:tShell', 'sEnded']);
+  });
+});
+
+describe('buildCompletedEntries', () => {
+  const doneTask = (id: string, over: Partial<BoardTask> = {}): BoardTask => ({
+    id,
+    title: `task ${id}`,
+    status: 'done',
+    createdAt: NOW - 3_600_000,
+    updatedAt: NOW - 1_800_000,
+    ...over,
+  });
+
+  it('collects completed sessions (metadata.completedAt) and done tasks, newest first', () => {
+    const s1 = mkSession({ id: 's1', active: false });
+    (s1.metadata as any).completedAt = NOW - 60_000;
+    const s2 = mkSession({ id: 's2', active: false });
+    (s2.metadata as any).completedAt = NOW - 3_600_000;
+    const entries = buildCompletedEntries([s1, s2], [doneTask('k1')], NOW);
+    expect(entries.map((e) => e.key)).toEqual(['done:s:s1', 'done:task:k1', 'done:s:s2']);
+    expect(entries[0].href).toBe('/session/s1');
+    expect(entries[1].href).toBeUndefined();
+    expect(entries[1].kind).toBe('task');
+  });
+
+  it('applies the 24h window to both kinds; open/deleted tasks and uncompleted sessions are ignored', () => {
+    const fresh = mkSession({ id: 's1', active: false });
+    (fresh.metadata as any).completedAt = NOW - 1000;
+    const stale = mkSession({ id: 's2', active: false });
+    (stale.metadata as any).completedAt = NOW - DONE_WINDOW_MS - 1;
+    const never = mkSession({ id: 's3', active: false });
+    const entries = buildCompletedEntries(
+      [fresh, stale, never],
+      [
+        doneTask('kFresh'),
+        doneTask('kStale', { updatedAt: NOW - DONE_WINDOW_MS - 1 }),
+        doneTask('kOpen', { status: 'open' }),
+        doneTask('kDeleted', { status: 'deleted' }),
+      ],
+      NOW,
+    );
+    expect(entries.map((e) => e.key).sort()).toEqual(['done:s:s1', 'done:task:kFresh']);
+  });
+
+  it('a done task without updatedAt falls back to createdAt for the window', () => {
+    const entries = buildCompletedEntries([], [doneTask('k1', { updatedAt: undefined, createdAt: NOW - 1000 })], NOW);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].at).toBe(NOW - 1000);
   });
 });

@@ -8,7 +8,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAllSessions, useAllMachines, useAttentionSessions } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
-import { buildBoardItems, type BoardItem } from './boardItems';
+import { useBoardTasks } from '@/sync/boardTasks';
+import { visibleTasks } from '@/sync/boardTaskOps';
+import { buildBoardItems, buildCompletedEntries, type BoardItem, type CompletedEntry } from './boardItems';
 
 /** re-derive "waiting 4m" / the 24h ended cutoff even with no store activity */
 const TICK_MS = 30_000;
@@ -26,6 +28,18 @@ export function useBoardItems(): BoardItem[] {
   return useMemo(
     () => buildBoardItems({ sessions, terminals, agentStates, machines, now }),
     [sessions, terminals, agentStates, machines, now],
+  );
+}
+
+/** Done-column records: sessions completed via ✓ (metadata.completedAt) +
+ *  board tasks marked done, both within the 24h window, newest first. Uses
+ *  state the board already syncs — no new data source. */
+export function useBoardCompleted(now: number): CompletedEntry[] {
+  const sessions = useAllSessions();
+  const tasks = useBoardTasks((s) => s.tasks);
+  return useMemo(
+    () => buildCompletedEntries(sessions, visibleTasks(tasks), now),
+    [sessions, tasks, now],
   );
 }
 

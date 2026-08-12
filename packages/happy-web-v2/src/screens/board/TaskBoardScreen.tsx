@@ -1,14 +1,17 @@
 /**
- * TaskBoardScreen — the global "what is every agent doing" board. A pure
- * derived view over state the app already syncs (see boardItems.ts).
+ * TaskBoardScreen — the global "what needs me" board. A pure derived view
+ * over state the app already syncs (see boardItems.ts).
  *
  * Two layouts (device-local `localSettings.boardLayout` toggle in the header):
- *  - 'status' (V1): three columns — attention / working / idle+ended.
- *  - 'tasks'  (V2): one swimlane per open board task (KV `vh.board-tasks.v1`),
+ *  - 'lifecycle' (default): management by task completion, not process state —
+ *    running / waiting-on-me / done. The old four-state columns ('status')
+ *    are retired; a stored 'status' value renders as lifecycle (the value
+ *    must stay parseable — see localSettings.ts). Done is not a status: it is
+ *    an explicit ✓ click that archives the session and leaves a 24h record.
+ *  - 'tasks' (V2): one swimlane per open board task (KV `vh.board-tasks.v1`),
  *    plus an Ungrouped lane for terminals and unclassified sessions. Inside a
- *    lane items keep the SAME status order as the columns view (attention
- *    first) — one sort rule across both layouts, per the V2 plan's "泳道内
- *    保留状态排序" option.
+ *    lane items keep the SAME order as buildBoardItems — one sort rule
+ *    across both layouts.
  *
  * "New task" creates a KV task; a lane's "Dispatch" opens the existing
  * NewSessionModal with the task description prefilled as the first message,
@@ -17,19 +20,21 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Check, ChevronLeft, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocalSettingMutable, storage } from '@/sync/storage';
+import { getCurrentAuth } from '@/auth/AuthContext';
+import { notifyWebhook } from '@/sync/apiWebhook';
 import { useBoardTasks, type BoardTask } from '@/sync/boardTasks';
 import { planOrderWrites, visibleTasks } from '@/sync/boardTaskOps';
 import { Modal } from '@/modal';
 import { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
-import { collectAllTags, saveRowRename } from '@/app/rowActions';
+import { collectAllTags, markSessionDone, saveRowRename } from '@/app/rowActions';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { RenameModal } from '@/screens/sessions/RenameModal';
-import { useBoardItems } from './useBoardItems';
-import { BoardCard } from './BoardCard';
-import { groupBoardItems, type BoardItem } from './boardItems';
+import { useBoardItems, useBoardCompleted } from './useBoardItems';
+import { BoardCard, fmtDuration } from './BoardCard';
+import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
 import './board.css';
 
 function Column({
@@ -67,6 +72,74 @@ function Column({
         )}
         {footer}
       </div>
+    </section>
+  );
+}
+
+/** The Done column: lightweight completion RECORDS (metadata.completedAt
+ *  sessions + done tasks, 24h window), not live board items. Collapsible —
+ *  component state on purpose (a transient view toggle, not a setting);
+ *  desktop starts expanded, mobile collapsed. */
+function DoneColumn({ entries, now }: { entries: CompletedEntry[]; now: number }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return typeof window.matchMedia === 'function'
+        ? !window.matchMedia('(min-width: 980px)').matches
+        : false;
+    } catch {
+      return false;
+    }
+  });
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
+  return (
+    <section className="bd-col bd-col--done">
+      <button
+        type="button"
+        className="bd-col-head bd-done-toggle"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        <span className="bd-col-label eyebrow">
+          <Chevron size={12} aria-hidden /> {t('board.done')}
+        </span>
+        <span className="bd-col-count mono">{entries.length}</span>
+      </button>
+      {!collapsed && (
+        <div className="bd-col-list">
+          {entries.length === 0 ? (
+            <div className="bd-col-empty">{t('board.emptyDone')}</div>
+          ) : (
+            entries.map((e) => {
+              const EntryIcon = e.kind === 'task' ? Check : MessageSquare;
+              const body = (
+                <>
+                  <EntryIcon size={13} className="bd-done-kind" aria-hidden />
+                  <span className="bd-done-title">{e.title || t('session.newChat')}</span>
+                  <span className="bd-done-time mono">
+                    {fmtDuration(now - e.at)} {t('board.agoSuffix')}
+                  </span>
+                </>
+              );
+              return e.href ? (
+                <button
+                  key={e.key}
+                  type="button"
+                  className="bd-done-entry bd-done-entry--link"
+                  onClick={() => navigate(e.href!)}
+                >
+                  {body}
+                </button>
+              ) : (
+                <div key={e.key} className="bd-done-entry">
+                  {body}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -130,6 +203,7 @@ function TaskLane({
   canMoveUp,
   canMoveDown,
   onDispatch,
+  onDone,
   onEdit,
   onMove,
   onHeadPointerDown,
@@ -143,6 +217,8 @@ function TaskLane({
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onDispatch: (task: BoardTask) => void;
+  /** mark done — task status + batch session prompt (owned by the screen) */
+  onDone: (task: BoardTask, items: BoardItem[]) => void;
   /** opens the edit (rename) dialog for this task */
   onEdit: (task: BoardTask) => void;
   /** menu fallback for coarse pointers (no touch drag) */
@@ -152,7 +228,6 @@ function TaskLane({
   onCardRenameRequest?: (item: BoardItem) => void;
 }) {
   const { t } = useTranslation();
-  const setStatus = useBoardTasks((s) => s.setStatus);
   const remove = useBoardTasks((s) => s.remove);
 
   async function onDelete() {
@@ -184,7 +259,7 @@ function TaskLane({
       disabled: !canMoveDown,
       onSelect: () => onMove(task.id, 1),
     },
-    { key: 'done', label: t('board.markDone') as string, icon: Check, onSelect: () => setStatus(task.id, 'done') },
+    { key: 'done', label: t('board.markDone') as string, icon: Check, onSelect: () => onDone(task, items) },
     {
       key: 'delete',
       label: t('board.deleteTask') as string,
@@ -208,6 +283,14 @@ function TaskLane({
           </div>
           <span className="bd-col-count mono">{items.length}</span>
           <div className="bd-lane-actions">
+            <button
+              type="button"
+              className="bd-btn"
+              title={t('board.markDone') as string}
+              onClick={() => onDone(task, items)}
+            >
+              <Check size={13} /> {t('board.markDone')}
+            </button>
             <button
               type="button"
               className="bd-btn bd-btn--primary"
@@ -264,15 +347,50 @@ export function TaskBoardScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  // header badge: urgent attention only (same semantics as the sidebar badge)
   const attention = items.filter((i) => i.status === 'attention');
-  const working = items.filter((i) => i.status === 'working');
-  const idle = items.filter((i) => i.status === 'idle');
-  const ended = items.filter((i) => i.status === 'ended');
+  // lifecycle columns (a stored legacy 'status' value renders as lifecycle)
+  const lifecycleMode = layout !== 'tasks';
+  const { running, waiting } = useMemo(() => buildLifecycleColumns(items), [items]);
+  const completed = useBoardCompleted(now);
 
   const grouped = useMemo(
     () => (layout === 'tasks' ? groupBoardItems(items, visibleTasks(tasks)) : null),
     [layout, items, tasks],
   );
+
+  // Task-level mark done: task record (existing setStatus) + ONE batch prompt
+  // for the sessions currently on the lane + ONE task-level notification
+  // (sessions completed in the batch don't notify individually).
+  const setTaskStatus = useBoardTasks((s) => s.setStatus);
+  const markTaskDone = async (task: BoardTask, laneItems: BoardItem[]) => {
+    setTaskStatus(task.id, 'done');
+    const sessionItems = laneItems.filter((i) => i.kind === 'session');
+    let batched = 0;
+    if (sessionItems.length > 0) {
+      const ok = await Modal.confirm(
+        t('board.markDone') as string,
+        t('board.taskDoneSessionsPrompt', { count: sessionItems.length }) as string,
+      );
+      if (ok) {
+        for (const it of sessionItems) {
+          const session = storage.getState().sessions[it.key];
+          if (session) {
+            await markSessionDone(session, { notify: false }).catch(() => {});
+            batched++;
+          }
+        }
+      }
+    }
+    const credentials = getCurrentAuth()?.credentials;
+    if (credentials) {
+      void notifyWebhook(credentials, {
+        title: `✅ 已完成 · ${task.title}`,
+        message: batched > 0 ? `任务完成，含 ${batched} 个会话。` : undefined,
+        taskId: task.id,
+      });
+    }
+  };
 
   // ----- lane drag-reorder (fine pointers; coarse pointers use the lane
   // menu's move up/down instead). Same hand-rolled pointer-event school as
@@ -393,11 +511,11 @@ export function TaskBoardScreen() {
             <button
               type="button"
               role="tab"
-              aria-selected={layout === 'status'}
-              className={`bd-toggle-btn${layout === 'status' ? ' is-on' : ''}`}
-              onClick={() => setLayout('status')}
+              aria-selected={lifecycleMode}
+              className={`bd-toggle-btn${lifecycleMode ? ' is-on' : ''}`}
+              onClick={() => setLayout('lifecycle')}
             >
-              {t('board.layoutStatus')}
+              {t('board.layoutLifecycle')}
             </button>
             <button
               type="button"
@@ -417,31 +535,23 @@ export function TaskBoardScreen() {
         </div>
       </header>
 
-      {layout !== 'tasks' ? (
+      {lifecycleMode ? (
         <div className="bd-cols">
           <Column
-            label={t('board.attention') as string}
-            count={attention.length}
-            items={attention}
-            empty={t('board.emptyAttention') as string}
-            now={now}
-            tone="attention"
-            onCardRenameRequest={setRenameItem}
-          />
-          <Column
             label={t('board.working') as string}
-            count={working.length}
-            items={working}
+            count={running.length}
+            items={running}
             empty={t('board.emptyWorking') as string}
             now={now}
             onCardRenameRequest={setRenameItem}
           />
           <Column
-            label={t('board.idleEnded') as string}
-            count={idle.length + ended.length}
-            items={[...idle, ...ended]}
-            empty={t('board.emptyIdle') as string}
+            label={t('board.waiting') as string}
+            count={waiting.length}
+            items={waiting}
+            empty={t('board.emptyWaiting') as string}
             now={now}
+            tone={waiting.some((i) => i.status === 'attention') ? 'attention' : undefined}
             onCardRenameRequest={setRenameItem}
             footer={
               <button type="button" className="bd-archived-link mono" onClick={() => navigate('/')}>
@@ -449,6 +559,7 @@ export function TaskBoardScreen() {
               </button>
             }
           />
+          <DoneColumn entries={completed} now={now} />
         </div>
       ) : (
         <div className={`bd-lanes${laneDragId ? ' is-dragging' : ''}`} ref={lanesRef}>
@@ -465,6 +576,7 @@ export function TaskBoardScreen() {
               canMoveUp={i > 0}
               canMoveDown={i < displayLanes!.length - 1}
               onDispatch={setDispatchTask}
+              onDone={(task, laneItems) => void markTaskDone(task, laneItems)}
               onEdit={setEditTask}
               onMove={moveLane}
               onHeadPointerDown={onLaneHeadPointerDown}

@@ -68,6 +68,31 @@ export async function saveWebhookConfig(credentials: AuthCredentials, config: We
     }
 }
 
+/**
+ * Ask the server to forward a manual notification (e.g. "mark done" on the
+ * task board) through the account's configured webhook. Best-effort by
+ * contract: returns false on ANY failure (no webhook configured, old server
+ * without the endpoint, rate-limited, network error) and never throws — a
+ * lost notification must never fail the action that triggered it.
+ */
+export async function notifyWebhook(
+    credentials: AuthCredentials,
+    payload: { title: string; message?: string; sessionId?: string; taskId?: string },
+): Promise<boolean> {
+    try {
+        const response = await fetch(`${getServerUrl()}/v1/webhook/notify`, {
+            method: 'POST',
+            headers: headers(credentials),
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) return false;
+        const data = await response.json();
+        return data?.delivered === true;
+    } catch {
+        return false;
+    }
+}
+
 export async function deleteWebhookConfig(credentials: AuthCredentials): Promise<void> {
     const response = await fetch(`${getServerUrl()}/v1/webhook`, {
         method: 'DELETE',

@@ -1043,6 +1043,16 @@ export const en = {
         emptyAttention: 'Nothing needs you',
         emptyWorking: 'Nothing running',
         emptyIdle: 'Nothing idle',
+        // ---- lifecycle view (default layout) ----
+        layoutLifecycle: 'Lifecycle',
+        waiting: 'Waiting for you',
+        done: 'Done',
+        emptyWaiting: 'Nothing waiting on you',
+        emptyDone: 'Nothing completed in the last 24h',
+        // reap-band badge: agent finished, not marked done yet
+        readyToReview: 'ready to collect',
+        taskDoneSessionsPrompt: ({ count }: { count: number }) =>
+            `Also mark ${count} session${count === 1 ? '' : 's'} on this task as done? Marking done archives them.`,
         // ended terminal whose machine dropped off
         machineOffline: 'machine offline',
         endedTag: 'ended',

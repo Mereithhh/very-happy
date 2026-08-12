@@ -792,6 +792,50 @@ export async function sessionUpdateTitleTags(
     changes: { title?: string; tags?: string[] },
     maxRetries: number = 3
 ): Promise<void> {
+    const applyChanges = (base: Metadata): Metadata => {
+        const next: Metadata = { ...base };
+        if (changes.title !== undefined) {
+            const trimmed = changes.title.trim();
+            if (trimmed.length === 0) {
+                delete next.summary;
+            } else {
+                next.summary = { text: trimmed, updatedAt: Date.now() };
+            }
+        }
+        if (changes.tags !== undefined) {
+            if (changes.tags.length === 0) {
+                delete next.tags;
+            } else {
+                next.tags = changes.tags;
+            }
+        }
+        return next;
+    };
+    await sessionApplyMetadata(sessionId, applyChanges, maxRetries);
+}
+
+/**
+ * Stamp the user's "mark done" moment on a session (`metadata.completedAt`).
+ * The board's Done column derives its session records from this field; it
+ * rides the normal metadata sync so every device sees the record for free.
+ */
+export async function sessionMarkCompleted(sessionId: string, maxRetries: number = 3): Promise<void> {
+    const at = Date.now();
+    await sessionApplyMetadata(sessionId, (base) => ({ ...base, completedAt: at }), maxRetries);
+}
+
+/**
+ * Generic metadata write with the optimistic-concurrency/rebase loop
+ * extracted from the original sessionUpdateTitle: on a version-mismatch the
+ * server's authoritative {version, metadata} become the new base and `apply`
+ * is replayed on top, so a concurrent CLI metadata write can never drop this
+ * edit (and vice versa).
+ */
+export async function sessionApplyMetadata(
+    sessionId: string,
+    apply: (base: Metadata) => Metadata,
+    maxRetries: number = 3
+): Promise<void> {
     const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
     if (!sessionEncryption) {
         throw new Error(`Session encryption not found for ${sessionId}`);
@@ -819,29 +863,9 @@ export async function sessionUpdateTitleTags(
     let baseMetadata: Metadata = initial.metadata;
     let expectedVersion = initial.metadataVersion;
 
-    const applyChanges = (base: Metadata): Metadata => {
-        const next: Metadata = { ...base };
-        if (changes.title !== undefined) {
-            const trimmed = changes.title.trim();
-            if (trimmed.length === 0) {
-                delete next.summary;
-            } else {
-                next.summary = { text: trimmed, updatedAt: Date.now() };
-            }
-        }
-        if (changes.tags !== undefined) {
-            if (changes.tags.length === 0) {
-                delete next.tags;
-            } else {
-                next.tags = changes.tags;
-            }
-        }
-        return next;
-    };
-
     let retryCount = 0;
     while (retryCount <= maxRetries) {
-        const nextMetadata = applyChanges(baseMetadata);
+        const nextMetadata = apply(baseMetadata);
 
         const encryptedMetadata = await sessionEncryption.encryptMetadata(nextMetadata);
         const result = await apiSocket.emitWithAck<{
@@ -880,7 +904,7 @@ export async function sessionUpdateTitleTags(
         }
     }
 
-    throw new Error(`Failed to update session title/tags after ${maxRetries} retries due to version conflicts`);
+    throw new Error(`Failed to update session metadata after ${maxRetries} retries due to version conflicts`);
 }
 
 /**

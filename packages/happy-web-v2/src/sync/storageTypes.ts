@@ -81,6 +81,13 @@ export const MetadataSchema = z.object({
         progress: z.string().optional(),
         analyzedAt: z.number(),
     }).optional(),
+    /**
+     * When the USER marked this session done (task-board ✓ — an explicit
+     * human action, never stamped by the agent finishing). The board's Done
+     * column derives its session records from this. Optional only — NO zod
+     * .default(), same discipline as `tags`/`board`.
+     */
+    completedAt: z.number().optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

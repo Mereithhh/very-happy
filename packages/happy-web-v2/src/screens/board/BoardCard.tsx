@@ -1,12 +1,12 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, Archive, MessageSquare, Pencil, Pin, PinOff, TerminalSquare, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Archive, Check, MessageSquare, Pencil, Pin, PinOff, TerminalSquare, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isPinned, togglePin } from '@/screens/sessions/sidebarPins';
-import { confirmArchiveSession, confirmDeleteTerminal } from '@/app/rowActions';
+import { confirmArchiveSession, confirmDeleteTerminal, markSessionDone } from '@/app/rowActions';
 import type { BoardItem } from './boardItems';
 
 /** compact duration — mono console style, deliberately locale-neutral */
@@ -51,9 +51,26 @@ export function BoardCard({
     sync.applySettings({ pinnedRows: togglePin(pinnedSetting ?? [], item.key) });
   }, [pinnedSetting, item.key]);
 
+  // Mark done — the one-click completion (Owner boundary: no confirm dialog
+  // for sessions; the terminal variant is a tmux kill and keeps its confirm).
+  const onMarkDone = useCallback(() => {
+    if (item.kind === 'session') {
+      const session = storage.getState().sessions[item.key];
+      if (session) void markSessionDone(session);
+    } else if (item.machineId) {
+      void confirmDeleteTerminal(item.machineId, item.key.slice(2));
+    }
+  }, [item.kind, item.key, item.machineId]);
+
   // Card actions as data — right-click (fine pointers) / long-press (touch).
   // Archive/delete flows are the sidebar's, via rowActions.
   const menuItems: MenuItemDef[] = [
+    {
+      key: 'done',
+      label: t('board.markDone'),
+      icon: Check,
+      onSelect: onMarkDone,
+    },
     {
       key: 'open',
       label: t('common.open'),
@@ -100,16 +117,38 @@ export function BoardCard({
     });
   }
 
+  // Root is a div-with-button-semantics, NOT a <button>: the ✓ inside would
+  // otherwise be a nested interactive element (invalid HTML, broken focus).
   return (
     <ActionContextMenu items={menuItems}>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         className={`bd-card bd-card--${item.status}`}
         onClick={() => navigate(item.href)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return; // let the ✓ handle its own keys
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            navigate(item.href);
+          }
+        }}
       >
         <div className="bd-card-head">
           <StatusDot status={dot.status} pulse={dot.pulse} size={8} />
           <span className="bd-card-title">{title}</span>
+          <button
+            type="button"
+            className="bd-card-done"
+            title={t('board.markDone')}
+            aria-label={t('board.markDone')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkDone();
+            }}
+          >
+            <Check size={13} />
+          </button>
           <KindIcon size={14} className="bd-card-kind" aria-hidden />
         </div>
         <div className="bd-card-meta mono">
@@ -130,13 +169,16 @@ export function BoardCard({
           {item.status === 'ended' && item.detail?.kind !== 'machineOffline' && (
             <span className="bd-card-offline">{t('board.endedTag')}</span>
           )}
+          {item.waitReason === 'idle' && (
+            <span className="bd-card-offline">{t('board.readyToReview')}</span>
+          )}
           <span className="bd-card-time">
             {item.status === 'attention' && item.attentionSince != null
               ? t('board.waitingFor', { duration: fmtDuration(now - item.attentionSince) })
               : `${fmtDuration(now - item.lastActivityAt)} ${t('board.agoSuffix')}`}
           </span>
         </div>
-      </button>
+      </div>
     </ActionContextMenu>
   );
 }
