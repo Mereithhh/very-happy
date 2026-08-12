@@ -8,6 +8,7 @@ import { ChevronRight, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useTranslation } from '@/i18n/useTranslation';
+import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
 import { MessageMetaRow } from './MessageMetaRow';
 import { stripHarnessBlocks, parseLocalCommandMessage } from './harness';
@@ -15,6 +16,7 @@ import { stripThinkingWrapper, formatThoughtFor } from './thinking';
 import './message.css';
 
 function UserText({ message }: { message: UserTextMessage }) {
+    const { t } = useTranslation();
     const raw = message.displayText ?? message.text;
     const parsed = parseLocalCommandMessage(raw);
 
@@ -35,8 +37,12 @@ function UserText({ message }: { message: UserTextMessage }) {
     if (!text) return null;
     return (
         <div className="msg msg--user">
-            <div className="msg-bubble">
-                <div className="msg-bubble-scroll">{text}</div>
+            <div className="msg-bubble-wrap vh-copyhost">
+                <div className="msg-bubble">
+                    <div className="msg-bubble-scroll">{text}</div>
+                </div>
+                {/* copy the raw message text — sits in the empty gutter left of the bubble */}
+                <CopyButton text={text} className="vh-copy--overlay msg-copy--user" label={t('message.copyMessage')} />
             </div>
         </div>
     );
@@ -87,8 +93,10 @@ function AgentText({
     return (
         <div className="msg msg--agent">
             {text && (
-                <div className="msg-agent-text">
+                <div className="msg-agent-text vh-copyhost">
                     <Markdown text={text} onOption={onOption} />
+                    {/* copies the markdown SOURCE of the whole message, not the rendered text */}
+                    <CopyButton text={text} className="vh-copy--overlay msg-copy--agent" label={t('message.copyMessage')} />
                 </div>
             )}
             {showMeta && (

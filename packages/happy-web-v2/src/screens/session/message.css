@@ -14,6 +14,27 @@
 }
 
 /* user bubble — raised */
+/* wrapper so the copy overlay can anchor to the bubble (not the full row);
+ * the bubble keeps its own max-width via the wrapper */
+.msg-bubble-wrap {
+  display: flex;
+  max-width: min(85%, 640px);
+}
+.msg-bubble-wrap > .msg-bubble {
+  max-width: 100%;
+}
+/* user-message copy sits OUTSIDE the bubble, in the empty gutter to its left,
+ * so it never covers the text */
+.msg-copy--user {
+  top: 2px;
+  right: auto;
+  left: -34px;
+}
+/* agent-message copy floats at the text block's top-right corner */
+.msg-copy--agent {
+  top: -2px;
+  right: 0;
+}
 .msg-bubble {
   max-width: min(85%, 640px);
   background: var(--bg-2);

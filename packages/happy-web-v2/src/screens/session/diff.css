@@ -88,3 +88,19 @@
 .dv-row--del .dv-text {
   opacity: 0.85;
 }
+
+/* wrap mode (coarse pointer + wrapLinesInDiffs): long lines break instead of
+ * horizontal panning. Gutter columns (line numbers / sign) are fixed-width
+ * flex items, so wrapped continuation lines stay aligned to the text column;
+ * sticky positioning is pointless without horizontal scroll — drop it. */
+.dv--wrap .dv-row {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+.dv--wrap .dv-text {
+  word-break: break-all;
+}
+.dv--wrap .dv-no,
+.dv--wrap .dv-sign {
+  position: static;
+}

@@ -4,6 +4,8 @@
  * wall of one color; +/- backgrounds are kept subtle so token colors show.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useSetting } from '@/sync/storage';
+import { useMediaQuery } from '@/app/useMediaQuery';
 import { lineDiff, diffStats, type DiffRow } from './diff';
 import { highlightToLines, type HiLines } from './highlighter';
 import './diff.css';
@@ -34,6 +36,16 @@ export function DiffView({
     const rows = useMemo(() => lineDiff(oldText ?? '', newText ?? ''), [oldText, newText]);
     const stats = useMemo(() => diffStats(rows), [rows]);
 
+    // Line wrapping is a TOUCH-ONLY behavior: on phones horizontal panning
+    // inside a diff is miserable, so wrap by default (setting default = true)
+    // and let `wrapLinesInDiffs` turn it back off. Fine-pointer/desktop keeps
+    // the historical no-wrap + horizontal scroll regardless of the setting —
+    // synced blobs already carry wrapLinesInDiffs:true from the years it was
+    // a dead setting, so honoring it on desktop would flip PCs overnight.
+    const wrapSetting = useSetting('wrapLinesInDiffs');
+    const coarsePointer = useMediaQuery('(pointer: coarse)');
+    const wrap = coarsePointer && wrapSetting;
+
     // Highlight old and new sides separately, then map rows onto them by their
     // per-side line numbers (1-based → index).
     const [oldHi, setOldHi] = useState<HiLines>(null);
@@ -59,7 +71,7 @@ export function DiffView({
     };
 
     return (
-        <div className="dv">
+        <div className={`dv${wrap ? ' dv--wrap' : ''}`}>
             <div className="dv-stat">
                 <span className="dv-add">+{stats.added}</span>
                 <span className="dv-del">−{stats.removed}</span>

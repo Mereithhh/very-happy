@@ -4,8 +4,7 @@
  * monospace text while the highlighter loads or for unsupported languages.
  */
 import { useEffect, useState } from 'react';
-import { Check, Copy } from 'lucide-react';
-import { useTranslation } from '@/i18n/useTranslation';
+import { CopyButton } from '@/ui/CopyButton';
 import { highlightToHtml, normalizeLang } from './highlighter';
 import './code.css';
 
@@ -20,8 +19,6 @@ export function CodeView({
     copyable?: boolean;
     showLineNumbers?: boolean;
 }) {
-    const { t } = useTranslation();
-    const [copied, setCopied] = useState(false);
     const [html, setHtml] = useState<string | null>(null);
 
     useEffect(() => {
@@ -38,32 +35,11 @@ export function CodeView({
         };
     }, [code, lang]);
 
-    const onCopy = async () => {
-        try {
-            await navigator.clipboard.writeText(code);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1400);
-        } catch {
-            /* clipboard may be unavailable; ignore */
-        }
-    };
-
     return (
         <div className={`cv${showLineNumbers ? ' cv--ln' : ''}`}>
             <div className="cv-bar">
                 <span className="cv-lang">{lang || 'text'}</span>
-                {copyable && (
-                    <button
-                        type="button"
-                        className="cv-copy"
-                        onClick={onCopy}
-                        aria-label={t('common.copy')}
-                        title={t('common.copy')}
-                    >
-                        {copied ? <Check size={13} /> : <Copy size={13} />}
-                        <span>{copied ? t('markdown.codeCopied') : t('common.copy')}</span>
-                    </button>
-                )}
+                {copyable && <CopyButton text={code} showLabel className="cv-copy" />}
             </div>
             {html ? (
                 // shiki output: a <pre class="shiki"><code>… tree with inline

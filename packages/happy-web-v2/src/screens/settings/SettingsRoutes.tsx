@@ -256,6 +256,9 @@ function Appearance() {
   // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
   // reads. (The legacy `showLineNumbers` schema key has no web consumer.)
   const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbersInToolViews');
+  // Consumed by DiffView on coarse-pointer (touch) devices only — desktop
+  // diffs always use horizontal scroll (see DiffView for why).
+  const [wrapDiffLines, setWrapDiffLines] = useSettingMutable('wrapLinesInDiffs');
   const [, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
@@ -374,6 +377,17 @@ function Appearance() {
                 checked={showLineNumbers}
                 onChange={setShowLineNumbers}
                 label={t('settingsAppearance.showLineNumbersInDiffs')}
+              />
+            }
+          />
+          <Item
+            title={t('settingsAppearance.wrapLinesInDiffs')}
+            subtitle={t('settingsAppearance.wrapLinesInDiffsDescription')}
+            right={
+              <Toggle
+                checked={wrapDiffLines}
+                onChange={setWrapDiffLines}
+                label={t('settingsAppearance.wrapLinesInDiffs')}
               />
             }
           />

@@ -281,7 +281,7 @@ export const zhHans: TranslationStructure = {
         showLineNumbersInToolViews: '在工具视图中显示行号',
         showLineNumbersInToolViewsDescription: '在工具视图差异中显示行号',
         wrapLinesInDiffs: '在差异中换行',
-        wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动',
+        wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动（仅触屏设备；桌面端始终水平滚动）',
         diffStyle: '差异视图',
         diffStyleDescription: '以单列（unified）或并排（split）显示差异。split 视图仅在 Web 上可用。',
         diffStyleOptions: {
@@ -1185,6 +1185,7 @@ export const zhHans: TranslationStructure = {
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `已切换到 ${mode} 模式`,
         unknownEvent: '未知事件',
+        copyMessage: '复制消息',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
     },
