@@ -1,33 +1,53 @@
 /**
- * Registry of web terminal sessions, now **server-backed** so terminals are
- * unified with chat sessions: persisted in the account KV store (key
- * `vh.terminal-sessions`) and therefore synced across devices, with an MMKV
- * (localStorage-backed, cleared on logout, account-fingerprinted) blob as an
- * instant offline cache. A terminal session is a tmux `vh-<id>` session on
- * a machine; we own the id client-side so reopening reattaches to the live tmux
- * session (state survives reloads/navigation/other devices).
+ * Registry of web terminal sessions — the ONE list every consumer renders
+ * (sidebar, board, palette, picker, terminal screen). Since the daemon-push
+ * rework it is composed from two truth models (see terminalPushOps.ts):
  *
- * Mutations update local state + cache immediately (optimistic) and push to KV in
- * the background. The KV blob is version-checked; on a conflict (another device
- * wrote) the two lists are merged per-terminal by `updatedAt` — NOT blob-level
- * last-write-wins — see terminalListOps.ts for the full truth model.
+ *   PUSHED machines (new daemons): the machine's daemonState.webTerminals is
+ *   the list. Fed by terminalSync via `applyPush()`; mutations go straight to
+ *   the machine over RPC and render optimistically through a small overlay
+ *   until the confirming push lands. No client-side persistence, no KV
+ *   writes, no tombstones — deletion propagates by absence from the push,
+ *   and OFFLINE machines still display because the server persists their
+ *   last daemonState.
  *
- * Titles: the machine's tmux `@vh_title` is the cross-device truth. `rename()`
- * writes it there (and marks the record `pendingTitle` until the machine acks);
- * `reconcile()` backfills machine titles into local records so other devices
- * pick a rename up within one sidebar poll (~10s).
+ *   LEGACY machines (old daemons, feature-detected per machine): the original
+ *   client-owned model — records persisted in the account KV store
+ *   (`vh.terminal-sessions`) with an MMKV offline cache, reconciled against
+ *   the machine's live tmux by the 10s poll, per-terminal merge on KV
+ *   conflicts, deletion tombstones. This whole path (and terminalListOps.ts)
+ *   retires once the daemon fleet is upgraded.
+ *
+ * KV records belonging to pushed machines are deliberately left untouched:
+ * old web clients still poll those machines and maintain their records; this
+ * client simply stops rendering or mutating them (composeTerminalList drops
+ * them), so the mixed period is write-conflict-free.
+ *
+ * Titles: the machine's tmux `@vh_title` is the cross-device truth for BOTH
+ * models. Pushed machines confirm a rename via the next push; legacy machines
+ * keep the `pendingTitle` ack/retry mechanics.
  */
 import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
-import { machineSetTerminalTitle } from '@/sync/ops';
+import { machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 import {
   mergeTerminalLists,
   reconcileWithMachine,
   type LiveTerminal,
   type TerminalSession,
 } from '@/sync/terminalListOps';
+import {
+  composeTerminalList,
+  pruneOverlay,
+  EMPTY_OVERLAY,
+  CREATE_OVERLAY_TTL_MS,
+  RENAME_OVERLAY_TTL_MS,
+  REMOVE_OVERLAY_TTL_MS,
+  type MachinePush,
+  type PushOverlay,
+} from '@/sync/terminalPushOps';
 
 export type { TerminalSession } from '@/sync/terminalListOps';
 
@@ -119,16 +139,17 @@ function newId(): string {
 let kvVersion: number | undefined;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Push the CURRENT store list to KV (debounced). On a version conflict
- *  (another device wrote first) merge their list with ours per-terminal and
- *  push the merged view — blind re-push would clobber the other device. */
+/** Push the CURRENT legacy (KV-backed) list to KV (debounced). On a version
+ *  conflict (another device wrote first) merge their list with ours
+ *  per-terminal and push the merged view — blind re-push would clobber the
+ *  other device. Only legacy records live here; pushed machines never write. */
 function scheduleKvPush() {
   const auth = getCurrentAuth();
   if (!auth?.credentials) return; // not logged in → local cache only
   const creds = auth.credentials;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
-    const snapshot = () => useTerminalSessions.getState().terminals;
+    const snapshot = () => useTerminalSessions.getState().kvList;
     try {
       const value = toB64(JSON.stringify({ terminals: snapshot() }));
       kvVersion = await kvSet(creds, KV_KEY, value, kvVersion ?? -1);
@@ -139,7 +160,7 @@ function scheduleKvPush() {
         const remote = fresh ? parseKvList(fresh.value) : [];
         const merged = mergeTerminalLists(snapshot(), remote);
         persistLocal(merged);
-        useTerminalSessions.setState({ terminals: merged });
+        useTerminalSessions.getState().commitKv(merged);
         kvVersion = fresh?.version ?? -1;
         const value = toB64(JSON.stringify({ terminals: merged }));
         kvVersion = await kvSet(creds, KV_KEY, value, kvVersion);
@@ -150,10 +171,11 @@ function scheduleKvPush() {
   }, 400);
 }
 
-/** After the machine acked a rename, drop the pending flag (only if the title
- *  is still the one we pushed — a newer rename keeps its own pending state). */
+/** After the machine acked a legacy rename, drop the pending flag (only if the
+ *  title is still the one we pushed — a newer rename keeps its own pending
+ *  state). */
 function clearPendingTitle(id: string, title: string) {
-  const cur = useTerminalSessions.getState().terminals;
+  const cur = useTerminalSessions.getState().kvList;
   const next = cur.map((t) =>
     t.id === id && t.pendingTitle && t.title === title
       ? { ...t, pendingTitle: undefined, updatedAt: Date.now() }
@@ -161,29 +183,64 @@ function clearPendingTitle(id: string, title: string) {
   );
   if (next.some((t, i) => t !== cur[i])) {
     persistLocal(next);
-    useTerminalSessions.setState({ terminals: next });
+    useTerminalSessions.getState().commitKv(next);
     scheduleKvPush();
   }
 }
 
+/** Timed overlay entries (optimistic create/rename/remove) need a sweep at
+ *  their TTL even if no push arrives — otherwise an expired entry lingers
+ *  until the next unrelated store event. */
+function scheduleOverlaySweep(ttlMs: number) {
+  setTimeout(() => useTerminalSessions.getState().sweepOverlay(), ttlMs + 100);
+}
+
 interface TerminalSessionsState {
+  /** The composed list every consumer renders (pushed ∪ overlay ∪ legacy). */
   terminals: TerminalSession[];
+  /** Legacy KV-backed records (old-daemon machines + their tombstones). */
+  kvList: TerminalSession[];
+  /** machineId → applied push (trusted daemonState.webTerminals snapshots). */
+  pushes: Record<string, MachinePush>;
+  /** Optimistic overlay for pushed-machine mutations. */
+  overlay: PushOverlay;
   initialized: boolean;
-  /** Load the server-backed list (call once after auth). Merges into local cache. */
+  /** Load the server-backed legacy list (call once after auth). */
   initialize(): Promise<void>;
   create(machineId: string, machineName: string, title?: string): TerminalSession;
   rename(id: string, title: string): void;
   autoTitle(id: string, title: string): void;
   remove(id: string): void;
-  /** Reconcile the list against a machine's REAL live tmux `vh-*` sessions:
-   *  adopt orphans, drop dead records, and sync titles (machine `@vh_title` is
-   *  the truth; unacked local renames are pushed out instead — see
-   *  terminalListOps.ts). `live=null` means the query failed → no-op. */
+  /** LEGACY machines only: reconcile records against the machine's live tmux
+   *  (adopt orphans, drop dead records, sync titles — terminalListOps.ts).
+   *  No-op for pushed machines: the push already IS the machine's list. */
   reconcile(machineId: string, machineName: string, live: LiveTerminal[] | null): void;
+  /** Apply one machine's trusted webTerminals snapshot (terminalSync). */
+  applyPush(machineId: string, machineName: string, terminals: MachineTerminal[]): void;
+  /** The machine lost push trust (daemon downgrade) → back to the legacy path. */
+  clearPush(machineId: string): void;
+  /** Is this machine currently fed by pushes? */
+  isPushed(machineId: string): boolean;
+  /** Drop expired overlay entries (timed sweep). */
+  sweepOverlay(): void;
+  /** Internal: replace the legacy list and recompose. */
+  commitKv(kv: TerminalSession[]): void;
 }
 
+/** Recompose the rendered list from the three sources. */
+function composed(kv: TerminalSession[], pushes: Record<string, MachinePush>, overlay: PushOverlay): TerminalSession[] {
+  return composeTerminalList(kv, pushes, overlay, Date.now());
+}
+
+// Loaded once, synchronously, at store creation: seeds BOTH the legacy list
+// and the composed view (no pushes/overlay exist yet, so they're identical).
+const initialKv = load();
+
 export const useTerminalSessions = create<TerminalSessionsState>((set, get) => ({
-  terminals: load(),
+  terminals: initialKv,
+  kvList: initialKv,
+  pushes: {},
+  overlay: EMPTY_OVERLAY,
   initialized: false,
   initialize: async () => {
     const auth = getCurrentAuth();
@@ -197,8 +254,8 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     const fp = accountFingerprint(auth.credentials.token);
     if (cachedAccount !== fp) {
       cachedAccount = fp;
-      if (get().terminals.length > 0) {
-        set({ terminals: [] });
+      if (get().kvList.length > 0) {
+        get().commitKv([]);
         persistLocal([]);
       }
     }
@@ -209,15 +266,16 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
         const remote = parseKvList(item.value);
         // Merge rather than replace: the local cache may hold records/renames
         // made while offline that the server copy predates.
-        const merged = mergeTerminalLists(get().terminals, remote);
+        const merged = mergeTerminalLists(get().kvList, remote);
         persistLocal(merged);
-        set({ terminals: merged, initialized: true });
+        get().commitKv(merged);
+        set({ initialized: true });
         if (JSON.stringify(merged) !== JSON.stringify(remote)) scheduleKvPush();
       } else {
         // no server record yet → seed it from whatever is local
         kvVersion = -1;
         set({ initialized: true });
-        if (get().terminals.length) scheduleKvPush();
+        if (get().kvList.length) scheduleKvPush();
       }
     } catch (e: any) {
       console.warn('[terminals] KV load failed; using local cache', e?.message);
@@ -234,9 +292,20 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
       createdAt: now,
       updatedAt: now,
     };
-    const next = [t, ...get().terminals];
+    const { kvList, pushes, overlay } = get();
+    if (pushes[machineId]) {
+      // Pushed machine: the terminal becomes real when the terminal screen's
+      // `open-terminal` creates the tmux session and the daemon pushes it.
+      // Until then (or the TTL, if the open never happens) this overlay row
+      // is the only place it exists — no KV write.
+      const nextOverlay: PushOverlay = { ...overlay, created: [t, ...overlay.created] };
+      set({ overlay: nextOverlay, terminals: composed(kvList, pushes, nextOverlay) });
+      scheduleOverlaySweep(CREATE_OVERLAY_TTL_MS);
+      return t;
+    }
+    const next = [t, ...kvList];
     persistLocal(next);
-    set({ terminals: next });
+    get().commitKv(next);
     scheduleKvPush();
     return t;
   },
@@ -244,14 +313,29 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     const clean = title.trim();
     if (!clean) return;
     const now = Date.now();
+    const { kvList, pushes, overlay } = get();
+    const row = get().terminals.find((t) => t.id === id);
+    if (row && pushes[row.machineId]) {
+      // Pushed machine: write the title to the machine; the daemon stamps
+      // @vh_title(+manual) and pushes immediately (setTitle kick). The
+      // overlay renders the new title until that push confirms it.
+      const nextOverlay: PushOverlay = {
+        ...overlay,
+        renames: { ...overlay.renames, [id]: { title: clean, at: now } },
+      };
+      set({ overlay: nextOverlay, terminals: composed(kvList, pushes, nextOverlay) });
+      scheduleOverlaySweep(RENAME_OVERLAY_TTL_MS);
+      void machineSetTerminalTitle(row.machineId, id, clean);
+      return;
+    }
     let machineId: string | undefined;
-    const next = get().terminals.map((t) => {
+    const next = kvList.map((t) => {
       if (t.id !== id) return t;
       machineId = t.machineId;
       return { ...t, title: clean, manual: true, updatedAt: now, pendingTitle: true };
     });
     persistLocal(next);
-    set({ terminals: next });
+    get().commitKv(next);
     scheduleKvPush();
     // Write the title to the machine (tmux @vh_title) — the cross-device truth
     // source; other devices backfill it on their next reconcile poll. If the
@@ -267,33 +351,58 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     const clean = title.trim().slice(0, 48);
     if (!clean) return;
     const now = Date.now();
-    const next = get().terminals.map((t) =>
+    const { kvList, pushes } = get();
+    const row = get().terminals.find((t) => t.id === id);
+    if (row && pushes[row.machineId]) {
+      // Pushed machine: the caller (WebTerminalScreen) already sends the
+      // fallback title to the machine via set-terminal-title(ifAbsent); the
+      // confirming push carries it back within a round-trip. Nothing to do
+      // locally — an optimistic value here could disagree with what ifAbsent
+      // actually kept.
+      return;
+    }
+    const next = kvList.map((t) =>
       t.id === id && !t.manual && t.title === t.machineName
         ? { ...t, title: clean, updatedAt: now }
         : t,
     );
     persistLocal(next);
-    set({ terminals: next });
+    get().commitKv(next);
     scheduleKvPush();
   },
   remove: (id) => {
-    // Tombstone, don't filter: a deletion is a mutation that must WIN the
-    // per-terminal KV merge on other devices (and survive until the machine's
-    // tmux is confirmed dead) — see terminalListOps.ts. Renderers hide
-    // tombstoned records via activeTerminals(); reconcile() physically clears
-    // them once the tmux is gone and the tombstone has aged out.
     const now = Date.now();
-    const next = get().terminals.map((t) =>
+    const { kvList, pushes, overlay } = get();
+    const row = get().terminals.find((t) => t.id === id);
+    if (row && pushes[row.machineId]) {
+      // Pushed machine: the caller already fired kill-terminal; hide the row
+      // until the push confirms the tmux died (absence). If the kill never
+      // lands (machine offline), the row honestly returns after the TTL —
+      // unlike the legacy tombstone, which hid an alive terminal forever.
+      const nextOverlay: PushOverlay = {
+        ...overlay,
+        removed: { ...overlay.removed, [id]: now },
+        // A pending creation for the same id is simply dropped.
+        created: overlay.created.filter((c) => c.id !== id),
+      };
+      set({ overlay: nextOverlay, terminals: composed(kvList, pushes, nextOverlay) });
+      scheduleOverlaySweep(REMOVE_OVERLAY_TTL_MS);
+      return;
+    }
+    // Legacy: tombstone, don't filter — the deletion must WIN the per-terminal
+    // KV merge on other devices (see terminalListOps.ts).
+    const next = kvList.map((t) =>
       t.id === id && !t.deletedAt ? { ...t, deletedAt: now, updatedAt: now } : t,
     );
     persistLocal(next);
-    set({ terminals: next });
+    get().commitKv(next);
     scheduleKvPush();
   },
   reconcile: (machineId, machineName, live) => {
     if (live == null) return; // query failed → don't touch records
+    if (get().pushes[machineId]) return; // pushed machine → the push is the truth
     const { next, pushTitles, changed } = reconcileWithMachine(
-      get().terminals,
+      get().kvList,
       machineId,
       machineName,
       live,
@@ -310,7 +419,41 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     // Commit only on a real change, so a steady state doesn't churn the KV version.
     if (!changed) return;
     persistLocal(next);
-    set({ terminals: next });
+    get().commitKv(next);
     scheduleKvPush();
+  },
+  applyPush: (machineId, machineName, terminals) => {
+    const { kvList, pushes, overlay } = get();
+    const nextPushes = { ...pushes, [machineId]: { machineName, terminals } };
+    const nextOverlay = pruneOverlay(overlay, nextPushes, Date.now());
+    set({
+      pushes: nextPushes,
+      overlay: nextOverlay,
+      terminals: composed(kvList, nextPushes, nextOverlay),
+    });
+  },
+  clearPush: (machineId) => {
+    const { kvList, pushes, overlay } = get();
+    if (!pushes[machineId]) return;
+    const nextPushes = { ...pushes };
+    delete nextPushes[machineId];
+    const nextOverlay = pruneOverlay(overlay, nextPushes, Date.now());
+    set({
+      pushes: nextPushes,
+      overlay: nextOverlay,
+      terminals: composed(kvList, nextPushes, nextOverlay),
+    });
+  },
+  isPushed: (machineId) => !!get().pushes[machineId],
+  sweepOverlay: () => {
+    const { kvList, pushes, overlay } = get();
+    // pruneOverlay applies the TTLs too, so a timed sweep both drops expired
+    // entries and recomposes the rendered list (compose re-reads the clock).
+    const nextOverlay = pruneOverlay(overlay, pushes, Date.now());
+    set({ overlay: nextOverlay, terminals: composed(kvList, pushes, nextOverlay) });
+  },
+  commitKv: (kv) => {
+    const { pushes, overlay } = get();
+    set({ kvList: kv, terminals: composed(kv, pushes, overlay) });
   },
 }));

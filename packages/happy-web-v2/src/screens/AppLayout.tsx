@@ -5,14 +5,15 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs';
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
-import { useTerminalReconcileLoop } from '@/sync/terminalReconcileLoop';
+import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import './layout.css';
 
 export function AppLayout() {
-  // Singleton terminal reconcile/agent-state poll — lives at layout level so it
-  // keeps running with the sidebar collapsed/unmounted (mobile detail, /board).
-  useTerminalReconcileLoop();
+  // Singleton terminal sync (daemon pushes + legacy-poll fallback) — lives at
+  // layout level so it keeps running with the sidebar collapsed/unmounted
+  // (mobile detail, /board).
+  useTerminalSync();
   // ⌘N (PWA) / ⌥N (normal tab) → new terminal. Layout level for the same
   // reason: must work with the sidebar collapsed/unmounted.
   useNewTerminalShortcuts();

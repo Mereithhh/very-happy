@@ -49,10 +49,10 @@ export function Sidebar() {
   const terminals = useTerminalSessions((s) => s.terminals);
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
 
-  // The terminal reconcile / agent-state poll used to live here; it is now the
-  // AppLayout-level singleton (sync/terminalReconcileLoop.ts) so it also runs
-  // with the sidebar collapsed or on mobile detail screens. This component is
-  // a pure consumer of its stores.
+  // Terminal list/agent-state ingestion lives in the AppLayout-level singleton
+  // (sync/terminalSync.ts: daemon pushes + legacy-poll fallback) so it also
+  // runs with the sidebar collapsed or on mobile detail screens. This
+  // component is a pure consumer of its stores.
 
   const attentionCount = useBoardAttentionCount();
 
