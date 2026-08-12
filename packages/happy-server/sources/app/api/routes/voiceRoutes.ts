@@ -293,7 +293,9 @@ export function voiceRoutes(app: Fastify) {
             const type = mimeType || 'audio/webm';
             const ext = type.includes('mp4') || type.includes('mpeg') ? 'mp4' : type.includes('wav') ? 'wav' : 'webm';
             const form = new FormData();
-            form.append('model_id', 'scribe_v1');
+            // scribe_v1 is deprecated upstream; v2 keeps the same interface
+            // (batch STT, eats webm/opus directly).
+            form.append('model_id', 'scribe_v2');
             form.append('file', new Blob([buffer], { type }), `audio.${ext}`);
             if (languageCode) form.append('language_code', languageCode);
 
