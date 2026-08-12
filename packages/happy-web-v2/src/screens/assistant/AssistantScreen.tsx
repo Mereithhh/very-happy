@@ -106,8 +106,11 @@ export function AssistantScreen() {
             if (found.id !== sessionId) useAssistantStore.getState().setSessionId(found.id);
             return;
         }
-        if (!sessionId) void spawnAssistant(machine.id);
-    }, [machine, supported, dataReady, found, sessionId, spawnAssistant]);
+        // After a failed spawn, do NOT auto-retry on unrelated re-renders
+        // (machine heartbeats update its object identity) — the gate shows an
+        // explicit retry button instead.
+        if (!sessionId && !spawnError) void spawnAssistant(machine.id);
+    }, [machine, supported, dataReady, found, sessionId, spawnError, spawnAssistant]);
 
     // lazy message fetch — same mechanism as the chat screen
     useEffect(() => {
