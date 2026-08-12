@@ -189,10 +189,194 @@
   color: var(--text-dim);
 }
 
+/* ---- V2: header tools (layout toggle + new task) ---- */
+.bd-header-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.bd-layout-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.bd-toggle-btn {
+  font-size: var(--fs-11);
+  padding: 4px 10px;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+}
+.bd-toggle-btn.is-on {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.bd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-11);
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--bg-1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bd-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.bd-btn--primary {
+  color: var(--accent, var(--text));
+  border-color: var(--accent, var(--line-2));
+}
+.bd-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- V2: per-task swimlanes ---- */
+.bd-lanes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.bd-lanes-empty {
+  padding: var(--sp-6);
+}
+.bd-lane {
+  border-bottom: 1px solid var(--line);
+}
+.bd-lane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.bd-lane-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.bd-lane-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-lane-title--dim {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.bd-lane-desc {
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bd-lane-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.bd-lane-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+}
+.bd-lane--ungrouped .bd-lane-head {
+  background: transparent;
+}
+
+/* ---- V2: LLM progress line + attention badge on cards ---- */
+.bd-card-progress {
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bd-card-llm {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--fs-10, 10px);
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  padding: 0 6px;
+}
+.bd-card-llm--blocked {
+  color: var(--danger);
+}
+.bd-card-llm--review {
+  color: var(--warn);
+}
+
+/* ---- V2: new-task modal ---- */
+.bd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+.bd-modal {
+  width: min(440px, calc(100vw - 32px));
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.bd-modal-input {
+  width: 100%;
+  font-size: var(--fs-13);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--text);
+}
+.bd-modal-desc {
+  resize: vertical;
+}
+.bd-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+}
+
 /* mobile: one stacked column, back button visible */
 @media (max-width: 979px) {
   .bd-back {
     display: inline-flex;
+  }
+  .bd-header {
+    flex-wrap: wrap; /* layout toggle + New task drop to a second row */
+  }
+  .bd-lane-cards {
+    grid-template-columns: 1fr;
   }
   .bd-cols {
     grid-template-columns: 1fr;

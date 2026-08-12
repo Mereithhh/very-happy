@@ -44,7 +44,13 @@ export function BoardCard({ item, now }: { item: BoardItem; now: number }) {
         <span className="bd-card-machine">{item.machineName}</span>
         {item.cwd && <span className="bd-card-cwd">{item.cwd}</span>}
       </div>
+      {item.progress && <div className="bd-card-progress">{item.progress}</div>}
       <div className="bd-card-foot mono">
+        {item.llmAttention && (
+          <span className={`bd-card-llm bd-card-llm--${item.llmAttention}`}>
+            {item.llmAttention === 'blocked' ? t('board.llmBlocked') : t('board.llmReview')}
+          </span>
+        )}
         {item.detail?.kind === 'tool' && <span className="bd-card-tool">{item.detail.name}</span>}
         {item.detail?.kind === 'machineOffline' && (
           <span className="bd-card-offline">{t('board.machineOffline')}</span>

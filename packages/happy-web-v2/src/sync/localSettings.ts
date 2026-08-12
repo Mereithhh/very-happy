@@ -29,6 +29,9 @@ export const LocalSettingsSchema = z.object({
     // What `/` shows when nothing is open: the classic empty-detail placeholder
     // ('normal') or the global Task Board ('board'). Device-local on purpose.
     homeView: z.enum(['normal', 'board']).describe('Home screen when nothing is open: empty detail or the task board'),
+    // Task board layout: V1 status columns or V2 per-task swimlanes.
+    // Device-local like homeView — a view preference, not account state.
+    boardLayout: z.enum(['status', 'tasks']).describe('Task board layout: status columns or per-task swimlanes'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -73,6 +76,8 @@ export const localSettingsDefaults: LocalSettings = {
     sidebarWidth: null,
     // Safe default: existing users keep the current home screen.
     homeView: 'normal',
+    // Safe default: the V1 status columns everyone already knows.
+    boardLayout: 'status',
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,

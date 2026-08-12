@@ -1515,8 +1515,14 @@ export function useAttentionSessions(): Session[] {
         if (!state.isDataReady) return [] as Session[];
         return Object.values(state.sessions).filter((s) =>
             s.presence === 'online' &&
-            !!s.agentState?.requests &&
-            Object.keys(s.agentState!.requests!).length > 0
+            (
+                (!!s.agentState?.requests && Object.keys(s.agentState!.requests!).length > 0) ||
+                // Task Board V2: a daemon-side LLM 'review'/'blocked' verdict
+                // also demands attention — same online gate, so the sidebar
+                // badge and the board's attention column agree.
+                s.metadata?.board?.attention === 'review' ||
+                s.metadata?.board?.attention === 'blocked'
+            )
         );
     }));
 }

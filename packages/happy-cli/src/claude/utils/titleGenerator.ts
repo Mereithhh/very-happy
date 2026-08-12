@@ -32,8 +32,11 @@ const GENERATION_TIMEOUT_MS = 30_000;
  * Resolve the local Claude CLI binary path via the shared cjs util
  * (HAPPY_CLAUDE_PATH → PATH → npm/bun global → homebrew → native installer).
  * Returns null if it cannot be located, so callers can simply skip.
+ *
+ * Exported for other LLM-bypass utilities (boardAnalyzer) that share the
+ * same one-shot `claude -p --model haiku` contract.
  */
-function resolveClaudeBinary(): string {
+export function resolveClaudeBinary(): string {
     try {
         const require = createRequire(import.meta.url);
         const utilsPath = resolve(join(projectPath(), 'scripts', 'claude_version_utils.cjs'));
@@ -90,8 +93,11 @@ function sanitizeTitle(raw: string): string | null {
 /**
  * Run `claude -p --model haiku "<prompt>"` once and capture stdout.
  * Resolves to the raw stdout string, or null on any failure/timeout.
+ *
+ * Exported for other LLM-bypass utilities (boardAnalyzer) — same contract:
+ * one-shot subprocess, 30s timeout, failures swallowed into null.
  */
-function runClaudeOneShot(binary: string, prompt: string): Promise<string | null> {
+export function runClaudeOneShot(binary: string, prompt: string): Promise<string | null> {
     return new Promise((resolve) => {
         let settled = false;
         const done = (value: string | null) => {

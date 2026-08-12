@@ -27,7 +27,19 @@ function newId(): string {
   return c?.randomUUID ? c.randomUUID().replace(/-/g, '').slice(0, 12) : Math.random().toString(36).slice(2, 14);
 }
 
-export function NewSessionModal({ onClose }: { onClose: () => void }) {
+export function NewSessionModal({
+  onClose,
+  initialCommandDefault,
+  onSpawned,
+}: {
+  onClose: () => void;
+  /** Prefill for the initial-instruction field (Task Board dispatch passes
+   *  the task description so it becomes the session's first message). */
+  initialCommandDefault?: string;
+  /** Called with the new sessionId right after a successful spawn (before
+   *  navigation) — Task Board uses it to record the task→session mapping. */
+  onSpawned?: (sessionId: string) => void;
+}) {
   const navigate = useNavigate();
   const toast = useToast();
   const { t } = useTranslation();
@@ -40,7 +52,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [agent, setAgent] = useState<(typeof AGENTS)[number]>('claude');
-  const [initialCommand, setInitialCommand] = useState('');
+  const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
 
@@ -108,6 +120,7 @@ export function NewSessionModal({ onClose }: { onClose: () => void }) {
     try {
       const sessionId = await spawn(false);
       if (sessionId) {
+        onSpawned?.(sessionId);
         // Optional initial instruction: fire it as the first chat message once
         // the session exists. sendMessage awaits the sessions-sync queue, so it
         // safely waits for the just-spawned session's encryption/storage to land
