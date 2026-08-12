@@ -17,6 +17,9 @@ import {
   Trash2,
   Github,
   Server as ServerIcon,
+  Cable,
+  ExternalLink,
+  BookOpen,
 } from 'lucide-react';
 import {
   ItemList,
@@ -78,6 +81,7 @@ import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type Webhoo
 import type { NotifType } from '@/sync/feedTypes';
 import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
 import { getServerInfo } from '@/sync/serverConfig';
+import { CodeView } from '@/screens/session/CodeView';
 import './settings.css';
 
 const MIN_PASSWORD = 8;
@@ -200,6 +204,13 @@ function Overview() {
             left={<Bell size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/notifications')}
+          />
+          <Item
+            title={t('settingsChannels.title')}
+            subtitle={t('settingsChannels.subtitle')}
+            left={<Cable size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/channels')}
           />
           <Item
             title={t('settings.usage' as any)}
@@ -1030,6 +1041,92 @@ function WebhookGroup() {
   );
 }
 
+/**
+ * Pointer left behind on the Notifications page: WebhookGroup moved to the
+ * Channels page (webhooks are an integration surface, not a browser-push
+ * preference), and rendering the same account-level state twice would mean
+ * two competing copies of it. One row, one owner.
+ */
+function WebhookMovedGroup() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  return (
+    <ItemGroup>
+      <Item
+        title={t('settingsChannels.movedTitle')}
+        subtitle={t('settingsChannels.movedSubtitle')}
+        left={<Cable size={18} />}
+        right={<ChevronRight size={16} />}
+        onClick={() => navigate('/settings/channels')}
+      />
+    </ItemGroup>
+  );
+}
+
+// ===================================================================
+// Channels — external integrations hub: outbound webhook notifications
+// (stateful, WebhookGroup) + read-only how-to sections for the inbound
+// automation surfaces (CLI spawn/send, clipboard MCP, IM adapters).
+// ===================================================================
+
+const CHANNELS_DOCS_URL = 'https://github.com/Mereithhh/very-happy/blob/master/docs/channels.md';
+// Commands are NOT translated — they are copy-paste material.
+const SPAWN_CMD = 'very-happy spawn --dir <directory> --prompt <text> --json';
+const SEND_CMD = 'very-happy send --session <session-id> --prompt <text>';
+const MCP_CMD = 'claude mcp add --scope user very-happy-clipboard -- very-happy mcp';
+
+function Channels() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+
+  return (
+    <Page>
+      <Header
+        title={t('settingsChannels.title')}
+        subtitle={t('settingsChannels.subtitle')}
+        onBack={() => navigate('/settings')}
+      />
+      <ItemList>
+        {/* Outbound: server → your endpoint. Carries its own title/footer. */}
+        <WebhookGroup />
+
+        {/* Inbound: external tools → sessions. Read-only how-to. */}
+        <ItemGroup title={t('settingsChannels.cliTitle')}>
+          <div className="set-channel">
+            <p className="set-note">{t('settingsChannels.cliIntro')}</p>
+            <p className="set-note">{t('settingsChannels.cliSpawnLabel')}</p>
+            <CodeView code={SPAWN_CMD} lang="bash" />
+            <p className="set-note">{t('settingsChannels.cliSpawnExit')}</p>
+            <p className="set-note">{t('settingsChannels.cliSendLabel')}</p>
+            <CodeView code={SEND_CMD} lang="bash" />
+            <p className="set-note">{t('settingsChannels.cliSendExit')}</p>
+          </div>
+        </ItemGroup>
+
+        <ItemGroup title={t('settingsChannels.mcpTitle')}>
+          <div className="set-channel">
+            <p className="set-note">{t('settingsChannels.mcpIntro')}</p>
+            <CodeView code={MCP_CMD} lang="bash" />
+          </div>
+        </ItemGroup>
+
+        <ItemGroup title={t('settingsChannels.imTitle')}>
+          <div className="set-channel">
+            <p className="set-note">{t('settingsChannels.imIntro')}</p>
+          </div>
+          <Item
+            title={t('settingsChannels.imDocs')}
+            subtitle={t('settingsChannels.imDocsSubtitle')}
+            left={<BookOpen size={18} />}
+            right={<ExternalLink size={16} />}
+            onClick={() => window.open(CHANNELS_DOCS_URL, '_blank', 'noopener,noreferrer')}
+          />
+        </ItemGroup>
+      </ItemList>
+    </Page>
+  );
+}
+
 function Notifications() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -1047,8 +1144,7 @@ function Notifications() {
           <ItemGroup title={t('notifications.webOnly' as any) as string}>
             <Item title={t('notifications.unsupported' as any)} />
           </ItemGroup>
-          {/* Webhooks are delivered server-side — no browser support needed. */}
-          <WebhookGroup />
+          <WebhookMovedGroup />
         </ItemList>
       </Page>
     );
@@ -1178,7 +1274,7 @@ function Notifications() {
           )}
         </ItemGroup>
 
-        <WebhookGroup />
+        <WebhookMovedGroup />
       </ItemList>
     </Page>
   );
@@ -1552,6 +1648,7 @@ export function SettingsRoutes() {
       <Route path="agents" element={<Agents />} />
       <Route path="snippets" element={<Snippets />} />
       <Route path="notifications" element={<Notifications />} />
+      <Route path="channels" element={<Channels />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />

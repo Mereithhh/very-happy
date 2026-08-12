@@ -1231,6 +1231,26 @@ export const zhHant: TranslationStructure = {
         friendAcceptedGeneric: '好友請求已接受',
     },
 
+    // Channels — settings hub for external integrations.
+    settingsChannels: {
+        title: '通道整合',
+        subtitle: 'Webhook、自動化 CLI 與聊天整合',
+        movedTitle: 'Webhook 通知已遷移',
+        movedSubtitle: '請在 設定 → 通道整合 中設定帳號 webhook',
+        cliTitle: '自動化 CLI（入站）',
+        cliIntro: '執行守護程序的機器上的腳本和機器人可以直接建立會話並與其對話——無需額外憑證，CLI 重用守護程序的憑證。建立會話（spawn）時守護程序必須在執行中。',
+        cliSpawnLabel: '在指定目錄建立新會話。不帶 --json 時列印可點擊的會話連結；帶 --json 時輸出 {"sessionId","url"}：',
+        cliSpawnExit: '結束碼：0 成功 · 1 建立失敗（沒有會話被建立） · 2 會話已建立但首條訊息傳送失敗（連結仍會列印）。',
+        cliSendLabel: '向已在執行的會話追加一條訊息（該會話必須由本機守護程序建立——會話金鑰保存在 ~/.happy/sessions.json）：',
+        cliSendExit: '結束碼：0 已送達 · 1 其他任何情況（參數錯誤、會話未知或缺少金鑰、傳送失敗）。長文字或多行內容用 --prompt-file <路徑> 代替 --prompt。',
+        mcpTitle: '剪貼簿工具（MCP）',
+        mcpIntro: '讓普通的 claude CLI（例如跑在 Happy 網頁終端裡的那個）擁有 copy_to_clipboard 工具，可把文字推送到你開啟的每個網頁用戶端的剪貼簿。每台機器註冊一次：',
+        imTitle: 'IM 適配器模式',
+        imIntro: '任何聊天軟體都可以變成 Happy 的遙控器。每條 webhook 通知都以固定、可機器解析的最後一行結尾——「session: <id>」——純文字轉發也不會遺失。適配器（我們的 Tanka 整合是參考實作）把通知轉發進群組聊天、監聽自己的 IM；當你引用回覆某條通知時，它從該行提取會話 id，並用「very-happy send」把你的回覆送回會話。新任務則透過「very-happy spawn」從聊天中直接發起。',
+        imDocs: '完整文件',
+        imDocsSubtitle: 'docs/channels.md——webhook 契約、CLI 參考、適配器範例',
+    },
+
     settingsSnippets: {
         navTitle: '快捷片段',
         navSubtitle: 'Prompt 預設 + 終端快捷指令',

@@ -1229,6 +1229,27 @@ export const ja: TranslationStructure = {
         friendAcceptedGeneric: '友達リクエストが承認されました',
     },
 
+    // Channels â settings hub for external integrations. English placeholder
+    // (not yet translated for this locale).
+    settingsChannels: {
+        title: 'Channels',
+        subtitle: 'Webhooks, automation CLI and chat integrations',
+        movedTitle: 'Webhook notifications have moved',
+        movedSubtitle: 'Configure your account webhook under Settings → Channels',
+        cliTitle: 'Automation CLI (inbound)',
+        cliIntro: 'Scripts and bots on the machine that runs your daemon can start sessions and talk to them — no extra credentials, the CLI reuses the daemon\'s. The daemon must be running to spawn.',
+        cliSpawnLabel: 'Start a new session in a directory. Without --json it prints a clickable session URL; with --json it emits {"sessionId","url"}:',
+        cliSpawnExit: 'Exit codes: 0 success · 1 spawn failed (no session created) · 2 session created but the first message failed (the URL is still printed).',
+        cliSendLabel: 'Push a follow-up message into a session that is already running (it must have been spawned by this machine\'s daemon — the session key lives in ~/.happy/sessions.json):',
+        cliSendExit: 'Exit codes: 0 delivered · 1 anything else (bad arguments, unknown session or missing key, send failed). Use --prompt-file <path> instead of --prompt for long or multi-line text.',
+        mcpTitle: 'Clipboard tool (MCP)',
+        mcpIntro: 'Give a plain claude CLI — for example one running inside a Happy web terminal — a copy_to_clipboard tool that pushes text to the clipboard of every web client you have open. Register it once per machine:',
+        imTitle: 'IM adapter pattern',
+        imIntro: 'Any chat app can become a remote control for Happy. Every webhook notification ends with a fixed, machine-parseable last line — "session: <id>" — that survives text-only relays. An adapter (our Tanka integration is the reference) forwards notifications into a group chat, listens to its own IM, and when you quote-reply to a notification it extracts the session id from that line and pipes your reply back with "very-happy send". Fresh tasks are started from chat via "very-happy spawn".',
+        imDocs: 'Full documentation',
+        imDocsSubtitle: 'docs/channels.md — webhook contract, CLI reference, adapter example',
+    },
+
     settingsSnippets: {
         navTitle: 'Snippets',
         navSubtitle: 'Prompt presets + terminal commands',
