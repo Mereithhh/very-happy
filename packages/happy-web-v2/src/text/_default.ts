@@ -1035,6 +1035,11 @@ export const en = {
         inputBarToggle: 'Line input',
         inputBarPlaceholder: 'Type a command · Enter to send',
         inputBarSend: 'Send',
+        // Prompt presets in the web terminal (header menu on desktop, key-bar
+        // menu on mobile): pastes the preset text into the terminal input —
+        // the user presses Enter to send, never auto-executed.
+        presets: 'Prompt presets',
+        presetsTitle: 'PROMPT PRESETS',
     },
 
     board: {
