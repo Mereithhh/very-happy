@@ -113,11 +113,13 @@ describe('chat session mapping', () => {
     expect(items.find((i) => i.key === 's2')!.status).toBe('idle');
   });
 
-  it('inactive session within 24h → ended; older → dropped', () => {
-    const recent = mkSession({ id: 's1', active: false, presence: NOW - 60_000, updatedAt: NOW - 60_000 });
+  it('dead-but-unarchived session within 24h → ended; older → dropped', () => {
+    // Dead ≠ archived: the process went away (presence stale) but the user
+    // has not archived it — `active` stays true until they do.
+    const recent = mkSession({ id: 's1', active: true, presence: NOW - 60_000, updatedAt: NOW - 60_000 });
     const old = mkSession({
       id: 's2',
-      active: false,
+      active: true,
       presence: NOW - ENDED_WINDOW_MS - 1,
       updatedAt: NOW - ENDED_WINDOW_MS - 1,
     });
@@ -126,11 +128,16 @@ describe('chat session mapping', () => {
     expect(items[0].status).toBe('ended');
   });
 
+  it('archived sessions never show on the board, however recent', () => {
+    const archived = mkSession({ id: 's1', active: false, presence: NOW - 60_000, updatedAt: NOW - 60_000 });
+    expect(build({ sessions: [archived] })).toEqual([]);
+  });
+
   it('pending requests do NOT make a disconnected session attention', () => {
     const s = mkSession({
       id: 's1',
       presence: NOW - 60_000,
-      active: false,
+      active: true,
       agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 10_000 } } },
     });
     const [item] = build({ sessions: [s] });
@@ -223,7 +230,7 @@ describe('ordering', () => {
     const items = build({
       sessions: [
         mkSession({ id: 'sIdle', updatedAt: NOW - 50_000 }),
-        mkSession({ id: 'sEnded', active: false, presence: NOW - 1000, updatedAt: NOW - 1000 }),
+        mkSession({ id: 'sEnded', active: true, presence: NOW - 1000, updatedAt: NOW - 1000 }),
         mkSession({
           id: 'sWaitShort',
           agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 10_000 } } },
@@ -295,7 +302,7 @@ describe('V2: metadata.board (LLM analysis) on session items', () => {
     const s = withBoard(
       's1',
       { attention: 'blocked', progress: 'x', analyzedAt: NOW - 5_000 },
-      { active: false, presence: NOW - 60_000, updatedAt: NOW - 60_000 },
+      { active: true, presence: NOW - 60_000, updatedAt: NOW - 60_000 },
     );
     const [item] = build({ sessions: [s] });
     expect(item.status).toBe('ended');

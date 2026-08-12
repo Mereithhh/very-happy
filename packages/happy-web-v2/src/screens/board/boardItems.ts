@@ -135,6 +135,10 @@ function classifySession(s: Session, now: number): { status: BoardStatus } | nul
   }
   if (s.active && s.thinking) return { status: 'working' };
   if (s.active && s.presence === 'online') return { status: 'idle' };
+  // Archived (user explicitly dismissed it) never shows on the board — the
+  // archived filter in the sidebar is its home. 'ended' is only for sessions
+  // whose process died but nobody archived yet ("刚跑完还没看" reminders).
+  if (!s.active) return null;
   const endedAt = s.updatedAt || s.activeAt || s.createdAt;
   if (now - endedAt <= ENDED_WINDOW_MS) return { status: 'ended' };
   return null; // older history — not the board's business
