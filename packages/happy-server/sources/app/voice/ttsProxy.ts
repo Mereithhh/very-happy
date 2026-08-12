@@ -76,6 +76,18 @@ export type TtsProxyResult =
     | { kind: "stream"; body: unknown }
     | { kind: "upstream_error"; status: number; detail: string };
 
+/**
+ * Map an upstream (ElevenLabs) error status to the status WE answer with.
+ * Never pass the upstream code through verbatim: the web client feature-
+ * detects these endpoints by response status (a 404 means "this server has
+ * no TTS route yet" and permanently degrades the feature), so an upstream
+ * 404/401/… must not masquerade as ours. 429 keeps its rate-limit meaning;
+ * everything else is a plain gateway failure.
+ */
+export function upstreamErrorReplyStatus(upstreamStatus: number): 429 | 502 {
+    return upstreamStatus === 429 ? 429 : 502;
+}
+
 export async function proxyTts(opts: {
     apiKey: string;
     text: string;

@@ -9,6 +9,7 @@ import {
     createTimedCache,
     fetchSlimVoices,
     proxyTts,
+    upstreamErrorReplyStatus,
     validateTtsText,
     type FetchLike,
     type SlimVoice,
@@ -342,9 +343,8 @@ export function voiceRoutes(app: Fastify) {
                 voiceId: z.string().optional(),
                 modelId: z.string().optional(),
             }),
-            // No response schema: 200 is a raw audio/mpeg stream and error
-            // statuses pass the upstream code through, neither of which fits
-            // the zod type provider's fixed status-code union.
+            // No response schema: 200 is a raw audio/mpeg stream, which
+            // doesn't fit the zod type provider's fixed status-code union.
         },
     }, async (request, reply) => {
         const userId = request.userId;
@@ -364,10 +364,21 @@ export function voiceRoutes(app: Fastify) {
             return reply.code(429).send({ error: 'Too many TTS requests, slow down' });
         }
 
-        // Client gone → abort the upstream fetch. 'close' also fires after a
-        // normal completion, where the extra abort is a harmless no-op.
+        // Client gone → abort the upstream fetch. IMPORTANT: listen on the
+        // RESPONSE socket, not request.raw — since Node 16 the request stream
+        // emits 'close' as soon as its body is fully consumed, which Fastify
+        // does BEFORE the handler runs. Depending on hook timing a
+        // request-side listener either fires instantly (aborting every
+        // request) or is attached after the event already passed (never
+        // aborting at all). reply.raw 'close' fires once the response side is
+        // done; writableEnded distinguishes a normal completion (nothing to
+        // abort) from a mid-stream client disconnect.
         const abort = new AbortController();
-        request.raw.on('close', () => abort.abort());
+        reply.raw.on('close', () => {
+            if (!reply.raw.writableEnded) {
+                abort.abort();
+            }
+        });
 
         try {
             const result = await proxyTts({
@@ -380,7 +391,10 @@ export function voiceRoutes(app: Fastify) {
             });
             if (result.kind === 'upstream_error') {
                 log({ module: 'voice' }, `TTS upstream failed for user ${userId}: ${result.status} ${result.detail.slice(0, 200)}`);
-                return reply.code(result.status).send({ error: 'TTS failed' });
+                // Never pass the upstream status through — the client
+                // feature-detects this route by status (404 → "server not
+                // upgraded" → permanent degrade). 429 stays 429, rest is 502.
+                return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'TTS failed' });
             }
             if (!result.body) {
                 log({ module: 'voice' }, `TTS upstream returned no body for user ${userId}`);
@@ -405,9 +419,8 @@ export function voiceRoutes(app: Fastify) {
      */
     app.get('/v1/voice/tts/voices', {
         preHandler: app.authenticate,
-        // No response schema: error statuses pass the upstream code through,
-        // which doesn't fit the zod type provider's fixed status-code union.
-        // The 200 shape is {voices: SlimVoice[]} (see slimVoices()).
+        // No response schema kept for simplicity; the 200 shape is
+        // {voices: SlimVoice[]} (see slimVoices()).
     }, async (request, reply) => {
         const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
         if (!elevenLabsApiKey) {
@@ -426,7 +439,9 @@ export function voiceRoutes(app: Fastify) {
             });
             if (!result.ok) {
                 log({ module: 'voice' }, `Voices list failed: ${result.status}`);
-                return reply.code(result.status).send({ error: 'Failed to list voices' });
+                // Same status discipline as /v1/voice/tts: upstream codes are
+                // never passed through (429 stays, everything else → 502).
+                return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to list voices' });
             }
             voicesCache.set(result.voices);
             return reply.send({ voices: result.voices });

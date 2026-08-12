@@ -18,6 +18,7 @@
 
 import axios from 'axios'
 import { readFile, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { logger } from '@/ui/logger'
@@ -31,6 +32,7 @@ import { isValidSessionId, isValidTerminalId } from './ids'
 import { listVhTerminals, readVhTerminal, sendToVhTerminal } from './terminals'
 import { applyMemorySectionUpdate, PERSONAL_MEMORY_SOFT_LIMIT_CHARS } from './memory'
 import { assistantPersonalMemoryPath, bootstrapAssistantHome } from './bootstrap'
+import { normalizeSpawnDirectory } from './spawnDirectory'
 
 export const ASSISTANT_TOOL_NAMES = [
     'sessions_list',
@@ -179,13 +181,17 @@ export function registerAssistantTools(mcp: McpServer): void {
         description: 'Spawn a NEW Claude Code session in a directory via the local daemon, optionally sending its first prompt. Returns the session id and web URL immediately after dispatch — it does NOT wait for the task to run or finish.',
         title: 'Spawn Session',
         inputSchema: {
-            directory: z.string().describe('Absolute working directory for the new session'),
+            directory: z.string().describe('Absolute working directory for the new session (a leading ~ is expanded)'),
             prompt: z.string().optional().describe('Optional first message to send once the session is up'),
         },
     }, async (args) => {
-        if (typeof args.directory !== 'string' || args.directory.trim().length === 0) return fail('directory is required')
+        // C4: expand "~" and refuse non-absolute paths BEFORE the daemon sees
+        // them — the daemon mkdir -p's whatever it gets.
+        const normalized = normalizeSpawnDirectory(typeof args.directory === 'string' ? args.directory : '', os.homedir())
+        if (!normalized.ok) return fail(normalized.error)
+        const directory = normalized.directory
         try {
-            const result = await spawnDaemonSession(args.directory)
+            const result = await spawnDaemonSession(directory)
             if (result?.error || !result?.sessionId) {
                 return fail(`Failed to spawn session: ${result?.error ?? 'daemon returned no session id'}`)
             }
@@ -195,12 +201,12 @@ export function registerAssistantTools(mcp: McpServer): void {
                 try {
                     const persisted = await waitForSessionKey(sessionId, 15_000)
                     await sendUserMessage(sessionId, persisted, args.prompt, MCP_CLIENT_TAG)
-                    return ok(`Spawned session ${sessionId} in ${args.directory} and sent the first prompt. It is now working in the background — check on it later with session_read. ${url}`)
+                    return ok(`Spawned session ${sessionId} in ${directory} and sent the first prompt. It is now working in the background — check on it later with session_read. ${url}`)
                 } catch (error) {
-                    return ok(`Spawned session ${sessionId} in ${args.directory}, but sending the first prompt failed (${error instanceof Error ? error.message : String(error)}). Use session_send to retry. ${url}`)
+                    return ok(`Spawned session ${sessionId} in ${directory}, but sending the first prompt failed (${error instanceof Error ? error.message : String(error)}). Use session_send to retry. ${url}`)
                 }
             }
-            return ok(`Spawned idle session ${sessionId} in ${args.directory}. ${url}`)
+            return ok(`Spawned idle session ${sessionId} in ${directory}. ${url}`)
         } catch (error) {
             return fail(`Failed to spawn session: ${error instanceof Error ? error.message : String(error)}`)
         }

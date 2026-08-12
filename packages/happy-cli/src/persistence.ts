@@ -453,3 +453,28 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
   }
 }
 
+/**
+ * Remove specific sessions from sessions.json. Used by the assistant
+ * forceNew spawn path (B-051): the old assistant entry must be forgotten so
+ * the daemon never re-attaches to it. Best-effort, same discipline as
+ * persistSession.
+ */
+export function deletePersistedSessions(sessionIds: string[]): void {
+  try {
+    const existing = readPersistedSessions();
+    let changed = false;
+    for (const id of sessionIds) {
+      if (id in existing) {
+        delete existing[id];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    const tmpFile = configuration.sessionsFile + '.tmp';
+    writeFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
+    renameSync(tmpFile, configuration.sessionsFile);
+  } catch (error) {
+    logger.debug(`[PERSISTENCE] Failed to delete persisted sessions:`, error);
+  }
+}
+

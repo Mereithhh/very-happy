@@ -165,6 +165,13 @@ export interface SpawnSessionOptions {
      * into the spawned CLI, and enforces a per-machine singleton.
      */
     variant?: 'assistant';
+    /**
+     * B-051: assistant only — stop any live assistant process, purge its
+     * persisted sessions.json entry, and spawn a brand-new assistant session
+     * instead of returning/re-attaching to the existing one. Old daemons
+     * simply ignore the field (compatible).
+     */
+    forceNew?: boolean;
 }
 
 export type SpawnSessionResult =

@@ -8,6 +8,7 @@ import {
     fetchSlimVoices,
     proxyTts,
     slimVoices,
+    upstreamErrorReplyStatus,
     validateTtsText,
     type FetchLike,
     type FetchLikeResponse,
@@ -223,5 +224,17 @@ describe('createTimedCache', () => {
         cache.set(2, 90);
         expect(cache.get(150)).toBe(2);
         expect(cache.get(190)).toBeNull();
+    });
+});
+
+describe('upstreamErrorReplyStatus', () => {
+    it('keeps 429 (rate limit) and maps every other upstream error to 502', () => {
+        expect(upstreamErrorReplyStatus(429)).toBe(429);
+        // A pass-through 404 would make the web client believe the SERVER
+        // lacks the route and permanently degrade — must become 502.
+        expect(upstreamErrorReplyStatus(404)).toBe(502);
+        expect(upstreamErrorReplyStatus(401)).toBe(502);
+        expect(upstreamErrorReplyStatus(500)).toBe(502);
+        expect(upstreamErrorReplyStatus(503)).toBe(502);
     });
 });

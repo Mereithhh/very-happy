@@ -16,10 +16,11 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, deletePersistedSessions } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
+import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { getProjectPath } from '@/claude/utils/path';
@@ -254,35 +255,77 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    // C2a (B-051): serialize assistant spawns — concurrent requests join the
+    // same in-flight promise (no double-spawn race); forceNew waits for any
+    // in-flight spawn to settle, then replaces it with a fresh run.
+    const assistantSpawnGate = createSpawnGate<SpawnSessionResult>();
+
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+    const spawnSession = (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+      if (options.variant !== 'assistant') {
+        return spawnSessionImpl(options);
+      }
+      return options.forceNew
+        ? assistantSpawnGate.replace(() => spawnSessionImpl(options))
+        : assistantSpawnGate.join(() => spawnSessionImpl(options));
+    };
+
+    const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
       // ── B-051 assistant variant ────────────────────────────────────────────
       // The machine's meta-agent session. cwd is FORCED to ~/.happy/assistant
       // (any passed directory is ignored), the home is bootstrapped on first
-      // use, and the session is a per-machine singleton:
+      // use, and the session is a per-machine singleton (spawn requests are
+      // serialized through assistantSpawnGate):
       //   1. a live assistant process → return its session id (no new spawn);
       //   2. a persisted assistant session (sessions.json) → re-attach via
       //      HAPPY_RECONNECT_* so the SAME session row + encryption key are
-      //      reused (a fixed tag alone can't do this: with dataKey credentials
-      //      getOrCreateSession mints a fresh key per launch while the server
-      //      keeps the first dataEncryptionKey — reconnect carries the key);
-      //   3. nothing known → fresh spawn; runClaude then uses the fixed tag
-      //      vh-assistant-<machineId> so the server row is stable.
+      //      reused (with dataKey credentials getOrCreateSession mints a fresh
+      //      key per launch, so only reconnect can reuse a row cleanly);
+      //   3. nothing known → fresh spawn with a random tag = a brand-new
+      //      session row and key (nothing can decrypt-mismatch old rows).
+      // forceNew skips 1–2: it stops any surviving assistant process, purges
+      // the sessions.json entries, and always takes path 3.
       if (options.variant === 'assistant') {
         options = { ...options, directory: assistantHome() };
 
-        // (1) Live singleton: an alive tracked assistant session wins.
-        for (const tracked of pidToTrackedSession.values()) {
-          if (tracked.happySessionId && tracked.happySessionMetadataFromLocalWebhook?.variant === 'assistant') {
-            try {
-              process.kill(tracked.pid, 0);
-              logger.debug(`[DAEMON RUN] Assistant already running (session ${tracked.happySessionId}, pid ${tracked.pid})`);
-              return { type: 'success', sessionId: tracked.happySessionId };
-            } catch {
-              // stale entry — the heartbeat will prune it; fall through
+        if (options.forceNew) {
+          // C2c: force-respawn — stop any surviving assistant process and
+          // forget the persisted entries so we never re-attach to them.
+          for (const tracked of [...pidToTrackedSession.values()]) {
+            if (!isAssistantTracked(tracked)) continue;
+            logger.debug(`[DAEMON RUN] forceNew: stopping assistant (session ${tracked.happySessionId ?? 'unknown'}, pid ${tracked.pid})`);
+            stopSession(tracked.happySessionId ?? `PID-${tracked.pid}`);
+          }
+          const assistantIds = listPersistedAssistantIds(readPersistedSessions());
+          if (assistantIds.length > 0) {
+            deletePersistedSessions(assistantIds);
+            for (const id of assistantIds) {
+              sessionIdToFinishedSession.delete(id);
             }
+            logger.debug(`[DAEMON RUN] forceNew: purged persisted assistant session(s): ${assistantIds.join(', ')}`);
+          }
+        } else {
+          // (1) Live singleton: an alive tracked assistant session wins. The
+          // spawn-time variant tag (C2b) makes this hold even in the window
+          // before the session webhook lands.
+          const live = findLiveAssistant(pidToTrackedSession.values(), (pid) => {
+            try {
+              process.kill(pid, 0);
+              return true;
+            } catch {
+              // stale entry — the heartbeat will prune it
+              return false;
+            }
+          });
+          if (live?.happySessionId) {
+            logger.debug(`[DAEMON RUN] Assistant already running (session ${live.happySessionId}, pid ${live.pid})`);
+            return { type: 'success', sessionId: live.happySessionId };
+          }
+          if (live) {
+            // Alive process whose webhook hasn't arrived yet — never double-spawn.
+            return { type: 'error', errorMessage: `Assistant session is still starting (pid ${live.pid}). Try again in a few seconds.` };
           }
         }
 
@@ -298,16 +341,22 @@ export async function startDaemon(): Promise<void> {
 
         // (2) Re-attach to the persisted assistant session with its ORIGINAL
         // encryption key (same mechanism as resume-in-place).
-        const persistedSessions = readPersistedSessions();
-        const assistantEntry = Object.entries(persistedSessions)
-          .filter(([, s]) => s.metadata?.variant === 'assistant')
-          .sort((a, b) => b[1].savedAt - a[1].savedAt)[0];
+        const assistantEntry = options.forceNew ? undefined : pickLatestAssistantEntry(readPersistedSessions());
         if (assistantEntry) {
           const [assistantSessionId, s] = assistantEntry;
           logger.debug(`[DAEMON RUN] Re-attaching assistant session ${assistantSessionId}`);
-          // Resume the underlying Claude conversation only when its JSONL is
-          // still on disk — a dangling --resume would crash the spawn.
-          const claudeSessionId = s.metadata?.claudeSessionId;
+          // C3: the sessions.json metadata is a webhook-time snapshot taken
+          // BEFORE Claude assigned its conversation id (that later update
+          // only reaches the server), so fetch fresh metadata from the
+          // server first — same mechanism as resumeSession — and only
+          // --resume when the JSONL is actually on disk (a dangling
+          // --resume would crash the spawn).
+          const serverMetadata = await fetchServerSessionMetadata(
+            assistantSessionId,
+            decodeBase64(s.encryptionKey),
+            s.encryptionVariant,
+          );
+          const claudeSessionId = resolveAssistantClaudeSessionId(s.metadata, serverMetadata);
           const canResumeClaude = !!claudeSessionId
             && existsSync(join(getProjectPath(assistantHome()), `${claudeSessionId}.jsonl`));
           return spawnTrackedHappyProcess({
@@ -328,6 +377,7 @@ export async function startDaemon(): Promise<void> {
               HAPPY_RECONNECT_METADATA_VERSION: String(s.metadataVersion),
               HAPPY_RECONNECT_AGENT_STATE_VERSION: String(s.agentStateVersion),
             },
+            variant: 'assistant',
           });
         }
         // (3) Nothing known locally — fall through to a fresh spawn; the
@@ -540,6 +590,7 @@ export async function startDaemon(): Promise<void> {
               startedBy: 'daemon',
               pid: tmuxResult.pid, // Real PID from tmux -P flag
               tmuxSessionId: tmuxResult.sessionId,
+              variant: options.variant,
               directoryCreated,
               message: directoryCreated
                 ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
@@ -631,6 +682,7 @@ export async function startDaemon(): Promise<void> {
             },
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
+            variant: options.variant,
           });
         }
 
@@ -655,12 +707,17 @@ export async function startDaemon(): Promise<void> {
       env,
       directoryCreated = false,
       message,
+      variant,
     }: {
       args: string[];
       cwd: string;
       env: NodeJS.ProcessEnv;
       directoryCreated?: boolean;
       message?: string;
+      /** C2b (B-051): tag the TrackedSession as assistant AT SPAWN TIME, not
+       *  only when the webhook backfills metadata — the singleton live-check
+       *  must hold in the pre-webhook window. */
+      variant?: 'assistant';
     }): Promise<SpawnSessionResult> => {
       const happyProcess = spawnHappyCLI(args, {
         cwd,
@@ -685,6 +742,7 @@ export async function startDaemon(): Promise<void> {
         childProcess: happyProcess,
         directoryCreated,
         message,
+        variant,
       };
 
       pidToTrackedSession.set(happyProcess.pid, trackedSession);

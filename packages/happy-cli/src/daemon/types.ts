@@ -28,4 +28,10 @@ export interface TrackedSession {
   message?: string;
   /** tmux session identifier (format: session:window) */
   tmuxSessionId?: string;
+  /**
+   * B-051: set at SPAWN TIME for the assistant (meta-agent) session, so the
+   * singleton live-check works even in the window before the session's
+   * webhook fills happySessionMetadataFromLocalWebhook.
+   */
+  variant?: 'assistant';
 }

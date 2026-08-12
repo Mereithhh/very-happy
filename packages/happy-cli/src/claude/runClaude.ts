@@ -64,10 +64,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // B-051: assistant variant (meta-agent / dispatcher session). The daemon
     // injects HAPPY_SESSION_VARIANT=assistant at spawn time (spawn options
-    // `variant: 'assistant'`); it flips three things here: a fixed session
-    // tag (singleton per machine, computed below once machineId is known),
-    // `variant: 'assistant'` in the session metadata, and the assistant MCP
-    // management tool surface.
+    // `variant: 'assistant'`); it flips two things here: `variant: 'assistant'`
+    // in the session metadata, and the assistant MCP management tool surface.
+    // Session-row reuse is handled daemon-side via HAPPY_RECONNECT_* re-attach,
+    // NOT via a special session tag.
     const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
     if (isAssistantVariant) {
         // Defensive re-bootstrap: the daemon already did this before spawning,
@@ -119,15 +119,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
     logger.debug(`Using machineId: ${machineId}`);
 
-    // Session tag: normally a fresh UUID per launch (each run = new session
-    // row). The assistant variant uses a FIXED per-machine tag so the server's
-    // @@unique([accountId, tag]) makes repeated spawns land on the same
-    // session row (singleton). NOTE the dataKey caveat: getOrCreateSession
-    // generates a fresh session key per launch and the server keeps the FIRST
-    // dataEncryptionKey for an existing tag — so tag reuse only decrypts
-    // cleanly when the daemon re-attaches via HAPPY_RECONNECT_* (which carries
-    // the original key; see daemon/run.ts assistant handling).
-    const sessionTag = isAssistantVariant ? `vh-assistant-${machineId}` : randomUUID();
+    // Session tag: a fresh UUID per launch — every run creates a brand-new
+    // session row (and key). This holds for the assistant variant too: reuse
+    // of an existing assistant session goes through the daemon's re-attach
+    // path (HAPPY_RECONNECT_*, which carries the original encryption key).
+    // A FIXED per-machine assistant tag was tried here and removed: the
+    // server keeps the FIRST dataEncryptionKey for an existing tag while
+    // getOrCreateSession mints a fresh key per launch, so any fresh spawn
+    // onto the old tag produced a session row the client could not decrypt.
+    const sessionTag = randomUUID();
 
     // Create machine if it doesn't exist
     await api.getOrCreateMachine({
