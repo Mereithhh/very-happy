@@ -507,6 +507,7 @@ export const zhHans: TranslationStructure = {
             attach: '添加图片',
             presets: '提示词预设',
             presetsTitle: '提示词预设',
+            presetsDigitHint: '按 1-9 插入',
             files: '文件',
             closeFiles: '关闭文件面板',
             fileTree: '项目文件',
@@ -1077,6 +1078,7 @@ export const zhHans: TranslationStructure = {
         inputBarSend: '发送',
         presets: '提示词预设',
         presetsTitle: '提示词预设',
+        presetsDigitHint: '按 1-9 插入',
     },
 
     modals: {

@@ -490,6 +490,9 @@ export const en = {
             attach: 'Attach image',
             presets: 'Prompt presets',
             presetsTitle: 'PROMPT PRESETS',
+            // Desktop keyboard hint in the presets menu head (⌘./Ctrl+. opens
+            // the menu; digits 1-9 insert the numbered preset directly).
+            presetsDigitHint: '1-9 to insert',
             files: 'Files',
             closeFiles: 'Close files',
             fileTree: 'Project files',
@@ -1072,6 +1075,9 @@ export const en = {
         // the user presses Enter to send, never auto-executed.
         presets: 'Prompt presets',
         presetsTitle: 'PROMPT PRESETS',
+        // Desktop keyboard hint in the presets menu head (⌘./Ctrl+. opens the
+        // menu; digits 1-9 paste the numbered preset — Enter still manual).
+        presetsDigitHint: '1-9 to insert',
     },
 
     board: {
