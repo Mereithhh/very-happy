@@ -286,8 +286,20 @@ export function WebTerminalScreen() {
     // after term.open (below, in the IS_COARSE_POINTER block).
     let mobileBridge: ReturnType<typeof installMobileInputBridge> = null;
 
+    // FALLBACK auto-title from the first typed line — plain-shell terminals
+    // only. The PRIMARY auto-title is the daemon following the pane's OSC
+    // title into @vh_title (Claude Code's TUI sets it to a live task summary;
+    // reconcile pulls it back every poll). This onKey capture only makes sense
+    // when the first Enter really submits a SHELL COMMAND; with a startup
+    // command configured the terminal boots straight into claude and the first
+    // typed line is the user's first PROMPT (long/CJK/noise) — skip it there
+    // and let the daemon title it. A shell's own pane_title is just the
+    // hostname (filtered by the daemon), so this fallback still owns the
+    // pure-shell case. `ifAbsent` + no manual flag on the daemon side keep it
+    // overridable by the pane-title follow if claude starts later.
     const keyDisp = term.onKey(({ key, domEvent }) => {
       if (titled) return;
+      if (startupCommandRef.current?.trim()) { titled = true; return; }
       if (domEvent.key === 'Enter') {
         const tt = titleBuf.trim();
         if (tt && tid) {

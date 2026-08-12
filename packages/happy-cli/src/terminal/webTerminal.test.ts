@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -262,5 +262,93 @@ describe('startupInjectionArgs', () => {
         for (const args of startupInjectionArgs('vh-abc', 'ls')) {
             expect(args[args.indexOf('-t') + 1]).toBe('=vh-abc:');
         }
+    });
+});
+
+describe('deriveAutoTitle', () => {
+    const HOST = 'mac-office.local';
+
+    it('strips Claude Code status glyph prefixes (spinner set varies by version)', () => {
+        // Real pane_title values observed on tmux 3.6b with claude running.
+        expect(deriveAutoTitle('✳ 与ted沟通GPU成本口径', HOST)).toBe('与ted沟通GPU成本口径');
+        expect(deriveAutoTitle('◐ webhook-integration-setup', HOST)).toBe('webhook-integration-setup');
+        expect(deriveAutoTitle('✶ · Fix build', HOST)).toBe('Fix build');
+    });
+
+    it('drops the tmux default pane title: the hostname, full or short form', () => {
+        expect(deriveAutoTitle('mac-office.local', HOST)).toBeUndefined();
+        expect(deriveAutoTitle('mac-office', HOST)).toBeUndefined();     // short form
+        expect(deriveAutoTitle('MAC-OFFICE', HOST)).toBeUndefined();     // case-insensitive
+        expect(deriveAutoTitle('mac-office-2', HOST)).toBe('mac-office-2'); // different host: keep
+    });
+
+    it('drops bare process names that say nothing', () => {
+        for (const junk of ['zsh', 'bash', 'claude', 'node', 'tmux', 'Claude']) {
+            expect(deriveAutoTitle(junk, HOST)).toBeUndefined();
+        }
+    });
+
+    it('drops empty / glyph-only / non-string values', () => {
+        expect(deriveAutoTitle('', HOST)).toBeUndefined();
+        expect(deriveAutoTitle('   ', HOST)).toBeUndefined();
+        expect(deriveAutoTitle('✳ ', HOST)).toBeUndefined();
+        expect(deriveAutoTitle(undefined, HOST)).toBeUndefined();
+        expect(deriveAutoTitle(42, HOST)).toBeUndefined();
+    });
+
+    it('collapses whitespace and truncates to 60 code points (CJK-safe)', () => {
+        expect(deriveAutoTitle('fix   the\t build', HOST)).toBe('fix the build');
+        const long = '任'.repeat(80);
+        expect(deriveAutoTitle(long, HOST)).toBe('任'.repeat(60));
+        expect(deriveAutoTitle('x'.repeat(60), HOST)).toBe('x'.repeat(60)); // exactly at cap: untouched
+    });
+
+    it('keeps meaningful shell-set titles (e.g. "dir: cmd" style)', () => {
+        expect(deriveAutoTitle('~/code: vim foo.ts', HOST)).toBe('code: vim foo.ts');
+    });
+});
+
+describe('parseSessionListLine', () => {
+    const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
+
+    it('parses a full line (epoch seconds → ms, trims titles)', () => {
+        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '✳ task');
+        expect(parseSessionListLine(line)).toEqual({
+            name: 'vh-abc',
+            created: 1700000000000,
+            activity: 1700000100000,
+            cwd: '/Users/x/code',
+            vhTitle: 'my title',
+            manual: true,
+            paneTitle: '✳ task',
+        });
+    });
+
+    it('empty optional fields become undefined / manual=false', () => {
+        const line = mk('vh-abc', '', '', '', '', '', '');
+        expect(parseSessionListLine(line)).toEqual({
+            name: 'vh-abc',
+            created: undefined,
+            activity: undefined,
+            cwd: undefined,
+            vhTitle: undefined,
+            manual: false,
+            paneTitle: undefined,
+        });
+    });
+
+    it('rejects blank or malformed lines instead of guessing', () => {
+        expect(parseSessionListLine('')).toBeUndefined();
+        expect(parseSessionListLine('vh-abc\t123')).toBeUndefined();          // old tab format
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x'))).toBeUndefined(); // too few fields
+        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', 't'))).toBeUndefined(); // no name
+    });
+
+    it('a pathological separator inside pane_title only garbles the title, never the fields', () => {
+        const line = mk('vh-abc', '1', '2', '/x', 'v', '', `weird${LIST_FIELD_SEP}title`);
+        const parsed = parseSessionListLine(line)!;
+        expect(parsed.name).toBe('vh-abc');
+        expect(parsed.cwd).toBe('/x');
+        expect(parsed.paneTitle).toBe(`weird${LIST_FIELD_SEP}title`);
     });
 });

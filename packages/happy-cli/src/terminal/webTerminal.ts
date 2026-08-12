@@ -177,6 +177,96 @@ export type AgentState = 'working' | 'needs_input' | 'idle' | 'shell';
 const SHELL_COMMANDS = new Set(['zsh', 'bash', 'fish', 'sh', 'dash', 'ksh', 'tcsh', 'csh']);
 
 /**
+ * ── Auto-title: follow the pane's OSC title ──────────────────────────────────
+ * Claude Code's TUI continuously sets the terminal window title (OSC 0/2) to a
+ * short summary of the current task — tmux stores it as `#{pane_title}`
+ * (verified on tmux 3.6b: "✳ 与ted沟通GPU成本口径", "◐ webhook-integration-setup";
+ * `allow-rename` only affects the WINDOW name, not pane_title). That is exactly
+ * the title a user wants in the sidebar, so listSessions() follows it into
+ * `@vh_title` (the cross-device title truth) on every poll — unless the user
+ * manually renamed the terminal (`@vh_title_manual`, see setTitle).
+ *
+ * A plain shell doesn't set a useful OSC title — the tmux DEFAULT pane_title is
+ * the machine's hostname — so deriveAutoTitle() filters that (and bare process
+ * names) out; shell terminals keep their web-side first-command fallback title.
+ */
+
+/** Max auto-title length in code points (matches the web's own 60-char cap). */
+const TITLE_MAX_CHARS = 60;
+
+/** pane_title values that carry no information: the tmux default (hostname,
+ *  handled separately), bare shell/process names, and tmux itself. */
+const JUNK_TITLES = new Set(['tmux', 'claude', 'node', ...SHELL_COMMANDS]);
+
+/**
+ * Turn a raw `#{pane_title}` into a sidebar-worthy auto title, or undefined
+ * when it says nothing. Strips the leading status glyph(s) Claude Code puts in
+ * its OSC title ("✳ <task>" / "◐ <task>" — the spinner set varies by version,
+ * so strip ANY leading non-letter/digit run), collapses whitespace, drops the
+ * tmux default title (hostname, full or short form) and bare process names,
+ * and truncates to TITLE_MAX_CHARS code points. Pure; unit-tested.
+ */
+export function deriveAutoTitle(paneTitle: unknown, hostname: string): string | undefined {
+    if (typeof paneTitle !== 'string') return undefined;
+    const t = paneTitle.replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s+/g, ' ').trim();
+    if (!t) return undefined;
+    const lower = t.toLowerCase();
+    const host = (hostname || '').toLowerCase();
+    const shortHost = host.split('.')[0];
+    if (host && (lower === host || lower === shortHost)) return undefined;
+    if (JUNK_TITLES.has(lower)) return undefined;
+    const chars = Array.from(t);
+    return chars.length > TITLE_MAX_CHARS ? chars.slice(0, TITLE_MAX_CHARS).join('') : t;
+}
+
+/** Field separator for the list-sessions format below. Titles and paths are
+ *  free text that may contain tabs; US (0x1f) can't be typed into a terminal
+ *  title in practice. pane_title is deliberately the LAST field so even a
+ *  pathological embedded 0x1f only garbles the title, never the fields. */
+export const LIST_FIELD_SEP = '\x1f';
+
+const LIST_SESSIONS_FORMAT = [
+    '#{session_name}',
+    '#{session_created}',
+    '#{session_activity}',
+    '#{pane_current_path}',
+    '#{@vh_title}',
+    '#{@vh_title_manual}',
+    '#{pane_title}',
+].join(LIST_FIELD_SEP);
+
+export interface SessionListLine {
+    name: string;
+    created?: number;   // epoch ms
+    activity?: number;  // epoch ms
+    cwd?: string;
+    /** Current `@vh_title` (trimmed), if any. */
+    vhTitle?: string;
+    /** `@vh_title_manual` is set → the user renamed it; never auto-follow. */
+    manual: boolean;
+    /** Raw `#{pane_title}` of the session's active pane. */
+    paneTitle?: string;
+}
+
+/** Parse one `list-sessions -F LIST_SESSIONS_FORMAT` line. Pure; unit-tested. */
+export function parseSessionListLine(line: string): SessionListLine | undefined {
+    if (!line) return undefined;
+    const parts = line.split(LIST_FIELD_SEP);
+    if (parts.length < 7) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual] = parts;
+    if (!name) return undefined;
+    return {
+        name,
+        created: created ? Number(created) * 1000 : undefined,
+        activity: activity ? Number(activity) * 1000 : undefined,
+        cwd: cwd || undefined,
+        vhTitle: vhTitle.trim() || undefined,
+        manual: manual.trim().length > 0,
+        paneTitle: parts.slice(6).join(LIST_FIELD_SEP) || undefined,
+    };
+}
+
+/**
  * Classify a tmux pane into an AgentState from its current foreground command
  * (`#{pane_current_command}`) and the tail of its visible text (capture-pane).
  * Pure function so the heuristics are unit-testable without tmux.
@@ -777,34 +867,52 @@ export class WebTerminalManager {
      * session (Claude Code working / waiting for input / idle, or plain
      * shell); it is omitted whenever the probe fails, times out, or nothing
      * is recognizable — never an error.
+     *
+     * Auto-title piggybacks here: the SAME list-sessions call carries each
+     * session's `#{pane_title}` plus the current `@vh_title` and the manual
+     * flag (user options expand in -F formats — one subprocess total, replacing
+     * the old per-session `show-options` spawn). When the pane title is
+     * meaningful (see deriveAutoTitle) and the terminal wasn't manually
+     * renamed, it is written through to `@vh_title`, so the sidebar title
+     * FOLLOWS Claude Code's live task summary at poll cadence. Works for cold
+     * sessions too (reaped pty / daemon restart) — it's pure tmux state.
      */
     listSessions(): Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> {
         if (!isTmuxAvailable()) return [];
         try {
+            const env = ptyEnv();
             const r = spawnSync('tmux',
-                ['list-sessions', '-F', '#{session_name}\t#{session_created}\t#{session_activity}\t#{pane_current_path}'],
-                { encoding: 'utf8', env: ptyEnv() });
+                ['list-sessions', '-F', LIST_SESSIONS_FORMAT],
+                { encoding: 'utf8', env });
             if (r.status !== 0 || !r.stdout) return [];
+            const hostname = os.hostname();
             const out: Array<{ id: string; title?: string; cwd?: string; createdAt?: number; activityAt?: number; agentState?: AgentState }> = [];
             for (const line of r.stdout.split('\n')) {
-                if (!line) continue;
-                const [name, created, activity, cwd] = line.split('\t');
-                if (!name || !name.startsWith('vh-')) continue;
-                const id = name.slice(3);
-                let title: string | undefined;
-                try {
-                    const t = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8', env: ptyEnv() });
-                    if (t.status === 0 && t.stdout && t.stdout.trim()) title = t.stdout.trim();
-                } catch { /* no title set */ }
+                const s = parseSessionListLine(line);
+                if (!s || !s.name.startsWith('vh-')) continue;
+                const id = s.name.slice(3);
+                let title = s.vhTitle;
+                const auto = deriveAutoTitle(s.paneTitle, hostname);
+                if (auto && !s.manual && auto !== title) {
+                    // Follow the pane title into the cross-device truth. Overwrites
+                    // any previous AUTO title on purpose (the summary tracks the
+                    // task); a manual rename (flag) is never touched. Best-effort:
+                    // on failure we just report the stored title this round.
+                    try {
+                        const w = spawnSync('tmux', ['set-option', '-t', `=${s.name}:`, '@vh_title', auto],
+                            { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+                        if (w.status === 0) title = auto;
+                    } catch { /* keep the stored title */ }
+                }
                 out.push({
                     id,
                     title,
-                    cwd: cwd || undefined,
-                    createdAt: created ? Number(created) * 1000 : undefined,
+                    cwd: s.cwd,
+                    createdAt: s.created,
                     // tmux last-activity (epoch s) → ms; optional so old daemons
                     // simply omit it and web clients fall back to createdAt.
-                    activityAt: activity ? Number(activity) * 1000 : undefined,
-                    agentState: this.probeAgentState(name),
+                    activityAt: s.activity,
+                    agentState: this.probeAgentState(s.name),
                 });
             }
             return out;
@@ -903,9 +1011,20 @@ export class WebTerminalManager {
     }
 
     /** Persist a human title on the tmux session (`@vh_title`) so every device
-     *  sees the same name. `ifAbsent` (used by auto-titling from the first
-     *  command) skips when a title already exists, so it never clobbers a
-     *  manual rename on reattach.
+     *  sees the same name.
+     *
+     *  `ifAbsent` (the web's first-command fallback auto-title) skips when a
+     *  title already exists, so it never clobbers an existing name on reattach.
+     *  It does NOT mark the title manual — a fallback title stays overridable
+     *  by the pane-title auto-follow (listSessions), e.g. when claude starts
+     *  later in that shell.
+     *
+     *  A direct set (`ifAbsent=false`) is a USER RENAME — sidebar rename or the
+     *  web's pendingTitle re-push of one — and additionally stamps
+     *  `@vh_title_manual`, which permanently stops the auto-follow for this
+     *  terminal (a title the user chose must not drift with the task summary).
+     *  The flag lives in tmux, not daemon memory, so it survives daemon
+     *  restarts and is visible to the listSessions format read.
      *
      *  Returns whether the machine actually holds a title now: the web's
      *  `pendingTitle` mechanism treats the RPC's success as the machine's ack
@@ -923,7 +1042,11 @@ export class WebTerminalManager {
                 if (cur.status === 0 && cur.stdout && cur.stdout.trim()) return true; // already titled
             }
             const r = spawnSync('tmux', ['set-option', '-t', name, '@vh_title', title], { stdio: 'ignore', env: ptyEnv() });
-            return r.status === 0;
+            if (r.status !== 0) return false;
+            if (!ifAbsent) {
+                try { spawnSync('tmux', ['set-option', '-t', name, '@vh_title_manual', '1'], { stdio: 'ignore', env: ptyEnv() }); } catch { /* best-effort */ }
+            }
+            return true;
         } catch {
             return false; // session gone
         }
