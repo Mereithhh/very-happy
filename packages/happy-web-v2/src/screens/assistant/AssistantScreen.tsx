@@ -32,6 +32,7 @@ import { TtsPlayer } from '@/assistant/ttsPlayer';
 import { unlockAudioPlayback, releaseAudioKeepAlive } from '@/assistant/iosAudioUnlock';
 import { useAssistantStore, deriveVoiceState } from '@/assistant/assistantStore';
 import { AssistantLogo, type AssistantLogoState } from './AssistantLogo';
+import { CyberMark } from '@/ui';
 import './assistant.css';
 
 export function AssistantScreen() {
@@ -367,7 +368,7 @@ export function AssistantScreen() {
                 {gate ?? (
                     <>
                         <div className="as-stage">
-                            <AssistantLogo state={logoState} />
+                            <AssistantLogo state={logoState} glyph={<CyberMark size={44} />} />
                             <div
                                 className="as-state-label"
                                 data-live={logoState === 'listening' || logoState === 'speaking'}
