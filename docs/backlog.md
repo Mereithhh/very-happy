@@ -30,6 +30,10 @@
 | B-009 | `--version` 不提前退出会继续 daemon 流程——worktree 冒烟劫持生产 daemon（2026-08-13 真实事故：daemon 从已删 worktree 跑→posix_spawnp failed） | bug | 事故复盘 | todo | 修 CLI 让 --version 立即退出；冒烟命令已在 CLAUDE.md 改为 HAPPY_HOME_DIR 隔离 |
 | B-010 | 侧边栏双形态：列表/状态/归档三段 + 删搜索框 | ux | Owner 2026-08-13 | done | Shipped web 66546248 |
 | B-011 | 陈旧 bundle 复活已删终端——自动重载已上线 | bug | 实报+日志实锤 | done | Shipped 15c64f3f；各设备需手动最后刷新一次以获得自愈能力 |
+| B-012 | 终端里的 claude 也发「等待下一步指令」通知（daemon agentState 跳变→webhook；聊天会话有、终端没有的对齐） | feat | Owner 2026-08-13 | doing | daemon 转变跟踪 + /v1/webhook/notify 扩 event/link 字段 |
+| B-013 | 终端会话支持快捷指令（promptPresets 经 bracketed paste 写入 PTY，不自动回车） | feat | Owner 2026-08-13 | doing | PC=header 工具区；移动=快捷键行 |
+| B-014 | 聊天会话渲染体验：移动端排版走查 + 代码块/工具输出一键复制 | ux | Owner 2026-08-13 | todo | 等 UX 走查报告后实施 |
+| B-015 | iOS 橡皮筋回弹去除 | ux | Owner 2026-08-13 | done | Shipped ea080eec（顺带禁 PWA 下拉刷新） |
 
 ## 近期完成
 

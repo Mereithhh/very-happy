@@ -86,7 +86,10 @@ class Logger {
     maxArrayLength: number = 10,
   ): void {
     if (!process.env.DEBUG) {
+      // Without this return the full (truncated-but-still-huge) JSON below was
+      // written in production too — the direct source of a 132MB daemon log.
       this.debug(`In production, skipping message inspection`)
+      return
     }
 
     // Some of our messages are huge, but we still want to show them in the logs

@@ -9,6 +9,7 @@ import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
+import { pruneLogsDir } from '@/ui/logPrune';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -97,6 +98,13 @@ export async function startDaemon(): Promise<void> {
     logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
     requestShutdown('exception', error.message);
   });
+
+  // Retention sweep: ~/.happy/logs grows unbounded otherwise (746MB found in
+  // the field). Age+size capped, own log file protected, never throws.
+  const prunedLogs = pruneLogsDir(configuration.logsDir, new Set([logger.logFilePath]));
+  if (prunedLogs > 0) {
+    logger.debug(`[DAEMON RUN] Pruned ${prunedLogs} old log file(s) from ${configuration.logsDir}`);
+  }
 
   process.on('unhandledRejection', (reason, promise) => {
     logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);

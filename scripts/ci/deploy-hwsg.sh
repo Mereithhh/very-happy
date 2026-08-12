@@ -67,7 +67,11 @@ deploy_web() {
     echo "== web: stage → swap → restart → verify =="
     ssh_x 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
     tar czf - -C "$WEB/dist" . | ssh_x 'tar xzf - -C /opt/happy/webapp.new'
-    ssh_x 'cd /opt/happy && cp -a webapp webapp.prev 2>/dev/null; find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new && docker compose restart happy-server >/dev/null 2>&1'
+    # rm before cp: with an existing webapp.prev DIRECTORY, `cp -a webapp webapp.prev`
+    # copies INTO it (webapp.prev/webapp/...), so the top level stays the FIRST deploy
+    # forever — the rollback material PROCESS.md points at was garbage. Backup failure
+    # aborts the swap (&&): better a failed deploy than no rollback path.
+    ssh_x 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new && docker compose restart happy-server >/dev/null 2>&1'
     wait_health
     local main ct
     main=$(curl -s https://happy.mereith.com/ | grep -oE '/assets/[^"]+\.js' | head -1)

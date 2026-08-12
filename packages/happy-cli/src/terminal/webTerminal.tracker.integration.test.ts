@@ -154,10 +154,10 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         expect(attached.tmuxSession).toBe(`vh-${TID3}`);
         mgr.killSession(TID3);
 
-        // Legacy compat: an open WITHOUT the flags keeps create-or-attach
-        // (old clients still create through the same RPC).
-        const recreated = mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
-        expect(recreated.terminalId).toBe(TID2);
-        mgr.killSession(TID2);
+        // Kill tombstones: even a legacy create-or-attach open (no flags) must
+        // NOT resurrect a killed id — this WAS the delete-resurrection bug
+        // (stale-client legacy opens recreating deleted terminals).
+        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir }))
+            .toThrow('terminal-gone');
     }, 60_000);
 });
