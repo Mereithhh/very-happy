@@ -307,6 +307,10 @@ export async function machineOpenTerminal(
          *  client can't know whether `vh-<id>` already exists on the machine).
          *  Old daemons ignore the extra field → nothing runs. */
         startupCommand?: string;
+        /** This open is a catch-up from a viewer that already subscribed —
+         *  the daemon must not count it as a new subscriber (old daemons
+         *  ignore it = legacy conservative counting). */
+        resub?: boolean;
     },
 ): Promise<OpenTerminalOk | { success: false; error: string }> {
     try {

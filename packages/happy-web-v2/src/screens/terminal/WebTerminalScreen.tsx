@@ -488,6 +488,9 @@ export function WebTerminalScreen() {
             // must send a full snapshot rather than an (empty-looking) replay.
             fromSeq: opts?.forceSnapshot ? undefined : seqAtCall,
             encStream: true,
+            // Catch-up, not a new viewer: don't inflate the daemon's
+            // subscriber count (the mount-time open below already counted us).
+            resub: true,
           });
           if (disposed || !res.success) return;
           enc = res.encStream === true;

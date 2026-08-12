@@ -73,6 +73,10 @@ export interface OpenTerminalOptions {
      *  Enter, so tmux never parses the command's content. Empty/absent → run
      *  nothing (old clients simply don't send the field). */
     startupCommand?: string;
+    /** Catch-up from a viewer that already holds a subscription (visibility /
+     *  reconnect refresh) — do NOT count it as a new subscriber. Old clients
+     *  never send it (legacy = every open counts, conservative). */
+    resub?: boolean;
 }
 
 /** Result of (re)subscribing to a terminal.
@@ -859,7 +863,14 @@ export class WebTerminalManager {
         if (existing) {
             // Re-subscribe to the live session. The pty stays; we only bump the
             // subscriber count and resize to the (possibly new) client geometry.
-            existing.subscribers += 1;
+            //
+            // `resub` marks a catch-up from a viewer that ALREADY holds a
+            // subscription (visibility/reconnect refresh): it must not inflate
+            // the count — each catchUp used to +1 while terminal-close only
+            // ever -1'd once, permanently pinning the pty past the idle reaper
+            // (subs=2→3→4 observed in the field). Old webs never send the flag
+            // and keep the (conservative) legacy behavior.
+            if (!opts.resub || existing.subscribers === 0) existing.subscribers += 1;
             existing.lastTouch = Date.now();
             this.applyResize(existing, cols, rows);
             const state = existing.subscribeState(opts.fromSeq);
