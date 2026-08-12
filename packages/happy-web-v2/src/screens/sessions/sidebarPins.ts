@@ -65,6 +65,22 @@ export function reorderPin(pinned: PinnedRow[], from: number, to: number): Pinne
   return next;
 }
 
+/** Upsert-at-position (drag-to-pin drop): ensure `key` is pinned and sits at
+ *  index `to`, where `to` is counted over the list WITH `key` removed — i.e.
+ *  exactly the insertion index a drag computes against the other rows.
+ *  Unpinned keys are inserted, already-pinned keys are moved; out-of-range
+ *  targets clamp. Returns the SAME array when the result is identical, so
+ *  callers can skip a settings write on a no-op drop. */
+export function upsertPinAt(pinned: PinnedRow[], key: string, to: number): PinnedRow[] {
+  const without = pinned.filter((p) => p.key !== key);
+  const clamped = Math.max(0, Math.min(without.length, to));
+  const next = [...without.slice(0, clamped), { key }, ...without.slice(clamped)];
+  if (next.length === pinned.length && next.every((p, i) => p.key === pinned[i].key)) {
+    return pinned;
+  }
+  return next;
+}
+
 /** Drop pinned keys that are no longer valid (deleted sessions, archived
  *  sessions, dead terminals). Returns null when nothing changed, so callers
  *  only write settings back on a real prune. */

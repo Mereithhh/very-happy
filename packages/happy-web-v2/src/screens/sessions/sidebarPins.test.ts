@@ -5,6 +5,7 @@ import {
   togglePin,
   movePin,
   reorderPin,
+  upsertPinAt,
   prunePinned,
   type PinnedRow,
 } from './sidebarPins';
@@ -78,6 +79,41 @@ describe('reorderPin', () => {
     const pins = P('a', 'b');
     expect(reorderPin(pins, 1, 1)).toBe(pins);
     expect(reorderPin(pins, -1, 0)).toBe(pins);
+  });
+});
+
+describe('upsertPinAt', () => {
+  it('inserts an unpinned key at the given position', () => {
+    expect(upsertPinAt(P('a', 'b'), 'x', 0)).toEqual(P('x', 'a', 'b'));
+    expect(upsertPinAt(P('a', 'b'), 'x', 1)).toEqual(P('a', 'x', 'b'));
+    expect(upsertPinAt(P('a', 'b'), 'x', 2)).toEqual(P('a', 'b', 'x'));
+  });
+
+  it('pins into an empty list', () => {
+    expect(upsertPinAt([], 'x', 0)).toEqual(P('x'));
+  });
+
+  it('moves an already-pinned key (index counted with the key removed)', () => {
+    // dragging 'a' below 'b': others = [b, c], insertion index 1 → a b→ b a c
+    expect(upsertPinAt(P('a', 'b', 'c'), 'a', 1)).toEqual(P('b', 'a', 'c'));
+    expect(upsertPinAt(P('a', 'b', 'c'), 'c', 0)).toEqual(P('c', 'a', 'b'));
+    expect(upsertPinAt(P('a', 'b', 'c'), 'a', 2)).toEqual(P('b', 'c', 'a'));
+  });
+
+  it('clamps out-of-range targets', () => {
+    expect(upsertPinAt(P('a', 'b'), 'x', 99)).toEqual(P('a', 'b', 'x'));
+    expect(upsertPinAt(P('a', 'b'), 'x', -1)).toEqual(P('x', 'a', 'b'));
+  });
+
+  it('returns the SAME array on a no-op drop (no settings write)', () => {
+    const pins = P('a', 'b', 'c');
+    expect(upsertPinAt(pins, 'a', 0)).toBe(pins);
+    expect(upsertPinAt(pins, 'b', 1)).toBe(pins);
+    expect(upsertPinAt(pins, 'c', 99)).toBe(pins);
+  });
+
+  it('duplicate entries of the key collapse into one at the target', () => {
+    expect(upsertPinAt(P('a', 'x', 'b', 'x'), 'x', 0)).toEqual(P('x', 'a', 'b'));
   });
 });
 

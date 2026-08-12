@@ -69,8 +69,17 @@ function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// DEV-ONLY sidebar harness (real <Sidebar/> on seeded stores, no login) —
+// import.meta.env.DEV means vite strips both route and chunk from prod builds.
+const SidebarHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/SidebarHarness').then((m) => ({ default: m.SidebarHarness })))
+  : null;
+
 const router = createBrowserRouter(
   [
+    ...(SidebarHarness
+      ? [{ path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> }]
+      : []),
     {
       path: '/login',
       element: (
