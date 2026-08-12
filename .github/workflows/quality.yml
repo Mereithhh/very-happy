@@ -1,0 +1,148 @@
+name: Quality Gates
+
+# 质量门禁（docs/PROCESS.md §3 的 CI 落地）——push main + 所有 PR 必跑。
+#
+# Job 结构（全部并行，互不等待）：
+#   wire              happy-wire build（tsc + pkgroll）+ vitest —— 后续包依赖它的 dist，
+#                     但为了并行省墙钟时间，每个依赖它的 job 自己再 build 一次（<30s）。
+#   web-v2            vitest run + vite build（注意：不走 `pnpm build`，那会先跑
+#                     `tsc -b` 撞上存量类型债）。
+#   web-v2-typecheck  tsc --noEmit，⚠️ 目前 non-blocking（continue-on-error）：
+#                     存量 ~490 个 tsc 错误正在清偿（PROCESS.md §3 的红线是
+#                     "只减不增"，用 stash 对照人工把关）。**存量清零后把
+#                     continue-on-error 删掉翻成硬门。**
+#   cli               pnpm build + vitest unit（integration 项目要起真 daemon /
+#                     真 Claude 环境，CI 上不跑）+ `node dist/index.mjs --version`
+#                     运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例）。
+#                     cli/server 的 tsc 本来就干净：cli build 内含 tsc --noEmit，硬门。
+#   server            tsc --noEmit + vitest run（纯单测，不需要 DB/Redis）。
+#
+# 成本考量（私有仓按 job 分钟计费）：5 个 ubuntu job 并行，单 job 目标 2-5 分钟，
+# 全流程墙钟 ~5 分钟 / 计费 ~15 分钟以内。pnpm store 走 setup-node 缓存；
+# PR 上后续 push 会取消进行中的旧 run（concurrency）。不加 macOS/Windows
+# （10x/2x 计费），跨平台安装冒烟由 cli-smoke-test.yml 按 paths 触发兜底。
+#
+# 惯例：deploy-hwsg.yml 手动发布前先等本 workflow 绿（见该文件注释）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  wire:
+    name: happy-wire (build + test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # 不写 version：pnpm/action-setup 读根 package.json 的 packageManager 字段
+      # （pnpm@10.11.0），单一事实源，升级 pnpm 只改 packageManager 即可。
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build happy-wire
+        run: pnpm --filter @slopus/happy-wire build
+      - name: Test happy-wire
+        run: pnpm --filter @slopus/happy-wire exec vitest run
+
+  web-v2:
+    name: happy-web-v2 (test + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build happy-wire (dependency dist)
+        run: pnpm --filter @slopus/happy-wire build
+      - name: Test happy-web-v2
+        run: pnpm --filter @slopus/happy-web-v2 exec vitest run
+      # 刻意不用 `pnpm --filter @slopus/happy-web-v2 build`：那个 script 是
+      # `tsc -b && vite build`，会被存量类型债挡住。门禁口径（PROCESS.md §3）
+      # 是 vite build 成功；typecheck 单独在 web-v2-typecheck job 里跑。
+      - name: Build happy-web-v2 (vite build)
+        run: pnpm --filter @slopus/happy-web-v2 exec vite build
+
+  # ⚠️ non-blocking：happy-web-v2 有 ~490 个存量 tsc 错误正在清偿中。
+  # 在此期间本 job 只作观测（红了不挡 merge），"只减不增"仍按 PROCESS.md §3
+  # 用 stash 对照人工把关。存量清零后：删掉下面的 continue-on-error，
+  # 并把 job 名里的 non-blocking 字样去掉，翻成硬门。
+  web-v2-typecheck:
+    name: happy-web-v2 typecheck (non-blocking, 存量清零后翻硬)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build happy-wire (dependency dist)
+        run: pnpm --filter @slopus/happy-wire build
+      - name: Typecheck happy-web-v2 (tsc --noEmit)
+        run: pnpm --filter @slopus/happy-web-v2 typecheck
+
+  cli:
+    name: happy-cli (build + unit + smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build happy-wire (dependency dist)
+        run: pnpm --filter @slopus/happy-wire build
+      # build 内含 tsc --noEmit（cli 的 tsc 是干净的，硬门）+ pkgroll 打包。
+      - name: Build very-happy-cli
+        run: pnpm --filter very-happy-cli build
+      # 只跑 unit 项目。vitest.config.ts 里 integration-empty / integration-plan-mode /
+      # integration-authenticated 三个项目要起真 daemon / 真 Claude 二进制，CI 上不跑
+      # （其中 daemon.integration "second daemon" 在本地也是已知环境例外）。
+      - name: Unit tests (vitest --project unit)
+        run: pnpm --filter very-happy-cli exec vitest run --project unit
+      # 运行冒烟：build 绿 ≠ 运行不崩（CJS/ESM 装配有过事故先例）。
+      - name: Runtime smoke (node dist/index.mjs --version)
+        run: node packages/happy-cli/dist/index.mjs --version
+
+  server:
+    name: happy-server (typecheck + test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      # postinstall 会跑 prisma generate（tsc/vitest 需要生成的 client 类型）。
+      - run: pnpm install --frozen-lockfile
+      - name: Build happy-wire (dependency dist)
+        run: pnpm --filter @slopus/happy-wire build
+      - name: Typecheck happy-server (tsc --noEmit)
+        run: pnpm --filter happy-server-self-host typecheck
+      - name: Test happy-server
+        run: pnpm --filter happy-server-self-host exec vitest run

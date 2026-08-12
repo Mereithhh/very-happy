@@ -4,6 +4,11 @@ name: Deploy to hw-sg
 # to hw-sg over SSH. Never runs automatically — you trigger it from the Actions
 # tab or `gh workflow run deploy-hwsg.yml -f target=all`.
 #
+# 惯例：先等目标 commit 的 quality.yml（Quality Gates）跑绿再触发本 deploy
+# （核对：`gh run list --workflow=quality.yml --commit=<sha>`）。这里刻意
+# **不做硬依赖**——保留应急直发通道（quality 挂了但要紧急回滚/热修时仍可发），
+# 但常态下跳过 quality 直发视为违规操作。
+#
 # Requires repo secrets: HWSG_SSH_KEY (private key), HWSG_HOST, HWSG_PORT,
 # HWSG_USER. The matching public key is in hw-sg's authorized_keys.
 

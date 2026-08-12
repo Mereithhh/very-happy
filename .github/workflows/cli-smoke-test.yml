@@ -67,6 +67,11 @@ jobs:
       - name: Run very-happy subcommands
         shell: bash
         run: |
+          # macOS runner 没有 GNU `timeout`（历史上 macOS 两个矩阵格子因此秒挂），
+          # 用 perl alarm 做等价 shim；ubuntu/windows(git-bash) 自带 timeout 不受影响。
+          if ! command -v timeout >/dev/null 2>&1; then
+            timeout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          fi
           echo "very-happy --version"
           timeout 30 very-happy --version || { echo "FAIL: --version"; exit 1; }
           echo "very-happy --help"
