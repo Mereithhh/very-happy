@@ -125,6 +125,13 @@
   white-space: nowrap;
 }
 
+.cp-item-hint {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
 .cp-empty {
   padding: var(--sp-6) var(--sp-4);
   text-align: center;

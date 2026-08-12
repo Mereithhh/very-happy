@@ -1,6 +1,7 @@
 import { EmptyState, Button } from '@/ui';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
+import { createTerminalOrPick } from '@/app/newTerminal';
 
 export function EmptyDetail() {
   const navigate = useNavigate();
@@ -11,7 +12,7 @@ export function EmptyDetail() {
         title={t('emptyState.pickUpTitle' as any)}
         description={t('emptyState.pickUpDescription' as any)}
         actions={
-          <Button variant="primary" onClick={() => navigate('/terminal')}>
+          <Button variant="primary" onClick={() => createTerminalOrPick(navigate)}>
             {t('emptyState.newSession' as any)}
           </Button>
         }

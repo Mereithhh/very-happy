@@ -9,11 +9,11 @@ import {
   Pencil,
   Archive,
 } from 'lucide-react';
-import { useSessions, useAllMachines } from '@/sync/storage';
+import { useSessions } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { activeTerminals } from '@/sync/terminalListOps';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { isMachineOnline } from '@/utils/machineUtils';
+import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -29,6 +29,8 @@ type CommandItem = {
   icon: React.ReactNode;
   /** lower-cased haystack for substring matching */
   haystack: string;
+  /** optional keyboard-shortcut hint rendered on the row's right edge */
+  hint?: string;
   run: () => void | Promise<void>;
 };
 
@@ -36,10 +38,6 @@ type CommandItem = {
 function matchScore(haystack: string, q: string): number {
   if (!q) return 0;
   return haystack.indexOf(q);
-}
-
-function machineLabel(m: { id: string; metadata: { displayName?: string; host?: string } | null }): string {
-  return m.metadata?.displayName || m.metadata?.host || m.id.slice(0, 8);
 }
 
 export function CommandPalette() {
@@ -58,7 +56,6 @@ export function CommandPalette() {
 
   const sessions = useSessions();
   const terminals = useTerminalSessions((s) => s.terminals);
-  const machines = useAllMachines();
 
   const close = useCallback(() => {
     setOpen(false);
@@ -93,17 +90,8 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  const openNewTerminal = useCallback(() => {
-    const online = machines.filter((m) => isMachineOnline(m));
-    if (online.length === 1) {
-      const m = online[0];
-      const term = useTerminalSessions.getState().create(m.id, machineLabel(m));
-      navigate(`/terminal/${m.id}?tid=${term.id}`);
-    } else {
-      // 0 or >1 online → let the picker handle it
-      navigate('/terminal');
-    }
-  }, [machines, navigate]);
+  // one online machine → direct create; 0 / >1 → picker (shared entry point)
+  const openNewTerminal = useCallback(() => createTerminalOrPick(navigate), [navigate]);
 
   const renameCurrent = useCallback(async () => {
     if (!currentSessionId) return;
@@ -139,6 +127,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewTerminal'),
       icon: <TerminalSquare size={16} />,
       haystack: (t('commandPalette.actionNewTerminal') as string).toLowerCase(),
+      hint: NEW_TERMINAL_SHORTCUT_HINT,
       run: openNewTerminal,
     });
     out.push({
@@ -352,6 +341,7 @@ export function CommandPalette() {
                           <span className="cp-item-title">{it.title}</span>
                           {it.subtitle ? <span className="cp-item-sub">{it.subtitle}</span> : null}
                         </span>
+                        {it.hint ? <kbd className="cp-item-hint">{it.hint}</kbd> : null}
                       </button>
                     ))}
                   </div>
