@@ -14,6 +14,7 @@ import {
   machineScrollTerminal,
 } from '@/sync/ops';
 import { installMobileInputBridge, toPtyText } from './mobileInputBridge';
+import { installImeStuckGuard } from './imeStuckGuard';
 import { TermInputBar } from './TermInputBar';
 import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -328,6 +329,7 @@ export function WebTerminalScreen() {
     // view of the field, and could strand an undeletable last letter). Installed
     // after term.open (below, in the IS_COARSE_POINTER block).
     let mobileBridge: ReturnType<typeof installMobileInputBridge> = null;
+    let imeGuard: ReturnType<typeof installImeStuckGuard> = null;
 
     // FALLBACK auto-title from the first typed line — plain-shell terminals
     // only. The PRIMARY auto-title is the daemon following the pane's OSC
@@ -936,6 +938,16 @@ export function WebTerminalScreen() {
       document.addEventListener('mouseup', onDocMouseUp, true);
       document.addEventListener('mousemove', onDocMouseMove, true);
       window.addEventListener('blur', onWinBlur);
+      // Desktop IME stuck-composition guard: a macOS input-source switch
+      // mid-composition can abort WITHOUT compositionend — xterm then swallows
+      // every CJK-IME key ("只能英文输入") and the next English key commits the
+      // aborted preedit as a stray letter. refocus()'s blur heal does NOT
+      // reach this state (no browser composition → blur fires nothing); the
+      // guard detects it on the next keydown and resets the helper. Also
+      // clears settled composition residue from the helper textarea (desktop
+      // only — mobileInputBridge OWNS the textarea model on coarse pointers).
+      // Full failure-mode write-up in ./imeStuckGuard.ts.
+      imeGuard = installImeStuckGuard(term);
     }
     // Mobile select-mode: freeze output for the whole mode — the mode exists
     // solely to let the OS long-press selection work on stable DOM text, and a
@@ -987,6 +999,8 @@ export function WebTerminalScreen() {
         document.removeEventListener('mouseup', onDocMouseUp, true);
         document.removeEventListener('mousemove', onDocMouseMove, true);
         window.removeEventListener('blur', onWinBlur);
+        imeGuard?.dispose();
+        imeGuard = null;
       }
       writeHoldRef.current = null;
       sendInputRef.current = null;
