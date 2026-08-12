@@ -964,6 +964,15 @@ export class WebTerminalManager {
             const optArgs = [
                 ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
                 ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                // Native-terminal feel: hide tmux's green status bar. The web
+                // header already shows the session title, so the bar is pure
+                // tmux noise there. Session-scoped ⇒ a LOCAL `tmux attach -t
+                // vh-*` for debugging also loses the bar — accepted trade-off
+                // (`tmux set -t <sess> status on` brings it back if needed).
+                // tmux reflows the pane to reclaim the row by itself; the
+                // copy-mode position indicator ([0/1234], top-right) lives in
+                // the pane, not the bar, so scrollback review keeps its signal.
+                ['set-option', '-t', `=${tmuxSession}:`, 'status', 'off'],
                 // Re-emit the pane's title to the attach client (OSC 0), with
                 // the raw pane_title as the string. This is what makes the
                 // headless Terminal's onTitleChange fire for LIVE sessions —
@@ -1021,6 +1030,11 @@ export class WebTerminalManager {
             //     copy-mode review depth. NOTE it only affects panes created
             //     AFTER it's set; the initial pane keeps the server default,
             //     which is also 2000 — the option pins that against user configs.
+            //   - status OFF: native-terminal feel — the web renders these
+            //     sessions as plain terminals, so tmux's green status bar is
+            //     noise (the web header owns the title). tmux reclaims the row
+            //     and reflows on its own. See the optArgs copy above for the
+            //     local-attach trade-off.
             //  Server-scoped (`-g`, no session-scoped equivalent exists):
             //   - set-clipboard on + terminal-features …:clipboard: make tmux
             //     emit an OSC 52 escape when copying (keyboard copy-mode yank), so
@@ -1029,6 +1043,7 @@ export class WebTerminalManager {
             const setOpts = [
                 `tmux set-option -t ${tmuxSession} mouse off`,
                 `tmux set-option -t ${tmuxSession} history-limit 2000`,
+                `tmux set-option -t ${tmuxSession} status off`,
                 `tmux set-option -t ${tmuxSession} set-titles on`,
                 `tmux set-option -t ${tmuxSession} set-titles-string '#{pane_title}'`,
                 `tmux set-option -g set-clipboard on`,
