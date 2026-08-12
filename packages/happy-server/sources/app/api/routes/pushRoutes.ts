@@ -237,15 +237,22 @@ export function pushRoutes(app: Fastify) {
         return reply.send({ success: true });
     });
 
-    // Manual webhook notification (web-initiated, e.g. "mark done" on the
-    // task board). The web CANNOT post to the user's webhook itself — the URL
-    // is server-side state and delivery must go through the SSRF guard — so
-    // it asks the server to forward a small {title,message} through the
-    // account's configured webhook. No events-category filtering: the
-    // completed/permission toggles gate AUTOMATIC events; an explicit user
-    // action is always wanted. Best-effort like every webhook send.
-    // Rate-limited per account so a scripted client can't turn the server
-    // into a request cannon.
+    // Manual + automatic webhook notification.
+    //  - MANUAL (web-initiated, e.g. "mark done" on the task board; no `event`
+    //    field): the web CANNOT post to the user's webhook itself — the URL is
+    //    server-side state and delivery must go through the SSRF guard — so it
+    //    asks the server to forward a small {title,message} through the
+    //    account's configured webhook. No events-category filtering: the
+    //    completed/permission toggles gate AUTOMATIC events; an explicit user
+    //    action is always wanted.
+    //  - AUTOMATIC (daemon-initiated, carries `event`; today: web-terminal
+    //    agent transitions): filtered by the account webhook config's `events`
+    //    subscription — unsubscribed events return delivered:false without
+    //    sending. `link` is a web-app path appended as a clickable 链接 line
+    //    (see buildManualWebhookPayload). Old clients send neither field and
+    //    keep the manual behavior — bidirectional compatibility by design.
+    // Best-effort like every webhook send. Rate-limited per account so a
+    // scripted client can't turn the server into a request cannon.
     const allowNotify = createAccountRateLimiter({ max: 30, windowMs: 60_000 });
 
     app.post('/v1/webhook/notify', {
@@ -255,6 +262,8 @@ export function pushRoutes(app: Fastify) {
                 message: z.string().max(1000).optional(),
                 sessionId: z.string().max(200).optional(),
                 taskId: z.string().max(200).optional(),
+                event: z.enum(WEBHOOK_EVENTS).optional(),
+                link: z.string().max(300).startsWith('/').optional(),
             }),
             response: {
                 200: z.object({
@@ -283,6 +292,11 @@ export function pushRoutes(app: Fastify) {
         if (!config) {
             // Not an error: a user without a webhook clicking "done" should
             // never see a failure — the notification is simply not wired up.
+            return reply.send({ ok: true, delivered: false });
+        }
+        // Automatic events respect the account's event-subscription toggles;
+        // manual notifications (no `event`) are always wanted.
+        if (request.body.event && !config.events.includes(request.body.event)) {
             return reply.send({ ok: true, delivered: false });
         }
         const payload = buildManualWebhookPayload(request.body);

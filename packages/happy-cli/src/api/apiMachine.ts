@@ -13,6 +13,7 @@ import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
+import { sendTerminalNotification, terminalNotifyLink, terminalNotifyMessage } from '@/terminal/terminalNotify';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
@@ -152,6 +153,21 @@ export class ApiMachineClient {
             out = { ...payload, data: this.encTerminalData(payload.data), enc: true };
         }
         (this.socket as any)?.emit(event, out);
+    }, (n) => {
+        // Web-terminal agent transitions (turn finished / waiting for input)
+        // → account webhook, via the server's /v1/webhook/notify. This is the
+        // bare-tmux counterpart of the session path's push-event: the tracker
+        // inside WebTerminalManager already applied stability/cooldown/
+        // eligibility gating, so every callback here is meant to be sent.
+        // Fire-and-forget; the closure reads token/machine at call time.
+        sendTerminalNotification({
+            baseUrl: configuration.serverUrl,
+            token: this.token,
+            title: n.title,
+            message: terminalNotifyMessage(n.event),
+            link: terminalNotifyLink(this.machine.id, n.terminalId),
+            event: n.event,
+        });
     });
 
     /**
