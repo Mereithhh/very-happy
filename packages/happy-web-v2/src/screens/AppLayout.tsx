@@ -7,6 +7,7 @@ import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
+import { useCloseViewShortcuts } from '@/app/viewShortcuts';
 import './layout.css';
 
 export function AppLayout() {
@@ -17,6 +18,7 @@ export function AppLayout() {
   // ⌘N (PWA) / ⌥N (normal tab) → new terminal. Layout level for the same
   // reason: must work with the sidebar collapsed/unmounted.
   useNewTerminalShortcuts();
+  useCloseViewShortcuts();
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === '/' || location.pathname === '';
