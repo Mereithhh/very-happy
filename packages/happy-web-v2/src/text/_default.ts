@@ -571,10 +571,39 @@ export const en = {
         actionArchiveSession: 'Archive current chat',
         actionOpenSettings: 'Open settings',
         actionClipboardHistory: 'Clipboard history',
+        actionAssistant: 'Voice assistant',
         renamePromptTitle: 'Rename chat',
         hintNavigate: '↑↓ to navigate',
         hintSelect: '↵ to select',
         hintClose: 'esc to close',
+    },
+
+    // /assistant — the Siri-like voice form (B-051)
+    assistant: {
+        title: 'Voice assistant',
+        back: 'Back',
+        holdToTalk: 'Hold to talk',
+        enableVoice: 'Enable voice',
+        newConversation: 'New conversation',
+        textPlaceholder: 'Type instead…',
+        send: 'Send',
+        retry: 'Retry',
+        connecting: 'Preparing assistant session…',
+        stateIdle: 'ready',
+        stateListening: 'listening…',
+        stateTranscribing: 'transcribing…',
+        stateThinking: 'thinking…',
+        stateSpeaking: 'speaking…',
+        noMachineTitle: 'No machine online',
+        noMachineDesc: 'The assistant runs on one of your machines. Start the happy daemon on a machine, then come back.',
+        chooseMachine: 'Choose a machine for the assistant',
+        upgradeCliTitle: 'CLI upgrade needed',
+        upgradeCliDesc: ({ version, current }: { version: string; current: string }) =>
+            `The voice assistant needs very-happy-cli ≥ ${version} on this machine (currently ${current}). Upgrade and restart the daemon.`,
+        spawnError: 'Failed to start the assistant session',
+        micError: 'Microphone unavailable — check browser permissions',
+        ttsUnavailable: 'Voice replies unavailable — continuing in text-only mode',
+        ttsTruncated: 'Speech truncated — full reply is on screen',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
@@ -955,6 +984,17 @@ export const en = {
     },
 
     settingsVoice: {
+        // Voice settings page (web v2, B-051 assistant TTS)
+        title: 'Voice',
+        subtitle: 'Assistant voice & read-aloud',
+        voice: 'Voice',
+        voiceDefault: 'Server default',
+        preview: 'Preview',
+        voicesUnavailable: 'Voice list unavailable — server not upgraded or voice not configured',
+        readTextReplies: 'Read replies to typed messages',
+        readTextRepliesHint: 'Replies to voice messages are always read aloud',
+        assistantMachine: 'Assistant machine',
+        assistantMachineAuto: 'Automatic (sole online machine)',
         // Voice settings screen
         languageTitle: 'Language',
         languageDescription: 'Choose your preferred language for voice assistant interactions. This setting syncs across all your devices.',

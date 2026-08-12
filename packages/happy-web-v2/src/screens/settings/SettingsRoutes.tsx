@@ -100,6 +100,7 @@ import type { NotifType } from '@/sync/feedTypes';
 import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
 import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
+import { VoiceSettings } from './VoiceSettings';
 import { CodeView } from '@/screens/session/CodeView';
 import './settings.css';
 
@@ -230,6 +231,13 @@ function Overview() {
             left={<Cable size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/channels')}
+          />
+          <Item
+            title={t('settingsVoice.title')}
+            subtitle={t('settingsVoice.subtitle')}
+            left={<Volume2 size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/voice')}
           />
           <Item
             title={t('settings.usage')}
@@ -1974,6 +1982,7 @@ export function SettingsRoutes() {
       <Route path="snippets" element={<Snippets />} />
       <Route path="notifications" element={<Notifications />} />
       <Route path="channels" element={<Channels />} />
+      <Route path="voice" element={<VoiceSettings />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />
