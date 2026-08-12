@@ -46,7 +46,7 @@ triage（分独立/冲突域）
 
 | 包 | 门禁 |
 |---|---|
-| happy-web-v2 | `pnpm exec vitest run` 全绿 + `pnpm exec vite build` 成功 + **tsc stash 对照零新增**（存量 ~490 债只减不增） |
+| happy-web-v2 | `pnpm exec vitest run` 全绿 + `pnpm exec vite build` 成功 + **`pnpm exec tsc --noEmit` 0 错误**（存量债 2026-08-13 清零，CI 硬门） |
 | happy-cli | `pnpm build` + unit 全绿（daemon.integration "second daemon" 为已知环境例外）+ `node dist/index.mjs --version` 运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例） |
 | happy-server | `tsc --noEmit` + `vitest run` 全绿（**零新 npm 依赖**——bind-mount 约束） |
 
