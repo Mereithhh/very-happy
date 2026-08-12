@@ -129,10 +129,13 @@ export function startDaemonControlServer({
     typed.post('/spawn-session', {
       schema: {
         body: z.object({
-          directory: z.string(),
+          // Optional-with-default (not plain optional): the assistant variant
+          // ignores it and supplies its own home daemon-side.
+          directory: z.string().default(''),
           sessionId: z.string().optional(),
           agent: z.enum(['claude', 'codex', 'gemini', 'openclaw']).optional(),
           environmentVariables: z.record(z.string(), z.string()).optional(),
+          variant: z.enum(['assistant']).optional(),
         }),
         response: {
           200: z.object({
@@ -153,10 +156,15 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant } = request.body;
 
-      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables });
+      if (!directory && variant !== 'assistant') {
+        reply.code(500);
+        return { success: false, error: 'directory is required' };
+      }
+
+      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}`);
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant });
 
       switch (result.type) {
         case 'success':

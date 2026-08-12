@@ -158,6 +158,13 @@ export interface SpawnSessionOptions {
     parentSessionId?: string;
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
+    /**
+     * B-051: spawn the machine's assistant (meta-agent) session. The daemon
+     * forces cwd to ~/.happy/assistant (the passed `directory` is ignored),
+     * bootstraps that home on first use, injects HAPPY_SESSION_VARIANT=assistant
+     * into the spawned CLI, and enforces a per-machine singleton.
+     */
+    variant?: 'assistant';
 }
 
 export type SpawnSessionResult =

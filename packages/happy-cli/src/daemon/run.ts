@@ -21,7 +21,9 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { statSync } from 'fs';
+import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
+import { getProjectPath } from '@/claude/utils/path';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
@@ -256,6 +258,82 @@ export async function startDaemon(): Promise<void> {
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
+      // ── B-051 assistant variant ────────────────────────────────────────────
+      // The machine's meta-agent session. cwd is FORCED to ~/.happy/assistant
+      // (any passed directory is ignored), the home is bootstrapped on first
+      // use, and the session is a per-machine singleton:
+      //   1. a live assistant process → return its session id (no new spawn);
+      //   2. a persisted assistant session (sessions.json) → re-attach via
+      //      HAPPY_RECONNECT_* so the SAME session row + encryption key are
+      //      reused (a fixed tag alone can't do this: with dataKey credentials
+      //      getOrCreateSession mints a fresh key per launch while the server
+      //      keeps the first dataEncryptionKey — reconnect carries the key);
+      //   3. nothing known → fresh spawn; runClaude then uses the fixed tag
+      //      vh-assistant-<machineId> so the server row is stable.
+      if (options.variant === 'assistant') {
+        options = { ...options, directory: assistantHome() };
+
+        // (1) Live singleton: an alive tracked assistant session wins.
+        for (const tracked of pidToTrackedSession.values()) {
+          if (tracked.happySessionId && tracked.happySessionMetadataFromLocalWebhook?.variant === 'assistant') {
+            try {
+              process.kill(tracked.pid, 0);
+              logger.debug(`[DAEMON RUN] Assistant already running (session ${tracked.happySessionId}, pid ${tracked.pid})`);
+              return { type: 'success', sessionId: tracked.happySessionId };
+            } catch {
+              // stale entry — the heartbeat will prune it; fall through
+            }
+          }
+        }
+
+        try {
+          const { created } = await bootstrapAssistantHome();
+          if (created.length > 0) {
+            logger.debug(`[DAEMON RUN] Assistant home bootstrapped: ${created.join(', ')}`);
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          return { type: 'error', errorMessage: `Failed to bootstrap assistant home: ${errorMessage}` };
+        }
+
+        // (2) Re-attach to the persisted assistant session with its ORIGINAL
+        // encryption key (same mechanism as resume-in-place).
+        const persistedSessions = readPersistedSessions();
+        const assistantEntry = Object.entries(persistedSessions)
+          .filter(([, s]) => s.metadata?.variant === 'assistant')
+          .sort((a, b) => b[1].savedAt - a[1].savedAt)[0];
+        if (assistantEntry) {
+          const [assistantSessionId, s] = assistantEntry;
+          logger.debug(`[DAEMON RUN] Re-attaching assistant session ${assistantSessionId}`);
+          // Resume the underlying Claude conversation only when its JSONL is
+          // still on disk — a dangling --resume would crash the spawn.
+          const claudeSessionId = s.metadata?.claudeSessionId;
+          const canResumeClaude = !!claudeSessionId
+            && existsSync(join(getProjectPath(assistantHome()), `${claudeSessionId}.jsonl`));
+          return spawnTrackedHappyProcess({
+            args: [
+              'claude',
+              '--happy-starting-mode', 'remote',
+              '--started-by', 'daemon',
+              ...(canResumeClaude ? ['--resume', claudeSessionId!] : []),
+            ],
+            cwd: assistantHome(),
+            env: {
+              ...process.env,
+              HAPPY_SESSION_VARIANT: 'assistant',
+              HAPPY_RECONNECT_SESSION_ID: assistantSessionId,
+              HAPPY_RECONNECT_ENCRYPTION_KEY: s.encryptionKey,
+              HAPPY_RECONNECT_ENCRYPTION_VARIANT: s.encryptionVariant,
+              HAPPY_RECONNECT_SEQ: String(s.seq),
+              HAPPY_RECONNECT_METADATA_VERSION: String(s.metadataVersion),
+              HAPPY_RECONNECT_AGENT_STATE_VERSION: String(s.agentStateVersion),
+            },
+          });
+        }
+        // (3) Nothing known locally — fall through to a fresh spawn; the
+        // HAPPY_SESSION_VARIANT env is injected via extraEnv below.
+      }
+
       const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
       let directoryCreated = false;
 
@@ -344,6 +422,11 @@ export async function startDaemon(): Promise<void> {
         }
         if (options.resumeCodexThreadId) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
+        }
+        // B-051: mark the spawned CLI as the assistant variant (fresh-spawn
+        // path; the re-attach path above sets it directly on its env).
+        if (options.variant === 'assistant') {
+          extraEnv.HAPPY_SESSION_VARIANT = 'assistant';
         }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
