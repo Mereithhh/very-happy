@@ -29,7 +29,7 @@
 | B-008 | 更好的通知系统（分级/聚合） | feat | Owner 2026-08-13 | todo | 与 B-006/B-007 一体规划 |
 | B-009 | `--version` 不提前退出会继续 daemon 流程——worktree 冒烟劫持生产 daemon（2026-08-13 真实事故：daemon 从已删 worktree 跑→posix_spawnp failed） | bug | 事故复盘 | todo | 修 CLI 让 --version 立即退出；冒烟命令已在 CLAUDE.md 改为 HAPPY_HOME_DIR 隔离 |
 | B-010 | 侧边栏双形态：列表/状态/归档三段 + 删搜索框 | ux | Owner 2026-08-13 | done | Shipped web 66546248 |
-| B-011 | 陈旧 bundle 客户端用 legacy 语义复活已删终端（实证：手机旧 PWA 22:00 重建 afe49d04fd3b）——上线陈旧 bundle 自动重载 | bug | 实报+日志实锤 | doing | web 版本自检+自动 reload；daemon 侧 kill 墓碑备选 |
+| B-011 | 陈旧 bundle 复活已删终端——自动重载已上线 | bug | 实报+日志实锤 | done | Shipped 15c64f3f；各设备需手动最后刷新一次以获得自愈能力 |
 
 ## 近期完成
 
