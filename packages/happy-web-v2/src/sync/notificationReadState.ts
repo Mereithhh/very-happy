@@ -29,6 +29,18 @@ export function getReadWatermark(): number {
     return store.getNumber(KEY) ?? 0;
 }
 
+/** First-run guard: before this feature shipped the watermark was never
+ *  written, so the whole feed HISTORY would count as unread on first open
+ *  (an instant "9+" badge storm). The first sight of the feed baselines an
+ *  UNSET watermark (distinct from an explicit 0) to the feed's current head —
+ *  only events after that count. */
+export function baselineWatermarkIfUnset(counter: number): void {
+    if (store.getNumber(KEY) === undefined && counter > 0) {
+        store.set(KEY, counter);
+        emit();
+    }
+}
+
 /** Advance the watermark (only ever moves forward). */
 export function markReadUpTo(counter: number): void {
     if (counter > getReadWatermark()) {

@@ -12,9 +12,10 @@
  * filterByRetention applies the user's retention window (settings).
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNotificationFeed } from '@/sync/useNotificationFeed';
 import {
+    baselineWatermarkIfUnset,
     markReadUpTo,
     markFeedItemRead,
     useReadFeedIds,
@@ -46,6 +47,12 @@ export function useInbox(): Inbox {
     const readIds = useReadFeedIds();
     const localEntries = useLocalEntries();
     const retentionDays = useRetentionDays();
+
+    // First-run: baseline an unset watermark to the feed head so pre-feature
+    // history doesn't open as a wall of unread (see notificationReadState).
+    useEffect(() => {
+        if (feed.maxCounter > 0) baselineWatermarkIfUnset(feed.maxCounter);
+    }, [feed.maxCounter]);
 
     const entries = useMemo(() => {
         const feedEntries: InboxEntry[] = [];

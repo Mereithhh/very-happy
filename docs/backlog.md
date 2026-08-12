@@ -36,7 +36,7 @@
 | B-015 | iOS 橡皮筋回弹去除 | ux | Owner 2026-08-13 | done | Shipped ea080eec（顺带禁 PWA 下拉刷新） |
 | B-016 | 日志无轮转（现场 746MB）+ debugLargeJson 缺 return 放大器 | bug | 工程走查#1 | done | Shipped a44bf95c；daemon 启动清扫 14d/200MB 双上限 |
 | B-017 | web 回滚备份 webapp.prev cp 嵌套损坏 | bug | 工程走查#3 | done | Shipped a44bf95c；rollback-web 一键化仍待做（见 B-020） |
-| B-018 | 站内通知中心 + 可配置提示音（WebAudio 合成，分事件开关；供参考骨架 useNotificationFeed/notificationReadState 零 importer） | feat | Owner 2026-08-13（合并原 B-008） | doing | agent 实现中；版权原因不内置真实歌曲，后续可加本地上传自定义音 |
+| B-018 | 站内通知中心 + 可配置提示音（WebAudio 合成 4 音色，分事件开关） | feat | Owner 2026-08-13（合并原 B-008） | done | Shipped；含首开水位线基线化防未读风暴；版权原因不内置真实歌曲，后续可加本地上传自定义音 |
 | B-019 | server 部署链路：migration 只同步不执行（prod schema 已漂移，AccountUnlock/AccountCredential 靠 $queryRawUnsafe 手工建表）；镜像无 CI build，「零新依赖」枷锁源头 | debt | 工程走查#2 | todo | 先 migrate diff 对账再接 migrate deploy；解除后 server 依赖才能升级 |
 | B-020 | deploy 工作流加 rollback-web target（一键回滚而非口头流程） | debt | 工程走查#3 | todo | |
 | B-021 | daemon 无保活：uncaught → 退出即死，install.ts 的 launchd 代码零调用 | debt | 工程走查#4 | todo | 改用户级 LaunchAgent KeepAlive；退出原因经 webhook 推一条 |
