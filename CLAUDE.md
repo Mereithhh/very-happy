@@ -85,7 +85,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    注入的默认值当幽灵 pending，每次加载 POST 空值覆盖服务器（预设丢失事故真因）。
 2. **daemon 加纯 JS 的 CJS 依赖必须进 `devDependencies`** 让 pkgroll inline，
    否则 external ESM 具名 import 运行时崩（build 全绿只在运行时炸）；发版前实跑
-   `node dist/index.mjs --version`。
+   `HAPPY_HOME_DIR=$(mktemp -d) node dist/index.mjs --version`。
 3. **工具一律 `pnpm exec`，不用 npx**（npx 会解析到错误版本）。
 4. **双向兼容（旧端忽略新字段）是设计要求**不是可选项；协议改动写兼容矩阵。
 5. **server 部署后必须 `vh-update`** 重启 daemon（RPC 重注册 bug，backlog B-001）。

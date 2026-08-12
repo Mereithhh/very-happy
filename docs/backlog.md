@@ -27,6 +27,7 @@
 | B-006 | 看板任务生命周期重构（哲学：以任务完成管理，不以 claude 状态管理） | feat | Owner 2026-08-13 | doing | spec: specs/2026-08-board-task-lifecycle.md |
 | B-007 | dida365（滴答清单）任务双向联动 | feat | Owner 2026-08-13 | todo | 等 Owner 的 dida365 skill/CLI 就绪；走 channels 适配器模式 |
 | B-008 | 更好的通知系统（分级/聚合） | feat | Owner 2026-08-13 | todo | 与 B-006/B-007 一体规划 |
+| B-009 | `--version` 不提前退出会继续 daemon 流程——worktree 冒烟劫持生产 daemon（2026-08-13 真实事故：daemon 从已删 worktree 跑→posix_spawnp failed） | bug | 事故复盘 | todo | 修 CLI 让 --version 立即退出；冒烟命令已在 CLAUDE.md 改为 HAPPY_HOME_DIR 隔离 |
 
 ## 近期完成
 
