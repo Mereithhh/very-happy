@@ -75,6 +75,25 @@ async function checkOnce(own: string): Promise<void> {
   }
 }
 
+/** Manual check (Settings → Diagnostics "check for update" button).
+ *  'updated' = a newer shell exists — a guarded reload has been triggered. */
+export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unknown'> {
+  const own = ownEntryName();
+  if (!own) return 'unknown'; // dev server / unexpected shell
+  const server = await serverEntryName();
+  if (!server) return 'unknown';
+  if (server === own) return 'current';
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
+  } catch { /* best-effort */ }
+  // Manual check = explicit user intent: bypass the reload-loop guard window
+  // but still stamp it so the automatic path stays throttled.
+  sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+  setTimeout(() => window.location.reload(), 600); // let the toast paint first
+  return 'updated';
+}
+
 /** Install the watcher. No-op outside a built bundle (dev server). */
 export function installStaleBundleReload(): void {
   if (typeof document === 'undefined') return;

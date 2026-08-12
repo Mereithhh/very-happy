@@ -35,6 +35,7 @@ import {
 import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
+import { checkForUpdateNow } from '@/app/staleBundleReload';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
@@ -1510,6 +1511,41 @@ function statusLabel(t: any, status: string): string {
   }
 }
 
+/** Web build identity + manual update check. The build id is the VH_VERSION
+ *  deploy salt (a timestamp) baked in at build time — the ANSWER to "is my
+ *  phone's PWA stale?". The button runs the same comparison the automatic
+ *  stale-bundle watcher uses (app/staleBundleReload.ts) and reloads on match
+ *  failure, so a suspended-then-woken PWA can be force-updated by hand. */
+function WebBuildGroup() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [checking, setChecking] = useState(false);
+  const check = async () => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const r = await checkForUpdateNow();
+      if (r === 'current') toast.success(t('diagnostics.webBuildCurrent'));
+      else if (r === 'updated') toast.success(t('diagnostics.webBuildUpdating'));
+      else toast.error(t('diagnostics.webBuildCheckFailed'));
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <ItemGroup title={t('diagnostics.webBuild')}>
+      <Item
+        title={t('diagnostics.webBuildVersion')}
+        right={<span className="set-value mono">{__APP_VERSION__}</span>}
+      />
+      <Item
+        title={checking ? t('diagnostics.webBuildChecking') : t('diagnostics.webBuildCheck')}
+        onClick={() => void check()}
+      />
+    </ItemGroup>
+  );
+}
+
 function Diagnostics() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -1531,6 +1567,7 @@ function Diagnostics() {
         onBack={() => navigate('/settings')}
       />
       <ItemList>
+        <WebBuildGroup />
         <ItemGroup title={t('diagnostics.relay')}>
           <Item
             title={t('diagnostics.serverSocket')}

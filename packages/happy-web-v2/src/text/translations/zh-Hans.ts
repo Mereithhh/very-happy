@@ -1479,6 +1479,13 @@ export const zhHans: TranslationStructure = {
 
     // Diagnostics / health screen.
     diagnostics: {
+        webBuild: 'Web 构建',
+        webBuildVersion: '构建版本',
+        webBuildCheck: '检查更新',
+        webBuildChecking: '检查中…',
+        webBuildCurrent: '已是最新',
+        webBuildUpdating: '发现新版本，即将刷新…',
+        webBuildCheckFailed: '无法检查（离线？）',
         title: '诊断',
         subtitle: '中继、机器与守护进程健康状况',
         relay: '中继',

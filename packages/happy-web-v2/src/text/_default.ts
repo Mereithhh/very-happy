@@ -1514,6 +1514,13 @@ export const en = {
 
     // Diagnostics / health screen.
     diagnostics: {
+        webBuild: 'Web build',
+        webBuildVersion: 'Build',
+        webBuildCheck: 'Check for update',
+        webBuildChecking: 'Checking…',
+        webBuildCurrent: 'Up to date',
+        webBuildUpdating: 'New version found — reloading…',
+        webBuildCheckFailed: 'Could not check (offline?)',
         title: 'Diagnostics',
         subtitle: 'Relay, machine and daemon health',
         relay: 'Relay',
