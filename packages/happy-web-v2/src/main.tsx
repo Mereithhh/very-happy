@@ -14,6 +14,7 @@ import './styles/base.css';
 
 import { AppRoot } from './app/AppRoot.tsx';
 import { installStaleBundleReload } from './app/staleBundleReload.ts';
+import { markProgrammaticReload } from './app/programmaticReload.ts';
 
 // Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
 // so a client still running the previous shell hits "Failed to fetch
@@ -26,6 +27,7 @@ window.addEventListener('vite:preloadError', (event) => {
   if (Date.now() - last < 30_000) return; // already tried recently — let it throw
   sessionStorage.setItem(KEY, String(Date.now()));
   event.preventDefault(); // suppress the error overlay/throw; we're recovering
+  markProgrammaticReload(); // recovery reload — the unload guard must stand down
   window.location.reload();
 });
 

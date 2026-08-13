@@ -281,6 +281,10 @@ function Appearance() {
   const [, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
+  // device-local: the two ⌘W close guards (in-app confirm / browser leave-site
+  // dialog). Separate switches — different mechanisms, different annoyance.
+  const [closeViewConfirm, setCloseViewConfirm] = useLocalSettingMutable('closeViewConfirm');
+  const [closeTabWarning, setCloseTabWarning] = useLocalSettingMutable('closeTabWarning');
 
   const themeOpts: { key: 'system' | 'dark' | 'light'; label: string; desc: string }[] = [
     {
@@ -346,6 +350,34 @@ function Appearance() {
               onClick={() => setHomeView(v)}
             />
           ))}
+        </ItemGroup>
+
+        <ItemGroup
+          title={t('settingsAppearance.closeGuard')}
+          footer={t('settingsAppearance.closeGuardDescription')}
+        >
+          <Item
+            title={t('settingsAppearance.closeViewConfirm')}
+            subtitle={t('settingsAppearance.closeViewConfirmDescription')}
+            right={
+              <Toggle
+                checked={closeViewConfirm}
+                onChange={setCloseViewConfirm}
+                label={t('settingsAppearance.closeViewConfirm')}
+              />
+            }
+          />
+          <Item
+            title={t('settingsAppearance.closeTabWarning')}
+            subtitle={t('settingsAppearance.closeTabWarningDescription')}
+            right={
+              <Toggle
+                checked={closeTabWarning}
+                onChange={setCloseTabWarning}
+                label={t('settingsAppearance.closeTabWarning')}
+              />
+            }
+          />
         </ItemGroup>
 
         {/* Task Board V2 — LLM analysis is a DAEMON-side opt-in; the synced

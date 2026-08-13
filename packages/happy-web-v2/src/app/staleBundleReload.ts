@@ -21,7 +21,13 @@
  * Checks run when the page becomes visible and on a slow interval — a hidden
  * phone tab checks the moment it wakes up, which is exactly the zombie-client
  * scenario above.
+ *
+ * Every reload here is announced via markProgrammaticReload() so the tab-close
+ * guard (beforeunload, ./viewShortcuts.ts) stands down: a leave-site dialog in
+ * front of the update would let the user "stay" on the very zombie bundle this
+ * module exists to retire.
  */
+import { markProgrammaticReload } from '@/app/programmaticReload';
 
 const ENTRY_RE = /\/assets\/(index-[A-Za-z0-9_-]+\.js)/;
 const RELOAD_GUARD_KEY = 'vh-stale-bundle-reload-at';
@@ -69,6 +75,7 @@ async function checkOnce(own: string): Promise<void> {
     } catch {
       // SW update is best-effort; the reload below still fetches the new shell
     }
+    markProgrammaticReload(); // don't let the unload guard block auto-update
     window.location.reload();
   } finally {
     checking = false;
@@ -90,6 +97,7 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
   // Manual check = explicit user intent: bypass the reload-loop guard window
   // but still stamp it so the automatic path stays throttled.
   sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+  markProgrammaticReload(); // explicit user intent — no leave-site dialog
   setTimeout(() => window.location.reload(), 600); // let the toast paint first
   return 'updated';
 }

@@ -6,6 +6,7 @@ import { clearPersistence, loadRegisteredPushToken } from '@/sync/persistence';
 import { unregisterPushToken } from '@/sync/apiPush';
 import { Platform } from 'react-native';
 import { trackLogout } from '@/track';
+import { markProgrammaticReload } from '@/app/programmaticReload';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -55,6 +56,9 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         setIsAuthenticated(false);
         
         if (Platform.OS === 'web') {
+            // Logout is already confirmed by its own dialog — the tab-close
+            // guard must not ask a second time.
+            markProgrammaticReload();
             window.location.reload();
         } else {
             try {

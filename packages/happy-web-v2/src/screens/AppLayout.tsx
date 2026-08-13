@@ -9,7 +9,7 @@ import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
-import { useCloseViewShortcuts } from '@/app/viewShortcuts';
+import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
 import { useNotificationGenerator } from '@/app/useNotificationGenerator';
 import { useSeenTracker } from '@/app/useSeenTracker';
 import './layout.css';
@@ -23,6 +23,10 @@ export function AppLayout() {
   // reason: must work with the sidebar collapsed/unmounted.
   useNewTerminalShortcuts();
   useCloseViewShortcuts();
+  // Layer 2 of the same guard: in a normal browser tab ⌘W closes the TAB and
+  // the page never sees the chord, so the browser's own beforeunload dialog is
+  // the only thing that can interrupt it. Armed only on a closable view.
+  useUnloadGuard();
   // Notification-center local producer: watches board lifecycle transitions,
   // appends inbox entries + rings the chime. Layout level so it observes
   // everything regardless of which screen is open.
