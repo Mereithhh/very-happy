@@ -1,6 +1,6 @@
 # 语音助手双向流式管线 + 主动汇报（Phase 2）
 
-> 状态：Shipped（server+web 本地 deploy 上线 + daemon 0.2.38；npm publish 待 Actions 配额；真机 V-029~031 待清）
+> 状态：Shipped（server+web 本地 deploy 上线 + daemon 0.2.38；npm publish 待 Actions 配额；真机 V-032~034 待清）
 > 日期：2026-08-14 ｜ 关联 backlog：B-069 ｜ 前身：specs/2026-08-voice-assistant.md（Shipped）
 
 ## 背景
