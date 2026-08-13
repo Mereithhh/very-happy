@@ -460,3 +460,35 @@
   background: var(--danger);
   border-radius: var(--r-pill);
 }
+
+/* ── 已结束终端 (B-084, archived view) ──────────────────────────────────────
+ * Close records pushed by the daemon. The row is NOT a nav target (the tmux
+ * session is gone), so .sb-row-main is a plain div here — no pointer cursor,
+ * no hover invitation. The muted icon (no --accent-2) states "ended": the
+ * live-terminal teal-family tint is reserved for terminals that exist. The
+ * one action, always visible (it IS the row's purpose, hover-reveal would
+ * hide it), opens a NEW terminal in the record's cwd. */
+.sb-closed-main {
+  cursor: default;
+}
+.sb-row-icon--closed {
+  color: var(--text-faint);
+}
+.sb-closed-reopen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+.sb-closed-reopen:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.sb-closed-reopen:disabled {
+  color: var(--text-faint);
+  opacity: 0.4;
+  cursor: default;
+}

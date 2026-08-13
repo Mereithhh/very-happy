@@ -883,6 +883,9 @@ export const en = {
         // mode and what a click does, since one icon carries both.
         sortByRecent: 'Sorted by recent activity — click for manual order',
         sortManual: 'Manual order — click to sort by recent activity',
+        // 已结束终端 (B-084): archived view's closed-terminal records
+        closedTerminals: 'Closed terminals',
+        closedTerminalReopen: 'New terminal in this directory',
     },
 
     zen: {

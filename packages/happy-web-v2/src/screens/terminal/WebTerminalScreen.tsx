@@ -148,11 +148,18 @@ export function WebTerminalScreen() {
   // retrigger the terminal effect.
   const freshRef = useRef(false);
   freshRef.current = params.get('fresh') === '1';
+  // `cwd` rides along with `fresh` only (B-084 "new terminal in this
+  // directory"): sent on the create-open, where the daemon's create path does
+  // `tmux new-session -c <cwd>`; attach-only opens never send it, so a stale
+  // URL can't redirect an existing terminal. Stripped together with `fresh`.
+  const createCwdRef = useRef<string | undefined>(undefined);
+  createCwdRef.current = params.get('cwd') || undefined;
   const clearFreshRef = useRef(() => {});
   clearFreshRef.current = () => {
     if (params.get('fresh') !== '1') return;
     const next = new URLSearchParams(params);
     next.delete('fresh');
+    next.delete('cwd');
     setSearchParams(next, { replace: true });
   };
 
@@ -700,6 +707,8 @@ export function WebTerminalScreen() {
         terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
         // Runs only if the daemon CREATES the session (see startupCommandRef).
         startupCommand: startupCommandRef.current,
+        // Starting directory for the create path only (see createCwdRef).
+        cwd: isFresh ? createCwdRef.current : undefined,
         // Only the fresh-create navigation may create the tmux session; any
         // other mount (sidebar nav, URL refresh) attaches to what exists —
         // a deleted terminal's stale URL must not resurrect it (>= 0.2.29;

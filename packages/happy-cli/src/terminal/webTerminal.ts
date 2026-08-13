@@ -72,6 +72,12 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { configuration } from '@/configuration';
 import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
+import {
+    appendClosedTerminal,
+    pruneClosedAgainstLive,
+    sanitizeClosedTerminals,
+    type ClosedTerminalRecord,
+} from './closedTerminals';
 
 // ── Kill tombstones ──────────────────────────────────────────────────────────
 // A deleted terminal's id is remembered here so that a STALE CLIENT (an old
@@ -115,6 +121,31 @@ function saveTombstones(map: Record<string, number>): void {
         writeFileSync(tombstoneFile(), JSON.stringify(pruneTombstones(map, Date.now())));
     } catch (e) {
         logger.debug(`[WEB TERMINAL] tombstone save failed: ${e}`);
+    }
+}
+
+// ── Closed-terminal records (B-084) ─────────────────────────────────────────
+// Persisted next to the tombstones with the same storage manners. Pure list
+// rules (newest-first / dedupe / cap 20 / prune-against-live) live in
+// closedTerminals.ts; here is only the file I/O.
+function closedTerminalsFile(): string {
+    return join(configuration.happyHomeDir, 'closed-terminals.json');
+}
+
+function loadClosedTerminals(): ClosedTerminalRecord[] {
+    try {
+        return sanitizeClosedTerminals(JSON.parse(readFileSync(closedTerminalsFile(), 'utf8')));
+    } catch {
+        return [];
+    }
+}
+
+function saveClosedTerminals(list: ClosedTerminalRecord[]): void {
+    try {
+        mkdirSync(configuration.happyHomeDir, { recursive: true });
+        writeFileSync(closedTerminalsFile(), JSON.stringify(list));
+    } catch (e) {
+        logger.debug(`[WEB TERMINAL] closed-terminals save failed: ${e}`);
     }
 }
 
@@ -827,6 +858,17 @@ export class WebTerminalManager {
     private terminals = new Map<string, TerminalSession>();
     /** killed terminal ids → killedAt; blocks stale-client resurrection. */
     private tombstones: Record<string, number> = loadTombstones();
+    // ── Closed-terminal records (B-084) ─────────────────────────────────────
+    /** Recently ended terminals (newest first, capped) — pushed inside
+     *  daemonState.closedTerminals so the web's archive view can show them. */
+    private closedTerminals: ClosedTerminalRecord[] = loadClosedTerminals();
+    /** Last observed {title, cwd} per live terminal id — what a close record
+     *  is built from, since a dead tmux session can no longer be asked.
+     *  Updated by every tracking tick (and seeded by the connect snapshot);
+     *  the tick's disappearance diff against it is ALSO how tmux-side natural
+     *  exits (shell `exit`, `tmux kill-session` on the machine) get recorded,
+     *  not just web-initiated kills. */
+    private lastSeenInfo = new Map<string, { title?: string; cwd?: string }>();
     private emit: EmitFn;
     private reaper: ReturnType<typeof setInterval>;
 
@@ -961,6 +1003,28 @@ export class WebTerminalManager {
      *  snapshot), so the first tick doesn't re-push an identical list. */
     primeListSignature(list: TerminalListItem[]): void {
         this.lastListSignature = terminalListSignature(list);
+        // Also seed the close-record info cache, so a terminal that ends
+        // before the first tracking tick still gets a titled/cwd'd record.
+        this.noteSeen(list);
+    }
+
+    /** The retained closed-terminal records (newest first) — shipped by
+     *  apiMachine inside every daemonState write, next to webTerminals. */
+    getClosedTerminals(): ClosedTerminalRecord[] {
+        return this.closedTerminals;
+    }
+
+    /** Refresh the per-id {title, cwd} cache from an observed live list. */
+    private noteSeen(list: TerminalListItem[]): void {
+        this.lastSeenInfo = new Map(list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]));
+    }
+
+    /** Record one terminal as closed (dedupe/cap in the pure module) and
+     *  persist. The confirming daemonState push rides the list refresh that
+     *  every close also triggers. */
+    private recordClosed(record: ClosedTerminalRecord): void {
+        this.closedTerminals = appendClosedTerminal(this.closedTerminals, record);
+        saveClosedTerminals(this.closedTerminals);
     }
 
     /**
@@ -1000,6 +1064,7 @@ export class WebTerminalManager {
         if (!cb) return;
         try {
             const list = this.buildTerminalList();
+            this.trackClosures(list);
             this.trackNotifications(list);
             // Realtime lane, BEFORE the signature short-circuit: this tick is
             // the only place a COLD session's tmux `#{session_activity}` is
@@ -1018,6 +1083,49 @@ export class WebTerminalManager {
         } catch (e) {
             logger.debug(`[WEB TERMINAL] list track tick failed: ${e}`);
         }
+    }
+
+    /** Closed-record diff (B-084): a terminal id that was in the last observed
+     *  list but is gone from this one has ENDED — record it with the cached
+     *  title/cwd. This one diff covers every close path uniformly: web kill
+     *  (already recorded by killSession — the dedupe makes the second append a
+     *  no-op replace), shell `exit` (live pty or reaped/cold session alike),
+     *  and a machine-side `tmux kill-session`. A still-live pty vetoes the
+     *  record (the pty's tmux client would have died with the session, so its
+     *  presence means the disappearance was a transient list glitch); the
+     *  prune-against-live self-heals any false record that still slips
+     *  through once the id reappears. */
+    private trackClosures(list: TerminalListItem[]): void {
+        const liveIds = new Set(list.map((t) => t.id));
+        const next = new Map<string, { title?: string; cwd?: string }>(
+            list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]),
+        );
+        let changed = false;
+        const now = Date.now();
+        for (const [id, info] of this.lastSeenInfo) {
+            if (liveIds.has(id)) continue;
+            if (this.terminals.has(id)) {
+                // Absent from tmux but its pty is still live — either a
+                // transient list glitch or a death the pty hasn't reported
+                // yet (its exit handler removes it from the map). Don't
+                // record, but KEEP the cached info so the tick after the pty
+                // exit can still write the record.
+                next.set(id, info);
+                continue;
+            }
+            this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
+                id, title: info.title, cwd: info.cwd, closedAt: now,
+            });
+            changed = true;
+            logger.debug(`[WEB TERMINAL] recorded closed terminal ${id}`);
+        }
+        const pruned = pruneClosedAgainstLive(this.closedTerminals, liveIds);
+        if (pruned !== this.closedTerminals) {
+            this.closedTerminals = pruned;
+            changed = true;
+        }
+        this.lastSeenInfo = next;
+        if (changed) saveClosedTerminals(this.closedTerminals);
     }
 
     /** Drop de-dup entries for terminals that no longer exist, so a long-lived
@@ -1456,6 +1564,17 @@ export class WebTerminalManager {
      *  session (so a local `tmux attach` won't find it either). Used when the
      *  user deletes the terminal from the sidebar. */
     killSession(terminalId: string) {
+        // Record the close BEFORE the kill, while title/cwd are still knowable
+        // (B-084). Cache first (fed by every tracking tick), fresh tmux lookup
+        // as fallback (kill can arrive before tracking ever observed this id).
+        // No info found at all ⇒ the terminal never verifiably existed — don't
+        // fabricate a record for a bogus/stale id.
+        const info = this.lastSeenInfo.get(terminalId)
+            ?? this.listSessions().find((t) => t.id === terminalId);
+        if (info) {
+            this.recordClosed({ id: terminalId, title: info.title, cwd: info.cwd, closedAt: Date.now() });
+            this.lastSeenInfo.delete(terminalId);
+        }
         this.detach(terminalId);
         try {
             spawnSync('tmux', ['kill-session', '-t', `vh-${terminalId}`], { stdio: 'ignore', env: ptyEnv() });

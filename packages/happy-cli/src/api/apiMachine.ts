@@ -576,6 +576,10 @@ export class ApiMachineClient {
                     // even in the (unreachable) case of a null prior state.
                     status: state?.status ?? 'running',
                     webTerminals: { updatedAt: Date.now(), terminals: list },
+                    // B-084: the closed-terminal records ride every list push
+                    // (a close always changes the list, so they stay in step).
+                    // Read at write time — same freshness rule as the list.
+                    closedTerminals: this.webTerminal.getClosedTerminals(),
                 }));
                 logger.debug(`[API MACHINE] Pushed terminal list (${list.length} terminals)`);
             })
@@ -683,6 +687,10 @@ export class ApiMachineClient {
                     httpPort: this.machine.daemonState?.httpPort,
                     startedAt: now,
                     webTerminals: { updatedAt: now, terminals: initialTerminals },
+                    // B-084: closed records survive daemon restarts (persisted
+                    // in closed-terminals.json), so the connect snapshot ships
+                    // them too — not just the incremental pushes.
+                    closedTerminals: this.webTerminal.getClosedTerminals(),
                 };
             });
             // From here on, only CHANGES push (signature diff inside the manager).

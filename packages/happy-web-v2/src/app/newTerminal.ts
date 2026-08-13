@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { soleOnlineMachine, machineLabel } from '@/utils/machineUtils';
+import { soleOnlineMachine, machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { isImeGuardedEvent } from '@/utils/ime';
 
 /**
@@ -28,6 +28,26 @@ export function createTerminalOrPick(navigate: NavigateFunction): void {
   } else {
     navigate('/terminal');
   }
+}
+
+/**
+ * Open a NEW terminal on a SPECIFIC machine, starting in `cwd` (B-084: the
+ * archive view's "new terminal in this directory" on a closed-terminal
+ * record — where `claude --resume` can pick the old conversation back up).
+ * Reuses the machinery createTerminalOrPick uses; the only addition is the
+ * `cwd` query param, which the terminal screen forwards into the EXISTING
+ * open-terminal RPC `cwd` field (the daemon's create path has always done
+ * `tmux new-session -c <cwd>` — no protocol change, old daemons included).
+ * No-op when the machine is unknown or offline (callers disable the button,
+ * this is the imperative backstop).
+ */
+export function createTerminalAt(navigate: NavigateFunction, machineId: string, cwd?: string): void {
+  const m = storage.getState().machines[machineId];
+  if (!m || !isMachineOnline(m)) return;
+  const term = useTerminalSessions.getState().create(machineId, machineLabel(m));
+  const q = new URLSearchParams({ tid: term.id, fresh: '1' });
+  if (cwd) q.set('cwd', cwd);
+  navigate(`/terminal/${machineId}?${q.toString()}`);
 }
 
 /** Shown next to the palette's "New terminal" action (matches the ⌘-badge style). */

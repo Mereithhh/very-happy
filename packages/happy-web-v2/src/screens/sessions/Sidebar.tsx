@@ -1,11 +1,13 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered } from 'lucide-react';
-import { useSessions, useSetting, useLocalSettingMutable, storage } from '@/sync/storage';
+import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { createTerminalOrPick } from '@/app/newTerminal';
+import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
-import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
+import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
+import { buildClosedTerminalRows } from '@/sync/closedTerminals';
 import { confirmArchiveSession, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
@@ -139,6 +141,27 @@ export function Sidebar() {
   // (old daemon, old server, fresh profile, socket down).
   const localActivity = useActivityOverlay((s) => s.local);
   const remoteActivity = useActivityOverlay((s) => s.remote);
+
+  // ----- 已结束终端 (B-084, archived view only) -----
+  // New daemons push recent close records in daemonState.closedTerminals
+  // (≤20/machine); old daemons never write the field → empty → the section
+  // doesn't render. Pure merge/sort/live-filter in sync/closedTerminals.ts.
+  const allMachines = useAllMachines({ includeOffline: true });
+  const closedRows = useMemo(
+    () =>
+      view === 'archived'
+        ? buildClosedTerminalRows(
+            allMachines.map((m) => ({
+              id: m.id,
+              name: machineLabel(m),
+              online: isMachineOnline(m),
+              daemonState: m.daemonState,
+            })),
+            new Set(terminals.map((tm) => tm.id)),
+          )
+        : [],
+    [view, allMachines, terminals],
+  );
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -745,7 +768,7 @@ export function Sidebar() {
           <div className="sb-loading">
             <StatusDot status="thinking" pulse /> {t('common.loading')}
           </div>
-        ) : sections.every((sec) => sec.count === 0) ? (
+        ) : sections.every((sec) => sec.count === 0) && closedRows.length === 0 ? (
           <div className="sb-empty">{t('sidebar.empty')}</div>
         ) : (
           <>
@@ -804,6 +827,48 @@ export function Sidebar() {
               <div className="sb-drop-line" style={{ top: dropLineY }} aria-hidden />
             )}
           </>
+        )}
+        {/* 已结束终端 (B-084): records pushed by new daemons. Not nav targets —
+            the tmux session is gone; the ONE action re-opens a NEW terminal in
+            the same directory (claude --resume finds the old conversation
+            there). Disabled while the machine is offline / cwd unknown. */}
+        {view === 'archived' && closedRows.length > 0 && (
+          <div className="sb-section sb-closed-section">
+            <div className="sb-section-head">
+              <span className="sb-section-label">{t('sidebar.closedTerminals')}</span>
+              <span className="sb-section-count mono">{closedRows.length}</span>
+            </div>
+            {closedRows.map((r) => (
+              <div key={r.key} className="sb-row sb-closed-row">
+                <div className="sb-row-main sb-closed-main">
+                  <span className="sb-row-icon sb-row-icon--closed">
+                    <TerminalSquare size={16} />
+                  </span>
+                  <span className="sb-row-text">
+                    <span className="sb-row-title-line">
+                      <span className="sb-row-title">{r.title}</span>
+                    </span>
+                    <span
+                      className="sb-row-sub mono"
+                      title={r.cwd ? `${r.cwd} · ${r.machineName}` : r.machineName}
+                    >
+                      {r.cwd ? `${r.cwd} · ` : ''}
+                      {r.machineName} · {formatLastSeen(r.closedAt)}
+                    </span>
+                  </span>
+                </div>
+                <button
+                  className="sb-closed-reopen"
+                  disabled={!r.machineOnline || !r.cwd}
+                  title={t('sidebar.closedTerminalReopen')}
+                  aria-label={t('sidebar.closedTerminalReopen')}
+                  onClick={() => createTerminalAt(navigate, r.machineId, r.cwd)}
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

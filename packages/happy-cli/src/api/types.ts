@@ -171,6 +171,19 @@ export const WebTerminalListItemSchema = z.object({
 })
 
 /**
+ * One recently CLOSED terminal (B-084) — see terminal/closedTerminals.ts for
+ * the list rules (newest first, dedupe by id, capped at 20). Shipped inside
+ * daemonState.closedTerminals so the web's archive view can show ended
+ * terminals and offer "new terminal in the same directory" (cwd).
+ */
+export const ClosedTerminalRecordSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  cwd: z.string().optional(),
+  closedAt: z.number(),
+})
+
+/**
  * Daemon state - dynamic runtime information (frequently updated)
  */
 export const DaemonStateSchema = z.object({
@@ -207,6 +220,13 @@ export const DaemonStateSchema = z.object({
     updatedAt: z.number(),
     terminals: z.array(WebTerminalListItemSchema),
   }).optional(),
+  /**
+   * Recently closed terminals (B-084), newest first, capped at 20 — written
+   * alongside webTerminals in the same daemonState pushes (every close also
+   * changes the live list, so the two always travel together). Old clients
+   * ignore the field; old daemons never write it (web renders nothing).
+   */
+  closedTerminals: z.array(ClosedTerminalRecordSchema).optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
