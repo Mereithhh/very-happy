@@ -74,6 +74,7 @@
 | B-071 | 全局返回：统一四套返回箭头为 useAppBack（真实历史优先+层级父级回退）+ ⌘[/Alt+← + 移动端左边缘滑动返回 | ux | Owner 2026-08-14 | done | Shipped；桌面也显示返回键（全局的直接后果）；/assistant 的形态切换箭头刻意保留；**原记为 B-054，撞号后改号** |
 | B-065 | 侧栏铃铛移到底部与设置同排（header 太挤） | ux | Owner 2026-08-14 | done | 折叠 rail 的铃铛也 pin 到底部，避免收起/展开时上下跳 |
 | B-066 | 通知已读跨设备同步：看过对应会话即自动消除该目标的通知（按 key 取 max 时间戳合并，非整表覆盖） | feat | Owner 2026-08-14 | done | 载体=账号 KV vh.notif-seen.v1（CAS+absorb 重试）；顺带接上从未被监听的 kv-batch-update 广播=跨设备 push 而非轮询 |
+| B-087 | 文件预览升级：支持 markdown/PDF/PNG 等格式渲染（参考 apodexchat 的文件预览实现）+ 修预览不能滚动 + 文件浏览器支持全屏 | feat | Owner 实报 2026-08-14 | doing | B-047 的文件浏览器现状太简陋 |
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | done | 本机 120ms / 远端典型 0.5-0.6s 最坏 2.1s；冷终端（pty 已回收）仍 ~10s；需 CLI ≥v0.2.37 |
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
