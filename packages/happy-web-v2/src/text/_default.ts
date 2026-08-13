@@ -142,6 +142,7 @@ export const en = {
         optional: 'optional',
         open: 'Open',
         archive: 'Archive',
+        close: 'Close',
     },
 
     profile: {
@@ -1155,9 +1156,11 @@ export const en = {
     },
 
     terminal: {
-        // Deleting a web terminal destroys its tmux session on the machine
-        deleteTitle: 'Delete terminal?',
-        deleteMessage: 'This destroys the tmux session on the machine and cannot be undone.',
+        // Closing a web terminal ends its tmux session on the machine.
+        // Deliberately neutral wording (B-083 archive-only): the claude
+        // conversation inside survives on the machine (`claude --resume`).
+        closeTitle: 'Close terminal?',
+        closeMessage: 'This ends the tmux session on the machine. The Claude conversation inside is saved on the machine — continue it in a new terminal with claude --resume.',
         // Used by terminal connection screens
         webBrowserRequired: 'Web Browser Required',
         webBrowserRequiredDescription: 'Terminal connection links can only be opened in a web browser for security reasons. Please use the QR code scanner or open this link on a computer.',

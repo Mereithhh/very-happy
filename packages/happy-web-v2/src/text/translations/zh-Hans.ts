@@ -182,6 +182,7 @@ export const zhHans: TranslationStructure = {
         optional: '可选的',
         open: '打开',
         archive: '归档',
+        close: '关闭',
     },
 
     profile: {
@@ -1160,9 +1161,10 @@ export const zhHans: TranslationStructure = {
     },
 
     terminal: {
-        // 删除网页终端会销毁机器上的 tmux 会话
-        deleteTitle: '删除终端？',
-        deleteMessage: '这会销毁机器上的 tmux 会话，且不可恢复。',
+        // 关闭网页终端 = 结束机器上的 tmux 会话；文案刻意中性（B-083 只归档）：
+        // 其中的 claude 对话保存在机器上，可用 claude --resume 继续
+        closeTitle: '关闭终端？',
+        closeMessage: '结束机器上的 tmux 会话。其中的 claude 对话已保存在机器上，可在新终端里用 claude --resume 继续。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',

@@ -1,8 +1,13 @@
 /**
- * rowActions — the archive / delete / rename flows for a conversation row,
+ * rowActions — the archive / close / rename flows for a conversation row,
  * shared by every surface that shows one (sidebar rows, board cards). Each
  * flow owns its confirm dialog and the ordering quirks that were battle-won
  * in the sidebar; extracting them means the board can't re-learn those bugs.
+ *
+ * Archive-only (B-083): the web deliberately has NO "delete" concept anymore.
+ * Chat sessions end by archiving (every message/record survives server-side);
+ * terminals end by closing (tmux dies, the claude conversation inside stays
+ * on the machine, resumable via `claude --resume`).
  *
  * Imperative modules only (Modal, storage.getState, plain `t`) — safe to call
  * from event handlers in any component.
@@ -11,7 +16,7 @@ import { t } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { notifyWebhook } from '@/sync/apiWebhook';
-import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionDelete, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
+import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
@@ -81,52 +86,27 @@ export async function markSessionDone(
   }
 }
 
-/** Permanently delete a session (confirm first). Best-effort kill while the
- *  CLI is still connected (the server rejects deleting a live session), then
- *  DELETE — sessionDelete purges the local copy and tombstones the id so the
- *  kill's straggler update can't resurrect the row. Returns true when the
- *  user confirmed (caller navigates away BEFORE calling when the session is
- *  the open one — pass `onConfirmed`). */
-export async function confirmDeleteSession(
-  session: Session,
-  onConfirmed?: () => void,
-): Promise<boolean> {
-  const ok = await Modal.confirm(
-    t('sessionInfo.deleteSessionConfirm'),
-    t('sessionInfo.deleteSessionWarning'),
-    { confirmText: t('common.delete'), destructive: true },
-  );
-  if (!ok) return false;
-  onConfirmed?.();
-  if (session.active || session.presence === 'online') {
-    await sessionKill(session.id).catch(() => {});
-  }
-  const result = await sessionDelete(session.id);
-  if (!result.success) {
-    Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToDeleteSession'));
-  }
-  return true;
-}
-
-/** Delete a web terminal (confirm first): kills its tmux session on the
- *  machine; the daemon's next push confirms the deletion by absence, and the
- *  optimistic overlay hides the row meanwhile.
+/** Close a web terminal (confirm first): ends its tmux session on the
+ *  machine (resources ARE released — that part is real); the daemon's next
+ *  push confirms the close by absence, and the optimistic overlay hides the
+ *  row meanwhile. The claude conversation that ran inside survives on the
+ *  machine (`~/.claude` JSONL) and can be continued with `claude --resume` —
+ *  hence the neutral, non-scary wording (B-083).
  *
- *  `onConfirmed` runs BEFORE the kill and must navigate away when the deleted
+ *  `onConfirmed` runs BEFORE the kill and must navigate away when the closed
  *  terminal is the open one: a still-mounted terminal screen re-opens the id
  *  on its next catch-up (and a refresh on its URL re-mounts it), which used to
  *  recreate the killed tmux session — the "terminal won't delete" bug.
  *
  *  A failed kill (machine offline / RPC error) is surfaced, not swallowed:
  *  hiding the row anyway would be a lie the machine's push immediately undoes. */
-export async function confirmDeleteTerminal(
+export async function confirmCloseTerminal(
   machineId: string,
   terminalId: string,
   onConfirmed?: () => void,
 ): Promise<void> {
-  const ok = await Modal.confirm(t('terminal.deleteTitle'), t('terminal.deleteMessage'), {
-    confirmText: t('common.delete'),
-    destructive: true,
+  const ok = await Modal.confirm(t('terminal.closeTitle'), t('terminal.closeMessage'), {
+    confirmText: t('common.close'),
   });
   if (!ok) return;
   onConfirmed?.();

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ArrowUpRight, ArrowUpToLine, Archive, Check, MessageSquare, Pencil, TerminalSquare, Trash2 } from 'lucide-react';
+import { ArrowUpRight, ArrowUpToLine, Archive, Check, MessageSquare, Pencil, TerminalSquare, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatusDot, ActionContextMenu, type MenuItemDef, type Status } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -7,7 +7,7 @@ import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { upsertPinAt } from '@/screens/sessions/sidebarPins';
 import { moveEntryToTop } from '@/screens/sessions/sidebarOrder';
-import { confirmArchiveSession, confirmDeleteTerminal, markSessionDone } from '@/app/rowActions';
+import { confirmArchiveSession, confirmCloseTerminal, markSessionDone } from '@/app/rowActions';
 import type { BoardItem } from './boardItems';
 
 /** compact duration — mono console style, deliberately locale-neutral */
@@ -68,7 +68,7 @@ export function BoardCard({
       const session = storage.getState().sessions[item.key];
       if (session) void markSessionDone(session);
     } else if (item.machineId) {
-      void confirmDeleteTerminal(item.machineId, item.key.slice(2));
+      void confirmCloseTerminal(item.machineId, item.key.slice(2));
     }
   }, [item.kind, item.key, item.machineId]);
 
@@ -117,13 +117,14 @@ export function BoardCard({
   } else if (item.machineId) {
     const machineId = item.machineId;
     const terminalId = item.key.slice(2); // `t:<terminalId>`
+    // Archive-only (B-083): closing is neutral — tmux ends, the claude
+    // conversation inside survives on the machine (`claude --resume`).
     menuItems.push({
-      key: 'delete',
-      label: t('common.delete'),
-      icon: Trash2,
-      danger: true,
+      key: 'close',
+      label: t('common.close'),
+      icon: X,
       separatorBefore: true,
-      onSelect: () => void confirmDeleteTerminal(machineId, terminalId),
+      onSelect: () => void confirmCloseTerminal(machineId, terminalId),
     });
   }
 

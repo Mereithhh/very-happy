@@ -1166,6 +1166,11 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion
+ *
+ * NOTE (B-083 archive-only): the web UI no longer exposes any delete entry —
+ * archiving is the only way a chat session ends. This op is kept as the call
+ * surface for a future data-retention sweep (B-025) and because its 404-idempotent
+ * purge+tombstone semantics are battle-tested. Do not wire it back into UI.
  */
 export async function sessionDelete(sessionId: string): Promise<{ success: boolean; message?: string }> {
     try {

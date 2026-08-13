@@ -1,12 +1,12 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2, AudioLines, ArrowDownWideNarrow, ListOrdered } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { confirmArchiveSession, confirmDeleteSession, confirmDeleteTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
+import { confirmArchiveSession, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
@@ -856,8 +856,7 @@ function rowMenuItems(opts: {
   canMoveDown?: boolean;
   onRename: () => void;
   onMove?: (dir: -1 | 1) => void;
-  onArchiveOrDelete: () => void;
-  onDeleteSession?: () => void;
+  onArchiveOrClose: () => void;
 }): MenuItemDef[] {
   const { t } = opts;
   const items: MenuItemDef[] = [
@@ -884,23 +883,17 @@ function rowMenuItems(opts: {
       },
     );
   }
+  // Archive-only (B-083): a chat session ends by archiving (records survive);
+  // a terminal ends by a neutral "close" (tmux dies, the claude conversation
+  // inside stays on the machine — `claude --resume`). No delete concept.
   items.push({
     key: 'archive',
-    label: opts.isTerminal ? t('common.delete') : t('common.archive'),
-    icon: opts.isTerminal ? Trash2 : Archive,
-    danger: true,
+    label: opts.isTerminal ? t('common.close') : t('common.archive'),
+    icon: opts.isTerminal ? X : Archive,
+    danger: !opts.isTerminal,
     separatorBefore: true,
-    onSelect: opts.onArchiveOrDelete,
+    onSelect: opts.onArchiveOrClose,
   });
-  if (!opts.isTerminal && opts.onDeleteSession) {
-    items.push({
-      key: 'delete',
-      label: t('common.delete'),
-      icon: Trash2,
-      danger: true,
-      onSelect: opts.onDeleteSession,
-    });
-  }
   return items;
 }
 
@@ -967,21 +960,18 @@ function SidebarRow({
       ? navigate(`/terminal/${row.machineId}?tid=${row.terminalId}`)
       : navigate(`/session/${row.session!.id}`);
 
-  // Archive (session) / delete (terminal) / permanent delete — the flows,
-  // confirms included, live in rowActions.ts and are shared with the board.
-  const onArchiveOrDelete = () =>
+  // Archive (session) / close (terminal) — the flows, confirms included,
+  // live in rowActions.ts and are shared with the board. Archive-only (B-083):
+  // no delete flow exists for chat sessions.
+  const onArchiveOrClose = () =>
     isTerminal
-      ? confirmDeleteTerminal(row.machineId!, row.terminalId!, () => {
+      ? confirmCloseTerminal(row.machineId!, row.terminalId!, () => {
           // Leaving the screen BEFORE the kill: a mounted terminal screen (or
           // a refresh on its URL) would otherwise re-open the id and recreate
-          // the killed tmux session (see rowActions.confirmDeleteTerminal).
+          // the killed tmux session (see rowActions.confirmCloseTerminal).
           if (selected) navigate('/');
         })
       : confirmArchiveSession(row.session!);
-  const onDeleteSession = () =>
-    confirmDeleteSession(row.session!, () => {
-      if (selected) navigate('/');
-    });
 
   // ONE item list feeds both the "…" dropdown and the right-click menu.
   const menuItems = rowMenuItems({
@@ -991,8 +981,7 @@ function SidebarRow({
     canMoveDown,
     onRename: onRenameRequest,
     onMove,
-    onArchiveOrDelete: () => void onArchiveOrDelete(),
-    onDeleteSession: () => void onDeleteSession(),
+    onArchiveOrClose: () => void onArchiveOrClose(),
   });
 
   return (
