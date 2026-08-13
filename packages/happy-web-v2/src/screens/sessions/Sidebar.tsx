@@ -473,9 +473,10 @@ export function Sidebar() {
   return (
     <div className="sb">
       <header className="sb-header">
+        {/* Mark only — the "very happy" wordmark was dropped to keep the
+            header from overflowing as header-right icons accumulated. */}
         <div className="sb-brand">
           <CyberMark size={22} />
-          <span className="sb-title">very happy</span>
         </div>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />

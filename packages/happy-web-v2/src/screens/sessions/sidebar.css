@@ -17,10 +17,6 @@
   align-items: center;
   gap: var(--sp-2);
 }
-.sb-title {
-  font-weight: 600;
-  font-size: var(--fs-14);
-}
 .sb-header-right {
   display: flex;
   align-items: center;
