@@ -17,13 +17,7 @@
   background: var(--bg-1);
   flex-shrink: 0;
 }
-.term-back {
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-.term-back:hover { color: var(--text); }
+/* the back arrow is now the shared .vh-back control (styles/base.css) */
 .term-title {
   display: inline-flex;
   align-items: center;

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
 import {
-  ChevronLeft,
   ChevronRight,
   User,
   Palette,
@@ -38,6 +37,7 @@ import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
+import { BackButton } from '@/app/BackButton';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
@@ -119,21 +119,17 @@ function Page({ children }: { children: ReactNode }) {
 function Header({
   title,
   subtitle,
-  onBack,
   right,
 }: {
   title: string;
   subtitle?: string;
-  onBack?: () => void;
   right?: ReactNode;
 }) {
   return (
     <div className="set-header">
-      {onBack && (
-        <button type="button" className="set-header__back" onClick={onBack} aria-label="Back">
-          <ChevronLeft size={20} />
-        </button>
-      )}
+      {/* global back: /settings/* → /settings → /, or real history when there
+          is any (see app/appBack.ts). No per-page onBack any more. */}
+      <BackButton />
       <div className="set-header__titles">
         <span className="set-header__title">{title}</span>
         {subtitle && <span className="set-header__subtitle">{subtitle}</span>}
@@ -187,7 +183,7 @@ function Overview() {
 
   return (
     <Page>
-      <Header title={t('settings.title')} onBack={() => navigate('/')} />
+      <Header title={t('settings.title')} />
       <ItemList>
         <ItemGroup>
           <Item
@@ -274,7 +270,6 @@ function Overview() {
 // ===================================================================
 
 function Appearance() {
-  const navigate = useNavigate();
   const { t, lang, setLanguage } = useTranslation();
   const { preference, setPreference } = useTheme();
   // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
@@ -319,7 +314,6 @@ function Appearance() {
       <Header
         title={t('settings.appearance')}
         subtitle={t('settings.appearanceSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
@@ -486,7 +480,6 @@ function Account() {
       <Header
         title={t('settings.account')}
         subtitle={t('settings.accountSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup title={t('settingsAccount.accountInformation')}>
@@ -654,7 +647,6 @@ function NewSessionAgentField({
 }
 
 function Agents() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
   const [overrides, setOverrides] = useSettingMutable('agentDefaultOverrides');
@@ -686,7 +678,6 @@ function Agents() {
       <Header
         title={t('settingsAgents.title')}
         subtitle={t('settingsAgents.subtitle')}
-        onBack={() => navigate('/settings')}
         right={
           <Button size="sm" variant="ghost" onClick={clearAll}>
             {t('settingsAgents.clearOverrides')}
@@ -776,7 +767,6 @@ function genId() {
 }
 
 function Snippets() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
   const [presets, setPresets] = useSettingMutable('promptPresets');
@@ -840,7 +830,6 @@ function Snippets() {
       <Header
         title={t('settingsSnippets.navTitle')}
         subtitle={t('settingsSnippets.navSubtitle')}
-        onBack={() => navigate('/settings')}
       />
 
       {editor && (
@@ -1176,7 +1165,6 @@ const SEND_CMD = 'very-happy send --session <session-id> --prompt <text>';
 const MCP_CMD = 'claude mcp add --scope user very-happy-clipboard -- very-happy mcp';
 
 function Channels() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
 
   return (
@@ -1184,7 +1172,6 @@ function Channels() {
       <Header
         title={t('settingsChannels.title')}
         subtitle={t('settingsChannels.subtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         {/* Outbound: server → your endpoint. Carries its own title/footer. */}
@@ -1405,7 +1392,6 @@ function InboxGroup() {
 }
 
 function Notifications() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { credentials } = useAuth();
   const prefs = useNotificationPrefs();
@@ -1416,7 +1402,7 @@ function Notifications() {
   if (!supported) {
     return (
       <Page>
-        <Header title={t('notifications.title')} onBack={() => navigate('/settings')} />
+        <Header title={t('notifications.title')} />
         <ItemList>
           <ItemGroup title={t('notifications.webOnly')}>
             <Item title={t('notifications.unsupported')} />
@@ -1461,7 +1447,6 @@ function Notifications() {
       <Header
         title={t('notifications.title')}
         subtitle={t('notifications.settingsSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
@@ -1569,7 +1554,6 @@ function Notifications() {
 type Period = 'today' | '7days' | '30days';
 
 function Usage() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { credentials } = useAuth();
   const [period, setPeriod] = useState<Period>('7days');
@@ -1616,7 +1600,6 @@ function Usage() {
       <Header
         title={t('settings.usage')}
         subtitle={t('settings.usageSubtitle')}
-        onBack={() => navigate('/settings')}
         right={
           <div className="set-seg">
             {periods.map((p) => (
@@ -1769,7 +1752,6 @@ function Diagnostics() {
       <Header
         title={t('diagnostics.title')}
         subtitle={t('diagnostics.subtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <WebBuildGroup />
@@ -1914,7 +1896,7 @@ function Password() {
 
   return (
     <Page>
-      <Header title={t('settingsAccount.password')} onBack={() => navigate('/settings')} />
+      <Header title={t('settingsAccount.password')} />
       <div className="set-note">{t('setPassword.intro')}</div>
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <Input

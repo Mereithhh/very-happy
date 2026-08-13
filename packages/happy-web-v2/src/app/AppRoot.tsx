@@ -15,6 +15,7 @@ import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
 import { useLocalSetting } from '@/sync/storage';
+import { useGlobalBackNav } from '@/app/appBack';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
@@ -44,6 +45,10 @@ function Lazy({ children }: { children: ReactNode }) {
 function RequireAuth() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
+  // Global back lives HERE, not in AppLayout: it must also cover /assistant,
+  // which is a sibling of the layout tree. Installs the in-app history tracker
+  // plus the ⌘[ / Alt+← chord and the left-edge swipe.
+  useGlobalBackNav();
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
