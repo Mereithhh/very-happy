@@ -646,9 +646,6 @@ export function Sidebar() {
               <span className="sb-board-badge mono">{attentionCount > 9 ? '9+' : attentionCount}</span>
             )}
           </button>
-          {/* Notification center: bell + unread badge + panel (self-contained;
-              the collapsed desktop rail carries its own instance). */}
-          <NotificationBell />
           {/* Collapse only exists in the two-pane desktop layout. On mobile
               (single pane) AppLayout ignores `collapsed` entirely, so this
               button did nothing visible — worse, it silently wrote
@@ -788,6 +785,12 @@ export function Sidebar() {
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> {t('tabs.settings')}
         </button>
+        {/* Notification center: bell + unread badge + panel (self-contained;
+            the collapsed desktop rail carries its own instance). It used to
+            sit in the header, which was overflowing as header-right icons
+            accumulated — down here it shares the settings row, the other
+            "app chrome" affordance. */}
+        <NotificationBell className="sb-footer-bell" />
       </footer>
 
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}

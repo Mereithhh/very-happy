@@ -11,6 +11,7 @@ import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts } from '@/app/viewShortcuts';
 import { useNotificationGenerator } from '@/app/useNotificationGenerator';
+import { useSeenTracker } from '@/app/useSeenTracker';
 import './layout.css';
 
 export function AppLayout() {
@@ -26,6 +27,9 @@ export function AppLayout() {
   // appends inbox entries + rings the chime. Layout level so it observes
   // everything regardless of which screen is open.
   useNotificationGenerator();
+  // Synced read state: watching a session/terminal retires its notifications
+  // on every device (writer side; the store owns the KV sync).
+  useSeenTracker();
   const isDesktop = useIsDesktop();
   const location = useLocation();
   const atRoot = location.pathname === '/' || location.pathname === '';
@@ -73,7 +77,9 @@ export function AppLayout() {
             >
               <PanelLeft size={18} />
             </button>
-            {/* collapsed rail keeps the notification entry point visible */}
+            {/* collapsed rail keeps the notification entry point visible —
+                pinned to the BOTTOM (CSS margin-top:auto) so it lines up with
+                the expanded sidebar's footer row instead of moving on collapse */}
             <NotificationBell />
           </div>
           <main className="app-detail">
