@@ -34,7 +34,7 @@ type RealResponse = {
     headers: { get(name: string): string | null };
     json(): Promise<unknown>;
     arrayBuffer(): Promise<ArrayBuffer>;
-    body: { getReader(): { read(): Promise<unknown> } } | null;
+    body: { getReader(): { read(): Promise<unknown>; cancel(): Promise<void> } } | null;
 };
 const realFetch: (url: string, init?: Record<string, unknown>) => Promise<RealResponse> =
     (globalThis as any).fetch.bind(globalThis);
@@ -128,7 +128,9 @@ describe("voiceRoutes — /v1/voice/tts + /v1/voice/tts/voices", () => {
         }
         if (originalApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
         else process.env.ELEVENLABS_API_KEY = originalApiKey;
-    });
+        // 30s hook budget: closing a server with a just-severed streaming
+        // connection is slow on loaded CI runners (4-core shared box).
+    }, 30_000);
 
     it("S1 regression: streams a complete 200 over a real socket while the upstream is slow (request.raw 'close' used to abort every request)", async () => {
         const chunks = [
@@ -192,12 +194,17 @@ describe("voiceRoutes — /v1/voice/tts + /v1/voice/tts/voices", () => {
         clientAbort.abort();
 
         // The route must notice the disconnect and abort the upstream fetch.
-        const deadline = Date.now() + 3000;
+        // Generous deadline on purpose: loaded CI runners (4-core, shared)
+        // stretch socket-close propagation well past dev-machine timings.
+        const deadline = Date.now() + 15_000;
         while (!upstreamSignal?.aborted && Date.now() < deadline) {
             await sleep(20);
         }
         expect(upstreamSignal?.aborted).toBe(true);
-    });
+        // Release the half-open connection NOW so afterEach's app.close()
+        // doesn't sit waiting on it (the hook-timeout flake on slow runners).
+        await reader.cancel().catch(() => undefined);
+    }, 30_000);
 
     it("S2: maps an upstream TTS 404 to 502 instead of passing it through", async () => {
         vi.stubGlobal("fetch", errorUpstream(404));
@@ -260,7 +267,7 @@ describe("voiceRoutes — /v1/voice/token (B-069)", () => {
         }
         if (originalApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
         else process.env.ELEVENLABS_API_KEY = originalApiKey;
-    });
+    }, 30_000);
 
     function tokenUpstream(token = "sutkn_route_test") {
         return vi.fn(async () => ({
