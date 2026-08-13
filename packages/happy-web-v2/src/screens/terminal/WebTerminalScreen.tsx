@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
+import { ChevronLeft, Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -1145,13 +1144,26 @@ export function WebTerminalScreen() {
     else tm.focus();
   };
 
-  // Prompt preset → terminal input. Same channel as quick commands (bracketed
-  // paste — never auto-executes; the user presses Enter to send), with the
-  // text normalized (see ./termPresetPaste) so a trailing newline can never
-  // double as an auto-submit on paste paths without bracketed paste.
+  // Shortcut (insert kind) → terminal input. Bracketed paste — never
+  // auto-executes; the user presses Enter to send — with the text normalized
+  // (see ./termPresetPaste) so a trailing newline can never double as an
+  // auto-submit on paste paths without bracketed paste.
   const insertPreset = (text: string) => {
     const paste = presetPasteText(text);
     if (paste) runCommand(paste);
+  };
+
+  // Shortcut (run kind, run:true) → paste THEN execute. The paste lands via
+  // xterm's synchronous onData → sendInput, so the trailing \r is sequenced
+  // after the command text on the pty: inside a bracketed-paste TUI it
+  // submits the pasted input; in a plain shell it runs the line. This is the
+  // ONE path that auto-executes — the same entry picked from the chat
+  // composer only inserts.
+  const execPreset = (text: string) => {
+    const paste = presetPasteText(text);
+    if (!paste) return;
+    runCommand(paste);
+    sendInputRef.current?.('\r');
   };
 
   const onRename = async () => {
@@ -1217,8 +1229,6 @@ export function WebTerminalScreen() {
     { label: '-', seq: '-', aria: 'Dash' },
   ];
 
-  const cmds = (settings.terminalCommands ?? []) as Array<{ id: string; title: string; command: string }>;
-
   return (
     <div className="term-screen" ref={screenRef}>
       <header className="term-header">
@@ -1243,12 +1253,15 @@ export function WebTerminalScreen() {
               <TextSelect size={18} />
             </button>
           )}
-          {/* Prompt presets: desktop entry lives here; touch devices get the
-              key-bar entry instead (their keyboard affordances live there). */}
+          {/* Unified shortcuts (absorbed the old quick-commands menu):
+              desktop entry lives here; touch devices get the key-bar entry
+              instead (their keyboard affordances live there). */}
           {!IS_COARSE_POINTER && (
             <TermPresetsMenu
               variant="header"
               onPick={insertPreset}
+              onRun={execPreset}
+              onManage={() => navigateTo('/settings/snippets')}
               // Keyboard cancel (Esc / ⌘.) — back to the terminal, matching
               // where focus lived before the chord opened the menu.
               onCancel={() => termRef.current?.focus()}
@@ -1262,31 +1275,6 @@ export function WebTerminalScreen() {
           >
             <FolderOpen size={18} />
           </button>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button className="sb-icon-btn" title={t('settingsSnippets.commandsGroup')}>
-                <ListPlus size={18} />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className="vh-menu" align="end" sideOffset={6}>
-                {cmds.length > 0 ? (
-                  cmds.map((c) => (
-                    <DropdownMenu.Item key={c.id} className="vh-menu-item" onSelect={() => runCommand(c.command)}>
-                      {c.title}
-                    </DropdownMenu.Item>
-                  ))
-                ) : (
-                  <DropdownMenu.Item
-                    className="vh-menu-item"
-                    onSelect={() => navigateTo('/settings/snippets')}
-                  >
-                    {t('settingsSnippets.addCommand')}
-                  </DropdownMenu.Item>
-                )}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
           <button
             className="sb-icon-btn"
             title={t('tmuxHelp.title')}
@@ -1327,7 +1315,7 @@ export function WebTerminalScreen() {
             >
               <TextCursorInput size={16} />
             </button>
-            <TermPresetsMenu variant="keybar" onPick={insertPreset} />
+            <TermPresetsMenu variant="keybar" onPick={insertPreset} onRun={execPreset} />
             <span className="term-keybar-sep" aria-hidden />
             <button
               type="button"
