@@ -1312,7 +1312,16 @@ export function WebTerminalScreen() {
             >
               <TextCursorInput size={16} />
             </button>
-            <TermPresetsMenu variant="keybar" onPick={insertPreset} onRun={execPreset} />
+            <TermPresetsMenu
+              variant="keybar"
+              onPick={insertPreset}
+              onRun={execPreset}
+              // Same post-close refocus as the header variant. The in-gesture
+              // dispatchFocus inside runCommand is what opens the iOS keyboard;
+              // this pass is what makes the focus STICK past the menu's
+              // FocusScope, so typing/Enter lands in the terminal.
+              onCancel={() => dispatchFocus({ type: 'snippet' })}
+            />
             <span className="term-keybar-sep" aria-hidden />
             <button
               type="button"

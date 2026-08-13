@@ -17,11 +17,13 @@
  * settings) instead of hiding — the affordance the commands menu used to
  * provide. The keybar variant still hides when empty (key bar space is scarce).
  *
- * Focus handoff: onPick/onRun runs inside the Radix onSelect click (iOS only
- * opens the soft keyboard for focus() calls inside the user-gesture stack) and
- * moves focus to xterm via the screen's focus policy; onCloseAutoFocus is
- * prevented so Radix's default "return focus to the trigger on close" can't
- * steal it back from the terminal right after the paste.
+ * Focus handoff (two passes, both needed): onPick/onRun runs inside the Radix
+ * onSelect click and focuses xterm there because iOS only opens the soft
+ * keyboard for focus() calls inside the user-gesture stack — but that pass
+ * does NOT survive, since Radix's FocusScope is still mounted and pulls focus
+ * back into the menu. So onCloseAutoFocus prevents Radix's "return focus to
+ * the trigger" AND refocuses the terminal itself once the menu is unmounted.
+ * Without that second pass focus ends on <body> and Enter does nothing.
  *
  * Keyboard path (header variant, desktop): ⌘./Ctrl+. toggles the menu — the
  * shortcut hook listens in the CAPTURE phase, so the chord is intercepted
@@ -58,9 +60,10 @@ export function TermPresetsMenu({
     onRun: (text: string) => void;
     /** Empty-state "manage shortcuts" item (header variant only). */
     onManage?: () => void;
-    /** Keyboard cancel (Esc / ⌘. while open) — refocus the terminal, since
-     *  onCloseAutoFocus below suppresses Radix's trigger refocus and a cancel
-     *  has no onPick to route focus (keyboard-only flow must not strand it). */
+    /** Refocus the terminal after the menu closes — used for BOTH a keyboard
+     *  cancel (Esc / ⌘.) and a pick, because onCloseAutoFocus suppresses
+     *  Radix's trigger refocus and the pick's own focus() is overridden by the
+     *  still-mounted FocusScope. Not called for click-outside dismissals. */
     onCancel?: () => void;
 }) {
     const { t } = useTranslation();
@@ -70,6 +73,14 @@ export function TermPresetsMenu({
     // True while the pending close is a KEYBOARD cancel (Esc / ⌘. toggle) —
     // consumed (and reset) in onCloseAutoFocus.
     const kbCancelRef = useRef(false);
+    // True while the pending close follows a PICK. The focus() that onPick /
+    // onRun perform runs while Radix's FocusScope is still mounted, so the
+    // scope pulls focus back inside the menu; onCloseAutoFocus then suppresses
+    // Radix's "return focus to the trigger" and focus lands on <body> — the
+    // terminal looked focused but Enter went nowhere (field report). Refocus
+    // once the menu is actually gone. Gated on the pick so a click-OUTSIDE
+    // dismissal never steals focus from whatever the user clicked.
+    const pickedRef = useRef(false);
     // The keybar variant is only rendered on coarse-pointer devices, where the
     // hook is inert anyway; gating on the variant keeps the invariant explicit.
     // The header variant stays registered even with zero entries — the menu
@@ -82,6 +93,7 @@ export function TermPresetsMenu({
     if (presets.length === 0 && keybar) return null;
 
     const pick = (p: { text: string; run?: boolean }) => {
+        pickedRef.current = true;
         if (presetRuns(p)) onRun(p.text);
         else onPick(p.text);
     };
@@ -127,14 +139,16 @@ export function TermPresetsMenu({
                     collisionPadding={8}
                     onEscapeKeyDown={() => { kbCancelRef.current = true; }}
                     onCloseAutoFocus={(e) => {
-                        // Always suppress Radix's "refocus the trigger" (the
-                        // pick path routes focus to xterm inside onPick); on a
-                        // keyboard cancel, hand focus back to the terminal.
+                        // Always suppress Radix's "refocus the trigger", then
+                        // hand focus to the terminal ourselves — for keyboard
+                        // cancels AND for picks (see pickedRef: the in-onSelect
+                        // focus() loses to the still-mounted FocusScope, so
+                        // this post-unmount pass is the one that sticks).
                         e.preventDefault();
-                        if (kbCancelRef.current) {
-                            kbCancelRef.current = false;
-                            onCancel?.();
-                        }
+                        const wanted = kbCancelRef.current || pickedRef.current;
+                        kbCancelRef.current = false;
+                        pickedRef.current = false;
+                        if (wanted) onCancel?.();
                     }}
                     onKeyDown={onMenuKeyDown}
                 >
