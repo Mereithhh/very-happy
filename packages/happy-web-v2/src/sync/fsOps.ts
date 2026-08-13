@@ -46,7 +46,12 @@ export type FsListResult =
     | FsFailure;
 
 export type FsReadResult =
-    | { ok: true; path: string; size: number; binary: boolean; truncated: boolean; content: string | null }
+    | {
+        ok: true; path: string; size: number; binary: boolean; truncated: boolean; content: string | null;
+        /** Daemon's echo of the read start (chunked reads). null ⇒ old daemon
+         *  that ignores `offset` — multi-chunk assembly is unsupported there. */
+        offset: number | null;
+    }
     | FsFailure;
 
 const KNOWN_CODES: ReadonlySet<string> = new Set([
@@ -85,20 +90,23 @@ export async function machineFsList(machineId: string, path: string): Promise<Fs
     }
 }
 
-/** Read a file on the machine (≤ 512KB; binary detected daemon-side).
- *  `allowBinary` asks the daemon to include binary bytes anyway (image
- *  preview). Never throws. */
+/** Read a file window on the machine (≤ 512KB per response; binary detected
+ *  daemon-side). `allowBinary` asks the daemon to include binary bytes anyway
+ *  (image / PDF preview); `offset` starts the window mid-file (chunked
+ *  assembly of large previews — see fsPreviewModel.assembleFsFile). The
+ *  daemon echoes `offset` back; a missing echo means an old daemon that
+ *  ignored the parameter. Never throws. */
 export async function machineFsRead(
     machineId: string,
     path: string,
-    options: { maxBytes?: number; allowBinary?: boolean } = {},
+    options: { maxBytes?: number; allowBinary?: boolean; offset?: number } = {},
 ): Promise<FsReadResult> {
     try {
         await ensureMachineEncryption(machineId);
         const res = await apiSocket.machineRPC<
-            { path: string; size: number; binary: boolean; truncated: boolean; content?: string } & { error?: string },
-            { path: string; maxBytes?: number; allowBinary?: boolean }
-        >(machineId, 'fs-read', { path, maxBytes: options.maxBytes, allowBinary: options.allowBinary });
+            { path: string; size: number; binary: boolean; truncated: boolean; content?: string; offset?: number } & { error?: string },
+            { path: string; maxBytes?: number; allowBinary?: boolean; offset?: number }
+        >(machineId, 'fs-read', { path, maxBytes: options.maxBytes, allowBinary: options.allowBinary, offset: options.offset });
         if (typeof res?.error === 'string') return failureOf(res.error);
         if (!res || typeof res.path !== 'string' || typeof res.size !== 'number') {
             return { ok: false, code: 'unknown', error: 'Malformed fs-read response' };
@@ -110,6 +118,7 @@ export async function machineFsRead(
             binary: res.binary === true,
             truncated: res.truncated === true,
             content: typeof res.content === 'string' ? res.content : null,
+            offset: typeof res.offset === 'number' ? res.offset : null,
         };
     } catch (error) {
         return failureOf(error instanceof Error ? error.message : 'fs-read failed');

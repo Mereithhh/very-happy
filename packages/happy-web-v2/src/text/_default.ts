@@ -543,6 +543,14 @@ export const en = {
         listTruncated: ({ count }: { count: number }) => `Large directory — showing the first ${count} entries`,
         fileTruncated: ({ size }: { size: string }) => `Preview truncated — full file is ${size}`,
         binaryFile: ({ size }: { size: string }) => `Binary file (${size}) — no preview`,
+        tooLarge: ({ size, limit }: { size: string; limit: string }) => `File too large to preview (${size}, limit ${limit})`,
+        largeNeedsUpgrade: ({ size }: { size: string }) => `Previewing this file (${size}) needs a newer daemon — upgrade very-happy-cli on the machine`,
+        viewSource: 'View source',
+        viewRendered: 'View rendered',
+        fullscreen: 'Fullscreen',
+        exitFullscreen: 'Exit fullscreen',
+        zoomToActual: 'Click to view at 100%',
+        zoomToFit: 'Click to fit width',
     },
 
     commandPalette: {

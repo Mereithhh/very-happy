@@ -23,6 +23,7 @@ import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
 import {
     FS_LIST_MAX_ENTRIES,
     clampReadLimit,
+    clampReadOffset,
     compareFsEntries,
     entryTypeOf,
     isBinaryContent,
@@ -43,13 +44,17 @@ export interface FsReadResponse {
     path: string;
     /** Full on-disk size in bytes (may exceed what `content` carries). */
     size: number;
-    /** NUL byte in the first 8KB ⇒ binary; no content is returned then. */
+    /** NUL byte in the first 8KB of the returned window ⇒ binary; no content
+     *  is returned then (unless `allowBinary`). */
     binary: boolean;
-    /** True when `content` carries fewer bytes than `size`. */
+    /** True when bytes remain past the returned window (offset + content). */
     truncated: boolean;
     /** base64 file bytes (up to the cap). Absent for binary files unless the
      *  caller opted in with `allowBinary` (web image preview). */
     content?: string;
+    /** Echo of the effective read start. Presence tells the web this daemon
+     *  supports chunked reads (old daemons omit it — old WEBS ignore it). */
+    offset: number;
 }
 
 export interface FsReadOptions {
@@ -57,6 +62,10 @@ export interface FsReadOptions {
     /** Return content even for binary files (still capped) — the web asks for
      *  this on image extensions to render an inline preview. */
     allowBinary?: boolean;
+    /** Byte position to start reading from (default 0). The web assembles
+     *  large previews (PDF / big images) from sequential ≤512KB chunks so each
+     *  RPC response stays under the relay's payload budget. */
+    offset?: unknown;
 }
 
 /** Map fs errno failures to stable code strings; our own code-string Errors
@@ -105,12 +114,14 @@ export async function fsList(inputPath: unknown, homeDir: string = homedir()): P
     };
 }
 
-/** Read one regular file, capped at clampReadLimit(maxBytes) bytes (512KB
- *  hard max). Only regular files are read — directories, fifos, sockets and
- *  devices are refused ('not-a-file'), so a fifo can never hang the daemon. */
+/** Read one regular file window, capped at clampReadLimit(maxBytes) bytes
+ *  (512KB hard max) starting at clampReadOffset(offset). Only regular files
+ *  are read — directories, fifos, sockets and devices are refused
+ *  ('not-a-file'), so a fifo can never hang the daemon. */
 export async function fsRead(inputPath: unknown, options: FsReadOptions = {}, homeDir: string = homedir()): Promise<FsReadResponse> {
     const path = normalizeFsPath(inputPath, homeDir);
     const limit = clampReadLimit(options.maxBytes);
+    const offset = clampReadOffset(options.offset);
     try {
         const st = await stat(path); // follows symlinks: reading a symlinked file works
         if (!st.isFile()) throw new Error('not-a-file');
@@ -118,28 +129,20 @@ export async function fsRead(inputPath: unknown, options: FsReadOptions = {}, ho
         try {
             const fst = await fh.stat(); // fresh size from the open handle
             const size = fst.size;
-            const buf = Buffer.alloc(Math.min(size, limit));
-            const { bytesRead } = buf.length > 0 ? await fh.read(buf, 0, buf.length, 0) : { bytesRead: 0 };
+            const want = Math.min(Math.max(size - offset, 0), limit);
+            const buf = Buffer.alloc(want);
+            const { bytesRead } = buf.length > 0 ? await fh.read(buf, 0, buf.length, offset) : { bytesRead: 0 };
             const bytes = buf.subarray(0, bytesRead);
+            const truncated = size > offset + bytesRead;
+            // Binary sniff is only meaningful on the window we actually looked
+            // at; chunked callers (offset > 0) always pass allowBinary anyway.
             if (isBinaryContent(bytes)) {
                 if (options.allowBinary === true) {
-                    return {
-                        path,
-                        size,
-                        binary: true,
-                        truncated: size > bytesRead,
-                        content: bytes.toString('base64'),
-                    };
+                    return { path, size, binary: true, truncated, content: bytes.toString('base64'), offset };
                 }
-                return { path, size, binary: true, truncated: false };
+                return { path, size, binary: true, truncated: false, offset };
             }
-            return {
-                path,
-                size,
-                binary: false,
-                truncated: size > bytesRead,
-                content: bytes.toString('base64'),
-            };
+            return { path, size, binary: false, truncated, content: bytes.toString('base64'), offset };
         } finally {
             await fh.close();
         }
@@ -155,8 +158,8 @@ export function registerFsHandlers(rpcHandlerManager: RpcHandlerManager): void {
         return fsList(params?.path);
     });
 
-    rpcHandlerManager.registerHandler<{ path: string; maxBytes?: number; allowBinary?: boolean }, FsReadResponse>('fs-read', async (params) => {
+    rpcHandlerManager.registerHandler<{ path: string; maxBytes?: number; allowBinary?: boolean; offset?: number }, FsReadResponse>('fs-read', async (params) => {
         logger.debug('[FS RPC] fs-read', params?.path);
-        return fsRead(params?.path, { maxBytes: params?.maxBytes, allowBinary: params?.allowBinary === true });
+        return fsRead(params?.path, { maxBytes: params?.maxBytes, allowBinary: params?.allowBinary === true, offset: params?.offset });
     });
 }

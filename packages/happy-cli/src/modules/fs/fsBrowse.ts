@@ -81,6 +81,16 @@ export function clampReadLimit(maxBytes: unknown): number {
     return Math.min(Math.floor(maxBytes), FS_READ_MAX_BYTES);
 }
 
+/** Effective read start: default 0, never negative, whole bytes only. Lets the
+ *  web assemble files larger than the per-response cap from sequential chunks
+ *  (each response stays relay-sized; see fsRpc.ts `offset`). */
+export function clampReadOffset(offset: unknown): number {
+    if (typeof offset !== 'number' || !Number.isFinite(offset) || offset <= 0) {
+        return 0;
+    }
+    return Math.floor(offset);
+}
+
 /** Map a Dirent-like to the wire entry type. Symlink wins over everything
  *  (a Dirent for a symlink reports only isSymbolicLink()); anything that is
  *  neither dir nor symlink (regular file, fifo, socket, device) is 'file' —

@@ -205,19 +205,70 @@
   overflow: auto;
   padding: var(--sp-2);
 }
+/* Scroll fix: in the viewer the BODY is the scroll container — undo the chat
+   transcript's 420px code-block cap (code.css) that clipped long files with
+   no way to scroll (overflow-y is hidden there so the wheel bubbles). */
+.fsb-viewer-body .cv-pre,
+.fsb-viewer-body .cv-shiki pre.shiki {
+  max-height: none;
+}
 .fsb-viewer-body--img {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--sp-2);
 }
+/* 100% zoom: wide images overflow-scroll instead of centering off-canvas. */
+.fsb-viewer-body--img.is-actual {
+  align-items: flex-start;
+}
 .fsb-img {
   max-width: 100%;
   height: auto;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  cursor: zoom-in;
+}
+.fsb-img--actual {
+  max-width: none;
+  cursor: zoom-out;
+}
+.fsb-viewer-body--md {
+  padding: var(--sp-3) var(--sp-4);
+}
+.fsb-md {
+  max-width: 760px;
+  margin: 0 auto;
+}
+/* PDF: hand the whole body to the browser's native viewer. */
+.fsb-viewer-body--pdf {
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+}
+.fsb-pdf {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--bg-2);
 }
 .fsb-caption {
   font-size: var(--fs-11);
   color: var(--text-faint);
+}
+
+/* Fullscreen: promotes the browser/viewer root into a viewport overlay (both
+   hosts share this via FsBrowser's toggle — see its header comment). Last in
+   the file so its background wins over .fsb / .fsb-viewer. */
+.fsb--full {
+  position: fixed;
+  inset: 0;
+  z-index: 80; /* above both hosts (term-files / sd-files are 60) and scrims */
+  background: var(--bg-0);
+}
+/* Fullscreen owns the whole viewport, so its top bar must clear the notch
+   (the hosts' own heads normally do this). */
+.fsb--full > .fsb-bar,
+.fsb--full > .fsb-viewer-head {
+  padding-top: max(var(--sp-1), env(safe-area-inset-top));
 }

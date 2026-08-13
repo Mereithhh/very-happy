@@ -5,9 +5,15 @@
  * (FsFileViewer). Data comes from the machine-level fs-list / fs-read RPCs;
  * an old daemon (or offline machine) surfaces a friendly upgrade hint instead
  * of a raw error (see fsOps 'unsupported').
+ *
+ * Fullscreen lives HERE (not in the hosts): toggling promotes the same
+ * browser/viewer subtree into a viewport overlay (.fsb-host--full), so both
+ * hosts get it for free and mobile (where the hosts are already full-viewport
+ * overlays) never double-wraps. Esc exits fullscreen only — capture-phase, so
+ * host Esc handlers don't also fire.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, FileText, Folder, Link as LinkIcon, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, FileText, Folder, Link as LinkIcon, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { machineFsList, type FsEntry, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -46,6 +52,7 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
     const [failure, setFailure] = useState<FsFailure | null>(null);
     const [showHidden, setShowHidden] = useState(false);
     const [file, setFile] = useState<string | null>(null);
+    const [fullscreen, setFullscreen] = useState(false);
     // Monotonic request id: only the LATEST navigation may apply its result
     // (rapid clicking must not let a slow older response overwrite a newer one).
     const reqSeq = useRef(0);
@@ -90,15 +97,37 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
         }
     };
 
+    // Esc exits fullscreen (capture, so a host's own Esc handling stays quiet).
+    useEffect(() => {
+        if (!fullscreen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setFullscreen(false);
+            }
+        };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [fullscreen]);
+
     if (file) {
-        return <FsFileViewer machineId={machineId} path={file} onClose={() => setFile(null)} />;
+        return (
+            <FsFileViewer
+                machineId={machineId}
+                path={file}
+                onClose={() => setFile(null)}
+                fullscreen={fullscreen}
+                onToggleFullscreen={() => setFullscreen((v) => !v)}
+            />
+        );
     }
 
     const rows = entries ? visibleFsEntries(sortFsEntries(entries), showHidden) : null;
     const crumbs = fsBreadcrumbs(path);
 
     return (
-        <div className="fsb">
+        <div className={`fsb${fullscreen ? ' fsb--full' : ''}`}>
             <div className="fsb-bar">
                 <nav className="fsb-crumbs mono" aria-label={t('fsBrowser.breadcrumbs')}>
                     {crumbs.map((c, i) => (
@@ -132,6 +161,15 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
                     onClick={() => void load(path)}
                 >
                     <RefreshCw size={14} className={loading ? 'fsb-spin' : undefined} />
+                </button>
+                <button
+                    type="button"
+                    className="fsb-iconbtn"
+                    aria-label={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
+                    title={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
+                    onClick={() => setFullscreen((v) => !v)}
+                >
+                    {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </button>
             </div>
 

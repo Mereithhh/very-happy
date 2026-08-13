@@ -198,6 +198,13 @@
   overflow: auto;
   padding: var(--sp-2);
 }
+/* Same scroll fix as .fsb-viewer-body (fsbrowser.css): the viewer body is the
+   scroll container — undo code.css's 420px chat-transcript cap that clipped
+   long files unscrollably. */
+.fp-fileview .cv-pre,
+.fp-fileview .cv-shiki pre.shiki {
+  max-height: none;
+}
 .fp-fileview--center {
   display: flex;
   align-items: center;

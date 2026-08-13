@@ -555,6 +555,14 @@ export const zhHans: TranslationStructure = {
         listTruncated: ({ count }: { count: number }) => `目录条目过多，仅显示前 ${count} 项`,
         fileTruncated: ({ size }: { size: string }) => `预览已截断——完整文件 ${size}`,
         binaryFile: ({ size }: { size: string }) => `二进制文件（${size}）——不支持预览`,
+        tooLarge: ({ size, limit }: { size: string; limit: string }) => `文件过大，不支持预览（${size}，上限 ${limit}）`,
+        largeNeedsUpgrade: ({ size }: { size: string }) => `预览这个文件（${size}）需要新版 daemon——请在这台机器上升级 very-happy-cli`,
+        viewSource: '查看源码',
+        viewRendered: '查看渲染',
+        fullscreen: '全屏',
+        exitFullscreen: '退出全屏',
+        zoomToActual: '点击查看原始大小',
+        zoomToFit: '点击适应宽度',
     },
 
     commandPalette: {

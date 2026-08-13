@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import {
     FS_READ_MAX_BYTES,
     clampReadLimit,
+    clampReadOffset,
     compareFsEntries,
     entryTypeOf,
     isBinaryContent,
@@ -93,6 +94,18 @@ describe('clampReadLimit', () => {
     });
 });
 
+describe('clampReadOffset', () => {
+    it('defaults to 0 and rejects junk', () => {
+        expect(clampReadOffset(undefined)).toBe(0);
+        expect(clampReadOffset(-1)).toBe(0);
+        expect(clampReadOffset(Number.NaN)).toBe(0);
+        expect(clampReadOffset('5' as unknown as number)).toBe(0);
+        expect(clampReadOffset(0)).toBe(0);
+        expect(clampReadOffset(1024.9)).toBe(1024);
+        expect(clampReadOffset(5 * 1024 * 1024)).toBe(5 * 1024 * 1024);
+    });
+});
+
 describe('entryTypeOf', () => {
     it('maps symlink > dir > file', () => {
         expect(entryTypeOf({ isSymbolicLink: () => true, isDirectory: () => false })).toBe('symlink');
@@ -160,6 +173,39 @@ describe('fsList / fsRead (tmp fixture)', () => {
         expect(res.binary).toBe(true);
         expect(res.truncated).toBe(false);
         expect(Buffer.from(res.content!, 'base64')).toEqual(Buffer.from([1, 2, 0, 4, 5]));
+    });
+
+    it('reads a window at offset and echoes it (chunked reassembly)', async () => {
+        const a = await fsRead(join(root, 'big.txt'), { maxBytes: 1000, offset: 0 });
+        const b = await fsRead(join(root, 'big.txt'), { maxBytes: 1000, offset: 1000 });
+        expect(a.offset).toBe(0);
+        expect(b.offset).toBe(1000);
+        expect(a.truncated).toBe(true);
+        expect(b.truncated).toBe(true);
+        expect(Buffer.from(b.content!, 'base64').length).toBe(1000);
+        const tail = await fsRead(join(root, 'big.txt'), { maxBytes: 1000, offset: 4000 });
+        expect(tail.truncated).toBe(false);
+        expect(Buffer.from(tail.content!, 'base64').length).toBe(96);
+        const whole = Buffer.concat(
+            await Promise.all([0, 1000, 2000, 3000, 4000].map(async (off) =>
+                Buffer.from((await fsRead(join(root, 'big.txt'), { maxBytes: 1000, offset: off })).content!, 'base64'))),
+        );
+        expect(whole.toString('utf8')).toBe('x'.repeat(4096));
+    });
+
+    it('offset at/past EOF returns empty content, not an error', async () => {
+        const res = await fsRead(join(root, 'big.txt'), { offset: 999999 });
+        expect(res.truncated).toBe(false);
+        expect(res.size).toBe(4096);
+        expect(res.content).toBe('');
+        expect(res.offset).toBe(999999);
+    });
+
+    it('binary chunk at offset with allowBinary returns the exact bytes', async () => {
+        const res = await fsRead(join(root, 'blob.bin'), { allowBinary: true, offset: 2 });
+        expect(Buffer.from(res.content!, 'base64')).toEqual(Buffer.from([0, 4, 5]));
+        expect(res.truncated).toBe(false);
+        expect(res.offset).toBe(2);
     });
 
     it('follows symlinks on read', async () => {
