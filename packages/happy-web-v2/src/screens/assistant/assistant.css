@@ -271,6 +271,24 @@
   padding: 0 12px;
   text-align: left;
 }
+/* PC: the mobile-first sizes starve the reading area — widen the column,
+   give the text ~half the viewport, and bump body copy to 16px. */
+@media (min-width: 980px) {
+  .as-col {
+    max-width: 760px;
+  }
+  .as-stage {
+    gap: 14px;
+  }
+  .as-convo {
+    max-height: 52dvh;
+  }
+  .as-convo-assistant,
+  .as-caption {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+}
 .as-convo-user {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;

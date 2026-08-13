@@ -156,6 +156,17 @@ export function AssistantScreen() {
         () => (showTranscript ? deriveTranscript(messages) : []),
         [showTranscript, messages],
     );
+    // keep the latest text in view — long replies stream past the fold
+    const convoRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const el = convoRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [replyView.text, speakingText]);
+    const transcriptRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const el = transcriptRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [showTranscript, transcript.length]);
 
     // ── settings ──
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
@@ -437,7 +448,7 @@ export function AssistantScreen() {
                 </header>
 
                 {showTranscript && (
-                    <div className="as-transcript" role="log">
+                    <div className="as-transcript" role="log" ref={transcriptRef}>
                         {transcript.length === 0 && (
                             <div className="as-transcript-empty">{t('assistant.transcriptEmpty')}</div>
                         )}
@@ -496,7 +507,7 @@ export function AssistantScreen() {
                                 </button>
                             )}
 
-                            <div className="as-convo">
+                            <div className="as-convo" ref={convoRef}>
                                 {exchange.userText && <div className="as-convo-user">{exchange.userText}</div>}
                                 {/* B-059: while speaking, the spoken sentence is the caption */}
                                 {speakingText ? (
