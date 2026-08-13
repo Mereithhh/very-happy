@@ -390,6 +390,14 @@ export type Metadata = {
    */
   variant?: 'assistant' | string
   /**
+   * User-visible session tags (web renders them as chips; `#tag` search).
+   * Optional only — never write an empty array. B-091: sessions dispatched BY
+   * the assistant (HAPPY_SPAWNED_BY=assistant) are born with ['assistant'] so
+   * they're recognizable in every list; old web clients just render one more
+   * chip (harmless).
+   */
+  tags?: string[]
+  /**
    * Task Board V2: latest LLM analysis of this session (boardAnalyzer).
    * Rides the normal metadata sync to every device; absent until the
    * daemon-local `boardLlm` opt-in produces a first verdict.

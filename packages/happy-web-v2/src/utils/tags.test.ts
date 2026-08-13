@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTag, addTag, tagHueIndex, TAG_HUE_COUNT, TAG_MAX_LENGTH } from './tags';
+import {
+  normalizeTag,
+  addTag,
+  tagHueIndex,
+  TAG_HUE_COUNT,
+  TAG_MAX_LENGTH,
+  PRIORITY_TAG,
+  isPriorityTag,
+  hasPriorityTag,
+  togglePriorityTag,
+  sortPriorityFirst,
+} from './tags';
 
 describe('normalizeTag', () => {
   it('strips leading # and trims', () => {
@@ -46,5 +57,51 @@ describe('tagHueIndex', () => {
   });
   it('is case-insensitive (same color for Deploy/deploy)', () => {
     expect(tagHueIndex('Deploy')).toBe(tagHueIndex('deploy'));
+  });
+});
+
+describe('priority tag (B-091)', () => {
+  it('matches the convention tag case-insensitively', () => {
+    expect(isPriorityTag(PRIORITY_TAG)).toBe(true);
+    expect(isPriorityTag('Priority')).toBe(true);
+    expect(isPriorityTag('p0')).toBe(false);
+    expect(hasPriorityTag(['deploy', 'PRIORITY'])).toBe(true);
+    expect(hasPriorityTag(['deploy'])).toBe(false);
+    expect(hasPriorityTag(undefined)).toBe(false);
+  });
+
+  it('togglePriorityTag prepends when absent (first tag = grouping tag)', () => {
+    expect(togglePriorityTag(['deploy'])).toEqual([PRIORITY_TAG, 'deploy']);
+    expect(togglePriorityTag(undefined)).toEqual([PRIORITY_TAG]);
+  });
+
+  it('togglePriorityTag strips every case variant when present', () => {
+    expect(togglePriorityTag(['Priority', 'deploy', 'priority'])).toEqual(['deploy']);
+    expect(togglePriorityTag([PRIORITY_TAG])).toEqual([]);
+  });
+
+  it('togglePriorityTag never mutates the input', () => {
+    const tags = ['deploy'];
+    togglePriorityTag(tags);
+    expect(tags).toEqual(['deploy']);
+  });
+});
+
+describe('sortPriorityFirst', () => {
+  const item = (key: string, priority: boolean) => ({ key, priority });
+  it('floats priority items, both halves keeping relative order (stable partition)', () => {
+    const rows = [item('a', false), item('b', true), item('c', false), item('d', true)];
+    expect(sortPriorityFirst(rows, (r) => r.priority).map((r) => r.key)).toEqual([
+      'b',
+      'd',
+      'a',
+      'c',
+    ]);
+  });
+  it('returns the input array unchanged when nothing moves', () => {
+    const none = [item('a', false), item('b', false)];
+    expect(sortPriorityFirst(none, (r) => r.priority)).toBe(none);
+    const all = [item('a', true), item('b', true)];
+    expect(sortPriorityFirst(all, (r) => r.priority)).toBe(all);
   });
 });

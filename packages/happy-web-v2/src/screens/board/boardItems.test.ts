@@ -255,6 +255,47 @@ describe('ordering', () => {
     const items = build({ sessions: [a, b] });
     expect(items.map((i) => i.key)).toEqual(['a-first', 'b-second']);
   });
+
+  it('B-091: the priority tag floats a session WITHIN its status band, never above attention', () => {
+    const tagged = (id: string, over: Partial<Session> = {}): Session => {
+      const s = mkSession({ id, ...over });
+      s.metadata = { ...s.metadata!, tags: ['Priority', 'deploy'] };
+      return s;
+    };
+    const items = build({
+      sessions: [
+        mkSession({ id: 'sIdleNew', updatedAt: NOW - 1000 }),
+        tagged('sIdlePrio', { updatedAt: NOW - 500_000 }), // older but priority
+        mkSession({
+          id: 'sWait',
+          agentState: { requests: { r: { tool: 'Bash', arguments: {}, createdAt: NOW - 10_000 } } },
+        }),
+      ],
+    });
+    expect(items.map((i) => i.key)).toEqual([
+      'sWait', // attention rank still outranks priority (优先 ≠ 紧急)
+      'sIdlePrio', // priority floats above the newer idle session
+      'sIdleNew',
+    ]);
+    expect(items.find((i) => i.key === 'sIdlePrio')?.priority).toBe(true);
+    expect(items.find((i) => i.key === 'sIdleNew')?.priority).toBeUndefined();
+  });
+});
+
+describe('assistant meta-session exclusion (B-053/B-091)', () => {
+  const assistant = (): Session => {
+    const s = mkSession({ id: 'meta' });
+    s.metadata = { ...s.metadata!, variant: 'assistant', completedAt: NOW - 1000 } as Session['metadata'];
+    return s;
+  };
+  it('never becomes a board item', () => {
+    expect(build({ sessions: [assistant(), mkSession({ id: 'real' })] }).map((i) => i.key)).toEqual([
+      'real',
+    ]);
+  });
+  it('never becomes a Done record', () => {
+    expect(buildCompletedEntries([assistant()], [], NOW)).toEqual([]);
+  });
 });
 
 describe('V2: metadata.board (LLM analysis) on session items', () => {

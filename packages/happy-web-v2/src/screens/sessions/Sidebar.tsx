@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -9,6 +9,10 @@ import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sess
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows } from '@/sync/closedTerminals';
 import { confirmArchiveSession, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
+import { sessionUpdateTitleTags } from '@/sync/ops';
+import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
+import { visibleSidebarSessions } from './sidebarRows';
+import { groupRowsByTag } from './sidebarTagGroups';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
@@ -122,6 +126,13 @@ export function Sidebar() {
   /** 列表 is the only orderable view: 状态's order is the lifecycle verdict,
    *  归档 stays a plain activity list. */
   const orderable = view === 'list';
+  // ----- tag grouping (B-091, 列表 view only) -----
+  // Device-local toggle: render the list grouped by each row's FIRST tag
+  // (sidebarTagGroups.groupRowsByTag — priority group first, untagged last).
+  // While grouped, drag/move reordering is disabled: the sequence is derived
+  // from tags, so a positional drop has nothing meaningful to write.
+  const [groupByTag, setGroupByTag] = useLocalSettingMutable('sidebarGroupByTag');
+  const grouped = orderable && groupByTag;
   /** Surfaces whose order can shift WITHOUT the user acting — the ones the
    *  hover hold below has to protect. (Manual mode reorders only on a drag,
    *  which must apply instantly.) */
@@ -166,10 +177,10 @@ export function Sidebar() {
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
-    const sessRows = sessions
-      .filter((s): s is Session => typeof s !== 'string')
-      .filter((s) => (view === 'archived' ? !s.active : s.active))
-      .map(sessionRow);
+    // visibleSidebarSessions also excludes the assistant meta-session (B-091
+    // leak fix: this inline filter used to miss it — regression-tested in
+    // sidebarRows.test.ts). Applies to the archived view too.
+    const sessRows = visibleSidebarSessions(sessions, view).map(sessionRow);
     // terminals are always "live"; hidden only by the archived-only view
     const termRows: Row[] =
       view === 'archived'
@@ -315,7 +326,7 @@ export function Sidebar() {
   // long stay in recent mode can't let it rot into ghosts.
   const orderSetting = useSetting('sidebarOrder');
   const pinnedSetting = useSetting('pinnedRows'); // legacy, pre-materialization only
-  const displayRows = useMemo<Row[] | null>(() => {
+  const orderedRows = useMemo<Row[] | null>(() => {
     if (!rows) return null;
     if (view === 'status') {
       if (!statusGroups) return null;
@@ -329,12 +340,28 @@ export function Sidebar() {
       ];
     }
     if (!orderable) return rows; // 归档: plain activity list, unchanged
+    // 列表: whatever base order applies, `priority`-tagged rows float on top
+    // as a stable partition (B-091) — an explicit user marker outranks both
+    // the activity sort and the manual arrangement. (状态 gets the same
+    // effect via the board's comparator; 归档 stays plain history.)
+    const priorityFirst = (list: Row[]) => sortPriorityFirst(list, (r) => hasPriorityTag(r.tags));
     // recent mode: one mixed sequence by last activity, hold applied.
-    if (sortMode === 'recent') return applyReorderHold(heldKeys, sortRowsByRecent(rows));
-    if ((orderSetting ?? []).length > 0) return sortRowsByManualOrder(rows, orderSetting!);
+    if (sortMode === 'recent') return applyReorderHold(heldKeys, priorityFirst(sortRowsByRecent(rows)));
+    if ((orderSetting ?? []).length > 0) return priorityFirst(sortRowsByManualOrder(rows, orderSetting!));
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
-    return [...pinned, ...rest];
+    return priorityFirst([...pinned, ...rest]);
   }, [rows, view, statusGroups, completedRows, completedOpen, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
+  // Tag grouping (列表 view): group the ordered sequence by first tag; the
+  // FLAT displayRows below stays the exact rendered order (⌘1-9 badges and
+  // the quick-switch read it), so it must be the groups flattened.
+  const tagGroups = useMemo(
+    () => (grouped && orderedRows ? groupRowsByTag(orderedRows) : null),
+    [grouped, orderedRows],
+  );
+  const displayRows = useMemo<Row[] | null>(
+    () => (tagGroups ? tagGroups.flatMap((g) => g.rows) : orderedRows),
+    [tagGroups, orderedRows],
+  );
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
   displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
@@ -393,8 +420,9 @@ export function Sidebar() {
     if (e.button !== 0) return;
     // Only the list view is orderable: status order is the lifecycle verdict,
     // archived is a plain activity list. Dragging works in BOTH sort modes —
-    // in recent mode the drop switches the mode (see commitSeq).
-    if (!orderable) return;
+    // in recent mode the drop switches the mode (see commitSeq). Grouped-by-
+    // tag disables dragging: the sequence is derived from tags (B-091).
+    if (!orderable || grouped) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
     const list = listRef.current;
@@ -642,6 +670,18 @@ export function Sidebar() {
         },
       ];
     }
+    // 列表 + 按 tag 分组: one section per tag group, same sb-section-head
+    // chrome as the status view. Untagged rows tail as 未分组.
+    if (tagGroups) {
+      return tagGroups.map((g) => ({
+        id: g.tag === null ? 'untagged' : `tag:${g.tag.toLowerCase()}`,
+        label: (g.tag ?? (t('sidebar.groupUntagged') as string)) as string | undefined,
+        count: g.rows.length,
+        rows: g.rows,
+        collapsible: false,
+        open: true,
+      }));
+    }
     return [
       {
         id: 'all',
@@ -652,7 +692,7 @@ export function Sidebar() {
         open: true,
       },
     ];
-  }, [view, statusGroups, completedRows, completedOpen, displayRows, t]);
+  }, [view, statusGroups, completedRows, completedOpen, tagGroups, displayRows, t]);
 
   return (
     <div className="sb">
@@ -687,6 +727,20 @@ export function Sidebar() {
               }
             >
               {sortMode === 'recent' ? <ArrowDownWideNarrow size={17} /> : <ListOrdered size={17} />}
+            </button>
+          )}
+          {/* Tag grouping toggle (B-091) — 列表 view only, same slot family as
+              the sort switch. Title states the CURRENT mode + what a click
+              does, matching the sort button's convention. */}
+          {orderable && (
+            <button
+              className={`sb-icon-btn${groupByTag ? ' is-on' : ''}`}
+              title={t(groupByTag ? 'sidebar.groupByTagOn' : 'sidebar.groupByTagOff')}
+              aria-label={t(groupByTag ? 'sidebar.groupByTagOn' : 'sidebar.groupByTagOff')}
+              aria-pressed={groupByTag}
+              onClick={() => setGroupByTag(!groupByTag)}
+            >
+              <Tags size={17} />
             </button>
           )}
           {/* form switch: the Siri-like voice assistant (B-051). The assistant
@@ -837,7 +891,7 @@ export function Sidebar() {
                           badge={cmdHeld && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
                           canMoveDown={i < displayRows.length - 1}
-                          onMove={orderable ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          onMove={orderable && !grouped ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
                         />
                       </div>
@@ -945,11 +999,23 @@ function rowMenuItems(opts: {
   onRename: () => void;
   onMove?: (dir: -1 | 1) => void;
   onArchiveOrClose: () => void;
+  /** B-091 priority marker — sessions only (terminals have no tag storage);
+   *  undefined hides the item. */
+  isPriority?: boolean;
+  onTogglePriority?: () => void;
 }): MenuItemDef[] {
   const { t } = opts;
   const items: MenuItemDef[] = [
     { key: 'rename', label: t('common.rename'), icon: Pencil, onSelect: opts.onRename },
   ];
+  if (opts.onTogglePriority) {
+    items.push({
+      key: 'priority',
+      label: t(opts.isPriority ? 'sidebar.unmarkPriority' : 'sidebar.markPriority'),
+      icon: Flag,
+      onSelect: opts.onTogglePriority,
+    });
+  }
   if (opts.onMove) {
     // Full-list adjacent swap — the reorder path for coarse pointers (no
     // touch drag), harmless extra on desktop.
@@ -1075,6 +1141,17 @@ function SidebarRow({
     onRename: onRenameRequest,
     onMove,
     onArchiveOrClose: () => void onArchiveOrClose(),
+    // B-091 标记优先/取消优先 — writes metadata.tags through the same
+    // update-metadata op as the rename dialog (togglePriorityTag prepends the
+    // tag, so the row also lands in the priority group when grouping is on).
+    isPriority: !isTerminal && hasPriorityTag(s?.metadata?.tags),
+    onTogglePriority: isTerminal
+      ? undefined
+      : () => {
+          void sessionUpdateTitleTags(s!.id, { tags: togglePriorityTag(s!.metadata?.tags) }).catch(
+            () => {},
+          );
+        },
   });
 
   return (

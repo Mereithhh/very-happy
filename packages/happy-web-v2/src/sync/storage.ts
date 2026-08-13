@@ -29,6 +29,7 @@ import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
+import { isAssistantSession } from "@/assistant/assistantSession";
 import { FeedItem } from "./feedTypes";
 
 // Debounce timer for realtimeMode changes
@@ -268,7 +269,7 @@ function buildSessionListViewData(
     Object.values(sessions).forEach(session => {
         // B-053: the assistant meta-session never joins the normal list — its
         // home is /assistant (still reachable at /session/<id> for audit).
-        if (session.metadata?.variant === 'assistant') return;
+        if (isAssistantSession(session)) return;
         if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
@@ -500,6 +501,11 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Process all sessions from merged set
             Object.values(mergedSessions).forEach(session => {
+                // B-091: the assistant meta-session never joins sessionsData —
+                // this is the lane useSessions() actually serves (sidebar,
+                // command palette). B-053 only filtered the parallel
+                // sessionListViewData lane, which nothing renders → the leak.
+                if (isAssistantSession(session)) return;
                 if (activeSet.has(session.id)) {
                     activeSessions.push(session);
                 } else {
@@ -1516,6 +1522,9 @@ export function useAttentionSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [] as Session[];
         return Object.values(state.sessions).filter((s) =>
+            // B-091: the assistant meta-session is not a task — it must not
+            // inflate the sidebar/board attention badge either.
+            !isAssistantSession(s) &&
             s.presence === 'online' &&
             (
                 (!!s.agentState?.requests && Object.keys(s.agentState!.requests!).length > 0) ||

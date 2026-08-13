@@ -12,6 +12,7 @@ import {
   AudioLines,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
+import { isAssistantSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
@@ -222,6 +223,10 @@ export function CommandPalette() {
     // Sessions (nav) — filter out section-header strings from the legacy list
     for (const s of sessions ?? []) {
       if (typeof s === 'string') continue;
+      // B-091 belt-and-braces: sessionsData already excludes the assistant
+      // meta-session at the source; keep the predicate here so a storage-lane
+      // refactor can't leak it into search (its entry is action:assistant).
+      if (isAssistantSession(s)) continue;
       const title = getSessionName(s);
       const sub = getSessionSubtitle(s);
       const path = s.metadata?.path ?? '';

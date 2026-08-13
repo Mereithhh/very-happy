@@ -50,6 +50,13 @@ export const LocalSettingsSchema = z.object({
     // Enum values are only ever ADDED (safeParse parses the whole blob — see
     // the boardLayout note above).
     sidebarView: z.enum(['list', 'status']).describe('Sidebar display mode: manual-order list or lifecycle status groups'),
+    // B-091: 列表 view only — render the list grouped by each row's first tag
+    // (untagged rows in a trailing 未分组 section). Device-local like
+    // sidebarView: a display-mode preference, not account state. NO .default()
+    // (localSettings is device-local so the synced-settings footgun doesn't
+    // apply, but the schema stays uniform: defaults live in
+    // localSettingsDefaults only).
+    sidebarGroupByTag: z.boolean().describe('Group the sidebar list view by each session\'s first tag'),
     // Web terminal (mobile): line-input mode — a plain textarea below the key
     // bar composes whole lines (IME/dictation-friendly, no xterm composition
     // quirks) and sends them to the pty on Enter, instead of per-key input
@@ -116,6 +123,8 @@ export const localSettingsDefaults: LocalSettings = {
     boardLayout: 'lifecycle',
     // Existing users keep the current sidebar (manual-order list).
     sidebarView: 'list',
+    // Flat list by default; tag grouping is an opt-in lens.
+    sidebarGroupByTag: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,

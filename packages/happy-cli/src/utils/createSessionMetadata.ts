@@ -52,6 +52,19 @@ export interface SessionMetadataResult {
 }
 
 /**
+ * B-091: initial tags for a session dispatched BY the assistant. The daemon's
+ * spawn RPC exports HAPPY_SPAWNED_BY (B-069); such sessions are born with the
+ * 'assistant' tag so every list shows their origin. The meta-agent itself
+ * (HAPPY_SESSION_VARIANT=assistant) is NOT tagged — it is the variant and
+ * never joins the lists at all. Pure over `env` for unit tests.
+ */
+export function assistantSpawnTags(env: Record<string, string | undefined> = process.env): string[] | undefined {
+    if (env.HAPPY_SPAWNED_BY !== 'assistant') return undefined;
+    if (env.HAPPY_SESSION_VARIANT === 'assistant') return undefined;
+    return ['assistant'];
+}
+
+/**
  * Creates session state and metadata for backend agents.
  *
  * This utility consolidates the common session metadata creation logic used by
@@ -76,6 +89,8 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         controlledByUser: false,
     };
 
+    const assistantTags = assistantSpawnTags();
+
     const metadata: Metadata = {
         path: process.cwd(),
         host: os.hostname(),
@@ -96,6 +111,10 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
+        // B-091: assistant-dispatched sessions carry the 'assistant' tag from
+        // birth (see assistantSpawnTags) — applies to every flavor the daemon
+        // can spawn, since HAPPY_SPAWNED_BY is exported flavor-independently.
+        ...(assistantTags ? { tags: assistantTags } : {}),
     };
 
     return { state, metadata };

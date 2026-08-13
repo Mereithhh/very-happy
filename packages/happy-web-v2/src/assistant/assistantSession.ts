@@ -10,6 +10,18 @@
 import type { Session, Machine } from '@/sync/storageTypes';
 
 /**
+ * B-053/B-091: is this the assistant meta-session? THE one predicate every
+ * normal session surface (sidebar rows, command palette, board, machine
+ * screen, attention badge) filters with — the B-053 leak happened precisely
+ * because the check was duplicated inline on one path and missing on another.
+ * The session stays reachable at /session/<id> for audit; it just never joins
+ * a list.
+ */
+export function isAssistantSession(s: Pick<Session, 'metadata'>): boolean {
+    return s.metadata?.variant === 'assistant';
+}
+
+/**
  * Find the assistant session for a machine: variant-tagged, not archived
  * (`active`), belonging to `machineId`. Ties break by most recent update.
  */

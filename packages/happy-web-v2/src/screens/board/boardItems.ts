@@ -28,6 +28,8 @@ import type { Session, Machine } from '@/sync/storageTypes';
 import type { TerminalSession } from '@/sync/terminalPushOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
+import { isAssistantSession } from '@/assistant/assistantSession';
+import { hasPriorityTag } from '@/utils/tags';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
 
@@ -97,6 +99,9 @@ export interface BoardItem {
   lifecycle: BoardLifecycle;
   /** set iff lifecycle === 'waiting' */
   waitReason?: WaitReason;
+  /** B-091: session carries the priority tag — floats first WITHIN its
+   *  status band (never above the urgent/attention band; 优先 ≠ 紧急). */
+  priority?: boolean;
 }
 
 /** ended items older than this fall off the board entirely */
@@ -229,7 +234,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
 
   for (const s of sessions) {
     // B-053: the assistant meta-session is not a task — it lives in /assistant
-    if (s.metadata?.variant === 'assistant') continue;
+    if (isAssistantSession(s)) continue;
     const cls = classifySession(s, now);
     if (!cls) continue;
     const lastActivityAt = s.updatedAt || s.activeAt || s.createdAt;
@@ -244,6 +249,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       href: `/session/${s.id}`,
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
+    if (hasPriorityTag(s.metadata?.tags)) item.priority = true;
     const board = s.metadata?.board;
     if (board?.progress) item.progress = board.progress;
     if (board?.taskId) item.llmTaskId = board.taskId;
@@ -307,12 +313,17 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
 
   // Total order (a consistent comparator — mixing per-group rules without a
   // primary key would make Array.sort unstable): status rank first, then
-  // attention = longest-waiting FIRST, others = most recent activity first.
+  // B-091 priority (the `priority` tag floats a session within its band —
+  // deliberately NOT above the attention rank: a permission request stays on
+  // top of the waiting column no matter what), then attention =
+  // longest-waiting FIRST, others = most recent activity first.
   // Key tiebreak keeps the order stable across polls (no column jitter).
   const RANK: Record<BoardStatus, number> = { attention: 0, working: 1, idle: 2, ended: 3 };
   items.sort((a, b) => {
     const r = RANK[a.status] - RANK[b.status];
     if (r !== 0) return r;
+    const p = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+    if (p !== 0) return p;
     const d =
       a.status === 'attention'
         ? (a.attentionSince ?? 0) - (b.attentionSince ?? 0)
@@ -371,7 +382,7 @@ export function buildCompletedEntries(
 ): CompletedEntry[] {
   const entries: CompletedEntry[] = [];
   for (const s of sessions) {
-    if (s.metadata?.variant === 'assistant') continue; // B-053
+    if (isAssistantSession(s)) continue; // B-053
     const at = s.metadata?.completedAt;
     if (!at || now - at > DONE_WINDOW_MS) continue;
     entries.push({

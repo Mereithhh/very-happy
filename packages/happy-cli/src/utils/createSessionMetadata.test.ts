@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
-import { createSessionMetadata } from './createSessionMetadata';
+import { assistantSpawnTags, createSessionMetadata } from './createSessionMetadata';
 
 function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxConfig {
     return {
@@ -82,5 +82,22 @@ describe('createSessionMetadata', () => {
 
         expect(metadata.parentSessionId).toBe('happy-source');
         expect(metadata.forkedFromMessageId).toBe('message-2');
+    });
+});
+
+describe('assistantSpawnTags (B-091)', () => {
+    it("assistant-dispatched session → ['assistant']", () => {
+        expect(assistantSpawnTags({ HAPPY_SPAWNED_BY: 'assistant' })).toEqual(['assistant']);
+    });
+
+    it('the assistant meta-agent itself is NOT tagged (it is the variant)', () => {
+        expect(
+            assistantSpawnTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }),
+        ).toBeUndefined();
+    });
+
+    it('ordinary spawns get no tags field at all (never an empty array)', () => {
+        expect(assistantSpawnTags({})).toBeUndefined();
+        expect(assistantSpawnTags({ HAPPY_SPAWNED_BY: 'user' })).toBeUndefined();
     });
 });

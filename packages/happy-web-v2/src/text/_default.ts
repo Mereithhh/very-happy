@@ -630,6 +630,21 @@ export const en = {
         audioUnlockFailed: 'Audio could not be enabled — tap "Enable voice" to try again',
         permissionWaiting: ({ tool }: { tool: string }) => `Waiting for permission approval: ${tool}`,
         permissionGo: 'Review',
+        // B-092: friendly names for the assistant's usual tool face
+        // (ticker + transcript). Unknown tools show their raw name.
+        tools: {
+            sessionsList: 'Checking session list',
+            sessionSpawn: 'Dispatching a new task',
+            sessionSend: 'Sending instructions',
+            sessionRead: 'Checking session progress',
+            terminalsList: 'Checking terminals',
+            terminalRead: 'Reading terminal output',
+            terminalSend: 'Typing into a terminal',
+            memoryUpdate: 'Updating memory',
+            journalAppend: 'Writing work journal',
+            lookup: 'Consulting files',
+            web: 'Searching the web',
+        },
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
@@ -884,6 +899,14 @@ export const en = {
         // mode and what a click does, since one icon carries both.
         sortByRecent: 'Sorted by recent activity — click for manual order',
         sortManual: 'Manual order — click to sort by recent activity',
+        // B-091 tag grouping (列表 view) — label states the CURRENT mode and
+        // what a click does, same convention as the sort switch above.
+        groupByTagOn: 'Grouped by tag — click for flat list',
+        groupByTagOff: 'Flat list — click to group by tag',
+        groupUntagged: 'Untagged',
+        // B-091 priority marker (the `priority` convention tag)
+        markPriority: 'Mark as priority',
+        unmarkPriority: 'Clear priority',
         // 已结束终端 (B-084): archived view's closed-terminal records
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
@@ -1049,6 +1072,8 @@ export const en = {
         libraryAddFailed: 'Failed to add voice',
         readTextReplies: 'Read replies to typed messages',
         readTextRepliesHint: 'Replies to voice messages are always read aloud',
+        pttSound: 'Hold-to-talk sound cues',
+        pttSoundHint: 'Short tones when recording starts, is sent, or is cancelled',
         skipPermissions: 'Skip permission approvals',
         skipPermissionsHint: 'On by default. When off, sensitive assistant actions need your manual approval. Takes effect on the next assistant start / new conversation.',
         assistantMachine: 'Assistant machine',

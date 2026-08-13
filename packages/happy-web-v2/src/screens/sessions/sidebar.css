@@ -36,6 +36,13 @@
   background: var(--bg-2);
   color: var(--text);
 }
+/* toggled-on icon button (B-091 tag grouping) — same "selected control"
+ * treatment as .sb-filter-btn.is-on (accent-2 marks the active view choice,
+ * an established exemption; the live-only rule applies to plain --accent). */
+.sb-icon-btn.is-on {
+  background: var(--bg-2);
+  color: var(--accent-2);
+}
 
 /* Search lives in the ⌘K command palette; this header icon is the way in for
  * coarse pointers only — desktop has the shortcut. */
