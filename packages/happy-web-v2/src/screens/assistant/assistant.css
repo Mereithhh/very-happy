@@ -301,6 +301,20 @@
 .as-convo-user::before {
   content: '> ';
 }
+/* B-069 live transcript while PTT is held: same row, live accent + pulse */
+.as-convo-user[data-live='true'] {
+  color: var(--accent);
+  animation: as-live-pulse 1.2s ease-in-out infinite;
+}
+@keyframes as-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
 .as-convo-assistant {
   font-size: 15px;
   line-height: 1.55;

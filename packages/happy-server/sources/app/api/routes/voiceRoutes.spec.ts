@@ -243,3 +243,130 @@ describe("voiceRoutes — /v1/voice/tts + /v1/voice/tts/voices", () => {
         expect(await res.json()).toEqual({ error: "Failed to list voices" });
     });
 });
+
+describe("voiceRoutes — /v1/voice/token (B-069)", () => {
+    let app: Fastify | null = null;
+    const originalApiKey = process.env.ELEVENLABS_API_KEY;
+
+    beforeEach(() => {
+        process.env.ELEVENLABS_API_KEY = "test-api-key";
+    });
+
+    afterEach(async () => {
+        vi.unstubAllGlobals();
+        if (app) {
+            await app.close();
+            app = null;
+        }
+        if (originalApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+        else process.env.ELEVENLABS_API_KEY = originalApiKey;
+    });
+
+    function tokenUpstream(token = "sutkn_route_test") {
+        return vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            body: null,
+            text: async () => "",
+            json: async () => ({ token }),
+        }));
+    }
+
+    async function postToken(base: string, type: string) {
+        return realFetch(`${base}/v1/voice/token`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ type }),
+        });
+    }
+
+    it("mints a tts token via the tts_websocket upstream type", async () => {
+        const upstream = tokenUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "tts");
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ token: "sutkn_route_test" });
+        expect(upstream).toHaveBeenCalledTimes(1);
+        expect((upstream.mock.calls[0] as unknown[])[0]).toBe(
+            "https://api.elevenlabs.io/v1/single-use-token/tts_websocket",
+        );
+    });
+
+    it("mints an stt token via the realtime_scribe upstream type", async () => {
+        const upstream = tokenUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "stt");
+        expect(res.status).toBe(200);
+        expect((upstream.mock.calls[0] as unknown[])[0]).toBe(
+            "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe",
+        );
+    });
+
+    it("rejects unknown token types with 400", async () => {
+        vi.stubGlobal("fetch", tokenUpstream());
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "webrtc");
+        expect(res.status).toBe(400);
+    });
+
+    it("answers 501 when ELEVENLABS_API_KEY is not configured", async () => {
+        delete process.env.ELEVENLABS_API_KEY;
+        const upstream = tokenUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "tts");
+        expect(res.status).toBe(501);
+        expect(await res.json()).toEqual({ error: "voice not configured" });
+        expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it("maps an upstream mint failure to 502 (never passes the status through)", async () => {
+        vi.stubGlobal("fetch", errorUpstream(404));
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "tts");
+        expect(res.status).toBe(502);
+        expect(await res.json()).toEqual({ error: "Token mint failed" });
+    });
+
+    it("preserves an upstream mint 429 as 429", async () => {
+        vi.stubGlobal("fetch", errorUpstream(429));
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "tts");
+        expect(res.status).toBe(429);
+    });
+
+    it("answers 502 when the upstream 200 payload has no token", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            body: null,
+            text: async () => "",
+            json: async () => ({ unexpected: true }),
+        })));
+        const started = await startApp();
+        app = started.app;
+        const res = await postToken(started.base, "tts");
+        expect(res.status).toBe(502);
+    });
+
+    it("rate limits per account at 30/min", async () => {
+        vi.stubGlobal("fetch", tokenUpstream());
+        const started = await startApp();
+        app = started.app;
+        for (let i = 0; i < 30; i++) {
+            const res = await postToken(started.base, "tts");
+            expect(res.status).toBe(200);
+        }
+        const res = await postToken(started.base, "stt");
+        expect(res.status).toBe(429);
+        expect(await res.json()).toEqual({ error: "Too many token requests, slow down" });
+    });
+});

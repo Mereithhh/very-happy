@@ -20,7 +20,8 @@ import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { storage, useAllMachines, useAllSessions, useSession, useSessionMessages, useSetting, useSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
-import { transcribeAudio, synthesizeSpeech } from '@/sync/apiVoice';
+import { transcribeAudio, synthesizeSpeech, mintVoiceStreamToken } from '@/sync/apiVoice';
+import { startTtsStream } from '@/assistant/ttsStream';
 import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
@@ -151,6 +152,8 @@ export function AssistantScreen() {
 
     // ── B-059: TTS caption + in-place transcript panel ──
     const speakingText = useAssistantStore((s) => s.speakingText);
+    // B-069: live partial transcript while PTT is held (streaming ASR)
+    const liveTranscript = useAssistantStore((s) => s.liveTranscript);
     const [showTranscript, setShowTranscript] = useState(false);
     const transcript = useMemo(
         () => (showTranscript ? deriveTranscript(messages) : []),
@@ -171,6 +174,7 @@ export function AssistantScreen() {
     // ── settings ──
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
     const voiceReadTextReplies = useSetting('voiceReadTextReplies');
+    const voiceAssistantLanguage = useSetting('voiceAssistantLanguage');
 
     // ── TTS player (created ONCE per visit; queue semantics in ttsQueue.ts) ──
     // credentials/voice/toast/t reach the callbacks through refs (optionsRef
@@ -197,6 +201,20 @@ export function AssistantScreen() {
                     const env = playerEnvRef.current;
                     env.toast.show(env.t('assistant.ttsUnavailable'), 'info');
                 }
+            },
+            // B-069 streaming synthesis — every failure falls back to the
+            // HTTP whole-clip path above; the per-visit gate lives in the store
+            // (reset via resetTtsGate on entry / new conversation).
+            stream: {
+                mintToken: () => {
+                    const { credentials: creds } = playerEnvRef.current;
+                    if (!creds) return Promise.resolve({ kind: 'error' as const });
+                    return mintVoiceStreamToken(creds, 'tts');
+                },
+                openStream: (opts) => startTtsStream(opts),
+                getVoiceId: () => playerEnvRef.current.voiceTtsVoiceId ?? undefined,
+                isDisabled: () => useAssistantStore.getState().ttsStreamDisabled,
+                disable: () => useAssistantStore.getState().disableTtsStream(),
             },
         });
         playerRef.current = player;
@@ -253,7 +271,17 @@ export function AssistantScreen() {
     const holdToTalk = useHoldToTalk({
         transcribe: async (b64, mime) => {
             if (!credentials) return '';
-            return transcribeAudio(credentials, b64, mime);
+            return transcribeAudio(credentials, b64, mime, voiceAssistantLanguage ?? undefined);
+        },
+        // B-069 streaming ASR — any failure falls back to the batch path above
+        streaming: {
+            mintToken: async () => {
+                if (!credentials) return null;
+                const res = await mintVoiceStreamToken(credentials, 'stt');
+                return res.kind === 'ok' ? res.token : null;
+            },
+            onPartial: (text) => useAssistantStore.getState().setLiveTranscript(text),
+            languageCode: voiceAssistantLanguage,
         },
         onText: (text) => sendText(text, 'voice'),
         onLevel: (level) => {
@@ -508,7 +536,12 @@ export function AssistantScreen() {
                             )}
 
                             <div className="as-convo" ref={convoRef}>
-                                {exchange.userText && <div className="as-convo-user">{exchange.userText}</div>}
+                                {/* B-069: while streaming ASR runs, the live partial replaces the user row */}
+                                {liveTranscript !== null ? (
+                                    <div className="as-convo-user" data-live="true">{liveTranscript || '…'}</div>
+                                ) : (
+                                    exchange.userText && <div className="as-convo-user">{exchange.userText}</div>
+                                )}
                                 {/* B-059: while speaking, the spoken sentence is the caption */}
                                 {speakingText ? (
                                     <div className="as-caption">{speakingText}</div>

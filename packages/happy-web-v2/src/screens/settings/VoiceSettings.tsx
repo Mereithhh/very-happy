@@ -48,6 +48,7 @@ export function VoiceSettings() {
     const { credentials } = useAuth();
 
     const [voiceId, setVoiceId] = useSettingMutable('voiceTtsVoiceId');
+    const [asrLanguage, setAsrLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [readTextReplies, setReadTextReplies] = useSettingMutable('voiceReadTextReplies');
     const [assistantMachineId, setAssistantMachineId] = useSettingMutable('assistantMachineId');
     const [skipPermissions, setSkipPermissions] = useSettingMutable('assistantSkipPermissions');
@@ -133,6 +134,26 @@ export function VoiceSettings() {
                             ))}
                         </>
                     )}
+                </ItemGroup>
+
+                <ItemGroup title={t('settingsVoice.asrLanguage')} footer={t('settingsVoice.asrLanguageHint')}>
+                    <Item
+                        title={t('settingsVoice.asrLanguageAuto')}
+                        right={asrLanguage == null ? <Check size={16} /> : undefined}
+                        onClick={() => setAsrLanguage(null)}
+                    />
+                    {([
+                        ['zh', '中文'],
+                        ['en', 'English'],
+                        ['ja', '日本語'],
+                    ] as const).map(([code, label]) => (
+                        <Item
+                            key={code}
+                            title={label}
+                            right={asrLanguage === code ? <Check size={16} /> : undefined}
+                            onClick={() => setAsrLanguage(code)}
+                        />
+                    ))}
                 </ItemGroup>
 
                 <ItemGroup>

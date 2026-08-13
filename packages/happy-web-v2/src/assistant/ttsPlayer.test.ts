@@ -143,6 +143,222 @@ describe('TtsPlayer pump liveness (W1)', () => {
     });
 });
 
+describe('TtsPlayer streaming path (B-069)', () => {
+    // two sentences after splitIntoSentences (each ≥ minChars)
+    const TWO_SENTENCES = 'This is sentence number one. This is sentence number two.';
+    const S1 = 'This is sentence number one.';
+    const S2 = 'This is sentence number two.';
+
+    function deferred<T>() {
+        let resolve!: (v: T) => void;
+        const promise = new Promise<T>((r) => {
+            resolve = r;
+        });
+        return { promise, resolve };
+    }
+
+    function makeStream(overrides?: Partial<import('./ttsPlayer').TtsStreamCallbacks>) {
+        let disabled = false;
+        const sentenceDeferreds: Array<ReturnType<typeof deferred<Uint8Array | null>>> = [];
+        const outcomeDeferred = deferred<{ kind: 'complete' } | { kind: 'failed'; failedAt: number } | { kind: 'aborted' }>();
+        const abort = vi.fn(() => {
+            for (const d of sentenceDeferreds) d.resolve(null);
+        });
+        const openStream = vi.fn((opts: { token: string; sentences: string[]; voiceId?: string }) => {
+            for (const _ of opts.sentences) sentenceDeferreds.push(deferred<Uint8Array | null>());
+            return {
+                sentenceAudio: sentenceDeferreds.map((d) => d.promise),
+                outcome: outcomeDeferred.promise,
+                abort,
+            };
+        });
+        const stream = {
+            mintToken: vi.fn(async () => ({ kind: 'ok' as const, token: 'sutkn' })),
+            openStream,
+            getVoiceId: () => undefined,
+            isDisabled: () => disabled,
+            disable: vi.fn(() => {
+                disabled = true;
+            }),
+            ...overrides,
+        };
+        return { stream, openStream, sentenceDeferreds, outcomeDeferred, abort };
+    }
+
+    function makeStreamCallbacks(stream: import('./ttsPlayer').TtsPlayerCallbacks['stream']) {
+        const captions: Array<string | null> = [];
+        const cb = makeCallbacks();
+        return {
+            ...cb,
+            captions,
+            onUtteranceChange: (t: string | null) => captions.push(t),
+            stream,
+        };
+    }
+
+    it('plays sentence by sentence with per-sentence captions', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream, openStream, sentenceDeferreds, outcomeDeferred } = makeStream();
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        expect(stream.mintToken).toHaveBeenCalledTimes(1);
+        expect(openStream).toHaveBeenCalledTimes(1);
+        expect(openStream.mock.calls[0][0].sentences).toEqual([S1, S2]);
+
+        sentenceDeferreds[0].resolve(new Uint8Array([1]));
+        await flush();
+        expect(sources.length).toBe(1); // sentence 0 playing
+        expect(cb.captions).toContain(S1);
+
+        sources[0].onended?.();
+        sentenceDeferreds[1].resolve(new Uint8Array([2]));
+        outcomeDeferred.resolve({ kind: 'complete' });
+        await flush();
+        expect(sources.length).toBe(2);
+        expect(cb.captions).toContain(S2);
+
+        sources[1].onended?.();
+        await flush();
+        expect(cb.synthesize).not.toHaveBeenCalled(); // HTTP path never used
+        expect(cb.speakingLog[cb.speakingLog.length - 1]).toBe(false);
+        player.dispose();
+    });
+
+    it('mint unsupported → latches the gate and falls back to HTTP whole-clip', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream } = makeStream({
+            mintToken: vi.fn(async () => ({ kind: 'unsupported' as const, status: 404 })),
+        });
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        expect(stream.disable).toHaveBeenCalled();
+        expect(cb.synthesize).toHaveBeenCalledWith(TWO_SENTENCES);
+        expect(sources.length).toBe(1);
+
+        // next utterance skips minting entirely (gate is latched)
+        sources[0].onended?.();
+        await flush();
+        player.enqueue({ id: 'b', text: TWO_SENTENCES });
+        await flush();
+        expect(stream.mintToken).toHaveBeenCalledTimes(1);
+        expect(cb.synthesize).toHaveBeenCalledTimes(2);
+        player.dispose();
+    });
+
+    it('mint transient error → HTTP fallback WITHOUT latching the gate', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream } = makeStream({
+            mintToken: vi.fn(async () => ({ kind: 'error' as const })),
+        });
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        expect(stream.disable).not.toHaveBeenCalled();
+        expect(cb.synthesize).toHaveBeenCalledWith(TWO_SENTENCES);
+        expect(sources.length).toBe(1);
+        player.dispose();
+    });
+
+    it('connect-level failure (sentence 0 null, failedAt 0) → gate + HTTP fallback', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream, sentenceDeferreds, outcomeDeferred } = makeStream();
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        sentenceDeferreds[0].resolve(null);
+        sentenceDeferreds[1].resolve(null);
+        outcomeDeferred.resolve({ kind: 'failed', failedAt: 0 });
+        await flush();
+        expect(stream.disable).toHaveBeenCalled();
+        expect(cb.synthesize).toHaveBeenCalledWith(TWO_SENTENCES);
+        expect(sources.length).toBe(1);
+        player.dispose();
+    });
+
+    it('mid-stream failure → remainder is spoken over HTTP (already-played audio not repeated)', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream, sentenceDeferreds, outcomeDeferred } = makeStream();
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        sentenceDeferreds[0].resolve(new Uint8Array([1]));
+        await flush();
+        expect(sources.length).toBe(1);
+        sources[0].onended?.();
+        sentenceDeferreds[1].resolve(null); // failure after sentence 0 played
+        outcomeDeferred.resolve({ kind: 'failed', failedAt: 1 });
+        await flush();
+        expect(cb.synthesize).toHaveBeenCalledTimes(1);
+        expect(cb.synthesize).toHaveBeenCalledWith(S2); // only the remainder
+        expect(stream.disable).not.toHaveBeenCalled();
+        expect(sources.length).toBe(2);
+        player.dispose();
+    });
+
+    it('empty sentence audio (alignment-less attribution) is skipped, not treated as failure', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream, sentenceDeferreds, outcomeDeferred } = makeStream();
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        sentenceDeferreds[0].resolve(new Uint8Array([1, 2]));
+        sentenceDeferreds[1].resolve(new Uint8Array(0)); // empty = attributed to sentence 0
+        outcomeDeferred.resolve({ kind: 'complete' });
+        await flush();
+        expect(sources.length).toBe(1);
+        sources[0].onended?.();
+        await flush();
+        expect(cb.synthesize).not.toHaveBeenCalled();
+        expect(cb.speakingLog[cb.speakingLog.length - 1]).toBe(false);
+        player.dispose();
+    });
+
+    it('stop() during streaming aborts the socket and does NOT fall back to HTTP', async () => {
+        const { ctx, sources } = makeFakeCtx();
+        mockedGetCtx.mockReturnValue(ctx);
+        const { stream, sentenceDeferreds, abort } = makeStream();
+        const cb = makeStreamCallbacks(stream);
+        const player = new TtsPlayer(cb);
+
+        player.enqueue({ id: 'a', text: TWO_SENTENCES });
+        await flush();
+        sentenceDeferreds[0].resolve(new Uint8Array([1]));
+        await flush();
+        expect(sources.length).toBe(1); // sentence 0 playing
+
+        player.stop();
+        await flush();
+        expect(abort).toHaveBeenCalled();
+        expect(cb.synthesize).not.toHaveBeenCalled();
+
+        // pump stays live: a fresh utterance still plays
+        player.enqueue({ id: 'b', text: 'And one more sentence to speak.' });
+        await flush();
+        expect(stream.mintToken).toHaveBeenCalledTimes(2);
+        player.dispose();
+    });
+});
+
 describe('TtsPlayer suspended-context resume (W4)', () => {
     it('resumes a suspended context before playing instead of skipping', async () => {
         const { ctx, raw, sources } = makeFakeCtx('suspended');

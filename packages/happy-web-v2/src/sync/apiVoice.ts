@@ -123,6 +123,52 @@ export async function synthesizeSpeech(
     }
 }
 
+// ── B-069 streaming voice: single-use token mint ────────────────────────────
+
+export type VoiceTokenMintResult =
+    | { kind: 'ok'; token: string }
+    /** 404 (old server, no route) / 501 (voice not configured) — the streaming
+     *  path is off for this deployment; fall back to the HTTP pipeline */
+    | { kind: 'unsupported'; status: number }
+    /** transient (429 / 5xx / network) — fall back for THIS turn only */
+    | { kind: 'error'; status?: number };
+
+/**
+ * Mint a single-use ElevenLabs token for a browser-direct WebSocket
+ * (`tts` = stream-input TTS, `stt` = realtime Scribe). Same error discipline
+ * as the other voice helpers: consume everything locally, never throw.
+ */
+export async function mintVoiceStreamToken(
+    credentials: AuthCredentials,
+    type: 'tts' | 'stt',
+): Promise<VoiceTokenMintResult> {
+    const serverUrl = getServerUrl();
+    try {
+        const response = await fetch(`${serverUrl}/v1/voice/token`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            },
+            body: JSON.stringify({ type }),
+        });
+        if (response.ok) {
+            const data = (await response.json()) as { token?: string };
+            if (typeof data.token === 'string' && data.token.length > 0) {
+                return { kind: 'ok', token: data.token };
+            }
+            return { kind: 'error', status: response.status };
+        }
+        if (classifyTtsErrorStatus(response.status) === 'unsupported') {
+            return { kind: 'unsupported', status: response.status };
+        }
+        return { kind: 'error', status: response.status };
+    } catch {
+        return { kind: 'error' };
+    }
+}
+
 export interface TtsVoice {
     voiceId: string;
     name: string;

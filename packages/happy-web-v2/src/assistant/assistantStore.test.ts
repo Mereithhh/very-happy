@@ -18,6 +18,8 @@ describe('assistantStore TTS gate reset', () => {
             ttsNoticeShown: false,
             lastTurnSource: null,
             lastTtsTruncated: false,
+            liveTranscript: null,
+            ttsStreamDisabled: false,
         });
     });
 
@@ -51,5 +53,33 @@ describe('assistantStore TTS gate reset', () => {
         expect(after.ttsAvailability).toBe('unknown');
         expect(after.ttsNoticeShown).toBe(false);
         expect(after.sessionId).toBe('s-1'); // untouched
+    });
+
+    // B-069: the streaming-WS gate and the live transcript ride the same resets
+    it('resetTtsGate clears the per-visit streaming-WS gate', () => {
+        useAssistantStore.getState().disableTtsStream();
+        expect(useAssistantStore.getState().ttsStreamDisabled).toBe(true);
+
+        useAssistantStore.getState().resetTtsGate();
+        expect(useAssistantStore.getState().ttsStreamDisabled).toBe(false);
+    });
+
+    it('resetConversation clears liveTranscript and the streaming-WS gate', () => {
+        const st = useAssistantStore.getState();
+        st.setLiveTranscript('正在说话…');
+        st.disableTtsStream();
+
+        useAssistantStore.getState().resetConversation();
+
+        const after = useAssistantStore.getState();
+        expect(after.liveTranscript).toBeNull();
+        expect(after.ttsStreamDisabled).toBe(false);
+    });
+
+    it('setLiveTranscript round-trips', () => {
+        useAssistantStore.getState().setLiveTranscript('你好');
+        expect(useAssistantStore.getState().liveTranscript).toBe('你好');
+        useAssistantStore.getState().setLiveTranscript(null);
+        expect(useAssistantStore.getState().liveTranscript).toBeNull();
     });
 });

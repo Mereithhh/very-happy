@@ -14,6 +14,7 @@ import {
     type FetchLike,
     type SlimVoice,
 } from "@/app/voice/ttsProxy";
+import { mintVoiceToken } from "@/app/voice/voiceToken";
 
 const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0.76 cost)
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
@@ -409,6 +410,70 @@ export function voiceRoutes(app: Fastify) {
             }
             log({ module: 'voice' }, `TTS error for user ${userId}: ${error}`);
             return reply.code(502).send({ error: 'TTS failed' });
+        }
+    });
+
+    // Per-account mint rate limit — 30/min (B-069). Same in-memory limiter
+    // school as the TTS route above; tokens are one-shot 15-min upstream, so
+    // this only guards against a runaway client hammering the mint endpoint.
+    const allowVoiceToken = createAccountRateLimiter({ max: 30, windowMs: 60_000 });
+
+    /**
+     * Single-use token mint for browser-direct ElevenLabs WebSockets (B-069
+     * streaming voice). `tts` → stream-input TTS socket, `stt` → realtime
+     * Scribe socket. The browser authenticates the socket with this token
+     * (query param) — the API key itself never ships to the client. Tokens
+     * are one-shot and expire after 15 minutes upstream.
+     *
+     * Status discipline mirrors /v1/voice/tts: the client feature-detects by
+     * status (404 = old server, 501 = voice not configured → fall back to the
+     * HTTP pipeline), so upstream errors are never passed through verbatim
+     * (429 stays 429, everything else → 502).
+     */
+    app.post('/v1/voice/token', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                type: z.enum(['tts', 'stt']),
+            }),
+            response: {
+                200: z.object({ token: z.string() }),
+                429: z.object({ error: z.string() }),
+                501: z.object({ error: z.string() }),
+                502: z.object({ error: z.string() }),
+            },
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { type } = request.body;
+
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(501).send({ error: 'voice not configured' });
+        }
+
+        if (!allowVoiceToken.allow(userId)) {
+            return reply.code(429).send({ error: 'Too many token requests, slow down' });
+        }
+
+        try {
+            const result = await mintVoiceToken({
+                apiKey: elevenLabsApiKey,
+                type,
+                fetchImpl: fetch as unknown as FetchLike,
+            });
+            if (result.kind === 'upstream_error') {
+                log({ module: 'voice' }, `Voice token mint failed for user ${userId} (${type}): ${result.status} ${result.detail.slice(0, 200)}`);
+                return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Token mint failed' });
+            }
+            if (result.kind === 'bad_payload') {
+                log({ module: 'voice' }, `Voice token mint returned unexpected payload for user ${userId} (${type})`);
+                return reply.code(502).send({ error: 'Token mint failed' });
+            }
+            return reply.send({ token: result.token });
+        } catch (error) {
+            log({ module: 'voice' }, `Voice token mint error for user ${userId} (${type}): ${error}`);
+            return reply.code(502).send({ error: 'Token mint failed' });
         }
     });
 

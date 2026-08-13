@@ -41,6 +41,10 @@ interface AssistantStoreState {
     lastTurnSource: 'voice' | 'text' | null;
     /** the reply currently/last spoken was truncated for TTS */
     lastTtsTruncated: boolean;
+    /** B-069 streaming ASR: live partial transcript while PTT is held (null = not streaming) */
+    liveTranscript: string | null;
+    /** B-069 streaming TTS: WS path learned unusable this visit (mint 404/501 or connect failure) */
+    ttsStreamDisabled: boolean;
 
     setSessionId: (id: string | null) => void;
     setRecorderState: (s: AssistantRecorderUiState) => void;
@@ -51,10 +55,13 @@ interface AssistantStoreState {
     markTtsNoticeShown: () => void;
     setLastTurnSource: (v: 'voice' | 'text') => void;
     setLastTtsTruncated: (v: boolean) => void;
+    setLiveTranscript: (t: string | null) => void;
+    disableTtsStream: () => void;
     /**
      * Re-probe TTS availability (entering the screen / new conversation):
      * the 'unsupported' verdict is sticky ONLY within a visit — the server may
      * have been upgraded/configured since, so each visit gets a fresh chance.
+     * Also clears the streaming-WS memory (B-069) for the same reason.
      */
     resetTtsGate: () => void;
     /** "new conversation": clear per-conversation transients */
@@ -71,6 +78,8 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
     ttsNoticeShown: false,
     lastTurnSource: null,
     lastTtsTruncated: false,
+    liveTranscript: null,
+    ttsStreamDisabled: false,
 
     setSessionId: (id) => set({ sessionId: id }),
     setRecorderState: (s) => set({ recorderState: s }),
@@ -81,7 +90,9 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
     markTtsNoticeShown: () => set({ ttsNoticeShown: true }),
     setLastTurnSource: (v) => set({ lastTurnSource: v }),
     setLastTtsTruncated: (v) => set({ lastTtsTruncated: v }),
-    resetTtsGate: () => set({ ttsAvailability: 'unknown', ttsNoticeShown: false }),
+    setLiveTranscript: (t) => set({ liveTranscript: t }),
+    disableTtsStream: () => set({ ttsStreamDisabled: true }),
+    resetTtsGate: () => set({ ttsAvailability: 'unknown', ttsNoticeShown: false, ttsStreamDisabled: false }),
     resetConversation: () =>
         set({
             lastTurnSource: null,
@@ -91,6 +102,8 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
             speakingText: null,
             ttsAvailability: 'unknown',
             ttsNoticeShown: false,
+            liveTranscript: null,
+            ttsStreamDisabled: false,
         }),
 }));
 

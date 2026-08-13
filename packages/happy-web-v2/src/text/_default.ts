@@ -1010,6 +1010,10 @@ export const en = {
         skipPermissionsHint: 'On by default. When off, sensitive assistant actions need your manual approval. Takes effect on the next assistant start / new conversation.',
         assistantMachine: 'Assistant machine',
         assistantMachineAuto: 'Automatic (sole online machine)',
+        // B-069: speech recognition language (batch + streaming ASR)
+        asrLanguage: 'Recognition language',
+        asrLanguageAuto: 'Auto detect',
+        asrLanguageHint: 'If you always speak one language, picking it explicitly improves recognition accuracy significantly.',
         // Voice settings screen
         languageTitle: 'Language',
         languageDescription: 'Choose your preferred language for voice assistant interactions. This setting syncs across all your devices.',

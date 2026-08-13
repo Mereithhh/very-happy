@@ -28,12 +28,13 @@ ASR + 主动汇报 + PC 文字记录常驻栏；earcon/PWA shortcut/转写可编
 
 | 事实 | 位置 |
 |---|---|
-| single-use token 官方端点 `POST /v1/single-use-token/{token_type}`，类型 `tts_websocket` / `realtime_scribe` / `batch_scribe`，15 分钟一次性（业界调研已核） | ElevenLabs docs（调研报告§3） |
+| single-use token 官方端点 `POST /v1/single-use-token/{token_type}`，类型 `tts_websocket` / `realtime_scribe` / `batch_scribe`，15 分钟一次性；响应 `{token}` | ElevenLabs docs（实现时已复核官方 AsyncAPI spec） |
 | TTS stream-input WS：`wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input`，逐 chunk SendText、`flush:true` 句级切、回 mp3 chunk + alignment | 同上 |
 | realtime STT WS：`wss://api.elevenlabs.io/v1/speech-to-text/realtime`，**只收裸 PCM16/ulaw**（不吃 webm）→ 需 AudioWorklet 抽 PCM；`commit_strategy: manual` | 同上 |
+| **实现期修订（B-069 复核官方 docs 后与初稿的出入）**：① token 鉴权走 **query param** 且两端参数名不对称——TTS 是 `single_use_token`、STT 是 `token`；② STT 的 manual commit **不是独立消息**，而是 `input_audio_chunk` 上的 `commit: true` 字段（`sample_rate` 每条必填，音频为 JSON base64 而非 binary frame）；③ TTS 服务端字段为 camelCase（`isFinal`/`charStartTimesMs`，页内 snake_case 示例是文档生成瑕疵；解析端双兼容）；④ **单 context stream-input 没有 per-flush 完成标记**（只有整流结束的 isFinal）→ 实现用 `sync_alignment=true` + alignment 字符累计近似句边界（chunk 跨句时音频归前句：完整性/顺序守恒，仅字幕交接近似；alignment 全缺时退化为整段一次播放）。不用 multi-context（有 per-context final 但 5 并发上限 + 协议面大得多，收益只是字幕精确）；⑤ STT `model_id` 无文档化默认值，显式传 `scribe_v2_realtime` | 实现 agent 调研（本轮回改） |
 | server voice 路由风格：裸 fetch + zod + authenticate + 无 key 501（mint token 端点照此） | `happy-server/sources/app/api/routes/voiceRoutes.ts` |
 | web 语音管线现状：`useHoldToTalk`（MediaRecorder 整段）、`ttsPlayer`（整段 mp3 → AudioContext 队列，onUtteranceChange 字幕）、`apiVoice`（transcribe/tts/voices） | `web-v2/src/assistant/` |
-| daemon 已有 agentState 跳变监测（B-012：working→idle 2-tick debounce→webhook notify）——主动汇报复用该状态机 | `happy-cli` daemon（webhook 通知链路） |
+| ~~daemon 已有 agentState 跳变监测可复用~~（**实现期证伪**：B-012 状态机只喂终端，聊天会话无 daemon 侧观测通道——改为 session 进程发射，见 §D 修订） | `happy-cli/src/terminal/terminalNotify.ts` |
 | assistant 会话可从 daemon 侧发消息：`sendUserMessage`（session key 在 sessions.json） | `happy-cli/src/commands/sessionMessage.ts` |
 | daemon 追踪 assistant：TrackedSession.variant（spawn 时打标） | `happy-cli/src/daemon/run.ts`、`assistantSpawn.ts` |
 | 文字记录浮层 `.as-transcript`（absolute 盖 `.as-col`） | `web-v2/.../assistant.css` |

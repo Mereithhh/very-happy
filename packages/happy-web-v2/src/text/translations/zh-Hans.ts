@@ -1017,6 +1017,10 @@ export const zhHans: TranslationStructure = {
         skipPermissionsHint: '默认开启。关闭后，助手执行敏感操作需人工批准；改动对下一次启动/新对话生效。',
         assistantMachine: '助手机器',
         assistantMachineAuto: '自动（唯一在线机器）',
+        // B-069：语音识别语言（batch + 流式 ASR 共用）
+        asrLanguage: '识别语言',
+        asrLanguageAuto: '自动检测',
+        asrLanguageHint: '如果你只说一种语言，明确指定可显著提升识别准确率。',
         // Voice settings screen
         languageTitle: '语言',
         languageDescription: '选择您希望语音助手交互使用的语言。此设置将在您的所有设备间同步。',
