@@ -891,6 +891,8 @@ export const zhHans: TranslationStructure = {
         sortManual: '手动排序 · 点击改为按最近活跃排序',
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
+        rowNeedsAttention: '等你处理',
+        rowUnread: '有未读',
     },
 
     zen: {

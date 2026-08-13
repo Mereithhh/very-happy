@@ -139,21 +139,65 @@
 }
 /* Selected row = the session/terminal currently open in the pane. Three
  * stacked cues so it can never be read as hover: hover only steps to --bg-2,
- * selected takes the full step to --bg-3 and adds an accent rail + hairlines
+ * selected takes the full step to --bg-3 and adds an ink rail + hairlines
  * that fence the band off from its neighbours + brighter ink.
- * The accent stays a 3px geometric rail on the edge and NEVER a row-wide teal
- * wash: a teal-tinted row would read as "this session is live", which is the
- * StatusDot / .sb-row-badge meaning. As a rail it reads as the focused
- * surface — the same use as .sb-drop-line. */
+ * B-085 reassigned the left rail's ACCENT to 「待处理」("agent 在等你" — the
+ * one legitimate live semantic on a list row); the selected rail is now text
+ * ink, so the two markers can't be confused at the edge: selected = background
+ * lift + ink rail, attention = teal rail. Both can show at once (below). */
 .sb-row.is-selected {
   background: var(--bg-3);
   box-shadow:
-    inset 3px 0 0 var(--accent),
+    inset 3px 0 0 var(--text-dim),
     inset 0 1px 0 var(--line-2),
     inset 0 -1px 0 var(--line-2);
 }
 .sb-row.is-selected .sb-row-title {
   font-weight: 600;
+}
+/* ── 待处理 / 未读 (B-085) ─────────────────────────────────────────────────
+ * Two-level row signal, decided by sidebarAttention.rowSignalOf:
+ *   attention — the agent is BLOCKED on the user (permission / needs_input /
+ *               LLM review/blocked, board's urgent band). Accent rail (the
+ *               live semantic) + heavier title + accent badge dot with glow.
+ *   unread    — agent finished a turn while the user was away. Text-stage
+ *               only: medium title + a --text dot. NO accent — teal on every
+ *               finished turn would drown the real "waiting on you" signal.
+ * Hover only changes background (rules below never touch box-shadow), so
+ * neither marker is swallowed by hover or selection. */
+.sb-row--attention {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.sb-row--attention .sb-row-title {
+  font-weight: 600;
+}
+.sb-row--unread .sb-row-title {
+  font-weight: 500;
+}
+/* selected + attention: background lift AND accent rail coexist (the accent
+ * rail wins the edge; hairlines keep fencing the band) */
+.sb-row.is-selected.sb-row--attention {
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 1px 0 var(--line-2),
+    inset 0 -1px 0 var(--line-2);
+}
+/* right-edge badge dot (8px — deliberately bigger than the 7px corner agent
+ * dot: this one must read at a glance across the whole list) */
+.sb-row-signal {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.sb-row-signal--attention {
+  background: var(--accent);
+  /* --accent-glow is a translucent token in BOTH themes — the halo ring reads
+   * on every bg step without a hard-edged second border */
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.sb-row-signal--unread {
+  background: var(--text);
 }
 /* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
  * its metadata / kebab / offline dot one ink step — legibility and the
@@ -171,6 +215,16 @@
  * Must stay AFTER the base rule: media queries carry no extra specificity. */
 @media (hover: none) {
   .sb-row.is-selected {
+    box-shadow:
+      inset 4px 0 0 var(--text-dim),
+      inset 0 1px 0 var(--line-2),
+      inset 0 -1px 0 var(--line-2);
+  }
+  /* attention rail widens the same way — same arm's-length reasoning */
+  .sb-row--attention {
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+  .sb-row.is-selected.sb-row--attention {
     box-shadow:
       inset 4px 0 0 var(--accent),
       inset 0 1px 0 var(--line-2),

@@ -37,6 +37,7 @@ import {
   SIDEBAR_RECENT_SORT_ENABLED,
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
+import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import './sidebar.css';
 
 function rowHref(r: Row): string {
@@ -265,6 +266,18 @@ export function Sidebar() {
   // WITHIN each group is the sidebar's own: most recently active first, the
   // same model as the 列表 view's recent sort.
   const boardItems = useBoardItems();
+
+  // ----- two-level row signal (B-085) -----
+  // 待处理 (accent) = the board's urgent waiting band — permission request /
+  // terminal needs_input / LLM review/blocked. Same classifier as the board
+  // (no re-derivation), so sidebar accent rows == board urgent items == the
+  // conversations notifications deep-link into. 未读 (text-stage) = agent
+  // finished a turn while the user wasn't looking (memory-only set, cleared
+  // on open). rowSignalOf ranks them; the decision table is unit-tested in
+  // sidebarAttention.test.ts.
+  const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
+  const unreadIds = storage((s) => s.unreadSessionIds);
+
   const statusGroups = useMemo(() => {
     if (view !== 'status' || !rows) return null;
     const g = groupRowsByLifecycle(rows, boardItems);
@@ -811,6 +824,16 @@ export function Sidebar() {
                       >
                         <SidebarRow
                           row={r}
+                          signal={rowSignalOf({
+                            attention: attentionKeys.has(r.key),
+                            // unread is session-only and stays out of the
+                            // archived view (an inactive session's stale flag
+                            // shouldn't mark history).
+                            unread:
+                              r.kind === 'session' &&
+                              !!r.session?.active &&
+                              unreadIds.has(r.key),
+                          })}
                           badge={cmdHeld && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
                           canMoveDown={i < displayRows.length - 1}
@@ -964,6 +987,7 @@ function rowMenuItems(opts: {
 
 function SidebarRow({
   row,
+  signal,
   badge,
   canMoveUp,
   canMoveDown,
@@ -971,6 +995,10 @@ function SidebarRow({
   onRenameRequest,
 }: {
   row: Row;
+  /** two-level marker (B-085): 'attention' = agent waiting on the user
+   *  (accent rail + badge dot), 'unread' = finished-while-away (text-stage
+   *  dot). Decided in the parent via rowSignalOf. */
+  signal: RowSignal;
   badge?: number;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
@@ -1051,7 +1079,11 @@ function SidebarRow({
 
   return (
     <ActionContextMenu items={menuItems}>
-    <div className={`sb-row${selected ? ' is-selected' : ''}`}>
+    <div
+      className={`sb-row${selected ? ' is-selected' : ''}${
+        signal === 'attention' ? ' sb-row--attention' : signal === 'unread' ? ' sb-row--unread' : ''
+      }`}
+    >
       {/* aria-current="page": the row IS a nav link to the open route, so SRs
           announce the selected row the same way the rail highlight shows it. */}
       <button className="sb-row-main" onClick={open} aria-current={selected ? 'page' : undefined}>
@@ -1061,12 +1093,20 @@ function SidebarRow({
               <TerminalSquare size={16} />
               {agentDot && (
                 <span className="sb-row-agent-dot">
-                  <StatusDot status={agentDot} pulse={agentDot === 'thinking'} size={7} title={agentDotTitle} />
+                  {/* pulse also on 待处理 (needs_input, machine online) —
+                      reduced-motion users get the static dot (ui.css). */}
+                  <StatusDot
+                    status={agentDot}
+                    pulse={agentDot === 'thinking' || signal === 'attention'}
+                    size={7}
+                    title={agentDotTitle}
+                  />
                 </span>
               )}
             </span>
           ) : (
-            <StatusDot status={dot} pulse={dot === 'thinking'} size={9} />
+            // 待处理 rows pulse too (permission dot); reduced-motion → static
+            <StatusDot status={dot} pulse={dot === 'thinking' || signal === 'attention'} size={9} />
           )}
         </span>
         <span className="sb-row-text">
@@ -1083,6 +1123,17 @@ function SidebarRow({
           </span>
           <span className="sb-row-sub mono">{row.subtitle}</span>
         </span>
+        {/* right-edge signal dot: accent+glow = 待处理, text-stage = 未读.
+            Sits INSIDE .sb-row-main (before the kebab column), so the
+            hover-revealed kebab never covers it. */}
+        {signal && (
+          <span
+            className={`sb-row-signal sb-row-signal--${signal}`}
+            role="img"
+            aria-label={t(signal === 'attention' ? 'sidebar.rowNeedsAttention' : 'sidebar.rowUnread')}
+            title={t(signal === 'attention' ? 'sidebar.rowNeedsAttention' : 'sidebar.rowUnread')}
+          />
+        )}
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
       </button>
       <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>

@@ -886,6 +886,9 @@ export const en = {
         // 已结束终端 (B-084): archived view's closed-terminal records
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
+        // B-085 two-level row signal (aria/title on the right-edge dot)
+        rowNeedsAttention: 'Waiting for you',
+        rowUnread: 'Unread activity',
     },
 
     zen: {
