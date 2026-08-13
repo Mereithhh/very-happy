@@ -37,6 +37,8 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
     let savedTmpdir: string | undefined;
     let mgr: WebTerminalManager;
     const pushes: TerminalListItem[][] = [];
+    /** Every ephemeral `terminal-activity` frame, with arrival time. */
+    const activity: Array<{ at: number; terminals: Array<{ id: string; activityAt: number }> }> = [];
     const TID = 'trkpush1';
 
     beforeAll(() => {
@@ -45,7 +47,10 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // Isolated tmux server: every tmux invocation in the manager builds its
         // env from process.env (ptyEnv), so this redirects the server socket.
         process.env.TMUX_TMPDIR = dir;
-        mgr = new WebTerminalManager(() => { /* byte stream not under test */ });
+        mgr = new WebTerminalManager((event, payload) => {
+            // Byte stream not under test; the ephemeral activity lane IS.
+            if (event === 'terminal-activity') activity.push({ at: Date.now(), terminals: payload.terminals });
+        });
         // Interval so long it can't fire within the test — kicks must carry it.
         mgr.startListTracking((list) => pushes.push(list), 10 * 60 * 1000);
     });
@@ -103,6 +108,49 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // Every push was event-driven (interval could not have fired), and the
         // signature gate means none of them were identical repeats.
         expect(pushes.length).toBeGreaterThanOrEqual(3);
+    }, 60_000);
+
+    it('pure OUTPUT produces a realtime activity frame in ~a second, then goes quiet', async () => {
+        // This is the whole point of the ephemeral lane: output ALONE (no
+        // title/agent/membership change) must float the row now, not up to a
+        // minute later when the daemonState activity bucket happens to flip.
+        // The tracking interval here is 10 MINUTES, so nothing in this test can
+        // be rescued by a periodic tick — every frame is output-driven.
+        const TID5 = 'trkact1';
+        mgr.open({ terminalId: TID5, cols: 80, rows: 24, cwd: dir });
+        try {
+            const start = activity.length;
+            const t0 = Date.now();
+            // Make the pane print something without touching its title.
+            mgr.write(TID5, Buffer.from(`printf 'hello-activity\\n'\r`, 'utf8').toString('base64'));
+            const frame = await waitFor(
+                () => activity.slice(start).find((f) => f.terminals.some((t) => t.id === TID5)),
+                10_000, 'realtime activity frame for pure output',
+            );
+            // Well inside the 60s bucket the persisted lane is stuck behind.
+            // Measured 0ms on a warm tmux — the leading-edge throttle fires on
+            // the very first chunk. The bound is generous for CI noise.
+            expect(frame.at - t0).toBeLessThan(3_000);
+            const item = frame.terminals.find((t) => t.id === TID5)!;
+            expect(item.activityAt).toBeGreaterThan(t0 - 1_000);
+
+            // Throttle: a continuous burst must not become a per-chunk firehose.
+            const burstStart = activity.length;
+            for (let i = 0; i < 20; i++) {
+                mgr.write(TID5, Buffer.from(`printf 'x%d\\n' ${i}\r`, 'utf8').toString('base64'));
+            }
+            await new Promise((r) => setTimeout(r, 2_000));
+            const burstFrames = activity.length - burstStart;
+            expect(burstFrames).toBeGreaterThan(0);
+            expect(burstFrames).toBeLessThanOrEqual(4); // ~1/s + leading edge
+
+            // Idle: nothing moved ⇒ nothing sent. An idle machine is free.
+            const idleStart = activity.length;
+            await new Promise((r) => setTimeout(r, 2_500));
+            expect(activity.length).toBe(idleStart);
+        } finally {
+            mgr.killSession(TID5);
+        }
     }, 60_000);
 
     it('open() applies the native-feel session options (status bar off)', async () => {

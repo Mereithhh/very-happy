@@ -82,6 +82,18 @@ describe('shouldHoldReorder', () => {
     ).toBe(true);
   });
 
+  it('outlives a realistic read-then-click pause', () => {
+    // Regression guard for the mis-click this hold exists to prevent. With the
+    // realtime activity overlay a background terminal can reorder the list
+    // about once a SECOND, so a hold that expires while the user is still
+    // reading the row they are about to click is no protection at all: the row
+    // slides away and the click lands on a different session. 3s is a normal
+    // pause between "stop moving the mouse" and "click".
+    expect(
+      shouldHoldReorder({ pointerInside: true, lastPointerAt: NOW - 3000, now: NOW }),
+    ).toBe(true);
+  });
+
   it('honours an explicit holdMs', () => {
     expect(
       shouldHoldReorder({ pointerInside: true, lastPointerAt: NOW - 50, now: NOW, holdMs: 40 }),
