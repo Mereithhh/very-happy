@@ -56,6 +56,7 @@ import { decryptNotificationEnc } from './encryption/notificationDecrypt';
 import { maybeShowNotification } from './webNotifications';
 import { maybePlayNotificationSound } from './notificationChime';
 import { soundEventOfNotifType } from './notificationInbox';
+import { dispatchKvChanges } from './kvUpdates';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
@@ -2762,6 +2763,12 @@ class Sync {
                     href: `/session/${feedItem.body.sessionId}`,
                 });
             }
+        } else if (updateData.body.t === 'kv-batch-update') {
+            // Realtime account-KV changes (the server has always broadcast
+            // these). Fanned out to the KV-backed stores — e.g. the synced
+            // notification read state, so opening a session on one device
+            // clears its notifications on the others without polling.
+            dispatchKvChanges(updateData.body.changes);
         }
     }
 

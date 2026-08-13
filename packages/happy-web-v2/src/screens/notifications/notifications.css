@@ -7,9 +7,25 @@
 .nc-bell-btn {
   position: relative;
 }
-/* the collapsed desktop rail hosts a bell too — space it under the expander */
+/* The bell lives at the BOTTOM of the sidebar chrome, sharing the settings
+ * row — so it must sit at the bottom of the collapsed rail too, or it would
+ * jump across the screen every time the sidebar is collapsed/expanded. */
 .app-rail .nc-bell-btn {
-  margin-top: var(--sp-2);
+  margin-top: auto;
+  width: 34px;
+  height: 34px;
+}
+/* footer row: the settings button flexes, the bell keeps its square */
+.sb-footer .nc-bell-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+@media (pointer: coarse) {
+  .sb-footer .nc-bell-btn {
+    width: 38px;
+    height: 38px;
+  }
 }
 .nc-bell-badge {
   position: absolute;
