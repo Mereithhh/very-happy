@@ -71,6 +71,12 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
+          # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
+          # 用户），而这个 action 默认装到固定的 `~/setup-pnpm`。并发 job（tag 时
+          # publish 与两格 smoke 同时跑）会互相删掉对方正 cd 着的目录，症状是
+          # `ENOENT: process.cwd failed ... directory was likely removed`
+          # （2026-08-14 v0.2.38 发版实锤：node20 格过、node24 格挂）。
+          dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install dependencies
         # Deploy never runs electron (packages/codium is a desktop spike);
