@@ -70,8 +70,8 @@
 | B-049 | 剪贴板体验重设计：默认静默复制+可点 toast 兜底（不再弹阻断 modal）+ 历史面板（50 条/32KB 护栏/编辑再复制/清空） | ux | Owner 2026-08-13 | done | Shipped；入口 ⌘K+设置 Channels；历史每设备本地不同步 |
 | B-050 | 新 logo「会眨眼的终端窗口」+ 整套应用图标（gpt-image 探索方向 + Pillow 按 token 重建主源） | ux | Owner 2026-08-13 | done | Shipped；候选在 skills/tmp/vh-logo/；7 条设计感提案待 Owner 挑 |
 | B-052 | 统一快捷指令：promptPresets 加 run 标记吸收 terminalCommands（一次性幂等迁移+菜单合并，同一份文本聊天/终端通用） | ux | Owner 2026-08-14 | done | 迁移保持插入语义不自动执行；run 为 opt-in；terminalCommands 保留兼容无 UI 入口 |
-| B-053 | 侧栏「最近活跃」自动排序（终端+聊天混排；与手动排序做无损模式切换，拖拽即切手动） | ux | Owner 2026-08-14 | done | activityAt 链路本就通、无需动 daemon；纯输出上浮最多滞后 60s（签名量化）；状态视图维持看板序 |
-| B-054 | 全局返回：统一四套返回箭头为 useAppBack（真实历史优先+层级父级回退）+ ⌘[/Alt+← + 移动端左边缘滑动返回 | ux | Owner 2026-08-14 | done | Shipped；桌面也显示返回键（全局的直接后果）；/assistant 的形态切换箭头刻意保留 |
+| B-070 | 侧栏「最近活跃」自动排序（终端+聊天混排；与手动排序做无损模式切换，拖拽即切手动） | ux | Owner 2026-08-14 | done | activityAt 链路本就通、无需动 daemon；纯输出上浮最多滞后 60s（签名量化）；状态视图维持看板序；**原记为 B-053，与另一会话撞号后改号** |
+| B-071 | 全局返回：统一四套返回箭头为 useAppBack（真实历史优先+层级父级回退）+ ⌘[/Alt+← + 移动端左边缘滑动返回 | ux | Owner 2026-08-14 | done | Shipped；桌面也显示返回键（全局的直接后果）；/assistant 的形态切换箭头刻意保留；**原记为 B-054，撞号后改号** |
 | B-065 | 侧栏铃铛移到底部与设置同排（header 太挤） | ux | Owner 2026-08-14 | done | 折叠 rail 的铃铛也 pin 到底部，避免收起/展开时上下跳 |
 | B-066 | 通知已读跨设备同步：看过对应会话即自动消除该目标的通知（按 key 取 max 时间戳合并，非整表覆盖） | feat | Owner 2026-08-14 | done | 载体=账号 KV vh.notif-seen.v1（CAS+absorb 重试）；顺带接上从未被监听的 kv-batch-update 广播=跨设备 push 而非轮询 |
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | doing | Owner 明确不接受 60s 滞后 |
