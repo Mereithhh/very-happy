@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   matchCloseViewChord,
   isClosableViewPath,
+  closeViewTarget,
   closeViewAction,
   shouldWarnOnUnload,
   pickRefocusTarget,
@@ -46,6 +47,40 @@ describe('matchCloseViewChord', () => {
 
   it('⌘W fires regardless of target (pure app chord)', () => {
     expect(matchCloseViewChord(ev({ metaKey: true, key: 'w', code: 'KeyW', target: fakeInput }))).toBe(true);
+  });
+});
+
+describe('closeViewTarget (B-089: ⌘W closes the SESSION, not the view)', () => {
+  it('a chat session view targets the session (archive flow)', () => {
+    expect(closeViewTarget('/session/abc', '')).toEqual({ kind: 'session', sessionId: 'abc' });
+    // trailing slash tolerated (same location, same target)
+    expect(closeViewTarget('/session/abc/', '')).toEqual({ kind: 'session', sessionId: 'abc' });
+  });
+
+  it('an open terminal view targets machine + terminal (close flow)', () => {
+    expect(closeViewTarget('/terminal/m1', '?tid=t1')).toEqual({
+      kind: 'terminal', machineId: 'm1', terminalId: 't1',
+    });
+  });
+
+  it('decodes URL-encoded ids', () => {
+    expect(closeViewTarget('/session/a%20b', '')).toEqual({ kind: 'session', sessionId: 'a b' });
+    expect(closeViewTarget('/terminal/m%2F1', '?tid=t1')).toEqual({
+      kind: 'terminal', machineId: 'm/1', terminalId: 't1',
+    });
+  });
+
+  it('the terminal picker and machine route without ?tid carry no target', () => {
+    expect(closeViewTarget('/terminal', '')).toBe(null);
+    expect(closeViewTarget('/terminal/m1', '')).toBe(null);
+  });
+
+  it('non-session views carry no target — the chord stays with the browser', () => {
+    expect(closeViewTarget('/', '')).toBe(null);
+    expect(closeViewTarget('/board', '')).toBe(null);
+    expect(closeViewTarget('/assistant', '')).toBe(null);
+    expect(closeViewTarget('/settings/appearance', '')).toBe(null);
+    expect(closeViewTarget('/machine/m1', '')).toBe(null);
   });
 });
 

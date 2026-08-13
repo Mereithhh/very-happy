@@ -291,10 +291,10 @@ export const zhHans: TranslationStructure = {
         boardLlmHowTo: '在 daemon 机器上配置',
         boardLlmHowToDetail: '在需要分析会话的机器上，把 "boardLlm": true 写入 ~/.happy/settings.json，然后重启该机器上的会话。',
         // ⌘W 关闭保护（设备本地：快捷键能不能被页面收到，取决于本机是 PWA 还是浏览器标签页）
-        closeGuard: '关闭会话视图',
-        closeGuardDescription: '⌘W（已安装的应用）/ ⌥W（浏览器标签页）只是关闭当前会话视图并回到首页，不会删除或终止会话。在浏览器标签页里 ⌘W 属于浏览器：页面根本收不到这个按键，整个标签页就已经被关掉，只有浏览器自带的对话框能拦住它——那个对话框的文案和样式我们无法定制。',
-        closeViewConfirm: '关闭视图前确认',
-        closeViewConfirmDescription: '当 ⌘W / ⌥W 要关闭当前会话或终端视图时先询问一次；取消后原地不动，焦点回到原处。',
+        closeGuard: '⌘W 收掉会话',
+        closeGuardDescription: '⌘W（已安装的应用）/ ⌥W（浏览器标签页）收掉的是会话本身——聊天会话归档、终端关闭，与行菜单同一套流程，完成后回到首页。其他页面不拦截，快捷键交还给浏览器。在浏览器标签页里 ⌘W 本来就属于浏览器：页面根本收不到这个按键，整个标签页就已经被关掉（会话仍在运行），只有浏览器自带的对话框能拦住它——那个对话框的文案和样式我们无法定制。',
+        closeViewConfirm: '⌘W 收掉会话前确认',
+        closeViewConfirmDescription: '当 ⌘W / ⌥W 要归档当前聊天会话或关闭当前终端时先询问一次；关掉此开关则不弹窗直接执行。取消后原地不动，焦点回到原处。',
         closeTabWarning: '离开页面前提醒',
         closeTabWarningDescription: '当会话或终端视图打开时，让浏览器在关闭或刷新标签页前确认一次。用的是浏览器自带对话框；应用自己主动发起的刷新（自动更新、退出登录）不受影响。',
         // Appearance settings screen
@@ -659,13 +659,6 @@ export const zhHans: TranslationStructure = {
         autoCopySubtitle: '收到推送时静默写入本机剪贴板；关闭或被浏览器拦截时改为"点击复制"提示',
         sourceMachine: '机器',
         sourceSession: '会话',
-    },
-
-    // ⌘W / ⌥W 关闭视图前的二次确认（app/viewShortcuts.ts）
-    closeView: {
-        confirmTitle: '关闭当前视图？',
-        confirmMessage: '只是关闭视图——会话和终端仍在运行，不会被删除也不会被终止，随时可以从侧栏重新打开。',
-        confirmAction: '关闭视图',
     },
 
     server: {

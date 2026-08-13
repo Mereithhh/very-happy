@@ -1,7 +1,8 @@
 /**
- * closeGuard — the PURE logic behind "closing the current session view": the
- * ⌘W/⌥W chord matcher, which routes count as closable, what the chord should
- * do (close vs ask first), and whether the tab-close guard should be armed.
+ * closeGuard — the PURE logic behind ⌘W/⌥W "close the session" (B-089): the
+ * chord matcher, which routes carry a closable target (and WHAT that target
+ * is — chat session to archive vs terminal to close), whether to ask first,
+ * and whether the tab-close guard should be armed.
  *
  * Why a separate module from the hooks in ./viewShortcuts.ts: those hooks pull
  * in Modal + i18n + the storage layer, and `@/text` reads persisted settings at
@@ -47,27 +48,54 @@ export function matchCloseViewChord(e: {
   return true;
 }
 
-/** True when the current location is a closable detail view. */
+/**
+ * The object ⌘W acts on at this location — the chord means "close the
+ * SESSION" (archive a chat / close a terminal), not "close the view" (B-089).
+ *
+ *  - `/session/:id`              → the chat session (archive flow)
+ *  - `/terminal/:machineId?tid=` → the open terminal (close flow). The
+ *    terminal PICKER (`/terminal`, or a machine route without ?tid) carries
+ *    no target — only an actually-open terminal does.
+ *  - anything else (home, /board, /assistant, settings…) → null: there is
+ *    nothing to archive, so the chord is left entirely alone (the browser
+ *    keeps its native ⌘W, ⌥W still types "∑").
+ */
+export type CloseViewTarget =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'terminal'; machineId: string; terminalId: string };
+
+export function closeViewTarget(pathname: string, search: string): CloseViewTarget | null {
+  const session = /^\/session\/([^/]+)\/?$/.exec(pathname);
+  if (session) return { kind: 'session', sessionId: decodeURIComponent(session[1]) };
+  const terminal = /^\/terminal\/([^/]+)\/?$/.exec(pathname);
+  if (terminal) {
+    const terminalId = new URLSearchParams(search).get('tid');
+    if (terminalId) {
+      return { kind: 'terminal', machineId: decodeURIComponent(terminal[1]), terminalId };
+    }
+  }
+  return null;
+}
+
+/** True when the current location carries a ⌘W target (also gates the
+ *  beforeunload guard — same routes, different layer). */
 export function isClosableViewPath(pathname: string, search: string): boolean {
-  if (pathname.startsWith('/session/')) return true;
-  // The terminal picker (/terminal, no tid) is not a "session" — only close
-  // an actual open terminal view.
-  if (pathname.startsWith('/terminal/') && new URLSearchParams(search).has('tid')) return true;
-  return false;
+  return closeViewTarget(pathname, search) !== null;
 }
 
 /**
  * What the close-view chord should do right now.
  *
- *  - 'none'    — not a closable view: leave the event completely alone (⌥W must
- *                still type "∑" nowhere else, and ⌘W in a normal tab is the
- *                browser's anyway).
- *  - 'swallow' — eat the chord but do nothing: a confirm dialog is already up,
- *                so key-repeat / a second ⌘W must not stack dialogs, and the
- *                keystroke must not fall through to xterm either.
- *  - 'close'   — confirmation disabled: navigate home immediately (legacy
- *                behavior).
- *  - 'confirm' — ask first, close only on confirm.
+ *  - 'none'    — no closable target here: leave the event completely alone (⌥W
+ *                must still type "∑" nowhere else, and ⌘W in a normal tab is
+ *                the browser's anyway).
+ *  - 'swallow' — eat the chord but do nothing: a confirm dialog is already up
+ *                (or the archive/close is in flight), so key-repeat / a second
+ *                ⌘W must not stack dialogs or double-fire, and the keystroke
+ *                must not fall through to xterm either.
+ *  - 'close'   — confirmation disabled (`closeViewConfirm` off): archive the
+ *                session / close the terminal immediately, no dialog.
+ *  - 'confirm' — ask first via the row-menu confirm, act only on confirm.
  */
 export type CloseViewAction = 'none' | 'swallow' | 'close' | 'confirm';
 

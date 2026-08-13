@@ -61,11 +61,12 @@ export const LocalSettingsSchema = z.object({
     // "tap to copy" toast instead. Device-local on purpose: whether a browser
     // may auto-write its clipboard is a per-device trust/capability choice.
     clipboardAutoCopy: z.boolean().describe('Auto-copy incoming clipboard pushes into this device\'s clipboard'),
-    // ⌘W/⌥W close-view guard, layer 1: ask before the shortcut navigates home.
-    // Device-local on purpose — whether the chord even reaches the page depends
-    // on THIS device's client (installed PWA vs browser tab), so the preference
-    // belongs to the device, not the account.
-    closeViewConfirm: z.boolean().describe('Ask for confirmation before ⌘W/⌥W closes the open session view'),
+    // ⌘W/⌥W close-session guard, layer 1 (B-089): ask before the shortcut
+    // archives the open chat session / closes the open terminal; OFF = act
+    // immediately without a dialog. Device-local on purpose — whether the chord
+    // even reaches the page depends on THIS device's client (installed PWA vs
+    // browser tab), so the preference belongs to the device, not the account.
+    closeViewConfirm: z.boolean().describe('Ask for confirmation before ⌘W/⌥W archives the open chat session or closes the open terminal'),
     // Layer 2: arm the browser's native beforeunload dialog while a session view
     // is open — the only thing that can interrupt ⌘W closing a real browser TAB.
     // Separate switch because it is a different mechanism with different costs

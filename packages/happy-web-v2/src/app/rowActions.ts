@@ -40,14 +40,17 @@ export async function archiveSessionNow(session: Session): Promise<void> {
   }
 }
 
-/** Archive a chat session, confirm first (sidebar/menu entry point). */
-export async function confirmArchiveSession(session: Session): Promise<void> {
+/** Archive a chat session, confirm first (sidebar/menu/⌘W entry point).
+ *  Returns whether the archive actually ran — false means the user
+ *  cancelled (callers like the ⌘W flow restore focus / stay put on cancel). */
+export async function confirmArchiveSession(session: Session): Promise<boolean> {
   const ok = await Modal.confirm(t('sidebar.archiveConfirm'), undefined, {
     confirmText: t('common.archive'),
     destructive: true,
   });
-  if (!ok) return;
+  if (!ok) return false;
   await archiveSessionNow(session);
+  return true;
 }
 
 /**
@@ -99,17 +102,32 @@ export async function markSessionDone(
  *  recreate the killed tmux session — the "terminal won't delete" bug.
  *
  *  A failed kill (machine offline / RPC error) is surfaced, not swallowed:
- *  hiding the row anyway would be a lie the machine's push immediately undoes. */
+ *  hiding the row anyway would be a lie the machine's push immediately undoes.
+ *
+ *  Returns whether the user confirmed (false = cancelled; a confirmed-but-
+ *  failed kill still returns true — the failure is surfaced via the alert). */
 export async function confirmCloseTerminal(
   machineId: string,
   terminalId: string,
   onConfirmed?: () => void,
-): Promise<void> {
+): Promise<boolean> {
   const ok = await Modal.confirm(t('terminal.closeTitle'), t('terminal.closeMessage'), {
     confirmText: t('common.close'),
   });
-  if (!ok) return;
-  onConfirmed?.();
+  if (!ok) return false;
+  await closeTerminalNow(machineId, terminalId, onConfirmed);
+  return true;
+}
+
+/** The close itself, no confirm (⌘W with `closeViewConfirm` off, and the tail
+ *  of confirmCloseTerminal). `onBeforeKill` runs BEFORE the kill for the same
+ *  navigate-away-first reason documented on confirmCloseTerminal. */
+export async function closeTerminalNow(
+  machineId: string,
+  terminalId: string,
+  onBeforeKill?: () => void,
+): Promise<void> {
+  onBeforeKill?.();
   const killed = await machineKillTerminal(machineId, terminalId);
   if (!killed) {
     Modal.alert(t('common.error'), t('sessionInfo.failedToKillSession'));

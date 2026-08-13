@@ -1,20 +1,29 @@
 /**
- * Close-current-view shortcut: ⌘W (PWA) / ⌥W (normal-tab fallback), plus the
- * tab-close guard — TWO layers protecting against "the view is gone and I
- * didn't mean to", because they cover different scenarios:
+ * Close-the-SESSION shortcut: ⌘W (PWA) / ⌥W (normal-tab fallback), plus the
+ * tab-close guard.
  *
- *  layer 1 (useCloseViewShortcuts) — in-app confirm. We see the chord, ask via
- *    Modal.confirm, and only navigate home on confirm. Reachable wherever the
- *    page actually receives the chord: ⌘W in the installed PWA, ⌥W anywhere.
+ * Semantics (B-089 — the old "close the view, go home" reading was wrong):
+ * ⌘W means "I'm done with this session". On a chat session view it runs the
+ * row-menu archive flow (rowActions.confirmArchiveSession → kill-first
+ * archive); on an open terminal view it runs the row-menu close flow
+ * (rowActions.confirmCloseTerminal → ends the tmux session, B-083 neutral
+ * copy). After the session is gone we navigate home — the same place the
+ * sidebar row actions leave you. On every other route (home, /board,
+ * /assistant, settings…) the chord is NOT handled at all: there is nothing to
+ * archive, so the browser keeps its native ⌘W and ⌥W still types "∑".
+ *
+ * Two layers, covering different scenarios:
+ *
+ *  layer 1 (useCloseViewShortcuts) — the in-app flow above. The confirm
+ *    dialog is gated by the `closeViewConfirm` local setting: ON (default) =
+ *    ask first, OFF = archive/close immediately. Reachable wherever the page
+ *    actually receives the chord: ⌘W in the installed PWA, ⌥W anywhere.
  *  layer 2 (useUnloadGuard) — the browser's own leave-site dialog. In a normal
  *    Chrome tab ⌘W is browser-reserved: preventDefault is ignored and the TAB
  *    closes before the page sees anything, so layer 1 never runs. `beforeunload`
  *    is the ONLY hook that exists there — its wording and styling belong to the
- *    browser, we can only ask for it.
- *
- * Semantics of "close" (both layers): navigate back home. The session/terminal
- * keeps running; nothing is killed, archived or deleted. It's the
- * editor-tab-close gesture — the confirm copy says so explicitly.
+ *    browser, we can only ask for it. (Closing the tab does NOT archive
+ *    anything — the session keeps running without a viewer.)
  *
  * Platform reality (same story as ⌘N in ./newTerminal.ts): only the installed
  * PWA window delivers ⌘W to the page. So ⌘W is the PWA chord, ⌥W the normal-tab
@@ -34,15 +43,22 @@ import { useLocation, useNavigate, type NavigateFunction } from 'react-router-do
 import { isImeGuardedEvent } from '@/utils/ime';
 import { Modal } from '@/modal';
 import { t } from '@/i18n/useTranslation';
-import { useLocalSetting } from '@/sync/storage';
+import { storage, useLocalSetting } from '@/sync/storage';
 import {
   closeViewAction,
-  isClosableViewPath,
+  closeViewTarget,
   matchCloseViewChord,
   pickRefocusTarget,
   shouldWarnOnUnload,
+  type CloseViewTarget,
 } from '@/app/closeGuard';
 import { isProgrammaticReloadPending } from '@/app/programmaticReload';
+import {
+  archiveSessionNow,
+  closeTerminalNow,
+  confirmArchiveSession,
+  confirmCloseTerminal,
+} from '@/app/rowActions';
 
 // NOTE: deliberately NO re-exports of the closeGuard helpers. Importing this
 // module drags in Modal + i18n, which cannot be imported in the node test
@@ -68,30 +84,61 @@ function restoreFocusAfterCancel(captured: HTMLElement | null): void {
   requestAnimationFrame(() => run());
 }
 
-/** The confirm round-trip. `openRef` dedupes: key-repeat or a second ⌘W while
- *  the dialog is up must not stack dialogs (and must not jam the shortcut
- *  either — the flag is cleared in `finally`, and a backdrop/Esc dismissal
- *  resolves the promise as "cancel", see ModalProvider). */
-async function confirmThenClose(
+/** The archive/close round-trip — the row-menu flows from rowActions, wired
+ *  for the keyboard: cancel restores focus, success navigates home.
+ *
+ *  `openRef` dedupes for the WHOLE flow: key-repeat or a second ⌘W while the
+ *  dialog is up (or the archive/close is still in flight) must not stack
+ *  dialogs or double-fire (the flag is cleared in `finally`, and a
+ *  backdrop/Esc dismissal resolves the confirm as "cancel", see
+ *  ModalProvider). */
+async function archiveOrCloseTarget(
+  target: CloseViewTarget,
   navigate: NavigateFunction,
+  confirmFirst: boolean,
   openRef: { current: boolean },
 ): Promise<void> {
   const captured = (document.activeElement as HTMLElement | null) ?? null;
   openRef.current = true;
-  let ok = false;
   try {
-    ok = await Modal.confirm(t('closeView.confirmTitle'), t('closeView.confirmMessage'), {
-      cancelText: t('common.cancel'),
-      confirmText: t('closeView.confirmAction'),
-    });
+    if (target.kind === 'session') {
+      const session = storage.getState().sessions[target.sessionId];
+      if (!session) return; // stale route / not loaded yet — nothing to archive
+      if (confirmFirst) {
+        const archived = await confirmArchiveSession(session);
+        if (!archived) {
+          restoreFocusAfterCancel(captured);
+          return;
+        }
+      } else {
+        await archiveSessionNow(session);
+      }
+      // Same landing spot as the command palette's "archive current chat".
+      navigate('/');
+    } else {
+      // Navigate BEFORE the kill: a still-mounted terminal screen would
+      // re-open the id and recreate the killed tmux session (see
+      // rowActions.confirmCloseTerminal — same ordering as the sidebar row).
+      const leave = () => navigate('/');
+      if (confirmFirst) {
+        const confirmed = await confirmCloseTerminal(target.machineId, target.terminalId, leave);
+        if (!confirmed) restoreFocusAfterCancel(captured);
+      } else {
+        await closeTerminalNow(target.machineId, target.terminalId, leave);
+      }
+    }
+  } catch (error) {
+    // archiveSessionNow rolled back the optimistic flip; surface, don't vanish.
+    console.error('[closeView] archive/close failed', error);
+    Modal.alert(
+      t('common.error'),
+      target.kind === 'session'
+        ? t('sessionInfo.failedToArchiveSession')
+        : t('sessionInfo.failedToKillSession'),
+    );
   } finally {
     openRef.current = false;
   }
-  if (ok) {
-    navigate('/');
-    return;
-  }
-  restoreFocusAfterCancel(captured);
 }
 
 export function useCloseViewShortcuts(): void {
@@ -109,8 +156,9 @@ export function useCloseViewShortcuts(): void {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isImeGuardedEvent(e)) return;
       if (!matchCloseViewChord(e)) return;
+      const target = closeViewTarget(window.location.pathname, window.location.search);
       const action = closeViewAction({
-        closable: isClosableViewPath(window.location.pathname, window.location.search),
+        closable: target !== null,
         confirmEnabled: confirmEnabledRef.current,
         confirmOpen: confirmOpenRef.current,
       });
@@ -118,11 +166,8 @@ export function useCloseViewShortcuts(): void {
       e.preventDefault(); // effective in the PWA; a normal tab ignores it for ⌘W
       e.stopPropagation();
       if (action === 'swallow') return;
-      if (action === 'close') {
-        navigate('/');
-        return;
-      }
-      void confirmThenClose(navigate, confirmOpenRef);
+      // 'confirm' = ask first; 'close' = closeViewConfirm off, act immediately.
+      void archiveOrCloseTarget(target!, navigate, action === 'confirm', confirmOpenRef);
     };
     // CAPTURE phase — beat xterm's textarea keydown handler.
     window.addEventListener('keydown', onKeyDown, true);
