@@ -17,6 +17,8 @@ import { useIsDesktop } from '@/app/useMediaQuery';
 import { useTranslation } from '@/i18n/useTranslation';
 import { isImeGuardedEvent } from '@/utils/ime';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { useActivityOverlay } from '@/sync/activityOverlayStore';
+import { resolveActivityTs } from '@/sync/activityOverlay';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { useBoardAttentionCount, useBoardItems } from '@/screens/board/useBoardItems';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
@@ -121,6 +123,22 @@ export function Sidebar() {
    *  which must apply instantly.) */
   const autoSorted = (orderable && sortMode === 'recent') || view === 'status';
 
+  // ----- realtime activity overlay -----
+  // The row `ts` values built below come from the DURABLE lanes, which are
+  // both correct and slow: a chat's `updatedAt` needs a server round trip, and
+  // a terminal's pushed `activityAt` only moves when daemonState is rewritten
+  // (≤ once a minute for output alone — see ACTIVITY_SIGNATURE_BUCKET_MS in
+  // the CLI). These two maps carry the fast truth on top of them:
+  //   local  — my own actions in THIS browser (typed into a terminal, opened
+  //            and focused one, sent a chat message). No network at all.
+  //   remote — the daemon's ephemeral `terminal-activity` frames (~1s), which
+  //            is what makes pure OUTPUT float without a daemonState write.
+  // Applied with max(), so an overlay can only float a row, never sink one,
+  // and every row degrades to its durable value when the overlays are empty
+  // (old daemon, old server, fresh profile, socket down).
+  const localActivity = useActivityOverlay((s) => s.local);
+  const remoteActivity = useActivityOverlay((s) => s.remote);
+
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
     const sessRows = sessions
@@ -144,8 +162,13 @@ export function Sidebar() {
             title: tm.title || tm.machineName,
             subtitle: tm.machineName,
           }));
-    return [...termRows, ...sessRows];
-  }, [sessions, terminals, view]);
+    // One place applies the overlay, so 列表/状态/归档 can never disagree
+    // about what "last active" means.
+    return [...termRows, ...sessRows].map((r) => {
+      const ts = resolveActivityTs(r.ts, r.key, localActivity, remoteActivity);
+      return ts === r.ts ? r : { ...r, ts };
+    });
+  }, [sessions, terminals, view, localActivity, remoteActivity]);
 
   // ----- reorder hold (mis-click guard) -----
   // An auto-sorted list must never yank a row out from under the pointer: the

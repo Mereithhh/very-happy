@@ -55,6 +55,17 @@ interface DaemonToServerEvents {
     // reconnect (see open-terminal `fromSeq`).
     'terminal-output': (data: { terminalId: string, data: string, seq: number, enc?: boolean }) => void;
     'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
+    // Realtime sidebar ordering: "these terminals just moved". EPHEMERAL — the
+    // server relays it to this account's web clients (same room and same
+    // handler as the byte stream above) and stores nothing; the durable list
+    // still travels through daemonState.webTerminals. Deliberately NOT
+    // encrypted: it carries only terminal ids, which already ride in the clear
+    // in this very relay's envelope (terminal-output/-input), plus a clock
+    // reading — the same plaintext-metadata posture as every other transient
+    // signal on this server (activity / machine-activity / usage). An old
+    // server has no handler for the event and drops it; an old web client has
+    // no listener for it. Both degrade to the pre-feature behaviour.
+    'terminal-activity': (data: { terminals: Array<{ id: string, activityAt: number }> }) => void;
     // Clipboard push: daemon → server → all of the user's web clients.
     // `payload` is the clipboard text, encrypted with the per-machine key when
     // `enc` is true (same primitive as the terminal byte stream).

@@ -121,6 +121,35 @@ Field names below match on-wire payloads.
 - `usage`: `{ type: "usage", id: sessionId, key, tokens, cost, timestamp }`
 - `machine-status`: `{ type: "machine-status", machineId, online, timestamp }`
 
+### Terminal relay events (machine <-> web, not on the `ephemeral` bus)
+Non-persisted, non-sequenced signals relayed by `terminalHandler` straight to
+the account's user-scoped room. `machineId` is always stamped by the server from
+the authenticated machine connection, never read from the body.
+
+- machine -> web: `terminal-output` `{ terminalId, machineId, data, seq, enc? }`,
+  `terminal-exit` `{ terminalId, machineId, exitCode }`
+- machine -> web: `terminal-activity` `{ machineId, terminals: [{ id, activityAt }] }`
+  - "These web terminals just produced output." An ORDERING hint for the
+    sidebar's recent sort, nothing more: never stored, never replayed. The
+    durable terminal list keeps travelling encrypted inside
+    `daemonState.webTerminals`, whose activity value is deliberately quantized
+    to 60s buckets because each write there costs a CAS + DB write + broadcast.
+    This event is what makes pure output float a row in about a second.
+  - Plaintext, like the rest of this relay's metadata: the payload is a terminal
+    id (already in the clear in the `terminal-output`/`terminal-input`
+    envelopes) plus a clock reading. No title, no cwd, no bytes.
+  - Throttled and change-gated by the daemon: at most ~1 frame/s per machine,
+    and none at all while nothing moves.
+  - Compat: an old server has no handler and drops the event; an old web client
+    has no listener for it. Both degrade to the persisted `activityAt`, i.e.
+    exactly the pre-feature behaviour. (Deliberately NOT put on the `ephemeral`
+    bus, whose client-side union is closed and logs an error on unknown types —
+    an old bundle would have logged one per frame.)
+- web -> machine: `terminal-input` `{ machineId, terminalId, data, enc? }`,
+  `terminal-resize` `{ machineId, terminalId, cols, rows }`,
+  `terminal-close` `{ machineId, terminalId }` — each gated on the machine
+  belonging to the calling account.
+
 ### Client -> server WebSocket events
 - `ping` -> callback `{}`
 

@@ -18,7 +18,15 @@
  *     it, since keystrokes echo back through the pty). terminalPushOps maps it
  *     onto `TerminalSession.updatedAt` with `?? createdAt`, so an OLD daemon
  *     that doesn't send the field degrades to creation order instead of
- *     breaking. No CLI change and no new CLI version are needed for this.
+ *     breaking.
+ *
+ * Both of those are DURABLE values: correct, and slow. They are floated at
+ * render time by the two fast lanes in `sync/activityOverlay.ts` — my own
+ * interactions in this browser (instant, zero network) and the daemon's
+ * ephemeral `terminal-activity` frames (~1s, which is what lets pure OUTPUT
+ * float without paying for a daemonState write). Sidebar.tsx does that merge
+ * with max() while building rows, so `ts` here is already the resolved value
+ * and this module stays a pure sorter that knows nothing about lanes.
  *
  * Terminals and chats sort in ONE mixed sequence — a terminal is a session
  * too, and "the thing I just touched is on top" only works if nothing is

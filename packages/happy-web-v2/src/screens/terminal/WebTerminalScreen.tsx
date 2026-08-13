@@ -20,6 +20,8 @@ import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
 import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { stampLocalActivity } from '@/sync/activityOverlayStore';
+import { activityKeyForTerminal } from '@/sync/activityOverlay';
 import { useIsDesktop } from '@/app/useMediaQuery';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -106,6 +108,28 @@ export function WebTerminalScreen() {
   const renameTerminal = useTerminalSessions((s) => s.rename);
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
+
+  // Realtime sidebar ordering, layer 1 — the "I'm looking at this one" stamp.
+  // Opening a terminal and having it on screen IS an interaction with it, even
+  // before a key is pressed (reading a long agent turn is the common case), so
+  // the row floats on arrival. Re-stamped when the tab comes back to the
+  // foreground on this screen, so a terminal left open in a background tab
+  // doesn't claim to be what you were just doing. Deliberately NOT on a timer:
+  // a parked tab must not keep re-floating itself forever.
+  useEffect(() => {
+    if (!tid) return;
+    const stamp = () => {
+      if (document.hidden) return;
+      stampLocalActivity(activityKeyForTerminal(tid));
+    };
+    stamp();
+    document.addEventListener('visibilitychange', stamp);
+    window.addEventListener('focus', stamp);
+    return () => {
+      document.removeEventListener('visibilitychange', stamp);
+      window.removeEventListener('focus', stamp);
+    };
+  }, [tid]);
 
   // Latest synced startup command, readable inside the terminal effect without
   // adding `settings` to its deps (that would tear down a live terminal on any
@@ -341,6 +365,14 @@ export function WebTerminalScreen() {
       // have its echo invisibly swallowed. No-op mid-normal-click (mouseup
       // flushes first) and for the mobile select-mode hold.
       writeHold.noteUserInput();
+      // Realtime sidebar ordering, layer 1. This is the ONE chokepoint for
+      // every local write into the pty — xterm onData (typing, IME commit,
+      // paste), the mobile soft-keyboard bridge, the key bar, quick presets
+      // and the input bar all land here — so stamping here covers them all.
+      // Purely local: no daemon, no server, no round trip. Even if the remote
+      // lane below is unavailable (old daemon/server, socket down), "I just
+      // typed here" still floats the row instantly.
+      if (terminalId) stampLocalActivity(activityKeyForTerminal(terminalId));
       const b64 = strToB64(d);
       if (enc) {
         encryptTerminalData(machineId, b64).then((c) => {

@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
+import { stampLocalActivity } from '@/sync/activityOverlayStore';
+import { activityKeyForSession } from '@/sync/activityOverlay';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
@@ -578,6 +580,13 @@ class Sync {
     }
 
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions) {
+        // Realtime sidebar ordering, layer 1: "I just talked to this session".
+        // Stamped at ENTRY, before the encryption/session awaits below — the
+        // row must float the instant the user hits send, not a round-trip
+        // later, and the durable `updatedAt` catches up on its own. Covers
+        // every composer (chat input, option picker, new-session first
+        // message, voice) because they all funnel through here.
+        stampLocalActivity(activityKeyForSession(sessionId));
 
         // Get encryption — may not be ready yet if sessions are still syncing
         let encryption = this.encryption.getSessionEncryption(sessionId);

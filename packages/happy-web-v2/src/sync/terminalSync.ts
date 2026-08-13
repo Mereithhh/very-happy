@@ -12,6 +12,18 @@
  * < 0.2.27, or downgraded) contribute nothing — their terminal list simply
  * doesn't update (docs/channels.md states the compat floor).
  *
+ * Realtime activity lane (`terminal-activity`): the same daemon also relays a
+ * tiny EPHEMERAL frame whenever a terminal's activity time actually moves. It
+ * exists because the push lane above is deliberately coarse — one daemonState
+ * write costs a CAS + DB write + broadcast, so activity only participates in
+ * its change signature at 60s granularity, which meant a terminal that was
+ * merely PRINTING could take a minute to float to the top of the sidebar.
+ * These frames are NOT state: they go straight into the in-memory activity
+ * overlay used for ordering, never into the terminal list, the machines slice
+ * or daemonState. A daemon too old to send them, a server too old to relay
+ * them, or a dropped frame all degrade to the pushed `activityAt` — i.e. to
+ * exactly the pre-feature behaviour.
+ *
  * Singleton by module-level reference counting: the first mounted
  * `useTerminalSync()` starts it, the last unmount stops it. AppLayout is the
  * one intended caller; the refcount just makes an accidental second mount
@@ -19,6 +31,8 @@
  */
 import { useEffect } from 'react';
 import { storage } from '@/sync/storage';
+import { apiSocket } from '@/sync/apiSocket';
+import { applyRemoteTerminalActivity } from '@/sync/activityOverlayStore';
 import { machineLabel } from '@/utils/machineUtils';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
@@ -57,12 +71,30 @@ function syncPushes(): void {
   }
 }
 
+/** One relayed realtime frame. Defensive about the payload: it comes off the
+ *  wire from a daemon of unknown version, and `applyRemoteTerminalActivity`
+ *  drops anything malformed item-by-item. */
+function onTerminalActivity(data: unknown): void {
+  const terminals = (data as { terminals?: unknown } | null)?.terminals;
+  if (!Array.isArray(terminals)) return;
+  applyRemoteTerminalActivity(terminals as Array<{ id: string; activityAt: number }>);
+}
+
 /** Feed pushes while the refcount is >0: a plain store subscription applies
- *  every advanced snapshot as `update-machine` broadcasts land. */
+ *  every advanced snapshot as `update-machine` broadcasts land, plus the
+ *  realtime activity frames. The socket listener needs no reconnect handling:
+ *  it is keyed by event name on the long-lived apiSocket dispatcher, and
+ *  missing frames while the socket is down costs only freshness — the
+ *  reconnect's daemonState push re-seeds the durable value. */
 function startLoop(): () => void {
   appliedPushVersions = new Map();
   syncPushes();
-  return storage.subscribe(() => syncPushes());
+  const offActivity = apiSocket.onMessage('terminal-activity', onTerminalActivity);
+  const unsubscribe = storage.subscribe(() => syncPushes());
+  return () => {
+    offActivity();
+    unsubscribe();
+  };
 }
 
 let refCount = 0;
