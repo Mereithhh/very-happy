@@ -39,6 +39,9 @@ body.vh-col-resizing iframe {
   flex-direction: column;
   align-items: center;
   padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  /* the bell sits at the bottom (margin-top:auto) — mirror the expanded
+     sidebar's footer, so collapsing doesn't teleport it to the top */
+  padding-bottom: max(var(--sp-2), env(safe-area-inset-bottom));
   border-right: 1px solid var(--line);
   background: var(--bg-1);
 }

@@ -19,6 +19,7 @@ import { create } from 'zustand';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { MMKV } from '@/storage/mmkv-web';
 import { kvGet, kvSet } from '@/sync/apiKv';
+import { accountFingerprint } from '@/sync/accountFingerprint';
 import { mergeBoardTasks, orderKeyBetween, type BoardTask } from '@/sync/boardTaskOps';
 
 export type { BoardTask } from '@/sync/boardTaskOps';
@@ -31,17 +32,6 @@ interface CacheBlob {
   /** fingerprint of the account (auth token) that wrote this cache */
   account?: string | null;
   tasks: BoardTask[];
-}
-
-/** Non-cryptographic fingerprint (FNV-1a) of the auth token — only answers
- *  "did the same account write this cache?" (cross-account leak guard). */
-function accountFingerprint(token: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < token.length; i++) {
-    h ^= token.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
 }
 
 let cachedAccount: string | null | undefined;

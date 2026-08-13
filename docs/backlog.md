@@ -72,6 +72,10 @@
 | B-052 | 统一快捷指令：promptPresets 加 run 标记吸收 terminalCommands（一次性幂等迁移+菜单合并，同一份文本聊天/终端通用） | ux | Owner 2026-08-14 | done | 迁移保持插入语义不自动执行；run 为 opt-in；terminalCommands 保留兼容无 UI 入口 |
 | B-053 | 侧栏「最近活跃」自动排序（终端+聊天混排；与手动排序做无损模式切换，拖拽即切手动） | ux | Owner 2026-08-14 | done | activityAt 链路本就通、无需动 daemon；纯输出上浮最多滞后 60s（签名量化）；状态视图维持看板序 |
 | B-054 | 全局返回：统一四套返回箭头为 useAppBack（真实历史优先+层级父级回退）+ ⌘[/Alt+← + 移动端左边缘滑动返回 | ux | Owner 2026-08-14 | done | Shipped；桌面也显示返回键（全局的直接后果）；/assistant 的形态切换箭头刻意保留 |
+| B-065 | 侧栏铃铛移到底部与设置同排（header 太挤） | ux | Owner 2026-08-14 | done | 折叠 rail 的铃铛也 pin 到底部，避免收起/展开时上下跳 |
+| B-066 | 通知已读跨设备同步：看过对应会话即自动消除该目标的通知（按 key 取 max 时间戳合并，非整表覆盖） | feat | Owner 2026-08-14 | done | 载体=账号 KV vh.notif-seen.v1（CAS+absorb 重试）；顺带接上从未被监听的 kv-batch-update 广播=跨设备 push 而非轮询 |
+| B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | doing | Owner 明确不接受 60s 滞后 |
+| B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
 | B-064 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
 | B-065 | 语音助手 Phase 2（Owner 已拍板 2026-08-14）：**做** ①双向流式 TTS（stream-input WS + single-use token 浏览器直连，HTTP 代理兜底）②双向流式 ASR（scribe_v2_realtime WS，manual commit=PTT 形状，实时字幕，batch 兜底）⑤主动汇报（派发任务完成→assistant 主动开口）⑥PC 文字记录右侧常驻栏；**搁置** ④earcon ⑦PWA shortcut ⑧转写可编辑 | feat | Owner 2026-08-14 | doing | spec specs/2026-08-voice-streaming.md |
