@@ -14,14 +14,14 @@ describe('resolveSidebarSort', () => {
     expect(resolveSidebarSort('manual')).toBe('manual');
   });
 
-  it("everything else — including undefined — reads as 'recent'", () => {
+  it("B-076: recent sort disabled — every value resolves to 'manual' (positional stability for ⌘1-9)", () => {
     // undefined is the case that matters: the field carries NO zod .default()
     // (ghost-pending footgun), so an old client / stripped blob lands here.
-    expect(resolveSidebarSort(undefined)).toBe('recent');
-    expect(resolveSidebarSort(null)).toBe('recent');
-    expect(resolveSidebarSort('recent')).toBe('recent');
-    expect(resolveSidebarSort('lifecycle-v2')).toBe('recent'); // future enum value
-    expect(resolveSidebarSort(0)).toBe('recent');
+    expect(resolveSidebarSort(undefined)).toBe('manual');
+    expect(resolveSidebarSort(null)).toBe('manual');
+    expect(resolveSidebarSort('recent')).toBe('manual');
+    expect(resolveSidebarSort('lifecycle-v2')).toBe('manual'); // future enum value
+    expect(resolveSidebarSort(0)).toBe('manual');
   });
 });
 

@@ -32,6 +32,7 @@ import {
   sortRowsByRecent,
   shouldHoldReorder,
   applyReorderHold,
+  SIDEBAR_RECENT_SORT_ENABLED,
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import './sidebar.css';
@@ -640,7 +641,7 @@ export function Sidebar() {
               row that already flexes, so it costs no extra space on mobile.
               Flipping to 'manual' does NOT rebuild sidebarOrder — the old
               arrangement is still there and comes straight back. */}
-          {orderable && (
+          {orderable && SIDEBAR_RECENT_SORT_ENABLED && (
             <button
               className="sb-icon-btn"
               title={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}

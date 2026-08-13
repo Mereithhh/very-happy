@@ -62,7 +62,18 @@ export const REORDER_HOLD_MS = 8000;
  * opt-in 'manual' — undefined (never set / old client / field stripped by a
  * schema mismatch), null, a future enum value — is 'recent', the default.
  */
+/**
+ * B-076: recent auto-sort is DISABLED for now — Owner's ⌘1-9 muscle memory
+ * needs positional stability, and rows swapping places as their activity
+ * changes breaks exactly that (tab 1 / tab 2 trading places on every switch).
+ * The machinery stays (sortRowsByRecent, the hold logic, the synced setting)
+ * so re-enabling is flipping this flag; until then every value resolves to
+ * 'manual' (fixed order: hand-made arrangement, new rows by creation time).
+ */
+export const SIDEBAR_RECENT_SORT_ENABLED = false;
+
 export function resolveSidebarSort(value: unknown): SidebarSortMode {
+  if (!SIDEBAR_RECENT_SORT_ENABLED) return 'manual';
   return value === 'manual' ? 'manual' : 'recent';
 }
 
