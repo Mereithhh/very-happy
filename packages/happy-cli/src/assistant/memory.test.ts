@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyMemorySectionUpdate } from './memory'
+import { applyMemorySectionUpdate, journalPathForDate } from './memory'
 
 const DOC = `# 个人记忆
 
@@ -68,5 +68,12 @@ describe('applyMemorySectionUpdate', () => {
         const once = applyMemorySectionUpdate(DOC, '长期事实', 'stable').doc
         const twice = applyMemorySectionUpdate(once, '长期事实', 'stable').doc
         expect(twice).toBe(once)
+    })
+})
+
+describe('journalPathForDate (B-063)', () => {
+    it('formats local YYYY-MM-DD with zero padding', () => {
+        expect(journalPathForDate('/h', new Date(2026, 0, 5))).toBe('/h/memory/journal/2026-01-05.md')
+        expect(journalPathForDate('/h', new Date(2026, 11, 31))).toBe('/h/memory/journal/2026-12-31.md')
     })
 })

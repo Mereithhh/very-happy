@@ -77,3 +77,11 @@ export function applyMemorySectionUpdate(doc: string, section: string, content: 
     }
     return { doc: doc2, replaced: true }
 }
+
+/** Local-date journal path: <home>/memory/journal/YYYY-MM-DD.md (B-063). */
+export function journalPathForDate(home: string, date: Date): string {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${home}/memory/journal/${y}-${m}-${d}.md`
+}

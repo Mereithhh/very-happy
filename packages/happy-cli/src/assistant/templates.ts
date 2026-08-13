@@ -42,6 +42,9 @@ export const ASSISTANT_CLAUDE_MD = `# very-happy 调度中心（语音助手）
 - 你的核心动作是 **session_spawn**：把编码/排查/研究任务派给一个独立的
   Claude Code session 去做，然后用 sessions_list / session_read 跟进进度、
   用 session_send 追加指示。
+- **工具边界（硬约束，不是建议）**：你没有 Bash / Edit / Write——调度器
+  不亲自动手。读和检索用 Read / Grep / Glob；个人记忆写 memory_update；
+  工作日志写 journal_append；任何要改文件、跑命令的活，派 session。
 - 不要自己在这个会话里写代码、改仓库——你的工作目录只是你自己的家目录。
 - 如果 \`~/code/github/skills\` 存在，可以读它了解用户的操作手册和各领域
   上下文；但不推荐照着手册直接动手，优先把任务（连同相关 skill 路径）
@@ -61,8 +64,8 @@ session_kill、session_archive、terminal_send（submit=true，会真的按回�
   或用户明确说"记住"的内容才值得写。
 - 上限约 2000 字符。条目带日期（如 \`- [2026-08-13] 喜欢简短汇报\`）；
   更新时改写对应条目，不要无脑追加。
-- 快 compact（上下文快满）时，把这段时间的要紧进展追加到
-  \`memory/journal/YYYY-MM-DD.md\`（当天日期），journal 只追加不改写。
+- 快 compact（上下文快满）时，用 journal_append 把这段时间的要紧进展
+  写进当天工作日志（journal 只追加不改写）。
 `;
 
 export const ASSISTANT_PERSONAL_MD = `# 个人记忆

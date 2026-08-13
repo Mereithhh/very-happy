@@ -73,6 +73,7 @@
 | B-052 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
 | B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
 | B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
+| B-063 | 调度器工具纪律做实（Owner：meta 会话工作方式/工具面应不同于普通会话）：assistant 变体 SDK 级硬禁 Bash/Edit/Write/MultiEdit/NotebookEdit（per-message 覆盖只能加严不能解禁）+ 新 MCP 工具 journal_append 作为日志写入正道 + CLAUDE.md 工具边界声明 | feat | Owner 2026-08-13 | done | OpenClaw 调度器纪律；保留 Read/Grep/Glob/web/Task |
 | B-054 | assistant 版本门控 dev 逃生门：dev 构建恒 0.1.0 被 ≥0.2.34 挡住，本地联调要 hack machine metadata | debt | B-051 E2E 走查#3 | todo | dev override（env/localStorage）或特判 0.1.0 |
 | B-055 | 复核 assistant 会话 dangerouslySkipPermissions=true 的来源 | debt | B-051 E2E 走查#8 | done | 根因=fork 全局默认 permission mode 就是 yolo（runClaude.ts:55），非 assistant 特有；已做成可关设置（B-061） |
 | B-056 | /board 在 devtools emulate 切换后首进偶发主线程阻塞 >40s（一次复现，二次不可）| bug | B-051 E2E 走查#5 | todo | 低置信度观察项，遇到再深挖 |

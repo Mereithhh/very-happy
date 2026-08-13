@@ -17,7 +17,7 @@
  */
 
 import axios from 'axios'
-import { readFile, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -30,7 +30,7 @@ import { decodeBase64, decrypt } from '@/api/encryption'
 import { formatTranscript } from './transcript'
 import { isValidSessionId, isValidTerminalId } from './ids'
 import { listVhTerminals, readVhTerminal, sendToVhTerminal } from './terminals'
-import { applyMemorySectionUpdate, PERSONAL_MEMORY_SOFT_LIMIT_CHARS } from './memory'
+import { applyMemorySectionUpdate, journalPathForDate, PERSONAL_MEMORY_SOFT_LIMIT_CHARS } from './memory'
 import { assistantPersonalMemoryPath, bootstrapAssistantHome } from './bootstrap'
 import { normalizeSpawnDirectory } from './spawnDirectory'
 
@@ -45,6 +45,7 @@ export const ASSISTANT_TOOL_NAMES = [
     'terminal_read',
     'terminal_send',
     'memory_update',
+    'journal_append',
 ] as const
 
 const MCP_CLIENT_TAG = 'assistant-mcp'
@@ -333,6 +334,29 @@ export function registerAssistantTools(mcp: McpServer): void {
             return ok(`${replaced ? 'Replaced' : 'Appended'} section "${args.section.trim()}" in ${path}.${sizeNote}`)
         } catch (error) {
             return fail(`Failed to update memory: ${error instanceof Error ? error.message : String(error)}`)
+        }
+    })
+
+    // ── journal_append ───────────────────────────────────────────────────────
+    // The dispatcher denylist (B-063) removes Write/Edit, so this is the
+    // sanctioned way to persist work notes: append-only, today's file.
+    mcp.registerTool('journal_append', {
+        description: 'Append a timestamped note to today\'s work journal (memory/journal/YYYY-MM-DD.md). Use before compaction to preserve important progress; append-only.',
+        title: 'Append Work Journal',
+        inputSchema: {
+            content: z.string().describe('The note to append (plain text/markdown)'),
+        },
+    }, async (args) => {
+        if (typeof args.content !== 'string' || args.content.trim().length === 0) return fail('content must be non-empty')
+        try {
+            const { home } = await bootstrapAssistantHome()
+            const path = journalPathForDate(home, new Date())
+            const stamp = new Date().toTimeString().slice(0, 5)
+            await appendFile(path, `\n- [${stamp}] ${args.content.trim()}\n`, 'utf8')
+            logger.debug(`[assistant] journal_append -> ${path}`)
+            return ok(`Appended to ${path}.`)
+        } catch (error) {
+            return fail(`Failed to append journal: ${error instanceof Error ? error.message : String(error)}`)
         }
     })
 }

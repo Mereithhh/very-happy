@@ -35,6 +35,7 @@ import { RawJSONLinesSchema, type RawJSONLines } from './types';
 import { TitleGenerator } from './utils/titleGenerator';
 import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/boardAnalyzer';
 import { bootstrapAssistantHome } from '@/assistant/bootstrap';
+import { withAssistantDenylist } from '@/assistant/dispatcherTools';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -493,7 +494,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
-    let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+    // B-063: assistant (dispatcher) sessions have the mutating built-ins
+    // hard-denied — see assistant/dispatcherTools.ts.
+    let currentDisallowedTools: string[] | undefined = withAssistantDenylist(undefined, isAssistantVariant);
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
     const resetCurrentModeDefaults = () => {
@@ -503,7 +506,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentCustomSystemPrompt = undefined;
         currentAppendSystemPrompt = undefined;
         currentAllowedTools = undefined;
-        currentDisallowedTools = undefined;
+        currentDisallowedTools = withAssistantDenylist(undefined, isAssistantVariant);
         currentEffort = DEFAULT_CLAUDE_EFFORT;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
@@ -631,7 +634,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
         let messageDisallowedTools = currentDisallowedTools;
         if (message.meta?.hasOwnProperty('disallowedTools')) {
-            messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
+            // B-063: a per-message override may deny MORE, never lift the
+            // assistant's dispatcher denylist.
+            messageDisallowedTools = withAssistantDenylist(message.meta.disallowedTools || undefined, isAssistantVariant);
             currentDisallowedTools = messageDisallowedTools;
             logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
         } else {
