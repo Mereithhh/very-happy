@@ -6,12 +6,17 @@ import { type Fastify } from "../types";
 import { log } from "@/utils/log";
 import { createAccountRateLimiter } from "@/app/push/webhookNotify";
 import {
+    addSharedVoice,
+    createKeyedTimedCache,
     createTimedCache,
+    fetchSlimSharedVoices,
     fetchSlimVoices,
+    parseSharedVoicesLang,
     proxyTts,
     upstreamErrorReplyStatus,
     validateTtsText,
     type FetchLike,
+    type SlimSharedVoice,
     type SlimVoice,
 } from "@/app/voice/ttsProxy";
 import { mintVoiceToken } from "@/app/voice/voiceToken";
@@ -513,6 +518,112 @@ export function voiceRoutes(app: Fastify) {
         } catch (error) {
             log({ module: 'voice' }, `Voices list error: ${error}`);
             return reply.code(502).send({ error: 'Failed to list voices' });
+        }
+    });
+
+    // Shared voice library, cached per language (B-081). Same 60s policy as
+    // the account voices list above.
+    const sharedVoicesCache = createKeyedTimedCache<SlimSharedVoice[]>(60_000);
+
+    /**
+     * Voice Library browser (B-081): slim shared-voices list so the client
+     * can offer e.g. Chinese voices for one-click adding. Proxies ElevenLabs
+     * GET /v1/shared-voices filtered by language (whitelist zh/en/ja/ko,
+     * default zh), most-used first, cached 60s per language. Status
+     * discipline as everywhere in this file: 501 = not configured, upstream
+     * 429 stays 429, every other upstream error → 502.
+     */
+    app.get('/v1/voice/tts/voices/shared', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                lang: z.string().max(16).optional(),
+            }),
+        },
+    }, async (request, reply) => {
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(501).send({ error: 'voice not configured' });
+        }
+
+        const lang = parseSharedVoicesLang(request.query.lang);
+        if (lang === null) {
+            return reply.code(400).send({ error: 'Unsupported language' });
+        }
+
+        const cached = sharedVoicesCache.get(lang);
+        if (cached) {
+            return reply.send({ voices: cached });
+        }
+
+        try {
+            const result = await fetchSlimSharedVoices({
+                apiKey: elevenLabsApiKey,
+                lang,
+                fetchImpl: fetch as unknown as FetchLike,
+            });
+            if (!result.ok) {
+                log({ module: 'voice' }, `Shared voices list failed (${lang}): ${result.status}`);
+                return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to list shared voices' });
+            }
+            sharedVoicesCache.set(lang, result.voices);
+            return reply.send({ voices: result.voices });
+        } catch (error) {
+            log({ module: 'voice' }, `Shared voices list error (${lang}): ${error}`);
+            return reply.code(502).send({ error: 'Failed to list shared voices' });
+        }
+    });
+
+    // Adding voices mutates the account — keep it deliberately slow (10/min).
+    const allowVoiceAdd = createAccountRateLimiter({ max: 10, windowMs: 60_000 });
+
+    /**
+     * Add a shared voice to the ElevenLabs account (B-081). Proxies
+     * POST /v1/voices/add/{public_user_id}/{voice_id} with { new_name }.
+     * On success the account voices list changed, so the 60s voicesCache is
+     * invalidated — the client re-fetches /v1/voice/tts/voices right after
+     * adding and must see the new voice immediately.
+     */
+    app.post('/v1/voice/tts/voices/add', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                publicUserId: z.string().min(1).max(200),
+                voiceId: z.string().min(1).max(200),
+                name: z.string().min(1).max(100),
+            }),
+        },
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { publicUserId, voiceId, name } = request.body;
+
+        const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        if (!elevenLabsApiKey) {
+            return reply.code(501).send({ error: 'voice not configured' });
+        }
+
+        if (!allowVoiceAdd.allow(userId)) {
+            return reply.code(429).send({ error: 'Too many add requests, slow down' });
+        }
+
+        try {
+            const result = await addSharedVoice({
+                apiKey: elevenLabsApiKey,
+                publicUserId,
+                voiceId,
+                name,
+                fetchImpl: fetch as unknown as FetchLike,
+            });
+            if (!result.ok) {
+                log({ module: 'voice' }, `Add shared voice failed for user ${userId}: ${result.status} ${result.detail.slice(0, 200)}`);
+                return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to add voice' });
+            }
+            voicesCache.clear();
+            log({ module: 'voice' }, `User ${userId} added shared voice ${result.voiceId}`);
+            return reply.send({ ok: true, voiceId: result.voiceId });
+        } catch (error) {
+            log({ module: 'voice' }, `Add shared voice error for user ${userId}: ${error}`);
+            return reply.code(502).send({ error: 'Failed to add voice' });
         }
     });
 }

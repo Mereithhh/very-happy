@@ -256,6 +256,229 @@ describe("voiceRoutes — /v1/voice/tts + /v1/voice/tts/voices", () => {
     });
 });
 
+describe("voiceRoutes — shared voice library (B-081)", () => {
+    let app: Fastify | null = null;
+    const originalApiKey = process.env.ELEVENLABS_API_KEY;
+
+    beforeEach(() => {
+        process.env.ELEVENLABS_API_KEY = "test-api-key";
+    });
+
+    afterEach(async () => {
+        vi.unstubAllGlobals();
+        if (app) {
+            await app.close();
+            app = null;
+        }
+        if (originalApiKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+        else process.env.ELEVENLABS_API_KEY = originalApiKey;
+    }, 30_000);
+
+    function sharedVoicesUpstream() {
+        return vi.fn(async (url: string) => {
+            if (url.includes("/shared-voices")) {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: null,
+                    text: async () => "",
+                    json: async () => ({
+                        voices: [{
+                            public_owner_id: "o1",
+                            voice_id: "sv1",
+                            name: "小美",
+                            preview_url: "https://x/p.mp3",
+                            gender: "female",
+                        }],
+                    }),
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                body: null,
+                text: async () => "",
+                json: async () => ({ voices: [{ voice_id: "av1", name: "Account", preview_url: "" }] }),
+            };
+        });
+    }
+
+    function addUpstream() {
+        return vi.fn(async (url: string) => {
+            if (url.includes("/voices/add/")) {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: null,
+                    text: async () => "",
+                    json: async () => ({ voice_id: "added-v1" }),
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                body: null,
+                text: async () => "",
+                json: async () => ({ voices: [] }),
+            };
+        });
+    }
+
+    async function postAdd(base: string, body: unknown) {
+        return realFetch(`${base}/v1/voice/tts/voices/add`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    }
+
+    it("lists shared voices in the slim shape (lang defaults to zh)", async () => {
+        const upstream = sharedVoicesUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await realFetch(`${started.base}/v1/voice/tts/voices/shared`);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({
+            voices: [{
+                publicUserId: "o1",
+                voiceId: "sv1",
+                name: "小美",
+                previewUrl: "https://x/p.mp3",
+                labels: { gender: "female" },
+            }],
+        });
+        const calledUrl = (upstream.mock.calls[0] as unknown[])[0] as string;
+        expect(calledUrl).toContain("language=zh");
+    });
+
+    it("passes a whitelisted lang through and rejects others with 400", async () => {
+        const upstream = sharedVoicesUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+
+        const okRes = await realFetch(`${started.base}/v1/voice/tts/voices/shared?lang=ja`);
+        expect(okRes.status).toBe(200);
+        expect((upstream.mock.calls[0] as unknown[])[0]).toContain("language=ja");
+
+        const badRes = await realFetch(`${started.base}/v1/voice/tts/voices/shared?lang=fr`);
+        expect(badRes.status).toBe(400);
+        expect(await badRes.json()).toEqual({ error: "Unsupported language" });
+        // The invalid lang never reached the upstream.
+        expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it("caches per language for 60s", async () => {
+        const upstream = sharedVoicesUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+
+        await realFetch(`${started.base}/v1/voice/tts/voices/shared?lang=zh`);
+        await realFetch(`${started.base}/v1/voice/tts/voices/shared?lang=zh`);
+        expect(upstream).toHaveBeenCalledTimes(1);
+        // A different language is its own cache slot.
+        await realFetch(`${started.base}/v1/voice/tts/voices/shared?lang=en`);
+        expect(upstream).toHaveBeenCalledTimes(2);
+    });
+
+    it("answers 501 when ELEVENLABS_API_KEY is not configured", async () => {
+        delete process.env.ELEVENLABS_API_KEY;
+        const upstream = sharedVoicesUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await realFetch(`${started.base}/v1/voice/tts/voices/shared`);
+        expect(res.status).toBe(501);
+        expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it("maps an upstream shared-voices 404 to 502 and preserves 429", async () => {
+        vi.stubGlobal("fetch", errorUpstream(404));
+        let started = await startApp();
+        app = started.app;
+        let res = await realFetch(`${started.base}/v1/voice/tts/voices/shared`);
+        expect(res.status).toBe(502);
+        await app.close();
+        app = null;
+
+        vi.stubGlobal("fetch", errorUpstream(429));
+        started = await startApp();
+        app = started.app;
+        res = await realFetch(`${started.base}/v1/voice/tts/voices/shared`);
+        expect(res.status).toBe(429);
+    });
+
+    it("adds a shared voice and returns the upstream voice id", async () => {
+        const upstream = addUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+        const res = await postAdd(started.base, { publicUserId: "o1", voiceId: "sv1", name: "小美" });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ ok: true, voiceId: "added-v1" });
+        const calledUrl = (upstream.mock.calls[0] as unknown[])[0] as string;
+        expect(calledUrl).toBe("https://api.elevenlabs.io/v1/voices/add/o1/sv1");
+        const init = (upstream.mock.calls[0] as unknown[])[1] as { body: string };
+        expect(JSON.parse(init.body)).toEqual({ new_name: "小美" });
+    });
+
+    it("invalidates the account voices cache after a successful add", async () => {
+        const upstream = addUpstream();
+        vi.stubGlobal("fetch", upstream);
+        const started = await startApp();
+        app = started.app;
+
+        // Prime the 60s voices cache…
+        await realFetch(`${started.base}/v1/voice/tts/voices`);
+        await realFetch(`${started.base}/v1/voice/tts/voices`);
+        const callsAfterPrime = upstream.mock.calls.length;
+        expect(callsAfterPrime).toBe(1);
+
+        // …add a voice…
+        const addRes = await postAdd(started.base, { publicUserId: "o1", voiceId: "sv1", name: "n" });
+        expect(addRes.status).toBe(200);
+
+        // …and the next voices list must hit the upstream again.
+        await realFetch(`${started.base}/v1/voice/tts/voices`);
+        const voicesCalls = (upstream.mock.calls as unknown[][])
+            .filter((call) => (call[0] as string).endsWith("/v1/voices"));
+        expect(voicesCalls).toHaveLength(2);
+    });
+
+    it("validates the add body (400 on missing/oversized fields)", async () => {
+        vi.stubGlobal("fetch", addUpstream());
+        const started = await startApp();
+        app = started.app;
+        expect((await postAdd(started.base, { voiceId: "v", name: "n" })).status).toBe(400);
+        expect((await postAdd(started.base, { publicUserId: "", voiceId: "v", name: "n" })).status).toBe(400);
+        expect((await postAdd(started.base, { publicUserId: "o", voiceId: "v", name: "x".repeat(101) })).status).toBe(400);
+    });
+
+    it("maps an upstream add failure to 502 (never passes the status through)", async () => {
+        vi.stubGlobal("fetch", errorUpstream(400));
+        const started = await startApp();
+        app = started.app;
+        const res = await postAdd(started.base, { publicUserId: "o1", voiceId: "sv1", name: "n" });
+        expect(res.status).toBe(502);
+        expect(await res.json()).toEqual({ error: "Failed to add voice" });
+    });
+
+    it("rate limits adds per account at 10/min", async () => {
+        vi.stubGlobal("fetch", addUpstream());
+        const started = await startApp();
+        app = started.app;
+        for (let i = 0; i < 10; i++) {
+            const res = await postAdd(started.base, { publicUserId: "o1", voiceId: `v${i}`, name: "n" });
+            expect(res.status).toBe(200);
+        }
+        const res = await postAdd(started.base, { publicUserId: "o1", voiceId: "v11", name: "n" });
+        expect(res.status).toBe(429);
+        expect(await res.json()).toEqual({ error: "Too many add requests, slow down" });
+    });
+});
+
 describe("voiceRoutes — /v1/voice/token (B-069)", () => {
     let app: Fastify | null = null;
     const originalApiKey = process.env.ELEVENLABS_API_KEY;

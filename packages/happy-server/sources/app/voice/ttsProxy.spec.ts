@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+    SHARED_VOICES_PAGE_SIZE,
     TTS_DEFAULT_MODEL_ID,
     TTS_DEFAULT_VOICE_ID,
     TTS_MAX_TEXT_CHARS,
+    addSharedVoice,
+    buildAddSharedVoiceRequest,
+    buildSharedVoicesUrl,
     buildTtsRequest,
+    createKeyedTimedCache,
     createTimedCache,
+    fetchSlimSharedVoices,
     fetchSlimVoices,
+    parseSharedVoicesLang,
     proxyTts,
+    slimSharedVoices,
     slimVoices,
     upstreamErrorReplyStatus,
     validateTtsText,
@@ -224,6 +232,210 @@ describe('createTimedCache', () => {
         cache.set(2, 90);
         expect(cache.get(150)).toBe(2);
         expect(cache.get(190)).toBeNull();
+    });
+
+    it('clear drops the entry immediately (B-081 add-voice invalidation)', () => {
+        const cache = createTimedCache<string>(60_000);
+        cache.set('stale', 1_000);
+        cache.clear();
+        expect(cache.get(1_001)).toBeNull();
+    });
+});
+
+describe('parseSharedVoicesLang (B-081)', () => {
+    it('defaults missing/empty to zh', () => {
+        expect(parseSharedVoicesLang(undefined)).toBe('zh');
+        expect(parseSharedVoicesLang('')).toBe('zh');
+    });
+
+    it('accepts only the whitelist', () => {
+        expect(parseSharedVoicesLang('zh')).toBe('zh');
+        expect(parseSharedVoicesLang('en')).toBe('en');
+        expect(parseSharedVoicesLang('ja')).toBe('ja');
+        expect(parseSharedVoicesLang('ko')).toBe('ko');
+        expect(parseSharedVoicesLang('fr')).toBeNull();
+        expect(parseSharedVoicesLang('ZH')).toBeNull();
+        expect(parseSharedVoicesLang('zh-CN')).toBeNull();
+    });
+});
+
+describe('buildSharedVoicesUrl', () => {
+    it('builds the shared-voices search URL sorted by usage', () => {
+        const url = new URL(buildSharedVoicesUrl('zh'));
+        expect(`${url.origin}${url.pathname}`).toBe('https://api.elevenlabs.io/v1/shared-voices');
+        expect(url.searchParams.get('language')).toBe('zh');
+        expect(url.searchParams.get('page_size')).toBe(String(SHARED_VOICES_PAGE_SIZE));
+        expect(url.searchParams.get('sort')).toBe('usage_character_count_1y');
+    });
+});
+
+describe('slimSharedVoices', () => {
+    it('maps shared voices to the slim shape, folding descriptor fields into labels', () => {
+        const raw = {
+            voices: [
+                {
+                    public_owner_id: 'owner-1',
+                    voice_id: 'v1',
+                    name: '小美',
+                    preview_url: 'https://x/p.mp3',
+                    gender: 'female',
+                    age: 'young',
+                    accent: 'mandarin',
+                    descriptive: 'calm',
+                    use_case: 'narration',
+                    description: 'A calm Chinese voice',
+                    // fields we deliberately drop
+                    cloned_by_count: 999,
+                    featured: true,
+                    rate: 1,
+                },
+            ],
+            has_more: false,
+        };
+        expect(slimSharedVoices(raw)).toEqual([
+            {
+                publicUserId: 'owner-1',
+                voiceId: 'v1',
+                name: '小美',
+                previewUrl: 'https://x/p.mp3',
+                labels: { gender: 'female', age: 'young', accent: 'mandarin', descriptive: 'calm', use_case: 'narration' },
+                description: 'A calm Chinese voice',
+            },
+        ]);
+    });
+
+    it('omits labels/description when empty, defaults missing preview/name', () => {
+        const raw = {
+            voices: [
+                { public_owner_id: 'o1', voice_id: 'v1', gender: '', description: '' },
+            ],
+        };
+        expect(slimSharedVoices(raw)).toEqual([
+            { publicUserId: 'o1', voiceId: 'v1', name: 'v1', previewUrl: '' },
+        ]);
+    });
+
+    it('drops entries missing voice_id or public_owner_id, and garbage', () => {
+        const raw = {
+            voices: [
+                { public_owner_id: 'o1', name: 'no voice id' },
+                { voice_id: 'v-no-owner', name: 'no owner' },
+                null,
+                'garbage',
+                { public_owner_id: 'o2', voice_id: 'v2', name: 'ok' },
+            ],
+        };
+        expect(slimSharedVoices(raw)).toEqual([
+            { publicUserId: 'o2', voiceId: 'v2', name: 'ok', previewUrl: '' },
+        ]);
+    });
+
+    it('returns [] for malformed payloads', () => {
+        expect(slimSharedVoices(null)).toEqual([]);
+        expect(slimSharedVoices('x')).toEqual([]);
+        expect(slimSharedVoices({})).toEqual([]);
+        expect(slimSharedVoices({ voices: 'nope' })).toEqual([]);
+    });
+});
+
+describe('fetchSlimSharedVoices', () => {
+    it('GETs /v1/shared-voices with the api key and slims the result', async () => {
+        const calls: Array<{ url: string; init: any }> = [];
+        const fetchImpl: FetchLike = async (url, init) => {
+            calls.push({ url, init });
+            return fakeResponse({
+                json: async () => ({
+                    voices: [{ public_owner_id: 'o1', voice_id: 'v1', name: 'A', preview_url: 'p' }],
+                }),
+            });
+        };
+
+        const result = await fetchSlimSharedVoices({ apiKey: 'k-9', lang: 'zh', fetchImpl });
+        expect(result).toEqual({
+            ok: true,
+            voices: [{ publicUserId: 'o1', voiceId: 'v1', name: 'A', previewUrl: 'p' }],
+        });
+        expect(calls[0].url).toContain('/shared-voices?');
+        expect(calls[0].url).toContain('language=zh');
+        expect(calls[0].init.headers['xi-api-key']).toBe('k-9');
+    });
+
+    it('surfaces the upstream status on non-2xx', async () => {
+        const fetchImpl: FetchLike = async () => fakeResponse({ ok: false, status: 503 });
+        expect(await fetchSlimSharedVoices({ apiKey: 'k', lang: 'zh', fetchImpl })).toEqual({ ok: false, status: 503 });
+    });
+
+    it('treats an unparsable 2xx body as an empty list', async () => {
+        const fetchImpl: FetchLike = async () =>
+            fakeResponse({ json: async () => { throw new Error('not json'); } });
+        expect(await fetchSlimSharedVoices({ apiKey: 'k', lang: 'zh', fetchImpl })).toEqual({ ok: true, voices: [] });
+    });
+});
+
+describe('buildAddSharedVoiceRequest', () => {
+    it('builds the add URL with encoded path segments and the new_name body', () => {
+        const { url, body } = buildAddSharedVoiceRequest({
+            publicUserId: 'owner/../x',
+            voiceId: 'v 1',
+            name: '小美',
+        });
+        expect(url).toBe('https://api.elevenlabs.io/v1/voices/add/owner%2F..%2Fx/v%201');
+        expect(body).toEqual({ new_name: '小美' });
+    });
+});
+
+describe('addSharedVoice', () => {
+    it('POSTs the add request and returns the upstream voice_id', async () => {
+        const calls: Array<{ url: string; init: any }> = [];
+        const fetchImpl: FetchLike = async (url, init) => {
+            calls.push({ url, init });
+            return fakeResponse({ json: async () => ({ voice_id: 'new-v1' }) });
+        };
+        const result = await addSharedVoice({
+            apiKey: 'k-1',
+            publicUserId: 'o1',
+            voiceId: 'v1',
+            name: 'My voice',
+            fetchImpl,
+        });
+        expect(result).toEqual({ ok: true, voiceId: 'new-v1' });
+        expect(calls[0].url).toBe('https://api.elevenlabs.io/v1/voices/add/o1/v1');
+        expect(calls[0].init.method).toBe('POST');
+        expect(calls[0].init.headers['xi-api-key']).toBe('k-1');
+        expect(JSON.parse(calls[0].init.body)).toEqual({ new_name: 'My voice' });
+    });
+
+    it('falls back to the requested voiceId when the 2xx body is malformed', async () => {
+        const fetchImpl: FetchLike = async () =>
+            fakeResponse({ json: async () => { throw new Error('not json'); } });
+        const result = await addSharedVoice({
+            apiKey: 'k', publicUserId: 'o1', voiceId: 'v1', name: 'n', fetchImpl,
+        });
+        expect(result).toEqual({ ok: true, voiceId: 'v1' });
+    });
+
+    it('returns the upstream status and detail on non-2xx', async () => {
+        const fetchImpl: FetchLike = async () =>
+            fakeResponse({ ok: false, status: 400, text: async () => 'already added' });
+        const result = await addSharedVoice({
+            apiKey: 'k', publicUserId: 'o1', voiceId: 'v1', name: 'n', fetchImpl,
+        });
+        expect(result).toEqual({ ok: false, status: 400, detail: 'already added' });
+    });
+});
+
+describe('createKeyedTimedCache', () => {
+    it('caches independently per key with the shared TTL', () => {
+        const cache = createKeyedTimedCache<string>(60_000);
+        expect(cache.get('zh', 0)).toBeNull();
+        cache.set('zh', 'zh-voices', 1_000);
+        cache.set('en', 'en-voices', 30_000);
+        expect(cache.get('zh', 1_000)).toBe('zh-voices');
+        expect(cache.get('en', 30_000)).toBe('en-voices');
+        // zh expires first; en is still warm.
+        expect(cache.get('zh', 61_000)).toBeNull();
+        expect(cache.get('en', 61_000)).toBe('en-voices');
+        expect(cache.get('en', 90_000)).toBeNull();
     });
 });
 

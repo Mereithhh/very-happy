@@ -371,3 +371,26 @@ input.set-value:focus {
   background: var(--bg-2);
   color: var(--text);
 }
+/* voice library "add to account" button (B-081) */
+.set-voice-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 4px 10px;
+  font-size: var(--fs-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
+}
+.set-voice-add:hover:not(:disabled) {
+  background: var(--bg-0);
+  color: var(--text);
+}
+.set-voice-add:disabled {
+  opacity: 0.5;
+}

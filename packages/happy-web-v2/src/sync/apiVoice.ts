@@ -204,6 +204,94 @@ export async function fetchTtsVoices(credentials: AuthCredentials): Promise<TtsV
     }
 }
 
+// ── B-081 voice library: browse shared voices + add to account ─────────────
+// Same error discipline as the other TTS helpers: consume everything locally,
+// never throw, never feed global auth handling. 404/501 = server not
+// upgraded / voice not configured → the UI shows a degrade hint.
+
+export interface SharedVoice {
+    publicUserId: string;
+    voiceId: string;
+    name: string;
+    previewUrl?: string;
+    labels?: Record<string, string>;
+    description?: string;
+}
+
+export type SharedVoicesResult =
+    | { kind: 'ok'; voices: SharedVoice[] }
+    | { kind: 'unsupported'; status: number }
+    | { kind: 'error'; status?: number };
+
+export async function fetchSharedVoices(
+    credentials: AuthCredentials,
+    lang: string,
+): Promise<SharedVoicesResult> {
+    const serverUrl = getServerUrl();
+    try {
+        const response = await fetch(
+            `${serverUrl}/v1/voice/tts/voices/shared?lang=${encodeURIComponent(lang)}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${credentials.token}`,
+                    'X-Happy-Client': getHappyClientId(),
+                },
+            },
+        );
+        if (response.ok) {
+            const data = (await response.json()) as { voices?: SharedVoice[] };
+            return { kind: 'ok', voices: Array.isArray(data.voices) ? data.voices : [] };
+        }
+        if (classifyTtsErrorStatus(response.status) === 'unsupported') {
+            return { kind: 'unsupported', status: response.status };
+        }
+        return { kind: 'error', status: response.status };
+    } catch {
+        return { kind: 'error' };
+    }
+}
+
+export type AddSharedVoiceResult =
+    | { kind: 'ok'; voiceId: string }
+    | { kind: 'unsupported'; status: number }
+    | { kind: 'error'; status?: number };
+
+/** Add a shared voice to the account; on ok the server has already
+ *  invalidated its voices-list cache, so a re-fetch sees the new voice. */
+export async function addSharedVoice(
+    credentials: AuthCredentials,
+    opts: { publicUserId: string; voiceId: string; name: string },
+): Promise<AddSharedVoiceResult> {
+    const serverUrl = getServerUrl();
+    try {
+        const response = await fetch(`${serverUrl}/v1/voice/tts/voices/add`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            },
+            body: JSON.stringify(opts),
+        });
+        if (response.ok) {
+            const data = (await response.json()) as { voiceId?: string };
+            return {
+                kind: 'ok',
+                voiceId: typeof data.voiceId === 'string' && data.voiceId.length > 0
+                    ? data.voiceId
+                    : opts.voiceId,
+            };
+        }
+        if (classifyTtsErrorStatus(response.status) === 'unsupported') {
+            return { kind: 'unsupported', status: response.status };
+        }
+        return { kind: 'error', status: response.status };
+    } catch {
+        return { kind: 'error' };
+    }
+}
+
 export async function fetchVoiceUsage(
     credentials: AuthCredentials
 ): Promise<VoiceUsageResponse> {
