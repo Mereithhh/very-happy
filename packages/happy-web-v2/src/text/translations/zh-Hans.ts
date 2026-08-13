@@ -620,6 +620,8 @@ export const zhHans: TranslationStructure = {
         ttsUnavailable: '语音播报不可用，已切换纯文字模式',
         ttsTruncated: '播报已截断，全文见屏幕',
         audioUnlockFailed: '音频启用失败，请再点一次「启用语音」',
+        permissionWaiting: ({ tool }: { tool: string }) => `等待权限批准：${tool}`,
+        permissionGo: '去处理',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
@@ -1005,6 +1007,8 @@ export const zhHans: TranslationStructure = {
         voicesUnavailable: '音色列表不可用——服务器未升级或未配置语音',
         readTextReplies: '文字消息也朗读',
         readTextRepliesHint: '语音消息的回复始终朗读',
+        skipPermissions: '跳过权限审批',
+        skipPermissionsHint: '默认开启。关闭后，助手执行敏感操作需人工批准；改动对下一次启动/新对话生效。',
         assistantMachine: '助手机器',
         assistantMachineAuto: '自动（唯一在线机器）',
         // Voice settings screen

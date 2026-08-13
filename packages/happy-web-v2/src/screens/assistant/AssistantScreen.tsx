@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server } from 'lucide-react';
+import { ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -25,7 +25,7 @@ import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
 import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistantSession';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds } from '@/assistant/assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
 import { TtsPlayer } from '@/assistant/ttsPlayer';
@@ -73,6 +73,13 @@ export function AssistantScreen() {
     const spawningRef = useRef(false);
     const [spawnError, setSpawnError] = useState<string | null>(null);
 
+    // "Skip permission approvals" (Settings → Voice; default true = current
+    // yolo behavior). Read through a ref so toggling the setting doesn't
+    // invalidate spawnAssistant (and with it the find-or-spawn effect).
+    const assistantSkipPermissions = useSetting('assistantSkipPermissions');
+    const skipPermissionsRef = useRef(assistantSkipPermissions);
+    skipPermissionsRef.current = assistantSkipPermissions;
+
     const spawnAssistant = useCallback(
         async (machineId: string, opts?: { forceNew?: boolean }) => {
             if (spawningRef.current) return;
@@ -88,6 +95,10 @@ export function AssistantScreen() {
                     // "new conversation": daemon stops the old assistant process
                     // and spawns fresh (old daemons ignore the field)
                     ...(opts?.forceNew ? { forceNew: true } : {}),
+                    // Setting OFF → ask for approvals: spawn with the explicit
+                    // 'default' mode. Setting ON (the default) sends nothing, so
+                    // behavior is exactly as before (fork-wide yolo default).
+                    ...(skipPermissionsRef.current ? {} : { permissionMode: 'default' }),
                 });
                 if (res.type === 'success') {
                     useAssistantStore.getState().setSessionId(res.sessionId);
@@ -126,6 +137,13 @@ export function AssistantScreen() {
     const thinking = !!session?.thinking;
     const { messages, isLoaded } = useSessionMessages(sessionId ?? '');
     const exchange = useMemo(() => deriveAssistantExchange(messages), [messages]);
+
+    // Pending permission request (only exists when "skip permission approvals"
+    // is off): surface a banner that links to the session page's approve UI.
+    const pendingPermission = useMemo(
+        () => derivePendingPermission(session?.agentState),
+        [session?.agentState],
+    );
 
     // ── settings ──
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
@@ -402,6 +420,20 @@ export function AssistantScreen() {
                             >
                                 {sessionId ? stateLabel : t('assistant.connecting')}
                             </div>
+
+                            {pendingPermission && sessionId && (
+                                <button
+                                    type="button"
+                                    className="as-perm-banner"
+                                    onClick={() => navigate(`/session/${sessionId}`)}
+                                >
+                                    <ShieldAlert size={14} />
+                                    <span className="as-perm-banner-text">
+                                        {t('assistant.permissionWaiting', { tool: pendingPermission.tool })}
+                                    </span>
+                                    <span className="as-perm-banner-go">{t('assistant.permissionGo')}</span>
+                                </button>
+                            )}
 
                             <div className="as-convo">
                                 {exchange.userText && <div className="as-convo-user">{exchange.userText}</div>}

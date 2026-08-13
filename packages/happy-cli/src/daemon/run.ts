@@ -21,6 +21,7 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
+import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { getProjectPath } from '@/claude/utils/path';
@@ -273,6 +274,16 @@ export async function startDaemon(): Promise<void> {
     const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
+      // Client-requested permission mode (allowlist-validated; used by the
+      // assistant "skip permission approvals" setting). Sanitized ONCE here so
+      // all three spawn paths (assistant re-attach, tmux, plain) agree; an
+      // invalid value is ignored (spawn proceeds without the flag) — old webs
+      // never send the field, so behavior is unchanged for them.
+      const spawnPermissionMode = sanitizeSpawnPermissionMode(options.permissionMode);
+      if (options.permissionMode !== undefined && spawnPermissionMode === null) {
+        logger.warn(`[DAEMON RUN] Ignoring invalid permissionMode in spawn request: ${JSON.stringify(options.permissionMode)}`);
+      }
+
       // ── B-051 assistant variant ────────────────────────────────────────────
       // The machine's meta-agent session. cwd is FORCED to ~/.happy/assistant
       // (any passed directory is ignored), the home is bootstrapped on first
@@ -364,6 +375,9 @@ export async function startDaemon(): Promise<void> {
               'claude',
               '--happy-starting-mode', 'remote',
               '--started-by', 'daemon',
+              // Re-attach honors the CURRENT request's permission mode (the
+              // user may have just toggled the assistant permission setting).
+              ...(spawnPermissionMode ? ['--permission-mode', spawnPermissionMode] : []),
               ...(canResumeClaude ? ['--resume', claudeSessionId!] : []),
             ],
             cwd: assistantHome(),
@@ -551,7 +565,10 @@ export async function startDaemon(): Promise<void> {
           const resumeFragment = resumeId
             ? ` --resume ${shellescape(resumeId)}`
             : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}`;
+          const permissionModeFragment = spawnPermissionMode
+            ? ` --permission-mode ${shellescape(spawnPermissionMode)}`
+            : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon${resumeFragment}${permissionModeFragment}`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -669,6 +686,10 @@ export async function startDaemon(): Promise<void> {
           }
           if (options.resumeCodexThreadId && agentCommand === 'codex') {
             args.push('--resume', options.resumeCodexThreadId);
+          }
+
+          if (spawnPermissionMode) {
+            args.push('--permission-mode', spawnPermissionMode);
           }
 
           // TODO: In future, sessionId could be used with --resume to continue existing sessions

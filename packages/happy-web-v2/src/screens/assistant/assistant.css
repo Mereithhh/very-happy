@@ -294,6 +294,34 @@
   font-size: 11px;
   color: var(--text-faint);
 }
+/* pending permission request (skip-approvals OFF) → link to the session's
+   approve UI; same warn tokens as the session page's PermissionCard */
+.as-perm-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--warn);
+  background: var(--warn-dim);
+  color: var(--warn);
+  border-radius: var(--r-md);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 100%;
+}
+.as-perm-banner:hover {
+  filter: brightness(1.1);
+}
+.as-perm-banner-text {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-perm-banner-go {
+  font-weight: 600;
+  white-space: nowrap;
+}
 .as-ticker {
   display: flex;
   align-items: center;

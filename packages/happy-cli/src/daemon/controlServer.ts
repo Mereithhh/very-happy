@@ -139,6 +139,9 @@ export function startDaemonControlServer({
           // B-051: assistant only — stop the live assistant, purge its
           // persisted entry, and spawn brand-new instead of re-attaching.
           forceNew: z.boolean().optional(),
+          // Forwarded to the spawned CLI as `--permission-mode <v>` after
+          // daemon-side allowlist validation (invalid values are ignored).
+          permissionMode: z.string().optional(),
         }),
         response: {
           200: z.object({
@@ -159,7 +162,7 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, variant, forceNew } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode } = request.body;
 
       if (!directory && variant !== 'assistant') {
         reply.code(500);
@@ -167,7 +170,7 @@ export function startDaemonControlServer({
       }
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew });
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode });
 
       switch (result.type) {
         case 'success':

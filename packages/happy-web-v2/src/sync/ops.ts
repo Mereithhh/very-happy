@@ -166,6 +166,14 @@ export interface SpawnSessionOptions {
      * daemons ignore the unknown field and may return the existing session.
      */
     forceNew?: boolean;
+    /**
+     * Permission mode the daemon forwards to the spawned CLI as
+     * `--permission-mode <v>` (daemon-side allowlist; invalid values ignored).
+     * Used by the assistant "skip permission approvals" setting: off → send
+     * 'default' so tool use requires approval. Absent → daemon default
+     * (the fork's yolo). Old daemons ignore the unknown field.
+     */
+    permissionMode?: string;
 }
 
 // Options for forking a Claude session on a machine
@@ -225,7 +233,7 @@ export interface ResumeSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -240,10 +248,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             forkedFromMessageId?: string,
             variant?: string,
             forceNew?: boolean,
+            permissionMode?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode }
         );
         return result;
     } catch (error) {

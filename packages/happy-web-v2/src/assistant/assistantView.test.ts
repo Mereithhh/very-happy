@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds } from './assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission } from './assistantView';
 import type { Message } from '@/sync/typesMessage';
 
 function user(id: string, text: string, seq: number): Message {
@@ -91,5 +91,53 @@ describe('collectNewAgentTexts', () => {
     it('user and tool messages are never TTS candidates', () => {
         const now: Message[] = [user('u1', 'q', 1), tool('t1', 'Bash', 2, 'running')];
         expect(collectNewAgentTexts(now, new Set())).toEqual([]);
+    });
+});
+
+describe('derivePendingPermission', () => {
+    it('returns null when agentState is absent or has no requests', () => {
+        expect(derivePendingPermission(null)).toBeNull();
+        expect(derivePendingPermission(undefined)).toBeNull();
+        expect(derivePendingPermission({})).toBeNull();
+        expect(derivePendingPermission({ requests: null })).toBeNull();
+        expect(derivePendingPermission({ requests: {} })).toBeNull();
+    });
+
+    it('returns the single pending request', () => {
+        const res = derivePendingPermission({
+            requests: { r1: { tool: 'Bash', arguments: { command: 'rm -rf x' }, createdAt: 10 } },
+        });
+        expect(res).toEqual({ id: 'r1', tool: 'Bash', count: 1 });
+    });
+
+    it('picks the newest by createdAt and counts all pending', () => {
+        const res = derivePendingPermission({
+            requests: {
+                r1: { tool: 'Bash', arguments: {}, createdAt: 10 },
+                r2: { tool: 'Write', arguments: {}, createdAt: 30 },
+                r3: { tool: 'Edit', arguments: {}, createdAt: 20 },
+            },
+        });
+        expect(res).toEqual({ id: 'r2', tool: 'Write', count: 3 });
+    });
+
+    it('treats a missing createdAt as oldest', () => {
+        const res = derivePendingPermission({
+            requests: {
+                r1: { tool: 'Bash', arguments: {}, createdAt: null },
+                r2: { tool: 'Write', arguments: {}, createdAt: 5 },
+            },
+        });
+        expect(res).toEqual({ id: 'r2', tool: 'Write', count: 2 });
+    });
+
+    it('ignores malformed entries without a tool name', () => {
+        const res = derivePendingPermission({
+            requests: {
+                r1: { tool: undefined as unknown as string, arguments: {}, createdAt: 99 },
+                r2: { tool: 'Bash', arguments: {}, createdAt: 1 },
+            },
+        });
+        expect(res).toEqual({ id: 'r2', tool: 'Bash', count: 1 });
     });
 });

@@ -40,6 +40,9 @@ export const SettingsSchema = z.object({
     voiceTtsVoiceId: z.string().nullable().describe('TTS voice id for assistant replies (null = server default)'),
     voiceReadTextReplies: z.boolean().describe('Also read replies to typed (non-voice) messages aloud'),
     assistantMachineId: z.string().nullable().describe('Machine hosting the assistant meta-agent session (null = sole online machine)'),
+    // NO zod .default(true) — ghost-pending footgun (see promptPresets note).
+    // Default (true = skip approvals, current behavior) lives in settingsDefaults.
+    assistantSkipPermissions: z.boolean().describe('Assistant sessions skip tool permission approvals (off = spawn with permissionMode default so sensitive actions need manual approval)'),
     voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
     voiceBypassToken: z.boolean().describe('Bypass Happy server token and connect directly to ElevenLabs (requires custom agent ID)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
@@ -181,6 +184,7 @@ export const settingsDefaults: Settings = {
     voiceTtsVoiceId: null,
     voiceReadTextReplies: false,
     assistantMachineId: null,
+    assistantSkipPermissions: true,
     voiceCustomAgentId: null,
     voiceBypassToken: false,
     preferredLanguage: null,

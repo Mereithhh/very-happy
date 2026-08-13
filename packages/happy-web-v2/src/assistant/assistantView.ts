@@ -9,6 +9,7 @@
  */
 
 import type { Message, AgentTextMessage } from '@/sync/typesMessage';
+import type { AgentState } from '@/sync/storageTypes';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
 
 export interface AssistantExchange {
@@ -58,4 +59,36 @@ export function collectNewAgentTexts(
 /** Snapshot every message id — the TTS baseline captured on mount/reset. */
 export function collectMessageIds(messages: Message[]): Set<string> {
     return new Set(messages.map((m) => m.id));
+}
+
+export interface PendingPermission {
+    /** request id of the newest pending permission request */
+    id: string;
+    /** tool name of that request (what the banner shows) */
+    tool: string;
+    /** total number of pending requests */
+    count: number;
+}
+
+/**
+ * Latest undecided permission request on a session, from
+ * `Session.agentState.requests` — the same source the session page's
+ * PermissionCard renders (requests are removed from the record once decided,
+ * so presence == pending). Newest by `createdAt`; entries without a timestamp
+ * sort oldest. Null when nothing is pending.
+ */
+export function derivePendingPermission(agentState: AgentState | null | undefined): PendingPermission | null {
+    const requests = agentState?.requests;
+    if (!requests) return null;
+    let latest: { id: string; tool: string; createdAt: number } | null = null;
+    let count = 0;
+    for (const [id, r] of Object.entries(requests)) {
+        if (!r || typeof r.tool !== 'string') continue;
+        count += 1;
+        const createdAt = typeof r.createdAt === 'number' ? r.createdAt : 0;
+        if (!latest || createdAt > latest.createdAt) {
+            latest = { id, tool: r.tool, createdAt };
+        }
+    }
+    return latest ? { id: latest.id, tool: latest.tool, count } : null;
 }

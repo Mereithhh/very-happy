@@ -172,6 +172,14 @@ export interface SpawnSessionOptions {
      * simply ignore the field (compatible).
      */
     forceNew?: boolean;
+    /**
+     * Permission mode forwarded to the spawned CLI as `--permission-mode <v>`
+     * (allowlist-validated daemon-side; invalid values are ignored and logged).
+     * Used by the assistant "skip permission approvals" setting: off → the web
+     * sends 'default' so tool use requires approval instead of the fork's yolo
+     * default. Absent → behavior unchanged. Old daemons ignore the field.
+     */
+    permissionMode?: string;
 }
 
 export type SpawnSessionResult =

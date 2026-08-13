@@ -605,6 +605,8 @@ export const en = {
         ttsUnavailable: 'Voice replies unavailable — continuing in text-only mode',
         ttsTruncated: 'Speech truncated — full reply is on screen',
         audioUnlockFailed: 'Audio could not be enabled — tap "Enable voice" to try again',
+        permissionWaiting: ({ tool }: { tool: string }) => `Waiting for permission approval: ${tool}`,
+        permissionGo: 'Review',
     },
 
     // copy_to_clipboard pushes: receive toasts + the history panel
@@ -994,6 +996,8 @@ export const en = {
         voicesUnavailable: 'Voice list unavailable — server not upgraded or voice not configured',
         readTextReplies: 'Read replies to typed messages',
         readTextRepliesHint: 'Replies to voice messages are always read aloud',
+        skipPermissions: 'Skip permission approvals',
+        skipPermissionsHint: 'On by default. When off, sensitive assistant actions need your manual approval. Takes effect on the next assistant start / new conversation.',
         assistantMachine: 'Assistant machine',
         assistantMachineAuto: 'Automatic (sole online machine)',
         // Voice settings screen
