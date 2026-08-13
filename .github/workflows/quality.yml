@@ -2,24 +2,39 @@ name: Quality Gates
 
 # 质量门禁（docs/PROCESS.md §3 的 CI 落地）——push main + 所有 PR 必跑。
 #
-# Job 结构（全部并行，互不等待）：
-#   wire              happy-wire build（tsc + pkgroll）+ vitest —— 后续包依赖它的 dist，
-#                     但为了并行省墙钟时间，每个依赖它的 job 自己再 build 一次（<30s）。
-#   web-v2            vitest run + vite build（注意：不走 `pnpm build`，那会先跑
-#                     `tsc -b` 撞上存量类型债）。
-#   web-v2-typecheck  tsc --noEmit，硬门（存量债 2026-08-13 已清零，0 错误红线）。
-#   cli               pnpm build + vitest unit（integration 项目要起真 daemon /
-#                     真 Claude 环境，CI 上不跑）+ `node dist/index.mjs --version`
-#                     运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例）。
-#                     cli/server 的 tsc 本来就干净：cli build 内含 tsc --noEmit，硬门。
-#   server            tsc --noEmit + vitest run（纯单测，不需要 DB/Redis）。
+# 2026-08-14 改造：跑在 fb-us self-hosted runner 上（labels: self-hosted, linux,
+# x64, fb-us），托管分钟消耗 = 0。原来的 5 个并行 ubuntu job 合并成 1 个 job：
+#   - self-hosted 只有 1 个 worker，5 个 job 不会并行，只会排队串行 →
+#     并行结构除了把 checkout + pnpm install + wire build 重复 5 遍以外没有收益。
+#   - 合并后墙钟 ~13 分钟 → ~7 分钟（省掉 4 次装配），且只占 1 次 runner 槽位。
+#   - "哪个 gate 挂了" 的可读性用 step 名字（`Gate: xxx`）保留；每个 gate step
+#     带 `if: !cancelled() && steps.deps.outcome == 'success'`，所以**一个 gate 失败
+#     不会挡住后面的 gate**——一次 run 仍然能看到全部门禁结果（等价于原来 5 个
+#     job 各自跑完），只有装配（install / wire build）失败才会整体跳过。
 #
-# 成本考量（私有仓按 job 分钟计费）：5 个 ubuntu job 并行，单 job 目标 2-5 分钟，
-# 全流程墙钟 ~5 分钟 / 计费 ~15 分钟以内。pnpm store 走 setup-node 缓存；
-# PR 上后续 push 会取消进行中的旧 run（concurrency）。不加 macOS/Windows
-# （10x/2x 计费），跨平台安装冒烟由 cli-smoke-test.yml 按 paths 触发兜底。
+# runs-on 说明（降级路径，所有 workflow 统一）：
+#   默认 = ["self-hosted","linux","x64"]。fb-us runner 掉线时 job 会永久排队，
+#   此时不要改文件，直接翻 repo 变量把所有 Linux job 切回托管 runner：
+#     gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'   # 降级（开始计费）
+#     gh variable delete LINUX_RUNNER                           # 恢复 self-hosted
 #
-# 惯例：deploy-hwsg.yml 手动发布前先等本 workflow 绿（见该文件注释）。
+# self-hosted 环境差异（逐条）：
+#   - 工作目录复用：actions/checkout 默认 clean=true（`git clean -ffdx` + reset），
+#     连 node_modules / dist 这类 ignored 产物一起清掉，所以每次 run 的**工作树是
+#     干净的**；不干净的只有 runner 的 HOME（pnpm store / tool cache），那正是我们
+#     想复用的部分。
+#   - node / pnpm 不假设 runner 上有：照样 setup-node + pnpm/action-setup 显式声明
+#     （setup-node 在 self-hosted 上把 node 装进 RUNNER_TOOL_CACHE，第二次起是命中）。
+#   - 缓存：**刻意不用 GitHub 缓存服务**（去掉了 setup-node 的 `cache: pnpm`）。
+#     actions/cache 即使在 self-hosted 上也走 GitHub 的缓存服务，几百 MB 上下行
+#     比 fb-us 本地持久化 pnpm store 的硬链接安装慢得多，还占 repo 缓存配额。
+#     依赖本地 store 的风险（store 脏/半损）由 `--frozen-lockfile` + 校验和兜底，
+#     真出问题就 `pnpm store prune`（见 PROCESS.md §4）。托管 runner 上唯一保留
+#     缓存的地方是 cli-smoke-test.yml 的 macOS/Windows 矩阵——那里 1 分钟安装
+#     =10/2 倍计费分钟，缓存是真省钱。
+#   - 写 HOME 的行为（cli 运行冒烟会碰 ~/.happy）改指到 runner.temp，别污染 runner。
+#   - timeout-minutes 必填：self-hosted 卡死不会像托管那样有天然上限，会永久占住
+#     唯一的 worker。
 
 on:
   push:
@@ -35,107 +50,87 @@ permissions:
   contents: read
 
 jobs:
-  wire:
-    name: happy-wire (build + test)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  gates:
+    name: quality gates (wire / server / web-v2 / cli)
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
+      # 现成的 node/npm 装 pnpm（README: "This action does not setup Node.js for you"），
+      # self-hosted 上不能假设系统有 node；setup-node 自己只用 runner 内置 node 就能跑，
+      # 所以先它、后 pnpm 才是零假设的顺序。（这个顺序的代价是不能用 setup-node 的
+      # `cache: pnpm`——它要先有 pnpm 才能问出 store 路径；我们本来就不要 GitHub 缓存。）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       # 不写 version：pnpm/action-setup 读根 package.json 的 packageManager 字段
       # （pnpm@10.11.0），单一事实源，升级 pnpm 只改 packageManager 即可。
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build happy-wire
+
+      # ── 装配（失败则后面全部 gate 跳过）───────────────────────────────
+      - name: Install dependencies
+        # packages/codium（electron 桌面 spike）的 postinstall 要从 GitHub releases
+        # 下 ~100MB 二进制，是 CI 抖动第一名（deploy 上 2026-08-13 一天挂两次），
+        # 且没有任何门禁依赖它 → 只跳二进制，包本身仍可解析。
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      # 后续所有包都 import @slopus/happy-wire 的 dist（gitignored），必须先建。
+      - name: Build happy-wire (dependency dist)
+        id: deps
         run: pnpm --filter @slopus/happy-wire build
-      - name: Test happy-wire
+
+      # ── 门禁（互不阻挡，全部跑完；任一失败 → job 失败）─────────────────
+      - name: 'Gate: happy-wire tests'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --filter @slopus/happy-wire exec vitest run
 
-  web-v2:
-    name: happy-web-v2 (test + build)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build happy-wire (dependency dist)
-        run: pnpm --filter @slopus/happy-wire build
-      - name: Test happy-web-v2
-        run: pnpm --filter @slopus/happy-web-v2 exec vitest run
-      # 刻意不用 `pnpm --filter @slopus/happy-web-v2 build`：那个 script 是
-      # `tsc -b && vite build`，会被存量类型债挡住。门禁口径（PROCESS.md §3）
-      # 是 vite build 成功；typecheck 单独在 web-v2-typecheck job 里跑。
-      - name: Build happy-web-v2 (vite build)
-        run: pnpm --filter @slopus/happy-web-v2 exec vite build
+      - name: 'Gate: happy-server typecheck (tsc --noEmit)'
+        # postinstall 已跑过 prisma generate（tsc/vitest 需要生成的 client 类型）。
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm --filter happy-server-self-host typecheck
 
-  # 硬门：存量 tsc 债 2026-08-13 清零（492→0），0 错误是红线。
-  web-v2-typecheck:
-    name: happy-web-v2 typecheck (non-blocking, 存量清零后翻硬)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build happy-wire (dependency dist)
-        run: pnpm --filter @slopus/happy-wire build
-      - name: Typecheck happy-web-v2 (tsc --noEmit)
+      - name: 'Gate: happy-server tests'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm --filter happy-server-self-host exec vitest run
+
+      # 硬门：存量 tsc 债 2026-08-13 清零（492→0），0 错误是红线。
+      - name: 'Gate: happy-web-v2 typecheck (tsc --noEmit)'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --filter @slopus/happy-web-v2 typecheck
 
-  cli:
-    name: happy-cli (build + unit + smoke)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build happy-wire (dependency dist)
-        run: pnpm --filter @slopus/happy-wire build
+      - name: 'Gate: happy-web-v2 tests'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm --filter @slopus/happy-web-v2 exec vitest run
+
+      # 刻意不用 `pnpm --filter @slopus/happy-web-v2 build`：那个 script 是
+      # `tsc -b && vite build`；门禁口径（PROCESS.md §3）是 vite build 成功 +
+      # typecheck 单独成门（上一个 step），两者分开报错更好定位。
+      - name: 'Gate: happy-web-v2 vite build'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm --filter @slopus/happy-web-v2 exec vite build
+
       # build 内含 tsc --noEmit（cli 的 tsc 是干净的，硬门）+ pkgroll 打包。
-      - name: Build very-happy-cli
+      - name: 'Gate: happy-cli build (含 tsc --noEmit)'
+        id: cli_build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --filter very-happy-cli build
+
       # 只跑 unit 项目。vitest.config.ts 里 integration-empty / integration-plan-mode /
       # integration-authenticated 三个项目要起真 daemon / 真 Claude 二进制，CI 上不跑
       # （其中 daemon.integration "second daemon" 在本地也是已知环境例外）。
-      - name: Unit tests (vitest --project unit)
+      - name: 'Gate: happy-cli unit tests'
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --filter very-happy-cli exec vitest run --project unit
-      # 运行冒烟：build 绿 ≠ 运行不崩（CJS/ESM 装配有过事故先例）。
-      - name: Runtime smoke (node dist/index.mjs --version)
-        run: node packages/happy-cli/dist/index.mjs --version
 
-  server:
-    name: happy-server (typecheck + test)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      # postinstall 会跑 prisma generate（tsc/vitest 需要生成的 client 类型）。
-      - run: pnpm install --frozen-lockfile
-      - name: Build happy-wire (dependency dist)
-        run: pnpm --filter @slopus/happy-wire build
-      - name: Typecheck happy-server (tsc --noEmit)
-        run: pnpm --filter happy-server-self-host typecheck
-      - name: Test happy-server
-        run: pnpm --filter happy-server-self-host exec vitest run
+      # 运行冒烟：build 绿 ≠ 运行不崩（CJS/ESM 装配有过事故先例）。
+      # HAPPY_HOME_DIR 指到 job 级 temp：self-hosted 上别把状态写进 runner 的 ~/.happy。
+      - name: 'Gate: happy-cli runtime smoke (node dist/index.mjs --version)'
+        if: ${{ !cancelled() && steps.cli_build.outcome == 'success' }}
+        env:
+          HAPPY_HOME_DIR: ${{ runner.temp }}/happy-home
+        run: node packages/happy-cli/dist/index.mjs --version
