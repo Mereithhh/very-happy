@@ -34,4 +34,10 @@ export interface TrackedSession {
    * webhook fills happySessionMetadataFromLocalWebhook.
    */
   variant?: 'assistant';
+  /**
+   * B-069: who requested this spawn ('assistant' = dispatched via the
+   * assistant's session_spawn tool). Old clients never send it → undefined.
+   * Drives the daemon → assistant 主动汇报 sink (assistantReport.ts).
+   */
+  spawnedBy?: string;
 }

@@ -21,6 +21,8 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
+import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
+import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
@@ -492,6 +494,12 @@ export async function startDaemon(): Promise<void> {
         if (options.variant === 'assistant') {
           extraEnv.HAPPY_SESSION_VARIANT = 'assistant';
         }
+        // B-069: export the spawn-origin tag so the session process knows to
+        // report its stable state transitions back to this daemon
+        // (/session-event → assistant 主动汇报 sink).
+        if (options.spawnedBy) {
+          extraEnv.HAPPY_SPAWNED_BY = options.spawnedBy;
+        }
         logger.debug(`[DAEMON RUN] Environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
         // Expand ${VAR} references from daemon's process.env
@@ -608,6 +616,7 @@ export async function startDaemon(): Promise<void> {
               pid: tmuxResult.pid, // Real PID from tmux -P flag
               tmuxSessionId: tmuxResult.sessionId,
               variant: options.variant,
+              spawnedBy: options.spawnedBy,
               directoryCreated,
               message: directoryCreated
                 ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
@@ -704,6 +713,7 @@ export async function startDaemon(): Promise<void> {
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
             variant: options.variant,
+            spawnedBy: options.spawnedBy,
           });
         }
 
@@ -729,6 +739,7 @@ export async function startDaemon(): Promise<void> {
       directoryCreated = false,
       message,
       variant,
+      spawnedBy,
     }: {
       args: string[];
       cwd: string;
@@ -739,6 +750,8 @@ export async function startDaemon(): Promise<void> {
        *  only when the webhook backfills metadata — the singleton live-check
        *  must hold in the pre-webhook window. */
       variant?: 'assistant';
+      /** B-069: spawn-origin tag (see TrackedSession.spawnedBy). */
+      spawnedBy?: string;
     }): Promise<SpawnSessionResult> => {
       const happyProcess = spawnHappyCLI(args, {
         cwd,
@@ -764,6 +777,7 @@ export async function startDaemon(): Promise<void> {
         directoryCreated,
         message,
         variant,
+        spawnedBy,
       };
 
       pidToTrackedSession.set(happyProcess.pid, trackedSession);
@@ -941,6 +955,75 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
+    // ── B-069: 主动汇报 sink ────────────────────────────────────────────────
+    // A session the assistant dispatched reports its stable state transitions
+    // here (via /session-event, emitted from the session process's turn-end /
+    // permission chain — the chat-session counterpart of the B-012 terminal
+    // tracker). When it completed or needs input and a live assistant session
+    // exists on this machine, forward a [系统通报] user message into the
+    // assistant so it verifies with session_read and reports aloud. All gates
+    // (origin tag / self-report / live target / 5min per-session cooldown) are
+    // pure in assistantReport.ts; failures only ever debug-log.
+    const assistantReportLastSentAt = new Map<string, number>();
+    const isPidAlive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const onSessionStateEvent = (sessionId: string, event: AssistantReportEvent, spawnedByFromSession?: string): void => {
+      void (async () => {
+        try {
+          let tracked: TrackedSession | undefined;
+          for (const s of pidToTrackedSession.values()) {
+            if (s.happySessionId === sessionId) {
+              tracked = s;
+              break;
+            }
+          }
+          const liveAssistant = findLiveAssistant(pidToTrackedSession.values(), isPidAlive);
+          const decision = decideAssistantReport({
+            // The tracked tag is authoritative; the session's own echo covers
+            // a daemon restart that lost the in-memory tracking.
+            spawnedBy: tracked?.spawnedBy ?? spawnedByFromSession,
+            isAssistantSession: tracked ? isAssistantTracked(tracked) : false,
+            sessionId,
+            assistantSessionId: liveAssistant?.happySessionId,
+            lastReportAt: assistantReportLastSentAt.get(sessionId),
+            now: Date.now(),
+          });
+          if (!decision.send) {
+            logger.debug(`[DAEMON RUN] Assistant report skipped for ${sessionId} (${event}): ${decision.reason}`);
+            return;
+          }
+          const persisted = readPersistedSessions();
+          const assistantEntry = persisted[decision.assistantSessionId];
+          if (!assistantEntry) {
+            logger.debug(`[DAEMON RUN] Assistant report skipped for ${sessionId} (${event}): no session key for assistant ${decision.assistantSessionId}`);
+            return;
+          }
+          const title = resolveReportSessionTitle(
+            tracked?.happySessionMetadataFromLocalWebhook ?? persisted[sessionId]?.metadata,
+            sessionId,
+          );
+          // Burn the cooldown slot before the network call so a slow send
+          // can't let a burst through.
+          assistantReportLastSentAt.set(sessionId, Date.now());
+          await sendUserMessage(
+            decision.assistantSessionId,
+            assistantEntry,
+            formatAssistantReportMessage(title, sessionId, event),
+            'assistant-report',
+          );
+          logger.debug(`[DAEMON RUN] Assistant report sent: session ${sessionId} ${event} → assistant ${decision.assistantSessionId}`);
+        } catch (error) {
+          logger.debug(`[DAEMON RUN] Assistant report failed for ${sessionId} (${event}):`, error);
+        }
+      })();
+    };
+
     // Start control server. The clipboard push needs the machine socket, which
     // is created further down — late-bind through a ref so /clipboard picked up
     // the client once it exists (requests before that get delivered: false).
@@ -951,6 +1034,7 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
+      onSessionStateEvent,
       pushClipboard: (text: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };

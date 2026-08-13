@@ -5,6 +5,7 @@ import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
 import { NotificationProducer } from "./notificationProducer";
+import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
 
 export class Session {
     readonly path: string;
@@ -150,6 +151,21 @@ export class Session {
      * checks are made here against the latest agent state.
      */
     onTurnEnd = (idle: boolean) => {
+        // B-069 主动汇报: an assistant-dispatched session (HAPPY_SPAWNED_BY set
+        // by the daemon at spawn time) reports its stable working→idle
+        // transition to the local daemon, which relays a [系统通报] into the
+        // assistant session. Turn end + idle queue + no pending permission
+        // requests IS the stable transition — turns are discrete events here,
+        // so no sampling debounce is needed (the daemon adds a per-session
+        // cooldown on top). Fires regardless of whether Claude produced output.
+        if (idle) {
+            const state = this.client.getAgentState();
+            const hasPendingRequests = !!state?.requests && Object.keys(state.requests).length > 0;
+            if (!hasPendingRequests && state?.controlledByUser !== true && !this.thinking) {
+                this.reportEventToDaemon('completed');
+            }
+        }
+
         const producer = this.notificationProducer;
         if (!producer) return;
 
@@ -171,6 +187,19 @@ export class Session {
         if (!hasPendingRequests && !controlledByUser && !this.thinking) {
             producer.inputNeeded();
         }
+    }
+
+    /**
+     * B-069: best-effort state-transition report to the local daemon
+     * (/session-event). Only assistant-dispatched sessions carry
+     * HAPPY_SPAWNED_BY, so ordinary sessions never POST. Fire-and-forget —
+     * a missing/old daemon must never disturb the session loop.
+     */
+    reportEventToDaemon = (event: 'completed' | 'needs_input'): void => {
+        const spawnedBy = process.env.HAPPY_SPAWNED_BY;
+        if (!spawnedBy) return;
+        void notifyDaemonSessionEvent(this.client.sessionId, event, spawnedBy)
+            .catch((error) => logger.debug('[Session] Failed to report session event to daemon:', error));
     }
 
     /** Produce an `error` notification for an unexpected session failure. */

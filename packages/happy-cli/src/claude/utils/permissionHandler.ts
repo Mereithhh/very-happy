@@ -255,6 +255,11 @@ export class PermissionHandler {
             // Account-encrypted feed notification (best-effort).
             this.session.notificationProducer?.permissionRequest(toolName);
 
+            // B-069 主动汇报: assistant-dispatched sessions also report the
+            // →needs_input transition to the local daemon (best-effort no-op
+            // for ordinary sessions — see Session.reportEventToDaemon).
+            this.session.reportEventToDaemon('needs_input');
+
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
         });
     }

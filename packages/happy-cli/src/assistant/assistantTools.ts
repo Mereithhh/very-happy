@@ -192,7 +192,9 @@ export function registerAssistantTools(mcp: McpServer): void {
         if (!normalized.ok) return fail(normalized.error)
         const directory = normalized.directory
         try {
-            const result = await spawnDaemonSession(directory)
+            // B-069: tag the spawn origin so the daemon can proactively report
+            // this session's completion back into the assistant session.
+            const result = await spawnDaemonSession(directory, undefined, { spawnedBy: 'assistant' })
             if (result?.error || !result?.sessionId) {
                 return fail(`Failed to spawn session: ${result?.error ?? 'daemon returned no session id'}`)
             }

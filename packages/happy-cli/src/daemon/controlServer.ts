@@ -11,6 +11,7 @@ import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type { AssistantReportEvent } from './assistantReport';
 
 export function startDaemonControlServer({
   getChildren,
@@ -18,6 +19,7 @@ export function startDaemonControlServer({
   spawnSession,
   requestShutdown,
   onHappySessionWebhook,
+  onSessionStateEvent,
   pushClipboard
 }: {
   getChildren: () => TrackedSession[];
@@ -25,6 +27,9 @@ export function startDaemonControlServer({
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata, encryption?: SessionEncryptionData) => void;
+  /** B-069: a session reported a stable state transition (turn done /
+   *  blocked on permission). Optional so older wirings/tests keep working. */
+  onSessionStateEvent?: (sessionId: string, event: AssistantReportEvent, spawnedBy?: string) => void;
   pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
@@ -75,6 +80,31 @@ export function startDaemonControlServer({
 
       onHappySessionWebhook(sessionId, metadata, encryptionData);
 
+      return { status: 'ok' as const };
+    });
+
+    // B-069: a session reports a stable agent-state transition (turn finished
+    // and idle → 'completed', blocked on a permission request → 'needs_input').
+    // The session-side emitter only fires when HAPPY_SPAWNED_BY is set, and it
+    // echoes that tag so the sink survives a daemon restart (which loses the
+    // in-memory TrackedSession.spawnedBy). Best-effort: always 200.
+    typed.post('/session-event', {
+      schema: {
+        body: z.object({
+          sessionId: z.string(),
+          event: z.enum(['completed', 'needs_input']),
+          spawnedBy: z.string().optional(),
+        }),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
+      }
+    }, async (request) => {
+      const { sessionId, event, spawnedBy } = request.body;
+      logger.debug(`[CONTROL SERVER] Session event: ${sessionId} ${event} (spawnedBy=${spawnedBy ?? 'unset'})`);
+      onSessionStateEvent?.(sessionId, event, spawnedBy);
       return { status: 'ok' as const };
     });
 
@@ -142,6 +172,9 @@ export function startDaemonControlServer({
           // Forwarded to the spawned CLI as `--permission-mode <v>` after
           // daemon-side allowlist validation (invalid values are ignored).
           permissionMode: z.string().optional(),
+          // B-069: spawn-origin tag ('assistant' = session_spawn). Recorded on
+          // the TrackedSession; old clients never send it.
+          spawnedBy: z.string().optional(),
         }),
         response: {
           200: z.object({
@@ -162,15 +195,15 @@ export function startDaemonControlServer({
         }
       }
     }, async (request, reply) => {
-      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode } = request.body;
+      const { directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy } = request.body;
 
       if (!directory && variant !== 'assistant') {
         reply.code(500);
         return { success: false, error: 'directory is required' };
       }
 
-      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}`);
-      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode });
+      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}, variant=${variant || 'none'}, forceNew=${forceNew === true}, spawnedBy=${spawnedBy || 'unset'}`);
+      const result = await spawnSession({ directory, sessionId, agent, environmentVariables, variant, forceNew, permissionMode, spawnedBy });
 
       switch (result.type) {
         case 'success':

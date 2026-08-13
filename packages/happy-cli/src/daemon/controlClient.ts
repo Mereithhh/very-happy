@@ -100,9 +100,34 @@ export async function stopDaemonSession(sessionId: string): Promise<boolean> {
   return result.success || false;
 }
 
-export async function spawnDaemonSession(directory: string, sessionId?: string): Promise<any> {
-  const result = await daemonPost('/spawn-session', { directory, sessionId });
+export async function spawnDaemonSession(
+  directory: string,
+  sessionId?: string,
+  opts?: {
+    /** B-069: spawn-origin tag ('assistant' = the assistant's session_spawn).
+     *  An old daemon's zod body schema strips the unknown key, so it simply
+     *  never sees the tag (compatible). */
+    spawnedBy?: string;
+  }
+): Promise<any> {
+  const result = await daemonPost('/spawn-session', { directory, sessionId, spawnedBy: opts?.spawnedBy });
   return result;
+}
+
+/**
+ * B-069: report a stable session state transition to the local daemon
+ * (`completed` = turn ended and idle, `needs_input` = blocked on a permission
+ * request). Single best-effort POST — a missing/old daemon returns an error
+ * object which callers may ignore. `spawnedBy` echoes the session's own
+ * HAPPY_SPAWNED_BY tag so the daemon's assistant-report sink still works
+ * after a daemon restart lost its in-memory tracking.
+ */
+export async function notifyDaemonSessionEvent(
+  sessionId: string,
+  event: 'completed' | 'needs_input',
+  spawnedBy?: string
+): Promise<{ error?: string } | any> {
+  return daemonPost('/session-event', { sessionId, event, spawnedBy });
 }
 
 export async function stopDaemonHttp(): Promise<void> {

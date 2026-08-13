@@ -69,13 +69,23 @@ ElevenLabs `POST /v1/single-use-token/{tts_websocket|realtime_scribe}` → 回
 
 ### D. CLI：主动汇报（daemon → assistant session）
 
-- daemon 已有的 agentState 跳变状态机上加一个 sink：当 **非 assistant** 的
-  tracked session 发生 working→idle/needs_input 稳定跳变，且本机存在**存活的
-  assistant session**，且该 session 是 **assistant 派发的**（spawn 来源标记：
-  `session_spawn` MCP 工具 spawn 时在 controlServer 请求带 `spawnedBy:
-  'assistant'`，daemon 记进 TrackedSession）→ 用 `sendUserMessage` 给 assistant
-  发一条角色化通报：`[系统通报] 会话「<title>」已完成/等待输入（<sessionId>）。
-  请用 session_read 核实结果并向用户口头汇报一句结论。`
+> 实现期修订：原断言「复用 daemon 已有 agentState 跳变状态机（B-012）」被
+> 证伪——B-012 的 `TerminalNotifyTracker` 只喂 `vh-*` 终端观测；daemon 对
+> tracked 聊天会话没有任何 agentState 观测通道（REST agentState 加密且不含
+> working 字段，thinking 走 user-scoped ephemeral，daemon 收不到）。
+
+- 实际机制：**session 进程侧发射**——`Session.onTurnEnd`（idle+无 pending
+  requests+非 controlledByUser+!thinking → completed）与 permission 登记处
+  （→needs_input），经 daemon 控制口新端点 `POST /session-event` 上报（发射
+  器由 `HAPPY_SPAWNED_BY` env 门控，普通会话零 POST）；daemon 侧做全部判定
+  （spawnedBy==='assistant' 且非 assistant 自身、`findLiveAssistant` 存活、
+  per-session 5min 冷却，纯函数 `assistantReport.ts`）后 `sendUserMessage`
+  通报：`[系统通报] 会话「<title>」已完成/等待输入（<sessionId>）…`。
+  turn-end 是离散事件，天然稳定跳变，无需 debounce。仍为 daemon 本地闭环、
+  不进 server、无新协议字段；`/session-event` body 回传 spawnedBy 兜 daemon
+  重启丢内存 tracking 的窗口。
+- 已知边界：只覆盖 claude flavor；daemon 重启后 assistant 未重新 webhook 前
+  通报静默跳过（保守方向）。
 - 节流：per-session 5min 冷却 + assistant 不存活时静默跳过；不进 server、
   不新协议字段（daemon 本地闭环）。
 - web 端零改动：通报触发 assistant 回复 → 现有消息流 → TTS 自动开口。

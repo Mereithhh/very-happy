@@ -180,6 +180,13 @@ export interface SpawnSessionOptions {
      * default. Absent → behavior unchanged. Old daemons ignore the field.
      */
     permissionMode?: string;
+    /**
+     * B-069: spawn-origin tag ('assistant' = the assistant's session_spawn
+     * tool requested this spawn). Recorded on the daemon's TrackedSession and
+     * exported to the spawned CLI as HAPPY_SPAWNED_BY; drives the
+     * daemon → assistant 主动汇报 sink. Old clients never send it (compatible).
+     */
+    spawnedBy?: string;
 }
 
 export type SpawnSessionResult =
