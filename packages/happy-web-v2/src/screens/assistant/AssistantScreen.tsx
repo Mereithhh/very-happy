@@ -17,7 +17,7 @@ import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
-import { storage, useAllMachines, useAllSessions, useSession, useSessionMessages, useSetting, useSettingMutable } from '@/sync/storage';
+import { storage, useAllMachines, useAllSessions, useSession, useSessionMessages, useSetting, useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { machineSpawnNewSession, sessionArchive } from '@/sync/ops';
 import { transcribeAudio, synthesizeSpeech, mintVoiceStreamToken } from '@/sync/apiVoice';
@@ -154,7 +154,8 @@ export function AssistantScreen() {
     const speakingText = useAssistantStore((s) => s.speakingText);
     // B-069: live partial transcript while PTT is held (streaming ASR)
     const liveTranscript = useAssistantStore((s) => s.liveTranscript);
-    const [showTranscript, setShowTranscript] = useState(false);
+    // persisted (per device): on desktop the transcript is a pinned side panel
+    const [showTranscript, setShowTranscript] = useLocalSettingMutable('assistantTranscriptPinned');
     const transcript = useMemo(
         () => (showTranscript ? deriveTranscript(messages) : []),
         [showTranscript, messages],
@@ -438,7 +439,7 @@ export function AssistantScreen() {
     }
 
     return (
-        <div className="as-root" ref={rootRef}>
+        <div className="as-root" ref={rootRef} data-transcript={showTranscript || undefined}>
             <div className="as-col">
                 <header className="as-header">
                     {/* same slot as the sidebar's form-switch button — switches back */}
@@ -460,7 +461,7 @@ export function AssistantScreen() {
                         data-active={showTranscript}
                         aria-label={t('assistant.transcript')}
                         title={t('assistant.transcript')}
-                        onClick={() => setShowTranscript((v) => !v)}
+                        onClick={() => setShowTranscript(!showTranscript)}
                     >
                         <ScrollText size={17} />
                     </button>

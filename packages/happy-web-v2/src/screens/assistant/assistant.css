@@ -597,6 +597,22 @@
   color: var(--accent-2);
   background: var(--accent-dim);
 }
+/* B-069 §E: on desktop the transcript is a PINNED side panel, not an overlay —
+   the voice stage keeps working (and stays centered in the remaining space)
+   while the text flows on the right. Narrow screens keep the overlay. */
+@media (min-width: 1100px) {
+  .as-root[data-transcript='true'] {
+    padding-right: 380px;
+  }
+  .as-transcript {
+    position: fixed;
+    inset: 0 0 0 auto;
+    width: 380px;
+    border-left: 1px solid var(--line);
+    background: var(--bg-1);
+    padding-top: 16px;
+  }
+}
 
 /* assistant multiple-choice → tappable answers */
 .as-options {

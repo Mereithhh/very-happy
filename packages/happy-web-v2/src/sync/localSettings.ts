@@ -15,6 +15,7 @@ export const LocalSettingsSchema = z.object({
     consoleLoggingEnabled: z.boolean().describe('Enable console output in production builds'),
     verboseLogging: z.boolean().describe('Log all network requests and responses'),
     zenMode: z.boolean().describe('Hide all sidebars and non-essential UI for focused work'),
+    assistantTranscriptPinned: z.boolean().describe('Keep the /assistant text transcript open (desktop: right side panel)'),
     filesSidebarCollapsed: z.boolean().describe('Collapse the desktop files sidebar to a thin rail to save space'),
     // Safety: when on, new sessions default to a review-first permission mode
     // (the agent proposes changes before they are applied) instead of an
@@ -83,6 +84,7 @@ export const localSettingsDefaults: LocalSettings = {
     consoleLoggingEnabled: false,
     verboseLogging: false,
     zenMode: false,
+    assistantTranscriptPinned: false,
     // Default the desktop files sidebar to a thin rail so it doesn't eat ~25%
     // of width when there are no diffs; one click expands it (and it persists).
     filesSidebarCollapsed: true,
