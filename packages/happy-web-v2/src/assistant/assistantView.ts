@@ -17,8 +17,8 @@ export interface AssistantExchange {
     userText: string | null;
     /** newest non-thinking agent reply text, null when none */
     assistantText: string | null;
-    /** newest tool call (name + state) for the mono ticker, null when none */
-    tool: { name: string; state: 'running' | 'completed' | 'error' } | null;
+    /** newest tool call (name + state + raw input) for the ticker, null when none */
+    tool: { name: string; state: 'running' | 'completed' | 'error'; input: unknown } | null;
     /** which of user/assistant is newest — options are only offered while the
      *  assistant's question is still the latest word in the conversation */
     latestRole: 'user' | 'assistant' | null;
@@ -38,7 +38,7 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
             assistantText = m.text;
             latestRole = latestRole ?? 'assistant';
         } else if (tool === null && m.kind === 'tool-call') {
-            tool = { name: m.tool.name, state: m.tool.state };
+            tool = { name: m.tool.name, state: m.tool.state, input: m.tool.input };
         }
         if (userText !== null && assistantText !== null && tool !== null) break;
     }
@@ -138,6 +138,10 @@ export interface TranscriptEntry {
     text: string;
     /** collapsible payload: thinking trace body, or a tool's input preview */
     detail?: string;
+    /** tool rows only (B-092): raw name + state, so the screen can render a
+     *  friendly label + icon while `text` stays the raw fallback */
+    toolName?: string;
+    toolState?: 'running' | 'completed' | 'error';
 }
 
 const TOOL_DETAIL_MAX_CHARS = 600;
@@ -177,7 +181,14 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
             } catch {
                 // non-serializable input — skip the preview
             }
-            out.push({ id: m.id, role: 'tool', text: `${m.tool.name} · ${m.tool.state}`, detail });
+            out.push({
+                id: m.id,
+                role: 'tool',
+                text: `${m.tool.name} · ${m.tool.state}`,
+                detail,
+                toolName: m.tool.name,
+                toolState: m.tool.state,
+            });
         }
     }
     return out;

@@ -98,6 +98,13 @@
 .vh-tag--h3 { color: var(--tagc-3-fg); background: var(--tagc-3-bg); border-color: var(--tagc-3-bd); }
 .vh-tag--h4 { color: var(--tagc-4-fg); background: var(--tagc-4-bg); border-color: var(--tagc-4-bd); }
 .vh-tag--h5 { color: var(--tagc-5-fg); background: var(--tagc-5-bg); border-color: var(--tagc-5-bd); }
+/* B-091 priority convention tag: --warn system, not a hash hue and NOT
+ * accent (优先 is a standing marker, accent means live). Tokens only. */
+.vh-tag--priority {
+  color: var(--warn);
+  background: var(--warn-dim);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
 .vh-tag--more {
   color: var(--text-faint);
 }

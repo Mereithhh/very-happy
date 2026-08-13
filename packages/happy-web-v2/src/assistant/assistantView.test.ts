@@ -34,7 +34,7 @@ describe('deriveAssistantExchange', () => {
             userText: 'new question',
             assistantText: 'new answer',
             latestRole: 'assistant',
-            tool: { name: 'Read', state: 'running' },
+            tool: { name: 'Read', state: 'running', input: {} },
         });
     });
 
@@ -155,7 +155,7 @@ describe('deriveTranscript (B-059)', () => {
         expect(deriveTranscript(messages)).toEqual([
             { id: 'u1', role: 'user', text: 'question' },
             { id: 'think', role: 'thinking', text: '', detail: 'pondering…' },
-            { id: 't1', role: 'tool', text: 'Bash · completed', detail: undefined },
+            { id: 't1', role: 'tool', text: 'Bash · completed', detail: undefined, toolName: 'Bash', toolState: 'completed' },
             { id: 'a2', role: 'assistant', text: 'second answer' },
         ]);
     });

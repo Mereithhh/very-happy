@@ -43,6 +43,9 @@ export const SettingsSchema = z.object({
     // NO zod .default(true) — ghost-pending footgun (see promptPresets note).
     // Default (true = skip approvals, current behavior) lives in settingsDefaults.
     assistantSkipPermissions: z.boolean().describe('Assistant sessions skip tool permission approvals (off = spawn with permissionMode default so sensitive actions need manual approval)'),
+    // NO zod .default(true) — ghost-pending footgun (see promptPresets note).
+    // Default (true = play cues) lives in settingsDefaults.
+    voicePttSound: z.boolean().describe('Play short audio cues when hold-to-talk starts / sends / cancels (B-092)'),
     voiceCustomAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (null to use Happy default)'),
     voiceBypassToken: z.boolean().describe('Bypass Happy server token and connect directly to ElevenLabs (requires custom agent ID)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
@@ -207,6 +210,7 @@ export const settingsDefaults: Settings = {
     voiceReadTextReplies: false,
     assistantMachineId: null,
     assistantSkipPermissions: true,
+    voicePttSound: true,
     voiceCustomAgentId: null,
     voiceBypassToken: false,
     preferredLanguage: null,

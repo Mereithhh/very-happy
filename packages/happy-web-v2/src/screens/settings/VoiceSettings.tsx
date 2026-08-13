@@ -76,6 +76,7 @@ export function VoiceSettings() {
     const [readTextReplies, setReadTextReplies] = useSettingMutable('voiceReadTextReplies');
     const [assistantMachineId, setAssistantMachineId] = useSettingMutable('assistantMachineId');
     const [skipPermissions, setSkipPermissions] = useSettingMutable('assistantSkipPermissions');
+    const [pttSound, setPttSound] = useSettingMutable('voicePttSound');
     const machines = useAllMachines({ includeOffline: true });
 
     // ── voices list (graceful 404/501 degrade, errors consumed locally) ──
@@ -321,6 +322,20 @@ export function VoiceSettings() {
                                 checked={readTextReplies}
                                 onCheckedChange={setReadTextReplies}
                                 aria-label={t('settingsVoice.readTextReplies')}
+                            >
+                                <Switch.Thumb className="set-switch__thumb" />
+                            </Switch.Root>
+                        }
+                    />
+                    <Item
+                        title={t('settingsVoice.pttSound')}
+                        subtitle={t('settingsVoice.pttSoundHint')}
+                        right={
+                            <Switch.Root
+                                className="set-switch"
+                                checked={pttSound}
+                                onCheckedChange={setPttSound}
+                                aria-label={t('settingsVoice.pttSound')}
                             >
                                 <Switch.Thumb className="set-switch__thumb" />
                             </Switch.Root>

@@ -368,6 +368,33 @@
 .as-ticker[data-running='true'] {
   color: var(--text-dim);
 }
+/* B-092: icon + friendly name + argument summary; gentle pulse while running */
+.as-ticker-icon {
+  flex: none;
+}
+.as-ticker-name {
+  white-space: nowrap;
+}
+.as-ticker-arg {
+  color: var(--text-faint);
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.as-ticker[data-running='true'] .as-ticker-icon,
+.as-ticker[data-running='true'] .as-ticker-name {
+  animation: as-ticker-pulse 1.6s ease-in-out infinite;
+}
+@keyframes as-ticker-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
 
 /* ── bottom controls ── */
 .as-controls {
@@ -394,6 +421,7 @@
 }
 
 .as-ptt {
+  position: relative; /* anchors the B-092 one-shot ripple */
   width: 76px;
   height: 76px;
   border-radius: 50%;
@@ -419,6 +447,66 @@
   border-color: var(--accent);
   color: var(--accent-2);
   transform: scale(1.06);
+  /* B-092: press-in bounce (one-shot, settles on the 1.06 hold scale) */
+  animation: as-ptt-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+}
+@keyframes as-ptt-pop {
+  0% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1.06);
+  }
+}
+/* B-092: one-shot ripple expanding from the button on press */
+.as-ptt::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.as-ptt[data-recording='true']::after {
+  animation: as-ptt-ripple 650ms ease-out 1;
+}
+@keyframes as-ptt-ripple {
+  0% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+/* B-092: live mic level bars inside the button (replace the Mic icon while
+   recording). Driven by --as-level (0..1) from useHoldToTalk's meter. */
+.as-ptt-level {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  pointer-events: none;
+}
+.as-ptt-level span {
+  width: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  height: calc(8px + var(--as-level, 0) * 20px);
+  transition: height 90ms linear;
+}
+.as-ptt-level span:nth-child(1),
+.as-ptt-level span:nth-child(5) {
+  height: calc(5px + var(--as-level, 0) * 10px);
+}
+.as-ptt-level span:nth-child(2),
+.as-ptt-level span:nth-child(4) {
+  height: calc(7px + var(--as-level, 0) * 15px);
 }
 .as-ptt-hint {
   font-size: 11px;
@@ -589,9 +677,19 @@
   border: none;
 }
 .as-transcript-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono, ui-monospace, monospace);
   font-size: var(--fs-12, 12px);
   color: var(--text-faint);
+}
+.as-transcript-tool-state {
+  color: var(--text-faint);
+}
+.as-transcript-tool-body {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: var(--fs-12, 12px);
 }
 .as-icon-btn[data-active='true'] {
   color: var(--accent-2);
@@ -735,5 +833,19 @@
   }
   .as-caption {
     animation: none;
+  }
+  /* B-092: press feedback degrades to the static recording style */
+  .as-ptt[data-recording='true'] {
+    animation: none;
+  }
+  .as-ptt[data-recording='true']::after {
+    animation: none;
+  }
+  .as-ticker[data-running='true'] .as-ticker-icon,
+  .as-ticker[data-running='true'] .as-ticker-name {
+    animation: none;
+  }
+  .as-ptt-level span {
+    transition: none;
   }
 }

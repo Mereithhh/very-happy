@@ -11,10 +11,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server, ShieldAlert, ScrollText } from 'lucide-react';
+import {
+    ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server, ShieldAlert, ScrollText,
+    Brain, Eye, FileSearch, Globe, Keyboard, List, NotebookPen, Rocket, Send, SquareTerminal, Terminal, Wrench,
+    type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import type { SimpleTranslationKey } from '@/text';
 import { useImeGuard } from '@/utils/ime';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { storage, useAllMachines, useAllSessions, useSession, useSessionMessages, useSetting, useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
@@ -29,6 +34,8 @@ import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistan
 import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
+import { toolFriendlyKey, toolParamSummary, normalizeToolName, type ToolFriendlyKey } from '@/assistant/toolDisplay';
+import { playEarcon, primeEarcons, vibrateSafe } from '@/assistant/earcons';
 import { TtsPlayer } from '@/assistant/ttsPlayer';
 import { unlockAudioPlayback, releaseAudioKeepAlive } from '@/assistant/iosAudioUnlock';
 import { useAssistantStore, deriveVoiceState } from '@/assistant/assistantStore';
@@ -36,9 +43,38 @@ import { AssistantLogo, type AssistantLogoState } from './AssistantLogo';
 import { CyberMark } from '@/ui';
 import './assistant.css';
 
+// ── B-092: tool presentation (friendly name + icon; logic in toolDisplay.ts) ──
+const TOOL_ICONS: Record<ToolFriendlyKey, LucideIcon> = {
+    sessionsList: List,
+    sessionSpawn: Rocket,
+    sessionSend: Send,
+    sessionRead: Eye,
+    terminalsList: SquareTerminal,
+    terminalRead: Terminal,
+    terminalSend: Keyboard,
+    memoryUpdate: Brain,
+    journalAppend: NotebookPen,
+    lookup: FileSearch,
+    web: Globe,
+};
+const TOOL_FALLBACK_ICON: LucideIcon = Wrench;
+const TOOL_LABEL_KEYS: Record<ToolFriendlyKey, SimpleTranslationKey> = {
+    sessionsList: 'assistant.tools.sessionsList',
+    sessionSpawn: 'assistant.tools.sessionSpawn',
+    sessionSend: 'assistant.tools.sessionSend',
+    sessionRead: 'assistant.tools.sessionRead',
+    terminalsList: 'assistant.tools.terminalsList',
+    terminalRead: 'assistant.tools.terminalRead',
+    terminalSend: 'assistant.tools.terminalSend',
+    memoryUpdate: 'assistant.tools.memoryUpdate',
+    journalAppend: 'assistant.tools.journalAppend',
+    lookup: 'assistant.tools.lookup',
+    web: 'assistant.tools.web',
+};
+
 export function AssistantScreen() {
     const navigate = useNavigate();
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const toast = useToast();
     const { credentials } = useAuth();
     const ime = useImeGuard();
@@ -176,6 +212,29 @@ export function AssistantScreen() {
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
     const voiceReadTextReplies = useSetting('voiceReadTextReplies');
     const voiceAssistantLanguage = useSetting('voiceAssistantLanguage');
+    // B-092 PTT sound cues — read through a ref so a toggle mid-press can't
+    // invalidate the hold-to-talk callbacks (optionsRef precedent).
+    const voicePttSound = useSetting('voicePttSound');
+    const pttSoundRef = useRef(voicePttSound);
+    pttSoundRef.current = voicePttSound;
+
+    // ── B-092: friendly tool presentation for the ticker ──
+    const resolveSessionTitle = useCallback(
+        (id: string) => sessions.find((s) => s.id === id)?.metadata?.summary?.text ?? null,
+        [sessions],
+    );
+    // `lang` is a real dependency: t() is a stable reference, so the label
+    // would otherwise cache in the previous language.
+    const toolView = useMemo(() => {
+        if (!exchange.tool) return null;
+        const key = toolFriendlyKey(exchange.tool.name);
+        return {
+            Icon: key ? TOOL_ICONS[key] : TOOL_FALLBACK_ICON,
+            label: key ? t(TOOL_LABEL_KEYS[key]) : normalizeToolName(exchange.tool.name),
+            summary: toolParamSummary(exchange.tool.name, exchange.tool.input, { resolveSessionTitle }),
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [exchange.tool, resolveSessionTitle, lang]);
 
     // ── TTS player (created ONCE per visit; queue semantics in ttsQueue.ts) ──
     // credentials/voice/toast/t reach the callbacks through refs (optionsRef
@@ -285,19 +344,42 @@ export function AssistantScreen() {
             languageCode: voiceAssistantLanguage,
         },
         onText: (text) => sendText(text, 'voice'),
+        // B-092 start feedback, fired the moment the mic is actually live.
+        // The ~80ms cue plays while capture runs — accepted (low gain); the
+        // haptic is Android-only (iOS Safari lacks navigator.vibrate → no-op).
+        onRecordingStarted: () => {
+            if (pttSoundRef.current) playEarcon('start');
+            vibrateSafe(30);
+        },
         onLevel: (level) => {
             rootRef.current?.style.setProperty('--as-level', level.toFixed(3));
         },
         onMicError: () => toast.error(t('assistant.micError')),
         disabled: !sessionId,
     });
+    // B-092 end feedback keyed on recorder-state transitions:
+    // recording → transcribing = released & sending (falling tone + haptic);
+    // recording → idle = cancelled / mis-tap / mic error (low muted tone).
+    const prevRecorderRef = useRef<'idle' | 'recording' | 'transcribing'>('idle');
     useEffect(() => {
+        const prev = prevRecorderRef.current;
+        prevRecorderRef.current = holdToTalk.state;
         useAssistantStore.getState().setRecorderState(holdToTalk.state);
+        if (prev !== 'recording') return;
+        if (holdToTalk.state === 'transcribing') {
+            if (pttSoundRef.current) playEarcon('stop');
+            vibrateSafe(15);
+        } else if (holdToTalk.state === 'idle') {
+            if (pttSoundRef.current) playEarcon('cancel');
+        }
     }, [holdToTalk.state]);
 
     // barge-in: pressing PTT stops the current reply playback
     const onPttPointerDown = useCallback(
         (e: React.PointerEvent<HTMLButtonElement>) => {
+            // gesture-context resume so the async start cue finds a running
+            // AudioContext even before the explicit TTS unlock button was used
+            if (pttSoundRef.current) primeEarcons();
             playerRef.current?.stop();
             holdToTalk.handlers.onPointerDown(e);
         },
@@ -491,14 +573,28 @@ export function AssistantScreen() {
                                 );
                             }
                             if (e.role === 'tool') {
+                                // B-092: friendly label + icon; expanding still
+                                // shows the raw input JSON (e.detail).
+                                const key = e.toolName ? toolFriendlyKey(e.toolName) : null;
+                                const RowIcon = key ? TOOL_ICONS[key] : TOOL_FALLBACK_ICON;
+                                const label = key
+                                    ? t(TOOL_LABEL_KEYS[key])
+                                    : normalizeToolName(e.toolName ?? e.text);
+                                const row = (
+                                    <span className="as-transcript-tool">
+                                        <RowIcon size={12} aria-hidden="true" />
+                                        {label}
+                                        {e.toolState && <span className="as-transcript-tool-state">· {e.toolState}</span>}
+                                    </span>
+                                );
                                 return e.detail ? (
                                     <details key={e.id} className="as-transcript-fold" data-role="tool">
-                                        <summary className="as-transcript-tool">{e.text}</summary>
-                                        <div className="as-transcript-fold-body as-transcript-tool">{e.detail}</div>
+                                        <summary className="as-transcript-tool-summary">{row}</summary>
+                                        <div className="as-transcript-fold-body as-transcript-tool-body">{e.detail}</div>
                                     </details>
                                 ) : (
                                     <div key={e.id} className="as-transcript-entry" data-role="tool">
-                                        <span className="as-transcript-tool">{e.text}</span>
+                                        {row}
                                     </div>
                                 );
                             }
@@ -572,10 +668,14 @@ export function AssistantScreen() {
                                 )}
                             </div>
                             <div className="as-ticker" data-running={exchange.tool?.state === 'running'}>
-                                {exchange.tool && (thinking || exchange.tool.state === 'running') && (
-                                    <span>
-                                        {exchange.tool.state === 'running' ? '▸' : '·'} {exchange.tool.name}
-                                    </span>
+                                {toolView && exchange.tool && (thinking || exchange.tool.state === 'running') && (
+                                    <>
+                                        <toolView.Icon size={13} className="as-ticker-icon" aria-hidden="true" />
+                                        <span className="as-ticker-name">{toolView.label}</span>
+                                        {toolView.summary && (
+                                            <span className="as-ticker-arg">{toolView.summary}</span>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -604,7 +704,18 @@ export function AssistantScreen() {
                                 onPointerCancel={holdToTalk.handlers.onPointerCancel}
                                 onContextMenu={holdToTalk.handlers.onContextMenu}
                             >
-                                <Mic size={30} />
+                                {holdToTalk.state === 'recording' ? (
+                                    // B-092: live level bars driven by --as-level
+                                    <span className="as-ptt-level" aria-hidden="true">
+                                        <span />
+                                        <span />
+                                        <span />
+                                        <span />
+                                        <span />
+                                    </span>
+                                ) : (
+                                    <Mic size={30} />
+                                )}
                             </button>
                             <span className="as-ptt-hint">{t('assistant.holdToTalk')}</span>
 

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { tagHueIndex } from '@/utils/tags';
+import { isPriorityTag, tagHueIndex } from '@/utils/tags';
 import './tagchip.css';
 
 /**
@@ -7,6 +7,10 @@ import './tagchip.css';
  * one of the 6 low-saturation hue slots defined in tagchip.css (Console
  * palette-coordinated, theme-aware). `onRemove` renders the editor variant
  * (rename modal); without it the chip is a compact display atom (sidebar).
+ *
+ * B-091: the `priority` convention tag gets the --warn treatment instead of a
+ * hash hue — 优先 is a standing marker, not a live state, so it must NOT be
+ * accent (accent = live only, per the Console tokens discipline).
  */
 export function TagChip({
   tag,
@@ -20,8 +24,8 @@ export function TagChip({
   onRemove?: () => void;
   onClick?: () => void;
 }) {
-  const hue = tagHueIndex(tag);
-  const cls = `vh-tag vh-tag--h${hue}${small ? ' vh-tag--sm' : ''}${onClick ? ' vh-tag--btn' : ''}`;
+  const color = isPriorityTag(tag) ? 'priority' : `h${tagHueIndex(tag)}`;
+  const cls = `vh-tag vh-tag--${color}${small ? ' vh-tag--sm' : ''}${onClick ? ' vh-tag--btn' : ''}`;
   const body = (
     <>
       <span className="vh-tag-text">{tag}</span>

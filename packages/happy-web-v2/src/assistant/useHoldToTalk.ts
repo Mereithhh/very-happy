@@ -49,6 +49,13 @@ export interface HoldToTalkOptions {
     transcribe: (audioBase64: string, mimeType: string) => Promise<string>;
     /** transcript ready — hand to the send pipeline */
     onText: (text: string) => void;
+    /**
+     * B-092: the mic is LIVE — getUserMedia succeeded and the press is still
+     * held. Fired once per recording, before the ASR/recorder path is chosen.
+     * (The press itself is observable via `state`; this is the "actually
+     * capturing now" moment for start feedback like earcons/haptics.)
+     */
+    onRecordingStarted?: () => void;
     /** 0..1 mic level while recording (drives the waveform ring) */
     onLevel?: (level: number) => void;
     /** mic permission / recorder start failed */
@@ -320,6 +327,12 @@ export function useHoldToTalk(options: HoldToTalkOptions) {
             };
         }
         setupMeter(active);
+        // B-092: capture is live from here — start feedback (earcon/haptic)
+        try {
+            optionsRef.current.onRecordingStarted?.();
+        } catch {
+            // feedback must never break the recording flow
+        }
 
         // ── streaming path first (B-069) ──
         const streaming = optionsRef.current.streaming;
