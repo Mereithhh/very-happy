@@ -587,6 +587,7 @@ export const en = {
         enableVoiceHint: 'Browsers require one tap before a page may play sound — tap once and replies will be read aloud.',
         transcript: 'Text transcript',
         transcriptEmpty: 'No messages yet.',
+        thinkingTrace: 'Thinking trace',
         newConversation: 'New conversation',
         textPlaceholder: 'Type instead…',
         send: 'Send',

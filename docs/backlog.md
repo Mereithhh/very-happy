@@ -71,7 +71,8 @@
 | B-050 | 新 logo「会眨眼的终端窗口」+ 整套应用图标（gpt-image 探索方向 + Pillow 按 token 重建主源） | ux | Owner 2026-08-13 | done | Shipped；候选在 skills/tmp/vh-logo/；7 条设计感提案待 Owner 挑 |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
 | B-052 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
-| B-053 | assistant 会话在侧栏/board 特判：meta-agent 常驻会话混进任务流是噪音（裸路径+自动标题+「等我看」列） | ux | B-051 E2E 走查#7 | todo | metadata.variant 已有，纯前端过滤/标签 |
+| B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
+| B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
 | B-054 | assistant 版本门控 dev 逃生门：dev 构建恒 0.1.0 被 ≥0.2.34 挡住，本地联调要 hack machine metadata | debt | B-051 E2E 走查#3 | todo | dev override（env/localStorage）或特判 0.1.0 |
 | B-055 | 复核 assistant 会话 dangerouslySkipPermissions=true 的来源 | debt | B-051 E2E 走查#8 | done | 根因=fork 全局默认 permission mode 就是 yolo（runClaude.ts:55），非 assistant 特有；已做成可关设置（B-061） |
 | B-056 | /board 在 devtools emulate 切换后首进偶发主线程阻塞 >40s（一次复现，二次不可）| bug | B-051 E2E 走查#5 | todo | 低置信度观察项，遇到再深挖 |

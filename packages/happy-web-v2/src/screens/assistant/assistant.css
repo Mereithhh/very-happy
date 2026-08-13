@@ -566,6 +566,60 @@
   background: var(--accent-dim);
 }
 
+/* assistant multiple-choice → tappable answers */
+.as-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+.as-option-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--fs-14, 14px);
+  text-align: left;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.as-option-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+}
+.as-option-btn:active {
+  border-color: var(--accent-dim);
+}
+
+/* transcript collapsibles (thinking trace / tool input) */
+.as-transcript-fold {
+  align-self: flex-start;
+  max-width: 86%;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+  padding: 6px 12px;
+  color: var(--text-faint);
+  font-size: var(--fs-13, 13px);
+}
+.as-transcript-fold summary {
+  cursor: pointer;
+  user-select: none;
+}
+.as-transcript-fold-body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.as-transcript-fold[data-role='tool'] {
+  border-style: solid;
+  padding: 4px 10px;
+}
+
 /* ── B-060: state-transition polish (still token-only, motion-safe) ── */
 .as-logo {
   transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);

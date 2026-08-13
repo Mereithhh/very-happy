@@ -19,6 +19,9 @@ export interface AssistantExchange {
     assistantText: string | null;
     /** newest tool call (name + state) for the mono ticker, null when none */
     tool: { name: string; state: 'running' | 'completed' | 'error' } | null;
+    /** which of user/assistant is newest — options are only offered while the
+     *  assistant's question is still the latest word in the conversation */
+    latestRole: 'user' | 'assistant' | null;
 }
 
 export function deriveAssistantExchange(messages: Message[]): AssistantExchange {
@@ -26,17 +29,51 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
     let userText: string | null = null;
     let assistantText: string | null = null;
     let tool: AssistantExchange['tool'] = null;
+    let latestRole: AssistantExchange['latestRole'] = null;
     for (const m of sorted) {
         if (userText === null && m.kind === 'user-text') {
             userText = m.displayText ?? m.text;
+            latestRole = latestRole ?? 'user';
         } else if (assistantText === null && m.kind === 'agent-text' && !m.isThinking && m.text.trim()) {
             assistantText = m.text;
+            latestRole = latestRole ?? 'assistant';
         } else if (tool === null && m.kind === 'tool-call') {
             tool = { name: m.tool.name, state: m.tool.state };
         }
         if (userText !== null && assistantText !== null && tool !== null) break;
     }
-    return { userText, assistantText, tool };
+    return { userText, assistantText, tool, latestRole };
+}
+
+/**
+ * B-059 follow-up: assistant replies may carry a machine-readable options
+ * block (the CLAUDE.md template asks for it when posing a multiple choice):
+ *
+ *   <options>
+ *   <option>先派 B-051 收尾发布</option>
+ *   <option>先做稳定性三件套</option>
+ *   </options>
+ *
+ * The UI renders these as tappable answer buttons; the block must never reach
+ * the visible text or the TTS queue (spoken XML is noise).
+ */
+export interface ExtractedOptions {
+    text: string;
+    options: string[];
+}
+
+export function extractOptions(raw: string): ExtractedOptions {
+    const options: string[] = [];
+    const text = raw
+        .replace(/<options>([\s\S]*?)<\/options>/g, (_all, inner: string) => {
+            for (const m of inner.matchAll(/<option>([\s\S]*?)<\/option>/g)) {
+                const t = m[1].trim();
+                if (t) options.push(t);
+            }
+            return '';
+        })
+        .trim();
+    return { text, options };
 }
 
 /**
@@ -97,14 +134,19 @@ export function derivePendingPermission(agentState: AgentState | null | undefine
 
 export interface TranscriptEntry {
     id: string;
-    role: 'user' | 'assistant' | 'tool';
+    role: 'user' | 'assistant' | 'tool' | 'thinking';
     text: string;
+    /** collapsible payload: thinking trace body, or a tool's input preview */
+    detail?: string;
 }
+
+const TOOL_DETAIL_MAX_CHARS = 600;
 
 /**
  * Full conversation as flat entries, oldest-first, for the assistant screen's
- * transcript panel. Thinking blocks and empty texts are dropped; tool calls
- * collapse to one mono line (name + state).
+ * transcript panel. Thinking traces become collapsible 'thinking' entries;
+ * tool calls carry a truncated input preview as collapsible detail; an
+ * assistant reply's <options> block is flattened to visible "▸ …" lines.
  */
 export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
     const sorted = [...messages].sort(compareMessagesNewestFirst).reverse(); // oldest first
@@ -114,9 +156,28 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
             const text = (m.displayText ?? m.text).trim();
             if (text) out.push({ id: m.id, role: 'user', text });
         } else if (m.kind === 'agent-text') {
-            if (!m.isThinking && m.text.trim()) out.push({ id: m.id, role: 'assistant', text: m.text });
+            if (!m.text.trim()) continue;
+            if (m.isThinking) {
+                out.push({ id: m.id, role: 'thinking', text: '', detail: m.text.trim() });
+            } else {
+                const { text, options } = extractOptions(m.text);
+                const withOptions =
+                    options.length > 0
+                        ? [text, ...options.map((o) => `▸ ${o}`)].filter(Boolean).join('\n')
+                        : text;
+                if (withOptions) out.push({ id: m.id, role: 'assistant', text: withOptions });
+            }
         } else if (m.kind === 'tool-call') {
-            out.push({ id: m.id, role: 'tool', text: `${m.tool.name} · ${m.tool.state}` });
+            let detail: string | undefined;
+            try {
+                const s = JSON.stringify(m.tool.input);
+                if (s && s !== '{}') {
+                    detail = s.length > TOOL_DETAIL_MAX_CHARS ? `${s.slice(0, TOOL_DETAIL_MAX_CHARS)}…` : s;
+                }
+            } catch {
+                // non-serializable input — skip the preview
+            }
+            out.push({ id: m.id, role: 'tool', text: `${m.tool.name} · ${m.tool.state}`, detail });
         }
     }
     return out;

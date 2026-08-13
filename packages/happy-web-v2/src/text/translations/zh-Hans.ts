@@ -602,6 +602,7 @@ export const zhHans: TranslationStructure = {
         enableVoiceHint: '浏览器要求页面被点击一次后才允许出声——点一下，之后的回复就会朗读出来。',
         transcript: '文字记录',
         transcriptEmpty: '还没有消息。',
+        thinkingTrace: '思考轨迹',
         newConversation: '新对话',
         textPlaceholder: '或输入文字…',
         send: '发送',

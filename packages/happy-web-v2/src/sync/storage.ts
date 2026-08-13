@@ -266,6 +266,9 @@ function buildSessionListViewData(
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
+        // B-053: the assistant meta-session never joins the normal list — its
+        // home is /assistant (still reachable at /session/<id> for audit).
+        if (session.metadata?.variant === 'assistant') return;
         if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {

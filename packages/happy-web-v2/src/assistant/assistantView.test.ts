@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript } from './assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from './assistantView';
 import type { Message } from '@/sync/typesMessage';
 
 function user(id: string, text: string, seq: number): Message {
@@ -33,6 +33,7 @@ describe('deriveAssistantExchange', () => {
         expect(deriveAssistantExchange(messages)).toEqual({
             userText: 'new question',
             assistantText: 'new answer',
+            latestRole: 'assistant',
             tool: { name: 'Read', state: 'running' },
         });
     });
@@ -61,7 +62,7 @@ describe('deriveAssistantExchange', () => {
     });
 
     it('returns nulls on an empty conversation', () => {
-        expect(deriveAssistantExchange([])).toEqual({ userText: null, assistantText: null, tool: null });
+        expect(deriveAssistantExchange([])).toEqual({ userText: null, assistantText: null, tool: null, latestRole: null });
     });
 });
 
@@ -143,7 +144,7 @@ describe('derivePendingPermission', () => {
 });
 
 describe('deriveTranscript (B-059)', () => {
-    it('returns entries oldest-first, dropping thinking blocks and empty texts', () => {
+    it('returns entries oldest-first: thinking collapsible, tool with detail, empties dropped', () => {
         const messages: Message[] = [
             agent('a2', 'second answer', 4),
             user('u1', 'question', 1),
@@ -153,12 +154,39 @@ describe('deriveTranscript (B-059)', () => {
         ];
         expect(deriveTranscript(messages)).toEqual([
             { id: 'u1', role: 'user', text: 'question' },
-            { id: 't1', role: 'tool', text: 'Bash · completed' },
+            { id: 'think', role: 'thinking', text: '', detail: 'pondering…' },
+            { id: 't1', role: 'tool', text: 'Bash · completed', detail: undefined },
             { id: 'a2', role: 'assistant', text: 'second answer' },
         ]);
     });
 
     it('is empty for no messages', () => {
         expect(deriveTranscript([])).toEqual([]);
+    });
+
+    it('flattens an <options> block into visible lines', () => {
+        const messages: Message[] = [agent('a1', '选哪个？\n<options>\n<option>甲</option>\n<option>乙</option>\n</options>', 1)];
+        expect(deriveTranscript(messages)[0].text).toBe('选哪个？\n▸ 甲\n▸ 乙');
+    });
+});
+
+describe('extractOptions', () => {
+    it('pulls options out and strips the block from the text', () => {
+        const raw = '接下来做哪个？\n<options>\n<option>先派 B-051 收尾发布</option>\n<option>先做稳定性三件套</option>\n</options>';
+        expect(extractOptions(raw)).toEqual({
+            text: '接下来做哪个？',
+            options: ['先派 B-051 收尾发布', '先做稳定性三件套'],
+        });
+    });
+
+    it('passes plain text through untouched', () => {
+        expect(extractOptions('好的，已经派出去了。')).toEqual({ text: '好的，已经派出去了。', options: [] });
+    });
+
+    it('ignores empty options and handles multiple blocks', () => {
+        const raw = 'A?\n<options><option>x</option><option> </option></options>\nB?\n<options><option>y</option></options>';
+        const res = extractOptions(raw);
+        expect(res.options).toEqual(['x', 'y']);
+        expect(res.text).toBe('A?\n\nB?');
     });
 });

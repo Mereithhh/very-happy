@@ -25,7 +25,7 @@ import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
 import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistantSession';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript } from '@/assistant/assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript, extractOptions } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
 import { TtsPlayer } from '@/assistant/ttsPlayer';
@@ -137,6 +137,10 @@ export function AssistantScreen() {
     const thinking = !!session?.thinking;
     const { messages, isLoaded } = useSessionMessages(sessionId ?? '');
     const exchange = useMemo(() => deriveAssistantExchange(messages), [messages]);
+    const replyView = useMemo(
+        () => (exchange.assistantText ? extractOptions(exchange.assistantText) : { text: null as string | null, options: [] as string[] }),
+        [exchange.assistantText],
+    );
 
     // Pending permission request (only exists when "skip permission approvals"
     // is off): surface a banner that links to the session page's approve UI.
@@ -212,7 +216,10 @@ export function AssistantScreen() {
             (st.lastTurnSource === 'voice' || voiceReadTextReplies);
         if (!shouldSpeak) return;
         for (const m of fresh) {
-            const { text, truncated } = truncateAtSentenceBoundary(m.text, TTS_MAX_CHARS);
+            // never speak the <options> block — it is rendered as buttons
+            const spoken = extractOptions(m.text).text;
+            if (!spoken) continue;
+            const { text, truncated } = truncateAtSentenceBoundary(spoken, TTS_MAX_CHARS);
             if (truncated) st.setLastTtsTruncated(true);
             playerRef.current?.enqueue({ id: m.id, text });
         }
@@ -434,11 +441,33 @@ export function AssistantScreen() {
                         {transcript.length === 0 && (
                             <div className="as-transcript-empty">{t('assistant.transcriptEmpty')}</div>
                         )}
-                        {transcript.map((e) => (
-                            <div key={e.id} className="as-transcript-entry" data-role={e.role}>
-                                {e.role === 'tool' ? <span className="as-transcript-tool">{e.text}</span> : e.text}
-                            </div>
-                        ))}
+                        {transcript.map((e) => {
+                            if (e.role === 'thinking') {
+                                return (
+                                    <details key={e.id} className="as-transcript-fold" data-role="thinking">
+                                        <summary>{t('assistant.thinkingTrace')}</summary>
+                                        <div className="as-transcript-fold-body">{e.detail}</div>
+                                    </details>
+                                );
+                            }
+                            if (e.role === 'tool') {
+                                return e.detail ? (
+                                    <details key={e.id} className="as-transcript-fold" data-role="tool">
+                                        <summary className="as-transcript-tool">{e.text}</summary>
+                                        <div className="as-transcript-fold-body as-transcript-tool">{e.detail}</div>
+                                    </details>
+                                ) : (
+                                    <div key={e.id} className="as-transcript-entry" data-role="tool">
+                                        <span className="as-transcript-tool">{e.text}</span>
+                                    </div>
+                                );
+                            }
+                            return (
+                                <div key={e.id} className="as-transcript-entry" data-role={e.role}>
+                                    {e.text}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 
@@ -473,9 +502,25 @@ export function AssistantScreen() {
                                 {speakingText ? (
                                     <div className="as-caption">{speakingText}</div>
                                 ) : (
-                                    exchange.assistantText && (
-                                        <div className="as-convo-assistant">{exchange.assistantText}</div>
+                                    replyView.text && (
+                                        <div className="as-convo-assistant">{replyView.text}</div>
                                     )
+                                )}
+                                {/* assistant's multiple-choice → tappable answers (only while
+                                    its question is still the latest word) */}
+                                {!speakingText && exchange.latestRole === 'assistant' && replyView.options.length > 0 && (
+                                    <div className="as-options">
+                                        {replyView.options.map((o) => (
+                                            <button
+                                                key={o}
+                                                type="button"
+                                                className="as-option-btn"
+                                                onClick={() => sendText(o, 'text')}
+                                            >
+                                                {o}
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                                 {lastTtsTruncated && (
                                     <div className="as-convo-note">{t('assistant.ttsTruncated')}</div>

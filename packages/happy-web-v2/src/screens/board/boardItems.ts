@@ -228,6 +228,8 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   const items: BoardItem[] = [];
 
   for (const s of sessions) {
+    // B-053: the assistant meta-session is not a task — it lives in /assistant
+    if (s.metadata?.variant === 'assistant') continue;
     const cls = classifySession(s, now);
     if (!cls) continue;
     const lastActivityAt = s.updatedAt || s.activeAt || s.createdAt;
@@ -369,6 +371,7 @@ export function buildCompletedEntries(
 ): CompletedEntry[] {
   const entries: CompletedEntry[] = [];
   for (const s of sessions) {
+    if (s.metadata?.variant === 'assistant') continue; // B-053
     const at = s.metadata?.completedAt;
     if (!at || now - at > DONE_WINDOW_MS) continue;
     entries.push({
