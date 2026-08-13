@@ -76,7 +76,8 @@
 | B-066 | 通知已读跨设备同步：看过对应会话即自动消除该目标的通知（按 key 取 max 时间戳合并，非整表覆盖） | feat | Owner 2026-08-14 | done | 载体=账号 KV vh.notif-seen.v1（CAS+absorb 重试）；顺带接上从未被监听的 kv-batch-update 广播=跨设备 push 而非轮询 |
 | B-087 | 文件预览升级：markdown 渲染/源码切换 + 图片缩放（Blob URL，弃 data URI）+ PDF 原生 viewer + 全屏 + 滚动修复（根因=聊天转录的 420px overflow:hidden 被查看器误继承）+ fs-read offset 分段（socket 载荷 1MB 钉死单窗，10MB 护栏） | feat | Owner 实报 2026-08-14 | done | edf24288；对照 apodexchat 抄判定/Blob/护栏，弃 pdf.js（531KB 只益移动端，iOS PDF 表现待真机，刚需再评估）；真机 V-038 |
 | B-088 | 文件浏览器布局：两宿主共享拖宽（filesPanelWidth 280px~60vw）+ 终端抽屉 overlay 改分栏挤压（反转旧「不做 inline sidebar」决定；拖拽期 fit 抑制防 reflow 风暴；移动端 display:contents 原形态零回归） | ux | Owner 实报 2026-08-14 | done | 6b11cc44；FitAddon 走既有 RO→scheduleFit 实战链路；真机 V-039 |
-| B-089 | ⌘W 语义纠正：应=收掉会话（聊天→归档确认、终端→关闭确认，复用行菜单同款流程），而非当前的「关闭视图回主页」——Owner：当前实现理解错了 | ux | Owner 实报 2026-08-14 | doing | closeViewConfirm 守卫语义随之改写 |
+| B-089 | ⌘W 语义纠正：收掉会话而非关视图（聊天=归档确认 kill-first、终端=关闭确认先导航防复活；closeViewConfirm 改写=关则直接执行；非会话路由不拦交还浏览器） | ux | Owner 实报 2026-08-14 | done | b7d765ef |
+| B-090 | 命令面板「归档当前会话」只调 sessionArchive 不走 kill-first——与 rowActions 语义不一致（活着的 CLI 会把 active 翻回来复活） | bug | B-089 实现中发现 | todo | 改调 confirmArchiveSession 或 archiveSessionNow 对齐 |
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | done | 本机 120ms / 远端典型 0.5-0.6s 最坏 2.1s；冷终端（pty 已回收）仍 ~10s；需 CLI ≥v0.2.37 |
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
