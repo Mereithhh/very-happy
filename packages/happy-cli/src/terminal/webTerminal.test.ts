@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, type TerminalListItem } from './webTerminal';
+import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -480,5 +480,40 @@ describe('pruneTombstones', () => {
 
     it('empty in, empty out', () => {
         expect(pruneTombstones({}, Date.now())).toEqual({});
+    });
+});
+
+describe('diffTerminalActivity', () => {
+    it('reports every id on a cold start', () => {
+        expect(diffTerminalActivity({}, { a: 100, b: 200 }))
+            .toEqual([{ id: 'a', activityAt: 100 }, { id: 'b', activityAt: 200 }]);
+    });
+
+    it('reports ONLY forward moves — an unchanged map costs zero traffic', () => {
+        expect(diffTerminalActivity({ a: 100, b: 200 }, { a: 100, b: 200 })).toEqual([]);
+        expect(diffTerminalActivity({ a: 100, b: 200 }, { a: 101, b: 200 }))
+            .toEqual([{ id: 'a', activityAt: 101 }]);
+    });
+
+    it('never reports a BACKWARD move', () => {
+        // The tmux poll can legitimately return an older #{session_activity}
+        // than the live pty already told us; un-floating the row would be a lie.
+        expect(diffTerminalActivity({ a: 5000 }, { a: 1000 })).toEqual([]);
+    });
+
+    it('ignores junk stamps', () => {
+        expect(diffTerminalActivity({}, { a: 0, b: -1, c: NaN, d: Infinity })).toEqual([]);
+    });
+
+    it('ignores ids that vanished from the current map', () => {
+        expect(diffTerminalActivity({ gone: 100 }, {})).toEqual([]);
+    });
+
+    it('does not mutate its inputs', () => {
+        const last = { a: 1 };
+        const cur = { a: 2 };
+        diffTerminalActivity(last, cur);
+        expect(last).toEqual({ a: 1 });
+        expect(cur).toEqual({ a: 2 });
     });
 });

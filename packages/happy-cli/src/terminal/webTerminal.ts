@@ -44,6 +44,19 @@
  * changed list into daemonState.webTerminals, which the server persists and
  * broadcasts — clients consume the push instead of polling `list-terminals`
  * (the RPC remains for old clients; both return the same item shape).
+ *
+ * ── Realtime activity (Stage 3: ephemeral `terminal-activity`) ───────────────
+ * The list push above is the DURABLE lane and is deliberately coarse: one push
+ * costs a full daemonState encrypt + CAS + DB write + broadcast, so activity
+ * only participates in its signature at 60s granularity — which meant a
+ * terminal that was merely PRINTING could take up to a minute to float to the
+ * top of the sidebar. Stage 3 adds a second, ephemeral lane for exactly that
+ * one number: `terminal-activity` frames carrying `[{ id, activityAt }]`,
+ * relayed by the server to the account's web clients and stored nowhere. Fed
+ * by the live pty stream (leading-edge throttled to ~1s) and by the tracking
+ * tick (which is the only observer of COLD sessions' tmux activity). Emitted
+ * only when a value actually moved, so an idle machine sends nothing at all.
+ * The 60s bucket stays exactly as it is — the two lanes have different jobs.
  */
 import * as pty from 'node-pty';
 import { randomBytes } from 'node:crypto';
@@ -209,8 +222,66 @@ const LIST_KICK_DEBOUNCE_MS = 250;
  * 60s buckets: a busy terminal pushes at most once a minute for activity
  * alone; any real change (title/agent/membership) still pushes immediately —
  * and carries the EXACT activityAt (only the signature is quantized).
+ *
+ * ⚠️ This bucket protects the PERSISTED lane and must stay coarse — one
+ * daemonState write is a full-state encrypt + CAS(expectedVersion) RPC + a
+ * server DB write + a broadcast; making it 1s would turn every busy machine
+ * into a metronome hammering the database. Sub-second freshness is NOT its
+ * job: that belongs to the ephemeral `terminal-activity` channel below, which
+ * costs one tiny un-persisted socket frame. Division of labour:
+ *   • daemonState.webTerminals = the durable snapshot (membership, titles,
+ *     cwd, agentState, coarse activity) — survives offline machines, reload,
+ *     and cold clients;
+ *   • terminal-activity = "this id moved, now" — fire-and-forget, never
+ *     stored, only ever used to float a row in the sidebar.
  */
 export const ACTIVITY_SIGNATURE_BUCKET_MS = 60_000;
+
+/**
+ * ── Realtime activity channel (ephemeral) ────────────────────────────────────
+ * Throttle for the `terminal-activity` event on the PTY feeder. LEADING edge:
+ * the first pty chunk after an idle gap emits immediately (that's the "I just
+ * talked to it" case the whole channel exists for), then at most one frame per
+ * window while output keeps flowing. No output ⇒ no timer, no frame — an idle
+ * machine costs exactly zero.
+ *
+ * NOTE this bounds the pty feeder, not the total: the tracking tick's own
+ * emitActivity (which is what covers COLD sessions) does not wait on this
+ * window, it only resets it. So a program that both prints and rewrites its
+ * OSC title — Claude Code's TUI does exactly that — can produce a few frames a
+ * second via the 250ms kick debounce. That is fine and deliberate: the frames
+ * are tiny, and the web coalesces them into at most ONE reorder per second,
+ * which is the number that actually matters for the user.
+ */
+export const ACTIVITY_EVENT_THROTTLE_MS = 1_000;
+
+/** One realtime activity increment. Deliberately the smallest possible shape:
+ *  an id already visible in the terminal relay envelope, plus a clock
+ *  reading. No title, no cwd, no bytes — nothing the durable (encrypted)
+ *  daemonState lane is responsible for. */
+export interface TerminalActivityUpdate {
+    id: string;
+    activityAt: number;
+}
+
+/**
+ * Which ids moved FORWARD since the last emission. Only strictly-newer values
+ * are reported (activity is monotonic per terminal — a tmux poll returning an
+ * older `#{session_activity}` than the live pty's `lastOutputAt` must never
+ * un-float a row), and an unchanged map yields an empty array so the caller
+ * can skip the frame entirely. Pure; unit-tested.
+ */
+export function diffTerminalActivity(
+    lastEmitted: Record<string, number>,
+    current: Record<string, number>,
+): TerminalActivityUpdate[] {
+    const out: TerminalActivityUpdate[] = [];
+    for (const [id, at] of Object.entries(current)) {
+        if (!Number.isFinite(at) || at <= 0) continue;
+        if (at > (lastEmitted[id] ?? 0)) out.push({ id, activityAt: at });
+    }
+    return out;
+}
 
 /** Timeout for the synchronous `tmux new-session -d` in open(). More generous
  *  than the probe timeout: the very first session may also have to boot the
@@ -770,6 +841,20 @@ export class WebTerminalManager {
     private listKickTimer: ReturnType<typeof setTimeout> | null = null;
     private lastListSignature: string | null = null;
 
+    // ── Realtime activity channel ───────────────────────────────────────────
+    // Sits BESIDE the list push, not inside it: `terminal-activity` frames are
+    // ephemeral (server relays, nobody stores them), so they can be a hundred
+    // times cheaper and a hundred times fresher than a daemonState write. Two
+    // feeders, one emitter:
+    //   • pty output  → noteActivity() on every chunk, throttled (leading edge)
+    //   • tmux poll   → the list track tick, which also covers COLD sessions
+    //                   whose pty we already detached.
+    // `lastActivityEmitted` is the de-dup table: a value that didn't move
+    // produces no frame at all.
+    private lastActivityEmitted: Record<string, number> = {};
+    private activityFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    private lastActivityFlushAt = 0;
+
     // ── Agent-transition notifications ──────────────────────────────────────
     // Every tick's agentState observations also feed a transition tracker
     // (terminalNotify.ts): working→idle / working|idle→needs_input transitions
@@ -796,6 +881,12 @@ export class WebTerminalManager {
      */
     startListTracking(cb: (terminals: TerminalListItem[]) => void, intervalMs = LIST_TRACK_INTERVAL_MS): void {
         this.listChangedCb = cb;
+        // The daemon re-calls this on every socket connect, so this doubles as
+        // "forget what we told the PREVIOUS connection". Frames emitted while
+        // the socket was down went nowhere, and their ids would otherwise stay
+        // marked as already-reported and never be re-sent; clearing makes the
+        // first tick after a reconnect re-seed the clients' overlay.
+        this.lastActivityEmitted = {};
         if (!this.listTrackTimer) {
             this.listTrackTimer = setInterval(() => this.listTrackTick(), intervalMs);
             this.listTrackTimer.unref?.();
@@ -807,6 +898,62 @@ export class WebTerminalManager {
         this.listChangedCb = null;
         if (this.listTrackTimer) { clearInterval(this.listTrackTimer); this.listTrackTimer = null; }
         if (this.listKickTimer) { clearTimeout(this.listKickTimer); this.listKickTimer = null; }
+        if (this.activityFlushTimer) { clearTimeout(this.activityFlushTimer); this.activityFlushTimer = null; }
+    }
+
+    /**
+     * One pty chunk arrived → make sure a realtime activity frame goes out
+     * soon. Leading edge (emit NOW when the last frame is older than the
+     * throttle window) so the very first byte after an idle gap floats the row
+     * immediately; otherwise coalesce into the already-pending flush.
+     *
+     * Gated on list tracking, which the daemon starts on socket connect. That
+     * gate is NOT a liveness check — tracking stays on across a disconnect —
+     * so the emit side additionally refuses to queue frames on a down socket
+     * (see the emit closure in apiMachine).
+     *
+     * Called on EVERY output chunk, so the common path is two field reads and
+     * an early return (the base64 + headless VT write on the same path already
+     * cost orders of magnitude more).
+     */
+    private noteActivity(): void {
+        if (!this.listChangedCb) return;
+        if (this.activityFlushTimer) return; // a flush is already queued
+        const wait = ACTIVITY_EVENT_THROTTLE_MS - (Date.now() - this.lastActivityFlushAt);
+        if (wait <= 0) { this.flushLiveActivity(); return; }
+        this.activityFlushTimer = setTimeout(() => {
+            this.activityFlushTimer = null;
+            this.flushLiveActivity();
+        }, wait);
+        this.activityFlushTimer.unref?.();
+    }
+
+    /** Emit the live ptys' output timestamps (in-memory only — no tmux, no
+     *  subprocess, so this is safe to run every throttle window). */
+    private flushLiveActivity(): void {
+        this.lastActivityFlushAt = Date.now();
+        const current: Record<string, number> = {};
+        for (const [id, s] of this.terminals) {
+            if (s.lastOutputAt) current[id] = s.lastOutputAt;
+        }
+        this.emitActivity(current);
+    }
+
+    /** Diff against what we already told the clients and emit only the moves.
+     *  Never throws (a broken socket must not take down the pty stream). */
+    private emitActivity(current: Record<string, number>): void {
+        const updates = diffTerminalActivity(this.lastActivityEmitted, current);
+        if (updates.length === 0) return; // nothing moved ⇒ zero traffic
+        for (const u of updates) this.lastActivityEmitted[u.id] = u.activityAt;
+        // ONE accounting point for both feeders: a tick-driven frame also opens
+        // a fresh throttle window, so it can't land on top of a pty frame that
+        // was about to go out anyway.
+        this.lastActivityFlushAt = Date.now();
+        try {
+            this.emit('terminal-activity', { terminals: updates });
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] activity emit failed: ${e}`);
+        }
     }
 
     /** Seed the change signature from a list the caller already delivered by
@@ -854,12 +1001,32 @@ export class WebTerminalManager {
         try {
             const list = this.buildTerminalList();
             this.trackNotifications(list);
+            // Realtime lane, BEFORE the signature short-circuit: this tick is
+            // the only place a COLD session's tmux `#{session_activity}` is
+            // observed (its pty was detached by the reaper, so noteActivity()
+            // never fires for it). Without this, a background terminal that
+            // starts printing again would stay frozen in the sidebar until the
+            // 60s activity bucket happens to flip.
+            this.pruneActivityTable(list);
+            this.emitActivity(Object.fromEntries(
+                list.filter((t) => t.activityAt).map((t) => [t.id, t.activityAt!]),
+            ));
             const sig = terminalListSignature(list);
             if (sig === this.lastListSignature) return;
             this.lastListSignature = sig;
             cb(list);
         } catch (e) {
             logger.debug(`[WEB TERMINAL] list track tick failed: ${e}`);
+        }
+    }
+
+    /** Drop de-dup entries for terminals that no longer exist, so a long-lived
+     *  daemon can't accumulate one number per terminal ever created. */
+    private pruneActivityTable(list: TerminalListItem[]): void {
+        const alive = new Set(list.map((t) => t.id));
+        for (const id of this.terminals.keys()) alive.add(id);
+        for (const id of Object.keys(this.lastActivityEmitted)) {
+            if (!alive.has(id)) delete this.lastActivityEmitted[id];
         }
     }
 
@@ -1208,6 +1375,9 @@ export class WebTerminalManager {
             const b64 = Buffer.from(data, 'utf8').toString('base64');
             const seq = session.ingest(data, b64);
             this.emit('terminal-output', { terminalId: id, data: b64, seq });
+            // Realtime sidebar ordering: `ingest` just stamped lastOutputAt —
+            // tell the clients about it (throttled; see noteActivity).
+            this.noteActivity();
         });
         proc.onExit(({ exitCode }) => {
             if (this.terminals.get(id) !== session) return;

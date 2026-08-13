@@ -55,6 +55,17 @@ interface DaemonToServerEvents {
     // reconnect (see open-terminal `fromSeq`).
     'terminal-output': (data: { terminalId: string, data: string, seq: number, enc?: boolean }) => void;
     'terminal-exit': (data: { terminalId: string, exitCode: number }) => void;
+    // Realtime sidebar ordering: "these terminals just moved". EPHEMERAL — the
+    // server relays it to this account's web clients (same room and same
+    // handler as the byte stream above) and stores nothing; the durable list
+    // still travels through daemonState.webTerminals. Deliberately NOT
+    // encrypted: it carries only terminal ids, which already ride in the clear
+    // in this very relay's envelope (terminal-output/-input), plus a clock
+    // reading — the same plaintext-metadata posture as every other transient
+    // signal on this server (activity / machine-activity / usage). An old
+    // server has no handler for the event and drops it; an old web client has
+    // no listener for it. Both degrade to the pre-feature behaviour.
+    'terminal-activity': (data: { terminals: Array<{ id: string, activityAt: number }> }) => void;
     // Clipboard push: daemon → server → all of the user's web clients.
     // `payload` is the clipboard text, encrypted with the per-machine key when
     // `enc` is true (same primitive as the terminal byte stream).
@@ -152,6 +163,19 @@ export class ApiMachineClient {
         // opaque byte payload is protected.
         if (event === 'terminal-output' && this.encTerminals.has(payload.terminalId)) {
             out = { ...payload, data: this.encTerminalData(payload.data), enc: true };
+        }
+        // Activity frames are advisory ordering hints — drop them on the floor
+        // while the socket is down instead of letting socket.io queue them in
+        // its UNBOUNDED sendBuffer for replay on reconnect. Nothing is lost:
+        // the reconnect re-ships the durable list, and startListTracking clears
+        // the de-dup table so the next tick re-seeds every client. (`volatile`
+        // is socket.io's own primitive for exactly this; the `connected` check
+        // covers the window before the socket object exists at all.)
+        if (event === 'terminal-activity') {
+            const s = this.socket as any;
+            if (!s?.connected) return;
+            (s.volatile ?? s).emit(event, out);
+            return;
         }
         (this.socket as any)?.emit(event, out);
     }, (n) => {
