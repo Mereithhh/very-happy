@@ -295,6 +295,14 @@ export const en = {
         boardLlmDescription: 'AI progress notes, attention flags and task grouping on the Task Board are produced by the Happy daemon (a local one-shot haiku call, throttled). Off by default so no tokens are spent silently.',
         boardLlmHowTo: 'Configure on the daemon machine',
         boardLlmHowToDetail: 'Set "boardLlm": true in ~/.happy/settings.json on each machine that should analyze its sessions, then restart sessions there.',
+        // ⌘W close guards (device-local — what the shortcut can even reach
+        // depends on this client: installed app vs browser tab)
+        closeGuard: 'Closing a session view',
+        closeGuardDescription: '⌘W (installed app) / ⌥W (browser tab) closes the open session view and goes back home — it never deletes or stops the session. In a browser tab ⌘W belongs to the browser: it closes the whole tab before the page sees the key, and only the browser\'s own dialog can interrupt that — its wording and styling cannot be customized.',
+        closeViewConfirm: 'Confirm before closing a view',
+        closeViewConfirmDescription: 'Ask first when ⌘W / ⌥W would close the open session or terminal view. Cancelling leaves you exactly where you were.',
+        closeTabWarning: 'Warn before leaving the page',
+        closeTabWarningDescription: 'While a session or terminal view is open, ask the browser to confirm closing or reloading the tab. Uses the browser\'s built-in dialog; deliberate in-app reloads (app updates, logout) are exempt.',
     },
 
     settingsFeatures: {
@@ -630,6 +638,13 @@ export const en = {
         autoCopySubtitle: 'Silently write incoming pushes into this device\'s clipboard; when off or blocked by the browser, a tap-to-copy toast shows instead',
         sourceMachine: 'Machine',
         sourceSession: 'Session',
+    },
+
+    // ⌘W / ⌥W close-view confirmation (app/viewShortcuts.ts)
+    closeView: {
+        confirmTitle: 'Close this view?',
+        confirmMessage: 'Only the view closes — the session and its terminal keep running, nothing is deleted or stopped. You can reopen it from the sidebar at any time.',
+        confirmAction: 'Close view',
     },
 
     server: {

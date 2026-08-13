@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { isImeGuardedEvent } from '@/utils/ime';
-import { isEditableTarget } from '@/app/viewShortcuts';
+import { isEditableTarget } from '@/app/closeGuard';
 import { useEdgeSwipeBack } from '@/app/edgeSwipeBack';
 
 // ---------------------------------------------------------------------------

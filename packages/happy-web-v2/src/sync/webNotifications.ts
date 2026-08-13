@@ -17,6 +17,7 @@
 
 import { Platform } from 'react-native';
 import { shouldNotify, getNotificationPrefs, setNotificationPrefs } from './notificationPrefs';
+import { markProgrammaticReload } from '@/app/programmaticReload';
 import type { NotifType } from './feedTypes';
 import { log } from '@/log';
 
@@ -82,6 +83,10 @@ function openSession(sessionId: string): void {
     if (navigateToSession) {
         navigateToSession(sessionId);
     } else if (typeof window !== 'undefined') {
+        // Full-page fallback (no router navigator registered): the user asked
+        // for this by clicking the notification — don't let the tab-close guard
+        // put a leave-site dialog in front of it.
+        markProgrammaticReload();
         window.location.href = `/session/${sessionId}`;
     }
 }

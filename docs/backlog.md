@@ -78,7 +78,7 @@
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
 | B-072 | 侧栏选中态视觉加强（accent 竖条+背景抬升+文字提亮，亮暗双主题） | ux | Owner 2026-08-14 | done | **真因**：hover 规则写在选中之后且未排除选中行→划过当前行时选中背景被改写；顺带补触摸按压回馈 |
-| B-073 | ⌘W 关闭前二次确认（应用内确认 + 普通标签页的 beforeunload 保护；开关默认开） | ux | Owner 2026-08-14 | doing | ⌘W 在普通标签页无法拦截，只能靠浏览器原生对话框 |
+| B-073 | ⌘W 关闭前二次确认（应用内确认 + 普通标签页的 beforeunload 保护；两个开关默认开） | ux | Owner 2026-08-14 | done | 顺带修 modal 两处真缺陷：点遮罩不 resolve（await 永久挂起）、缺键盘处理；看板「标记完成」补 destructive 防误敲回车批量归档 |
 | B-074 | `ui.css` 的 `.vh-item.is-selected` 仍是老写法（bg-2+3px），且 `Item` 的 `selected` prop 零调用方=死参数——实现或删除 | debt | B-072 发现 | todo | |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
 | B-064 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |

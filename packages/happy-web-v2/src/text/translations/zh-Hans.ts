@@ -289,6 +289,13 @@ export const zhHans: TranslationStructure = {
         boardLlmDescription: '任务看板上的 AI 进展、注意力标记与任务归类由 Happy daemon 生成（本地一次性 haiku 调用，有节流）。默认关闭，不会静默消耗 token。',
         boardLlmHowTo: '在 daemon 机器上配置',
         boardLlmHowToDetail: '在需要分析会话的机器上，把 "boardLlm": true 写入 ~/.happy/settings.json，然后重启该机器上的会话。',
+        // ⌘W 关闭保护（设备本地：快捷键能不能被页面收到，取决于本机是 PWA 还是浏览器标签页）
+        closeGuard: '关闭会话视图',
+        closeGuardDescription: '⌘W（已安装的应用）/ ⌥W（浏览器标签页）只是关闭当前会话视图并回到首页，不会删除或终止会话。在浏览器标签页里 ⌘W 属于浏览器：页面根本收不到这个按键，整个标签页就已经被关掉，只有浏览器自带的对话框能拦住它——那个对话框的文案和样式我们无法定制。',
+        closeViewConfirm: '关闭视图前确认',
+        closeViewConfirmDescription: '当 ⌘W / ⌥W 要关闭当前会话或终端视图时先询问一次；取消后原地不动，焦点回到原处。',
+        closeTabWarning: '离开页面前提醒',
+        closeTabWarningDescription: '当会话或终端视图打开时，让浏览器在关闭或刷新标签页前确认一次。用的是浏览器自带对话框；应用自己主动发起的刷新（自动更新、退出登录）不受影响。',
         // Appearance settings screen
         theme: '主题',
         themeDescription: '选择您喜欢的配色方案',
@@ -643,6 +650,13 @@ export const zhHans: TranslationStructure = {
         autoCopySubtitle: '收到推送时静默写入本机剪贴板；关闭或被浏览器拦截时改为"点击复制"提示',
         sourceMachine: '机器',
         sourceSession: '会话',
+    },
+
+    // ⌘W / ⌥W 关闭视图前的二次确认（app/viewShortcuts.ts）
+    closeView: {
+        confirmTitle: '关闭当前视图？',
+        confirmMessage: '只是关闭视图——会话和终端仍在运行，不会被删除也不会被终止，随时可以从侧栏重新打开。',
+        confirmAction: '关闭视图',
     },
 
     server: {
