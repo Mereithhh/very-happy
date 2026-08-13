@@ -20,10 +20,12 @@ import { activityCache } from "@/app/presence/sessionCache";
 type Conn = { connectionType: string; machineId?: string };
 
 /**
- * Hard cap on ids in ONE terminal-activity frame. The daemon caps live ptys at
- * 24 and only reports terminals it actually tracks, so this is purely a
- * defensive bound on a malformed/hostile frame — it must never let one socket
- * message fan a large payload out to every client of the account.
+ * Hard cap on ids FANNED OUT from one terminal-activity frame. The daemon caps
+ * live ptys at 24 and only reports terminals it actually tracks, so this is
+ * purely a defensive bound on a malformed/hostile frame: one inbound socket
+ * message must never turn into a large payload multiplied by every client of
+ * the account. (The scan itself can't run away either — the inbound frame is
+ * already bounded by socket.io's `maxHttpBufferSize`.)
  */
 const MAX_ACTIVITY_ITEMS = 200;
 
