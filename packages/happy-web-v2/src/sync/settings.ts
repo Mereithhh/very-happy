@@ -119,6 +119,17 @@ export const SettingsSchema = z.object({
         key: z.string(),
         order: z.string(),
     })).describe('Sidebar manual order: row key → fractional order key; rows without an entry render on top'),
+    // Which order the 列表 view renders in. 'recent' (the default) sorts every
+    // row — terminals and chats MIXED — by last activity, newest on top;
+    // 'manual' hands the list back to `sidebarOrder` above. The two are
+    // independent fields on purpose: switching to 'recent' never clears
+    // `sidebarOrder`, so switching back restores the hand-made arrangement
+    // exactly. A drag/move gesture in 'recent' mode flips this to 'manual'
+    // (the gesture IS the manual intent) and materializes the order in one
+    // write. Synced; NO zod .default() (ghost-pending footgun above) — the
+    // default lives in settingsDefaults, and any unknown/missing value is
+    // read as 'recent' (sidebarRecentSort.resolveSidebarSort).
+    sidebarSort: z.enum(['recent', 'manual']).describe('Sidebar 列表 order: recent activity (default) or the manual sidebarOrder'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -204,6 +215,7 @@ export const settingsDefaults: Settings = {
     agentDefaultOverrides: {},
     pinnedRows: [],
     sidebarOrder: [],
+    sidebarSort: 'recent',
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);

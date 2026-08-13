@@ -872,6 +872,8 @@ export const zhHans: TranslationStructure = {
         moveToTop: '移到顶部',
         moveUp: '上移',
         moveDown: '下移',
+        sortByRecent: '按最近活跃排序 · 点击改为手动排序',
+        sortManual: '手动排序 · 点击改为按最近活跃排序',
     },
 
     zen: {

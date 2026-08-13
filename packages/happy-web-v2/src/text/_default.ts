@@ -861,6 +861,10 @@ export const en = {
         moveToTop: 'Move to top',
         moveUp: 'Move up',
         moveDown: 'Move down',
+        // sort-mode switch (列表 view only) — the label states the CURRENT
+        // mode and what a click does, since one icon carries both.
+        sortByRecent: 'Sorted by recent activity — click for manual order',
+        sortManual: 'Manual order — click to sort by recent activity',
     },
 
     zen: {
