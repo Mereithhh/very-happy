@@ -67,22 +67,83 @@ triage（分独立/冲突域）
 - **回滚**：CLI = `npm i -g very-happy-cli@<上一版>` + 重启；web = hw-sg `webapp.prev` 或重发上一 sha；
   server = git revert + 重部署。每批发布信息里写明本批的回滚点。
 - **server 部署后必须 vh-update**（daemon RPC 重注册的已知问题，未根治前是流程项）。
-- **CI 不可用时的本地部署应急路径**（2026-08-14 实用：GitHub 报「近期付款失败或需提高消费上限」→
-  job 直接不给起，与代码无关）。`scripts/ci/deploy-hwsg.sh` 要 `SSH_KEY`/`HWSG_*` 环境变量，本地没有；
-  本机 `ssh hw-sg` 走 ~/.ssh/config 直接可达，所以照脚本的 `deploy_web` 手工跑同样几步即可：
+
+### CI 跑在哪 / 托管分钟口径（2026-08-14 起）
+
+私有仓计费倍率 Linux 1× / Windows 2× / macOS 10×，个人账号月度免费额 2000 分钟。
+2026-08-14 前两天实测烧掉 1711 分钟（额度打穿、Actions 被计费拦停），所以**所有 Linux job
+都迁到 fb-us self-hosted runner**（labels `self-hosted, linux, x64, fb-us`），托管分钟只在
+发版那一刻的 macOS/Windows 矩阵上花。
+
+| workflow | 触发 | 跑在哪 | 计费分钟 |
+|---|---|---|---|
+| `quality.yml` | push main / 所有 PR | fb-us self-hosted，**5 个 job 合并成 1 个** | 0 |
+| `cli-smoke-test.yml` `smoke-linux` | push main / PR（限 `packages/happy-cli/**`）+ 每个 tag | fb-us self-hosted，node 20 + 24 | 0 |
+| `cli-smoke-test.yml` `smoke-hosted` | **只有 tag**（或手动勾 `cross_platform`） | 托管 macOS + Windows × node 20/24 | **~96 / 次** |
+| `deploy-hwsg.yml` | 手动 | fb-us self-hosted | 0 |
+| `publish.yml` | tag `v*` / 手动 | fb-us self-hosted | 0 |
+
+- **每次 push / PR = 0 计费分钟**（改造前 13 分钟/次，push 密集时还叠 102 分钟的跨平台矩阵）。
+- **每次 tag ≈ 96 计费分钟**：macOS 2 格 × ~3 分钟 × 10 = 60，Windows 2 格 × ~9 分钟 × 2 = 36。
+  → **约 20 个 tag/月以内不花钱**。按 2026-08-12/13 那种连发日（8 个 tag / 2 天）会到 768 分钟，
+  仍然是唯一的花钱项；连发日想省就临时关掉跨平台冒烟：
+  `gh variable set SKIP_HOSTED_SMOKE --body 1`（事后 `gh variable delete SKIP_HOSTED_SMOKE`），
+  代价是那几个 tag 的发版信心退回 Linux 级别。长期解法是把 mac-office 也注册成
+  self-hosted runner（macOS 那 60 分钟直接归零，只剩 Windows 36）。
+- quality 合并成 1 个 job 的原因：单 runner 一次只跑一个 job，5 个 job 只会串行排队，
+  并行结构反而把 checkout + install + wire build 重复 5 遍。合并后墙钟 ~13 → ~7 分钟。
+  「哪个 gate 挂了」靠 step 名（`Gate: xxx`）区分，且每个 gate step 带 `if: !cancelled()`，
+  **一个 gate 失败不挡后面的 gate**，一次 run 仍能看到全部门禁结果。
+- 依赖装配靠 fb-us 上**持久化的 pnpm store**（硬链接安装），刻意不用 GitHub 缓存服务
+  （几百 MB 上下行更慢还占配额）。store 疑似脏了就 `pnpm store prune`；工作树本身每次
+  由 `actions/checkout` 的 `clean=true`（`git clean -ffdx`）清干净，不用手动处理。
+  唯一保留 `cache: pnpm` 的地方是托管的 macOS/Windows 矩阵——那里 1 分钟安装 = 10/2 倍计费。
+- fb-us runner 的前置要求：`git` / `ssh` / `ssh-keyscan` / `tar` / `curl`（deploy 有一步 preflight
+  会显式检查并报缺谁）+ 足够磁盘（pnpm store + node tool cache，留 ≥10G）。node 与 pnpm **不用**
+  预装：workflow 里 `actions/setup-node` 先跑（它只靠 runner 内置 node），再 `pnpm/action-setup`
+  ——顺序是刻意的，反过来在没装 node 的机器上会挂。
+- 每个 job 都有 `timeout-minutes`（20-30）：self-hosted 卡死没有天然上限，会永久占住唯一的 worker。
+- **runner 掉线时 job 会永久排队**（不会像托管那样超时）。一条命令切回托管，不要改文件：
   ```bash
-  cd ~/code/github/very-happy && WEB=packages/happy-web-v2 V=$(date +%Y%m%d%H%M)
-  pnpm --filter @slopus/happy-wire build            # wire 的 dist 是 gitignored，必须先建
-  (cd $WEB && rm -rf dist && VH_VERSION=$V pnpm exec vite build)
-  ssh hw-sg 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
-  tar czf - -C $WEB/dist . | ssh hw-sg 'tar xzf - -C /opt/happy/webapp.new'
-  ssh hw-sg 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev \
-    && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new \
-    && docker compose restart happy-server'
-  # 核对：/health=200；首页 main asset 的 content-type 必须是 javascript（HTML-as-JS 是那个一年缓存事故）
+  gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'   # 降级：开始烧托管分钟
+  gh variable delete LINUX_RUNNER                           # 恢复 self-hosted
   ```
-  server 目标同理：`tar czf - -C packages/happy-server sources prisma/migrations | ssh hw-sg 'tar xzf - -C /opt/happy-src/packages/happy-server'` + restart。
-  macOS 的 `tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'` 是 xattr 噪音，不是错误。
+  （4 个 workflow 的 `runs-on` 都是 `fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]')`。
+  排队中的 run 不会自动迁移，切完变量要重跑。）
+- tag 会**并行**触发 `publish.yml` 和跨平台冒烟，**刻意不做 needs 硬依赖**（保留紧急发版通道，
+  和 deploy 一个口径）：所以 npm 上出现新版本 ≠ 跨平台冒烟已绿，对外宣布版本前看一眼那条 run。
+
+### CI 不可用时的本地部署应急路径
+
+触发条件现在是 **fb-us runner 掉线且不想等**（原来的「配额打穿 / 付款失败 → job 直接不给起」
+已经被 self-hosted 化解掉了）。**优先走上面的 `LINUX_RUNNER` 降级**，只有连托管也不想用
+（或 GitHub 整体故障）才手工发。`scripts/ci/deploy-hwsg.sh` 要 `SSH_KEY`/`HWSG_*` 环境变量，本地没有；
+本机 `ssh hw-sg` 走 ~/.ssh/config 直接可达，所以照脚本的 `deploy_web` 手工跑同样几步即可：
+
+```bash
+cd ~/code/github/very-happy && WEB=packages/happy-web-v2 V=$(date +%Y%m%d%H%M)
+pnpm --filter @slopus/happy-wire build            # wire 的 dist 是 gitignored，必须先建
+(cd $WEB && rm -rf dist && VH_VERSION=$V pnpm exec vite build)
+ssh hw-sg 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
+tar czf - -C $WEB/dist . | ssh hw-sg 'tar xzf - -C /opt/happy/webapp.new'
+# rm -rf webapp.prev 必须在 cp 之前：目录已存在时 cp -a 会拷进去（webapp.prev/webapp/…），
+# 回滚材料就永远停在第一次部署那份。备份失败要中止交换，所以整串用 && 串联。
+ssh hw-sg 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev \
+  && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new \
+  && docker compose restart happy-server'
+# 核对两条，缺一不可：
+curl -s -o /dev/null -w '%{http_code}\n' https://happy.mereith.com/health   # 要 200
+M=$(curl -s https://happy.mereith.com/ | grep -oE '/assets/[^"]+\.js' | head -1)
+curl -s -o /dev/null -w '%{content_type}\n' "https://happy.mereith.com$M"   # 必须是 javascript
+```
+
+- 第二条核对是硬性的：happy-server 的静态路由在**启动时**才 glob `/webapp`，交换后不重启
+  会让 `/assets/*` 回落到 index.html 并带 immutable 头 → HTML-as-JS 被缓存一年（真事故）。
+- server 目标同理：`tar czf - -C packages/happy-server sources prisma/migrations | ssh hw-sg 'tar xzf - -C /opt/happy-src/packages/happy-server'` + restart。
+- 改 `.env`（VAPID/邀请码/密钥）只 restart 不生效，要在机器上 `docker compose up -d`。
+- macOS 的 `tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'` 是 xattr 噪音，不是错误。
+- CLI 发不出去时的本地兜底：`pnpm --filter very-happy-cli build && pnpm --filter very-happy-cli pack` 后
+  `npm i -g ./very-happy-cli-*.tgz`（跳过 npm registry，只救本机）。
 
 ## 5. 验收
 

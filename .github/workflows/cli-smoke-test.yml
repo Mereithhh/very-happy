@@ -4,10 +4,32 @@ name: CLI Smoke Test
 # basic subcommands. Cross-platform because the postinstall step
 # (scripts/unpack-tools.cjs) unpacks platform-specific binaries — we want to
 # catch a broken install on Linux/macOS/Windows before publishing.
+#
+# 2026-08-14 成本改造（私有仓计费倍率 Linux 1× / Windows 2× / macOS 10×）：
+# 原来每次 push/PR 都跑 3 系统 × 2 node = 6 格，**单次就吃 102 分钟额度**
+# （ubuntu 6 + windows 18×2 + macOS 6×10），9 次就把月度免费额打穿。现在拆两档：
+#
+#   smoke-linux   每次 push/PR 都跑，只有 Linux（node 20 + 24），跑在 fb-us
+#                 self-hosted runner 上 → **0 计费分钟**。
+#   smoke-hosted  只在**打 tag（发版）**时跑，或手动 workflow_dispatch 勾
+#                 cross_platform；macOS + Windows × node 20/24 = 96 计费分钟/次。
+#                 macOS 必须保留：daemon 实际跑在 macOS（mac-office）。
+#                 Windows 保留：postinstall 真的有 win32 分支（unpack-tools.cjs 的
+#                 x64-win32/arm64-win32、ripgrep_launcher 的 where/rg、difft.exe、
+#                 query_engine-windows.dll.node），不是纯 posix 假设。
+#
+# ⚠️ 两个 job 的 steps 是**刻意重复**的（GitHub 不允许 job 级 `if:` 读 matrix 上下文
+#    ——actionlint 会直接报 "context matrix is not allowed here"，所以没法在一个 matrix
+#    里既混 self-hosted 又按格子跳过）。改其中一个的 steps，必须同步改另一个；
+#    唯一**允许**不同的是 node/pnpm 的装配顺序与缓存（见各 job 内注释）。
+#
+# 注：`paths` 过滤器对 **tag push 不生效**（GitHub 文档明文："Path filters are not
+# evaluated for pushes of tags."），所以打 tag 一定会触发本 workflow，不会被 paths 吃掉。
 
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
     paths:
       - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
@@ -17,32 +39,58 @@ on:
       - 'packages/happy-cli/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
+    inputs:
+      cross_platform:
+        description: 同时跑 macOS + Windows（会消耗托管分钟，约 96 分钟额度）
+        type: boolean
+        default: false
+
+# 单 self-hosted worker：PR 上的旧 run 直接取消，别让唯一的 runner 排队堵住。
+concurrency:
+  group: cli-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
-  smoke-test:
+  # ── 常态档：Linux only，self-hosted，0 计费分钟 ──────────────────────────
+  smoke-linux:
+    name: smoke (linux, node ${{ matrix.node-version }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: [20, 24]
-    runs-on: ${{ matrix.os }}
+    # 降级：runner 掉线时 `gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'`
+    # 切回托管；恢复用 `gh variable delete LINUX_RUNNER`。详见 docs/PROCESS.md §4。
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
+        # 默认 clean=true（git clean -ffdx + reset）——self-hosted 工作目录是复用的，
+        # 靠这一步保证工作树干净（node_modules/dist/*.tgz 都会被清掉）。
         uses: actions/checkout@v4
+
+      # ⚠️ 顺序与下面 smoke-hosted 相反且是刻意的：pnpm/action-setup 默认需要现成的
+      # node/npm，self-hosted 上不能假设系统有 → 先 setup-node（它只用 runner 内置
+      # node 就能跑）。代价是用不了 setup-node 的 `cache: pnpm`，而 self-hosted 本来
+      # 就靠本地持久化 pnpm store，不需要 GitHub 缓存服务。
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
-
       - name: Install dependencies
+        # electron（packages/codium 桌面 spike）的 postinstall 下 ~100MB 二进制，
+        # 冒烟用不到，是已知抖动源 → 跳二进制。
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: pnpm install --frozen-lockfile
 
       - name: Build very-happy-cli
@@ -66,6 +114,10 @@ jobs:
 
       - name: Run very-happy subcommands
         shell: bash
+        # HAPPY_HOME_DIR 指到 job 级 temp：self-hosted 的 HOME 是复用的，别把
+        # ~/.happy 状态留在 runner 上（也让每次冒烟都是"首次运行"语义）。
+        env:
+          HAPPY_HOME_DIR: ${{ runner.temp }}/happy-home
         run: |
           # macOS runner 没有 GNU `timeout`（历史上 macOS 两个矩阵格子因此秒挂），
           # 用 perl alarm 做等价 shim；ubuntu/windows(git-bash) 自带 timeout 不受影响。
@@ -78,4 +130,90 @@ jobs:
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"
           timeout 60 very-happy doctor || { echo "FAIL: doctor"; exit 1; }
+          echo "Smoke test passed on linux (node ${{ matrix.node-version }})"
+
+      - name: Cleanup global install
+        # self-hosted 上 `npm install -g` 的残留会一直留在 runner 里，且下一次
+        # 冒烟就不再是"干净安装"。托管 runner 上这步是无害 no-op。
+        if: always()
+        shell: bash
+        run: npm uninstall -g very-happy-cli || true
+
+  # ── 发版档：只在 tag / 手动勾选时跑，托管 runner（会计费）───────────────
+  smoke-hosted:
+    name: smoke (${{ matrix.os }}, node ${{ matrix.node-version }})
+    # 打 tag 一定跑；手动触发按 cross_platform 输入。
+    # 逃生阀：连发日想省额度 → `gh variable set SKIP_HOSTED_SMOKE --body 1`
+    #（跳过后发版信心降到 Linux 级别，事后记得 `gh variable delete SKIP_HOSTED_SMOKE`）。
+    if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.cross_platform) && vars.SKIP_HOSTED_SMOKE != '1' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+        node-version: [20, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 托管 runner 上 node/npm 是预装的，所以维持 pnpm → setup-node 的顺序，
+      # 好处是能开 `cache: pnpm`：macOS 1 分钟安装 = 10 计费分钟，缓存直接省钱。
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build very-happy-cli
+        run: pnpm --filter very-happy-cli build
+
+      - name: Verify wire is bundled (no external @slopus/happy-wire import)
+        shell: bash
+        run: |
+          if grep -rnE "(import|require|from)[^\n]*['\"]@slopus/happy-wire['\"]" packages/happy-cli/dist; then
+            echo "ERROR: dist still imports @slopus/happy-wire externally; bundle failed." >&2
+            exit 1
+          fi
+          echo "OK: @slopus/happy-wire is inlined into dist."
+
+      - name: Pack + global install (runs postinstall on this platform)
+        shell: bash
+        run: |
+          pnpm --filter very-happy-cli pack --pack-destination packages/happy-cli
+          PKG=$(ls packages/happy-cli/*.tgz)
+          npm install -g "./$PKG"
+
+      - name: Run very-happy subcommands
+        shell: bash
+        env:
+          HAPPY_HOME_DIR: ${{ runner.temp }}/happy-home
+        run: |
+          # macOS runner 没有 GNU `timeout`（历史上 macOS 两个矩阵格子因此秒挂），
+          # 用 perl alarm 做等价 shim；windows(git-bash) 自带 timeout 不受影响。
+          if ! command -v timeout >/dev/null 2>&1; then
+            timeout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          fi
+          echo "very-happy --version"
+          timeout 30 very-happy --version || { echo "FAIL: --version"; exit 1; }
+          echo "very-happy --help"
+          timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
+          echo "very-happy doctor"
+          timeout 60 very-happy doctor || { echo "FAIL: doctor"; exit 1; }
           echo "Smoke test passed on ${{ matrix.os }} (node ${{ matrix.node-version }})"
+
+      - name: Cleanup global install
+        if: always()
+        shell: bash
+        run: npm uninstall -g very-happy-cli || true
