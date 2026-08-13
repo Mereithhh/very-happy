@@ -11,8 +11,12 @@ import {
     seenMapsEqual,
     targetKeyOfPath,
     systemNotificationMatchesKey,
+    shouldStampVisit,
+    shouldStampOnArrival,
+    arrivalStampAt,
     SEEN_MAX_AGE_MS,
     SEEN_MAX_KEYS,
+    ARRIVAL_MAX_FUTURE_MS,
     type SeenMap,
 } from './notificationSeen';
 
@@ -474,5 +478,104 @@ describe('systemNotificationMatchesKey', () => {
         expect(systemNotificationMatchesKey({ data: null }, 's1')).toBe(false);
         expect(systemNotificationMatchesKey({ data: { url: 42 } }, 's1')).toBe(false);
         expect(systemNotificationMatchesKey({ data: { url: '/board' } }, 's1')).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// B-086 — badge counting consistency: the writer's stamp coverage
+// ---------------------------------------------------------------------------
+
+describe('shouldStampVisit (the tracker decision table)', () => {
+    it('dwell-elapsed stamps only a visible page (counted is irrelevant — it is becoming counted)', () => {
+        expect(shouldStampVisit('dwell-elapsed', false, true)).toBe(true);
+        expect(shouldStampVisit('dwell-elapsed', false, false)).toBe(false);
+    });
+
+    it('heartbeat stamps only counted+visible', () => {
+        expect(shouldStampVisit('heartbeat', true, true)).toBe(true);
+        expect(shouldStampVisit('heartbeat', true, false)).toBe(false);
+        expect(shouldStampVisit('heartbeat', false, true)).toBe(false);
+    });
+
+    it('B-086: going hidden stamps a counted visit at that instant', () => {
+        expect(shouldStampVisit('went-hidden', true, false)).toBe(true);
+        // a visit that never counted (dwell not elapsed) writes nothing
+        expect(shouldStampVisit('went-hidden', false, false)).toBe(false);
+        // guard: the event is "went hidden" — a visible page is not it
+        expect(shouldStampVisit('went-hidden', true, true)).toBe(false);
+    });
+
+    it('B-086: pagehide stamps a counted STILL-VISIBLE teardown (tab close)', () => {
+        expect(shouldStampVisit('pagehide', true, true)).toBe(true);
+        // already hidden → the went-hidden stamp covered that instant
+        expect(shouldStampVisit('pagehide', true, false)).toBe(false);
+        expect(shouldStampVisit('pagehide', false, true)).toBe(false);
+    });
+
+    it('route-exit keeps the old rule: counted && visible only', () => {
+        expect(shouldStampVisit('route-exit', true, true)).toBe(true);
+        expect(shouldStampVisit('route-exit', true, false)).toBe(false);
+        expect(shouldStampVisit('route-exit', false, true)).toBe(false);
+    });
+});
+
+describe('B-086 archetype: the going-away stamp cannot eat later arrivals', () => {
+    // The production stray that motivated this: the viewer's last stamp sat
+    // 3.6s BEFORE the turnDone entry's createdAt — the user watched the turn
+    // finish, then closed/hid the tab before the next heartbeat, and no exit
+    // stamp was ever written. The entry stayed unread on every device.
+    it('a stamp at the hide instant retires what arrived while visible…', () => {
+        const tArrive = NOW; // turn finished while the user was looking
+        const tHide = NOW + 5_000; // user backgrounds the tab 5s later
+        const seen = planSeenWrites({ s1: NOW - 60_000 }, ['s1'], tHide)!;
+        expect(isEntryUnread(true, { key: 's1', createdAt: tArrive }, seen)).toBe(false);
+    });
+
+    it('…but NOT what arrives after the tab went hidden', () => {
+        const tHide = NOW;
+        const tArrive = NOW + 3_652; // the real-world gap, ms for ms
+        const seen = planSeenWrites({ s1: NOW - 60_000 }, ['s1'], tHide)!;
+        expect(isEntryUnread(true, { key: 's1', createdAt: tArrive }, seen)).toBe(true);
+    });
+});
+
+describe('shouldStampOnArrival (self-view arrivals)', () => {
+    it('stamps a session arriving for the current visible view', () => {
+        expect(shouldStampOnArrival(true, '/session/s1', '/session/s1', '')).toBe(true);
+    });
+
+    it('hidden page never stamps (backgrounded tab must not eat notifications)', () => {
+        expect(shouldStampOnArrival(false, '/session/s1', '/session/s1', '')).toBe(false);
+    });
+
+    it('a different target never stamps', () => {
+        expect(shouldStampOnArrival(true, '/session/s1', '/session/s2', '')).toBe(false);
+        expect(shouldStampOnArrival(true, '/session/s1', '/board', '')).toBe(false);
+    });
+
+    it('terminals require the tid to match, not just the machine', () => {
+        expect(
+            shouldStampOnArrival(true, '/terminal/m1?tid=t9', '/terminal/m1', '?tid=t9'),
+        ).toBe(true);
+        expect(
+            shouldStampOnArrival(true, '/terminal/m1?tid=t9', '/terminal/m1', '?tid=other'),
+        ).toBe(false);
+    });
+});
+
+describe('arrivalStampAt (server clock skew)', () => {
+    it('an entry created in the (local) past stamps at local now — monotonic', () => {
+        expect(arrivalStampAt(NOW, NOW - 10_000)).toBe(NOW);
+    });
+
+    it('a server createdAt slightly ahead of local now stamps at createdAt, so the stamp actually retires the entry', () => {
+        const createdAt = NOW + 30_000;
+        const at = arrivalStampAt(NOW, createdAt);
+        expect(at).toBe(createdAt);
+        expect(isUnreadBySeen({ key: 's1', createdAt }, { s1: at })).toBe(false);
+    });
+
+    it('a wildly future createdAt is capped, so it cannot swallow later notifications', () => {
+        expect(arrivalStampAt(NOW, NOW + 3 * 60 * 60 * 1000)).toBe(NOW + ARRIVAL_MAX_FUTURE_MS);
     });
 });

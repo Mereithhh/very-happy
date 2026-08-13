@@ -35,6 +35,8 @@
  * fetch failure all fall back to.
  */
 
+import { isSameTarget } from './notificationInbox';
+
 /** target key (session id | `t:<terminalId>`) → last-seen wall clock ms */
 export type SeenMap = Readonly<Record<string, number>>;
 
@@ -162,6 +164,95 @@ export function planSeenWrites(seen: SeenMap, keys: readonly string[], at: numbe
         next[key] = at;
     }
     return next;
+}
+
+// ---------------------------------------------------------------------------
+// Visit stamping rules (the tracker's decision table — pure, so the B-086
+// counting-consistency contract is pinned by tests, not by hook wiring)
+// ---------------------------------------------------------------------------
+
+/** The moments at which useSeenTracker considers writing a seen stamp. */
+export type VisitStampEvent =
+    /** the dwell timer elapsed — the visit starts counting */
+    | 'dwell-elapsed'
+    /** periodic re-stamp while the target stays open */
+    | 'heartbeat'
+    /** the tab just went hidden (visibilitychange → hidden) */
+    | 'went-hidden'
+    /** the page is being torn down (tab close / navigation unload) */
+    | 'pagehide'
+    /** the route effect is cleaning up (in-app navigation away) */
+    | 'route-exit';
+
+/**
+ * Should this event write `lastSeenAt[key] = now`? `counted` = the dwell has
+ * fired for this visit; `visible` = the document is visible at event time.
+ *
+ * The B-086 rows are 'went-hidden' and 'pagehide': a counted visit that ends
+ * by hiding/closing (instead of an in-app route change) previously wrote NO
+ * exit stamp, so anything that arrived since the last heartbeat — e.g. a turn
+ * finishing seconds before the user closed the tab — stayed unread forever.
+ * Stamping AT THE MOMENT of going away is safe by the time model: the stamp
+ * carries that instant, so an entry arriving after it (`createdAt > stamp`)
+ * remains unread — a backgrounded tab still can't eat later notifications.
+ */
+export function shouldStampVisit(
+    event: VisitStampEvent,
+    counted: boolean,
+    visible: boolean,
+): boolean {
+    switch (event) {
+        case 'dwell-elapsed':
+            return visible; // becoming counted IS the stamp
+        case 'heartbeat':
+            return counted && visible;
+        case 'went-hidden':
+            return counted && !visible;
+        case 'pagehide':
+            // if visibilitychange(hidden) fired first, that stamp already
+            // covered this instant — only stamp a still-visible teardown
+            return counted && visible;
+        case 'route-exit':
+            // leaving while hidden is a programmatic navigation in a
+            // background tab, not a human reading anything (unchanged rule)
+            return counted && visible;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Arrival stamping (B-086's other half — see seenOnArrival.ts for the wiring)
+// ---------------------------------------------------------------------------
+
+/** how far past local now an arrival stamp may reach (server clock skew cap) */
+export const ARRIVAL_MAX_FUTURE_MS = 120_000;
+
+/**
+ * Pure: does an entry arriving for `href` count as already-seen right now?
+ * True iff the document is visible AND the entry's target is the current
+ * view — the read-state twin of the chime's self-view suppression.
+ */
+export function shouldStampOnArrival(
+    visible: boolean,
+    href: string,
+    currentPath: string,
+    currentSearch: string,
+): boolean {
+    return visible && isSameTarget(href, currentPath, currentSearch);
+}
+
+/**
+ * Pure: the timestamp for an arrival stamp. At least the entry's createdAt
+ * (so the stamp actually retires it under `createdAt > lastSeenAt` — feed
+ * items carry SERVER time, which may sit ahead of this client's clock), at
+ * least local now, and at most now + cap (a wildly skewed server must not
+ * push lastSeenAt far enough forward to swallow later notifications).
+ */
+export function arrivalStampAt(
+    now: number,
+    createdAt: number,
+    maxFutureMs: number = ARRIVAL_MAX_FUTURE_MS,
+): number {
+    return Math.max(now, Math.min(createdAt, now + maxFutureMs));
 }
 
 /**

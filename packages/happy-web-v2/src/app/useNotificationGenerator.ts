@@ -28,6 +28,7 @@ import {
 } from '@/sync/notificationInbox';
 import { appendLocalEntries } from '@/sync/localNotificationStore';
 import { maybePlayNotificationSound } from '@/sync/notificationChime';
+import { stampSeenOnArrival } from '@/sync/seenOnArrival';
 import { installAudioUnlock } from '@/utils/chimes';
 
 export function useNotificationGenerator(): void {
@@ -48,6 +49,10 @@ export function useNotificationGenerator(): void {
         if (events.length === 0) return;
         const appended = appendLocalEntries(events);
         for (const e of appended) {
+            // B-086: an event for the target currently on screen is already
+            // seen — stamp it immediately so the badge never contradicts the
+            // self-view (the read-state twin of the chime's self-suppression).
+            stampSeenOnArrival(e.key, e.href, e.createdAt);
             maybePlayNotificationSound({
                 event: soundEventOfLocalKind(e.kind),
                 key: e.key,

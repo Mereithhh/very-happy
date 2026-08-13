@@ -21,6 +21,15 @@
  *     that arrive DURING the visit (you're staring at the session — the chime
  *     already suppresses itself for the self-view, so the badge shouldn't
  *     contradict it), without leaving the "read" edge at the moment of arrival.
+ *     (Arrivals for the self-view are additionally stamped instantly at the
+ *     producer — seenOnArrival.ts — so the badge doesn't wait a heartbeat.)
+ *  4. GOING AWAY still stamps (B-086) — a counted visit that ends by the tab
+ *     going hidden or being torn down (pagehide) writes one last stamp AT THAT
+ *     MOMENT. Before this, only an in-app route change wrote the exit stamp,
+ *     so "watch the turn finish, close the tab" left that notification unread
+ *     forever on every device. The stamp carries the going-away instant, so
+ *     anything arriving later stays unread — hidden tabs still can't eat
+ *     notifications. The decision table is pure: shouldStampVisit.
  *
  * Writes are monotonic per key (planSeenWrites) and the KV push is debounced,
  * so the heartbeat costs at most one small blob write per interval per tab.
@@ -32,7 +41,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
-import { targetKeyOfPath } from '@/sync/notificationSeen';
+import { shouldStampVisit, targetKeyOfPath } from '@/sync/notificationSeen';
 import { setSeenCredentials, useNotificationSeen } from '@/sync/notificationSeenStore';
 import { dismissSystemNotificationsFor } from '@/sync/systemNotificationDismiss';
 
@@ -94,25 +103,42 @@ export function useSeenTracker(): void {
             if (dwellTimer || heartbeat) return;
             dwellTimer = setTimeout(() => {
                 dwellTimer = null;
-                if (!isVisible()) return;
+                if (!shouldStampVisit('dwell-elapsed', counted, isVisible())) return;
                 counted = true;
                 mark();
                 // Clear this device's OS banners for the target we just opened.
                 void dismissSystemNotificationsFor(key);
                 heartbeat = setInterval(() => {
-                    if (isVisible()) mark();
+                    if (shouldStampVisit('heartbeat', counted, isVisible())) mark();
                 }, HEARTBEAT_MS);
             }, DWELL_MS);
         };
 
         const onVisibility = () => {
-            if (isVisible()) start();
+            const visible = isVisible();
+            // B-086: the instant a counted visit goes hidden is the last
+            // moment the user was really looking — stamp it, or a turn that
+            // finished just before backgrounding stays unread forever.
+            if (shouldStampVisit('went-hidden', counted, visible)) mark();
+            if (visible) start();
             else stop();
+        };
+
+        // B-086: tab close / unload never runs the effect cleanup, so a
+        // counted, still-visible visit gets its exit stamp here instead.
+        // The KV push is debounced and may not beat the teardown; the stamp
+        // still lands in the local mirror synchronously and is published on
+        // this device's next refresh() (the store's offline-reads path).
+        const onPageHide = () => {
+            if (shouldStampVisit('pagehide', counted, isVisible())) mark();
         };
 
         if (isVisible()) start();
         if (typeof document !== 'undefined') {
             document.addEventListener('visibilitychange', onVisibility);
+        }
+        if (typeof window !== 'undefined') {
+            window.addEventListener('pagehide', onPageHide);
         }
 
         return () => {
@@ -120,12 +146,15 @@ export function useSeenTracker(): void {
             if (typeof document !== 'undefined') {
                 document.removeEventListener('visibilitychange', onVisibility);
             }
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('pagehide', onPageHide);
+            }
             // Exit stamp: everything that arrived during a visit that counted
             // is read too. A route we bounced through (dwell never fired) is
             // deliberately left alone, and so is a route we're leaving while
             // hidden (a programmatic navigation in a background tab is not a
             // human reading anything).
-            if (counted && isVisible()) mark();
+            if (shouldStampVisit('route-exit', counted, isVisible())) mark();
         };
     }, [key]);
 }

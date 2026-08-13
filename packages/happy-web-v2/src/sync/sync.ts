@@ -57,6 +57,7 @@ import { FeedItem, FeedBody } from './feedTypes';
 import { decryptNotificationEnc } from './encryption/notificationDecrypt';
 import { maybeShowNotification } from './webNotifications';
 import { maybePlayNotificationSound } from './notificationChime';
+import { stampSeenOnArrival } from './seenOnArrival';
 import { soundEventOfNotifType } from './notificationInbox';
 import { dispatchKvChanges } from './kvUpdates';
 import { UserProfile } from './friendTypes';
@@ -2765,6 +2766,15 @@ class Sync {
             if (feedItem.body && feedItem.body.kind === 'notification') {
                 notifyUnreadMessage();
                 this.maybeRaiseWebNotification(feedItem.body);
+                // B-086: a notification for the session currently on screen is
+                // already seen — stamp its target immediately so the unread
+                // badge never contradicts the self-view (createdAt is server
+                // time; the stamp helper handles bounded clock skew).
+                stampSeenOnArrival(
+                    feedItem.body.sessionId,
+                    `/session/${feedItem.body.sessionId}`,
+                    feedItem.createdAt,
+                );
                 // Chime (independent of the browser-Notification permission and
                 // of decryption — the type/session ride in plaintext). The gate
                 // handles prefs, quiet hours, self-view and the cross-lane
