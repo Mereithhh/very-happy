@@ -3,7 +3,8 @@ import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronLeft, Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
+import { Pencil, ListPlus, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import { apiSocket } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
@@ -1222,11 +1223,7 @@ export function WebTerminalScreen() {
   return (
     <div className="term-screen" ref={screenRef}>
       <header className="term-header">
-        {!isDesktop && (
-          <button className="term-back" onClick={() => navigate('/')} aria-label="back">
-            <ChevronLeft size={18} />
-          </button>
-        )}
+        <BackButton />
         <button className="term-title" onClick={onRename} title={t('common.rename')}>
           <span className="term-title-text">{title}</span>
           <Pencil size={13} className="term-title-edit" />

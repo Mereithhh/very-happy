@@ -1,10 +1,10 @@
 /**
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, connection dot,
- * and a mobile back button.
+ * and the global back button.
  */
 import { useState } from 'react';
-import { ArrowLeft, Check, FolderTree, Pencil, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Check, FolderTree, Pencil, X } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
 import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
@@ -24,17 +24,14 @@ function connectionStatus(presence: 'online' | number | undefined, socketStatus:
 
 export function ChatHeader({
     sessionId,
-    onBack,
     filesOpen,
     onToggleFiles,
 }: {
     sessionId: string;
-    onBack?: () => void;
     filesOpen?: boolean;
     onToggleFiles?: () => void;
 }) {
     const { t } = useTranslation();
-    const navigate = useNavigate();
     const session = useSession(sessionId);
     const socketStatus = useSocketStatus();
     const [editing, setEditing] = useState(false);
@@ -78,16 +75,7 @@ export function ChatHeader({
 
     return (
         <header className="ch">
-            {(onBack || true) && (
-                <button
-                    type="button"
-                    className="ch-back"
-                    onClick={() => (onBack ? onBack() : navigate('/'))}
-                    aria-label={t('common.back')}
-                >
-                    <ArrowLeft size={18} />
-                </button>
-            )}
+            <BackButton />
             <div className="ch-main">
                 {editing ? (
                     <div className="ch-rename">

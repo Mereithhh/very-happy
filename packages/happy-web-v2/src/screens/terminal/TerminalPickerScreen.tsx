@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { TerminalSquare, Plus, ChevronLeft } from 'lucide-react';
+import { TerminalSquare, Plus } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useIsDesktop } from '@/app/useMediaQuery';
 
 function machineLabel(m: any): string {
   return m?.metadata?.displayName || m?.metadata?.host || m?.id?.slice(0, 8) || 'machine';
@@ -17,7 +17,6 @@ export function TerminalPickerScreen() {
   const createTerminal = useTerminalSessions((s) => s.create);
   const terminals = useTerminalSessions((s) => s.terminals);
   const { t } = useTranslation();
-  const isDesktop = useIsDesktop();
 
   const openNew = (machineId: string, name: string) => {
     const term = createTerminal(machineId, name);
@@ -28,13 +27,11 @@ export function TerminalPickerScreen() {
 
   return (
     <div className="picker">
-      {!isDesktop && (
-        <header className="term-header">
-          <button className="term-back" onClick={() => navigate('/')}>
-            <ChevronLeft size={18} /> {t('common.back')}
-          </button>
-        </header>
-      )}
+      {/* header is just the back row now — shown on every width, like every
+          other screen's back control (it hides itself at the root anyway) */}
+      <header className="term-header">
+        <BackButton />
+      </header>
       <div style={{ padding: 'var(--sp-6)', overflowY: 'auto', flex: 1 }}>
         <h2 style={{ marginTop: 0 }}>{t('newSessionModal.terminalTitle')}</h2>
         {machines.length === 0 ? (

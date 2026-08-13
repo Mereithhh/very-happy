@@ -134,3 +134,31 @@ pre,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* ── global back control (see app/BackButton.tsx) ───────────────────────────
+   One appearance for every header's back arrow. Lives in base.css on purpose:
+   the control is dropped into headers that each own a stylesheet (chat /
+   terminal / board / settings), and the point of the unification is that they
+   cannot drift apart again. Tokens only, so both themes follow. */
+.vh-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.vh-back:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+/* touch: finger-sized target, inherited from the old .ch-back rule */
+@media (pointer: coarse) {
+  .vh-back {
+    width: 40px;
+    height: 40px;
+  }
+}

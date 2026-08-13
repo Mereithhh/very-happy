@@ -9,9 +9,9 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
-import { ChevronLeft, Play, Check, Server } from 'lucide-react';
+import { Play, Check, Server } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import { ItemList, ItemGroup, Item, Spinner } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
@@ -27,12 +27,10 @@ function Page({ children }: { children: ReactNode }) {
     );
 }
 
-function Header({ title, onBack }: { title: string; onBack: () => void }) {
+function Header({ title }: { title: string }) {
     return (
         <div className="set-header">
-            <button type="button" className="set-header__back" onClick={onBack} aria-label="Back">
-                <ChevronLeft size={20} />
-            </button>
+            <BackButton />
             <div className="set-header__titles">
                 <span className="set-header__title">{title}</span>
             </div>
@@ -46,7 +44,6 @@ type VoicesState =
     | { kind: 'unavailable' };
 
 export function VoiceSettings() {
-    const navigate = useNavigate();
     const { t } = useTranslation();
     const { credentials } = useAuth();
 
@@ -89,7 +86,7 @@ export function VoiceSettings() {
 
     return (
         <Page>
-            <Header title={t('settingsVoice.title')} onBack={() => navigate('/settings')} />
+            <Header title={t('settingsVoice.title')} />
             <ItemList>
                 <ItemGroup title={t('settingsVoice.voice')}>
                     {voicesState.kind === 'loading' && (
