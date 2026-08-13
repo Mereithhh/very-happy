@@ -89,7 +89,8 @@
 | B-080 | 长期盲区已照出：happy-server 测试此前只在 macOS 跑过、生产在 Linux——迁 CI 后首次 Linux 运行即暴露 voiceRoutes S1 挂死（fastify 测试 app 需 forceCloseConnections） | debt | CI 迁移副产物 | done | 规则：server 侧真 socket/进程/fs 语义的测试以 Linux 为准 |
 | B-076 | 侧栏「最近活跃」自动排序 disable（Owner 实报：tab1/tab2 随活跃互换位置，⌘数字快捷键不稳定——自动排序与位置型快捷键原则冲突）：resolveSidebarSort 恒 manual + 隐藏切换按钮；机制保留（B-070/067 的实现与设置字段都在），要恢复翻一个 flag | ux | Owner 实报 2026-08-14 | done | 固定序=手动拖拽记录，无记录的新行按创建时间新在上 |
 | B-077 | 通知浮层出屏（B-065 铃铛移底部的遗留：浮层仍向下弹）——下半屏锚点自动向上翻（data-up + --nc-bottom，max-height 同步换算） | bug | Owner 实报 2026-08-14 | done | |
-| B-078 | 中文音色：Settings→Voice 内置 ElevenLabs Voice Library 浏览（默认中文筛选）+ 试听 + 一键添加到账号（自动选中）；server 代理 shared-voices 搜索与 add 端点 | feat | Owner 2026-08-14 | doing | 任何音色本可说中文（flash 多语言），本项解决「地道中文嗓音」 |
+| B-081 | 中文音色：Settings→Voice 内置 ElevenLabs Voice Library 浏览（默认中文筛选）+ 试听 + 一键添加到账号（自动选中）；server 代理 shared-voices 搜索与 add 端点 | feat | Owner 2026-08-14 | doing | 任何音色本可说中文（flash 多语言），本项解决「地道中文嗓音」；原登记 B-078 撞号改号 |
+| B-082 | 机器设置入口：Settings→机器 列表页（在线状态+点击进 /machine/:id 改名/开会话）——机器详情页与 displayName 改名功能一直存在但全库零导航入口（孤岛页）；appBack 映射同步修正 | ux | Owner 2026-08-14 | done | 改名写 metadata.displayName 全端同步（机制原有） |
 | B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
 | B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
 | B-063 | 调度器工具纪律做实（Owner：meta 会话工作方式/工具面应不同于普通会话）：assistant 变体 SDK 级硬禁 Bash/Edit/Write/MultiEdit/NotebookEdit（per-message 覆盖只能加严不能解禁）+ 新 MCP 工具 journal_append 作为日志写入正道 + CLAUDE.md 工具边界声明 | feat | Owner 2026-08-13 | done | OpenClaw 调度器纪律；保留 Read/Grep/Glob/web/Task |

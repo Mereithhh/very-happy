@@ -9,6 +9,7 @@ import {
   Bookmark,
   Bell,
   Volume2,
+  HardDrive,
   BarChart3,
   Stethoscope,
   LogOut,
@@ -101,6 +102,7 @@ import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/
 import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
+import { MachinesSettings } from './MachinesSettings';
 import { CodeView } from '@/screens/session/CodeView';
 import './settings.css';
 
@@ -234,6 +236,13 @@ function Overview() {
             left={<Volume2 size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/voice')}
+          />
+          <Item
+            title={t('settingsMachines.title')}
+            subtitle={t('settingsMachines.subtitle')}
+            left={<HardDrive size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/settings/machines')}
           />
           <Item
             title={t('settings.usage')}
@@ -1982,6 +1991,7 @@ export function SettingsRoutes() {
       <Route path="notifications" element={<Notifications />} />
       <Route path="channels" element={<Channels />} />
       <Route path="voice" element={<VoiceSettings />} />
+      <Route path="machines" element={<MachinesSettings />} />
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />

@@ -1017,6 +1017,15 @@ export const zhHans: TranslationStructure = {
         expandSidebar: '展开侧边栏',
     },
 
+    settingsMachines: {
+        title: '机器',
+        subtitle: '改名、开会话、看最近路径',
+        listTitle: '已知机器',
+        footer: '点一台机器可以改名（名字全端同步）或在那台机器上开会话。',
+        empty: '还没有机器——在一台机器上跑 very-happy 即可注册。',
+        online: '在线',
+        offline: '离线',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: '语音',

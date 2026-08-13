@@ -28,8 +28,8 @@ describe('backParentPath', () => {
     ['/terminal/m1', '', null, '/'],
     ['/terminal/m1', '?tid=t1', null, '/'],
     ['/terminal/m1', '?tid=t1', 'board', '/board'],
-    ['/machine/m1', '', null, '/settings/diagnostics'],
-    ['/machine/m1', '', 'board', '/settings/diagnostics'], // IA wins over origin
+    ['/machine/m1', '', null, '/settings/machines'],
+    ['/machine/m1', '', 'board', '/settings/machines'], // IA wins over origin
     ['/settings', '', null, '/'],
     ['/settings/', '', null, '/'],
     ['/settings/appearance', '', null, '/settings'],
@@ -86,7 +86,7 @@ describe('resolveBackTarget', () => {
     ).toEqual({ kind: 'path', to: '/' });
     expect(
       resolveBackTarget({ pathname: '/machine/m1', search: '', depth: 0, origin: null }),
-    ).toEqual({ kind: 'path', to: '/settings/diagnostics' });
+    ).toEqual({ kind: 'path', to: '/settings/machines' });
     expect(
       resolveBackTarget({ pathname: '/board', search: '', depth: 0, origin: 'board' }),
     ).toEqual({ kind: 'path', to: '/' });

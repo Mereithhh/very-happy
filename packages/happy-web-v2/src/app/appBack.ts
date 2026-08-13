@@ -91,7 +91,7 @@ export function backParentPath(
   if (p === '/terminal') return '/'; // the picker is a chooser, not a hub child
   if (p.startsWith('/terminal/')) return hub;
   // Machines are only listed inside Settings → Diagnostics.
-  if (p.startsWith('/machine/')) return '/settings/diagnostics';
+  if (p.startsWith('/machine/')) return '/settings/machines';
   if (p === '/settings') return '/';
   if (p.startsWith('/settings/')) return '/settings';
   return '/';

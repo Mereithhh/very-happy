@@ -1011,6 +1011,15 @@ export const en = {
         expandSidebar: 'Expand sidebar',
     },
 
+    settingsMachines: {
+        title: 'Machines',
+        subtitle: 'Rename machines, spawn sessions, browse recent paths',
+        listTitle: 'Known machines',
+        footer: 'Tap a machine to rename it (the name syncs to every device) or start a session there.',
+        empty: 'No machines yet — run very-happy on a machine to register it.',
+        online: 'online',
+        offline: 'offline',
+    },
     settingsVoice: {
         // Voice settings page (web v2, B-051 assistant TTS)
         title: 'Voice',
