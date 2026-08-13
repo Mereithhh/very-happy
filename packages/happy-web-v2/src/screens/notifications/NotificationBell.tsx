@@ -61,15 +61,20 @@ export function NotificationBell({ className }: { className?: string }) {
     const { entries, unreadCount, markEntryRead, markAllRead } = useInbox();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
-    const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+    const [anchor, setAnchor] = useState<{ top: number | null; bottom: number | null; left: number } | null>(null);
     const btnRef = useRef<HTMLButtonElement | null>(null);
 
     const toggle = useCallback(() => {
         setOpen((was) => {
             if (!was && btnRef.current && typeof window !== 'undefined') {
                 const r = btnRef.current.getBoundingClientRect();
+                // The bell lives in the sidebar FOOTER now (B-065): a panel
+                // dropped downward from there overflows the screen edge. Flip
+                // upward whenever the bell sits in the lower half.
+                const flipUp = r.bottom > window.innerHeight / 2;
                 setAnchor({
-                    top: r.bottom + 8,
+                    top: flipUp ? null : r.bottom + 8,
+                    bottom: flipUp ? window.innerHeight - r.top + 8 : null,
                     left: Math.max(8, Math.min(r.left, window.innerWidth - PANEL_W - 8)),
                 });
             }
@@ -123,7 +128,12 @@ export function NotificationBell({ className }: { className?: string }) {
                             className="nc-panel"
                             role="dialog"
                             aria-label={t('notifications.inboxTitle')}
-                            style={anchor ? ({ '--nc-top': `${anchor.top}px`, '--nc-left': `${anchor.left}px` } as React.CSSProperties) : undefined}
+                            data-up={anchor?.bottom != null || undefined}
+                            style={anchor ? ({
+                                ...(anchor.top != null ? { '--nc-top': `${anchor.top}px` } : {}),
+                                ...(anchor.bottom != null ? { '--nc-bottom': `${anchor.bottom}px` } : {}),
+                                '--nc-left': `${anchor.left}px`,
+                            } as React.CSSProperties) : undefined}
                         >
                             <header className="nc-head">
                                 <span className="nc-head-title">{t('notifications.inboxTitle')}</span>

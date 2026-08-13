@@ -72,6 +72,12 @@
   box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
+/* bell in the sidebar footer (B-065) → panel opens UPWARD from the button */
+.nc-panel[data-up='true'] {
+  top: auto;
+  bottom: var(--nc-bottom, 56px);
+  max-height: min(520px, calc(100vh - var(--nc-bottom, 56px) - 16px));
+}
 
 .nc-head {
   display: flex;
