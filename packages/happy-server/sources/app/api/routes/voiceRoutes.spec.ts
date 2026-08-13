@@ -51,7 +51,12 @@ function sleep(ms: number) {
 }
 
 async function startApp(): Promise<{ app: Fastify; base: string }> {
-    const app = fastify();
+    // forceCloseConnections: on Linux, undici keeps the test client's
+    // keep-alive/streaming sockets pooled (reader.cancel() returns the
+    // connection instead of destroying it), so a plain close() waits on them
+    // FOREVER — deterministic 30s hook burn on any Linux runner while macOS
+    // passes. This is fastify's official switch for exactly that.
+    const app = fastify({ forceCloseConnections: true });
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>() as unknown as Fastify;
