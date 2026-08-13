@@ -25,15 +25,25 @@
   background: var(--bg-1);
 }
 
-/* Files panel: right sidebar on desktop. */
+/* Files panel: right sidebar on desktop. Width is draggable on fine pointers
+   (inline style from localSettings.filesPanelWidth, shared with the terminal
+   file browser — B-088); the CSS width is the no-inline-style fallback. */
 .sd-files {
   flex: none;
   width: 380px;
-  max-width: 42vw;
+  max-width: 60vw; /* belt: a width stored on a big monitor can't crush the chat */
   border-left: 1px solid var(--line);
   background: var(--bg-1);
   display: flex;
   min-height: 0;
+}
+.sd-files-handle {
+  flex: none;
+  width: 6px; /* visuals come from .app-resize-handle (layout.css) */
+}
+/* the handle's 2px line IS the seam — a border-left too would double it */
+.sd-files-handle + .sd-files {
+  border-left: none;
 }
 .sd-files-scrim {
   display: none;

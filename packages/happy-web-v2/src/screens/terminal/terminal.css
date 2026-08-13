@@ -333,23 +333,62 @@
   pointer-events: none;
 }
 
-/* ── File browser drawer (fs-list / fs-read) ─────────────────────────────────
-   Overlay on the right — intentionally NOT an inline sidebar: resizing the
-   terminal host would fire the whole refit → resize-RPC → tmux-reflow chain.
-   Same responsive shape as the session page's .sd-files. */
+/* ── File browser (fs-list / fs-read) ────────────────────────────────────────
+   Desktop (fine pointer, >860px): an inline SPLIT inside .term-mid — the
+   terminal yields width instead of being covered (B-088), and the divider is
+   draggable (width persisted in localSettings.filesPanelWidth, shared with the
+   session FilesPanel). The width change rides the existing ResizeObserver →
+   scheduleFit → fit + resize-RPC chain; during a handle drag refits are held
+   and run once on release (see WebTerminalScreen filesDragHoldRef).
+   Coarse pointers keep the old floating drawer; narrow viewports the full
+   overlay — both via .term-mid{display:contents} so the terminal stays a
+   direct flex child of .term-screen (the mobile keyboard maxHeight math on
+   .term-host depends on that column geometry). */
+.term-mid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+.term-host {
+  min-width: 0; /* row child: let the split shrink the terminal */
+}
+.term-files-handle {
+  flex: none;
+  width: 6px; /* visuals come from .app-resize-handle (layout.css) */
+}
+/* the handle's 2px line IS the seam — a border-left too would double it */
+.term-files-handle + .term-files {
+  border-left: none;
+}
 .term-files {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 380px;
-  max-width: 42vw;
+  flex: none;
+  width: 380px; /* fallback; the dragged width rides in as an inline style */
+  max-width: 60vw; /* belt: a width stored on a big monitor can't crush the terminal */
   border-left: 1px solid var(--line);
   background: var(--bg-1);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  z-index: 60;
+}
+/* Coarse pointer (any width): keep the pre-B-088 floating drawer — no split,
+   no refit chain, no drag handle. */
+@media (pointer: coarse) {
+  .term-mid {
+    display: contents;
+  }
+  .term-files-handle {
+    display: none;
+  }
+  .term-files {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 380px;
+    max-width: 42vw;
+    z-index: 60;
+  }
 }
 .term-files-head {
   flex: none;
@@ -370,12 +409,21 @@
 .term-files-scrim {
   display: none;
 }
-/* Mobile / narrow: full-screen overlay + scrim (matches .sd-files). */
+/* Mobile / narrow: full-screen overlay + scrim (matches .sd-files). Comes
+   AFTER the coarse block so narrow touch devices get the full overlay. */
 @media (max-width: 860px) {
+  .term-mid {
+    display: contents;
+  }
+  .term-files-handle {
+    display: none;
+  }
   .term-files {
+    position: fixed;
     inset: 0;
     width: 100%;
     max-width: 100%;
+    z-index: 60;
   }
   .term-files-scrim {
     display: block;

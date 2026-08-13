@@ -22,7 +22,8 @@ import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
-import { useIsDesktop } from '@/app/useMediaQuery';
+import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
+import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
@@ -175,11 +176,31 @@ export function WebTerminalScreen() {
   const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
-  // File browser drawer (fs-list / fs-read RPCs). Overlay, not an inline
-  // sidebar — opening it must NOT resize the terminal (a refit would trigger
-  // the whole rows-change → resize-RPC → tmux-reflow chain for nothing).
+  // File browser drawer (fs-list / fs-read RPCs). Desktop (fine pointer,
+  // >860px): an inline SPLIT — the terminal yields width instead of being
+  // covered (B-088; the old always-overlay is kept on touch/narrow where the
+  // drawer is a full/floating overlay anyway). Opening/closing/drag-resizing
+  // the split changes the terminal container's width, so it rides the existing
+  // ResizeObserver → scheduleFit → fit + terminal-resize RPC chain; during a
+  // HANDLE DRAG that chain is suppressed (filesDragHoldRef) and exactly one
+  // fit runs on release — per-frame refits re-ran the whole fit → resize-RPC →
+  // tmux-reflow chain every mousemove (the historical first-open judder).
   // Mounted only while open, so FsBrowser picks up the freshest pushed cwd.
   const [filesOpen, setFilesOpen] = useState(false);
+  // Split mode matches the CSS: fine pointer AND >860px (see terminal.css
+  // .term-mid / .term-files media rules — coarse or narrow keep the overlay).
+  const filesSplit = useMediaQuery('(min-width: 861px) and (pointer: fine)');
+  const filesDragHoldRef = useRef(false);
+  // Bridge the effect-local scheduleFit out to the drag-release handler (same
+  // pattern as sendInputRef).
+  const scheduleFitRef = useRef<(() => void) | null>(null);
+  const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth({
+    onDragStart: () => { filesDragHoldRef.current = true; },
+    onDragEnd: () => {
+      filesDragHoldRef.current = false;
+      scheduleFitRef.current?.();
+    },
+  });
   // Mobile select-mode: touch has one gesture, and by default we spend it on
   // scrolling (drag → synthetic wheel). Toggling this hands the gesture back to
   // the browser so the OS long-press text selection works on the DOM-rendered
@@ -446,6 +467,9 @@ export function WebTerminalScreen() {
     let fitRaf = 0;
     const kbStabilizer = createViewportStabilizer({ onStable: () => kbStableFit() });
     const scheduleFit = () => {
+      // Files-handle drag in flight: hold refits (see filesDragHoldRef above);
+      // the drag-end callback runs one scheduleFit after release.
+      if (filesDragHoldRef.current) return;
       if (kbStabilizer.pending()) return;
       if (fitRaf) cancelAnimationFrame(fitRaf);
       fitRaf = requestAnimationFrame(() => {
@@ -453,6 +477,7 @@ export function WebTerminalScreen() {
         doFit();
       });
     };
+    scheduleFitRef.current = scheduleFit;
     const ro = new ResizeObserver(scheduleFit);
     ro.observe(mount);
     window.addEventListener('resize', scheduleFit);
@@ -1167,6 +1192,7 @@ export function WebTerminalScreen() {
       }
       writeHoldRef.current = null;
       sendInputRef.current = null;
+      scheduleFitRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();
       if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });
@@ -1322,9 +1348,48 @@ export function WebTerminalScreen() {
           </button>
         </div>
       </header>
-      <div ref={hostRef} className={`term-host${selectMode ? ' is-selecting' : ''}`}>
-        {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
-        <div ref={innerRef} className="term-host-inner" />
+      {/* term-mid: desktop (fine pointer, wide) = flex ROW so the file browser
+          splits the width with the terminal (B-088); coarse/narrow viewports
+          set it to display:contents (CSS) so the terminal stays a direct flex
+          child of .term-screen — the mobile keyboard-avoidance maxHeight math
+          on .term-host depends on that column geometry. */}
+      <div className="term-mid">
+        <div ref={hostRef} className={`term-host${selectMode ? ' is-selecting' : ''}`}>
+          {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
+          <div ref={innerRef} className="term-host-inner" />
+        </div>
+        {filesOpen && machineId && (
+          <>
+            {/* Scrim only materializes on narrow viewports (CSS) — desktop keeps
+                the terminal interactive next to the browser, like sd-files. */}
+            <div className="term-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
+            {filesSplit && (
+              <div
+                className="app-resize-handle term-files-handle"
+                onMouseDown={onFilesHandleDown}
+                role="separator"
+                aria-orientation="vertical"
+              />
+            )}
+            <aside className="term-files" style={filesSplit ? { width: filesWidth } : undefined}>
+              <div className="term-files-head">
+                <span className="term-files-title">{t('session.chat.files')}</span>
+                <button
+                  type="button"
+                  className="sb-icon-btn"
+                  onClick={() => setFilesOpen(false)}
+                  aria-label={t('session.chat.closeFiles')}
+                  title={t('session.chat.closeFiles')}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {/* Start where the terminal lives: the pushed tmux pane cwd; a
+                  terminal without one (old daemon push) starts at home. */}
+              <FsBrowser machineId={machineId} initialPath={meta?.cwd || '~'} />
+            </aside>
+          </>
+        )}
       </div>
       {IS_COARSE_POINTER && !selectMode && (
         <div className="term-bottombars" ref={bottomBarsRef}>
@@ -1400,30 +1465,6 @@ export function WebTerminalScreen() {
         </div>
       )}
       {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
-      {filesOpen && machineId && (
-        <>
-          {/* Scrim only materializes on narrow viewports (CSS) — desktop keeps
-              the terminal interactive next to the drawer, like sd-files. */}
-          <div className="term-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
-          <aside className="term-files">
-            <div className="term-files-head">
-              <span className="term-files-title">{t('session.chat.files')}</span>
-              <button
-                type="button"
-                className="sb-icon-btn"
-                onClick={() => setFilesOpen(false)}
-                aria-label={t('session.chat.closeFiles')}
-                title={t('session.chat.closeFiles')}
-              >
-                <X size={16} />
-              </button>
-            </div>
-            {/* Start where the terminal lives: the pushed tmux pane cwd; a
-                terminal without one (old daemon push) starts at home. */}
-            <FsBrowser machineId={machineId} initialPath={meta?.cwd || '~'} />
-          </aside>
-        </>
-      )}
     </div>
   );
 }

@@ -27,6 +27,11 @@ export const LocalSettingsSchema = z.object({
     // Desktop sidebar width override (px) set by dragging the divider. null = use
     // the responsive default. Per-device (local).
     sidebarWidth: z.number().nullable().describe('User-dragged desktop sidebar width in px (null = responsive default)'),
+    // Files-panel width override (px) set by dragging its divider — shared by
+    // BOTH hosts (session FilesPanel sidebar + terminal file browser, B-088).
+    // null = responsive default. Per-device (local) like sidebarWidth: panel
+    // width is a screen-geometry preference, not account state.
+    filesPanelWidth: z.number().nullable().describe('User-dragged files panel width in px, shared by session and terminal hosts (null = responsive default)'),
     // What `/` shows when nothing is open: the classic empty-detail placeholder
     // ('normal') or the global Task Board ('board'). Device-local on purpose.
     homeView: z.enum(['normal', 'board']).describe('Home screen when nothing is open: empty detail or the task board'),
@@ -103,6 +108,7 @@ export const localSettingsDefaults: LocalSettings = {
     newSessionReviewFirst: false,
     acknowledgedCliVersions: {},
     sidebarWidth: null,
+    filesPanelWidth: null,
     // Safe default: existing users keep the current home screen.
     homeView: 'normal',
     // Default = the lifecycle view (management by task completion).

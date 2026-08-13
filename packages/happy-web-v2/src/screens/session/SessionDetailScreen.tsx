@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
+import { useMediaQuery } from '@/app/useMediaQuery';
+import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button } from '@/ui';
 import { ChatHeader } from './ChatHeader';
@@ -18,6 +20,15 @@ export function SessionDetailScreen() {
     const { t } = useTranslation();
     const session = useSession(id ?? '');
     const [filesOpen, setFilesOpen] = useState(false);
+    // Desktop (>860px, matching session.css): the files panel is an inline
+    // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
+    // (shared with the terminal's file browser, B-088). Narrow viewports keep
+    // the full overlay: no handle, no inline width.
+    const filesWide = useMediaQuery('(min-width: 861px)');
+    // The drag handle needs a mouse — touch devices (wide iPad) keep the plain
+    // sidebar without it.
+    const filesResizable = useMediaQuery('(min-width: 861px) and (pointer: fine)');
+    const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth();
     // iOS: while the soft keyboard is up, pin this screen to the visual
     // viewport so the composer sits above the keyboard and the message list's
     // scroll math matches what's actually visible (see the hook's write-up).
@@ -76,7 +87,15 @@ export function SessionDetailScreen() {
             {filesOpen && (
                 <>
                     <div className="sd-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
-                    <aside className="sd-files">
+                    {filesResizable && (
+                        <div
+                            className="app-resize-handle sd-files-handle"
+                            onMouseDown={onFilesHandleDown}
+                            role="separator"
+                            aria-orientation="vertical"
+                        />
+                    )}
+                    <aside className="sd-files" style={filesWide ? { width: filesWidth } : undefined}>
                         <FilesPanel sessionId={id} onClose={() => setFilesOpen(false)} />
                     </aside>
                 </>
