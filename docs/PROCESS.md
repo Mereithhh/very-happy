@@ -67,6 +67,22 @@ triage（分独立/冲突域）
 - **回滚**：CLI = `npm i -g very-happy-cli@<上一版>` + 重启；web = hw-sg `webapp.prev` 或重发上一 sha；
   server = git revert + 重部署。每批发布信息里写明本批的回滚点。
 - **server 部署后必须 vh-update**（daemon RPC 重注册的已知问题，未根治前是流程项）。
+- **CI 不可用时的本地部署应急路径**（2026-08-14 实用：GitHub 报「近期付款失败或需提高消费上限」→
+  job 直接不给起，与代码无关）。`scripts/ci/deploy-hwsg.sh` 要 `SSH_KEY`/`HWSG_*` 环境变量，本地没有；
+  本机 `ssh hw-sg` 走 ~/.ssh/config 直接可达，所以照脚本的 `deploy_web` 手工跑同样几步即可：
+  ```bash
+  cd ~/code/github/very-happy && WEB=packages/happy-web-v2 V=$(date +%Y%m%d%H%M)
+  pnpm --filter @slopus/happy-wire build            # wire 的 dist 是 gitignored，必须先建
+  (cd $WEB && rm -rf dist && VH_VERSION=$V pnpm exec vite build)
+  ssh hw-sg 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
+  tar czf - -C $WEB/dist . | ssh hw-sg 'tar xzf - -C /opt/happy/webapp.new'
+  ssh hw-sg 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev \
+    && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new \
+    && docker compose restart happy-server'
+  # 核对：/health=200；首页 main asset 的 content-type 必须是 javascript（HTML-as-JS 是那个一年缓存事故）
+  ```
+  server 目标同理：`tar czf - -C packages/happy-server sources prisma/migrations | ssh hw-sg 'tar xzf - -C /opt/happy-src/packages/happy-server'` + restart。
+  macOS 的 `tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'` 是 xattr 噪音，不是错误。
 
 ## 5. 验收
 

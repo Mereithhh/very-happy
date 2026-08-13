@@ -137,9 +137,48 @@
   align-items: stretch;
   position: relative;
 }
+/* Selected row = the session/terminal currently open in the pane. Three
+ * stacked cues so it can never be read as hover: hover only steps to --bg-2,
+ * selected takes the full step to --bg-3 and adds an accent rail + hairlines
+ * that fence the band off from its neighbours + brighter ink.
+ * The accent stays a 3px geometric rail on the edge and NEVER a row-wide teal
+ * wash: a teal-tinted row would read as "this session is live", which is the
+ * StatusDot / .sb-row-badge meaning. As a rail it reads as the focused
+ * surface — the same use as .sb-drop-line. */
 .sb-row.is-selected {
-  background: var(--bg-2);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--bg-3);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 1px 0 var(--line-2),
+    inset 0 -1px 0 var(--line-2);
+}
+.sb-row.is-selected .sb-row-title {
+  font-weight: 600;
+}
+/* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
+ * its metadata / kebab / offline dot one ink step — legibility and the
+ * "text brightens when selected" cue in the same move. */
+.sb-row.is-selected .sb-row-sub,
+.sb-row.is-selected .sb-row-menu {
+  color: var(--text-dim);
+}
+.sb-row.is-selected .vh-dot--offline {
+  background: var(--text-dim);
+}
+/* touch has no hover layer at all, so the selected row is the only row state
+ * on screen: widen its rail (arm's length, glossy phone screen) and give taps
+ * a press echo — a tap otherwise has zero feedback until the route swaps.
+ * Must stay AFTER the base rule: media queries carry no extra specificity. */
+@media (hover: none) {
+  .sb-row.is-selected {
+    box-shadow:
+      inset 4px 0 0 var(--accent),
+      inset 0 1px 0 var(--line-2),
+      inset 0 -1px 0 var(--line-2);
+  }
+  .sb-row:not(.is-selected):active {
+    background: var(--bg-2);
+  }
 }
 .sb-row-main {
   display: flex;
@@ -177,9 +216,13 @@
   /* ring punches the dot out of the icon strokes underneath */
   box-shadow: 0 0 0 2px var(--bg-1);
 }
-.sb-row:hover .sb-row-agent-dot,
-.sb-row.is-selected .sb-row-agent-dot {
+.sb-row:hover .sb-row-agent-dot {
   box-shadow: 0 0 0 2px var(--bg-2);
+}
+/* selected wins over hover — its row background is one step higher */
+.sb-row.is-selected .sb-row-agent-dot,
+.sb-row.is-selected:hover .sb-row-agent-dot {
+  box-shadow: 0 0 0 2px var(--bg-3);
 }
 .sb-row-text {
   display: flex;
@@ -215,7 +258,10 @@
    first tap — rows needed two taps to open. Touch keeps the kebab always
    visible instead (also removes an invisible 34px tap target). */
 @media (hover: hover) {
-  .sb-row:hover {
+  /* :not(.is-selected) — this rule sits after .sb-row.is-selected, so an
+     unscoped hover used to drop the selected row BACK to --bg-2 (i.e. hovering
+     the open session made its highlight weaker, the reported "选中态不明显"). */
+  .sb-row:not(.is-selected):hover {
     background: var(--bg-2);
   }
   .sb-row-menu {
@@ -225,7 +271,10 @@
   .sb-row-menu[data-state='open'] {
     opacity: 1;
   }
-  .sb-row-menu:hover {
+  /* .is-selected lifts the kebab to --text-dim with 3 classes, which would
+     otherwise outrank this hover — keep the pointer affordance on both. */
+  .sb-row-menu:hover,
+  .sb-row.is-selected .sb-row-menu:hover {
     color: var(--text);
   }
 }

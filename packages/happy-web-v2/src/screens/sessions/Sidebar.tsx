@@ -997,7 +997,9 @@ function SidebarRow({
   return (
     <ActionContextMenu items={menuItems}>
     <div className={`sb-row${selected ? ' is-selected' : ''}`}>
-      <button className="sb-row-main" onClick={open}>
+      {/* aria-current="page": the row IS a nav link to the open route, so SRs
+          announce the selected row the same way the rail highlight shows it. */}
+      <button className="sb-row-main" onClick={open} aria-current={selected ? 'page' : undefined}>
         <span className={`sb-row-icon${isTerminal ? ' sb-row-icon--term' : ''}`}>
           {isTerminal ? (
             <span className="sb-row-term-icon" title={agentDot ? agentDotTitle : undefined}>
