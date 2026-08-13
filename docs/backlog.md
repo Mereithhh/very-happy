@@ -77,6 +77,8 @@
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | done | 本机 120ms / 远端典型 0.5-0.6s 最坏 2.1s；冷终端（pty 已回收）仍 ~10s；需 CLI ≥v0.2.37 |
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
+| B-072 | 侧栏选中态视觉加强（accent 竖条+背景抬升+文字提亮，亮暗双主题） | ux | Owner 2026-08-14 | doing | |
+| B-073 | ⌘W 关闭前二次确认（应用内确认 + 普通标签页的 beforeunload 保护；开关默认开） | ux | Owner 2026-08-14 | doing | ⌘W 在普通标签页无法拦截，只能靠浏览器原生对话框 |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
 | B-064 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
 | B-069 | 语音助手 Phase 2（Owner 已拍板 2026-08-14）：**做** ①双向流式 TTS（stream-input WS + single-use token 浏览器直连，HTTP 代理兜底）②双向流式 ASR（scribe_v2_realtime WS，manual commit=PTT 形状，实时字幕，batch 兜底）⑤主动汇报（派发任务完成→assistant 主动开口）⑥PC 文字记录右侧常驻栏；**搁置** ④earcon ⑦PWA shortcut ⑧转写可编辑 | feat | Owner 2026-08-14 | doing | spec specs/2026-08-voice-streaming.md（原登记 B-065 与并行批撞号，改 069） |
