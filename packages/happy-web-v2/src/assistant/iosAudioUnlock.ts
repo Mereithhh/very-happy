@@ -13,13 +13,43 @@
  * a fresh gesture by platform rule.
  */
 
-// Minimal valid silent WAV (1 sample, 44.1kHz mono 16-bit) as a data URL —
-// no network fetch, allowed as a media source everywhere.
-const SILENT_WAV =
-    'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+// B-058: the keep-alive element must loop a REAL length of silence. A
+// 1-sample WAV loops every ~23µs and thrashes the media stack hard enough to
+// freeze the whole page. We synthesize ~1s of silence at runtime instead
+// (8kHz mono 16-bit ≈ 16KB) and hand it over as a blob URL.
+export function buildSilentWavBuffer(seconds = 1): ArrayBuffer {
+    const sampleRate = 8000;
+    const numSamples = Math.max(1, Math.round(seconds * sampleRate));
+    const dataBytes = numSamples * 2; // 16-bit mono
+    const buf = new ArrayBuffer(44 + dataBytes);
+    const v = new DataView(buf);
+    const writeStr = (off: number, s: string) => {
+        for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    v.setUint32(4, 36 + dataBytes, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    v.setUint32(16, 16, true); // PCM chunk size
+    v.setUint16(20, 1, true); // PCM format
+    v.setUint16(22, 1, true); // mono
+    v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate * 2, true); // byte rate
+    v.setUint16(32, 2, true); // block align
+    v.setUint16(34, 16, true); // bits per sample
+    writeStr(36, 'data');
+    v.setUint32(40, dataBytes, true);
+    // sample data is already zeroed (silence)
+    return buf;
+}
+
+export function buildSilentWavBlobUrl(seconds = 1): string {
+    return URL.createObjectURL(new Blob([buildSilentWavBuffer(seconds)], { type: 'audio/wav' }));
+}
 
 let sharedCtx: AudioContext | null = null;
 let keepAliveEl: HTMLAudioElement | null = null;
+let keepAliveUrl: string | null = null;
 
 /** Lazily create the module-wide AudioContext used for TTS playback. */
 export function getAssistantAudioContext(): AudioContext | null {
@@ -48,7 +78,8 @@ export async function unlockAudioPlayback(): Promise<boolean> {
     try {
         if (!keepAliveEl) {
             keepAliveEl = document.createElement('audio');
-            keepAliveEl.src = SILENT_WAV;
+            keepAliveUrl = buildSilentWavBlobUrl();
+            keepAliveEl.src = keepAliveUrl;
             keepAliveEl.loop = true;
             // keep it out of the way; never added to layout flow visibly
             keepAliveEl.setAttribute('aria-hidden', 'true');
@@ -82,5 +113,9 @@ export function releaseAudioKeepAlive(): void {
         }
         keepAliveEl.remove();
         keepAliveEl = null;
+    }
+    if (keepAliveUrl) {
+        URL.revokeObjectURL(keepAliveUrl);
+        keepAliveUrl = null;
     }
 }

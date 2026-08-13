@@ -92,3 +92,32 @@ export function derivePendingPermission(agentState: AgentState | null | undefine
     }
     return latest ? { id: latest.id, tool: latest.tool, count } : null;
 }
+
+// ── B-059: in-place text transcript ─────────────────────────────────────────
+
+export interface TranscriptEntry {
+    id: string;
+    role: 'user' | 'assistant' | 'tool';
+    text: string;
+}
+
+/**
+ * Full conversation as flat entries, oldest-first, for the assistant screen's
+ * transcript panel. Thinking blocks and empty texts are dropped; tool calls
+ * collapse to one mono line (name + state).
+ */
+export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
+    const sorted = [...messages].sort(compareMessagesNewestFirst).reverse(); // oldest first
+    const out: TranscriptEntry[] = [];
+    for (const m of sorted) {
+        if (m.kind === 'user-text') {
+            const text = (m.displayText ?? m.text).trim();
+            if (text) out.push({ id: m.id, role: 'user', text });
+        } else if (m.kind === 'agent-text') {
+            if (!m.isThinking && m.text.trim()) out.push({ id: m.id, role: 'assistant', text: m.text });
+        } else if (m.kind === 'tool-call') {
+            out.push({ id: m.id, role: 'tool', text: `${m.tool.name} · ${m.tool.state}` });
+        }
+    }
+    return out;
+}

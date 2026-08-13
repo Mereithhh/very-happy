@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Mic, Volume2, RotateCcw, SendHorizontal, Settings, Server, ShieldAlert, ScrollText } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -25,7 +25,7 @@ import { machineLabel } from '@/utils/machineUtils';
 import { ASSISTANT_DIRECTORY, ASSISTANT_MIN_CLI_VERSION, TTS_MAX_CHARS } from '@/assistant/assistantConstants';
 import { isAssistantSupported } from '@/assistant/assistantSupport';
 import { pickAssistantMachine, pickAssistantSession } from '@/assistant/assistantSession';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission } from '@/assistant/assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript } from '@/assistant/assistantView';
 import { truncateAtSentenceBoundary } from '@/assistant/sentenceTruncate';
 import { useHoldToTalk } from '@/assistant/useHoldToTalk';
 import { TtsPlayer } from '@/assistant/ttsPlayer';
@@ -145,6 +145,14 @@ export function AssistantScreen() {
         [session?.agentState],
     );
 
+    // ── B-059: TTS caption + in-place transcript panel ──
+    const speakingText = useAssistantStore((s) => s.speakingText);
+    const [showTranscript, setShowTranscript] = useState(false);
+    const transcript = useMemo(
+        () => (showTranscript ? deriveTranscript(messages) : []),
+        [showTranscript, messages],
+    );
+
     // ── settings ──
     const voiceTtsVoiceId = useSetting('voiceTtsVoiceId');
     const voiceReadTextReplies = useSetting('voiceReadTextReplies');
@@ -165,6 +173,7 @@ export function AssistantScreen() {
                 return synthesizeSpeech(creds, text, { voiceId: voiceId ?? undefined });
             },
             onSpeakingChange: (v) => useAssistantStore.getState().setSpeaking(v),
+            onUtteranceChange: (text) => useAssistantStore.getState().setSpeakingText(text),
             onUnsupported: () => {
                 const st = useAssistantStore.getState();
                 st.setTtsAvailability('unsupported');
@@ -402,6 +411,16 @@ export function AssistantScreen() {
                     <button
                         type="button"
                         className="as-icon-btn"
+                        data-active={showTranscript}
+                        aria-label={t('assistant.transcript')}
+                        title={t('assistant.transcript')}
+                        onClick={() => setShowTranscript((v) => !v)}
+                    >
+                        <ScrollText size={17} />
+                    </button>
+                    <button
+                        type="button"
+                        className="as-icon-btn"
                         aria-label={t('settingsVoice.title')}
                         title={t('settingsVoice.title')}
                         onClick={() => navigate('/settings/voice')}
@@ -409,6 +428,19 @@ export function AssistantScreen() {
                         <Settings size={17} />
                     </button>
                 </header>
+
+                {showTranscript && (
+                    <div className="as-transcript" role="log">
+                        {transcript.length === 0 && (
+                            <div className="as-transcript-empty">{t('assistant.transcriptEmpty')}</div>
+                        )}
+                        {transcript.map((e) => (
+                            <div key={e.id} className="as-transcript-entry" data-role={e.role}>
+                                {e.role === 'tool' ? <span className="as-transcript-tool">{e.text}</span> : e.text}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {gate ?? (
                     <>
@@ -437,8 +469,13 @@ export function AssistantScreen() {
 
                             <div className="as-convo">
                                 {exchange.userText && <div className="as-convo-user">{exchange.userText}</div>}
-                                {exchange.assistantText && (
-                                    <div className="as-convo-assistant">{exchange.assistantText}</div>
+                                {/* B-059: while speaking, the spoken sentence is the caption */}
+                                {speakingText ? (
+                                    <div className="as-caption">{speakingText}</div>
+                                ) : (
+                                    exchange.assistantText && (
+                                        <div className="as-convo-assistant">{exchange.assistantText}</div>
+                                    )
                                 )}
                                 {lastTtsTruncated && (
                                     <div className="as-convo-note">{t('assistant.ttsTruncated')}</div>
@@ -455,7 +492,12 @@ export function AssistantScreen() {
 
                         <div className="as-controls">
                             {!audioUnlocked && ttsAvailability !== 'unsupported' && (
-                                <button type="button" className="as-unlock-btn" onClick={() => void onUnlock()}>
+                                <button
+                                    type="button"
+                                    className="as-unlock-btn"
+                                    title={t('assistant.enableVoiceHint')}
+                                    onClick={() => void onUnlock()}
+                                >
                                     <Volume2 size={15} />
                                     {t('assistant.enableVoice')}
                                 </button>

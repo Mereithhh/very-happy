@@ -29,6 +29,8 @@ interface AssistantStoreState {
     recorderState: AssistantRecorderUiState;
     /** an assistant reply is being synthesized/played */
     speaking: boolean;
+    /** B-059 captions: text of the utterance currently being spoken */
+    speakingText: string | null;
     /** iOS/Safari audio unlock done for this page load (memory only) */
     audioUnlocked: boolean;
     /** 404/501 from the TTS endpoint → degrade to pure text */
@@ -43,6 +45,7 @@ interface AssistantStoreState {
     setSessionId: (id: string | null) => void;
     setRecorderState: (s: AssistantRecorderUiState) => void;
     setSpeaking: (v: boolean) => void;
+    setSpeakingText: (t: string | null) => void;
     setAudioUnlocked: (v: boolean) => void;
     setTtsAvailability: (v: TtsAvailability) => void;
     markTtsNoticeShown: () => void;
@@ -62,6 +65,7 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
     sessionId: null,
     recorderState: 'idle',
     speaking: false,
+    speakingText: null,
     audioUnlocked: false,
     ttsAvailability: 'unknown',
     ttsNoticeShown: false,
@@ -71,6 +75,7 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
     setSessionId: (id) => set({ sessionId: id }),
     setRecorderState: (s) => set({ recorderState: s }),
     setSpeaking: (v) => set({ speaking: v }),
+    setSpeakingText: (t) => set({ speakingText: t }),
     setAudioUnlocked: (v) => set({ audioUnlocked: v }),
     setTtsAvailability: (v) => set({ ttsAvailability: v }),
     markTtsNoticeShown: () => set({ ttsNoticeShown: true }),
@@ -83,6 +88,7 @@ export const useAssistantStore = create<AssistantStoreState>((set) => ({
             lastTtsTruncated: false,
             recorderState: 'idle',
             speaking: false,
+            speakingText: null,
             ttsAvailability: 'unknown',
             ttsNoticeShown: false,
         }),

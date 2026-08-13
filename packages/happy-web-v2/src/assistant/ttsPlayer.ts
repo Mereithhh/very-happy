@@ -30,6 +30,8 @@ export interface TtsPlayerCallbacks {
     onSpeakingChange: (speaking: boolean) => void;
     /** server said 404/501 — caller flips to pure-text mode */
     onUnsupported: () => void;
+    /** B-059 captions: text of the utterance being spoken, null when idle */
+    onUtteranceChange?: (text: string | null) => void;
 }
 
 export class TtsPlayer {
@@ -89,11 +91,13 @@ export class TtsPlayer {
                 const { state, next } = ttsStartNext(this.state);
                 if (!next) break;
                 this.state = state;
+                this.callbacks.onUtteranceChange?.(next.text);
                 await this.playOne(next);
                 this.state = ttsFinishCurrent(this.state);
             }
         } finally {
             this.pumping = false;
+            this.callbacks.onUtteranceChange?.(null);
             this.callbacks.onSpeakingChange(ttsIsActive(this.state));
         }
     }

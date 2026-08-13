@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission } from './assistantView';
+import { deriveAssistantExchange, collectNewAgentTexts, collectMessageIds, derivePendingPermission, deriveTranscript } from './assistantView';
 import type { Message } from '@/sync/typesMessage';
 
 function user(id: string, text: string, seq: number): Message {
@@ -139,5 +139,26 @@ describe('derivePendingPermission', () => {
             },
         });
         expect(res).toEqual({ id: 'r2', tool: 'Bash', count: 1 });
+    });
+});
+
+describe('deriveTranscript (B-059)', () => {
+    it('returns entries oldest-first, dropping thinking blocks and empty texts', () => {
+        const messages: Message[] = [
+            agent('a2', 'second answer', 4),
+            user('u1', 'question', 1),
+            agent('think', 'pondering…', 2, true),
+            tool('t1', 'Bash', 3, 'completed'),
+            agent('empty', '   ', 5),
+        ];
+        expect(deriveTranscript(messages)).toEqual([
+            { id: 'u1', role: 'user', text: 'question' },
+            { id: 't1', role: 'tool', text: 'Bash · completed' },
+            { id: 'a2', role: 'assistant', text: 'second answer' },
+        ]);
+    });
+
+    it('is empty for no messages', () => {
+        expect(deriveTranscript([])).toEqual([]);
     });
 });
