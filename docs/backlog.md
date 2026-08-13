@@ -92,7 +92,7 @@
 | B-081 | 中文音色：Settings→Voice 内置 ElevenLabs Voice Library 浏览（默认中文筛选）+ 试听 + 一键添加到账号（自动选中）；server 代理 shared-voices 搜索与 add 端点 | feat | Owner 2026-08-14 | doing | 任何音色本可说中文（flash 多语言），本项解决「地道中文嗓音」；原登记 B-078 撞号改号 |
 | B-082 | 机器设置入口：Settings→机器 列表页（在线状态+点击进 /machine/:id 改名/开会话）——机器详情页与 displayName 改名功能一直存在但全库零导航入口（孤岛页）；appBack 映射同步修正 | ux | Owner 2026-08-14 | done | 改名写 metadata.displayName 全端同步（机制原有） |
 | B-083 | 去「删除」概念：全系统只有归档（聊天会话删除入口移除，归档=唯一收尾且全记录留存；终端「删除」改「关闭」中性文案——claude 对话在 ~/.claude JSONL 可 --resume）| feat | Owner 2026-08-14 | done | **审计结论：原「删除」是彻底硬删（消息/用量/Session 行全清，无审计痕迹）**，归档才全留——本项使「记录永在」成立；spec Shipped；server DELETE 端点保留给 B-025 |
-| B-084 | 「已结束终端」可见记录：终端列表真相=活 tmux，关闭后产品内凭空消失——daemon 记 closedTerminals 入 push（旧端忽略，CLI+web 协同），顺带带 cwd 支持「同目录开新终端」降低 --resume 成本 | feat | B-083 spec 遗留 | todo | 方案与代价见 specs/2026-08-archive-only.md |
+| B-084 | 「已结束终端」可见记录：终端列表真相=活 tmux，关闭后产品内凭空消失——daemon 记 closedTerminals 入 push（旧端忽略，CLI+web 协同），顺带带 cwd 支持「同目录开新终端」降低 --resume 成本 | feat | B-083 spec 遗留 | doing | Owner 拍板开工 2026-08-14；方案见 specs/2026-08-archive-only.md |
 | B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
 | B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
 | B-063 | 调度器工具纪律做实（Owner：meta 会话工作方式/工具面应不同于普通会话）：assistant 变体 SDK 级硬禁 Bash/Edit/Write/MultiEdit/NotebookEdit（per-message 覆盖只能加严不能解禁）+ 新 MCP 工具 journal_append 作为日志写入正道 + CLAUDE.md 工具边界声明 | feat | Owner 2026-08-13 | done | OpenClaw 调度器纪律；保留 Read/Grep/Glob/web/Task |
