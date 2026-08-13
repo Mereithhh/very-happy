@@ -94,6 +94,7 @@
 | B-083 | 去「删除」概念：全系统只有归档（聊天会话删除入口移除，归档=唯一收尾且全记录留存；终端「删除」改「关闭」中性文案——claude 对话在 ~/.claude JSONL 可 --resume）| feat | Owner 2026-08-14 | done | **审计结论：原「删除」是彻底硬删（消息/用量/Session 行全清，无审计痕迹）**，归档才全留——本项使「记录永在」成立；spec Shipped；server DELETE 端点保留给 B-025 |
 | B-084 | 「已结束终端」可见记录：daemon 双路径捕获（主动关闭+tick 消失 diff）20 条入 daemonState.closedTerminals + 归档视图分组 + 在同目录开新终端 | feat | B-083 spec 遗留 | done | a031d968；真机 V-035 |
 | B-085 | 侧栏「待处理」行醒目化：两级标识——等你处理（permission/needsInput/review/blocked，复用 board 分类）=accent 左边条+标题加权+光晕点+pulse；普通未读=text 级点（不染 teal 防信号淹没）；v2 此前 unreadSessionIds 零消费 | ux | Owner 实报 2026-08-14 | done | 2535dd58；选中 rail 由 accent 改 ink 让位（accent=live 纪律更纯了）；真机 V-036 |
+| B-086 | 通知自动已读后未读数量角标不减：B-066 的看过即已读（KV seen 同步）生效，但铃铛/角标的未读计数没跟着重算 | bug | Owner 实报 2026-08-14 | doing | 疑似 seen 合并只作用于条目态、计数取自另一来源 |
 | B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
 | B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
 | B-063 | 调度器工具纪律做实（Owner：meta 会话工作方式/工具面应不同于普通会话）：assistant 变体 SDK 级硬禁 Bash/Edit/Write/MultiEdit/NotebookEdit（per-message 覆盖只能加严不能解禁）+ 新 MCP 工具 journal_append 作为日志写入正道 + CLAUDE.md 工具边界声明 | feat | Owner 2026-08-13 | done | OpenClaw 调度器纪律；保留 Read/Grep/Glob/web/Task |
