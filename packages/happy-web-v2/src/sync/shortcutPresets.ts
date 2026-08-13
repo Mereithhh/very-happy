@@ -7,11 +7,19 @@
  * TERMINAL menu — the chat composer always inserts, run or not.
  *
  * This module also owns the one-time client-side migration of the legacy
- * settings.terminalCommands list ({id,title,command}, selected = execute)
- * into promptPresets entries with run:true. Design constraints:
+ * settings.terminalCommands list ({id,title,command}) into promptPresets.
  *
- *   - IDEMPOTENT: an entry is only added if no existing run-preset has the
- *     same text. Running the migration any number of times, on any number of
+ * BEHAVIOR IS PRESERVED, NOT UPGRADED: the legacy terminal menu pasted
+ * without Enter (runCommand never auto-executed), so migrated entries carry
+ * NO run flag — picking one still just inserts. `run` is a new opt-in the
+ * user turns on per entry; silently arming auto-execute on commands written
+ * under paste-only semantics would turn a merge of two identical features
+ * into an irreversible surprise (the entry could be `rm -rf …`).
+ *
+ * Design constraints:
+ *
+ *   - IDEMPOTENT: an entry is only added if no existing preset has the same
+ *     text. Running the migration any number of times, on any number of
  *     devices, converges on one copy per distinct command text. Two devices
  *     migrating concurrently generate different ids for the same command, but
  *     field-level LWW makes one device's promptPresets array win whole — and
@@ -49,17 +57,19 @@ function defaultGenId(): string {
 }
 
 /**
- * Convert legacy terminalCommands into run:true promptPresets entries.
+ * Convert legacy terminalCommands into plain (insert-only) promptPresets.
  *
  * Returns the settings delta to save ({ promptPresets, terminalCommands: [] })
  * or null when there is nothing to migrate (legacy list empty/absent) — the
  * caller must not write anything in that case, otherwise every load would
  * push a redundant settings sync.
  *
- * Dedup key is the command TEXT among existing run-presets (ids are freshly
- * generated, so they can never match across devices). Whitespace-only
- * commands are junk and are dropped rather than converted; the migration
- * still clears the legacy list in that case.
+ * Dedup key is the command TEXT among ALL existing presets (ids are freshly
+ * generated, so they can never match across devices). Text-only matching is
+ * also what the user asked for: two entries with the same text ARE the
+ * duplicate this merge exists to remove, whatever their run flag says.
+ * Whitespace-only commands are junk and are dropped rather than converted;
+ * the migration still clears the legacy list in that case.
  */
 export function migrateTerminalCommands(
     presets: readonly PromptPreset[] | null | undefined,
@@ -69,17 +79,15 @@ export function migrateTerminalCommands(
     if (!commands || commands.length === 0) return null;
 
     const existing = presets ?? [];
-    const seenRunTexts = new Set(
-        existing.filter(presetRuns).map((p) => p.text),
-    );
+    const seenTexts = new Set(existing.map((p) => p.text));
 
     const next = [...existing];
     for (const c of commands) {
         const text = c.command;
         if (text.trim().length === 0) continue; // junk entry — drop
-        if (seenRunTexts.has(text)) continue; // already migrated (this or another device)
-        seenRunTexts.add(text); // also dedupes within the batch itself
-        next.push({ id: genId(), title: c.title, text, run: true });
+        if (seenTexts.has(text)) continue; // already migrated, or a duplicate of an existing preset
+        seenTexts.add(text); // also dedupes within the batch itself
+        next.push({ id: genId(), title: c.title, text });
     }
 
     return { promptPresets: next, terminalCommands: [] };

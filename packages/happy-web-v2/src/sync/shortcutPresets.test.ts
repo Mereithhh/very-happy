@@ -21,7 +21,7 @@ describe('migrateTerminalCommands', () => {
         expect(migrateTerminalCommands(undefined, undefined, genId)).toBeNull();
     });
 
-    it('converts commands into run:true presets appended after existing entries', () => {
+    it('converts commands into INSERT-ONLY presets appended after existing entries', () => {
         const presets: PromptPreset[] = [{ id: 'p1', title: 'hello', text: 'say hi' }];
         const out = migrateTerminalCommands(presets, [
             { id: 'c1', title: 'build', command: 'pnpm build' },
@@ -29,10 +29,13 @@ describe('migrateTerminalCommands', () => {
         ], genId)!;
         expect(out.terminalCommands).toEqual([]);
         expect(out.promptPresets[0]).toEqual(presets[0]); // existing untouched, order kept
+        // No run flag: the legacy menu pasted without Enter, and migration
+        // must not arm auto-execute behind the user's back.
         expect(out.promptPresets.slice(1)).toEqual([
-            { id: expect.stringMatching(/^gen-/), title: 'build', text: 'pnpm build', run: true },
-            { id: expect.stringMatching(/^gen-/), title: 'test', text: 'pnpm test', run: true },
+            { id: expect.stringMatching(/^gen-/), title: 'build', text: 'pnpm build' },
+            { id: expect.stringMatching(/^gen-/), title: 'test', text: 'pnpm test' },
         ]);
+        expect(out.promptPresets.every((p) => !presetRuns(p))).toBe(true);
         // fresh ids — never reuses the legacy command id
         expect(out.promptPresets.map((p) => p.id)).not.toContain('c1');
     });
@@ -45,9 +48,9 @@ describe('migrateTerminalCommands', () => {
         expect(commands).toHaveLength(1);
     });
 
-    it('skips commands whose text already exists as a run-preset (idempotence / concurrent devices)', () => {
+    it('skips commands whose text already exists (idempotence / concurrent devices)', () => {
         const migrated: PromptPreset[] = [
-            { id: 'p1', title: 'build', text: 'pnpm build', run: true },
+            { id: 'p1', title: 'build', text: 'pnpm build' },
         ];
         // Same command list arriving again (other device migrated first, LWW
         // merged, this device still holds the stale non-empty legacy list).
@@ -59,13 +62,15 @@ describe('migrateTerminalCommands', () => {
         expect(out.terminalCommands).toEqual([]);
     });
 
-    it('an insert-only preset with the same text does NOT block migration (run flag is part of identity)', () => {
-        const presets: PromptPreset[] = [{ id: 'p1', title: 'build', text: 'pnpm build' }];
-        const out = migrateTerminalCommands(presets, [
+    it('a same-text preset blocks migration whatever its run flag — identity is the TEXT', () => {
+        // The whole point of the merge: one text, one entry. A run-preset the
+        // user armed by hand must not be duplicated by a plain copy either.
+        const armed: PromptPreset[] = [{ id: 'p1', title: 'build', text: 'pnpm build', run: true }];
+        const out = migrateTerminalCommands(armed, [
             { id: 'c1', title: 'build', command: 'pnpm build' },
         ], genId)!;
-        expect(out.promptPresets).toHaveLength(2);
-        expect(presetRuns(out.promptPresets[1])).toBe(true);
+        expect(out.promptPresets).toEqual(armed);
+        expect(out.terminalCommands).toEqual([]);
     });
 
     it('dedupes identical commands within the batch itself', () => {
