@@ -11,6 +11,16 @@ name: Deploy to hw-sg
 #
 # Requires repo secrets: HWSG_SSH_KEY (private key), HWSG_HOST, HWSG_PORT,
 # HWSG_USER. The matching public key is in hw-sg's authorized_keys.
+# secrets 在 self-hosted 上一样可用（workflow_dispatch 触发、非 fork），所以密钥
+# 仍然从 secrets 注入、用完即删——**刻意不**改成硬编码在 runner 上。
+#
+# 2026-08-14：跑在 fb-us self-hosted runner 上（0 计费分钟）。self-hosted 差异：
+#   - 私钥写到 ${{ runner.temp }}（job 级，runner 会回收），不再写 ~/.ssh —— 原来
+#     硬编码的 /home/runner/.ssh/hwsg_key 在 self-hosted 上根本不是这个路径。
+#   - 需要 runner 上有 ssh / ssh-keyscan / tar / curl（托管 ubuntu 自带，
+#     self-hosted 不一定）→ 开跑前有一步 preflight 显式检查，缺了立刻报错。
+#   - runner 掉线时：`gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'` 切回
+#     托管；本地应急直发路径见 docs/PROCESS.md §4。
 
 on:
   workflow_dispatch:
@@ -30,20 +40,37 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    timeout-minutes: 30
     steps:
+      - name: Preflight (self-hosted 上不假设装了什么)
+        run: |
+          missing=
+          for c in ssh ssh-keyscan tar curl git; do
+            command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
+          done
+          if [ -n "$missing" ]; then
+            echo "ERROR: runner 缺少必需命令:$missing" >&2
+            exit 1
+          fi
+          echo "OK: ssh/ssh-keyscan/tar/curl/git 都在 ($(uname -a))"
+
       - name: Checkout
+        # clean=true（默认）：self-hosted 工作目录复用，靠这步保证工作树干净。
         uses: actions/checkout@v4
+
+      # ⚠️ setup-node 先于 pnpm/action-setup：后者默认要用现成的 node/npm 装 pnpm，
+      # self-hosted 上不能假设系统装了 node。不用 `cache: pnpm`（那要求反过来的顺序），
+      # self-hosted 靠本地持久化 pnpm store。
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10.11.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Install dependencies
         # Deploy never runs electron (packages/codium is a desktop spike);
@@ -55,10 +82,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up SSH
+        # 私钥落在 job 级 runner.temp（不是 ~/.ssh）：self-hosted 的 HOME 是复用的，
+        # 密钥不该在那里留痕，且 runner 用户名不一定是 `runner`（原来硬编码
+        # /home/runner/.ssh/hwsg_key 在 self-hosted 上会直接找不到文件）。
+        # known_hosts 仍写 ~/.ssh（幂等追加，无敏感信息）；真正兜底的是脚本里的
+        # StrictHostKeyChecking=accept-new，keyscan 只是预热。
         run: |
+          umask 077
+          printf '%s\n' "${{ secrets.HWSG_SSH_KEY }}" > "${{ runner.temp }}/hwsg_key"
+          chmod 600 "${{ runner.temp }}/hwsg_key"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.HWSG_SSH_KEY }}" > ~/.ssh/hwsg_key
-          chmod 600 ~/.ssh/hwsg_key
           ssh-keyscan -p "${{ secrets.HWSG_PORT }}" -H "${{ secrets.HWSG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy
@@ -66,11 +99,11 @@ jobs:
           HWSG_HOST: ${{ secrets.HWSG_HOST }}
           HWSG_PORT: ${{ secrets.HWSG_PORT }}
           HWSG_USER: ${{ secrets.HWSG_USER }}
-          SSH_KEY: /home/runner/.ssh/hwsg_key
+          SSH_KEY: ${{ runner.temp }}/hwsg_key
         run: |
           chmod +x scripts/ci/deploy-hwsg.sh
           ./scripts/ci/deploy-hwsg.sh "${{ inputs.target }}"
 
       - name: Cleanup SSH key
         if: always()
-        run: rm -f ~/.ssh/hwsg_key
+        run: rm -f "${{ runner.temp }}/hwsg_key"
