@@ -164,6 +164,19 @@ export class ApiMachineClient {
         if (event === 'terminal-output' && this.encTerminals.has(payload.terminalId)) {
             out = { ...payload, data: this.encTerminalData(payload.data), enc: true };
         }
+        // Activity frames are advisory ordering hints — drop them on the floor
+        // while the socket is down instead of letting socket.io queue them in
+        // its UNBOUNDED sendBuffer for replay on reconnect. Nothing is lost:
+        // the reconnect re-ships the durable list, and startListTracking clears
+        // the de-dup table so the next tick re-seeds every client. (`volatile`
+        // is socket.io's own primitive for exactly this; the `connected` check
+        // covers the window before the socket object exists at all.)
+        if (event === 'terminal-activity') {
+            const s = this.socket as any;
+            if (!s?.connected) return;
+            (s.volatile ?? s).emit(event, out);
+            return;
+        }
         (this.socket as any)?.emit(event, out);
     }, (n) => {
         // Web-terminal agent transitions (turn finished / waiting for input)

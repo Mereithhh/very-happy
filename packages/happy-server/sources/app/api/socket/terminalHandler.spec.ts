@@ -47,6 +47,23 @@ describe('sanitizeTerminalActivity', () => {
         expect(out).toEqual([{ id: 'good', activityAt: 9 }]);
     });
 
+    it('rejects times implausibly far in the FUTURE (fast machine clock)', () => {
+        const now = 1_700_000_000_000;
+        const skew = 5 * 60 * 1000;
+        // Clients sort by max() and never decay, so a host whose clock is ahead
+        // would otherwise pin all of ITS terminals to the top forever.
+        expect(sanitizeTerminalActivity([{ id: 'a', activityAt: now + skew + 1 }], now)).toEqual([]);
+        expect(sanitizeTerminalActivity([{ id: 'a', activityAt: now + 24 * 3600_000 }], now)).toEqual([]);
+        // Real drift is seconds, not hours — that must still pass.
+        expect(sanitizeTerminalActivity([{ id: 'a', activityAt: now + 5_000 }], now))
+            .toEqual([{ id: 'a', activityAt: now + 5_000 }]);
+        // ...and a skewed item must not take the whole batch down with it.
+        expect(sanitizeTerminalActivity([
+            { id: 'bad', activityAt: now + skew + 1 },
+            { id: 'good', activityAt: now - 1000 },
+        ], now)).toEqual([{ id: 'good', activityAt: now - 1000 }]);
+    });
+
     it('returns [] for anything that is not an array', () => {
         for (const junk of [undefined, null, {}, 'x', 42]) {
             expect(sanitizeTerminalActivity(junk)).toEqual([]);

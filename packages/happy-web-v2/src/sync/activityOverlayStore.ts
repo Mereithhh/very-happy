@@ -31,6 +31,7 @@ import { MMKV } from '@/storage/mmkv-web';
 import {
   mergeActivity,
   parseActivityMap,
+  isSaneActivityStamp,
   EMPTY_ACTIVITY,
   LOCAL_ACTIVITY_CAP,
   REMOTE_ACTIVITY_CAP,
@@ -74,6 +75,24 @@ export const REMOTE_FLUSH_MS = 1_000;
  *  always current; only the durable copy lags, and losing the last <2s of
  *  stamps on a crash costs nothing). */
 export const LOCAL_WRITE_THROTTLE_MS = 2_000;
+
+/**
+ * Minimum step a local stamp must clear to be worth recording at all.
+ *
+ * Without this, every keystroke carries a strictly-larger `Date.now()`, so
+ * every 120ms window produced a genuinely-changed map — and a changed map
+ * re-derives the sidebar's rows (map + sort) and re-renders every row, since
+ * SidebarRow is not memoized. Continuous typing became ~8 full sidebar
+ * re-renders a second for no visible benefit: `ts` only feeds the SORT, it is
+ * never displayed, and once the row is on top, refreshing its stamp by 120ms
+ * changes nothing on screen.
+ *
+ * Cheap because it costs nothing where it matters: the FIRST keystroke after a
+ * pause is always more than a second newer than the stored value, so it still
+ * floats the row within one flush window. Only the redundant middle of a burst
+ * is dropped.
+ */
+export const LOCAL_STAMP_MIN_STEP_MS = 1_000;
 
 interface ActivityOverlayState {
   local: ActivityMap;
@@ -151,9 +170,12 @@ function scheduleRemoteFlush() {
  * number into a plain object and (at most) arms one timer.
  */
 export function stampLocalActivity(key: string, at: number = Date.now()): void {
-  if (!key || typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return;
-  if (at <= (pendingLocal[key] ?? 0)) return;
-  if (at <= (useActivityOverlay.getState().local[key] ?? 0)) return;
+  if (!key || !isSaneActivityStamp(at, Date.now())) return;
+  // Quantized: only a stamp that is meaningfully newer than what we already
+  // hold (pending or committed) is worth a store write — see
+  // LOCAL_STAMP_MIN_STEP_MS for why per-keystroke writes were wasteful.
+  const known = Math.max(pendingLocal[key] ?? 0, useActivityOverlay.getState().local[key] ?? 0);
+  if (at - known < LOCAL_STAMP_MIN_STEP_MS) return;
   pendingLocal[key] = at;
   scheduleLocalFlush();
 }
@@ -164,11 +186,15 @@ export function stampLocalActivity(key: string, at: number = Date.now()): void {
  * by id), so the machine is not part of the key.
  */
 export function applyRemoteTerminalActivity(terminals: Array<{ id: string; activityAt: number }>): void {
+  const now = Date.now();
   let any = false;
   for (const t of terminals) {
     if (!t || typeof t.id !== 'string' || !t.id) continue;
     const at = t.activityAt;
-    if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) continue;
+    // The server already refuses implausible times, but this runs against
+    // whatever a relay of unknown version forwards — and a future stamp here
+    // would pin the row forever (max() + monotonic).
+    if (!isSaneActivityStamp(at, now)) continue;
     const key = `t:${t.id}`;
     pendingRemote[key] = Math.max(pendingRemote[key] ?? 0, at);
     any = true;

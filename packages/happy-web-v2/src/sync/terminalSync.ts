@@ -89,6 +89,11 @@ function onTerminalActivity(data: unknown): void {
 function startLoop(): () => void {
   appliedPushVersions = new Map();
   syncPushes();
+  // ⚠️ apiSocket.onMessage is ONE handler per event name, and its unsubscribe
+  // deletes by name without checking identity. This module is the only
+  // registrant for 'terminal-activity' — a second one anywhere would silently
+  // replace this one (and teardown order could delete the newer). Keep it that
+  // way: route additional consumers through the activity overlay store.
   const offActivity = apiSocket.onMessage('terminal-activity', onTerminalActivity);
   const unsubscribe = storage.subscribe(() => syncPushes());
   return () => {

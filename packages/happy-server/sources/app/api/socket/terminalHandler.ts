@@ -30,13 +30,24 @@ type Conn = { connectionType: string; machineId?: string };
 const MAX_ACTIVITY_ITEMS = 200;
 
 /**
- * Sanitize a daemon-supplied activity batch: keep only well-formed
- * `{ id, activityAt }` pairs, drop everything else (extra fields included —
- * the relay rebuilds each item, so a future daemon can't smuggle anything
- * through), and bound the length. Returns [] when there is nothing to send.
- * Pure; unit-tested.
+ * How far into the future a daemon-reported activity time may be. These come
+ * from the MACHINE's clock (pty `lastOutputAt` / tmux `#{session_activity}`),
+ * and clients sort by max(), monotonically — so a machine whose clock runs fast
+ * (VM resumed from suspend, WSL drift, no RTC) would otherwise pin all of ITS
+ * terminals to the top of every client's sidebar and never release them. The
+ * relay has the trustworthy clock, so it is the right place to refuse.
  */
-export function sanitizeTerminalActivity(raw: unknown): Array<{ id: string; activityAt: number }> {
+const MAX_ACTIVITY_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * Sanitize a daemon-supplied activity batch: keep only well-formed
+ * `{ id, activityAt }` pairs whose time is plausible, drop everything else
+ * (extra fields included — the relay rebuilds each item, so a future daemon
+ * can't smuggle anything through, at the cost of having to teach this function
+ * about any field a future daemon adds), and bound the length. Returns [] when
+ * there is nothing to send. Pure; unit-tested.
+ */
+export function sanitizeTerminalActivity(raw: unknown, now: number = Date.now()): Array<{ id: string; activityAt: number }> {
     if (!Array.isArray(raw)) return [];
     const out: Array<{ id: string; activityAt: number }> = [];
     for (const item of raw) {
@@ -45,6 +56,7 @@ export function sanitizeTerminalActivity(raw: unknown): Array<{ id: string; acti
         const { id, activityAt } = item as { id?: unknown; activityAt?: unknown };
         if (typeof id !== 'string' || id.length === 0) continue;
         if (typeof activityAt !== 'number' || !Number.isFinite(activityAt) || activityAt <= 0) continue;
+        if (activityAt > now + MAX_ACTIVITY_SKEW_MS) continue;
         out.push({ id, activityAt });
     }
     return out;

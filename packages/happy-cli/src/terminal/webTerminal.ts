@@ -239,11 +239,19 @@ export const ACTIVITY_SIGNATURE_BUCKET_MS = 60_000;
 
 /**
  * ── Realtime activity channel (ephemeral) ────────────────────────────────────
- * Throttle for the `terminal-activity` event. LEADING edge: the first pty
- * chunk after an idle gap emits immediately (that's the "I just talked to it"
- * case the whole channel exists for), then at most one frame per window while
- * output keeps flowing. No output ⇒ no timer, no frame — an idle machine
- * costs exactly zero.
+ * Throttle for the `terminal-activity` event on the PTY feeder. LEADING edge:
+ * the first pty chunk after an idle gap emits immediately (that's the "I just
+ * talked to it" case the whole channel exists for), then at most one frame per
+ * window while output keeps flowing. No output ⇒ no timer, no frame — an idle
+ * machine costs exactly zero.
+ *
+ * NOTE this bounds the pty feeder, not the total: the tracking tick's own
+ * emitActivity (which is what covers COLD sessions) does not wait on this
+ * window, it only resets it. So a program that both prints and rewrites its
+ * OSC title — Claude Code's TUI does exactly that — can produce a few frames a
+ * second via the 250ms kick debounce. That is fine and deliberate: the frames
+ * are tiny, and the web coalesces them into at most ONE reorder per second,
+ * which is the number that actually matters for the user.
  */
 export const ACTIVITY_EVENT_THROTTLE_MS = 1_000;
 
@@ -899,10 +907,14 @@ export class WebTerminalManager {
      * throttle window) so the very first byte after an idle gap floats the row
      * immediately; otherwise coalesce into the already-pending flush.
      *
-     * Gated on list tracking, which the daemon starts on socket connect — no
-     * socket, no frames. Called on EVERY output chunk, so it stays down to a
-     * clock read and two comparisons (the base64 + headless write on the same
-     * path already cost orders of magnitude more).
+     * Gated on list tracking, which the daemon starts on socket connect. That
+     * gate is NOT a liveness check — tracking stays on across a disconnect —
+     * so the emit side additionally refuses to queue frames on a down socket
+     * (see the emit closure in apiMachine).
+     *
+     * Called on EVERY output chunk, so the common path is two field reads and
+     * an early return (the base64 + headless VT write on the same path already
+     * cost orders of magnitude more).
      */
     private noteActivity(): void {
         if (!this.listChangedCb) return;
@@ -933,6 +945,10 @@ export class WebTerminalManager {
         const updates = diffTerminalActivity(this.lastActivityEmitted, current);
         if (updates.length === 0) return; // nothing moved ⇒ zero traffic
         for (const u of updates) this.lastActivityEmitted[u.id] = u.activityAt;
+        // ONE accounting point for both feeders: a tick-driven frame also opens
+        // a fresh throttle window, so it can't land on top of a pty frame that
+        // was about to go out anyway.
+        this.lastActivityFlushAt = Date.now();
         try {
             this.emit('terminal-activity', { terminals: updates });
         } catch (e) {

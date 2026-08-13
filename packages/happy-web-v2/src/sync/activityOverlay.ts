@@ -43,6 +43,36 @@ export const LOCAL_ACTIVITY_CAP = 300;
 /** Cap on in-memory REMOTE stamps (terminals across all machines). */
 export const REMOTE_ACTIVITY_CAP = 500;
 
+/**
+ * How far into the future a stamp may be and still be believed.
+ *
+ * WHY THIS EXISTS: these stamps are read from OTHER machines' clocks (the
+ * daemon's `lastOutputAt` / tmux `#{session_activity}`) and from this browser's
+ * clock. A machine whose clock runs fast — a VM resumed from suspend, WSL
+ * drift, a board with no RTC — would otherwise stamp everything in the future,
+ * and since the overlay is `max()` and monotonic, ITS terminals would sit
+ * pinned at the top of the sidebar for the whole session and never fall back
+ * as they go quiet. The local map is persisted, so a single bad reading there
+ * would outlive reloads with no way for the user to clear it.
+ *
+ * Anything beyond the tolerance is DROPPED rather than clamped to `now`:
+ * clamping would keep re-floating a broken-clock machine forever (every frame
+ * reads as "just now"), whereas dropping degrades that one machine to the
+ * durable `activityAt` it already had. Modest real drift (seconds) stays
+ * inside the tolerance and just works.
+ */
+export const ACTIVITY_MAX_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * Is this a stamp we're willing to sort by? Finite, positive, and not
+ * implausibly far in the future (see ACTIVITY_MAX_SKEW_MS). Every path into
+ * the overlay funnels through here.
+ */
+export function isSaneActivityStamp(at: unknown, now: number): at is number {
+  if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return false;
+  return at <= now + ACTIVITY_MAX_SKEW_MS;
+}
+
 /** The sidebar row key for a web terminal — must match Sidebar's `t:${id}`. */
 export function activityKeyForTerminal(terminalId: string): string {
   return `t:${terminalId}`;
@@ -67,10 +97,11 @@ export function mergeActivity(
   map: ActivityMap,
   updates: Readonly<Record<string, number>>,
   cap: number,
+  now: number = Date.now(),
 ): ActivityMap {
   let next: Record<string, number> | null = null;
   for (const [key, at] of Object.entries(updates)) {
-    if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) continue;
+    if (!isSaneActivityStamp(at, now)) continue;
     if (at <= (map[key] ?? 0)) continue;
     if (!next) next = { ...map };
     next[key] = at;
@@ -114,6 +145,12 @@ export function resolveActivityTs(
  * overlay", which is merely today's behaviour. Also drops entries older than
  * `maxAgeMs`: a stamp from last week says nothing useful about what you were
  * just doing, and keeping it would let an ancient row squat near the top.
+ *
+ * Drops implausibly FUTURE entries too (isSaneActivityStamp). Without that,
+ * one bad clock reading written to disk would pin a row to the top of the
+ * sidebar across every reload for skew+maxAge, with nothing the user could do
+ * about it short of clearing site data — the age filter alone can't catch it,
+ * because `now - future` is negative and sails through any "too old" test.
  */
 export function parseActivityMap(
   raw: unknown,
@@ -125,7 +162,7 @@ export function parseActivityMap(
   const out: Record<string, number> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!key) continue;
-    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue;
+    if (!isSaneActivityStamp(value, now)) continue;
     if (now - value > maxAgeMs) continue;
     out[key] = value;
   }

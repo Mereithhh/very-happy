@@ -36,8 +36,26 @@
 /** 列表 view order: 'recent' = auto by last activity, 'manual' = sidebarOrder. */
 export type SidebarSortMode = 'recent' | 'manual';
 
-/** How long a *stationary* pointer inside the list keeps the order frozen. */
-export const REORDER_HOLD_MS = 1500;
+/**
+ * How long a *stationary* pointer inside the list keeps the order frozen.
+ *
+ * This is the safety valve for an ABANDONED cursor, not the normal release
+ * path — leaving the list releases instantly, so the only way to reach this
+ * timeout is to hover the list and stop moving.
+ *
+ * It was 1500ms when the only thing that could reorder the list was a durable
+ * activity change, i.e. at most once a MINUTE for pure output (the daemon's 60s
+ * signature bucket). The realtime overlay raised that ceiling to about once a
+ * second, which turned the gap between "pointer went still" and "user clicks"
+ * into a live mis-click window ~60x more often: park the cursor on row 3 to
+ * read it, some background terminal prints, row 3 slides away, and the click
+ * lands on a different session. Reading a row label and deciding to click it
+ * takes seconds, so the hold has to outlive that pause. 8s still un-freezes an
+ * abandoned cursor quickly enough that nobody thinks the sidebar is broken —
+ * and only the SEQUENCE is ever held, so row content, status dots and new rows
+ * keep updating throughout.
+ */
+export const REORDER_HOLD_MS = 8000;
 
 /**
  * Read the synced `sidebarSort` field. Anything that isn't the explicit

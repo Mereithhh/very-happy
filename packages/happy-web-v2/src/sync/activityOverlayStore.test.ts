@@ -6,6 +6,7 @@ import {
   __resetActivityOverlay,
   LOCAL_FLUSH_MS,
   REMOTE_FLUSH_MS,
+  LOCAL_STAMP_MIN_STEP_MS,
 } from './activityOverlayStore';
 
 describe('activityOverlayStore', () => {
@@ -39,8 +40,55 @@ describe('activityOverlayStore', () => {
     expect(renders).toBe(0); // nothing yet — still buffered
     vi.advanceTimersByTime(LOCAL_FLUSH_MS);
     expect(renders).toBe(1);
-    expect(useActivityOverlay.getState().local['t:x']).toBe(1019); // newest wins
+    // Only the first of the burst is recorded: the rest are inside
+    // LOCAL_STAMP_MIN_STEP_MS and would change nothing on screen.
+    expect(useActivityOverlay.getState().local['t:x']).toBe(1000);
     unsub();
+  });
+
+  it('sustained typing does NOT re-render the sidebar per flush window', () => {
+    // The regression this guards: every keystroke carries a strictly larger
+    // Date.now(), so without quantization each 120ms window produced a
+    // genuinely-changed map → full sidebar re-derivation ~8x/s, for a value
+    // that is never displayed and cannot change the order once the row is top.
+    stampLocalActivity('t:x', 1_000_000);
+    vi.advanceTimersByTime(LOCAL_FLUSH_MS);
+    let renders = 0;
+    const unsub = useActivityOverlay.subscribe(() => { renders += 1; });
+    // Two seconds of typing at ~8 keys/s.
+    for (let i = 1; i <= 16; i++) {
+      stampLocalActivity('t:x', 1_000_000 + i * 125);
+      vi.advanceTimersByTime(125);
+    }
+    // ~2s of continuous typing ⇒ at most ~2 writes, not ~16.
+    expect(renders).toBeLessThanOrEqual(2);
+    unsub();
+  });
+
+  it('the FIRST keystroke after a pause still floats the row immediately', () => {
+    stampLocalActivity('t:x', 1_000_000);
+    vi.advanceTimersByTime(LOCAL_FLUSH_MS);
+    // A pause, then one key — quantization must not swallow this one.
+    stampLocalActivity('t:x', 1_000_000 + LOCAL_STAMP_MIN_STEP_MS);
+    vi.advanceTimersByTime(LOCAL_FLUSH_MS);
+    expect(useActivityOverlay.getState().local['t:x']).toBe(1_000_000 + LOCAL_STAMP_MIN_STEP_MS);
+  });
+
+  it('refuses a stamp from an implausibly fast clock', () => {
+    stampLocalActivity('t:x', Date.now() + 60 * 60 * 1000);
+    vi.advanceTimersByTime(LOCAL_FLUSH_MS);
+    expect(useActivityOverlay.getState().local['t:x']).toBeUndefined();
+  });
+
+  it('refuses a remote frame from an implausibly fast clock', () => {
+    applyRemoteTerminalActivity([
+      { id: 'skewed', activityAt: Date.now() + 60 * 60 * 1000 },
+      { id: 'ok', activityAt: Date.now() - 1000 },
+    ]);
+    vi.advanceTimersByTime(REMOTE_FLUSH_MS);
+    const remote = useActivityOverlay.getState().remote;
+    expect(remote['t:skewed']).toBeUndefined();
+    expect(remote['t:ok']).toBeDefined();
   });
 
   it('holds output-driven reorders to one per remote window (anti-jitter)', () => {

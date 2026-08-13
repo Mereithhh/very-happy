@@ -138,8 +138,14 @@ the authenticated machine connection, never read from the body.
   - Plaintext, like the rest of this relay's metadata: the payload is a terminal
     id (already in the clear in the `terminal-output`/`terminal-input`
     envelopes) plus a clock reading. No title, no cwd, no bytes.
-  - Throttled and change-gated by the daemon: at most ~1 frame/s per machine,
-    and none at all while nothing moves.
+  - Change-gated by the daemon: no frame at all unless a value really moved, so
+    an idle machine sends nothing. Throttled to ~1 frame/s on the pty feeder;
+    the daemon's terminal-list tick can add a few more per second on a program
+    that also rewrites its title, so treat "a handful of frames/s per machine"
+    as the worst case. Clients coalesce to at most one reorder per second.
+  - Activity times come from the MACHINE's clock, so the relay drops any that
+    are implausibly far in the future — otherwise a host with a fast clock would
+    pin its terminals to the top of every client's sidebar indefinitely.
   - Compat: an old server has no handler and drops the event; an old web client
     has no listener for it. Both degrade to the persisted `activityAt`, i.e.
     exactly the pre-feature behaviour. (Deliberately NOT put on the `ephemeral`

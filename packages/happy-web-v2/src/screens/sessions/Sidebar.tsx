@@ -162,8 +162,10 @@ export function Sidebar() {
             title: tm.title || tm.machineName,
             subtitle: tm.machineName,
           }));
-    // One place applies the overlay, so 列表/状态/归档 can never disagree
-    // about what "last active" means.
+    // One place applies the overlay for every ACTIVITY-ORDERED surface, so
+    // 列表/状态/归档 can't disagree about what "last active" means. (已完成(今日)
+    // below builds its rows separately and deliberately doesn't get the
+    // overlay — its order comes from when the ✓ was pressed, not from `ts`.)
     return [...termRows, ...sessRows].map((r) => {
       const ts = resolveActivityTs(r.ts, r.key, localActivity, remoteActivity);
       return ts === r.ts ? r : { ...r, ts };

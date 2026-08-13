@@ -586,6 +586,9 @@ class Sync {
         // later, and the durable `updatedAt` catches up on its own. Covers
         // every composer (chat input, option picker, new-session first
         // message, voice) because they all funnel through here.
+        // Note this means a send that FAILS below (session not found) still
+        // floats the row. That's deliberate: the user did just act on it, and
+        // the alternative is a sluggish list on the happy path.
         stampLocalActivity(activityKeyForSession(sessionId));
 
         // Get encryption — may not be ready yet if sessions are still syncing

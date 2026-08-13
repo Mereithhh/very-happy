@@ -4,8 +4,10 @@ import {
   pruneActivity,
   resolveActivityTs,
   parseActivityMap,
+  isSaneActivityStamp,
   activityKeyForTerminal,
   activityKeyForSession,
+  ACTIVITY_MAX_SKEW_MS,
   EMPTY_ACTIVITY,
 } from './activityOverlay';
 import { sortRowsByRecent, applyReorderHold } from '@/screens/sessions/sidebarRecentSort';
@@ -18,6 +20,29 @@ describe('activity keys', () => {
     // ONE key space, or the overlay would silently miss every row.
     expect(activityKeyForTerminal('abc123')).toBe('t:abc123');
     expect(activityKeyForSession('sess-1')).toBe('sess-1');
+  });
+});
+
+describe('isSaneActivityStamp', () => {
+  const now = 1_000_000_000;
+
+  it('accepts a normal past stamp and modest clock drift', () => {
+    expect(isSaneActivityStamp(now - 60_000, now)).toBe(true);
+    expect(isSaneActivityStamp(now, now)).toBe(true);
+    expect(isSaneActivityStamp(now + 10_000, now)).toBe(true);
+  });
+
+  it('rejects stamps beyond the skew tolerance', () => {
+    expect(isSaneActivityStamp(now + ACTIVITY_MAX_SKEW_MS, now)).toBe(true); // edge inclusive
+    expect(isSaneActivityStamp(now + ACTIVITY_MAX_SKEW_MS + 1, now)).toBe(false);
+    // The failure this guards: a machine whose clock is a day ahead.
+    expect(isSaneActivityStamp(now + 24 * 3600_000, now)).toBe(false);
+  });
+
+  it('rejects non-numbers, zero, negatives and non-finite values', () => {
+    for (const junk of [undefined, null, 'x', {}, NaN, Infinity, -Infinity, 0, -1]) {
+      expect(isSaneActivityStamp(junk, now)).toBe(false);
+    }
   });
 });
 
@@ -50,6 +75,15 @@ describe('mergeActivity', () => {
     expect(mergeActivity(base, { b: NaN }, CAP)).toBe(base);
     expect(mergeActivity(base, { b: Infinity }, CAP)).toBe(base);
     expect(mergeActivity(base, { b: 'x' as unknown as number }, CAP)).toBe(base);
+  });
+
+  it('refuses implausibly FUTURE stamps (a fast clock must not pin a row)', () => {
+    const now = 1_000_000_000;
+    const base = { a: 100 };
+    // Beyond the tolerance → dropped entirely, so the row keeps its real value.
+    expect(mergeActivity(base, { a: now + ACTIVITY_MAX_SKEW_MS + 1 }, CAP, now)).toBe(base);
+    // Modest drift is still believed — real machines are seconds off.
+    expect(mergeActivity(base, { a: now + 5_000 }, CAP, now)).toEqual({ a: now + 5_000 });
   });
 
   it('does not mutate the input map', () => {
@@ -111,6 +145,16 @@ describe('parseActivityMap', () => {
 
   it('drops entries older than the retention window', () => {
     expect(parseActivityMap({ old: now - day - 1, ok: now - 5 }, now, day, CAP)).toEqual({ ok: now - 5 });
+  });
+
+  it('drops implausibly FUTURE entries the age filter cannot catch', () => {
+    // `now - future` is negative, so a "too old" test alone lets these through
+    // — and a persisted future stamp would pin a row across every reload.
+    const out = parseActivityMap(
+      { bad: now + ACTIVITY_MAX_SKEW_MS + 1, ok: now - 5 },
+      now, day, CAP,
+    );
+    expect(out).toEqual({ ok: now - 5 });
   });
 
   it('degrades to no overlay for any garbage', () => {
