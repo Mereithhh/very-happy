@@ -372,6 +372,11 @@ export function TaskBoardScreen() {
       const ok = await Modal.confirm(
         t('board.markDone') as string,
         t('board.taskDoneSessionsPrompt', { count: sessionItems.length }) as string,
+        // destructive: this confirm batch-archives sessions AND kills their
+        // processes (markSessionDone is kill-first) — not recoverable. The flag
+        // also opts it out of the modal's Enter-to-confirm, so one stray Enter
+        // can't sweep a whole lane.
+        { destructive: true },
       );
       if (ok) {
         for (const it of sessionItems) {
