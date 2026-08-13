@@ -1,7 +1,10 @@
 /**
- * PresetsMenu — quick prompt-presets picker (Radix dropdown). Reads
- * useSettings().promptPresets ({ id, title, text }) and inserts the chosen
- * preset's text into the composer via onPick. Mirrors v1's composer affordance.
+ * PresetsMenu — shortcuts picker for the chat composer (Radix dropdown).
+ * Reads useSettings().promptPresets ({ id, title, text, run? }) and inserts
+ * the chosen entry's text into the composer via onPick. The run flag is a
+ * TERMINAL-only semantic (auto-execute on select, see TermPresetsMenu);
+ * here every entry — run or not — inserts without sending, so the same text
+ * can be reused in chat. Mirrors v1's composer affordance.
  *
  * Keyboard path (desktop): ⌘./Ctrl+. toggles the menu (controlled open via
  * usePresetsMenuShortcut), then digits 1-9 insert the numbered preset

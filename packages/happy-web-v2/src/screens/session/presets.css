@@ -53,6 +53,15 @@
   color: var(--text-faint);
   margin-right: var(--sp-1);
 }
+/* Run badge (terminal menu only): "$" before the title marks entries that
+   EXECUTE on select (run:true) instead of just inserting. Machine-layer mono,
+   like the ordinal — deliberately not --accent (accent = live only). */
+.pm-item-run {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--text-faint);
+  margin-right: var(--sp-1);
+}
 .pm-item-text {
   font-size: var(--fs-11);
   color: var(--text-faint);

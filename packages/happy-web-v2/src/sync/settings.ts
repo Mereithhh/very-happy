@@ -60,16 +60,27 @@ export const SettingsSchema = z.object({
     // POSTed and clobbers the server's saved snippets with []. recentMachinePaths
     // has no default for exactly this reason; mirror it. The default value is
     // supplied by settingsDefaults below + settingsParse's defaults merge.
+    // Unified shortcuts (B-052): one list serves the chat composer AND the web
+    // terminal. `run: true` = the terminal menu executes the text on select
+    // (paste + Enter); absent/false = insert without Enter everywhere. The
+    // field is `.optional()` — NOT `.default(false)` — for the ghost-pending
+    // reason above AND so old-bundle blobs round-trip without a schema fight.
     promptPresets: z.array(z.object({
         id: z.string(),
         title: z.string(),
         text: z.string(),
-    })).describe('Saved prompt presets for the chat composer'),
+        run: z.boolean().optional(),
+    })).describe('Saved shortcuts for the chat composer and web terminal (run=true → terminal executes on select)'),
+    // LEGACY (B-052): superseded by promptPresets entries with run:true. Kept
+    // in the schema for wire compatibility (old bundles still read/write it,
+    // and field-level LWW needs the key to exist so the migration can clear
+    // it), but no UI writes it anymore — the client migrates any non-empty
+    // value into promptPresets on load and writes [] back.
     terminalCommands: z.array(z.object({
         id: z.string(),
         title: z.string(),
         command: z.string(),
-    })).describe('Saved quick commands for the web terminal'),
+    })).describe('Legacy quick commands for the web terminal; migrated into promptPresets (run:true)'),
     // Auto-run command for NEWLY CREATED web terminals (daemon skips it on any
     // reattach). Empty string = disabled. Synced; NO zod .default() (same
     // ghost-pending footgun as above) — the default lives in settingsDefaults.
