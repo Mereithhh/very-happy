@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
 import {
-  ChevronLeft,
   ChevronRight,
   User,
   Palette,
@@ -38,6 +37,7 @@ import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
+import { BackButton } from '@/app/BackButton';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { SUPPORTED_LANGUAGES } from '@/text/_all';
@@ -119,21 +119,17 @@ function Page({ children }: { children: ReactNode }) {
 function Header({
   title,
   subtitle,
-  onBack,
   right,
 }: {
   title: string;
   subtitle?: string;
-  onBack?: () => void;
   right?: ReactNode;
 }) {
   return (
     <div className="set-header">
-      {onBack && (
-        <button type="button" className="set-header__back" onClick={onBack} aria-label="Back">
-          <ChevronLeft size={20} />
-        </button>
-      )}
+      {/* global back: /settings/* → /settings → /, or real history when there
+          is any (see app/appBack.ts). No per-page onBack any more. */}
+      <BackButton />
       <div className="set-header__titles">
         <span className="set-header__title">{title}</span>
         {subtitle && <span className="set-header__subtitle">{subtitle}</span>}
@@ -187,7 +183,7 @@ function Overview() {
 
   return (
     <Page>
-      <Header title={t('settings.title')} onBack={() => navigate('/')} />
+      <Header title={t('settings.title')} />
       <ItemList>
         <ItemGroup>
           <Item
@@ -274,7 +270,6 @@ function Overview() {
 // ===================================================================
 
 function Appearance() {
-  const navigate = useNavigate();
   const { t, lang, setLanguage } = useTranslation();
   const { preference, setPreference } = useTheme();
   // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
@@ -319,7 +314,6 @@ function Appearance() {
       <Header
         title={t('settings.appearance')}
         subtitle={t('settings.appearanceSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
@@ -486,7 +480,6 @@ function Account() {
       <Header
         title={t('settings.account')}
         subtitle={t('settings.accountSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup title={t('settingsAccount.accountInformation')}>
@@ -654,7 +647,6 @@ function NewSessionAgentField({
 }
 
 function Agents() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
   const [overrides, setOverrides] = useSettingMutable('agentDefaultOverrides');
@@ -686,7 +678,6 @@ function Agents() {
       <Header
         title={t('settingsAgents.title')}
         subtitle={t('settingsAgents.subtitle')}
-        onBack={() => navigate('/settings')}
         right={
           <Button size="sm" variant="ghost" onClick={clearAll}>
             {t('settingsAgents.clearOverrides')}
@@ -759,12 +750,16 @@ function Agents() {
 // Snippets
 // ===================================================================
 
-type SnippetKind = 'preset' | 'command';
+// Unified shortcuts (B-052): ONE synced list (promptPresets) drives the chat
+// composer menu AND the terminal menu. Every entry inserts its text; entries
+// with run:true additionally auto-execute (Enter) when picked in the
+// TERMINAL. The legacy terminalCommands list has no management UI anymore —
+// it is migrated into this list on load (see sync/shortcutPresets.ts).
 interface EditorState {
-  kind: SnippetKind;
   id: string | null;
   title: string;
   body: string;
+  run: boolean;
 }
 
 function genId() {
@@ -772,11 +767,9 @@ function genId() {
 }
 
 function Snippets() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const toast = useToast();
   const [presets, setPresets] = useSettingMutable('promptPresets');
-  const [commands, setCommands] = useSettingMutable('terminalCommands');
   const [editor, setEditor] = useState<EditorState | null>(null);
   // Startup command for NEW web terminals (synced; daemon skips reattaches).
   // Draft-then-commit so we don't push a settings sync on every keystroke;
@@ -793,46 +786,43 @@ function Snippets() {
     toast.success(t('common.success'));
   }
 
-  function openEditor(kind: SnippetKind, item?: { id: string; title: string; text?: string; command?: string }) {
+  function openEditor(item?: { id: string; title: string; text: string; run?: boolean }) {
     setEditor({
-      kind,
       id: item?.id ?? null,
       title: item?.title ?? '',
-      body: item ? (kind === 'preset' ? item.text ?? '' : item.command ?? '') : '',
+      body: item?.text ?? '',
+      run: item?.run === true,
     });
   }
 
   function saveEditor() {
     if (!editor || editor.body.trim().length === 0) return;
     const title = editor.title.trim() || editor.body.trim().split('\n')[0].slice(0, 60);
-    if (editor.kind === 'preset') {
-      const next = [...(presets ?? [])];
-      const entry = { id: editor.id ?? genId(), title, text: editor.body };
-      const idx = next.findIndex((p) => p.id === editor.id);
-      if (idx >= 0) next[idx] = entry;
-      else next.push(entry);
-      setPresets(next);
-    } else {
-      const next = [...(commands ?? [])];
-      const entry = { id: editor.id ?? genId(), title, command: editor.body };
-      const idx = next.findIndex((c) => c.id === editor.id);
-      if (idx >= 0) next[idx] = entry;
-      else next.push(entry);
-      setCommands(next);
-    }
+    const next = [...(presets ?? [])];
+    // run stored only when true — off entries stay shape-identical to
+    // pre-B-052 blobs (old bundles round-trip them untouched).
+    const entry = {
+      id: editor.id ?? genId(),
+      title,
+      text: editor.body,
+      ...(editor.run ? { run: true } : {}),
+    };
+    const idx = next.findIndex((p) => p.id === editor.id);
+    if (idx >= 0) next[idx] = entry;
+    else next.push(entry);
+    setPresets(next);
     setEditor(null);
     toast.success(t('common.success'));
   }
 
-  async function del(kind: SnippetKind, id: string) {
+  async function del(id: string) {
     const ok = await Modal.confirm(
       t('settingsSnippets.deleteTitle'),
       undefined,
       { confirmText: t('settingsSnippets.deleteConfirm'), destructive: true },
     );
     if (!ok) return;
-    if (kind === 'preset') setPresets((presets ?? []).filter((p) => p.id !== id));
-    else setCommands((commands ?? []).filter((c) => c.id !== id));
+    setPresets((presets ?? []).filter((p) => p.id !== id));
   }
 
   return (
@@ -840,19 +830,14 @@ function Snippets() {
       <Header
         title={t('settingsSnippets.navTitle')}
         subtitle={t('settingsSnippets.navSubtitle')}
-        onBack={() => navigate('/settings')}
       />
 
       {editor && (
         <div className="set-editor">
           <span className="eyebrow">
-            {editor.kind === 'preset'
-              ? editor.id
-                ? t('settingsSnippets.editPreset')
-                : t('settingsSnippets.newPreset')
-              : editor.id
-                ? t('settingsSnippets.editCommand')
-                : t('settingsSnippets.newCommand')}
+            {editor.id
+              ? t('settingsSnippets.editPreset')
+              : t('settingsSnippets.newPreset')}
           </span>
           <Input
             label={t('settingsSnippets.editorTitleLabel')}
@@ -867,6 +852,18 @@ function Snippets() {
             onChange={(e) => setEditor({ ...editor, body: e.target.value })}
           />
           <div className="set-editor__row">
+            {/* Radix Switch renders a <button>, so a wrapping <label> can't
+                forward clicks — the text span toggles explicitly instead. */}
+            <div className="set-editor__toggle">
+              <Toggle
+                checked={editor.run}
+                onChange={(v) => setEditor({ ...editor, run: v })}
+                label={t('settingsSnippets.runToggle')}
+              />
+              <span onClick={() => setEditor({ ...editor, run: !editor.run })}>
+                {t('settingsSnippets.runToggle')}
+              </span>
+            </div>
             <Button variant="ghost" onClick={() => setEditor(null)}>
               {t('settingsSnippets.editorCancel')}
             </Button>
@@ -885,7 +882,16 @@ function Snippets() {
           {(presets ?? []).map((p) => (
             <Item
               key={p.id}
-              title={p.title || p.text.split('\n')[0]}
+              title={
+                p.run === true ? (
+                  <>
+                    <span className="set-snippet-run" aria-hidden>$</span>
+                    {p.title || p.text.split('\n')[0]}
+                  </>
+                ) : (
+                  p.title || p.text.split('\n')[0]
+                )
+              }
               subtitle={p.text}
               right={
                 <button
@@ -894,51 +900,19 @@ function Snippets() {
                   aria-label={t('common.delete')}
                   onClick={(e) => {
                     e.stopPropagation();
-                    del('preset', p.id);
+                    del(p.id);
                   }}
                 >
                   <Trash2 size={16} />
                 </button>
               }
-              onClick={() => openEditor('preset', p)}
+              onClick={() => openEditor(p)}
             />
           ))}
           <Item
             title={t('settingsSnippets.addPreset')}
             left={<Plus size={18} />}
-            onClick={() => openEditor('preset')}
-          />
-        </ItemGroup>
-
-        <ItemGroup
-          title={t('settingsSnippets.commandsGroup')}
-          footer={t('settingsSnippets.commandsFooter')}
-        >
-          {(commands ?? []).map((c) => (
-            <Item
-              key={c.id}
-              title={c.title || c.command.split('\n')[0]}
-              subtitle={c.command}
-              right={
-                <button
-                  type="button"
-                  className="set-header__back"
-                  aria-label={t('common.delete')}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    del('command', c.id);
-                  }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              }
-              onClick={() => openEditor('command', c)}
-            />
-          ))}
-          <Item
-            title={t('settingsSnippets.addCommand')}
-            left={<Plus size={18} />}
-            onClick={() => openEditor('command')}
+            onClick={() => openEditor()}
           />
         </ItemGroup>
 
@@ -1191,7 +1165,6 @@ const SEND_CMD = 'very-happy send --session <session-id> --prompt <text>';
 const MCP_CMD = 'claude mcp add --scope user very-happy-clipboard -- very-happy mcp';
 
 function Channels() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
 
   return (
@@ -1199,7 +1172,6 @@ function Channels() {
       <Header
         title={t('settingsChannels.title')}
         subtitle={t('settingsChannels.subtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         {/* Outbound: server → your endpoint. Carries its own title/footer. */}
@@ -1420,7 +1392,6 @@ function InboxGroup() {
 }
 
 function Notifications() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { credentials } = useAuth();
   const prefs = useNotificationPrefs();
@@ -1431,7 +1402,7 @@ function Notifications() {
   if (!supported) {
     return (
       <Page>
-        <Header title={t('notifications.title')} onBack={() => navigate('/settings')} />
+        <Header title={t('notifications.title')} />
         <ItemList>
           <ItemGroup title={t('notifications.webOnly')}>
             <Item title={t('notifications.unsupported')} />
@@ -1476,7 +1447,6 @@ function Notifications() {
       <Header
         title={t('notifications.title')}
         subtitle={t('notifications.settingsSubtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <ItemGroup
@@ -1584,7 +1554,6 @@ function Notifications() {
 type Period = 'today' | '7days' | '30days';
 
 function Usage() {
-  const navigate = useNavigate();
   const { t } = useTranslation();
   const { credentials } = useAuth();
   const [period, setPeriod] = useState<Period>('7days');
@@ -1631,7 +1600,6 @@ function Usage() {
       <Header
         title={t('settings.usage')}
         subtitle={t('settings.usageSubtitle')}
-        onBack={() => navigate('/settings')}
         right={
           <div className="set-seg">
             {periods.map((p) => (
@@ -1784,7 +1752,6 @@ function Diagnostics() {
       <Header
         title={t('diagnostics.title')}
         subtitle={t('diagnostics.subtitle')}
-        onBack={() => navigate('/settings')}
       />
       <ItemList>
         <WebBuildGroup />
@@ -1929,7 +1896,7 @@ function Password() {
 
   return (
     <Page>
-      <Header title={t('settingsAccount.password')} onBack={() => navigate('/settings')} />
+      <Header title={t('settingsAccount.password')} />
       <div className="set-note">{t('setPassword.intro')}</div>
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <Input

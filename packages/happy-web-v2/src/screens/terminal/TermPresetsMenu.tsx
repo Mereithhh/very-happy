@@ -1,33 +1,43 @@
 /**
- * TermPresetsMenu — prompt-presets picker for the web terminal. Same synced
- * data (useSettings().promptPresets) and interaction shape as the chat
- * composer's PresetsMenu (Radix dropdown, pm-* list styling), reskinned for
- * the terminal chrome:
+ * TermPresetsMenu — unified shortcuts picker for the web terminal (B-052).
+ * Reads the same synced list as the chat composer's PresetsMenu
+ * (useSettings().promptPresets), reskinned for the terminal chrome:
  *   - variant "header": desktop — sb-icon-btn in the terminal header toolbar,
- *     menu drops down (align end, like the quick-commands menu next to it);
+ *     menu drops down (align end);
  *   - variant "keybar": mobile — a key on the assistive key bar, menu pops up.
- * Hidden entirely when there are no presets (mirrors PresetsMenu).
  *
- * onPick pastes the preset text into the pty (bracketed paste — never
- * auto-executes; the user presses Enter). Focus handoff: onPick runs inside
- * the Radix onSelect click (iOS only opens the soft keyboard for focus()
- * calls inside the user-gesture stack) and moves focus to xterm via the
- * screen's focus policy; onCloseAutoFocus is prevented so Radix's default
- * "return focus to the trigger on close" can't steal it back from the
- * terminal right after the paste.
+ * Two kinds of entries (one list, classified per item — see shortcutPresets):
+ *   - insert (default): onPick pastes the text into the pty (bracketed paste —
+ *     never auto-executes; the user presses Enter);
+ *   - run (run: true): onRun executes on select (paste + Enter). Marked with
+ *     a mono "$" prefix so the eye can tell "types for me" from "runs for me".
+ *
+ * This menu absorbed the old separate quick-commands (ListPlus) menu: with no
+ * entries at all, the header variant shows a single "manage" item (onManage →
+ * settings) instead of hiding — the affordance the commands menu used to
+ * provide. The keybar variant still hides when empty (key bar space is scarce).
+ *
+ * Focus handoff (two passes, both needed): onPick/onRun runs inside the Radix
+ * onSelect click and focuses xterm there because iOS only opens the soft
+ * keyboard for focus() calls inside the user-gesture stack — but that pass
+ * does NOT survive, since Radix's FocusScope is still mounted and pulls focus
+ * back into the menu. So onCloseAutoFocus prevents Radix's "return focus to
+ * the trigger" AND refocuses the terminal itself once the menu is unmounted.
+ * Without that second pass focus ends on <body> and Enter does nothing.
  *
  * Keyboard path (header variant, desktop): ⌘./Ctrl+. toggles the menu — the
  * shortcut hook listens in the CAPTURE phase, so the chord is intercepted
  * before xterm's helper textarea can swallow it — then digits 1-9 pick the
- * numbered preset via the same paste+focus path as a click. The keybar
- * variant only exists on coarse-pointer devices, where the hook is inert.
- * See ../../app/presetsShortcut.ts.
+ * numbered entry via the same path as a click (run entries execute). The
+ * keybar variant only exists on coarse-pointer devices, where the hook is
+ * inert. See ../../app/presetsShortcut.ts.
  */
 import { useRef } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { BookMarked } from 'lucide-react';
 import { useSettings } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
+import { presetRuns } from '@/sync/shortcutPresets';
 import {
     usePresetsMenuShortcut,
     presetDigitIndex,
@@ -39,13 +49,21 @@ import '@/screens/session/presets.css';
 export function TermPresetsMenu({
     variant,
     onPick,
+    onRun,
+    onManage,
     onCancel,
 }: {
     variant: 'header' | 'keybar';
+    /** Insert entry picked — paste without Enter. */
     onPick: (text: string) => void;
-    /** Keyboard cancel (Esc / ⌘. while open) — refocus the terminal, since
-     *  onCloseAutoFocus below suppresses Radix's trigger refocus and a cancel
-     *  has no onPick to route focus (keyboard-only flow must not strand it). */
+    /** Run entry picked — paste AND execute (Enter). */
+    onRun: (text: string) => void;
+    /** Empty-state "manage shortcuts" item (header variant only). */
+    onManage?: () => void;
+    /** Refocus the terminal after the menu closes — used for BOTH a keyboard
+     *  cancel (Esc / ⌘.) and a pick, because onCloseAutoFocus suppresses
+     *  Radix's trigger refocus and the pick's own focus() is overridden by the
+     *  still-mounted FocusScope. Not called for click-outside dismissals. */
     onCancel?: () => void;
 }) {
     const { t } = useTranslation();
@@ -55,16 +73,35 @@ export function TermPresetsMenu({
     // True while the pending close is a KEYBOARD cancel (Esc / ⌘. toggle) —
     // consumed (and reset) in onCloseAutoFocus.
     const kbCancelRef = useRef(false);
+    // True while the pending close follows a PICK. The focus() that onPick /
+    // onRun perform runs while Radix's FocusScope is still mounted, so the
+    // scope pulls focus back inside the menu; onCloseAutoFocus then suppresses
+    // Radix's "return focus to the trigger" and focus lands on <body> — the
+    // terminal looked focused but Enter went nowhere (field report). Refocus
+    // once the menu is actually gone. Gated on the pick so a click-OUTSIDE
+    // dismissal never steals focus from whatever the user clicked.
+    const pickedRef = useRef(false);
     // The keybar variant is only rendered on coarse-pointer devices, where the
     // hook is inert anyway; gating on the variant keeps the invariant explicit.
-    const [open, setOpen] = usePresetsMenuShortcut(!keybar && presets.length > 0, () => {
+    // The header variant stays registered even with zero entries — the menu
+    // then shows the manage item, which ⌘. may legitimately open.
+    const [open, setOpen] = usePresetsMenuShortcut(!keybar, () => {
         kbCancelRef.current = true;
     });
-    if (presets.length === 0) return null;
+    // Keybar hides when empty; header keeps a manage-entry menu (it replaced
+    // the old always-visible quick-commands menu).
+    if (presets.length === 0 && keybar) return null;
 
-    // Digit direct-select while open — identical to clicking the item
-    // (bracketed paste, no Enter; focus returns to the terminal inside onPick,
-    // and onCloseAutoFocus below keeps Radix from stealing it back).
+    const pick = (p: { text: string; run?: boolean }) => {
+        pickedRef.current = true;
+        if (presetRuns(p)) onRun(p.text);
+        else onPick(p.text);
+    };
+
+    // Digit direct-select while open — identical to clicking the item (run
+    // entries execute; insert entries paste without Enter; focus returns to
+    // the terminal inside the handler, and onCloseAutoFocus below keeps Radix
+    // from stealing it back).
     // preventDefault also stops Radix's title typeahead from shadowing digits.
     const onMenuKeyDown = (e: React.KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -72,7 +109,7 @@ export function TermPresetsMenu({
         if (idx == null) return;
         e.preventDefault();
         e.stopPropagation();
-        onPick(presets[idx].text);
+        pick(presets[idx]);
         setOpen(false);
     };
 
@@ -102,34 +139,44 @@ export function TermPresetsMenu({
                     collisionPadding={8}
                     onEscapeKeyDown={() => { kbCancelRef.current = true; }}
                     onCloseAutoFocus={(e) => {
-                        // Always suppress Radix's "refocus the trigger" (the
-                        // pick path routes focus to xterm inside onPick); on a
-                        // keyboard cancel, hand focus back to the terminal.
+                        // Always suppress Radix's "refocus the trigger", then
+                        // hand focus to the terminal ourselves — for keyboard
+                        // cancels AND for picks (see pickedRef: the in-onSelect
+                        // focus() loses to the still-mounted FocusScope, so
+                        // this post-unmount pass is the one that sticks).
                         e.preventDefault();
-                        if (kbCancelRef.current) {
-                            kbCancelRef.current = false;
-                            onCancel?.();
-                        }
+                        const wanted = kbCancelRef.current || pickedRef.current;
+                        kbCancelRef.current = false;
+                        pickedRef.current = false;
+                        if (wanted) onCancel?.();
                     }}
                     onKeyDown={onMenuKeyDown}
                 >
                     <div className="pm-head">
                         {t('terminal.presetsTitle')}
-                        {showHints && (
+                        {showHints && presets.length > 0 && (
                             <span className="pm-head-hint">{t('terminal.presetsDigitHint')}</span>
                         )}
                     </div>
                     {presets.map((p, i) => (
-                        <DropdownMenu.Item key={p.id} className="pm-item" onSelect={() => onPick(p.text)}>
+                        <DropdownMenu.Item key={p.id} className="pm-item" onSelect={() => pick(p)}>
                             <span className="pm-item-title">
                                 {showHints && i < 9 && (
                                     <span className="pm-item-num">{i + 1}.</span>
+                                )}
+                                {presetRuns(p) && (
+                                    <span className="pm-item-run" aria-label={t('terminal.presetsRunBadge')} title={t('terminal.presetsRunBadge')}>$</span>
                                 )}
                                 {p.title}
                             </span>
                             <span className="pm-item-text">{p.text}</span>
                         </DropdownMenu.Item>
                     ))}
+                    {presets.length === 0 && (
+                        <DropdownMenu.Item className="pm-item" onSelect={() => onManage?.()}>
+                            <span className="pm-item-title">{t('terminal.presetsManage')}</span>
+                        </DropdownMenu.Item>
+                    )}
                 </DropdownMenu.Content>
             </DropdownMenu.Portal>
         </DropdownMenu.Root>

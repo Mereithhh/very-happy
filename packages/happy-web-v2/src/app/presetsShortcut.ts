@@ -69,9 +69,11 @@ export function presetDigitIndex(key: string, presetCount: number): number | nul
 
 /**
  * Controlled-open state for a presets dropdown plus the global ⌘./Ctrl+.
- * toggle. `enabled` should be `presets.length > 0` — with no presets the
- * chord does nothing (the trigger button is hidden too; the shortcut keeps
- * that consistency). Inert on coarse-pointer devices.
+ * toggle. `enabled` mirrors "is this menu openable at all": the chat
+ * composer passes `presets.length > 0` (its trigger hides when empty), the
+ * terminal header passes true unconditionally (its menu shows a manage item
+ * when empty — it absorbed the old quick-commands menu, B-052). Inert on
+ * coarse-pointer devices.
  *
  * `onChordClose` fires when the chord closes an already-open menu — a
  * keyboard cancel. Callers use it (together with Radix's onEscapeKeyDown) to

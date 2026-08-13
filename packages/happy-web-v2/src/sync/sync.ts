@@ -20,6 +20,7 @@ import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, settingsToSyncPayload, SUPPORTED_SCHEMA_VERSION } from './settings';
+import { migrateTerminalCommands } from './shortcutPresets';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import {
@@ -749,6 +750,15 @@ class Sync {
             ? applySettings(serverSettings, this.pendingSettings)
             : serverSettings;
         storage.getState().applySettings(merged, version);
+
+        // One-time migration (B-052): fold legacy terminalCommands into
+        // promptPresets (run:true). Both fields go out in ONE settings delta
+        // (field-level LWW updates them together); idempotent — once
+        // terminalCommands is empty this returns null forever, and a stale
+        // non-empty copy arriving later (old device / LWW race) re-migrates
+        // with same-text dedup instead of duplicating.
+        const migration = migrateTerminalCommands(merged.promptPresets, merged.terminalCommands);
+        if (migration) this.applySettings(migration);
     }
 
     applySettings = (delta: Partial<Settings>) => {

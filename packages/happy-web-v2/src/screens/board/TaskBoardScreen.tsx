@@ -20,7 +20,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useLocalSettingMutable, storage } from '@/sync/storage';
 import { getCurrentAuth } from '@/auth/AuthContext';
@@ -497,9 +498,7 @@ export function TaskBoardScreen() {
   return (
     <div className="bd">
       <header className="bd-header">
-        <button type="button" className="bd-back" onClick={() => navigate('/')} aria-label="Back">
-          <ChevronLeft size={18} />
-        </button>
+        <BackButton />
         <span className="bd-title">{t('board.title')}</span>
         {attention.length > 0 && (
           <span className="bd-summary-attn mono" title={t('board.attention') as string}>

@@ -18,19 +18,8 @@
   border-bottom: 1px solid var(--line);
   background: var(--bg-1);
 }
-.bd-back {
-  display: none; /* mobile-only back (desktop keeps the sidebar) */
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--r-sm);
-  color: var(--text-dim);
-}
-.bd-back:hover {
-  background: var(--bg-2);
-  color: var(--text);
-}
+/* the back arrow is now the shared .vh-back control (styles/base.css) — and
+   no longer mobile-only: back is global now. */
 .bd-title {
   font-weight: 600;
   font-size: var(--fs-14);
@@ -477,11 +466,8 @@
   gap: var(--sp-3);
 }
 
-/* mobile: one stacked column, back button visible */
+/* mobile: one stacked column */
 @media (max-width: 979px) {
-  .bd-back {
-    display: inline-flex;
-  }
   .bd-header {
     flex-wrap: wrap; /* layout toggle + New task drop to a second row */
   }

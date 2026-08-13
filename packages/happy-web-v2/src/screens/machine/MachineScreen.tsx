@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Pencil, Play, Terminal, ChevronRight } from 'lucide-react';
+import { Pencil, Play, Terminal, ChevronRight } from 'lucide-react';
+import { BackButton } from '@/app/BackButton';
 import {
   EmptyState,
   Button,
@@ -161,9 +162,7 @@ export function MachineScreen() {
     <div className="set-scroll" style={{ height: '100dvh' }}>
       <div className="set-page">
         <div className="set-header">
-          <button type="button" className="set-header__back" onClick={() => navigate('/')} aria-label="Back">
-            <ChevronLeft size={20} />
-          </button>
+          <BackButton />
           <div className="set-header__titles">
             <span className="set-header__title">{name}</span>
             <span className="set-header__subtitle">{machine.metadata?.host}</span>

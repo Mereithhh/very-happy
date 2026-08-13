@@ -488,10 +488,12 @@ export const en = {
             permissionLabel: 'mode',
             effortLabel: 'effort',
             attach: 'Attach image',
-            presets: 'Prompt presets',
-            presetsTitle: 'PROMPT PRESETS',
-            // Desktop keyboard hint in the presets menu head (⌘./Ctrl+. opens
-            // the menu; digits 1-9 insert the numbered preset directly).
+            // Unified shortcuts (B-052): same list as the terminal menu, but
+            // in the chat composer EVERY entry inserts (run flag ignored).
+            presets: 'Shortcuts',
+            presetsTitle: 'SHORTCUTS',
+            // Desktop keyboard hint in the shortcuts menu head (⌘./Ctrl+.
+            // opens the menu; digits 1-9 insert the numbered entry directly).
             presetsDigitHint: '1-9 to insert',
             files: 'Files',
             closeFiles: 'Close files',
@@ -861,6 +863,10 @@ export const en = {
         moveToTop: 'Move to top',
         moveUp: 'Move up',
         moveDown: 'Move down',
+        // sort-mode switch (列表 view only) — the label states the CURRENT
+        // mode and what a click does, since one icon carries both.
+        sortByRecent: 'Sorted by recent activity — click for manual order',
+        sortManual: 'Manual order — click to sort by recent activity',
     },
 
     zen: {
@@ -1155,14 +1161,20 @@ export const en = {
         inputBarToggle: 'Line input',
         inputBarPlaceholder: 'Type a command · Enter to send',
         inputBarSend: 'Send',
-        // Prompt presets in the web terminal (header menu on desktop, key-bar
-        // menu on mobile): pastes the preset text into the terminal input —
-        // the user presses Enter to send, never auto-executed.
-        presets: 'Prompt presets',
-        presetsTitle: 'PROMPT PRESETS',
-        // Desktop keyboard hint in the presets menu head (⌘./Ctrl+. opens the
-        // menu; digits 1-9 paste the numbered preset — Enter still manual).
-        presetsDigitHint: '1-9 to insert',
+        // Unified shortcuts menu in the web terminal (header menu on desktop,
+        // key-bar menu on mobile). Insert entries paste into the terminal
+        // input (the user presses Enter); run entries ($-marked, run:true)
+        // execute on select.
+        presets: 'Shortcuts',
+        presetsTitle: 'SHORTCUTS',
+        // Desktop keyboard hint in the shortcuts menu head (⌘./Ctrl+. opens
+        // the menu; digits 1-9 pick the numbered entry — run entries execute).
+        presetsDigitHint: '1-9 to pick',
+        // Badge tooltip/aria on $-marked entries.
+        presetsRunBadge: 'Runs on select',
+        // Empty-state item (menu absorbed the old quick-commands menu, which
+        // always offered a way into settings).
+        presetsManage: 'Manage shortcuts…',
     },
 
     board: {
@@ -1504,25 +1516,25 @@ export const en = {
     },
 
     settingsSnippets: {
-        // Snippets settings (prompt presets + terminal quick commands)
-        navTitle: 'Snippets',
-        navSubtitle: 'Prompt presets + terminal commands',
+        // Unified shortcuts settings (B-052): ONE list for the chat composer
+        // and the web terminal. Entries with "run in terminal" enabled are
+        // executed (Enter) when picked from the TERMINAL menu; everything
+        // else — and every entry in the chat composer — inserts without Enter.
+        navTitle: 'Shortcuts',
+        navSubtitle: 'Saved snippets for chat + terminal',
         editorTitleLabel: 'TITLE',
         editorTitlePlaceholder: 'optional, first line if blank',
         editorCancel: 'Cancel',
         editorSave: 'Save',
-        editPreset: 'Edit preset',
-        newPreset: 'New preset',
-        editCommand: 'Edit command',
-        newCommand: 'New command',
+        editPreset: 'Edit shortcut',
+        newPreset: 'New shortcut',
         deleteTitle: 'Delete?',
         deleteConfirm: 'Delete',
-        presetsGroup: 'Prompt presets',
-        presetsFooter: 'Tap the bookmark icon in the composer to insert one; you can edit it before sending.',
-        addPreset: 'Add preset',
-        commandsGroup: 'Terminal commands',
-        commandsFooter: 'Tap the command icon in the web terminal; the command is inserted (not auto-run — press Enter to confirm).',
-        addCommand: 'Add command',
+        presetsGroup: 'Shortcuts',
+        presetsFooter: 'One list for the chat composer and the web terminal: picking an entry inserts its text (press Enter to send). Entries marked "$" run immediately when picked in the terminal.',
+        addPreset: 'Add shortcut',
+        // Editor toggle: run:true → terminal menu executes on select.
+        runToggle: 'Run in terminal on select',
         startupGroup: 'Terminal startup command',
         startupFooter: 'Runs automatically when a NEW web terminal is created — never again when reattaching to an existing session. Leave empty to disable.',
         startupPlaceholder: 'e.g. cd ~/code && claude — empty = off',

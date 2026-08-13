@@ -8,26 +8,7 @@
   background: var(--bg-1);
   min-height: 48px;
 }
-.ch-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  border-radius: var(--r-sm);
-  color: var(--text-dim);
-  transition: background var(--motion-fast), color var(--motion-fast);
-}
-.ch-back:hover {
-  background: var(--bg-2);
-  color: var(--text);
-}
-@media (min-width: 980px) {
-  .ch-back {
-    display: none;
-  }
-}
+/* the back arrow is now the shared .vh-back control (styles/base.css) */
 .ch-main {
   flex: 1;
   min-width: 0;
@@ -134,14 +115,11 @@
 }
 
 /* touch: 16px floor stops iOS focus auto-zoom on the rename input; header
- * icons/back get finger-sized targets (header is 48px tall, room exists). */
+ * icons get finger-sized targets (header is 48px tall, room exists). The back
+ * arrow carries the same bump from .vh-back in styles/base.css. */
 @media (pointer: coarse) {
   .ch-rename-input {
     font-size: var(--fs-16);
-  }
-  .ch-back {
-    width: 40px;
-    height: 40px;
   }
   .ch-icon {
     width: 36px;

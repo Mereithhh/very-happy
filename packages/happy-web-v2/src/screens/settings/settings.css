@@ -170,6 +170,25 @@ input.set-value:focus {
   display: flex;
   gap: var(--sp-2);
   justify-content: flex-end;
+  align-items: center;
+}
+/* "Run in terminal" toggle in the shortcut editor — sits left of the buttons */
+.set-editor__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-right: auto;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+/* Run badge on shortcut list rows — mono "$" marks entries the terminal
+   menu executes on select (mirrors .pm-item-run in the menus). */
+.set-snippet-run {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  margin-right: var(--sp-1);
 }
 
 /* webhook notification form (settings → channels) */

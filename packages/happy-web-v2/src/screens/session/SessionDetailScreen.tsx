@@ -62,7 +62,6 @@ export function SessionDetailScreen() {
             <div className="sd-main">
                 <ChatHeader
                     sessionId={id}
-                    onBack={() => navigate('/')}
                     filesOpen={filesOpen}
                     onToggleFiles={() => setFilesOpen((v) => !v)}
                 />

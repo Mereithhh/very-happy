@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2, AudioLines } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, Trash2, AudioLines, ArrowDownWideNarrow, ListOrdered } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick } from '@/app/newTerminal';
@@ -8,6 +8,8 @@ import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { confirmArchiveSession, confirmDeleteSession, confirmDeleteTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
 import type { Session } from '@/sync/storageTypes';
+// aliased: `Settings` is already taken by the lucide gear icon above
+import type { Settings as SyncedSettings } from '@/sync/settings';
 import { StatusDot, CyberMark, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
@@ -23,6 +25,12 @@ import { NewSessionModal } from './NewSessionModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
+import {
+  resolveSidebarSort,
+  sortRowsByRecent,
+  shouldHoldReorder,
+  applyReorderHold,
+} from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import './sidebar.css';
 
@@ -36,6 +44,10 @@ type View = 'list' | 'status' | 'archived';
 interface Row {
   key: string;
   kind: 'terminal' | 'session';
+  /** last-active time — the recent sort's key (both the 列表 view's recent
+   *  mode and the 状态 view's in-group order). Definition per row kind lives
+   *  in sidebarRecentSort.ts's header; in short: chat = updatedAt||activeAt||
+   *  createdAt, terminal = tmux last activity (createdAt on old daemons). */
   ts: number;
   /** creation time — orders the unkeyed "new rows" zone (newest first) */
   createdAt: number;
@@ -93,6 +105,22 @@ export function Sidebar() {
 
   const attentionCount = useBoardAttentionCount();
 
+  // ----- sort mode (列表 view) -----
+  // Synced `sidebarSort`: 'recent' (default) auto-sorts every row by last
+  // activity, newest on top, terminals and chats MIXED — a terminal is a
+  // session too, so nothing is pinned above by kind. 'manual' hands the list
+  // back to the `sidebarOrder` table below. The two fields are independent on
+  // purpose: 'recent' never clears `sidebarOrder`, so the switch is LOSSLESS —
+  // flipping back to 'manual' restores the hand-made arrangement exactly.
+  const sortMode = resolveSidebarSort(useSetting('sidebarSort'));
+  /** 列表 is the only orderable view: 状态's order is the lifecycle verdict,
+   *  归档 stays a plain activity list. */
+  const orderable = view === 'list';
+  /** Surfaces whose order can shift WITHOUT the user acting — the ones the
+   *  hover hold below has to protect. (Manual mode reorders only on a drag,
+   *  which must apply instantly.) */
+  const autoSorted = (orderable && sortMode === 'recent') || view === 'status';
+
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
     const sessRows = sessions
@@ -106,7 +134,10 @@ export function Sidebar() {
         : terminals.map((tm) => ({
             key: `t:${tm.id}`,
             kind: 'terminal',
-            ts: tm.createdAt,
+            // tmux last activity (daemon push: MachineTerminal.activityAt,
+            // already mapped onto updatedAt by terminalPushOps with a
+            // createdAt fallback for daemons too old to send it).
+            ts: tm.updatedAt ?? tm.createdAt,
             createdAt: tm.createdAt,
             terminalId: tm.id,
             machineId: tm.machineId,
@@ -116,16 +147,85 @@ export function Sidebar() {
     return [...termRows, ...sessRows];
   }, [sessions, terminals, view]);
 
+  // ----- reorder hold (mis-click guard) -----
+  // An auto-sorted list must never yank a row out from under the pointer: the
+  // row you were about to click would be replaced by another one mid-press.
+  // So while the pointer is inside the list the RENDERED order is frozen to
+  // the sequence that was on screen when it entered; the pending order is
+  // applied the moment the pointer leaves, or after REORDER_HOLD_MS with the
+  // pointer motionless (a parked cursor must not freeze the sidebar forever).
+  // Row content, status dots and the selected-row highlight all keep updating
+  // — only the SEQUENCE is held (see applyReorderHold for how appearing /
+  // disappearing rows are handled). The decision is a pure function so it can
+  // be unit-tested; this hook is only the plumbing.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [heldKeys, setHeldKeys] = useState<string[] | null>(null);
+  const heldRef = useRef<string[] | null>(null);
+  /** Row keys as currently RENDERED — the snapshot taken when the hold arms. */
+  const displayedKeysRef = useRef<string[]>([]);
+  const pointerRef = useRef({ inside: false, lastAt: 0 });
+  useEffect(() => {
+    const release = () => {
+      if (heldRef.current === null) return;
+      heldRef.current = null;
+      setHeldKeys(null);
+    };
+    const el = listRef.current;
+    if (!el || !autoSorted) {
+      release();
+      return;
+    }
+    const arm = () => {
+      pointerRef.current.inside = true;
+      pointerRef.current.lastAt = Date.now();
+      if (heldRef.current !== null) return; // already frozen — just refresh the clock
+      const snapshot = displayedKeysRef.current.slice();
+      heldRef.current = snapshot;
+      setHeldKeys(snapshot);
+    };
+    const leave = () => {
+      pointerRef.current.inside = false;
+      release();
+    };
+    el.addEventListener('pointerenter', arm);
+    el.addEventListener('pointermove', arm);
+    el.addEventListener('pointerleave', leave);
+    // The idle release needs its own clock: a motionless pointer emits no
+    // events, so nothing else would ever fire to end the hold.
+    const iv = setInterval(() => {
+      if (heldRef.current === null) return;
+      const p = pointerRef.current;
+      if (!shouldHoldReorder({ pointerInside: p.inside, lastPointerAt: p.lastAt || null, now: Date.now() })) {
+        release();
+      }
+    }, 250);
+    return () => {
+      el.removeEventListener('pointerenter', arm);
+      el.removeEventListener('pointermove', arm);
+      el.removeEventListener('pointerleave', leave);
+      clearInterval(iv);
+      release();
+    };
+  }, [autoSorted]);
+
   // ----- status mode (lifecycle groups) -----
-  // The board's derivation IS the sidebar's: useBoardItems carries lifecycle
-  // (boardItems.lifecycleOf) + the board's total order, and
-  // groupRowsByLifecycle only maps row keys onto that verdict — there is no
-  // second classifier, so sidebar and board can never disagree.
+  // The board's derivation IS the sidebar's classification: useBoardItems
+  // carries lifecycle (boardItems.lifecycleOf) and groupRowsByLifecycle only
+  // maps row keys onto that verdict — there is no second classifier, so
+  // sidebar and board can never disagree about running vs. waiting. The order
+  // WITHIN each group is the sidebar's own: most recently active first, the
+  // same model as the 列表 view's recent sort.
   const boardItems = useBoardItems();
-  const statusGroups = useMemo(
-    () => (view === 'status' && rows ? groupRowsByLifecycle(rows, boardItems) : null),
-    [view, rows, boardItems],
-  );
+  const statusGroups = useMemo(() => {
+    if (view !== 'status' || !rows) return null;
+    const g = groupRowsByLifecycle(rows, boardItems);
+    // One flat held sequence, applied per group (applyReorderHold tolerates a
+    // superset of keys) — group membership itself still follows the board.
+    return {
+      waiting: applyReorderHold(heldKeys, g.waiting),
+      running: applyReorderHold(heldKeys, g.running),
+    };
+  }, [view, rows, boardItems, heldKeys]);
   // 已完成(今日): sessions completed via the board's ✓ in the last 24h (same
   // window and source as the board's Done column). Collapsed by default so
   // the live groups keep the space. Date.now() in the memo is fine — session
@@ -146,11 +246,13 @@ export function Sidebar() {
   // visible sequence into keys, folding the legacy pins in at their top
   // positions (mergeLegacyPinned). Ordering only shapes the ACTIVE list; the
   // archived view stays a plain activity list.
+  //
+  // This table is only CONSULTED in `sidebarSort === 'manual'` — under the
+  // default 'recent' it stays on disk, untouched, so the mode switch is
+  // lossless in both directions. It is still pruned (below) either way, so a
+  // long stay in recent mode can't let it rot into ghosts.
   const orderSetting = useSetting('sidebarOrder');
   const pinnedSetting = useSetting('pinnedRows'); // legacy, pre-materialization only
-  // Manual order shapes ONLY the list view; in status view the order is the
-  // lifecycle verdict (not draggable), archived stays a plain activity list.
-  const orderApplies = view === 'list';
   const displayRows = useMemo<Row[] | null>(() => {
     if (!rows) return null;
     if (view === 'status') {
@@ -164,17 +266,28 @@ export function Sidebar() {
         ...(completedOpen ? completedRows : []),
       ];
     }
-    if (!orderApplies) return rows;
+    if (!orderable) return rows; // 归档: plain activity list, unchanged
+    // recent mode: one mixed sequence by last activity, hold applied.
+    if (sortMode === 'recent') return applyReorderHold(heldKeys, sortRowsByRecent(rows));
     if ((orderSetting ?? []).length > 0) return sortRowsByManualOrder(rows, orderSetting!);
     const { pinned, rest } = splitPinnedRows(rows, pinnedSetting ?? []);
     return [...pinned, ...rest];
-  }, [rows, view, statusGroups, completedRows, completedOpen, orderSetting, pinnedSetting, orderApplies]);
+  }, [rows, view, statusGroups, completedRows, completedOpen, orderSetting, pinnedSetting, orderable, sortMode, heldKeys]);
+  // Feeds the hold's arming snapshot (assigned during render, read by the
+  // pointer listeners) — always the sequence actually on screen.
+  displayedKeysRef.current = displayRows?.map((r) => r.key) ?? [];
 
   // Commit a reorder: `seqKeys` = the final VISIBLE sequence, `movedKey` =
   // the row the user moved. Reads settings from the store (not the render
   // closure) — a drag can outlive a re-render. First commit materializes
   // everything (legacy pins folded in); afterwards the plan is minimal
   // (usually a single entry). Invisible keyed entries are carried untouched.
+  //
+  // Dragging in RECENT mode also flips `sidebarSort` to 'manual': the gesture
+  // IS the expression of manual intent, and asking the user to find a toggle
+  // first (or silently discarding their drag) would both be worse. The switch
+  // is seamless because `seqKeys` is the recent order they were looking at,
+  // so the list only changes by the one row they moved.
   const commitSeq = useCallback((seqKeys: string[], movedKey: string) => {
     const st = storage.getState().settings;
     const cur = st.sidebarOrder ?? [];
@@ -182,18 +295,26 @@ export function Sidebar() {
       cur.length === 0
         ? planSidebarOrder([], mergeLegacyPinned(seqKeys, (st.pinnedRows ?? []).map((p) => p.key)), movedKey)
         : planSidebarOrder(cur, seqKeys, movedKey);
-    if (next !== cur) sync.applySettings({ sidebarOrder: next });
+    const delta: Partial<SyncedSettings> = {};
+    if (next !== cur) delta.sidebarOrder = next;
+    if (resolveSidebarSort(st.sidebarSort) !== 'manual') delta.sidebarSort = 'manual';
+    if (Object.keys(delta).length > 0) sync.applySettings(delta);
   }, []);
 
   // Menu fallback (the only reorder path on coarse pointers): swap with the
-  // adjacent row in the full visible list.
+  // adjacent row in the full visible list. `index` is where the row was
+  // RENDERED when the menu opened — in recent mode the list can have
+  // re-sorted since (opening the menu moves the pointer out of the list and
+  // releases the hold), so the key is the truth and the index only a hint.
   const moveRow = useCallback((key: string, index: number, dir: -1 | 1) => {
     const list = rowsRef.current;
     if (!list) return;
-    const j = index + dir;
-    if (j < 0 || j >= list.length || list[index]?.key !== key) return;
+    const from = list[index]?.key === key ? index : list.findIndex((r) => r.key === key);
+    if (from < 0) return;
+    const j = from + dir;
+    if (j < 0 || j >= list.length) return;
     const keys = list.map((r) => r.key);
-    [keys[index], keys[j]] = [keys[j], keys[index]];
+    [keys[from], keys[j]] = [keys[j], keys[from]];
     commitSeq(keys, key);
   }, [commitSeq]);
 
@@ -202,15 +323,16 @@ export function Sidebar() {
   // as SidebarResizeHandle, no dnd dependency. While dragging, an accent
   // insertion line tracks the drop slot; the list stays put (insertion-line
   // model, no live reorder) and the settings write happens once, on drop.
-  const listRef = useRef<HTMLDivElement | null>(null);
+  // (`listRef` is declared up with the reorder hold, which also needs it.)
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropLineY, setDropLineY] = useState<number | null>(null);
 
   const onRowPointerDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0) return;
     // Only the list view is orderable: status order is the lifecycle verdict,
-    // archived is a plain activity list.
-    if (!orderApplies) return;
+    // archived is a plain activity list. Dragging works in BOTH sort modes —
+    // in recent mode the drop switches the mode (see commitSeq).
+    if (!orderable) return;
     if (typeof window.matchMedia === 'function' && !window.matchMedia('(pointer: fine)').matches) return;
     if ((e.target as HTMLElement).closest('.sb-row-menu')) return;
     const list = listRef.current;
@@ -487,6 +609,24 @@ export function Sidebar() {
           <button className="sb-icon-btn sb-search-btn" title={t('sidebar.openSearch')} onClick={openCommandPalette}>
             <Search size={17} />
           </button>
+          {/* Sort-mode switch — 列表 view only (状态 orders by lifecycle, 归档
+              is a plain activity list, so the toggle would be a lie there).
+              Visible on every pointer class: it's one existing-size icon in a
+              row that already flexes, so it costs no extra space on mobile.
+              Flipping to 'manual' does NOT rebuild sidebarOrder — the old
+              arrangement is still there and comes straight back. */}
+          {orderable && (
+            <button
+              className="sb-icon-btn"
+              title={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
+              aria-label={t(sortMode === 'recent' ? 'sidebar.sortByRecent' : 'sidebar.sortManual')}
+              onClick={() =>
+                sync.applySettings({ sidebarSort: sortMode === 'recent' ? 'manual' : 'recent' })
+              }
+            >
+              {sortMode === 'recent' ? <ArrowDownWideNarrow size={17} /> : <ListOrdered size={17} />}
+            </button>
+          )}
           {/* form switch: the Siri-like voice assistant (B-051). The assistant
               screen carries the mirror button in the same top-left slot. */}
           <button
@@ -628,7 +768,7 @@ export function Sidebar() {
                           badge={cmdHeld && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}
                           canMoveDown={i < displayRows.length - 1}
-                          onMove={orderApplies ? (dir) => moveRow(r.key, i, dir) : undefined}
+                          onMove={orderable ? (dir) => moveRow(r.key, i, dir) : undefined}
                           onRenameRequest={() => setRenameTarget(r)}
                         />
                       </div>

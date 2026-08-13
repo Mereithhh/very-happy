@@ -69,8 +69,11 @@
 | B-047 | 文件浏览器：终端/聊天会话浏览 cwd 目录与文件内容（daemon 机器 RPC fs-list/fs-read + 终端抽屉 + FilesPanel 浏览模式） | feat | Owner 2026-08-13 | done | Shipped 02cb8543 / cli v0.2.33；spec Shipped |
 | B-049 | 剪贴板体验重设计：默认静默复制+可点 toast 兜底（不再弹阻断 modal）+ 历史面板（50 条/32KB 护栏/编辑再复制/清空） | ux | Owner 2026-08-13 | done | Shipped；入口 ⌘K+设置 Channels；历史每设备本地不同步 |
 | B-050 | 新 logo「会眨眼的终端窗口」+ 整套应用图标（gpt-image 探索方向 + Pillow 按 token 重建主源） | ux | Owner 2026-08-13 | done | Shipped；候选在 skills/tmp/vh-logo/；7 条设计感提案待 Owner 挑 |
+| B-052 | 统一快捷指令：promptPresets 加 run 标记吸收 terminalCommands（一次性幂等迁移+菜单合并，同一份文本聊天/终端通用） | ux | Owner 2026-08-14 | done | 迁移保持插入语义不自动执行；run 为 opt-in；terminalCommands 保留兼容无 UI 入口 |
+| B-053 | 侧栏「最近活跃」自动排序（终端+聊天混排；与手动排序做无损模式切换，拖拽即切手动） | ux | Owner 2026-08-14 | done | activityAt 链路本就通、无需动 daemon；纯输出上浮最多滞后 60s（签名量化）；状态视图维持看板序 |
+| B-054 | 全局返回：统一四套返回箭头为 useAppBack（真实历史优先+层级父级回退）+ ⌘[/Alt+← + 移动端左边缘滑动返回 | ux | Owner 2026-08-14 | done | Shipped；桌面也显示返回键（全局的直接后果）；/assistant 的形态切换箭头刻意保留 |
 | B-051 | 语音助手第二形态（类 Siri）：logo 动效 + 按住说话（ElevenLabs STT/TTS）+ meta-agent 调度中心（经 very-happy MCP 操作/新建 session、读终端、派任务）+ compact + 记忆系统（个人记忆↔agent-system context，grep 检索）+ 音色设置 + 两形态一键切换；移动端体验优先，现有形态零回归 | feat | Owner 2026-08-13 | doing | spec Final + 三包实现合并 + 本地 E2E 走查 + 回扫修复完成；待发布与真机验收（V-022~026） |
-| B-052 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
+| B-064 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
 | B-053 | assistant 会话在侧栏/board 特判：meta 会话不进普通列表（Owner 确认设计：基础设施层=普通会话，呈现层隔离；/session/<id> 仍可审计） | ux | B-051 E2E 走查#7 + Owner 2026-08-13 | done | buildSessionListViewData + boardItems 双过滤 |
 | B-062 | assistant 交互协议三件套：`<options>` 块→可点选项按钮（不朗读，答完即收）+ 任务盘点把活终端一并当任务报（CLAUDE.md 口径）+ 文字记录思考轨迹/工具输入可折叠展开 | feat | Owner 实报 2026-08-13 | done | 模板与本机 CLAUDE.md 均已更新 |
 | B-063 | 调度器工具纪律做实（Owner：meta 会话工作方式/工具面应不同于普通会话）：assistant 变体 SDK 级硬禁 Bash/Edit/Write/MultiEdit/NotebookEdit（per-message 覆盖只能加严不能解禁）+ 新 MCP 工具 journal_append 作为日志写入正道 + CLAUDE.md 工具边界声明 | feat | Owner 2026-08-13 | done | OpenClaw 调度器纪律；保留 Read/Grep/Glob/web/Task |

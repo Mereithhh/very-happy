@@ -32,7 +32,8 @@ function isXtermTextarea(t: EventTarget | null): boolean {
   return !!el?.classList?.contains?.('xterm-helper-textarea');
 }
 
-function isEditableTarget(t: EventTarget | null): boolean {
+/** Shared with appBack.ts's chord matcher (Alt+← must never leave a text field). */
+export function isEditableTarget(t: EventTarget | null): boolean {
   const el = t as ElementLike | null;
   if (!el) return false;
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable === true;
