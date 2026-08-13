@@ -1,7 +1,7 @@
 # 语音助手双向流式管线 + 主动汇报（Phase 2）
 
 > 状态：Final
-> 日期：2026-08-14 ｜ 关联 backlog：B-065 ｜ 前身：specs/2026-08-voice-assistant.md（Shipped）
+> 日期：2026-08-14 ｜ 关联 backlog：B-069 ｜ 前身：specs/2026-08-voice-assistant.md（Shipped）
 
 ## 背景
 
