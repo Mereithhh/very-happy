@@ -19,29 +19,27 @@ describe('groupRowsByLifecycle', () => {
     expect(groups.running.map((r) => r.key)).toEqual(['b']);
   });
 
-  it('orders each group by MOST RECENT ACTIVITY, not by board order', () => {
-    // The board's own total order is "longest neglected first" — a different
-    // question from the sidebar's "where was I", so it is deliberately not
-    // reused inside the groups. Board input order is the reverse of activity
-    // order here, so a regression to board order would fail loudly.
+  it('orders each group by BOARD order regardless of the row input order', () => {
+    // board order: attention (longest wait first) → working → idle/ended
     const board = [
-      { key: 'wait-stale', lifecycle: 'waiting' as const },
-      { key: 'wait-fresh', lifecycle: 'waiting' as const },
-      { key: 'run-stale', lifecycle: 'running' as const },
-      { key: 'run-fresh', lifecycle: 'running' as const },
+      { key: 'urgent-old', lifecycle: 'waiting' as const },
+      { key: 'urgent-new', lifecycle: 'waiting' as const },
+      { key: 'run-recent', lifecycle: 'running' as const },
+      { key: 'run-older', lifecycle: 'running' as const },
+      { key: 'reap', lifecycle: 'waiting' as const },
     ];
-    const rows = [row('run-stale', 10), row('wait-fresh', 400), row('run-fresh', 300), row('wait-stale', 20)];
+    const rows = [row('reap'), row('run-older'), row('urgent-new'), row('run-recent'), row('urgent-old')];
     const groups = groupRowsByLifecycle(rows, board);
-    expect(groups.waiting.map((r) => r.key)).toEqual(['wait-fresh', 'wait-stale']);
-    expect(groups.running.map((r) => r.key)).toEqual(['run-fresh', 'run-stale']);
+    expect(groups.waiting.map((r) => r.key)).toEqual(['urgent-old', 'urgent-new', 'reap']);
+    expect(groups.running.map((r) => r.key)).toEqual(['run-recent', 'run-older']);
   });
 
-  it('merges off-board rows into waiting by the same activity key', () => {
+  it('tails off-board rows onto waiting, most recent first, key tiebreak', () => {
     const groups = groupRowsByLifecycle(
-      [row('gone-old', 100), row('on-board', 150), row('gone-new', 200), row('gone-tie', 100)],
+      [row('gone-old', 100), row('on-board', 0), row('gone-new', 200), row('gone-tie', 100)],
       [{ key: 'on-board', lifecycle: 'waiting' }],
     );
-    expect(groups.waiting.map((r) => r.key)).toEqual(['gone-new', 'on-board', 'gone-old', 'gone-tie']);
+    expect(groups.waiting.map((r) => r.key)).toEqual(['on-board', 'gone-new', 'gone-old', 'gone-tie']);
     expect(groups.running).toEqual([]);
   });
 

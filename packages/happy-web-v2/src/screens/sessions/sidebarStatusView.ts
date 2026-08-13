@@ -8,49 +8,48 @@
 import type { BoardItem } from '@/screens/board/boardItems';
 import { buildCompletedEntries } from '@/screens/board/boardItems';
 import type { Session } from '@/sync/storageTypes';
-import { sortRowsByRecent } from './sidebarRecentSort';
 
 export interface StatusGroups<R> {
-  /** 等我看 — board `waiting` items plus any off-board rows, most recently
-   *  active first. */
+  /** 等我看 — board `waiting` items (urgent band first, then the reap band —
+   *  the board's own order), then any off-board rows (below). */
   waiting: R[];
-  /** 进行中 — board `running` items, most recently active first. */
+  /** 进行中 — board `running` items, most recent activity first. */
   running: R[];
 }
 
 /**
- * Group sidebar rows by the board's lifecycle verdict.
- *
- * The board still owns the CLASSIFICATION (BoardItem.lifecycle, applied inside
- * buildBoardItems) — there is no second classifier, so the sidebar and the
- * board can never disagree about what is running vs. waiting. But the order
- * WITHIN each group is the sidebar's own: most recently active first, the
- * same "the thing I just touched is on top" model as the 列表 view's recent
- * sort (sidebarRecentSort — see it for what `ts` means per row kind). The
- * board's total order (attention longest-waiting first) is deliberately NOT
- * reused here: it answers "what have I neglected longest", a different
- * question from the sidebar's "where was I".
+ * Group sidebar rows by the board's lifecycle verdict. Within each group the
+ * rows follow the BOARD order (buildBoardItems' total order: attention
+ * longest-waiting first → working → idle/ended most-recent first), so both
+ * surfaces always tell the same story.
  *
  * Rows the board doesn't carry (an online-machine-less terminal older than
  * the board's 24h ended window — active sessions always classify) have
- * nothing running by definition, so they join the waiting group and sort into
- * it by the same activity key.
+ * nothing running by definition: they tail the waiting group, most recent
+ * first, stable key tiebreak.
  */
 export function groupRowsByLifecycle<R extends { key: string; ts: number }>(
   rows: R[],
   boardItems: ReadonlyArray<Pick<BoardItem, 'key' | 'lifecycle'>>,
 ): StatusGroups<R> {
-  const lifecycleOf = new Map<string, BoardItem['lifecycle']>();
-  for (const it of boardItems) {
-    if (!lifecycleOf.has(it.key)) lifecycleOf.set(it.key, it.lifecycle);
-  }
+  const board = new Map<string, { index: number; lifecycle: BoardItem['lifecycle'] }>();
+  boardItems.forEach((it, index) => {
+    if (!board.has(it.key)) board.set(it.key, { index, lifecycle: it.lifecycle });
+  });
   const running: R[] = [];
   const waiting: R[] = [];
+  const offBoard: R[] = [];
   for (const r of rows) {
-    if (lifecycleOf.get(r.key) === 'running') running.push(r);
-    else waiting.push(r); // waiting, or off-board (nothing running by definition)
+    const entry = board.get(r.key);
+    if (!entry) offBoard.push(r);
+    else if (entry.lifecycle === 'running') running.push(r);
+    else waiting.push(r);
   }
-  return { running: sortRowsByRecent(running), waiting: sortRowsByRecent(waiting) };
+  const byBoardIndex = (a: R, b: R) => board.get(a.key)!.index - board.get(b.key)!.index;
+  running.sort(byBoardIndex);
+  waiting.sort(byBoardIndex);
+  offBoard.sort((a, b) => (b.ts - a.ts !== 0 ? b.ts - a.ts : a.key.localeCompare(b.key)));
+  return { running, waiting: [...waiting, ...offBoard] };
 }
 
 /**
