@@ -78,6 +78,8 @@
 | B-088 | 文件浏览器布局：两宿主共享拖宽（filesPanelWidth 280px~60vw）+ 终端抽屉 overlay 改分栏挤压（反转旧「不做 inline sidebar」决定；拖拽期 fit 抑制防 reflow 风暴；移动端 display:contents 原形态零回归） | ux | Owner 实报 2026-08-14 | done | 6b11cc44；FitAddon 走既有 RO→scheduleFit 实战链路；真机 V-039 |
 | B-089 | ⌘W 语义纠正：收掉会话而非关视图（聊天=归档确认 kill-first、终端=关闭确认先导航防复活；closeViewConfirm 改写=关则直接执行；非会话路由不拦交还浏览器） | ux | Owner 实报 2026-08-14 | done | b7d765ef |
 | B-090 | 命令面板「归档当前会话」只调 sessionArchive 不走 kill-first——与 rowActions 语义不一致（活着的 CLI 会把 active 翻回来复活） | bug | B-089 实现中发现 | todo | 改调 confirmArchiveSession 或 archiveSessionNow 对齐 |
+| B-091 | 侧栏按 tag 分组视图 + assistant 派发 session 自动打 tag 分开展示 + 排查 meta 会话泄漏（嫌疑：B-053 过滤加在旧列表构建器，新侧栏 rows 走 useSessions 直建未过滤）+ 轻量「优先」标记加权置顶（四象限视图暂缓，机制先行——Owner 用两天再定） | feat | Owner 实报 2026-08-14 | doing | |
+| B-092 | 语音助手 UX 两件：toolcall 展示友好化（图标+友好名+参数摘要，非裸 mono 行）+ 按住说话开始的明确反馈（提示音 earcon + Android 震动 + 视觉强化——iOS 不支持 vibrate 如实降级） | ux | Owner 实报 2026-08-14 | doing | |
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | done | 本机 120ms / 远端典型 0.5-0.6s 最坏 2.1s；冷终端（pty 已回收）仍 ~10s；需 CLI ≥v0.2.37 |
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
