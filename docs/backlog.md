@@ -73,13 +73,13 @@
 | B-052 | web-v2 缺 terminal-connect 批准 UI：CLI `auth login` 指向 `/terminal/connect#key=…` 无路由，authApprove.ts 零调用——新机器接入官方路径存疑 | bug | B-051 E2E 走查#4 | todo | 影响新机器 onboarding；本批用脚本代跳过 |
 | B-053 | assistant 会话在侧栏/board 特判：meta-agent 常驻会话混进任务流是噪音（裸路径+自动标题+「等我看」列） | ux | B-051 E2E 走查#7 | todo | metadata.variant 已有，纯前端过滤/标签 |
 | B-054 | assistant 版本门控 dev 逃生门：dev 构建恒 0.1.0 被 ≥0.2.34 挡住，本地联调要 hack machine metadata | debt | B-051 E2E 走查#3 | todo | dev override（env/localStorage）或特判 0.1.0 |
-| B-055 | 复核 assistant 会话 dangerouslySkipPermissions=true 的来源与取舍：语音场景免审批合理，但需 Owner 确认留痕（工具面里 kill/terminal_send 已有口头确认纪律） | debt | B-051 E2E 走查#8 | todo | 查 spawn 链路谁注入的 |
+| B-055 | 复核 assistant 会话 dangerouslySkipPermissions=true 的来源 | debt | B-051 E2E 走查#8 | done | 根因=fork 全局默认 permission mode 就是 yolo（runClaude.ts:55），非 assistant 特有；已做成可关设置（B-061） |
 | B-056 | /board 在 devtools emulate 切换后首进偶发主线程阻塞 >40s（一次复现，二次不可）| bug | B-051 E2E 走查#5 | todo | 低置信度观察项，遇到再深挖 |
 | B-057 | B-051 回扫 cleanup 遗留：版本比较器与既有 semver 工具重复、tmux format 字符串复制+ptyEnv 缺漏、web recorderState 死代码、session_archive 手搓 REST（有现成封装）、TTS 2000 上限 web/server 两处硬编码应进 happy-wire | debt | code-review 回扫 | todo | 一批小清理，攒着下批做 |
-| B-058 | 「启动语音」点击后整页卡死 | bug | Owner 实报 2026-08-13 | doing | 高嫌疑根因：keep-alive 1 采样点静音 WAV loop 打爆媒体栈；改运行时生成 ~0.5s 静音 blob |
-| B-059 | 语音字幕 + 文字记录：ASR 转写与 TTS 播报都出实时字幕；assistant 界面内置文字版聊天记录面板（按钮切换，不跳走） | feat | Owner 2026-08-13 | doing | |
-| B-060 | assistant 动效升级（更炫酷）+「启动语音」按钮含义不清（改文案/引导：浏览器出声解锁 + 说明会语音回复） | ux | Owner 2026-08-13 | doing | |
-| B-061 | assistant 权限审批设置：默认跳过（现状=fork 全局 yolo 默认，B-055 根因即此），可关闭改人工 approve（spawn permissionMode 透传 + Voice 设置开关 + 等审批提示条） | feat | Owner 2026-08-13 | doing | B-055 一并收口 |
+| B-058 | 「启动语音」点击后整页卡死 | bug | Owner 实报 2026-08-13 | done | 根因=keep-alive 1 采样点静音 WAV loop 打爆媒体栈；改运行时生成 1s 静音 blob，带回归测试；58eba02a |
+| B-059 | 语音字幕 + 文字记录：TTS 播报实时字幕（当前朗读句大字幕）+ 界面内置文字记录面板（不跳走）；ASR 字幕=转写即上屏（原有） | feat | Owner 2026-08-13 | done | 58eba02a |
+| B-060 | assistant 动效升级 +「启动语音」文案说明（浏览器出声解锁） | ux | Owner 2026-08-13 | done | 58eba02a；「更炫酷」程度待 Owner 真机看，不够再加码 |
+| B-061 | assistant 权限审批设置：默认跳过（现状=fork 全局 yolo 默认，B-055 根因即此），可关闭改人工 approve（spawn permissionMode 透传 + Voice 设置开关 + 等审批提示条） | feat | Owner 2026-08-13 | done | 5c713fe2；B-055 一并收口 |
 
 ## 近期完成
 
