@@ -488,11 +488,14 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    private enqueueMessage(content: unknown, invalidate: boolean = true) {
+    private enqueueMessage(content: unknown, invalidate: boolean = true, localId?: string) {
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.pendingOutbox.push({
             content: encrypted,
-            localId: randomUUID()
+            // Deterministic localIds (terminal mirror, B-105) ride the server's
+            // @@unique([sessionId, localId]) for replay idempotency; everything
+            // else keeps the fire-once random id.
+            localId: localId ?? randomUUID()
         });
         if (invalidate) {
             this.sendSync.invalidate();
@@ -503,15 +506,21 @@ export class ApiSessionClient extends EventEmitter {
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
-    sendClaudeSessionMessage(body: RawJSONLines) {
+    sendClaudeSessionMessage(body: RawJSONLines, opts?: {
+        /** Terminal mirror (B-105): deterministic per-envelope localId. The
+         *  index argument is REQUIRED in the id — one transcript line maps to
+         *  0..N envelopes and a per-line-only id would make the server's
+         *  unique constraint swallow every envelope after the first. */
+        localIdFor?: (envelopeIndex: number) => string;
+    }) {
         // Passive observation tap (boardAnalyzer): every raw line headed for
         // the server, both the SDK pipeline (remote) and the JSONL scanner
         // (local). Listeners must be cheap and never throw into this path.
         this.emit('claude-session-message', body);
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-        for (const envelope of mapped.envelopes) {
-            this.sendSessionProtocolMessage(envelope);
+        for (const [envelopeIndex, envelope] of mapped.envelopes.entries()) {
+            this.sendSessionProtocolMessage(envelope, opts?.localIdFor?.(envelopeIndex));
         }
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -559,7 +568,7 @@ export class ApiSessionClient extends EventEmitter {
         this.enqueueMessage(content);
     }
 
-    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true) {
+    private enqueueSessionProtocolEnvelope(envelope: SessionEnvelope, invalidate: boolean = true, localId?: string) {
         const content = {
             role: 'session',
             content: envelope,
@@ -568,21 +577,11 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
 
-        this.enqueueMessage(content, invalidate);
+        this.enqueueMessage(content, invalidate, localId);
     }
 
-    sendSessionProtocolMessage(envelope: SessionEnvelope) {
-        if (envelope.role !== 'user') {
-            this.enqueueSessionProtocolEnvelope(envelope);
-            return;
-        }
-
-        if (envelope.ev.t !== 'text') {
-            this.enqueueSessionProtocolEnvelope(envelope);
-            return;
-        }
-
-        this.enqueueSessionProtocolEnvelope(envelope);
+    sendSessionProtocolMessage(envelope: SessionEnvelope, localId?: string) {
+        this.enqueueSessionProtocolEnvelope(envelope, true, localId);
     }
 
     /**

@@ -359,6 +359,12 @@ export type Metadata = {
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
+  /**
+   * Terminal mirror (B-105): the vh web terminal this shadow session mirrors
+   * (flavor === 'terminal-mirror'). Lets the web link mirror ↔ terminal both
+   * ways. Absent on every other session; old clients ignore it.
+   */
+  terminalId?: string,
   codexThreadId?: string, // Codex app-server thread ID
   tools?: string[],
   slashCommands?: string[],

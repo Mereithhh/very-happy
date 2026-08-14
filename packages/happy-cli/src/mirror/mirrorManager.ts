@@ -1,0 +1,392 @@
+/**
+ * Terminal mirror (B-105) — daemon-side orchestrator.
+ *
+ * Owns one shadow session per vh web terminal that runs a hand-typed claude:
+ *   hook (via controlServer /terminal-hook) → binding state machine
+ *   (mirrorProtocol) → shadow ApiSessionClient hosted IN the daemon (a new
+ *   shape — the daemon never hosted session clients before; outbox is
+ *   in-memory, daemon crashes are absorbed by localId idempotency, M1)
+ *   → offset-tail scanner (mirrorScanner) feeding transcript lines through
+ *   the SAME protocol mapper the normal session path uses.
+ *
+ * Key discipline (B2 / B-051 tombstone): every new shadow session mints a
+ * RANDOM tag (never a fixed reusable tag), and daemon restarts reconnect via
+ * the persisted encryption key (persistSession), never a re-mint.
+ */
+
+import os from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { resolve, join } from 'node:path';
+
+import { logger } from '@/ui/logger';
+import { configuration } from '@/configuration';
+import { projectPath } from '@/projectPath';
+import packageJson from '../../package.json';
+import type { ApiClient } from '@/api/api';
+import type { ApiSessionClient } from '@/api/apiSession';
+import type { Metadata, Session as ApiSession } from '@/api/types';
+import { encodeBase64, decodeBase64 } from '@/api/encryption';
+import { persistSession, readPersistedSessions, type PersistedSession } from '@/persistence';
+import { getProjectPath } from '@/claude/utils/path';
+import type { RawJSONLines } from '@/claude/types';
+import type { TerminalListItem } from '@/terminal/webTerminal';
+import {
+    parseTerminalHookPayload,
+    decideMirrorBinding,
+    mirrorLineKey,
+    mirrorLocalId,
+    MIRROR_BACKFILL_LINES_DEFAULT,
+    type TerminalHookEvent,
+} from './mirrorProtocol';
+import { createMirrorScanner, type MirrorScanner } from './mirrorScanner';
+
+export const TERMINAL_MIRROR_FLAVOR = 'terminal-mirror';
+
+interface MirrorBinding {
+    terminalId: string;
+    happySessionId: string;
+    claudeSessionId: string;
+    status: 'active' | 'ended';
+    client: ApiSessionClient;
+    scanner: MirrorScanner | null;
+    /** What persistSession needs on every metadata refresh. */
+    persist: Omit<PersistedSession, 'metadata' | 'savedAt'>;
+    metadata: Metadata;
+}
+
+export interface MirrorManager {
+    /** Raw /terminal-hook payload from the forwarder. Never throws. */
+    handleHookPayload(body: unknown): void;
+    /** Terminal disappeared from tmux (closed) — archive + tear down its mirror. */
+    onTerminalClosed(terminalId: string): void;
+    /** Every terminal-list push: detect claude exits the SessionEnd hook missed
+     *  (pane_current_command back to a shell). */
+    observeTerminalList(list: TerminalListItem[]): void;
+    /** Shadow session id for a terminal (active or ended) — feeds the
+     *  webTerminals push + closed-terminal records. */
+    resolveMirrorSessionId(terminalId: string): string | undefined;
+    /** Rebuild bindings for still-alive terminals after a daemon restart. */
+    restore(): Promise<void>;
+    /** Daemon shutdown: flush + close clients WITHOUT archiving (a restart
+     *  must be able to pick the mirrors back up). */
+    shutdown(): Promise<void>;
+}
+
+export function createMirrorManager(deps: {
+    api: ApiClient;
+    machineId: string;
+    backfillLines?: number;
+    /** Injectable for tests; defaults to a `tmux has-session` probe. */
+    isTerminalAlive?: (terminalId: string) => boolean;
+    /** A binding was created/ended/torn down — nudge the terminal-list push so
+     *  the web learns about the toggle without waiting for the next tick. */
+    onBindingsChanged?: () => void;
+}): MirrorManager {
+    const backfillLines = deps.backfillLines ?? MIRROR_BACKFILL_LINES_DEFAULT;
+    const bindings = new Map<string, MirrorBinding>();
+    // Hooks are rare and ordering matters (SessionEnd → SessionStart on
+    // /clear); one global chain serializes all mutations.
+    let chain: Promise<void> = Promise.resolve();
+
+    const isTerminalAlive = deps.isTerminalAlive ?? ((terminalId: string): boolean => {
+        try {
+            return spawnSync('tmux', ['has-session', '-t', `=vh-${terminalId}:`], { stdio: 'ignore', timeout: 3000 }).status === 0;
+        } catch {
+            return false;
+        }
+    });
+
+    const transcriptPathFor = (event: { transcriptPath?: string; cwd?: string; claudeSessionId: string }): string | null => {
+        if (event.transcriptPath) return event.transcriptPath;
+        if (!event.cwd) return null;
+        return join(getProjectPath(event.cwd), `${event.claudeSessionId}.jsonl`);
+    };
+
+    const persistBinding = (binding: MirrorBinding): void => {
+        persistSession(binding.happySessionId, {
+            ...binding.persist,
+            metadata: binding.metadata,
+            savedAt: Date.now(),
+        });
+    };
+
+    const updateBindingMetadata = (binding: MirrorBinding, patch: Partial<Metadata>): void => {
+        binding.metadata = { ...binding.metadata, ...patch };
+        binding.client.updateMetadata((current) => ({ ...current, ...patch }));
+        persistBinding(binding);
+    };
+
+    const sendMessages = (binding: MirrorBinding, messages: RawJSONLines[]): void => {
+        for (const message of messages) {
+            const key = mirrorLineKey(message);
+            binding.client.sendClaudeSessionMessage(message, key
+                ? { localIdFor: (envelopeIndex) => mirrorLocalId(key, envelopeIndex) }
+                : undefined);
+        }
+    };
+
+    const attachScanner = (binding: MirrorBinding, opts: { withTruncationNotice: boolean }): MirrorScanner => {
+        const scanner = createMirrorScanner({
+            backfillLines,
+            events: {
+                onMessages: (messages) => sendMessages(binding, messages),
+                onBackfillTruncated: opts.withTruncationNotice
+                    ? () => binding.client.sendSessionEvent({
+                        type: 'message',
+                        message: `只读镜像只回灌了最近 ${backfillLines} 条，更早内容请在终端里回看`,
+                    })
+                    : undefined,
+                onFileGaveUp: () => {
+                    logger.debug(`[MIRROR] transcript never appeared for terminal ${binding.terminalId} — ending binding`);
+                    void endBinding(binding, 'transcript never appeared');
+                },
+            },
+        });
+        binding.scanner = scanner;
+        return scanner;
+    };
+
+    const endBinding = async (binding: MirrorBinding, reason: string): Promise<void> => {
+        if (binding.status === 'ended') return;
+        binding.status = 'ended';
+        logger.debug(`[MIRROR] ending binding for terminal ${binding.terminalId} (${reason})`);
+        await binding.scanner?.cleanup();
+        binding.scanner = null;
+        binding.client.closeClaudeSessionTurn('completed');
+        updateBindingMetadata(binding, {
+            lifecycleState: 'archived',
+            lifecycleStateSince: Date.now(),
+            archivedBy: TERMINAL_MIRROR_FLAVOR,
+            archiveReason: reason,
+        });
+        try {
+            await deps.api.deactivateSession(binding.happySessionId);
+        } catch (error) {
+            logger.debug(`[MIRROR] deactivateSession failed for ${binding.happySessionId}:`, error);
+        }
+        deps.onBindingsChanged?.();
+    };
+
+    const teardownBinding = async (binding: MirrorBinding, reason: string): Promise<void> => {
+        await endBinding(binding, reason);
+        bindings.delete(binding.terminalId);
+        deps.onBindingsChanged?.();
+        try {
+            await binding.client.flush();
+        } catch { /* best-effort */ }
+        await binding.client.close();
+    };
+
+    const createBinding = async (event: TerminalHookEvent, replaces?: MirrorBinding): Promise<void> => {
+        if (replaces) {
+            await teardownBinding(replaces, 'superseded by a fresh conversation');
+        }
+        const metadata: Metadata = {
+            path: event.cwd ?? os.homedir(),
+            host: os.hostname(),
+            version: packageJson.version,
+            os: os.platform(),
+            machineId: deps.machineId,
+            homeDir: os.homedir(),
+            happyHomeDir: configuration.happyHomeDir,
+            happyLibDir: projectPath(),
+            happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
+            startedBy: 'terminal',
+            lifecycleState: 'running',
+            lifecycleStateSince: Date.now(),
+            flavor: TERMINAL_MIRROR_FLAVOR,
+            terminalId: event.terminalId,
+            claudeSessionId: event.claudeSessionId,
+        };
+        // Random tag ALWAYS (B-051 tombstone: a fixed tag + fresh key mint =
+        // undecryptable rows).
+        const response = await deps.api.getOrCreateSession({ tag: randomUUID(), metadata, state: {} });
+        if (!response) {
+            logger.debug(`[MIRROR] server unreachable — dropping mirror bind for terminal ${event.terminalId}`);
+            return;
+        }
+        const client = deps.api.sessionSyncClient(response);
+        client.skipExistingMessages();
+        const binding: MirrorBinding = {
+            terminalId: event.terminalId,
+            happySessionId: response.id,
+            claudeSessionId: event.claudeSessionId,
+            status: 'active',
+            client,
+            scanner: null,
+            persist: {
+                encryptionKey: encodeBase64(response.encryptionKey),
+                encryptionVariant: response.encryptionVariant,
+                seq: response.seq,
+                metadataVersion: response.metadataVersion,
+                agentStateVersion: response.agentStateVersion,
+            },
+            metadata,
+        };
+        bindings.set(event.terminalId, binding);
+        persistBinding(binding);
+        deps.onBindingsChanged?.();
+
+        const scanner = attachScanner(binding, { withTruncationNotice: true });
+        const transcript = transcriptPathFor(event);
+        if (transcript) {
+            scanner.addFile(transcript, 'backfill-tail');
+        } else {
+            logger.debug(`[MIRROR] hook carried no transcript path and no cwd for terminal ${event.terminalId}`);
+        }
+        logger.debug(`[MIRROR] bound terminal ${event.terminalId} → shadow session ${response.id} (claude ${event.claudeSessionId})`);
+    };
+
+    const continueBinding = async (binding: MirrorBinding, event: TerminalHookEvent): Promise<void> => {
+        binding.claudeSessionId = event.claudeSessionId;
+        if (binding.status === 'ended') {
+            binding.status = 'active';
+            updateBindingMetadata(binding, {
+                lifecycleState: 'running',
+                lifecycleStateSince: Date.now(),
+                archivedBy: undefined,
+                archiveReason: undefined,
+                claudeSessionId: event.claudeSessionId,
+                ...(event.cwd ? { path: event.cwd } : {}),
+            });
+        } else {
+            updateBindingMetadata(binding, {
+                claudeSessionId: event.claudeSessionId,
+                ...(event.cwd ? { path: event.cwd } : {}),
+            });
+        }
+        // The continuation file's history prefix is server-known by
+        // construction (spec M4②) — follow it from EOF; NEVER rely on the
+        // uuid dedupe set (truncated backfill would replay ancient history).
+        const scanner = binding.scanner ?? attachScanner(binding, { withTruncationNotice: false });
+        const transcript = transcriptPathFor(event);
+        if (transcript) scanner.addFile(transcript, 'from-eof');
+        logger.debug(`[MIRROR] terminal ${binding.terminalId} mirror continues as claude ${event.claudeSessionId}`);
+    };
+
+    const handleEvent = async (event: TerminalHookEvent): Promise<void> => {
+        const binding = bindings.get(event.terminalId) ?? null;
+        const decision = decideMirrorBinding(
+            event,
+            binding ? { status: binding.status, claudeSessionId: binding.claudeSessionId } : null,
+        );
+        switch (decision.action) {
+            case 'create':
+                await createBinding(event, decision.replaces ? binding ?? undefined : undefined);
+                return;
+            case 'continue':
+                await continueBinding(binding!, event);
+                return;
+            case 'end':
+                await endBinding(binding!, 'claude exited (SessionEnd hook)');
+                return;
+            case 'ignore':
+                logger.debug(`[MIRROR] ignoring ${event.event} for terminal ${event.terminalId}: ${decision.reason}`);
+                return;
+        }
+    };
+
+    return {
+        handleHookPayload(body: unknown): void {
+            const event = parseTerminalHookPayload(body);
+            if (!event) {
+                logger.debug('[MIRROR] unparseable /terminal-hook payload dropped');
+                return;
+            }
+            chain = chain.then(() => handleEvent(event)).catch((error) => {
+                logger.debug(`[MIRROR] hook handling failed for terminal ${event.terminalId}:`, error);
+            });
+        },
+
+        onTerminalClosed(terminalId: string): void {
+            const binding = bindings.get(terminalId);
+            if (!binding) return;
+            chain = chain.then(() => teardownBinding(binding, 'terminal closed')).catch((error) => {
+                logger.debug(`[MIRROR] teardown failed for terminal ${terminalId}:`, error);
+            });
+        },
+
+        observeTerminalList(list: TerminalListItem[]): void {
+            for (const item of list) {
+                const binding = bindings.get(item.id);
+                if (!binding || binding.status !== 'active') continue;
+                // pane_current_command back to a plain shell = claude is gone
+                // and the SessionEnd hook never reached us (kill -9, crash).
+                if (item.agentState === 'shell') {
+                    chain = chain.then(() => endBinding(binding, 'claude exited (pane observation)')).catch((error) => {
+                        logger.debug(`[MIRROR] pane-exit end failed for terminal ${item.id}:`, error);
+                    });
+                }
+            }
+        },
+
+        resolveMirrorSessionId(terminalId: string): string | undefined {
+            return bindings.get(terminalId)?.happySessionId;
+        },
+
+        async restore(): Promise<void> {
+            const persisted = readPersistedSessions();
+            for (const [sessionId, entry] of Object.entries(persisted)) {
+                const meta = entry.metadata;
+                if (meta?.flavor !== TERMINAL_MIRROR_FLAVOR) continue;
+                if (meta.machineId !== deps.machineId) continue;
+                const terminalId = (meta as Metadata).terminalId;
+                if (!terminalId || bindings.has(terminalId)) continue;
+                if (meta.lifecycleState !== 'running') continue;
+                if (!isTerminalAlive(terminalId)) continue;
+                if (!meta.claudeSessionId) continue;
+
+                const session: ApiSession = {
+                    id: sessionId,
+                    seq: entry.seq,
+                    metadata: meta,
+                    metadataVersion: entry.metadataVersion,
+                    agentState: null,
+                    agentStateVersion: entry.agentStateVersion,
+                    encryptionKey: decodeBase64(entry.encryptionKey),
+                    encryptionVariant: entry.encryptionVariant,
+                };
+                const client = deps.api.sessionSyncClient(session);
+                client.skipExistingMessages();
+                const binding: MirrorBinding = {
+                    terminalId,
+                    happySessionId: sessionId,
+                    claudeSessionId: meta.claudeSessionId,
+                    status: 'active',
+                    client,
+                    scanner: null,
+                    persist: {
+                        encryptionKey: entry.encryptionKey,
+                        encryptionVariant: entry.encryptionVariant,
+                        seq: entry.seq,
+                        metadataVersion: entry.metadataVersion,
+                        agentStateVersion: entry.agentStateVersion,
+                    },
+                    metadata: meta,
+                };
+                bindings.set(terminalId, binding);
+                // MF-1: no offset persistence — replay the tail (localId
+                // idempotency dedupes) so lines written while the daemon was
+                // down are covered. No truncation notice on restores (it
+                // would repeat on every restart of a long session).
+                const scanner = attachScanner(binding, { withTruncationNotice: false });
+                scanner.addFile(join(getProjectPath(meta.path), `${meta.claudeSessionId}.jsonl`), 'backfill-tail');
+                logger.debug(`[MIRROR] restored binding terminal ${terminalId} → ${sessionId}`);
+                deps.onBindingsChanged?.();
+            }
+        },
+
+        async shutdown(): Promise<void> {
+            await chain.catch(() => { /* drained */ });
+            for (const binding of bindings.values()) {
+                await binding.scanner?.cleanup();
+                try {
+                    await binding.client.flush();
+                } catch { /* best-effort */ }
+                await binding.client.close();
+            }
+            bindings.clear();
+        },
+    };
+}

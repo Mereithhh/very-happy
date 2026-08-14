@@ -66,7 +66,16 @@ const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undef
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
-    
+
+    // B-105 double-upload guard (spec M-2, MAIN deterministic defense): every
+    // claude happy launches carries HAPPY_MANAGED=1, so the GLOBAL terminal
+    // mirror hook forwarder exits silently for it — its session already flows
+    // through happy's own pipeline. Injected HERE, where claudeEnvVars is
+    // still shared by BOTH paths: claudeLocal spreads it into the spawn env,
+    // claudeRemote copies it into process.env which the SDK spawn inherits.
+    // Patching only the local path would leak double uploads on remote mode.
+    options = { ...options, claudeEnvVars: { ...options.claudeEnvVars, HAPPY_MANAGED: '1' } };
+
     const workingDirectory = process.cwd();
 
     // B-051: assistant variant (meta-agent / dispatcher session). The daemon

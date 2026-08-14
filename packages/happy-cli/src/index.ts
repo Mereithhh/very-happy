@@ -124,6 +124,20 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'bye') {
     console.log('Bye!');
     process.exit(0);
+  } else if (subcommand === 'install-terminal-hooks') {
+    // B-105: install/remove the global claude SessionStart+SessionEnd hook
+    // pair that mirrors hand-typed terminal claude sessions.
+    try {
+      const { installTerminalHooks } = await import('./commands/installTerminalHooks');
+      await installTerminalHooks({ remove: args.includes('--remove') });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
   } else if (subcommand === 'spawn') {
     try {
       const { handleSpawnCommand } = await import('./commands/spawn');

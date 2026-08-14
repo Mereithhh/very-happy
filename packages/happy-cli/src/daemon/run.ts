@@ -36,6 +36,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
+import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -1028,6 +1029,9 @@ export async function startDaemon(): Promise<void> {
     // is created further down — late-bind through a ref so /clipboard picked up
     // the client once it exists (requests before that get delivered: false).
     let apiMachineRef: ApiMachineClient | null = null;
+    // B-105: mirror manager is constructed after the API client below —
+    // late-bind so /terminal-hook requests during startup are dropped safely.
+    let mirrorManagerRef: MirrorManager | null = null;
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
       stopSession,
@@ -1040,6 +1044,9 @@ export async function startDaemon(): Promise<void> {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
         }
         return apiMachineRef.pushClipboard(text);
+      },
+      onTerminalHook: (body: unknown) => {
+        mirrorManagerRef?.handleHookPayload(body);
       }
     });
 
@@ -1092,6 +1099,28 @@ export async function startDaemon(): Promise<void> {
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
     apiMachineRef = apiMachine;
+
+    // ── B-105: terminal mirror ──────────────────────────────────────────────
+    // Hand-typed claude sessions inside vh web terminals get mirrored into
+    // read-only shadow sessions hosted by THIS process. Hooks arrive on the
+    // control server's /terminal-hook; terminal lifecycle (close, claude exit
+    // observed on the pane) flows in from the web-terminal tracker.
+    const mirrorManager = createMirrorManager({
+      api,
+      machineId,
+      onBindingsChanged: () => apiMachine.requestTerminalListRefresh(),
+    });
+    mirrorManagerRef = mirrorManager;
+    apiMachine.setMirrorIntegration({
+      resolveMirrorSessionId: (terminalId) => mirrorManager.resolveMirrorSessionId(terminalId),
+      onTerminalClosed: (terminalId) => mirrorManager.onTerminalClosed(terminalId),
+      onTerminalList: (terminals) => mirrorManager.observeTerminalList(terminals),
+    });
+    // Re-adopt mirrors for terminals that survived the daemon restart (tail
+    // replay is idempotent via mirror localIds).
+    mirrorManager.restore().catch((error) => {
+      logger.debug('[DAEMON RUN] Mirror restore failed:', error);
+    });
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
@@ -1224,6 +1253,14 @@ export async function startDaemon(): Promise<void> {
 
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Flush mirror outboxes and close their sockets — WITHOUT archiving
+      // (a restart re-adopts live mirrors via restore()).
+      try {
+        await mirrorManager.shutdown();
+      } catch (error) {
+        logger.debug('[DAEMON RUN] Mirror shutdown failed:', error);
+      }
 
       apiMachine.shutdown();
       await stopControlServer();

@@ -20,7 +20,8 @@ export function startDaemonControlServer({
   requestShutdown,
   onHappySessionWebhook,
   onSessionStateEvent,
-  pushClipboard
+  pushClipboard,
+  onTerminalHook
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
@@ -31,6 +32,11 @@ export function startDaemonControlServer({
    *  blocked on permission). Optional so older wirings/tests keep working. */
   onSessionStateEvent?: (sessionId: string, event: AssistantReportEvent, spawnedBy?: string) => void;
   pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
+  /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
+   *  web terminal (scripts/terminal_mirror_forwarder.cjs). Payload is claude's
+   *  hook JSON + terminalId; parsing/validation is the mirror manager's job.
+   *  Optional so older wirings/tests keep working. */
+  onTerminalHook?: (body: unknown) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -237,6 +243,28 @@ export function startDaemonControlServer({
             error: result.errorMessage
           };
       }
+    });
+
+    // B-105: terminal mirror hook ingress. The forwarder script fires this for
+    // claude SessionStart/SessionEnd inside vh web terminals; payload shape is
+    // claude's (unversioned) hook JSON, so keep the schema loose and always
+    // 200 — a hook must never observe an error it could surface into claude.
+    typed.post('/terminal-hook', {
+      schema: {
+        body: z.any(),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
+      }
+    }, async (request) => {
+      try {
+        onTerminalHook?.(request.body);
+      } catch (error) {
+        logger.debug('[CONTROL SERVER] terminal-hook handler failed:', error);
+      }
+      return { status: 'ok' as const };
     });
 
     // Push text to the clipboard of the user's open web clients.

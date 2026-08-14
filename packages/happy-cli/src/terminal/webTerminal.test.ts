@@ -396,6 +396,13 @@ describe('terminalListSignature', () => {
         expect(terminalListSignature([item({ agentState: undefined })])).not.toBe(base);
     });
 
+    it('changes when a mirror binding appears or disappears (B-105 toggle push)', () => {
+        const base = terminalListSignature([item()]);
+        const bound = terminalListSignature([item({ mirrorSessionId: 'mirror-1' })]);
+        expect(bound).not.toBe(base);
+        expect(terminalListSignature([item({ mirrorSessionId: 'mirror-2' })])).not.toBe(bound);
+    });
+
     it('quantizes activityAt: within one bucket no change, across buckets change', () => {
         const t0 = 10 * ACTIVITY_SIGNATURE_BUCKET_MS;
         const base = terminalListSignature([item({ activityAt: t0 })]);

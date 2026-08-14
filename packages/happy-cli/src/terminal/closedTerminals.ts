@@ -26,6 +26,10 @@ export interface ClosedTerminalRecord {
     title?: string;
     /** Last known pane cwd — enables "reopen in the same directory". */
     cwd?: string;
+    /** Terminal mirror (B-105): shadow session of the claude that ran inside
+     *  this terminal, if any — the archive view links "查看结构化历史" to it
+     *  (the mirror is otherwise hidden everywhere, M-4). */
+    mirrorSessionId?: string;
     /** When the close was observed (ms epoch). */
     closedAt: number;
 }
@@ -76,7 +80,7 @@ export function sanitizeClosedTerminals(
     const out: ClosedTerminalRecord[] = [];
     for (const item of raw) {
         if (!item || typeof item !== 'object') continue;
-        const { id, title, cwd, closedAt } = item as Record<string, unknown>;
+        const { id, title, cwd, mirrorSessionId, closedAt } = item as Record<string, unknown>;
         if (typeof id !== 'string' || id.length === 0 || typeof closedAt !== 'number') continue;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -84,6 +88,7 @@ export function sanitizeClosedTerminals(
             id,
             title: typeof title === 'string' ? title : undefined,
             cwd: typeof cwd === 'string' ? cwd : undefined,
+            mirrorSessionId: typeof mirrorSessionId === 'string' ? mirrorSessionId : undefined,
             closedAt,
         });
     }
