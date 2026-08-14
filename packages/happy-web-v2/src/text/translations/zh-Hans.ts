@@ -517,7 +517,7 @@ export const zhHans: TranslationStructure = {
             permissionLabel: '模式',
             effortLabel: '强度',
             effortDefault: '默认',
-            effortDefaultDesc: '跟随机器自身默认（自适应思考）',
+            effortDefaultDesc: '引擎默认（当前=high，部分模型会静默降档）',
             attach: '添加图片',
             presets: '快捷指令',
             presetsTitle: '快捷指令',
