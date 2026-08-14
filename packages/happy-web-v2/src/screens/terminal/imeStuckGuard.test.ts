@@ -7,14 +7,18 @@
  *    _isComposing=true → 229 keys swallowed, the next English key commits the
  *    aborted preedit as a stray letter, bubble stuck at the cursor.
  *  - 2026-08-12 round 2 (real-order CDP replay): the guard must NEVER touch a
- *    live composition — the 229 path requires a SUSTAINED contradiction (any
- *    composition event resets it), and healing/clearing must never write the
- *    textarea while an IME could be attached (a programmatic write under an
- *    active composition cancels it EVENTLESSLY, manufacturing the stuck
- *    state). Residue clearing is blur-scoped.
+ *    live composition, and healing/clearing must never write the textarea while
+ *    an IME could be attached (a programmatic write under an active composition
+ *    cancels it EVENTLESSLY, manufacturing the stuck state). Residue clearing
+ *    is blur-scoped.
+ *  - 2026-08-14 round 3: round-2's "sustained contradiction" 229 branch was
+ *    measured to be DEAD CODE and is retired (229/modifiers never heal); the
+ *    non-229 immediate heal stays. Plus the focus-only composition flag — the
+ *    guard against "moving focus eats in-flight preedit text".
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+    createCompositionFocusFlag,
     createCompositionSettleClear,
     createStuckDetector,
     shouldHealStuckComposition,
@@ -59,42 +63,103 @@ describe('createStuckDetector', () => {
         expect(d.keydown(true, { keyCode: 65, isComposing: false })).toBe(true);
     });
 
-    it('229 contradictory keydown needs a sustained streak (2+)', () => {
+    // ── round-3 regression anchor (2026-08-14) ───────────────────────────
+    // The round-2 "sustained contradiction (streak >= 2)" branch was measured
+    // to be UNREACHABLE: the compositionstart that follows key 1 reset the
+    // streak, and keys 2..n of a real composition report isComposing:true, so
+    // no second contradictory keydown ever arrived. It is retired: 229 and bare
+    // modifiers now never heal (xterm swallows them without finalizing, so
+    // nothing can be corrupted), and the non-229 branch — the one measurement
+    // showed working — is untouched.
+    it('229 contradictory keydowns NEVER heal (retired dead branch, no streak)', () => {
         const d = createStuckDetector();
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(true);
+        for (let i = 0; i < 5; i++) {
+            expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
+        }
     });
 
-    it('bare modifiers count like 229 (xterm swallows them without finalizing)', () => {
+    it('bare modifiers never heal either (xterm swallows them without finalizing)', () => {
         const d = createStuckDetector();
         expect(d.keydown(true, { keyCode: 16, isComposing: false })).toBe(false);
-        expect(d.keydown(true, { keyCode: 17, isComposing: false })).toBe(true);
+        expect(d.keydown(true, { keyCode: 17, isComposing: false })).toBe(false);
+        expect(d.keydown(true, { keyCode: 18, isComposing: false })).toBe(false);
     });
 
-    it('any composition event resets the streak — a live (even mis-reporting) IME is never healed into', () => {
+    it('the detector is stateless: a 229 run never arms a later heal', () => {
         const d = createStuckDetector();
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
-        d.compositionEvent(); // e.g. compositionupdate from the live composition
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
-        d.compositionEvent();
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
+        d.keydown(true, { keyCode: 229, isComposing: false });
+        d.keydown(true, { keyCode: 229, isComposing: false });
+        // ...and a genuinely dangerous key still heals immediately.
+        expect(d.keydown(true, { keyCode: 66, isComposing: false })).toBe(true);
     });
 
-    it('a non-contradictory keydown resets the streak', () => {
+    it('keys with no keyCode are treated as 229 (never healed)', () => {
         const d = createStuckDetector();
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false);
-        expect(d.keydown(true, { keyCode: 229, isComposing: true })).toBe(false); // real composition signal
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false); // streak restarted at 1
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(true);
+        expect(d.keydown(true, { isComposing: false })).toBe(false);
     });
 
-    it('stuck 你-recovery sequence: keydown → compositionstart resets → never heals on the 229 path', () => {
-        // Replay scenario D: first Chinese key after the abort starts a NEW
-        // composition; its compositionstart re-syncs xterm on its own.
+    it('a live composition is never healed into, whatever the key', () => {
         const d = createStuckDetector();
-        expect(d.keydown(true, { keyCode: 229, isComposing: false })).toBe(false); // key 1
-        d.compositionEvent(); // compositionstart of the fresh composition
-        expect(d.keydown(true, { keyCode: 229, isComposing: true })).toBe(false); // key 2, live
+        expect(d.keydown(true, { keyCode: 65, isComposing: true })).toBe(false);
+        expect(d.keydown(true, { keyCode: 229, isComposing: true })).toBe(false);
+    });
+});
+
+describe('createCompositionFocusFlag (focus decisions ONLY)', () => {
+    // Regression anchor (2026-08-14): refocus()'s `ta.blur()` fired while a
+    // composition was in flight → xterm emitted ZERO onData → the pinyin the
+    // user had already typed vanished ("切输入法就打不了中文"). Nothing may move
+    // focus while this flag is true. It must NEVER gate sending text.
+    const mk = (staleMs = 5000) => {
+        let t = 1000;
+        const flag = createCompositionFocusFlag({ now: () => t, staleMs });
+        return { flag, tick: (ms: number) => { t += ms; }, at: () => t };
+    };
+
+    it('false before anything happens', () => {
+        expect(mk().flag.composing()).toBe(false);
+    });
+
+    it('compositionstart → true, compositionend → false', () => {
+        const { flag } = mk();
+        flag.start();
+        expect(flag.composing()).toBe(true);
+        flag.end();
+        expect(flag.composing()).toBe(false);
+    });
+
+    it('compositionupdate keeps a long pinyin composition alive past the stale window', () => {
+        const { flag, tick } = mk(5000);
+        flag.start();
+        for (let i = 0; i < 4; i++) { tick(4000); flag.update(); }
+        expect(flag.composing()).toBe(true);
+    });
+
+    it('an EVENT-LESS abort expires instead of freezing focus forever', () => {
+        // The round-1/2 failure: composition dies with no compositionend. A
+        // sticky true would disable the focus watchdog for the whole session.
+        const { flag, tick } = mk(5000);
+        flag.start();
+        tick(5000);
+        expect(flag.composing()).toBe(false);
+        // and it stays false without any further event
+        expect(flag.composing()).toBe(false);
+    });
+
+    it('update() on an already-expired flag does not resurrect it', () => {
+        const { flag, tick } = mk(5000);
+        flag.start();
+        tick(6000);
+        expect(flag.composing()).toBe(false);
+        flag.update();
+        expect(flag.composing()).toBe(false);
+    });
+
+    it('clear() (blur / browser-says-not-composing) drops it immediately', () => {
+        const { flag } = mk();
+        flag.start();
+        flag.clear();
+        expect(flag.composing()).toBe(false);
     });
 });
 
