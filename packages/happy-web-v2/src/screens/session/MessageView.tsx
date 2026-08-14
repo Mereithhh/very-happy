@@ -3,20 +3,25 @@
  * upstream in ChatList; here we render the leaf kinds and (for grouped tool
  * runs) hand off to ToolGroupView.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
+import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
 import { MessageMetaRow } from './MessageMetaRow';
 import { stripHarnessBlocks, parseLocalCommandMessage } from './harness';
-import { stripThinkingWrapper, formatThoughtFor } from './thinking';
+import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
+import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import './message.css';
 
 function UserText({ message }: { message: UserTextMessage }) {
     const { t } = useTranslation();
+    // Long-message collapse (B-102): clamp + fade + explicit expand replaces
+    // the old 40dvh nested scroll area (wheel must bubble to the transcript).
+    const [expanded, setExpanded] = useState(false);
     const raw = message.displayText ?? message.text;
     const parsed = parseLocalCommandMessage(raw);
 
@@ -35,11 +40,26 @@ function UserText({ message }: { message: UserTextMessage }) {
 
     const text = stripHarnessBlocks(parsed.text);
     if (!text) return null;
+    const canCollapse = shouldCollapseBubble(estimateWrappedLines(text));
+    const clamped = canCollapse && !expanded;
     return (
         <div className="msg msg--user">
             <div className="msg-bubble-wrap vh-copyhost">
                 <div className="msg-bubble">
-                    <div className="msg-bubble-scroll">{text}</div>
+                    <div className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
+                        {text}
+                        {clamped && <div className="msg-bubble-fade" aria-hidden />}
+                    </div>
+                    {canCollapse && (
+                        <button
+                            type="button"
+                            className="msg-bubble-expand"
+                            onClick={() => setExpanded((v) => !v)}
+                            aria-expanded={!clamped}
+                        >
+                            {clamped ? t('session.chat.expandMessage') : t('session.chat.collapseLines')}
+                        </button>
+                    )}
                 </div>
                 {/* copy the raw message text — sits in the empty gutter left of the bubble */}
                 <CopyButton text={text} className="vh-copy--overlay msg-copy--user" label={t('message.copyMessage')} />
@@ -60,7 +80,28 @@ function AgentText({
     thinkingDurationMs?: number;
 }) {
     const { t } = useTranslation();
-    const [open, setOpen] = useState(false);
+    // Live-thinking auto-expand (B-101): while the session is working and no
+    // message follows this thinking block yet, it's the one being streamed —
+    // open it. When it stops being live (turn ended / next message arrived),
+    // fold it back, unless the user toggled it by hand.
+    const sessionThinking = useSession(sessionId)?.thinking ?? false;
+    const live =
+        message.isThinking === true &&
+        isLiveThinking({
+            sessionThinking,
+            thinkingDurationMs,
+            createdAt: message.createdAt,
+            now: Date.now(),
+        });
+    const [open, setOpen] = useState(live);
+    const userToggledRef = useRef(false);
+    useEffect(() => {
+        if (!userToggledRef.current) setOpen(live);
+    }, [live]);
+    const toggleOpen = () => {
+        userToggledRef.current = true;
+        setOpen((v) => !v);
+    };
 
     const onOption = (option: string) => {
         void sync.sendMessage(sessionId, option, { source: 'chat' });
@@ -70,17 +111,21 @@ function AgentText({
         const content = stripThinkingWrapper(stripHarnessBlocks(message.text));
         if (!content) return null;
         const durationLabel = formatThoughtFor(thinkingDurationMs, t);
+        const preview = thinkingPreview(content);
         return (
             <div className="msg msg--agent">
                 <div className="msg-thinking">
-                    <button type="button" className="msg-thinking-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+                    <button type="button" className="msg-thinking-head" onClick={toggleOpen} aria-expanded={open}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                         <span className="msg-thinking-emoji" aria-hidden>💭</span>
                         <span>{durationLabel ?? t('session.chat.thinkingLabel')}</span>
+                        {!open && preview && <span className="msg-thinking-preview">{preview}</span>}
                     </button>
                     {open && (
-                        <div className="msg-thinking-body">
+                        <div className="msg-thinking-body vh-copyhost">
                             <Markdown text={content} />
+                            {/* copies the thinking source text (wrapper stripped) */}
+                            <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
                         </div>
                     )}
                 </div>

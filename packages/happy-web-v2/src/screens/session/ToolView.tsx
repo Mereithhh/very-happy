@@ -5,15 +5,21 @@
  * collapsible pretty-printed input + output rather than a raw JSON blob.
  */
 import { useState, type ReactNode } from 'react';
+import { useParams } from 'react-router-dom';
 import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { CopyButton } from '@/ui/CopyButton';
 import { trimIdent } from '@/utils/trimIdent';
+import { knownTools } from '@/components/tools/knownTools';
 import { CommandView } from './CommandView';
 import { CodeView } from './CodeView';
 import { DiffView } from './DiffView';
+import { Markdown } from './Markdown';
+import { AskUserQuestionOptions } from './AskUserQuestionView';
+import { detectSelectedLabels } from './askUserQuestion';
 import { asCommand, extractError, resultToText } from './toolInfo';
 import { langForPath } from './langForPath';
 import './toolview.css';
@@ -210,6 +216,63 @@ function WebView({ tool }: { tool: ToolCall }) {
     );
 }
 
+// ── ExitPlanMode (incl. lowercase alias) ─────────────────────────────────────
+// Renders input.plan as Markdown with a plan badge (B-100) instead of the
+// JSON.stringify default. Parses via the knownTools zod schema; anything that
+// doesn't validate falls back to DefaultView untouched.
+function PlanView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
+    const parsed = knownTools['ExitPlanMode'].input.safeParse(tool.input ?? {});
+    const plan = parsed.success && typeof parsed.data.plan === 'string' && parsed.data.plan.trim() !== ''
+        ? parsed.data.plan
+        : null;
+    if (!plan) return <DefaultView tool={tool} />;
+    return (
+        <div className="tv-plan">
+            <div className="tv-plan-head">{t('tools.names.planProposal')}</div>
+            <div className="tv-plan-body">
+                <Markdown text={plan} />
+            </div>
+        </div>
+    );
+}
+
+// ── AskUserQuestion ───────────────────────────────────────────────────────────
+// header chip + question + clickable options (B-100). A click sends the option
+// label as a PLAIN user message via sync.sendMessage — that is what the model
+// consumes. Once the tool has a result the options render inert, with the
+// chosen label highlighted when the result reveals it.
+function QuestionView({ tool }: { tool: ToolCall }) {
+    // ChatList doesn't thread sessionId through ToolGroupView (frozen file for
+    // this batch) — the session route param IS the sessionId.
+    const { id: sessionId } = useParams();
+    const [sent, setSent] = useState(false);
+    const parsed = knownTools['AskUserQuestion'].input.safeParse(tool.input ?? {});
+    const questions =
+        parsed.success && Array.isArray(parsed.data.questions) && parsed.data.questions.length > 0
+            ? parsed.data.questions
+            : null;
+    if (!questions || !sessionId) return <DefaultView tool={tool} />;
+    const answered = tool.result != null || tool.state === 'completed' || tool.state === 'error';
+    const selected = answered
+        ? detectSelectedLabels(
+              resultToText(tool.result),
+              questions.flatMap((q) => (q.options ?? []).map((o) => o.label)),
+          )
+        : [];
+    return (
+        <AskUserQuestionOptions
+            questions={questions}
+            disabled={answered || sent}
+            selected={selected}
+            onSubmit={(text) => {
+                setSent(true);
+                void sync.sendMessage(sessionId, text, { source: 'question' });
+            }}
+        />
+    );
+}
+
 // ── Default (incl. all MCP / unrecognized tools) ─────────────────────────────────
 function DefaultView({ tool }: { tool: ToolCall }) {
     const { t } = useTranslation();
@@ -293,6 +356,13 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
         case 'WebSearch':
             body = <WebView tool={tool} />;
             handlesOwnError = true;
+            break;
+        case 'ExitPlanMode':
+        case 'exit_plan_mode':
+            body = <PlanView tool={tool} />;
+            break;
+        case 'AskUserQuestion':
+            body = <QuestionView tool={tool} />;
             break;
         default:
             // All MCP + unrecognized tools land here with a clean collapsible view.

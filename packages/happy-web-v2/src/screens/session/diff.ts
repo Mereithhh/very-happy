@@ -47,6 +47,22 @@ export function lineDiff(oldText: string, newText: string): DiffRow[] {
     return rows;
 }
 
+/**
+ * Serialize diff rows into a minimal unified-patch text (single hunk, no file
+ * headers — the Edit tool input doesn't reliably carry both paths). Used by
+ * DiffView's copy button (B-101) so what you copy is a real patch, not a
+ * rendering.
+ */
+export function unifiedPatchText(rows: DiffRow[]): string {
+    if (rows.length === 0) return '';
+    const oldCount = rows.filter((r) => r.type !== 'add').length;
+    const newCount = rows.filter((r) => r.type !== 'del').length;
+    const body = rows
+        .map((r) => (r.type === 'add' ? '+' : r.type === 'del' ? '-' : ' ') + r.text)
+        .join('\n');
+    return `@@ -1,${oldCount} +1,${newCount} @@\n${body}`;
+}
+
 export function diffStats(rows: DiffRow[]): { added: number; removed: number } {
     let added = 0;
     let removed = 0;

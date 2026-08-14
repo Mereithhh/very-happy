@@ -6,7 +6,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSetting } from '@/sync/storage';
 import { useMediaQuery } from '@/app/useMediaQuery';
-import { lineDiff, diffStats, type DiffRow } from './diff';
+import { CopyButton } from '@/ui/CopyButton';
+import { lineDiff, diffStats, unifiedPatchText, type DiffRow } from './diff';
 import { highlightToLines, type HiLines } from './highlighter';
 import './diff.css';
 
@@ -71,7 +72,11 @@ export function DiffView({
     };
 
     return (
-        <div className={`dv${wrap ? ' dv--wrap' : ''}`}>
+        <div className={`dv vh-copyhost${wrap ? ' dv--wrap' : ''}`}>
+            {/* copies a minimal unified patch built from the SAME rows rendered
+             * below (single hunk, no file headers — Edit inputs don't reliably
+             * carry paths), so the clipboard matches what's on screen. */}
+            <CopyButton text={() => unifiedPatchText(rows)} className="vh-copy--overlay" />
             <div className="dv-stat">
                 <span className="dv-add">+{stats.added}</span>
                 <span className="dv-del">−{stats.removed}</span>

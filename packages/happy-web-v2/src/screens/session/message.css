@@ -47,14 +47,38 @@
   color: var(--text);
   box-shadow: var(--shadow-lift);
 }
-/* Long user queries: cap height + internal scroll instead of expanding unbounded. */
-.msg-bubble-scroll {
-  /* dvh: 40vh overshoots on iOS when the toolbar collapses */
-  max-height: 40dvh;
-  overflow: auto;
+/* Long user queries (B-102): clamp + fade + explicit expand toggle. No nested
+ * scroll area — the wheel always bubbles to the transcript. */
+.msg-bubble-text {
+  position: relative;
   white-space: pre-wrap;
   word-break: break-word;
-  overscroll-behavior: contain;
+}
+.msg-bubble-text--clamped {
+  /* ~10 visible lines at the bubble's 1.55 line-height; the JS threshold
+   * (codeCollapse.ts BUBBLE_VISIBLE_LINES) mirrors this cap */
+  max-height: calc(1.55em * 10);
+  overflow: hidden;
+}
+.msg-bubble-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5em;
+  pointer-events: none;
+  /* bubble surface is --bg-2 — fade into exactly that in both themes */
+  background: linear-gradient(to bottom, transparent, var(--bg-2));
+}
+.msg-bubble-expand {
+  display: block;
+  margin-top: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.msg-bubble-expand:hover {
+  color: var(--text);
 }
 .msg-bubble--cmd {
   display: inline-flex;
@@ -119,6 +143,19 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--text-faint);
+  max-width: 100%;
+  min-width: 0;
+}
+/* collapsed-state peek: first non-empty thinking line, one line, faint */
+.msg-thinking-preview {
+  margin-left: var(--sp-2);
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 .msg-thinking-emoji {
   font-size: var(--fs-12);

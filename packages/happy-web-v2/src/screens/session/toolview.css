@@ -170,3 +170,99 @@
   border-radius: var(--r-sm);
   padding: 0 6px;
 }
+
+/* ── ExitPlanMode (B-100): plan rendered as Markdown behind a quiet badge ── */
+.tv-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  border-left: 2px solid var(--line-2);
+  padding-left: var(--sp-3);
+}
+.tv-plan-head {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tv-plan-body {
+  font-size: var(--fs-13);
+  color: var(--text);
+  min-width: 0;
+}
+
+/* ── AskUserQuestion (B-100): header chip + question + option buttons ────── */
+.tv-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.tv-ask-q {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.tv-ask-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.tv-ask-chip {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 1px var(--sp-2);
+  white-space: nowrap;
+}
+.tv-ask-question {
+  font-size: var(--fs-13);
+  color: var(--text);
+}
+.tv-ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  align-items: stretch;
+}
+.tv-ask-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+.tv-ask-opt:not(:disabled):hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+}
+/* picked / detected answer — stronger border + raised surface (no --accent:
+ * that token strictly means live; an answered choice is history) */
+.tv-ask-opt--selected {
+  border-color: var(--line-2);
+  background: var(--bg-2);
+}
+.tv-ask-opt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text);
+}
+.tv-ask-opt:disabled:not(.tv-ask-opt--selected) .tv-ask-opt-label {
+  color: var(--text-dim);
+}
+.tv-ask-opt-desc {
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}

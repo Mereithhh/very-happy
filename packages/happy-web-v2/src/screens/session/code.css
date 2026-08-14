@@ -3,6 +3,9 @@
   border-radius: var(--r-md);
   background: var(--bg-1);
   overflow: hidden;
+  /* the surface the collapse fade dissolves into — matches whichever body is
+   * rendered (plain pre on --bg-1; shiki repaints it below) */
+  --cv-surface: var(--bg-1);
 }
 .cv-bar {
   display: flex;
@@ -107,8 +110,51 @@
   color: var(--text-faint);
   user-select: none;
 }
-/* keep tall code blocks contained */
-.cv-pre,
-.cv-shiki pre.shiki {
+/* Collapse instead of clip (B-097): the 420px cap now only applies while a
+ * long block is COLLAPSED; expanding removes it entirely. overflow-y stays
+ * hidden (see .cv-pre note) — never a nested scroll area. */
+.cv--collapsed .cv-pre,
+.cv--collapsed .cv-shiki pre.shiki {
   max-height: 420px;
+}
+.cv-body {
+  position: relative;
+  min-width: 0;
+}
+/* shiki paints its own surface (see backgrounds above): dark default is
+ * --bg-0, light theme uses --bg-1 — keep the fade endpoint in sync. */
+.cv:has(.cv-shiki) {
+  --cv-surface: var(--bg-0);
+}
+:root[data-theme='light'] .cv:has(.cv-shiki) {
+  --cv-surface: var(--bg-1);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .cv:has(.cv-shiki) {
+    --cv-surface: var(--bg-1);
+  }
+}
+.cv-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--cv-surface));
+}
+.cv-expand {
+  display: block;
+  width: 100%;
+  padding: 4px var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  text-align: center;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+}
+.cv-expand:hover {
+  color: var(--text);
+  background: var(--bg-3);
 }

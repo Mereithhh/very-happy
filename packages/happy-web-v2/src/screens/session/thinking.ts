@@ -15,6 +15,37 @@ export function stripThinkingWrapper(text: string): string {
     return t;
 }
 
+/** First non-empty line of the thinking text, truncated to ~maxLen chars. */
+export function thinkingPreview(text: string, maxLen = 60): string | null {
+    for (const line of (text ?? '').split('\n')) {
+        const s = line.trim();
+        if (!s) continue;
+        return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
+    }
+    return null;
+}
+
+/**
+ * Heuristic for "this is the LIVE thinking block" (auto-expanded while the
+ * agent reasons, B-101): the session reports thinking, no message follows this
+ * one yet (ChatList only computes thinkingDurationMs when a NEXT message
+ * exists), and it's recent. The recency guard covers batched history, where
+ * server-stamped createdAt ties leave thinkingDurationMs undefined on OLD
+ * thinking messages too (see typesMessage.ts MessageOrdering note).
+ */
+export function isLiveThinking(opts: {
+    sessionThinking: boolean;
+    thinkingDurationMs: number | undefined;
+    createdAt: number;
+    now: number;
+}): boolean {
+    return (
+        opts.sessionThinking &&
+        opts.thinkingDurationMs == null &&
+        opts.now - opts.createdAt < 120_000
+    );
+}
+
 type Translate = (key: any, params?: any) => string;
 
 /** "Thought for 12s" / "Thought for 1m 24s", or null when no positive duration. */

@@ -59,3 +59,15 @@
   border-top: 1px solid var(--line);
   padding-top: var(--sp-2);
 }
+
+/* ExitPlanMode inside the permission card: plan Markdown on a readable panel
+ * (the card's warn-dim wash stays behind it) */
+.perm-plan {
+  border-left: 2px solid var(--line-2);
+  background: var(--bg-1);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-13);
+  color: var(--text);
+  min-width: 0;
+}

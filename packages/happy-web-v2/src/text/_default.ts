@@ -519,6 +519,11 @@ export const en = {
             refresh: 'Refresh',
             editN: ({ n, total }: { n: number; total: number }) => `Edit ${n} of ${total}`,
             replaceAll: 'replace all',
+            // Long-content collapse in the transcript (B-097 code blocks /
+            // B-102 user bubbles)
+            expandLines: ({ lines }: { lines: number }) => `Show all (${lines} lines)`,
+            collapseLines: 'Collapse',
+            expandMessage: 'Expand',
         },
         permission: {
             title: 'Permission required',

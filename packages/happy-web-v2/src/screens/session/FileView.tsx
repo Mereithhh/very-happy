@@ -46,7 +46,8 @@ export function FileView({ sessionId, fullPath }: { sessionId: string; fullPath:
     }
     return (
         <div className="fp-fileview">
-            <CodeView code={entry.content} lang={extLang(fullPath)} />
+            {/* file preview has its own scroll surface — never collapse */}
+            <CodeView code={entry.content} lang={extLang(fullPath)} collapsible={false} />
         </div>
     );
 }
