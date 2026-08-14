@@ -22,6 +22,12 @@
 | B-095 | **macOS 上 Ctrl+K / Ctrl+J 到不了终端**：`CommandPalette.tsx` 与 `NotesDock.tsx` 的匹配器都是 `e.metaKey \|\| e.ctrlKey` ⇒ Ctrl+K 弹面板并夺焦点、Ctrl+J 被静默吞。而这两个是 readline 的 kill-line / accept-line，终端里高频 | bug | golden 差分工具顺带查出 2026-08-14 | todo | 修法多半是 `isMac ? metaKey : ctrlKey`（Linux/Win 上当 app 和弦是合理的） |
 | B-096 | 按键 golden 差分工具落地（`scripts/probe/term-input-goldendiff.mjs`，71 项×DECCKM 两态=142 用例，退出码 0/1/**2=跑不出结论**） | debt | 输入所有权改造 Step 3 硬门 | done | 契约未上线时用 --reader=ondata 兜底实测 142/142 一致；盲区已列进 README（可打印字符/IME/粘贴/repeat/仅 macOS+Chrome 验过） |
 | B-093 | **中文输入法在终端第三次失效**——Owner 实报，接受架构改造。方向：把输入状态机的所有权拿回自己手里（受控输入元素接管键盘+composition，只把已提交文本写 PTY，xterm 退化为纯渲染器；移动端 mobileInputBridge/输入行模式是现成先例） | bug | Owner 2026-08-14 | done | **病因已实证推翻原判断**：不是 composition 卡死，而是①焦点丢到 body（⌘K/⌘R 弹窗 Esc 后，中英文全哑、视觉几乎看不出）②我们自己的 refocus() 的 blur-then-focus 吞掉在途合成文本（切输入法/alt-tab 触发，这才是「中文哑英文正常」的路径）③229 守卫分支实测死代码。战术修复中；架构 spec 仍是根治方向。诊断脚本 skills/tmp/ime-diag/ → **战术止血已上线**：焦点所有权不变量+看门狗（9 条否决全表单测）、refocus 幂等且永不 blur、合成期不动焦点、229 死分支退役、诊断钩子 `window.__vhTermDiag`（**只存元数据不存终端原文**——终端里会敲密码/token）。架构改造（spec 5 步）仍待做 → **Step 0-3 全部上线，新路径已成默认**（Step 4 删旧路径刻意押后，留一批做逃生门）。硬门证据：142/142 按键逐字节一致（两条路径经指纹确认真分叉）+ 点击焦点交接 5/5 + 1104 单测 |
+| B-097 | **聊天代码块 420px 裁切 bug**：`code.css` `.cv-pre` `max-height:420px + overflow-y:hidden`（fb44581f 为滚轮冒泡刻意为之）把长代码块直接裁掉不可见（B-087 只在文件预览侧解除）。修法：默认截断+渐隐+「展开全部」按钮，展开=撤 max-height（不引入嵌套滚动） | bug | Owner 走查引出 2026-08-15 | doing | 走查 agent 实锤；「能复制看不见」旁证 |
+| B-098 | 输入框展开编辑：composer 手动展开按钮（textarea 上限 200px→展开态 ~60dvh）；顺带收敛 MAX_TA_HEIGHT 双定义（JS/CSS 各一份） | ux | Owner 2026-08-15 | doing | |
+| B-099 | 滚动跟随补洞：①工具输出原地增长（rows.length/lastContentLen 均不变）不触发贴底→改 ResizeObserver 监听内容高度；②「跳到底部」按钮加「N 条新消息」badge | ux | Owner 2026-08-15 | doing | 现状：不打断回看已对，缺口在跟随触发面与新消息提示 |
+| B-100 | 工具特化渲染：ExitPlanMode 的 plan 走 Markdown（转录+PermissionCard 双处，现在是 JSON.stringify）；AskUserQuestion 问题+选项渲染成可点按钮（点选=发普通用户消息，CLI 集成测试已证明该通路；PermissionCard 同步特化） | ux | Owner 2026-08-15（吸收 B-034 主体） | doing | knownTools schema 全齐零消费是根因；updatedInput wire 已铺好暂不用 |
+| B-101 | thinking 块打磨 + 复制补洞：thinking 流式时自动展开（同 ToolGroupView 先例）+ 收起态首行预览 + 复制按钮；DiffView 补 patch 复制；PermissionCard 参数解除 copyable=false | ux | Owner 2026-08-15 | doing | |
+| B-102 | 长用户气泡折叠：40dvh 嵌套内滚改为 ~10 行截断+渐隐+展开/收起（消灭一处嵌套滚动区） | ux | Owner 2026-08-15 | doing | agent 正文刻意不折叠（主内容） |
 | B-001 | 「server 部署后必须 vh-update」根治——**根因改判**：不是重注册缺失（RpcHandlerManager.onSocketConnect 会重发 rpc-register，链路是通的），而是 apiMachine `reconnection:false`+自研 startSmartReconnect 在 server 容器重启的半开 socket 场景下自认为还连着→既不重连也不重注册。修法：应用层 register-ack 心跳，超时强制 disconnect+connect | bug | PROCESS.md §4 + 2026-08-13 工程走查改判 | todo | 根治后删 PROCESS.md §4 流程项 |
 | B-002 | `[happy]` 下发的任务在 task board 标注来源（P3） | feat | specs/2026-08-tanka-channel.md | todo | |
 | B-003 | RpcHandlerManager 把 handler 错误编码为 `{error}` 正常响应——多数 ops 封装当成功（假 ack 面） | bug | 车道退役批遗留观察 | todo | 已修 openTerminal/killTerminal 两处，其余 RPC 封装待收口 |
@@ -55,7 +61,7 @@
 | B-031 | CI 加 gitleaks job；核 metrics 0.0.0.0:9090 是否公网可达；daemon 本地控制口无签名 | debt | 工程走查#15 | todo | |
 | B-032 | 看板/侧栏卡片上直接批权限（Approve/Deny/Approve-for-session；sessionAllow/Deny 已是纯 ops） | ux | UX走查#1 | todo | 多会话并行的最高频点击链 |
 | B-033 | agent 干活时可发排队消息（iOS 与 PC 行为还不一致：PC 回车能发、手机被 Abort 按钮挡住） | ux | UX走查#2 | todo | |
-| B-034 | ExitPlanMode 计划 Markdown 渲染 + 行内批准按钮（现在是 JSON）；AskUserQuestion 选项可点选 | ux | UX走查#3#4 | todo | schema 都已在 knownTools |
+| B-034 | ExitPlanMode 计划 Markdown 渲染 + 行内批准按钮（现在是 JSON）；AskUserQuestion 选项可点选 | ux | UX走查#3#4 | doing | 主体并入 B-100 实施；批准按钮=PermissionCard 既有 Approve/Deny，卡片内容特化即达意 |
 | B-035 | @文件引用 + /斜杠命令补全接线（suggestionFile/suggestionCommands 已移植零 importer） | ux | UX走查#5 | todo | |
 | B-036 | FilesPanel 看 diff（git diff via sessionBash + 复用 DiffView；现在只能看全文） | ux | UX走查#6 | todo | |
 | B-037 | 终端 QoL：@xterm/addon-search（Ctrl+F 搜 scrollback）+ 字号可调（iOS 12px 偏小） | ux | UX走查#7#8 | todo | |
