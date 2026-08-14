@@ -59,9 +59,13 @@ web 终端里跑的 claude TUI 只有 xterm 像素流：可读性受终端渲染
   未设即静默退出；否则读 daemon 控制端口（`daemon.state.json.httpPort`，现成载体）
   POST `{hook_event_name, session_id, transcript_path, cwd, source, terminalId: $VH_TERMINAL_ID}`，
   daemon 端点按 `hook_event_name` 分发。
-- daemon 在 tmux create 时 `-e VH_TERMINAL_ID=<id>`（照 CLAUDE_CLASSIC_RENDERER_ENV
-  位置，≥3.2 gated）。**存量终端（daemon 升级前建的）不补注**——set-environment
-  只影响新 pane，如实降级到 cwd 推断（UI 标「推断绑定」）。
+- daemon 在 tmux create 时 `-e VH_TERMINAL_ID=<id>` **并同时 `-e
+  VH_HAPPY_HOME_DIR=<configuration.happyHomeDir>`**（照 CLAUDE_CLASSIC_RENDERER_ENV
+  位置，≥3.2 gated；后者是风险 7 的落实——forwarder 用它定位创建该终端的 daemon
+  变体的 `daemon.state.json`，dev/stable 双 daemon 并行时不产生跨变体孤儿绑定）。
+  **存量终端（daemon 升级前建的）不补注**——set-environment
+  只影响新 pane，如实降级到 cwd 推断（UI 标「推断绑定」；v1 实现只做 env 主路径，
+  cwd 推断降级列为 v2——见「实施裁剪」）。
 - **双份上传防护（M-2，主防线=确定性 env 标记）**：happy 自己启动 claude 时经
   `claudeEnvVars` 注入 `HAPPY_MANAGED=1`——**注入必须在 runClaude 组装
   claudeEnvVars 处（local 与 SDK/remote 两路共用）**，两路透传点均已验证：
@@ -95,9 +99,16 @@ web 终端里跑的 claude TUI 只有 xterm 像素流：可读性受终端渲染
 
 ### 消息幂等（M1）
 
-- mirror 路径的 envelope localId = **`mirror:<uuid>`**（transcript 行 uuid 是 v4，
-  跨文件全局唯一且 **resume 重写 sessionId 时保留 uuid**——所以公式里**不得**
-  掺入 claudeSessionId，否则 resume 前后同一行算出不同 localId、server 幂等失效）。
+- mirror 路径的 envelope localId = **`mirror:<行key>:<envelope序号>`**。行 key：
+  user/assistant/system 行用 uuid（v4，跨文件全局唯一且 **resume 重写 sessionId
+  时保留 uuid**——所以公式里**不得**掺入 claudeSessionId，否则 resume 前后同一行
+  算出不同 localId、server 幂等失效）；summary 行用 `summary-<leafUuid>`。
+  **实施修正（v3→实现）**：原公式 `mirror:<uuid>` 无序号——但 mapper 一行 JSONL
+  会产出 0..N 条 envelope（`sessionProtocolMapper.ts`
+  `mapClaudeLogMessageToSessionEnvelopes` 返回 envelopes 数组：turn-start、
+  分块 text/tool-call 等），单一 localId 会让同行第二条起全部被
+  `@@unique([sessionId,localId])` 当重放吞掉。加序号后仍确定性：重放同一行时
+  重复序号照旧去重，重放因 mapper 状态差异少产出的 envelope 只是少发（无害）。
   server `@@unique([sessionId,localId])` 天然去重 → daemon 崩溃/重启后重放零副作用。
 - 补齐水位用 `GET /v3` after_seq 分页（不用 v1 的 150 条 cap 接口）。
 
@@ -139,6 +150,24 @@ web 终端里跑的 claude TUI 只有 xterm 像素流：可读性受终端渲染
 - 直达 URL `/session/<mirrorId>` 允许打开（同 assistant 会话先例），渲染同样 gating。
 - summary 行**不屏蔽**（别照抄 local launcher）：mapper 免费把 transcript summary
   写进 metadata.summary → 移动端 header 有标题（N-3）。
+
+### 实施裁剪与定稿修正（实现批回流，2026-08-15）
+
+- **cwd 推断降级在 v1 实际不可达，明确裁剪为 v2**：定稿 forwarder 规则是
+  「`VH_TERMINAL_ID` 未设即静默退出」，所以存量终端（无 env 标记）的 hook 根本
+  到不了 daemon——「cwd 推断（降级）」与 forwarder 规则自相矛盾。v1 取 forwarder
+  规则为准（确定性优先，避免风险 3 的同目录歧义面）；存量终端在 daemon 升级后
+  新建的终端自然获得 env 标记。「推断绑定」UI 标注随 cwd 推断一并推 v2。
+- **SessionStart source='clear' → 新影子会话**（spec 原文只列了
+  startup/resume/compact/fork）：/clear 在 claude 语义上是全新对话（新 id、
+  历史清空），与「一个影子会话 ≈ 一段连续对话史」对齐，归 startup 类。
+  resume/compact 及未知 source：同 terminal 已有镜像则续用，没有则新建。
+- **backfill 截断提示的载体**＝`sendSessionEvent({type:'message', ...})`
+  （现成 agent event 渲染管线），不发明新 envelope 类型。
+- **daemon 重启恢复的判活门**：只恢复 metadata.lifecycleState==='running' 且
+  对应 tmux 会话（`vh-<terminalId>`）仍存活的镜像；恢复动作维持 MF-1 原拍板
+  ——重放尾部 N 行 + localId 幂等去重（正是为了覆盖 daemon 停机窗口内 claude
+  写入的行，不改为「从 EOF 续」）。
 
 ### 交互边界与二期通路（M-3②）
 
