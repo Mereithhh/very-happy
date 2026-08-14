@@ -25,6 +25,45 @@ Owner 明确表态接受架构上的大改造。
 composition 三个监听器全部绑在 `this.textarea` 上；`_keyUp` 内确实调用 `this.focus()`。
 ⇒ 本 spec 的两条承重论证（卡死态不可达、绝不补发 keyup）经实证成立。
 
+### ⚠️ 第三次复发的真实病因（2026-08-14 CDP 实证，**推翻了上面那段"背景"对本次的归因**）
+
+上面描述的 `_isComposing` 卡死是 round 1/2 的机制，**不是 2026-08-14 这次的病因**。实测结论：
+
+1. **持续性失效 = 键盘焦点丢到 `<body>`（中英文全哑）**。`⌘K` 命令面板 → Esc、`⌘R`
+   重命名弹窗 → Esc 之后 `document.activeElement === BODY`，composition 事件 0 个、
+   进 PTY 0 字节。视觉上几乎看不出（xterm 光标只是实心变空心），所以用户以为焦点还在
+   终端。根因：焦点归还是三处各写一遍的**偶然行为**（`viewShortcuts.restoreFocusAfterCancel`、
+   Radix 的 `onCloseAutoFocus`），而 `CommandPalette` / `RenameModal` / `NewSessionModal` /
+   非 ⌘W 路径的 `ModalProvider` 弹窗**都没写**。
+2. **「中文哑英文正常」的唯一路径 = 我们自己的 `refocus()` 吞掉在途合成文本**。
+   `refocus()`（`window 'focus'` + `visibilitychange` 触发）做 `ta.blur(); term.focus()`；
+   若此时正在合成，`compositionend` 到了但 xterm **一个 `onData` 都不发**，已敲的拼音被
+   静默丢弃。触发面：alt-tab 回来、切标签页回来、**点 macOS 菜单栏的输入法菜单**（会
+   blur/refocus 窗口）——正好对上 Owner 说的「切输入法就打不了中文」。
+   ⇒ **round 1/2 加的"治疗手段"本身变成了病因**（与 round 2 "heal 写 textarea 反而制造
+   卡死" 是同一类错误的第二次发生）。
+3. **`imeStuckGuard` 的 229 sustained-contradiction 分支是死代码**：第 1 键矛盾后紧随的
+   `compositionstart` 把 streak 清零，第 2~4 键 `isComposing:true` 无矛盾 ⇒ streak 永远
+   到不了 2。round-2 的加固把自己锁死了。**非 229 分支实测有效**（卡死态按普通键时 heal
+   被调用且成功阻止了游离字母提交），保留。
+4. 线上 bundle 实证：`imeStuckGuard` **在**（未被 tree-shake，挂载点也在），今天新加的
+   window-capture 监听**全部排除**（裸键 Escape/1/3/./[/w/Enter 在弹窗开关后都原样进 PTY；
+   `ModalProvider` 的 window 级 Esc/Enter 确实解绑）。
+
+**这对本 spec 的影响**：架构方向不变（所有权改造仍是根治），但 §风险 R1「焦点归属」从
+"风险"升级为**当前正在发生的事故**，且必须在 Step 0/1 之前先以战术修复止血：
+① 焦点所有权不变量 + 看门狗（终端页 + 无浮层 + activeElement 是 body ⇒ 归还焦点）；
+② `refocus()` 幂等化、**永不 blur 作为治疗手段**、合成期不动焦点；
+③ 退掉死的 229 分支；④ 加诊断钩子（第三次复发有一半原因是线上问不到状态：守卫的
+counters 关在闭包里）。诊断脚本与原始日志：`skills/tmp/ime-diag/`。
+
+**新增的机制清单（架构改造必须覆盖，来自诊断报告）**：终端屏的键盘焦点必须有**唯一
+所有者**；要有不变量+看门狗兜住"谁忘了写归还"；**禁止用 blur 当治疗手段**；在途合成
+文本不能靠 xterm 的 `_compositionPosition` 算术 + 0ms 延迟读 textarea；停止把正确性押在
+xterm 私有内部（本次 6 个观测点里 4 个是私有 API）；helper textarea 残字无界增长（只有
+blur 才清）是"不拥有这个 field"的直接后果；`ModalProvider` 的 Esc/Enter 守卫应 scope 到
+弹窗而不是 window（将来有弹窗忘了关，终端的 Esc 就没了，vim/claude TUI 靠它活）。
+
 ## 目标
 
 1. **卡死态在构造上不可达**：xterm 的 `CompositionHelper` 永不接收任何 composition

@@ -19,7 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-093 | **中文输入法在终端第三次失效**——Owner 实报，接受架构改造。方向：把输入状态机的所有权拿回自己手里（受控输入元素接管键盘+composition，只把已提交文本写 PTY，xterm 退化为纯渲染器；移动端 mobileInputBridge/输入行模式是现成先例） | bug | Owner 2026-08-14 | doing | 前两次是补丁（imeStuckGuard 自愈 + utils/ime 守卫）仍复发 → 根治靠改架构。spec: specs/2026-08-terminal-input-ownership.md（Draft 中）；诊断与 spec 两个 agent 并行 |
+| B-093 | **中文输入法在终端第三次失效**——Owner 实报，接受架构改造。方向：把输入状态机的所有权拿回自己手里（受控输入元素接管键盘+composition，只把已提交文本写 PTY，xterm 退化为纯渲染器；移动端 mobileInputBridge/输入行模式是现成先例） | bug | Owner 2026-08-14 | doing | **病因已实证推翻原判断**：不是 composition 卡死，而是①焦点丢到 body（⌘K/⌘R 弹窗 Esc 后，中英文全哑、视觉几乎看不出）②我们自己的 refocus() 的 blur-then-focus 吞掉在途合成文本（切输入法/alt-tab 触发，这才是「中文哑英文正常」的路径）③229 守卫分支实测死代码。战术修复中；架构 spec 仍是根治方向。诊断脚本 skills/tmp/ime-diag/ |
 | B-001 | 「server 部署后必须 vh-update」根治——**根因改判**：不是重注册缺失（RpcHandlerManager.onSocketConnect 会重发 rpc-register，链路是通的），而是 apiMachine `reconnection:false`+自研 startSmartReconnect 在 server 容器重启的半开 socket 场景下自认为还连着→既不重连也不重注册。修法：应用层 register-ack 心跳，超时强制 disconnect+connect | bug | PROCESS.md §4 + 2026-08-13 工程走查改判 | todo | 根治后删 PROCESS.md §4 流程项 |
 | B-002 | `[happy]` 下发的任务在 task board 标注来源（P3） | feat | specs/2026-08-tanka-channel.md | todo | |
 | B-003 | RpcHandlerManager 把 handler 错误编码为 `{error}` 正常响应——多数 ops 封装当成功（假 ack 面） | bug | 车道退役批遗留观察 | todo | 已修 openTerminal/killTerminal 两处，其余 RPC 封装待收口 |
