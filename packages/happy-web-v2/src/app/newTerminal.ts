@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { isAppChord } from '@/app/appChord';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -81,7 +82,7 @@ export function useNewTerminalShortcuts(): void {
       // IME guard: keys routed through a CJK composition never trigger shortcuts.
       if (isImeGuardedEvent(e)) return;
       const cmdN =
-        (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N');
+        isAppChord(e) && !e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N'); // Ctrl+N = readline next-history，mac 上留给终端
       // e.code, not e.key: on macOS ⌥N produces a dead key ('Dead'/'˜'), the
       // physical-key code is the only stable way to match the chord.
       const altN = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyN';

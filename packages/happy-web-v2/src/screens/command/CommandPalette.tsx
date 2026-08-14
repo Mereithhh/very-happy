@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isAppChord } from '@/app/appChord';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -96,7 +97,9 @@ export function CommandPalette() {
   // ── global ⌘K / Ctrl+K listener (capture phase + preventDefault) ──
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      // isAppChord（不是 metaKey||ctrlKey）：macOS 上 Ctrl+K 是终端 readline 的
+      // kill-line，不能被 app 截走（2026-08-14 golden 差分实测坐实）。
+      if (isAppChord(e) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         e.stopPropagation();
         setOpen((prev) => !prev);

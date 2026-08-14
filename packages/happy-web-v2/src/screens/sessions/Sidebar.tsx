@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
@@ -606,7 +607,8 @@ export function Sidebar() {
       // We only preventDefault when the current route maps to a row — on any
       // other screen the native reload is left intact. window.location (not a
       // captured value) so it's never stale against this once-registered handler.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+      // isAppChord：macOS 上 Ctrl+R 是终端 readline 的 reverse-search-history。
+      if (isAppChord(e) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
         const cur = `${window.location.pathname}${window.location.search}`;
         const target = rowsRef.current?.find((r) => rowHref(r) === cur);
         if (target) {

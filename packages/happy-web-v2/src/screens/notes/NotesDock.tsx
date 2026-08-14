@@ -10,6 +10,7 @@
  * child effects run first; see setNotesCredentials).
  */
 import { useEffect, useRef } from 'react';
+import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { List, Maximize2, Plus, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -56,7 +57,8 @@ export function NotesDock() {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (isImeGuardedEvent(e)) return;
-            if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.code !== 'KeyJ') return;
+            // isAppChord：macOS 上 Ctrl+J 是终端 readline 的 accept-line，不能被吞。
+            if (!isAppChord(e) || e.shiftKey || e.altKey || e.code !== 'KeyJ') return;
             e.preventDefault();
             e.stopPropagation();
             if (!onNotesRouteRef.current) toggleNotesPanel();
