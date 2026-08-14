@@ -25,7 +25,7 @@ import {
   type FocusOwnershipWatchdog,
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
-import { installTermInput, resolveInputOwnership } from './termInputHost';
+import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
 import { isTerminalInputElement } from './termInputElement';
 import { TermInputBar } from './TermInputBar';
@@ -249,11 +249,15 @@ export function WebTerminalScreen() {
   // build. Resolved OUTSIDE the effect and put in its deps: flipping the switch
   // tears the terminal down and rebuilds it, which is what makes "never two
   // input paths at once" structural rather than a cleanup we have to remember.
+  //
+  // Step 2: the switch is now DEVICE-INDEPENDENT — coarse pointers run the same
+  // own path (with the `sticky` field policy). Mutual exclusion rides entirely
+  // on this one value: 'own' installs the overlay and does NOT install
+  // mobileInputBridge; 'xterm' does the reverse.
   const [inputOwnershipSetting] = useLocalSettingMutable('terminalInputOwnership');
   const inputOwnership = resolveInputOwnership({
     setting: inputOwnershipSetting,
     urlParam: params.get('input'),
-    coarsePointer: IS_COARSE_POINTER,
   });
 
   // ── Mobile focus/keyboard policy ──────────────────────────────────────────
@@ -573,13 +577,13 @@ export function WebTerminalScreen() {
       for (const ch of d) if (ch >= ' ' && ch !== '\x7f') titleBuf += ch;
     };
 
-    // ── Own input element (input-ownership 'own', desktop only in Step 1) ───
+    // ── Own input element (input-ownership 'own', BOTH devices since Step 2) ──
     // Installed AFTER sendInput exists (it is the pty writer) and after
     // term.open (the renderer factory already ran, so term.element and the
     // helper textarea whose geometry we copy both exist). See ./termInputHost
     // for the mechanism; the two paths are mutually exclusive by construction —
     // `inputOwnership` is an effect dep, so flipping it rebuilds the terminal,
-    // and coarse pointers (where mobileInputBridge lives) can't reach 'own'.
+    // and the mobileInputBridge install below is gated on the same value.
     if (inputOwnership === 'own') {
       ownInput = installTermInput({
         term,
@@ -588,11 +592,22 @@ export function WebTerminalScreen() {
         paste: (text) => renderer.paste(text),
         isMac: IS_MAC,
         foreground: THEME.foreground,
-        // Desktop only in Step 1: the line-input bar is a coarse-pointer mode
-        // and coarse pointers are forced onto the legacy path (see
-        // resolveInputOwnership), so this is constant-false here by design.
+        // Presentation/geometry fork only (font size vs iOS zoom, preedit
+        // bubble); routing table and model are identical on both devices.
+        coarsePointer: IS_COARSE_POINTER,
+        // ⚠️ CONSTANT FALSE ON PURPOSE — the overlay is ALWAYS a per-key
+        // surface. Line-input mode's typing surface is TermInputBar's own
+        // <textarea>, which lives in .term-bottombars, OUTSIDE term.element:
+        // not one of this host's listeners can see it, and its whole-line send
+        // goes straight to `sendInput` below. So the "whole line gets emitted
+        // incrementally AND THEN Enter appends \r" double-send can't happen —
+        // the two input surfaces are disjoint DOM elements. Turning barMode on
+        // here would instead make the overlay buffer silently until Enter,
+        // which is the swallow-the-text failure this whole spec exists to kill.
         barMode: () => false,
-        policy: 'clear-on-idle',
+        // The one documented two-device fork (spec §F): mobile must never
+        // clear the field behind the OS keyboard's back.
+        policy: pickFieldPolicy(IS_COARSE_POINTER),
         diag: inputDiag,
       });
       if (ownInput) renderer.setInputElement(ownInput.element);
@@ -1208,7 +1223,14 @@ export function WebTerminalScreen() {
       // Install the v2 soft-keyboard bridge (diff engine, capture-phase on
       // term.element — see mobileInputBridge.ts). term.open already ran, so the
       // helper textarea exists.
-      mobileBridge = installMobileInputBridge(term, sendInput);
+      //
+      // NOT on the own path (Step 2): there our overlay owns the keyboard and
+      // xterm's helper textarea never gets focus, so this bridge would have
+      // nothing to observe — but its capture-phase keydown/input listeners on
+      // term.element would still be live, and a second diff engine mirroring a
+      // second field is exactly the "one keypress written to the pty twice"
+      // shape (spec §R4). One switch, two mutually exclusive installs.
+      if (inputOwnership !== 'own') mobileBridge = installMobileInputBridge(term, sendInput);
     }
 
     // Desktop: click-to-focus fallback + copy-on-select + selection write-hold.

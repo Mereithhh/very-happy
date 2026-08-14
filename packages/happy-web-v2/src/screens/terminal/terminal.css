@@ -184,6 +184,38 @@
   user-select: none;
   pointer-events: none;
 }
+/* Coarse pointer (phone/tablet), Step 2. Two deliberate differences from
+   desktop, each with one reason:
+
+   1. HIDDEN AT REST. The mobile field policy is `sticky` — we must NEVER clear
+      the field behind the OS keyboard's back (that is the "last letter can't be
+      deleted" bug), so the current line STAYS in it between the CR/ETX
+      boundaries. A permanently visible element would paint that line on top of
+      the pty's own echo of the same line. Desktop doesn't need this: its
+      `clear-on-idle` policy empties the field 300ms after the last keystroke.
+   2. VISIBLE ONLY WHILE COMPOSING (.is-composing, toggled by termInputHost's
+      shouldShowPreedit). On the own path xterm's CompositionHelper never sees a
+      composition event, so its `.composition-view` bubble — the ONLY visible
+      composition UI on the legacy mobile path — never appears; this element is
+      where CJK preedit has to be readable. Styled as a bubble (opaque bg +
+      accent border) like imeFix styles xterm's, so preedit reads as an input
+      bubble instead of colliding with the glyphs underneath.
+
+   The class is PURELY DECORATIVE: it gates no bytes. Worst case it sticks on
+   (an empty transparent-ish box on screen) or never appears (preedit invisible
+   — the OS candidate bar still shows it); it can never eat a keystroke. It is
+   re-evaluated on every composition/focus event AND every host tick, so it
+   self-expires. */
+.vh-term-input.is-coarse {
+  opacity: 0;
+}
+.vh-term-input.is-coarse.is-composing {
+  opacity: 1;
+  background: #181f2a;
+  border: 1px solid #34e2c4;
+  border-radius: 6px;
+  z-index: 10;
+}
 /* ── Mobile bottom bars (key bar + optional line-input bar) ────────────────
    Wrapper for everything that sits between the terminal host and the soft
    keyboard. The keyboard-avoidance math (onViewport) reserves this wrapper's
