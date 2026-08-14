@@ -21,9 +21,16 @@
  *   }
  * `emitted` 记的是 `sendInput` 的入参 —— 那是本仓唯一的写 PTY 出口，所以无论
  * 字节来自 xterm 的编码器、输入域 diff、粘贴、预设还是键盘条，都在同一个序列里。
+ *
+ * ⚠️ **`routed` / `emitted` 必须返回活的数组本身，不能返回拷贝。**
+ * `scripts/probe/term-input-goldendiff.mjs` 每个用例之间是靠
+ * `window.__vhTermInput.emitted.length = 0` 清缓冲的（它把结果 try/catch 成
+ * "清成功了"）。返回拷贝的话清空是**静默的 no-op**：142 个用例会一路累积，
+ * 比出来的"逐字节一致"毫无意义 —— 正是这套工具存在的意义（反假绿）被自宫。
+ * 所以这里用一个**原地**收尾的缓冲（`splice`，不是 `slice` 重新赋值），
+ * 数组对象身份恒定，外部清空之后后续 push 仍然落进同一个数组。
  */
 import type { KeyEventLike, RouteDecision, RouteKind } from './termInputRoute';
-import { createRingBuffer } from './termDiag';
 
 export interface TermInputRoutedEntry {
     at: number;
@@ -51,6 +58,23 @@ export interface TermInputDiagHandle {
 }
 
 const GLOBAL_KEY = '__vhTermInput';
+
+/**
+ * 定长缓冲，**原地**收尾（见文件头：数组身份必须恒定，外部 `length = 0` 要真的清）。
+ * 与 `termDiag.createRingBuffer` 的区别只在这一点上 —— 那个刻意返回拷贝
+ * （只读诊断面，不许从控制台改），这个刻意暴露活数组（差分工具要清它）。
+ */
+export function createLiveBuffer<T>(capacity: number): { readonly arr: T[]; push(v: T): void } {
+    const cap = Math.max(1, Math.floor(capacity));
+    const arr: T[] = [];
+    return {
+        arr,
+        push(v: T) {
+            arr.push(v);
+            if (arr.length > cap) arr.splice(0, arr.length - cap);
+        },
+    };
+}
 
 /** 修饰键位串：稳定顺序，方便 golden 比对时肉眼读。 */
 export function modString(ev: {
@@ -94,21 +118,22 @@ export function installTermInputDiag(opts: {
     }
     const now = opts.now ?? (() => Date.now());
     const cap = opts.ringSize ?? 200;
-    const routed = createRingBuffer<TermInputRoutedEntry>(cap);
-    const emitted = createRingBuffer<TermInputEmittedEntry>(cap);
+    const routed = createLiveBuffer<TermInputRoutedEntry>(cap);
+    const emitted = createLiveBuffer<TermInputEmittedEntry>(cap);
 
     const api = Object.freeze({
         ownership: opts.ownership,
-        get routed() { return routed.toArray(); },
-        get emitted() { return emitted.toArray(); },
-        /** 差分脚本每个场景开跑前调一次。 */
-        clear() { routed.clear(); emitted.clear(); },
-        /** `copy(window.__vhTermInput.snapshot())` 一把带走。 */
+        // 活数组（不是拷贝）—— 见文件头的 ⚠️。
+        get routed() { return routed.arr; },
+        get emitted() { return emitted.arr; },
+        /** 差分脚本每个场景开跑前调一次（它也可能直接写 `emitted.length = 0`）。 */
+        clear() { routed.arr.length = 0; emitted.arr.length = 0; },
+        /** `copy(window.__vhTermInput.snapshot())` 一把带走（这个才是拷贝）。 */
         snapshot() {
             return Object.freeze({
                 ownership: opts.ownership,
-                routed: routed.toArray(),
-                emitted: emitted.toArray(),
+                routed: routed.arr.slice(),
+                emitted: emitted.arr.slice(),
             });
         },
     });

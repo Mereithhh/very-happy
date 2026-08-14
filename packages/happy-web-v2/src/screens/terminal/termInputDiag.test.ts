@@ -4,6 +4,8 @@
  * 不得进入 Step 3）。
  */
 import { describe, it, expect, afterEach } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { installTermInputDiag, classifyRouted, modString } from './termInputDiag';
 import type { KeyEventLike, RouteDecision } from './termInputRoute';
 
@@ -65,11 +67,41 @@ describe('installTermInputDiag', () => {
         expect(data[199]).toBe('249');
     });
 
-    it('返回的数组是拷贝：控制台里改它不影响缓冲（钩子是只读的）', () => {
+    // ⚠️ 这三条钉的是 `scripts/probe/term-input-goldendiff.mjs` 实际在用的清空手法。
+    // 它把 `emitted.length = 0` 的结果 try/catch 成"清成功了"，所以一旦这里退回
+    // 返回拷贝，142 个用例会一路累积而工具毫无察觉 —— 反假绿的工具自己变成假绿。
+    it('emitted / routed 返回的是活数组（外部 length = 0 必须真的清）', () => {
+        const h = install({ enabled: true, ownership: 'own' });
+        h.noteEmitted('a');
+        h.noteRouted(key({}), VT);
+        g.__vhTermInput.emitted.length = 0;
+        g.__vhTermInput.routed.length = 0;
+        expect(g.__vhTermInput.emitted).toEqual([]);
+        expect(g.__vhTermInput.routed).toEqual([]);
+        // 清空之后继续记，仍然落进同一个数组（不是把缓冲写死了）。
+        h.noteEmitted('b');
+        expect(g.__vhTermInput.emitted.map((e: any) => e.data)).toEqual(['b']);
+    });
+
+    it('数组身份恒定（工具会重复取全局再清，不能每次拿到新对象）', () => {
+        install({ enabled: true, ownership: 'own' });
+        expect(g.__vhTermInput.emitted).toBe(g.__vhTermInput.emitted);
+    });
+
+    it('溢出裁剪也是原地做的（超过上限后外部持有的引用不会失效）', () => {
+        const h = install({ enabled: true, ownership: 'own', ringSize: 3 });
+        const ref = g.__vhTermInput.emitted;
+        for (let i = 0; i < 10; i++) h.noteEmitted(String(i));
+        expect(ref).toBe(g.__vhTermInput.emitted);
+        expect(ref.map((e: any) => e.data)).toEqual(['7', '8', '9']);
+    });
+
+    it('snapshot() 才是拷贝（控制台一把带走，不受后续 push 影响）', () => {
         const h = install({ enabled: true, ownership: 'own' });
         h.noteEmitted('x');
-        g.__vhTermInput.emitted.push({ at: 0, data: 'injected' });
-        expect(g.__vhTermInput.emitted.map((e: any) => e.data)).toEqual(['x']);
+        const snap = g.__vhTermInput.snapshot();
+        h.noteEmitted('y');
+        expect(snap.emitted.map((e: any) => e.data)).toEqual(['x']);
     });
 
     it('dispose 只摘自己挂的那一个（StrictMode 双挂时后挂的必须活下来）', () => {
@@ -79,6 +111,28 @@ describe('installTermInputDiag', () => {
         expect(g.__vhTermInput?.ownership).toBe('xterm');
         second.dispose();
         expect(g.__vhTermInput).toBeUndefined();
+    });
+});
+
+describe('与 golden 差分工具的契约（scripts/probe/term-input-goldendiff.mjs）', () => {
+    // 契约的两端在两个包里，中间没有类型系统 —— 所以只能靠这条测试把它们钉在一起。
+    // 工具不在（单独打包/裁剪检出）就跳过，不做成脆的门。
+    const toolPath = fileURLToPath(
+        new URL('../../../../../scripts/probe/term-input-goldendiff.mjs', import.meta.url),
+    );
+    const tool = existsSync(toolPath) ? readFileSync(toolPath, 'utf8') : null;
+
+    it.runIf(tool)('工具读的字段与我们挂的一致', () => {
+        expect(tool).toContain('window.__vhTermInput');
+        expect(tool).toContain('__vhTermInput.emitted');
+        // 路径指纹读 `b.path ?? b.route ?? b.ownership ?? b.mode` —— 我们提供 ownership。
+        expect(tool).toContain('b.ownership');
+        // 结构断言数的是这个 class。
+        expect(tool).toContain('.vh-term-input');
+    });
+
+    it.runIf(tool)('工具用 `emitted.length = 0` 清缓冲 ⇒ 我们必须返回活数组', () => {
+        expect(tool).toContain('window.__vhTermInput.emitted.length = 0');
     });
 });
 
