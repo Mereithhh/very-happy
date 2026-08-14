@@ -46,6 +46,12 @@ export const MetadataSchema = z.object({
     startedBy: z.enum(['daemon', 'terminal']).optional(),
     flavor: z.string().nullish(), // Session flavor/variant identifier
     /**
+     * B-105 terminal mirror: the web terminal (tmux vh-<terminalId>) this
+     * shadow session mirrors. Set by the daemon on flavor 'terminal-mirror'
+     * sessions only; optional — older sessions/daemons never write it.
+     */
+    terminalId: z.string().optional(),
+    /**
      * Session presentation variant. 'assistant' marks the machine-side
      * meta-agent session that the /assistant voice view attaches to.
      * Optional string (not an enum) so future variants and newer clients

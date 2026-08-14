@@ -8,7 +8,8 @@
  */
 
 import * as React from 'react';
-import { useFeedItems } from './storage';
+import { storage, useFeedItems } from './storage';
+import { isHiddenSession } from '@/assistant/assistantSession';
 import { sync } from './sync';
 import { decodeBase64 } from '@/encryption/base64';
 import { decryptNotificationEnc, type NotificationPayload } from './encryption/notificationDecrypt';
@@ -82,10 +83,18 @@ export function useNotificationFeed(): NotificationFeed {
     const seed = React.useMemo(() => getSeed(), []);
 
     return React.useMemo<NotificationFeed>(() => {
+        // B-105: notifications for hidden sessions (assistant, terminal
+        // mirrors) never join the inbox. Non-reactive session read on
+        // purpose: hidden-ness is permanent per session, so subscribing the
+        // whole inbox to the sessions slice buys nothing.
+        const sessions = storage.getState().sessions;
         const entries: NotificationEntry[] = [];
         for (const item of feedItems) {
             const entry = toEntry(item, seed, watermark);
-            if (entry) entries.push(entry);
+            if (!entry) continue;
+            const target = sessions[entry.sessionId];
+            if (target && isHiddenSession(target)) continue;
+            entries.push(entry);
         }
 
         const bySession = new Map<string, NotificationEntry[]>();

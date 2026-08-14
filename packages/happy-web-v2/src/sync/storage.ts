@@ -29,7 +29,7 @@ import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
-import { isAssistantSession } from "@/assistant/assistantSession";
+import { isHiddenSession, isMirrorSession } from "@/assistant/assistantSession";
 import { FeedItem } from "./feedTypes";
 
 // Debounce timer for realtimeMode changes
@@ -267,9 +267,10 @@ function buildSessionListViewData(
     const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
-        // B-053: the assistant meta-session never joins the normal list — its
-        // home is /assistant (still reachable at /session/<id> for audit).
-        if (isAssistantSession(session)) return;
+        // B-053/B-105: hidden sessions (assistant meta-session, terminal
+        // mirrors) never join the normal list — still reachable at
+        // /session/<id> for audit.
+        if (isHiddenSession(session)) return;
         if (isSessionActive(session)) {
             activeSessions.push(session);
         } else {
@@ -501,11 +502,12 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Process all sessions from merged set
             Object.values(mergedSessions).forEach(session => {
-                // B-091: the assistant meta-session never joins sessionsData —
-                // this is the lane useSessions() actually serves (sidebar,
-                // command palette). B-053 only filtered the parallel
-                // sessionListViewData lane, which nothing renders → the leak.
-                if (isAssistantSession(session)) return;
+                // B-091/B-105: hidden sessions (assistant, terminal mirrors)
+                // never join sessionsData — this is the lane useSessions()
+                // actually serves (sidebar, command palette). B-053 only
+                // filtered the parallel sessionListViewData lane, which
+                // nothing renders → the leak.
+                if (isHiddenSession(session)) return;
                 if (activeSet.has(session.id)) {
                     activeSessions.push(session);
                 } else {
@@ -1522,9 +1524,10 @@ export function useAttentionSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [] as Session[];
         return Object.values(state.sessions).filter((s) =>
-            // B-091: the assistant meta-session is not a task — it must not
-            // inflate the sidebar/board attention badge either.
-            !isAssistantSession(s) &&
+            // B-091/B-105: hidden sessions (assistant, terminal mirrors) are
+            // not tasks — they must not inflate the sidebar/board attention
+            // badge either (presence is meaningless for a mirror anyway).
+            !isHiddenSession(s) &&
             s.presence === 'online' &&
             (
                 (!!s.agentState?.requests && Object.keys(s.agentState!.requests!).length > 0) ||
@@ -1636,7 +1639,16 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 export function useAllSessions(): Session[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
-        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+        // B-105: this lane was fully unfiltered — mirror sessions must never
+        // ride it into a surface. Deliberately NOT isHiddenSession here: the
+        // ASSISTANT must keep passing through — AssistantScreen resolves its
+        // singleton via useAllSessions + pickAssistantSession, and filtering
+        // it out would make /assistant spawn a duplicate meta-session on
+        // every visit. Assistant-hiding stays at each consumer (they all
+        // filter isHiddenSession / isAssistantSession themselves).
+        return Object.values(state.sessions)
+            .filter((s) => !isMirrorSession(s))
+            .sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 

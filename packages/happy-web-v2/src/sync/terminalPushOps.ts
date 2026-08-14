@@ -50,6 +50,9 @@ export interface TerminalSession {
   createdAt: number;
   /** Last known activity (pushed tmux session_activity, or creation). */
   updatedAt?: number;
+  /** B-105: shadow mirror session id, when the daemon is mirroring a
+   *  hand-launched `claude` in this terminal (drives the structured toggle). */
+  mirrorSessionId?: string;
 }
 
 /** A trusted webTerminals snapshot read out of a machine's daemonState. */
@@ -126,6 +129,9 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
     cwd: t.cwd,
     createdAt: t.createdAt ?? 0,
     updatedAt: t.activityAt ?? t.createdAt,
+    // Off the wire from a daemon of unknown version — accept strings only.
+    mirrorSessionId:
+      typeof t.mirrorSessionId === 'string' && t.mirrorSessionId ? t.mirrorSessionId : undefined,
   };
 }
 
