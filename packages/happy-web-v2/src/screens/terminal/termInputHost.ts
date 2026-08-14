@@ -1,7 +1,14 @@
 /**
- * termInputHost —— 自有输入元素的**宿主**（spec §设计 A/B/C 的接线层，Step 1）
+ * termInputHost —— 自有输入元素的**宿主**（spec §设计 A/B/C 的接线层，Step 1/2）
  *
  * spec: `specs/2026-08-terminal-input-ownership.md`
+ *
+ * Step 2（移动端接同一条路径）在这里新增的，全部是**呈现与边界**，路由表与模型
+ * 一个字没动（spec §F：统一核心，分叉只在字段策略与呈现）：
+ *   - `pickFieldPolicy`：粗指针 = `sticky`（绝不主动清空输入域）；
+ *   - `pickOverlayMetrics`：粗指针抬字号躲 iOS 自动放大 + 抬盒高保住 preedit；
+ *   - `shouldShowPreedit`：粗指针默认 opacity 0，只在合成期露出（纯装饰镜像）；
+ *   - `vtKeyClearsField`：CR/ETX 边界清空，照抄 xterm 自己在旧路径上做的事。
  *
  * ── 这一层负责什么 ──────────────────────────────────────────────────────
  * Step 0 已经把两个纯函数落地：`termInputRoute.routeKey`（一次按键归谁）与
@@ -68,6 +75,34 @@ export const COMPOSITION_STALE_MS = 5000;
 export const OVERLAY_MAX_CELLS = 40;
 
 /**
+ * 粗指针（手机/平板）的宽度上限。窄屏上 40 列往往就是整行，一个铺满整行的
+ * 聚焦元素会给 iOS 的"为露出聚焦元素而 pan 布局视口"更多借口（spec §风险 R5）。
+ * 24 列够放一句拼音，且在常见手机宽度（40-60 列）下永远不占满整行。
+ */
+export const OVERLAY_MAX_CELLS_COARSE = 24;
+
+/**
+ * iOS Safari 的自动放大阈值：聚焦一个**计算字号 < 16px** 的表单控件时，Safari 会
+ * 把整个页面放大到让该字段可读。而放大之后 `visualViewport.scale > 1`，
+ * `WebTerminalScreen.onViewport` 的第一条守卫（`scale > 1.001` 直接 return）会让
+ * 软键盘避让数学**整个停摆** —— 键盘盖住终端且 `maxHeight` 再也不更新。
+ *
+ * 移动端字号是 12px（`MOBILE_TYPO_BASE`），正好在阈值以下，所以粗指针下 overlay
+ * 的字号被抬到 16px。代价是合成中的 preedit 比终端正文略大 —— 换掉的是"页面被
+ * 放大后键盘布局彻底失效"，这笔交易不用犹豫。⚠️ 这条不能用 viewport meta 的
+ * `maximum-scale=1` 解决：那会**全站**禁掉双指缩放（可访问性回退）。
+ */
+export const IOS_ZOOM_SAFE_FONT_PX = 16;
+
+/** 粗指针下 overlay 的行高系数：16px 字要有 20px 的盒子才不会被 `overflow:hidden` 削顶。 */
+export const COARSE_LINE_FACTOR = 1.25;
+
+/** 粗指针呈现分叉的 CSS 钩子（见 `terminal.css` 的 `.vh-term-input.is-coarse`）。 */
+export const COARSE_CLASS = 'is-coarse';
+/** 合成期露出 preedit 的**纯装饰**类（见 `shouldShowPreedit`）。 */
+export const COMPOSING_CLASS = 'is-composing';
+
+/**
  * 「现在该不该把输入域内容喂给模型」——spec「★ 宿主观测时机」的四条规则。
  *
  * 关键：**合成期不观测**。若合成期也全量观测，preedit 拼音会被回显进 PTY，
@@ -124,6 +159,101 @@ export function pickOverlayWidth(input: {
 }
 
 /**
+ * overlay 的字号/高度/宽度 —— 桌面与粗指针**刻意不同**（spec §风险 R5，Step 2）。
+ *
+ * 桌面：逐字段抄 xterm 已经算好的光标单元格几何（零 typography 数学）。
+ * 粗指针：只改两个数，且两个都有单一理由：
+ *   - `fontSize` 抬到 16px：躲开 iOS 的聚焦自动放大（见 `IOS_ZOOM_SAFE_FONT_PX`）。
+ *   - `height` 跟着抬：字大了盒子不跟着大，preedit 会被 `overflow:hidden` 削掉一半，
+ *     而移动端 overlay 是合成中**唯一**的 preedit 显示面（旧路径靠 xterm 的
+ *     `.composition-view` 气泡，新路径下 `CompositionHelper` 根本收不到事件）。
+ * 位置（left/top）两端一律照抄光标单元格 —— 不动，因为候选窗要贴着光标。
+ */
+export interface OverlayMetricsInput {
+    coarsePointer: boolean;
+    /** 终端字号（`term.options.fontSize`）。 */
+    cellFontSize: number;
+    /** 光标单元格高度（抄自 xterm helper textarea 的 inline `height`）。 */
+    cellHeight: number;
+    cursorLeft: number;
+    screenWidth: number;
+    cellWidth: number;
+}
+
+export interface OverlayMetrics {
+    fontSize: number;
+    /** 盒子高度（同时用作 line-height：单行输入域，两者相等才不会上下偏）。 */
+    height: number;
+    width: number;
+}
+
+export function pickOverlayMetrics(i: OverlayMetricsInput): OverlayMetrics {
+    const width = pickOverlayWidth({
+        cursorLeft: i.cursorLeft,
+        screenWidth: i.screenWidth,
+        cellWidth: i.cellWidth,
+        maxCells: i.coarsePointer ? OVERLAY_MAX_CELLS_COARSE : OVERLAY_MAX_CELLS,
+    });
+    if (!i.coarsePointer) {
+        return { fontSize: i.cellFontSize, height: i.cellHeight, width };
+    }
+    const fontSize = Math.max(IOS_ZOOM_SAFE_FONT_PX, i.cellFontSize);
+    const height = Math.max(i.cellHeight, Math.ceil(fontSize * COARSE_LINE_FACTOR));
+    return { fontSize, height, width };
+}
+
+/**
+ * 字段策略（spec §E 第 3 条）—— 两端唯一的分叉，且只是一个入参。
+ *
+ * 粗指针必须是 `sticky`：**绝不主动清空输入域**。OS 软键盘把这个字段当作它自己的
+ * 模型（光标前有什么），清了它就认为字段已空、退格不再发事件，而 PTY 里还留着
+ * 字母 —— 这就是 v1 移动桥"删不掉的最后一个字母"（`mobileInputBridge` 头注 §2）。
+ * 桌面相反：硬件键盘不镜像字段内容，残字会无界增长且让 overlay 宽度策略失准。
+ */
+export function pickFieldPolicy(coarsePointer: boolean): FieldPolicyMode {
+    return coarsePointer ? 'sticky' : 'clear-on-idle';
+}
+
+/**
+ * 这个走 VT 路由的键，xterm 自己会不会顺手清空它的 textarea？
+ *
+ * 照抄 xterm 5.5 `_keyDown` 的原话：编码结果是 `ETX`(\x03) 或 `CR`(\r) 时执行
+ * `this.textarea.value=""`。为什么要跟着做：
+ *  - **视觉**：overlay 是不透明度 1 的真元素，字段里留着的整行会画在光标处，
+ *    和 PTY 已经回显的同一行叠字。桌面靠 `clear-on-idle` 兜住，`sticky` 兜不住。
+ *  - **安全性有实证**：旧路径上 iOS 的软键盘正是挂在这个被 xterm 在 Enter 时清空的
+ *    textarea 上，而"删不掉的最后一个字母"**不是**它造成的（那是 v1 移动桥
+ *    "每次发送后都清"造成的）。行末边界清空 = 键盘的上下文本来就要重开。
+ *  - **退格不受影响**：退格走 VT（`\x7f`），从不依赖字段里还剩什么。
+ */
+export function vtKeyClearsField(ev: {
+    key: string;
+    ctrlKey: boolean;
+    altKey: boolean;
+    metaKey: boolean;
+}): boolean {
+    if (ev.altKey || ev.metaKey) return false;
+    if (ev.key === 'Enter') return true; // → CR
+    return ev.ctrlKey && ev.key.toLowerCase() === 'c'; // → ETX
+}
+
+/**
+ * 合成气泡该不该显示 —— **纯装饰**（spec §B ① 末段明确允许的那种镜像）。
+ *
+ * 只在粗指针下用。为什么移动端要这个开关而桌面不要：移动端策略是 `sticky`，
+ * 字段里会留着当前这一行；一个常显的 opacity:1 元素会把这一行画在光标处，与
+ * PTY 的回显叠字。于是移动端默认 `opacity:0`（与旧路径的 helper textarea 观感
+ * 一致），只在合成期露出来给 preedit 用。
+ *
+ * 这不违反铁律：它**不参与任何字节的产生**，最坏后果是"一个空的透明框留在屏上"
+ * 或"preedit 没露出来"，绝不吞键。而且它是**自过期**的 —— 每次 tick 重新求值，
+ * `composition-end`/`blur` 都会把 `composing` 放掉，失焦即摘。
+ */
+export function shouldShowPreedit(input: { composing: boolean; focused: boolean }): boolean {
+    return input.composing && input.focused;
+}
+
+/**
  * 焦点补发的判定（spec §设计 A 末条 / §风险 R2）。
  *
  * **刻意不持有我们自己的"已补发"布尔**：那正是本次改造要消灭的东西（一个持久
@@ -143,19 +273,19 @@ export function mirrorFocusAction(xtermFocused: boolean, ownFocused: boolean): F
 export type InputOwnership = 'xterm' | 'own';
 
 /**
- * 生效的输入路径 = 设置 ⊕ URL 一次性覆盖 ⊕ Step 1 的设备门。
+ * 生效的输入路径 = 设置 ⊕ URL 一次性覆盖。**与设备无关**（Step 2 起）。
  *
  *  - `?input=own|xterm` 一次性覆盖设置（CDP golden 差分要在**同一构建**上跑两条路径）；
- *  - Step 1 只做桌面：粗指针设备（手机/平板）强制走旧路径，否则会和
- *    `mobileInputBridge` 同时激活 = 一次按键写两遍 PTY（spec §风险 R4）。
- *    移动端在 Step 2 接同一路径时删掉这一条。
+ *  - Step 1 曾有一条"粗指针强制旧路径"的设备门，理由是那时移动端还只有
+ *    `mobileInputBridge` 这一条路，两条同时激活 = 一次按键写两遍 PTY（spec §R4）。
+ *    Step 2 把移动端接到同一条自有路径上，互斥改由**唯一的一个开关**保证：
+ *    `own` ⇒ 装 overlay、不装 `mobileInputBridge`；`xterm` ⇒ 反之。设备不再进这个判断
+ *    —— 一个判据两处写就是下一次"两条路径同时活着"的入口。
  */
 export function resolveInputOwnership(input: {
     setting: InputOwnership | undefined;
     urlParam: string | null | undefined;
-    coarsePointer: boolean;
 }): InputOwnership {
-    if (input.coarsePointer) return 'xterm';
     const url = input.urlParam;
     if (url === 'own' || url === 'xterm') return url;
     return input.setting === 'own' ? 'own' : 'xterm';
@@ -181,7 +311,22 @@ export interface TermInputHostOptions {
     isMac: boolean;
     /** 终端前景色（来自 `WebTerminalScreen` 的 THEME，避免这里裸写色值）。 */
     foreground: string;
-    /** 输入行模式（Step 1 桌面恒 false；Step 2 移动端接入时才可能为真）。 */
+    /**
+     * 粗指针（手机/平板）。只影响**呈现与几何**（字号/高度/宽度上限、合成期才露出），
+     * 不影响路由表、不影响模型 —— 两端共用同一个核心（spec §F）。
+     */
+    coarsePointer?: boolean;
+    /**
+     * 输入行模式（`send-line` 路由的开关）。
+     *
+     * ⚠️ Step 2 的结论：**两端都恒 false，overlay 永远是逐键面**。
+     * 输入行模式的输入面是 `TermInputBar` 自己的 `<textarea>`，它挂在
+     * `.term-bottombars` 里、**在 `term.element` 之外**，本宿主的监听器一个都碰不到它；
+     * 它的整行发送直接走屏幕的 `sendInput`。所以"整行先被增量 emit 一遍、Enter 再补
+     * `\r`"这种双发在结构上不可能发生 —— 两个输入面是不相交的 DOM 元素。
+     * 保留这个入参是为了让 `routeKey` 的 P6 仍可被单测覆盖，以及给未来"桌面也用输入行
+     * 模式"（spec §B ③）留口子。
+     */
     barMode?: () => boolean;
     policy?: FieldPolicyMode;
     diag?: TermInputRouteRecorder;
@@ -234,6 +379,14 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     el.setAttribute('autocapitalize', 'off');
     el.setAttribute('spellcheck', 'false');
     el.setAttribute('aria-label', 'Terminal input');
+    // 软键盘提示（旧路径由 `mobileInputBridge` 写在 xterm 的 helper textarea 上；
+    // 那条路径在 `own` 下不安装，所以提示必须搬到这里，否则 iOS 可能给出
+    // 带自动大写/表单语义的键盘）。硬件键盘上这两个属性无副作用。
+    el.setAttribute('inputmode', 'text');
+    el.setAttribute('enterkeyhint', 'send');
+    const coarse = opts.coarsePointer === true;
+    // 粗指针的呈现分叉（见 `shouldShowPreedit`）：默认不透明度 0，合成期才露出。
+    if (coarse) el.classList.add(COARSE_CLASS);
     helpers.appendChild(el);
 
     // 安全带（spec §D 纪律 2）。真实按键一旦以任何方式到达 xterm 一律不处理 ——
@@ -290,6 +443,11 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         if (decision.preventDefault) ev.preventDefault();
         if (decision.kind === 'vt') {
             opts.sendKey(ev);
+            // 行边界清空：照抄 xterm 自己在 CR/ETX 上做的事（见 `vtKeyClearsField`）。
+            // VT 键被 preventDefault 掉了，输入域不会自己变空，而 `sticky` 又永不主动
+            // 清 —— 不做这一步，移动端的字段会把整条命令一直留在光标处画出来。
+            // 清空恒不发字节（`adopt` 语义），合成期由模型自己拒绝。
+            if (vtKeyClearsField(ev)) apply({ type: 'clear-request' });
             return;
         }
         if (decision.kind === 'send-line') {
@@ -321,6 +479,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     const onCompositionStart = (): void => {
         lastCompositionAt = now();
         apply({ type: 'composition-start' });
+        syncPreedit();
     };
     const onCompositionUpdate = (): void => {
         // **一个字节都不读**：`compositionupdate.data` 从不参与输入通路
@@ -330,6 +489,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     const onCompositionEnd = (): void => {
         lastCompositionAt = now();
         apply({ type: 'composition-end' });
+        syncPreedit();
         observe();
         // Safari/Firefox 在 `compositionend` **之后**才把提交文本写进字段
         // （Chrome 在之前）；xterm 自己也用 0ms 定时器读。observe 幂等，
@@ -343,6 +503,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     const onFocus = (): void => {
         apply({ type: 'focus' });
         syncMirror();
+        syncPreedit();
     };
     const onBlur = (): void => {
         // 顺序要紧：先 `blur` 解除 composing（失焦后 IME 不会再给 `compositionend`
@@ -350,6 +511,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         apply({ type: 'blur' });
         observe();
         syncMirror();
+        syncPreedit();
     };
 
     // ── 粘贴：纯文本走 `term.paste()`，含 files 的一概不碰 ──────────────────
@@ -392,19 +554,40 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         const s = xtermTa.style;
         el.style.left = s.left || '0px';
         el.style.top = s.top || '0px';
-        if (s.height) el.style.height = s.height;
-        if (s.lineHeight) el.style.lineHeight = s.lineHeight;
         el.style.fontFamily = String(term.options.fontFamily ?? '');
-        if (term.options.fontSize) el.style.fontSize = `${term.options.fontSize}px`;
         el.style.color = opts.foreground;
         const screen = root.querySelector('.xterm-screen') as HTMLElement | null;
         const screenWidth = screen?.clientWidth ?? root.clientWidth;
         const cellWidth = term.cols > 0 ? screenWidth / term.cols : 0;
-        el.style.width = `${pickOverlayWidth({
+        const m = pickOverlayMetrics({
+            coarsePointer: coarse,
+            cellFontSize: Number(term.options.fontSize ?? 0) || 0,
+            cellHeight: parseFloat(s.height || '0') || 0,
             cursorLeft: parseFloat(s.left || '0') || 0,
             screenWidth,
             cellWidth,
-        })}px`;
+        });
+        if (m.fontSize > 0) el.style.fontSize = `${m.fontSize}px`;
+        // 高度与行高同值：单行输入域，两者一致 preedit 才不会上下偏。尚未测出
+        // 单元格尺寸（首帧、fit 之前）时不写，免得把元素压成 0 高度收不到 IME。
+        if (m.height > 0) {
+            el.style.height = `${m.height}px`;
+            el.style.lineHeight = `${m.height}px`;
+        }
+        el.style.width = `${m.width}px`;
+    };
+
+    /**
+     * 合成气泡的**纯装饰**同步（粗指针专用，见 `shouldShowPreedit`）。
+     * 每个 composition/焦点事件与每个 tick 都重新求值 ⇒ 自过期，不可能卡住。
+     */
+    const syncPreedit = (): void => {
+        if (disposed || !coarse) return;
+        const on = shouldShowPreedit({
+            composing: state.composing,
+            focused: document.activeElement === el,
+        });
+        el.classList.toggle(COMPOSING_CLASS, on);
     };
 
     el.addEventListener('keydown', onKeyDown);
@@ -428,6 +611,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         if (shouldObserveField({ kind: 'tick', now: t, lastCompositionAt })) observe();
         apply({ type: 'tick', now: t });
         syncGeometry();
+        syncPreedit();
     }, tickMs);
 
     return {
