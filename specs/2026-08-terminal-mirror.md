@@ -1,7 +1,11 @@
 # 终端 Claude 结构化镜像视图（terminal mirror）
 
-> 状态：Final（v3——两轮对抗性 review：R1 修 2 BLOCKING+4 MUST-FIX；R2 修 v2 自引入的
-> 截断×resume 去重矛盾 + localId 公式 + M-1~M-4）
+> 状态：**Shipped**（2026-08-15，merge 9fa4cfb7：cli v0.2.43 + web；实施回流修正见
+> 「实施裁剪与定稿修正」节——localId 加 envelope 序号、VH_HAPPY_HOME_DIR 双注入、
+> clear 归 startup 类、cwd 推断裁剪 v2。E2E 实测：绑定/resume 续用/daemon kill -9
+> 重启重放零重复/SessionEnd 归档/终端关闭记录，全过）
+> 前史：Final v3——两轮对抗性 review：R1 修 2 BLOCKING+4 MUST-FIX；R2 修 v2 自引入的
+> 截断×resume 去重矛盾 + localId 公式 + M-1~M-4
 > 日期：2026-08-15 ｜ 关联 backlog：B-105 ｜ 出处：Owner 想法 → 调研 agent 报告 → reviewer agent 两轮证伪修订
 
 ## 背景
