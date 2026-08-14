@@ -54,6 +54,24 @@
   background: var(--bg-3);
   transform: translateY(-1px);
 }
+/* B-099：不在底部期间新到消息数的 badge（≥1 才渲染，回底清零） */
+.cl-jump-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  line-height: 16px;
+  text-align: center;
+  box-shadow: var(--shadow-lift);
+}
 
 /* touch: finger-sized jump-to-bottom target */
 @media (pointer: coarse) {

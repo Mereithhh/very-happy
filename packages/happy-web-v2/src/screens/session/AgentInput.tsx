@@ -7,7 +7,7 @@
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Paperclip, Send, Square, X } from 'lucide-react';
+import { Maximize2, Minimize2, Paperclip, Send, Square, X } from 'lucide-react';
 import { sync } from '@/sync/sync';
 import { sessionAbort } from '@/sync/ops';
 import {
@@ -30,9 +30,8 @@ import { ModeMenu } from './ModeMenu';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentUsed } from './format';
+import { composerHeightCap } from './composerExpand';
 import './input.css';
-
-const MAX_TA_HEIGHT = 200;
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -55,6 +54,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
     const [dragOver, setDragOver] = useState(false);
+    // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
+    const [expanded, setExpanded] = useState(false);
     const { attachments, addFiles, remove, clear } = useAttachments();
 
     const flavorForAttach = session?.metadata?.flavor;
@@ -79,13 +80,24 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const percentUsed = contextPercentUsed(contextSize);
     const meterTone = percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
 
-    // grow textarea
+    // grow textarea — 高度上限的唯一事实源是 composerHeightCap（B-098 收敛了
+    // 原 JS 常量 + input.css max-height 的双定义）：上限也写回 inline style，
+    // CSS 里不再有 max-height。展开态的上限每次重算，顺带跟上窗口尺寸变化。
     useLayoutEffect(() => {
         const ta = taRef.current;
         if (!ta) return;
+        const cap = composerHeightCap(expanded, window.innerHeight);
+        ta.style.maxHeight = `${cap}px`;
         ta.style.height = 'auto';
-        ta.style.height = `${Math.min(ta.scrollHeight, MAX_TA_HEIGHT)}px`;
-    }, [text]);
+        ta.style.height = `${Math.min(ta.scrollHeight, cap)}px`;
+    }, [text, expanded]);
+
+    // 展开/收起切换：同一个 textarea，不做 modal；把焦点还给输入框（与
+    // insertPreset 的 rAF refocus 手法一致），点按钮不丢焦点。
+    const toggleExpanded = () => {
+        setExpanded((v) => !v);
+        requestAnimationFrame(() => taRef.current?.focus());
+    };
 
     // persist draft (debounced via storage's own normalization)
     useEffect(() => {
@@ -266,6 +278,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     </button>
                 )}
                 <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()} />
+                <button
+                    type="button"
+                    className="ci-icon-btn"
+                    onClick={toggleExpanded}
+                    aria-pressed={expanded}
+                    aria-label={expanded ? t('session.input.collapse') : t('session.input.expand')}
+                    title={expanded ? t('session.input.collapse') : t('session.input.expand')}
+                >
+                    {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                </button>
                 <input
                     ref={fileInputRef}
                     type="file"

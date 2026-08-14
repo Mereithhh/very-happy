@@ -14,6 +14,7 @@ import { Button, EmptyState, Spinner } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { PermissionCard } from './PermissionCard';
+import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth } from './chatFollow';
 import './chatlist.css';
 
 type Row =
@@ -63,9 +64,13 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const innerRef = useRef<HTMLDivElement>(null);
     const atBottomRef = useRef(true);
     const [showJump, setShowJump] = useState(false);
     const prevHeightRef = useRef(0);
+    // B-099 ②：离底时刻的 rows.length 快照（贴底时为 null）。之后新到的 row 数
+    // = rows.length - 快照，渲染成 .cl-jump 上的数字 badge；回底清零。
+    const awaySnapshotRef = useRef<number | null>(null);
 
     // storage keeps messages sorted NEWEST-FIRST (compareMessagesNewestFirst,
     // used by the sidebar's latest-message needs). The transcript reads top→
@@ -118,8 +123,13 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
         const atBottom = distance < 80;
         atBottomRef.current = atBottom;
+        awaySnapshotRef.current = nextAwaySnapshot(awaySnapshotRef.current, atBottom, rows.length);
         setShowJump(!atBottom);
     };
+
+    // 未读增量在渲染时现算：离底后快照不动，rows.length 变化本身就触发重渲染；
+    // 回底由 onScroll 清快照并 setShowJump(false) 触发重渲染，badge 随之消失。
+    const unseenLabel = formatUnseen(unseenRows(awaySnapshotRef.current, rows.length));
 
     // Auto-stick to bottom on new content when already near the bottom. Keyed on
     // both row count (new messages) and the streaming message's growing length
@@ -130,6 +140,36 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [rows.length, lastContentLen]);
+
+    // B-099 ①：工具输出原地增长（同一条 tool-call 的 stdout 变长、running→done
+    // 展开）时 rows.length 与 lastContentLen 都不变，上面的 effect 不触发——用
+    // ResizeObserver 盯内容 wrapper（.cl-inner）补住：高度增长且仍贴底才跟随
+    // （非 smooth，防抖到 rAF）。atBottom 门控保持：用户上滚回看绝不能被拉回。
+    const hasTranscript = isLoaded && messages.length > 0;
+    useEffect(() => {
+        const inner = innerRef.current;
+        if (!hasTranscript || !inner || typeof ResizeObserver === 'undefined') return;
+        let raf = 0;
+        let prevHeight = inner.getBoundingClientRect().height;
+        const ro = new ResizeObserver((entries) => {
+            const next =
+                entries[entries.length - 1]?.contentRect.height ??
+                inner.getBoundingClientRect().height;
+            const follow = shouldFollowGrowth(prevHeight, next, atBottomRef.current);
+            prevHeight = next;
+            if (!follow || raf) return;
+            raf = requestAnimationFrame(() => {
+                raf = 0;
+                scrollToBottom(false);
+            });
+        });
+        ro.observe(inner);
+        return () => {
+            ro.disconnect();
+            if (raf) cancelAnimationFrame(raf);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasTranscript]);
 
     // Preserve scroll position when older messages are prepended.
     useLayoutEffect(() => {
@@ -182,7 +222,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                 onScroll={onScroll}
                 onTouchMove={onTouchMoveDismissKeyboard}
             >
-                <div className="cl-inner">
+                <div className="cl-inner" ref={innerRef}>
                     {hasMoreOlder && (
                         <div className="cl-loadolder">
                             <Button
@@ -219,6 +259,11 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                     aria-label={t('session.chat.jumpToLatest')}
                     title={t('session.chat.jumpToLatest')}
                 >
+                    {unseenLabel !== null && (
+                        <span className="cl-jump-badge" aria-hidden="true">
+                            {unseenLabel}
+                        </span>
+                    )}
                     <ChevronDown size={18} />
                 </button>
             )}

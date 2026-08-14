@@ -453,6 +453,10 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        input: {
+            expand: '展开输入框',
+            collapse: '收起输入框',
+        },
         inactiveArchived: '此会话处于非活动状态。',
         resumeFromTerminal: '要从终端恢复它：',
         done: '完成',

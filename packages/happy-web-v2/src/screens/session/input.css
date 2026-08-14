@@ -101,7 +101,8 @@
   font-size: var(--fs-14);
   line-height: 1.5;
   padding: 6px var(--sp-2);
-  max-height: 200px;
+  /* max-height 不在 CSS 里定义——唯一事实源是 composerExpand.ts 的
+     composerHeightCap（B-098），由 AgentInput 写 inline style。 */
 }
 /* The composer container owns the focus treatment. Neutralize the global
  * :focus-visible ring (base.css) on the inner textarea so we don't stack a

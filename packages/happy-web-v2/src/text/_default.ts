@@ -434,6 +434,11 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-098 composer manual expand toggle
+        input: {
+            expand: 'Expand input',
+            collapse: 'Collapse input',
+        },
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
         // Compact "done with uncommitted changes" bar shown above the composer
