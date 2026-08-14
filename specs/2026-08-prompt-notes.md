@@ -1,6 +1,6 @@
 # Prompt 笔记（Notes）——等 AI 干活时写下一步 prompt
 
-> 状态：Final
+> 状态：Shipped（commit `e89f3e23`）
 > 日期：2026-08-14 ｜ 关联 backlog：B-094 ｜ 出处：Owner 实报（等待 AI 出结果的空档想写备选 prompt，没地方放）
 
 ## 背景

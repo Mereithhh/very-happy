@@ -81,7 +81,7 @@
 | B-090 | 命令面板「归档当前会话」只调 sessionArchive 不走 kill-first——与 rowActions 语义不一致（活着的 CLI 会把 active 翻回来复活） | bug | B-089 实现中发现 | todo | 改调 confirmArchiveSession 或 archiveSessionNow 对齐 |
 | B-091 | tag 体系：meta 泄漏源头修复（嫌疑坐实且更狠——B-053 修在零消费者的死 lane）+ 派发会话自动 assistant tag（全 flavor）+ 侧栏 tag 分组开关 + priority 标记（warn 色/置顶/不越过 attention）；四象限视图暂缓待 Owner 实用反馈 | feat | Owner 实报 2026-08-14 | done | 650295f9；真机 V-040 |
 | B-092 | 语音助手 UX：toolcall 友好化（图标+友好名+参数摘要）+ 按住说话三层反馈（earcon/Android 震动/弹跳 ripple+电平条；开始音 85ms 低增益泄入录音可忽略；iOS 无 vibrate） | ux | Owner 实报 2026-08-14 | done | e131a106；voicePttSound 可关；真机 V-040 |
-| B-094 | 笔记/prompt 草稿：右侧可拖宽面板（B-088 模式）+ 顶部多 tab + 等宽 textarea 自动保存 + 可选绑定 session（归档不删笔记）+ 全局视图 + 全屏 + 一键插入输入框（聊天/终端 bracketed paste 不回车）；存储走账号 KV 跨端同步 | feat | Owner 2026-08-14 | doing | 反驳采纳：不用 Monaco（重且移动差，prompt 是纯文本）；不做纯本地存储（多端是核心工作流）；**原记 B-093，与 IME 项撞号后改号（对方已在 main）** |
+| B-094 | 笔记/prompt 草稿：右侧可拖宽面板（B-088 模式）+ 顶部多 tab + 等宽 textarea 自动保存 + 可选绑定 session（归档不删笔记）+ 全局视图 + 全屏 + 一键插入输入框（聊天/终端 bracketed paste 不回车）；存储走账号 KV 跨端同步 | feat | Owner 2026-08-14 | done | e89f3e23；反驳采纳：弃 Monaco、弃纯本地存储；顺带修 .gitignore 裸 `notes/` 吞源码目录；真机 V-041 |
 | B-067 | 活跃排序实时化：daemon 轻量 ephemeral 活跃通道（不落库）+ 本机交互即时打点；60s 桶保留给落库路径 | feat | Owner 2026-08-14 | done | 本机 120ms / 远端典型 0.5-0.6s 最坏 2.1s；冷终端（pty 已回收）仍 ~10s；需 CLI ≥v0.2.37 |
 | B-068 | 潜伏 bug：`boardTasks.initialize()` 依赖 `getCurrentAuth()` 在 AppLayout 挂载时已就绪，但它由 AuthProvider 的 effect 发布（子 effect 先于父 effect）——目前靠「用户总是先导航再进 /board」侥幸避开，**直接落地 /board 会静默不初始化** | bug | B-066 实现中发现 | todo | 修法：同 useSeenTracker，从 context 取 credentials 再交给 store |
 | B-069b | 冷终端（pty 已回收、无人看）活跃上浮仍受 10s tmux tick 约束——「没人看的 agent 又开始跑了」是最扎的场景 | debt | B-067 残留 | todo | 修法=提高 tmux 轮询频率（subprocess×终端数），当前判定不值得 |
