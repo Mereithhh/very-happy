@@ -30,6 +30,7 @@
 | B-102 | 长用户气泡折叠：40dvh 嵌套内滚改为 ~10 行截断+渐隐+展开/收起（消灭一处嵌套滚动区） | ux | Owner 2026-08-15 | done | agent 正文刻意不折叠（主内容）  |
 | B-103 | **默认模型/effort 三层不一致**：web 新会话不带字段→CLI 硬编码 opus/medium 架空「跟随机器 /model」的既定决策（agentDefaults 注释与 build-state 均为证）；UI effort 还显示错值 low（ModeMenu 找不到匹配回落 options[0]）。修：CLI 两常量改不传（机器 parity）+ web effort 菜单加「默认」项 + ModeMenu 不回落错项 | bug | Owner 问出 2026-08-15 | done | 真实默认（修前）=opus+medium 而非机器 /model（本机=opus[1m]） ；SDK 冒烟实证：不传 model=claude-opus-5[1m]（本机 /model） |
 | B-104 | claude-agent-sdk 升级 0.3.167→0.3.232（fork 动机=用最新引擎；65 版落差）；发版前跑 SDK 路径集成冒烟（铁律 2：CJS 事故先例） | debt | Owner 问出 2026-08-15 | done | 冒烟三连：--version 无崩溃、haiku 一轮 SMOKE-OK、fable 别名解析 claude-fable-5 |
+| B-105 | 终端 claude 的结构化视图（可切换）：读 transcript JSONL/hooks 把 TUI 会话镜像成自渲染视图（可读性/复制/渲染稳定性）；本地交互模式的 transcript 镜像是先例 | feat | Owner 2026-08-15 | todo | **调研完成，强可行**（specs/2026-08-terminal-mirror.md Draft）：hook+tmux env 绑定 → 影子会话复用全链路，server 零改动、渲染管线母语级复用；待 Owner 拍板立项 |
 | B-001 | 「server 部署后必须 vh-update」根治——**根因改判**：不是重注册缺失（RpcHandlerManager.onSocketConnect 会重发 rpc-register，链路是通的），而是 apiMachine `reconnection:false`+自研 startSmartReconnect 在 server 容器重启的半开 socket 场景下自认为还连着→既不重连也不重注册。修法：应用层 register-ack 心跳，超时强制 disconnect+connect | bug | PROCESS.md §4 + 2026-08-13 工程走查改判 | todo | 根治后删 PROCESS.md §4 流程项 |
 | B-002 | `[happy]` 下发的任务在 task board 标注来源（P3） | feat | specs/2026-08-tanka-channel.md | todo | |
 | B-003 | RpcHandlerManager 把 handler 错误编码为 `{error}` 正常响应——多数 ops 封装当成功（假 ack 面） | bug | 车道退役批遗留观察 | todo | 已修 openTerminal/killTerminal 两处，其余 RPC 封装待收口 |
