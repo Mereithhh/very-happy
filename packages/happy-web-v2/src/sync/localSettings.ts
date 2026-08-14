@@ -63,6 +63,19 @@ export const LocalSettingsSchema = z.object({
     // through xterm's hidden textarea. Device-local on purpose: it's an
     // input-hardware preference (phone vs desktop), not an account preference.
     terminalInputBarMode: z.boolean().describe('Use the line-input bar (compose + send) instead of per-key input in the mobile web terminal'),
+    // Web terminal: WHO owns the keyboard/IME state machine (B-093, spec
+    // `specs/2026-08-terminal-input-ownership.md`).
+    //   'xterm' — today's path: xterm's hidden helper textarea receives keys
+    //             and composition events (+ the imeStuckGuard patch on top).
+    //   'own'   — our own controlled input element owns them; xterm degrades
+    //             to a renderer + key encoder, and its CompositionHelper can
+    //             never be reached (the stuck-composition state that broke CJK
+    //             input three times becomes UNREACHABLE by construction).
+    // Device-local, like terminalInputBarMode: input hardware is a device
+    // trait — and rolling back must not require a release. Enum values are
+    // only ever ADDED (the whole blob is safeParse'd; dropping a stored value
+    // would reset EVERY local setting on that device — see boardLayout).
+    terminalInputOwnership: z.enum(['xterm', 'own']).describe('Who owns the web terminal keyboard/IME state machine: xterm (legacy) or our own input element'),
     // copy_to_clipboard pushes: silently write into this device's clipboard on
     // arrival (toast only). Off = every push lands in history + a clickable
     // "tap to copy" toast instead. Device-local on purpose: whether a browser
@@ -135,6 +148,9 @@ export const localSettingsDefaults: LocalSettings = {
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
+    // Step 1 ships the new path OFF: it is opt-in (settings toggle or
+    // `?input=own`) until a full batch of real-machine use says otherwise.
+    terminalInputOwnership: 'xterm',
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.
     clipboardAutoCopy: true,

@@ -48,10 +48,45 @@ export interface TerminalRenderer {
 
     /** Insert text at the cursor via bracketed paste (never auto-executes). */
     paste(data: string): void;
+    /** @deprecated alias of {@link focusInput} — kept so no call site can miss the seam. */
     focus(): void;
+    /** @deprecated alias of {@link blurInput}. */
     blur(): void;
     hasSelection(): boolean;
     getSelection(): string;
+
+    // ── Keyboard-input seam (spec: 2026-08-terminal-input-ownership §A/§D) ──
+    // "The terminal has keyboard focus" used to mean exactly one thing —
+    // xterm's `.xterm-helper-textarea` — and the 8 places that needed to say it
+    // each reached for that class name themselves. The input-ownership rework
+    // adds a SECOND possible input element (our own `.vh-term-input` overlay),
+    // so the question moves behind this seam instead of becoming 8 forks.
+    // `focus()`/`blur()` above delegate here, so even a missed call site is
+    // correct — the historical failure mode was always "one place forgot".
+
+    /** The element that owns keyboard focus for this terminal right now. */
+    inputElement(): HTMLElement | null;
+    /**
+     * Point the seam at our own input element (input-ownership 'own' mode);
+     * null restores xterm's helper textarea. Called by the screen after it
+     * installs the overlay — the overlay itself needs the pty writer and the
+     * device policy, which the renderer knows nothing about.
+     */
+    setInputElement(el: HTMLElement | null): void;
+    focusInput(): void;
+    blurInput(): void;
+    isInputFocused(): boolean;
+    /**
+     * Re-emit a real keydown as a SYNTHETIC one against the renderer's own key
+     * handling, so its VT encoder (DECCKM, application keypad, modifier
+     * parameters, F-keys) stays the single source of truth — we deliberately
+     * do NOT hand-roll an encoding table in phase 1 (spec §D).
+     *
+     * Implementations must dispatch a keydown ONLY — never a keyup: xterm's
+     * `_keyUp` calls `this.focus()`, which would steal the keyboard back from
+     * the overlay and leave typing dead.
+     */
+    sendKey(ev: KeyboardEvent): void;
 
     dispose(): void;
 

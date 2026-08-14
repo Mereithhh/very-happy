@@ -41,6 +41,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { isImeGuardedEvent } from '@/utils/ime';
+import { TERM_INPUT_SELECTOR } from '@/screens/terminal/termInputElement';
 import { Modal } from '@/modal';
 import { t } from '@/i18n/useTranslation';
 import { storage, useLocalSetting } from '@/sync/storage';
@@ -77,7 +78,10 @@ import {
  */
 function restoreFocusAfterCancel(captured: HTMLElement | null): void {
   const run = () => {
-    const fallback = document.querySelector<HTMLElement>('.xterm-helper-textarea');
+    // Input-element coupling point 9/11 (spec 现状表): either terminal input
+    // element (xterm's helper textarea, or our own overlay under
+    // input-ownership) — exactly one of them exists on the page.
+    const fallback = document.querySelector<HTMLElement>(TERM_INPUT_SELECTOR);
     pickRefocusTarget<HTMLElement>(captured, fallback, document.body)?.focus?.();
   };
   setTimeout(run, 0);

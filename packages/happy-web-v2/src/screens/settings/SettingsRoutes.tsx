@@ -817,6 +817,8 @@ function Snippets() {
   // null draft = "not editing, show the stored value". Empty = disabled.
   const [startupCommand, setStartupCommand] = useSettingMutable('terminalStartupCommand');
   const [startupDraft, setStartupDraft] = useState<string | null>(null);
+  // Experimental terminal input path (device-local, see localSettings).
+  const [inputOwnership, setInputOwnership] = useLocalSettingMutable('terminalInputOwnership');
 
   function commitStartup() {
     if (startupDraft === null) return;
@@ -975,6 +977,26 @@ function Snippets() {
               }}
             />
           </div>
+        </ItemGroup>
+
+        {/* Experimental (B-093): who owns the terminal's keyboard/IME state
+            machine. Device-local — input hardware is a device trait, and the
+            whole point of a setting (rather than a build flag) is that rolling
+            back needs no release. */}
+        <ItemGroup
+          title={t('settingsSnippets.inputOwnershipGroup')}
+          footer={t('settingsSnippets.inputOwnershipFooter')}
+        >
+          {(['xterm', 'own'] as const).map((v) => (
+            <Item
+              key={v}
+              title={t(`settingsSnippets.inputOwnershipOptions.${v}`)}
+              subtitle={t(`settingsSnippets.inputOwnershipDescriptions.${v}`)}
+              selected={inputOwnership === v}
+              right={inputOwnership === v ? <Check size={16} /> : undefined}
+              onClick={() => setInputOwnership(v)}
+            />
+          ))}
         </ItemGroup>
       </ItemList>
     </Page>

@@ -13,16 +13,15 @@
  * Everything here is duck-typed (no `instanceof` on DOM classes): keeps it
  * runnable without a DOM and immune to cross-realm instanceof.
  */
+// The ONLY dependency this module may take: a zero-import, duck-typed
+// predicate module (see its header for why the "is this the terminal's input
+// element?" question has exactly one implementation).
+import { isTerminalInputElement } from '@/screens/terminal/termInputElement';
 
 interface ElementLike {
   tagName?: string;
   isContentEditable?: boolean;
   classList?: { contains(name: string): boolean };
-}
-
-function isXtermTextarea(t: EventTarget | null): boolean {
-  const el = t as ElementLike | null;
-  return !!el?.classList?.contains?.('xterm-helper-textarea');
 }
 
 /** Shared with appBack.ts's chord matcher (Alt+← must never leave a text field). */
@@ -42,9 +41,11 @@ export function matchCloseViewChord(e: {
   // e.code, not e.key: macOS ⌥W produces "∑" in e.key.
   const altW = e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyW';
   if (!cmdW && !altW) return false;
-  // ⌥W in an ordinary editable target types "∑" — leave it alone. The xterm
-  // helper textarea is deliberately NOT exempt (see viewShortcuts' header).
-  if (altW && isEditableTarget(e.target) && !isXtermTextarea(e.target)) return false;
+  // Input-element coupling point 10/11 (spec 现状表). ⌥W in an ordinary
+  // editable target types "∑" — leave it alone. The TERMINAL's input element
+  // (xterm's helper textarea, or our own overlay under input-ownership) is
+  // deliberately NOT exempt (see viewShortcuts' header).
+  if (altW && isEditableTarget(e.target) && !isTerminalInputElement(e.target)) return false;
   return true;
 }
 

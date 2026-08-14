@@ -20,6 +20,7 @@ import { Fragment } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { LucideIcon } from 'lucide-react';
+import { isTerminalInputElement } from '@/screens/terminal/termInputElement';
 
 /**
  * Focus give-back for the web terminal.
@@ -30,8 +31,9 @@ import type { LucideIcon } from 'lucide-react';
  * leaves it on body (context menu — verified with real pointer input against
  * radix 2.2.16). Typing — including IME input — then goes NOWHERE until the
  * user clicks the terminal canvas again. Remember the last real focus owner
- * and, if it was the terminal's hidden textarea, give focus back when the menu
- * closes. Deliberately restricted to the xterm textarea: restoring to
+ * and, if it was the terminal's input element, give focus back when the menu
+ * closes. Deliberately restricted to THAT element (either path — xterm's
+ * helper textarea or our own overlay, see termInputElement): restoring to
  * arbitrary inputs would fight modals that open from menu items (Rename).
  */
 let lastFocusOwner: Element | null = null;
@@ -48,7 +50,8 @@ if (typeof document !== 'undefined') {
 }
 function giveFocusBackToTerminal(e: Event) {
   const el = lastFocusOwner as HTMLElement | null;
-  if (el && el.isConnected && el.classList.contains('xterm-helper-textarea')) {
+  // Input-element coupling point 8/11 (spec 现状表).
+  if (el && el.isConnected && isTerminalInputElement(el)) {
     e.preventDefault(); // suppress Radix's trigger/body restore
     el.focus();
   }
