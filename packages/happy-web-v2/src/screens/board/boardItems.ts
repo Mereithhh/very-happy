@@ -28,7 +28,7 @@ import type { Session, Machine } from '@/sync/storageTypes';
 import type { TerminalSession } from '@/sync/terminalPushOps';
 import type { TerminalAgentEntry } from '@/sync/terminalAgentState';
 import { compareTaskOrder, type BoardTask } from '@/sync/boardTaskOps';
-import { isAssistantSession } from '@/assistant/assistantSession';
+import { isHiddenSession } from '@/assistant/assistantSession';
 import { hasPriorityTag } from '@/utils/tags';
 
 export type BoardStatus = 'attention' | 'working' | 'idle' | 'ended';
@@ -233,8 +233,9 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
   const items: BoardItem[] = [];
 
   for (const s of sessions) {
-    // B-053: the assistant meta-session is not a task — it lives in /assistant
-    if (isAssistantSession(s)) continue;
+    // B-053/B-105: hidden sessions (assistant, terminal mirrors) are not
+    // tasks — presence/attention judgments are meaningless for a mirror.
+    if (isHiddenSession(s)) continue;
     const cls = classifySession(s, now);
     if (!cls) continue;
     const lastActivityAt = s.updatedAt || s.activeAt || s.createdAt;
@@ -382,7 +383,7 @@ export function buildCompletedEntries(
 ): CompletedEntry[] {
   const entries: CompletedEntry[] = [];
   for (const s of sessions) {
-    if (isAssistantSession(s)) continue; // B-053
+    if (isHiddenSession(s)) continue; // B-053/B-105
     const at = s.metadata?.completedAt;
     if (!at || now - at > DONE_WINDOW_MS) continue;
     entries.push({

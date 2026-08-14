@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -937,6 +937,19 @@ export function Sidebar() {
                     </span>
                   </span>
                 </div>
+                {/* B-105: a closed terminal that had a mirror keeps its
+                    structured history reachable (M-4) — mirrors are hidden
+                    from every list, so this link is the history's entry. */}
+                {r.mirrorSessionId && (
+                  <button
+                    className="sb-closed-reopen"
+                    title={t('sidebar.closedTerminalHistory')}
+                    aria-label={t('sidebar.closedTerminalHistory')}
+                    onClick={() => navigate(`/session/${r.mirrorSessionId}`)}
+                  >
+                    <MessagesSquare size={16} />
+                  </button>
+                )}
                 <button
                   className="sb-closed-reopen"
                   disabled={!r.machineOnline || !r.cwd}

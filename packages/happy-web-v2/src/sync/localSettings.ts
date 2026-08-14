@@ -76,6 +76,18 @@ export const LocalSettingsSchema = z.object({
     // only ever ADDED (the whole blob is safeParse'd; dropping a stored value
     // would reset EVERY local setting on that device — see boardLayout).
     terminalInputOwnership: z.enum(['xterm', 'own']).describe('Who owns the web terminal keyboard/IME state machine: xterm (legacy) or our own input element'),
+    // B-105 terminal mirror, two-level view preference (M-3③). Device-local on
+    // purpose: "phone lives in structured, desktop lives in xterm" is the
+    // intended shape, so the preference belongs to the device, not the account.
+    // Level 1 — device default for terminals that have a mirror session.
+    // Enum values are only ever ADDED (whole-blob safeParse — see boardLayout).
+    terminalViewDefault: z.enum(['xterm', 'structured']).describe('Default face of a mirrored web terminal on this device: raw xterm or the structured chat view'),
+    // Level 2 — per-terminal override (terminalId → view), the
+    // acknowledgedCliVersions record precedent. Values kept as plain strings
+    // (NOT an enum) so one junk value can never fail the whole-blob safeParse
+    // and reset every local setting; terminalViewPref.ts validates on read.
+    // Pruned against daemonState.closedTerminals so it can't grow forever.
+    terminalViewOverrides: z.record(z.string(), z.string()).describe('Per-terminal override of terminalViewDefault, keyed by terminalId'),
     // copy_to_clipboard pushes: silently write into this device's clipboard on
     // arrival (toast only). Off = every push lands in history + a clickable
     // "tap to copy" toast instead. Device-local on purpose: whether a browser
@@ -161,6 +173,9 @@ export const localSettingsDefaults: LocalSettings = {
     // to 'own' until an IME replay harness reproduces real composition on the
     // new path and passes.
     terminalInputOwnership: 'xterm',
+    // B-105: xterm stays the default face — structured is an opt-in lens.
+    terminalViewDefault: 'xterm',
+    terminalViewOverrides: {},
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.
     clipboardAutoCopy: true,

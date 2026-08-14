@@ -298,6 +298,31 @@ describe('assistant meta-session exclusion (B-053/B-091)', () => {
   });
 });
 
+describe('terminal-mirror session exclusion (B-105)', () => {
+  const mirror = (): Session => {
+    const s = mkSession({ id: 'mir' });
+    s.metadata = {
+      ...s.metadata!,
+      flavor: 'terminal-mirror',
+      terminalId: 't1',
+      completedAt: NOW - 1000,
+    } as Session['metadata'];
+    return s;
+  };
+  it('never becomes a board item — even with pending requests riding agentState', () => {
+    const withRequests = mirror();
+    (withRequests as any).agentState = {
+      requests: { r1: { tool: 'Bash', arguments: {}, createdAt: NOW - 1000 } },
+    };
+    expect(
+      build({ sessions: [withRequests, mkSession({ id: 'real' })] }).map((i) => i.key),
+    ).toEqual(['real']);
+  });
+  it('never becomes a Done record', () => {
+    expect(buildCompletedEntries([mirror()], [], NOW)).toEqual([]);
+  });
+});
+
 describe('V2: metadata.board (LLM analysis) on session items', () => {
   function withBoard(id: string, board: NonNullable<Session['metadata']>['board'], over: Partial<Session> = {}): Session {
     const s = mkSession({ id, ...over });

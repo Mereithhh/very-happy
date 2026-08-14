@@ -819,6 +819,8 @@ function Snippets() {
   const [startupDraft, setStartupDraft] = useState<string | null>(null);
   // Experimental terminal input path (device-local, see localSettings).
   const [inputOwnership, setInputOwnership] = useLocalSettingMutable('terminalInputOwnership');
+  // B-105: device default for mirrored terminals — xterm or structured view.
+  const [viewDefault, setViewDefault] = useLocalSettingMutable('terminalViewDefault');
 
   function commitStartup() {
     if (startupDraft === null) return;
@@ -995,6 +997,24 @@ function Snippets() {
               selected={inputOwnership === v}
               right={inputOwnership === v ? <Check size={16} /> : undefined}
               onClick={() => setInputOwnership(v)}
+            />
+          ))}
+        </ItemGroup>
+
+        {/* B-105 terminal mirror: which face a mirrored terminal opens with
+            on THIS device (M-3③ level 1; per-terminal toggles override). */}
+        <ItemGroup
+          title={t('settingsSnippets.viewDefaultGroup')}
+          footer={t('settingsSnippets.viewDefaultFooter')}
+        >
+          {(['xterm', 'structured'] as const).map((v) => (
+            <Item
+              key={v}
+              title={t(`settingsSnippets.viewDefaultOptions.${v}`)}
+              subtitle={t(`settingsSnippets.viewDefaultDescriptions.${v}`)}
+              selected={viewDefault === v}
+              right={viewDefault === v ? <Check size={16} /> : undefined}
+              onClick={() => setViewDefault(v)}
             />
           ))}
         </ItemGroup>

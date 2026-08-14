@@ -441,6 +441,13 @@ export const en = {
         },
         inactiveArchived: 'This session is inactive.',
         resumeFromTerminal: 'To resume it from the terminal:',
+        // B-105 terminal mirror: read-only shadow session banners
+        mirror: {
+            readOnly: 'Read-only mirror · trails the terminal slightly · interact in the terminal',
+            backToTerminal: 'Terminal',
+            needsInput: 'Claude is waiting for input in the terminal',
+            needsInputAction: 'Switch back',
+        },
         // Compact "done with uncommitted changes" bar shown above the composer
         // when the agent is idle and the working tree is dirty.
         done: 'Done',
@@ -951,6 +958,8 @@ export const en = {
         // 已结束终端 (B-084): archived view's closed-terminal records
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
+        // B-105: closed terminal that had a mirror — its history stays readable
+        closedTerminalHistory: 'View structured history',
         // B-085 two-level row signal (aria/title on the right-edge dot)
         rowNeedsAttention: 'Waiting for you',
         rowUnread: 'Unread activity',
@@ -1265,6 +1274,8 @@ export const en = {
         claudeWorking: 'Claude: working',
         claudeNeedsInput: 'Claude: needs input',
         claudeNeedsInputBody: 'Claude needs your input',
+        // B-105 terminal mirror: header toggle to the structured (chat) face
+        structuredView: 'Structured view',
         selectMode: 'Select / copy mode',
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)
@@ -1666,6 +1677,19 @@ export const en = {
         inputOwnershipDescriptions: {
             xterm: 'The terminal library handles keys and composition — today\'s behavior.',
             own: 'We handle keys and composition; pinyin/kana is drawn in place at the cursor.',
+        },
+        // B-105 terminal mirror: which face a mirrored terminal opens with on
+        // THIS device. Per-terminal toggles (in the terminal header / mirror
+        // banner) override this default and are remembered per terminal.
+        viewDefaultGroup: 'Terminal default view',
+        viewDefaultFooter: 'When a terminal is running Claude and has a structured mirror, open it in this view by default on this device. Toggling inside a terminal is remembered per terminal and wins over this default.',
+        viewDefaultOptions: {
+            xterm: 'Terminal (xterm)',
+            structured: 'Structured chat',
+        },
+        viewDefaultDescriptions: {
+            xterm: 'The raw terminal — full TUI fidelity.',
+            structured: 'The read-only chat rendering of the Claude conversation.',
         },
     },
 

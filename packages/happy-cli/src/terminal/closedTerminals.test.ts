@@ -87,6 +87,15 @@ describe('sanitizeClosedTerminals', () => {
         expect(out[1].title).toBeUndefined();
     });
 
+    it('preserves a valid mirrorSessionId and drops a malformed one (B-105)', () => {
+        const out = sanitizeClosedTerminals([
+            { id: 'with', closedAt: 2, mirrorSessionId: 'sess-1' },
+            { id: 'bad', closedAt: 1, mirrorSessionId: 42 },
+        ]);
+        expect(out[0].mirrorSessionId).toBe('sess-1');
+        expect(out[1].mirrorSessionId).toBeUndefined();
+    });
+
     it('dedupes by id (first occurrence wins) and sorts newest-first', () => {
         const out = sanitizeClosedTerminals([
             { id: 'a', closedAt: 100 },

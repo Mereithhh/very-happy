@@ -12,6 +12,8 @@ import { ChatList } from './ChatList';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
+import { MirrorBanner } from './MirrorBanner';
+import { isMirrorSession } from '@/assistant/assistantSession';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -68,6 +70,12 @@ export function SessionDetailScreen() {
         );
     }
 
+    // B-105 terminal mirror: strictly read-only. The composer ROW is absent —
+    // not disabled — (AgentInput.canSend ignores presence, a live composer on
+    // a daemon-hosted mirror WILL misfire), which also makes the model /
+    // permission / effort menus unreachable. Banners replace the foot's role.
+    const mirror = isMirrorSession(session);
+
     return (
         <div className={`sd${filesOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
             <div className="sd-main">
@@ -76,13 +84,16 @@ export function SessionDetailScreen() {
                     filesOpen={filesOpen}
                     onToggleFiles={() => setFilesOpen((v) => !v)}
                 />
+                {mirror && <MirrorBanner sessionId={id} />}
                 <div className="sd-body">
                     <ChatList sessionId={id} />
                 </div>
-                <div className="sd-foot">
-                    <SessionLiveStatusBar sessionId={id} />
-                    <AgentInput sessionId={id} />
-                </div>
+                {!mirror && (
+                    <div className="sd-foot">
+                        <SessionLiveStatusBar sessionId={id} />
+                        <AgentInput sessionId={id} />
+                    </div>
+                )}
             </div>
             {filesOpen && (
                 <>

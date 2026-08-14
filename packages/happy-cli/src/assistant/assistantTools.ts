@@ -99,6 +99,10 @@ export function registerAssistantTools(mcp: McpServer): void {
             }
             const rest = Object.entries(persisted)
                 .filter(([id]) => !seen.has(id))
+                // B-105: terminal-mirror shadow sessions are read-only mirrors
+                // of what the user is ALREADY doing in a terminal — listing
+                // them would make the voice assistant narrate them as tasks.
+                .filter(([, entry]) => entry.metadata?.flavor !== 'terminal-mirror')
                 .sort((a, b) => b[1].savedAt - a[1].savedAt)
                 .slice(0, 15)
             for (const [id, entry] of rest) {

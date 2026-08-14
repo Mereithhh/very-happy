@@ -21,6 +21,9 @@ export interface ClosedTerminal {
   title?: string;
   cwd?: string;
   closedAt: number;
+  /** B-105: shadow mirror session id — the terminal is gone, but its
+   *  structured history stays reachable at /session/<mirrorSessionId>. */
+  mirrorSessionId?: string;
 }
 
 /** Tolerant read of one machine's daemonState.closedTerminals. */
@@ -36,6 +39,10 @@ export function closedTerminalsOf(daemonState: any): ClosedTerminal[] {
       title: typeof item.title === 'string' && item.title.trim() ? item.title : undefined,
       cwd: typeof item.cwd === 'string' && item.cwd ? item.cwd : undefined,
       closedAt: item.closedAt,
+      mirrorSessionId:
+        typeof item.mirrorSessionId === 'string' && item.mirrorSessionId
+          ? item.mirrorSessionId
+          : undefined,
     });
   }
   return out;
@@ -55,6 +62,8 @@ export interface ClosedTerminalRow {
   closedAt: number;
   /** Whether "new terminal in this directory" can work right now. */
   machineOnline: boolean;
+  /** B-105: structured history target, when the terminal had a mirror. */
+  mirrorSessionId?: string;
 }
 
 /** The slice of a machine this module needs (kept narrow for tests). */
@@ -90,6 +99,7 @@ export function buildClosedTerminalRows(
         cwd: r.cwd,
         closedAt: r.closedAt,
         machineOnline: m.online,
+        mirrorSessionId: r.mirrorSessionId,
       });
     }
   }

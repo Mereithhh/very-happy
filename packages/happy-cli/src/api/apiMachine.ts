@@ -549,6 +549,26 @@ export class ApiMachineClient {
         }
     }
 
+    // ── Terminal mirror integration (B-105) ─────────────────────────────────
+    /** Every pushed list also flows to the mirror manager (claude-exit
+     *  detection via pane observation). Set by the daemon at startup. */
+    private mirrorListObserver: ((terminals: TerminalListItem[]) => void) | null = null;
+
+    setMirrorIntegration(integration: {
+        resolveMirrorSessionId: (terminalId: string) => string | undefined;
+        onTerminalClosed: (terminalId: string) => void;
+        onTerminalList: (terminals: TerminalListItem[]) => void;
+    }): void {
+        this.webTerminal.setMirrorSessionResolver(integration.resolveMirrorSessionId);
+        this.webTerminal.setOnTerminalClosed(integration.onTerminalClosed);
+        this.mirrorListObserver = integration.onTerminalList;
+    }
+
+    /** Mirror bindings changed → re-derive and (on diff) push the list now. */
+    requestTerminalListRefresh(): void {
+        this.webTerminal.requestListRefresh();
+    }
+
     // ── Terminal-list push ──────────────────────────────────────────────────
     // Always holds the freshest list the tracker produced; the chained write
     // below reads THIS at write time (not a stale closure), so out-of-order
@@ -563,6 +583,11 @@ export class ApiMachineClient {
      *  persists + broadcasts `update-machine`). Skipped while disconnected —
      *  the connect handler re-ships a full snapshot anyway. */
     private pushTerminalList(terminals: TerminalListItem[]): void {
+        try {
+            this.mirrorListObserver?.(terminals);
+        } catch (err) {
+            logger.debug('[API MACHINE] mirror list observer failed:', err);
+        }
         this.latestTerminalList = terminals;
         if (!this.socket?.connected) return;
         this.terminalPushChain = this.terminalPushChain

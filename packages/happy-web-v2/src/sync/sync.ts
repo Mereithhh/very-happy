@@ -8,6 +8,7 @@ import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, isSessionDeleted } from './storage';
+import { isHiddenSession } from '@/assistant/assistantSession';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { Session, Machine } from './storageTypes';
@@ -2760,6 +2761,17 @@ class Sync {
             
             // Apply to storage (will handle repeatKey replacement)
             storage.getState().applyFeedItems([feedItem]);
+
+            // B-105: notifications targeting a hidden session (assistant,
+            // terminal mirror) never raise user-facing alerts — this was one
+            // of the two unfiltered lanes (the other is useAllSessions). The
+            // CLI shouldn't generate them for mirrors in the first place;
+            // this is the web-side belt-and-braces.
+            const feedTarget =
+                feedItem.body && feedItem.body.kind === 'notification'
+                    ? storage.getState().sessions[feedItem.body.sessionId]
+                    : undefined;
+            if (feedTarget && isHiddenSession(feedTarget)) return;
 
             // Web: surface incoming session notifications in the tab title and,
             // when permitted + the tab is unfocused, as a browser Notification.

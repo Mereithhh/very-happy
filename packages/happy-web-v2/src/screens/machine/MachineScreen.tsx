@@ -16,7 +16,7 @@ import { Modal } from '@/modal';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useMachine, useAllSessions } from '@/sync/storage';
-import { isAssistantSession } from '@/assistant/assistantSession';
+import { isHiddenSession } from '@/assistant/assistantSession';
 import { sync } from '@/sync/sync';
 import {
   machineStopDaemon,
@@ -50,9 +50,9 @@ export function MachineScreen() {
   const machineSessions = useMemo(
     () =>
       allSessions
-        // B-091: useAllSessions is unfiltered — keep the assistant
-        // meta-session out of the machine's recent-sessions list too.
-        .filter((s) => !isAssistantSession(s))
+        // B-091/B-105: keep hidden sessions (assistant meta-session, terminal
+        // mirrors) out of the machine's recent-sessions list too.
+        .filter((s) => !isHiddenSession(s))
         .filter((s) => s.metadata?.machineId === id)
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 5),

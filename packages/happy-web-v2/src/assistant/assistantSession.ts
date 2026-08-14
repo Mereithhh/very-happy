@@ -22,6 +22,27 @@ export function isAssistantSession(s: Pick<Session, 'metadata'>): boolean {
 }
 
 /**
+ * B-105: is this a terminal-mirror shadow session? The daemon tails a
+ * hand-launched `claude` TUI transcript into it (flavor 'terminal-mirror').
+ * Strictly read-only; its home is the terminal screen's structured toggle,
+ * plus /session/<id> direct URLs (same audit-reachability as the assistant).
+ */
+export function isMirrorSession(s: Pick<Session, 'metadata'>): boolean {
+    return s.metadata?.flavor === 'terminal-mirror';
+}
+
+/**
+ * B-105: THE hidden-session predicate — assistant ∪ terminal-mirror — that
+ * every normal session surface (sidebar rows, command palette, board, machine
+ * screen, attention badge, feed notifications) filters with. Same lesson as
+ * B-053: one predicate, applied at every lane, or something leaks. Hidden
+ * sessions stay reachable at /session/<id>; they just never join a list.
+ */
+export function isHiddenSession(s: Pick<Session, 'metadata'>): boolean {
+    return isAssistantSession(s) || isMirrorSession(s);
+}
+
+/**
  * Find the assistant session for a machine: variant-tagged, not archived
  * (`active`), belonging to `machineId`. Ties break by most recent update.
  */

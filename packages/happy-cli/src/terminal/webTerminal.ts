@@ -383,6 +383,10 @@ export interface TerminalListItem {
     createdAt?: number;
     activityAt?: number;
     agentState?: AgentState;
+    /** Terminal mirror (B-105): shadow session id of the hand-typed claude
+     *  running inside this terminal (set via the daemon's mirror resolver).
+     *  The web shows the xterm ↔ structured toggle when present. */
+    mirrorSessionId?: string;
 }
 
 /**
@@ -401,6 +405,9 @@ export function terminalListSignature(items: TerminalListItem[]): string {
             t.createdAt ?? 0,
             Math.floor((t.activityAt ?? 0) / ACTIVITY_SIGNATURE_BUCKET_MS),
             t.agentState ?? '',
+            // B-105: a mirror binding appearing/disappearing MUST push the
+            // list, or the web never learns the toggle became available.
+            t.mirrorSessionId ?? '',
         ]);
     return JSON.stringify(canon);
 }
@@ -907,6 +914,29 @@ export class WebTerminalManager {
     private readonly onNotify: ((n: TerminalNotification) => void) | null;
     private notifyTracker = new TerminalNotifyTracker();
 
+    // ── Terminal mirror integration (B-105) ─────────────────────────────────
+    /** terminalId → shadow session id (daemon's mirror manager). Feeds the
+     *  list push (toggle availability) and closed-terminal records. */
+    private mirrorResolver: ((terminalId: string) => string | undefined) | null = null;
+    /** Fired once per terminal whose close was just recorded — the mirror
+     *  manager archives + tears down that terminal's binding. */
+    private onTerminalClosedCb: ((terminalId: string) => void) | null = null;
+
+    setMirrorSessionResolver(fn: (terminalId: string) => string | undefined): void {
+        this.mirrorResolver = fn;
+        this.kickListRefresh();
+    }
+
+    setOnTerminalClosed(fn: (terminalId: string) => void): void {
+        this.onTerminalClosedCb = fn;
+    }
+
+    /** External nudge (mirror bind/unbind changed a list-relevant field) —
+     *  same debounced path the internal event kicks use. */
+    requestListRefresh(): void {
+        this.kickListRefresh();
+    }
+
     constructor(emit: EmitFn, onNotify?: (n: TerminalNotification) => void) {
         this.emit = emit;
         this.onNotify = onNotify ?? null;
@@ -1039,6 +1069,8 @@ export class WebTerminalManager {
             if (live?.lastOutputAt) {
                 item.activityAt = Math.max(item.activityAt ?? 0, live.lastOutputAt);
             }
+            const mirrorSessionId = this.mirrorResolver?.(item.id);
+            if (mirrorSessionId) item.mirrorSessionId = mirrorSessionId;
         }
         return list;
     }
@@ -1114,10 +1146,18 @@ export class WebTerminalManager {
                 continue;
             }
             this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
-                id, title: info.title, cwd: info.cwd, closedAt: now,
+                id, title: info.title, cwd: info.cwd,
+                mirrorSessionId: this.mirrorResolver?.(id), closedAt: now,
             });
             changed = true;
             logger.debug(`[WEB TERMINAL] recorded closed terminal ${id}`);
+            // Notify AFTER the record captured the mirror id — the callback
+            // tears the binding down and the resolver would return undefined.
+            try {
+                this.onTerminalClosedCb?.(id);
+            } catch (e) {
+                logger.debug(`[WEB TERMINAL] terminal-closed callback failed: ${e}`);
+            }
         }
         const pruned = pruneClosedAgainstLive(this.closedTerminals, liveIds);
         if (pruned !== this.closedTerminals) {
@@ -1297,7 +1337,17 @@ export class WebTerminalManager {
             // the initial pane's environment on creation and is ignored when
             // `-A` attaches to an existing session. Gated on tmux ≥3.2 — an
             // older tmux rejects the unknown flag and would fail the create.
-            const envFlags = tmuxSupportsEnvFlag() ? ['-e', CLAUDE_CLASSIC_RENDERER_ENV] : [];
+            // B-105: VH_TERMINAL_ID marks every shell in this terminal so the
+            // global claude hook forwarder can bind hand-typed claude sessions
+            // to this terminal's mirror; VH_HAPPY_HOME_DIR routes the forwarder
+            // to THIS daemon variant's daemon.state.json (dev/stable twins must
+            // not cross-bind). Create-only like the renderer env — pre-existing
+            // terminals honestly lack the marker (spec: no retro-injection).
+            const envFlags = tmuxSupportsEnvFlag() ? [
+                '-e', CLAUDE_CLASSIC_RENDERER_ENV,
+                '-e', `VH_TERMINAL_ID=${id}`,
+                '-e', `VH_HAPPY_HOME_DIR=${configuration.happyHomeDir}`,
+            ] : [];
             // Attach-only opens skip BOTH creation paths (this pre-create and
             // the pty script's `new-session -A` below): the has-session gate
             // above said the session exists, and racing a concurrent kill must
@@ -1572,8 +1622,16 @@ export class WebTerminalManager {
         const info = this.lastSeenInfo.get(terminalId)
             ?? this.listSessions().find((t) => t.id === terminalId);
         if (info) {
-            this.recordClosed({ id: terminalId, title: info.title, cwd: info.cwd, closedAt: Date.now() });
+            this.recordClosed({
+                id: terminalId, title: info.title, cwd: info.cwd,
+                mirrorSessionId: this.mirrorResolver?.(terminalId), closedAt: Date.now(),
+            });
             this.lastSeenInfo.delete(terminalId);
+        }
+        try {
+            this.onTerminalClosedCb?.(terminalId);
+        } catch (e) {
+            logger.debug(`[WEB TERMINAL] terminal-closed callback failed: ${e}`);
         }
         this.detach(terminalId);
         try {

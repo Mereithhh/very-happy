@@ -11,7 +11,7 @@
  * sidebar's tested application of it, for the archived view too.
  */
 import type { Session } from '@/sync/storageTypes';
-import { isAssistantSession } from '@/assistant/assistantSession';
+import { isHiddenSession } from '@/assistant/assistantSession';
 
 export function visibleSidebarSessions(
   sessions: ReadonlyArray<Session | string>,
@@ -19,6 +19,6 @@ export function visibleSidebarSessions(
 ): Session[] {
   return sessions
     .filter((s): s is Session => typeof s !== 'string')
-    .filter((s) => !isAssistantSession(s))
+    .filter((s) => !isHiddenSession(s))
     .filter((s) => (view === 'archived' ? !s.active : s.active));
 }
