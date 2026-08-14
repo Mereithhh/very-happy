@@ -124,6 +124,55 @@ blur 才清）是"不拥有这个 field"的直接后果；`ModalProvider` 的 Es
 | localSettings 模式：zod schema + `localSettingsDefaults`（默认值只写在这里）+ `passthrough().partial()` 整块 safeParse（**枚举值只增不删**，删了会把该设备所有本地设置重置） | `web-v2/src/sync/localSettings.ts:7-151` |
 | CDP 复现工具坑（已记账）：`dispatchKeyEvent` 的 down/up keyCode 必须配对；headless 下 `imeSetComposition` 污染键状态；**headful 窗口失焦时 dispatchKeyEvent 被静默丢弃而 composition 事件照常送达**（round 1 假阴性的根源） | `skills/happy/references/very-happy-build-state.md:416` |
 
+## ⚠️ Step 0 实施回流的设计修订（2026-08-14，实现后定稿）
+
+Step 0 实现过程中发现本 spec 的 6 处路由缺陷与 5 个未定义点，**以下修订为准，覆盖下文对应段落**：
+
+**路由表（§C）的 6 处修正**（已在 `termInputRoute.ts` 实现并单测）：
+1. **P6 在原表序下是死代码**——P5 的具名集合含 `Enter` 且优先级更高。P6（barMode 的 Enter）
+   必须**提到 P5 之前**；并补 barMode + `Shift+Enter` → `text`（对齐 `TermInputBar` 既有的
+   "Shift+Enter 换行"语义，原 spec 漏写）。
+2. **P7 判据与依据打架**：判据 `key.length===1` 收不住死键（`key==='Dead'` 长度 4），而同行
+   依据点名了死键 ⇒ `Dead`/`Unidentified` 纳入 P7。
+3. **非 mac 的 Alt 语义缺失**：xterm 在 `(!isMac || macOptionIsMeta) && altKey` 时发 `ESC+char`。
+   照原表实现会让 Windows/Linux 的 `M-b`/`M-f` **全哑**（浏览器不把 Alt 组合插进输入域）
+   ⇒ 补一条非 mac `Alt+字符` → `vt`。
+4. **AltGr 未覆盖**：Windows AltGr 上报为 `ctrlKey && altKey`，照 P5「Ctrl+字母」会被送去 VT，
+   欧洲布局打不出 `€` ⇒ ctrl 分支加 `!altKey` 硬条件（与 xterm 编码器同款）。
+5. **纯修饰键次序**：修饰键自身的 keydown 带 `ctrlKey:true`，照原表序 ⌃ 单击会先命中 P5
+   ⇒ 修饰键判定提到 P5 之前。
+6. **Ctrl 组合做成兜底而非白名单**：失效不对称——漏一个键 = R3 的"按了什么都不发"，
+   多兜一个 = 编码器决定不发（与 xterm 现路径逐字节一致）。
+
+**模型（§E）的 4 个未定义点定稿**：
+- 返回类型加 `clearField: boolean`（清空是**动作**，纯函数只能作为结果返回；清空恒不发字节，
+  与 `emit` 是两条互不相干的通道）。
+- `blur` **解除** composing（失焦后 IME 不会再给 `compositionend`——这正是"切输入法打不了
+  中文"的现场；不解除会让清空能力永久失效 = 又一个持久标志卡死）。
+- `clear-request` 在合成期**拒绝**（清空会打断在途 preedit；round 2 的"heal 写 textarea 反而
+  制造卡死"就是这个错误的第一次发生）。
+- `policy` 的 `clearIdleMs`（仅 clear-on-idle）与 `maxLen`（仅 sticky）在对方模式下无意义，
+  不是四种组合都有效。
+
+### ★ 宿主观测时机（原 spec 两处默认了不同答案，此处拍板）
+
+Step 0 暴露的关键问题：**"何时把输入域内容喂给模型"是宿主的选择**，原 spec §可测试性 第一行
+的断言隐含"合成期不观测"，而 §B ① 的手感设计隐含"全量观测"——两者不能同时成立。
+若合成期全量观测，preedit 拼音会被**回显进 PTY**，与 §B ① 想要的"原生 inline preedit 画在
+光标处"**叠字**（PTY 回显的 "ni" 在下、preedit 的 "ni" 在上），提交时还要看到一串退格。
+
+**定稿：宿主在合成期不观测输入域**，具体为四条事件级规则（**全部无持久标志**）：
+1. `input` 且 `ev.isComposing === false` ⇒ 观测（emit diff）。
+2. `compositionend` ⇒ 观测。
+3. `blur` ⇒ 观测（提交在途内容，恰好一次）。
+4. **兜底 tick**：距上一次 composition 事件超过 5s 时**无条件观测**——自过期的有界看门狗
+   （与 `termFocusOwnership` 的合成布尔同款），保证任何病理路径下文本最多迟到 5s，
+   **绝不永久吞字**。
+
+为什么这不违反铁律：铁律约束的是**模型**不得用 `composing` 门控 emit；宿主选择观测时机是
+另一回事——因为模型对 composition 事件无状态，即使 `compositionend` 永远不来，下一次
+非合成 `input` 携带的**完整 diff** 也会一次性补齐（Step 0 对两种接线都写了用例）。
+
 ## 设计
 
 ### A. 谁接收键盘：选 B（自有 overlay 输入元素）
