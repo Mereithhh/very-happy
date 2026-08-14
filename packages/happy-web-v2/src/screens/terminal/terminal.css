@@ -183,37 +183,65 @@
   overflow: hidden;
   user-select: none;
   pointer-events: none;
+  /* NO focus ring, ever. base.css already carves `.xterm` descendants out of
+     the global `:focus-visible` rule; these two declarations make the element
+     immune even if that carve-out is ever narrowed again. `outline: none`
+     alone was the original bug: the global rule paints its ring with
+     BOX-SHADOW (3px accent glow), and on an element that is deliberately
+     opacity:1 and up to 40 columns wide it showed up as a teal box gliding
+     along with the cursor — read by the user as "the terminal is broken".
+     Same neutralize-the-global-ring pattern as `.ci-textarea`. */
+  box-shadow: none;
 }
-/* Coarse pointer (phone/tablet), Step 2. Two deliberate differences from
-   desktop, each with one reason:
-
-   1. HIDDEN AT REST. The mobile field policy is `sticky` — we must NEVER clear
-      the field behind the OS keyboard's back (that is the "last letter can't be
-      deleted" bug), so the current line STAYS in it between the CR/ETX
-      boundaries. A permanently visible element would paint that line on top of
-      the pty's own echo of the same line. Desktop doesn't need this: its
-      `clear-on-idle` policy empties the field 300ms after the last keystroke.
-   2. VISIBLE ONLY WHILE COMPOSING (.is-composing, toggled by termInputHost's
-      shouldShowPreedit). On the own path xterm's CompositionHelper never sees a
-      composition event, so its `.composition-view` bubble — the ONLY visible
-      composition UI on the legacy mobile path — never appears; this element is
-      where CJK preedit has to be readable. Styled as a bubble (opaque bg +
-      accent border) like imeFix styles xterm's, so preedit reads as an input
-      bubble instead of colliding with the glyphs underneath.
-
-   The class is PURELY DECORATIVE: it gates no bytes. Worst case it sticks on
-   (an empty transparent-ish box on screen) or never appears (preedit invisible
-   — the OS candidate bar still shows it); it can never eat a keystroke. It is
-   re-evaluated on every composition/focus event AND every host tick, so it
-   self-expires. */
+.vh-term-input:focus,
+.vh-term-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+/* Coarse pointer (phone/tablet), Step 2. HIDDEN AT REST: the mobile field
+   policy is `sticky` — we must NEVER clear the field behind the OS keyboard's
+   back (that is the "last letter can't be deleted" bug), so the current line
+   STAYS in it between the CR/ETX boundaries, and a permanently visible element
+   would paint that line on top of the pty's own echo of the same line. Desktop
+   doesn't need this: its `clear-on-idle` policy empties the field 300ms after
+   the last keystroke, so at rest there is nothing to paint. */
 .vh-term-input.is-coarse {
   opacity: 0;
 }
-.vh-term-input.is-coarse.is-composing {
+/* ── Composition bubble — BOTH pointer types (2026-08-14) ──────────────────
+   While an IME composition is in flight this element is the ONLY visible
+   composition UI on the own path: xterm's CompositionHelper never sees a
+   composition event, so its `.composition-view` bubble never appears. Drawn at
+   rest in the terminal's own font and foreground color, preedit was
+   INDISTINGUISHABLE from text already committed to the pty — pinyin letters
+   looked exactly like typed english, which is what made the own path read as
+   "the Chinese IME doesn't work" and led to pressing Enter (macOS pinyin:
+   Enter commits the RAW LATIN letters, so only english really went in).
+   The legacy path never had this problem because xterm's bubble has a teal
+   border: you can see at a glance that the IME is composing.
+
+   So: opaque background + accent border + rounded, same two color values that
+   imeFix.ts injects for xterm's `.composition-view` (the terminal pane is the
+   documented exception to the no-raw-color rule; keeping both bubbles literally
+   the same values is the point). Comes AFTER `.is-coarse` on purpose — equal
+   specificity, so `opacity: 1` here wins for the coarse case too.
+
+   No border/padding: `box-sizing: border-box` + the inline width/height the
+   host copies from the cursor cell mean a border would eat 2px of the content
+   box and clip the preedit; `outline` is drawn outside the box model and costs
+   no layout. No box-shadow either — see the base rule above; nothing on this
+   element is allowed to glow.
+
+   The class is PURELY DECORATIVE: it gates no bytes. Worst case it sticks on
+   (an empty box on screen) or never appears (preedit unreadable — the OS
+   candidate window still shows it); it can never eat a keystroke. It is
+   re-evaluated on every composition/focus event AND every host tick, so it
+   self-expires. */
+.vh-term-input.is-composing {
   opacity: 1;
   background: #181f2a;
-  border: 1px solid #34e2c4;
-  border-radius: 6px;
+  outline: 1px solid #34e2c4;
+  border-radius: 3px;
   z-index: 10;
 }
 /* ── Mobile bottom bars (key bar + optional line-input bar) ────────────────

@@ -18,6 +18,10 @@ import {
     OVERLAY_MAX_CELLS_COARSE,
     IOS_ZOOM_SAFE_FONT_PX,
     shouldObserveField,
+    isCompositionStale,
+    initialStaleTally,
+    tallyCompositionStale,
+    resetStaleWindow,
     pickOverlayWidth,
     pickOverlayMetrics,
     pickFieldPolicy,
@@ -29,7 +33,7 @@ import {
 import { routeKey, type KeyEventLike } from './termInputRoute';
 import { reduce, initialState, type TermInputState } from './termInputModel';
 
-describe('shouldObserveField —— ★ 宿主观测时机的四条规则', () => {
+describe('shouldObserveField —— ★ 宿主观测时机的三条真实边界', () => {
     it('① 非合成 input 观测；合成中的 input 不观测', () => {
         expect(shouldObserveField({ kind: 'input', isComposing: false })).toBe(true);
         expect(shouldObserveField({ kind: 'input', isComposing: true })).toBe(false);
@@ -43,30 +47,81 @@ describe('shouldObserveField —— ★ 宿主观测时机的四条规则', () =
         expect(shouldObserveField({ kind: 'blur' })).toBe(true);
     });
 
-    it('④ 兜底 tick：距上一次 composition 事件超过 5s 才无条件观测', () => {
-        const t0 = 1_000_000;
-        expect(shouldObserveField({ kind: 'tick', now: t0, lastCompositionAt: t0 })).toBe(false);
-        expect(shouldObserveField({
-            kind: 'tick', now: t0 + COMPOSITION_STALE_MS, lastCompositionAt: t0,
-        })).toBe(false);
-        expect(shouldObserveField({
-            kind: 'tick', now: t0 + COMPOSITION_STALE_MS + 1, lastCompositionAt: t0,
-        })).toBe(true);
-    });
-
-    it('④ 是自过期的：从未合成过（lastCompositionAt=0）时 tick 一直观测', () => {
-        // 桌面稳态就是这条 —— observe 幂等，所以"一直观测"= 一直什么都不发。
-        expect(shouldObserveField({ kind: 'tick', now: Date.now(), lastCompositionAt: 0 })).toBe(true);
-    });
-
-    it('活跃合成会不断续命，兜底永不在正常路径上开火', () => {
-        // compositionupdate 每次刷新 lastCompositionAt：只要 IME 还在发事件，
-        // now - last 永远是一个小数，兜底不触发。
-        let last = 0;
-        for (let t = 0; t < 60_000; t += 300) {
-            last = t; // 一次 compositionupdate
-            expect(shouldObserveField({ kind: 'tick', now: t + 250, lastCompositionAt: last })).toBe(false);
+    it('没有第四条：触发器里不存在任何带时钟的 kind（时钟猜不出合成状态）', () => {
+        // 原第 4 条兜底"停滞 5s 就无条件观测"是一条**实证过的泄漏**（拉丁 preedit
+        // 被当正文灌进 PTY）。这里钉的是**类型层面**的不可表达：`ObserveTrigger`
+        // 的 kind 集合只有三个，且没有一个带 now/lastCompositionAt。
+        const kinds = ['input', 'composition-end', 'blur'] as const;
+        for (const kind of kinds) {
+            const t = kind === 'input'
+                ? { kind, isComposing: false } as const
+                : { kind } as const;
+            expect(typeof shouldObserveField(t)).toBe('boolean');
         }
+        // @ts-expect-error tick 不再是合法触发器 —— **编译期这行报错本身就是断言**
+        // （去掉 @ts-expect-error 或把 tick 加回联合类型，tsc 门禁立刻红）。
+        const bogus = shouldObserveField({ kind: 'tick', now: 1, lastCompositionAt: 0 });
+        // 运行时也落不到任何分支（switch 无 default）⇒ 观测不会被触发。
+        expect(bogus).toBeUndefined();
+    });
+});
+
+describe('合成停滞：只记数不动作（原兜底 tick 的替代物）', () => {
+    const IN = (composing: boolean, now: number, lastCompositionAt: number) =>
+        ({ composing, now, lastCompositionAt });
+
+    it('合成中且停滞超过阈值 ⇒ 判定为 stale（严格大于）', () => {
+        const t0 = 1_000_000;
+        expect(isCompositionStale(IN(true, t0 + COMPOSITION_STALE_MS, t0))).toBe(false);
+        expect(isCompositionStale(IN(true, t0 + COMPOSITION_STALE_MS + 1, t0))).toBe(true);
+    });
+
+    it('非合成期恒 false —— 桌面稳态（lastCompositionAt=0）不许被记成病态', () => {
+        expect(isCompositionStale(IN(false, Date.now(), 0))).toBe(false);
+        expect(isCompositionStale(IN(false, Date.now(), 1))).toBe(false);
+        // 合成中但从未收到过 composition 事件（不可能的组合）也不记。
+        expect(isCompositionStale(IN(true, Date.now(), 0))).toBe(false);
+    });
+
+    it('活跃合成不断续命 ⇒ 永不判 stale', () => {
+        const t0 = 1_000_000;
+        const end = t0 + 60_000;
+        let last = t0;
+        for (let t = t0; t < end; t += 300) {
+            last = t; // 一次 compositionupdate
+            expect(isCompositionStale(IN(true, t + 250, last))).toBe(false);
+        }
+    });
+
+    it('计数器：一个停滞窗口只记一次（250ms 一 tick，不许刷成几十条）', () => {
+        const t0 = 1_000_000;
+        let tally = initialStaleTally();
+        expect(tally.seen).toBe(0);
+        for (let i = 0; i < 40; i++) {
+            tally = tallyCompositionStale(tally, IN(true, t0 + COMPOSITION_STALE_MS + 1 + i * 250, t0));
+        }
+        expect(tally.seen).toBe(1);
+    });
+
+    it('计数器：IME 又活了之后再停一次 ⇒ 记第二次（如实反映两段停滞）', () => {
+        const t0 = 1_000_000;
+        let tally = tallyCompositionStale(initialStaleTally(), IN(true, t0 + 6000, t0));
+        expect(tally.seen).toBe(1);
+        // 一个 compositionupdate 到达 ⇒ 窗口重开。
+        tally = resetStaleWindow(tally);
+        const t1 = t0 + 10_000;
+        tally = tallyCompositionStale(tally, IN(true, t1 + 6000, t1));
+        expect(tally.seen).toBe(2);
+    });
+
+    it('计数器只增不减，且**永不**产生动作/字节（返回值里只有数字与布尔）', () => {
+        const t0 = 1_000_000;
+        const out = tallyCompositionStale(initialStaleTally(), IN(true, t0 + 6000, t0));
+        expect(Object.keys(out).sort()).toEqual(['noted', 'seen']);
+        // 正常路径下调它一万次也不动。
+        let tally = initialStaleTally();
+        for (let t = 0; t < 100_000; t += 250) tally = tallyCompositionStale(tally, IN(false, t, 0));
+        expect(tally.seen).toBe(0);
     });
 });
 
@@ -339,10 +394,42 @@ function makeSurface(opts: { policy: 'sticky' | 'clear-on-idle'; barMode: boolea
         }
     };
 
+    // ── 合成（IME）：复刻宿主的 compositionstart/update/end + blur 接线 ────────
+    // 浏览器在合成期把 preedit 写进输入域并发 `input`（`isComposing:true`），
+    // 宿主据 ① 不观测；真正的提交靠 ②/③ 或 IME 中止后的非合成 `input`。
+    const compositionStart = () => apply({ type: 'composition-start' });
+    /** 合成中的一次 preedit 变化（拉丁拼音进字段，但一个字节都不该进 PTY）。 */
+    const preedit = (value: string) => {
+        field = value;
+        if (shouldObserveField({ kind: 'input', isComposing: true })) observe();
+    };
+    /** 正常提交：字段换成汉字，compositionend 到达（宿主随后 observe）。 */
+    const compositionEnd = (committed: string) => {
+        field = committed;
+        apply({ type: 'composition-end' });
+        if (shouldObserveField({ kind: 'composition-end' })) observe();
+    };
+    /** IME 中止/切走：浏览器给的下一个 `input` 的 isComposing 就是 false。 */
+    const plainInput = (value: string) => {
+        field = value;
+        if (shouldObserveField({ kind: 'input', isComposing: false })) observe();
+    };
+    /** 失焦：宿主先解 composing 再观测。 */
+    const blur = () => {
+        apply({ type: 'blur' });
+        if (shouldObserveField({ kind: 'blur' })) observe();
+    };
+
     return {
         type: (s: string) => { for (const ch of s) key(ch); },
         key,
         tick: (now: number) => apply({ type: 'tick', now }),
+        compositionStart,
+        preedit,
+        compositionEnd,
+        plainInput,
+        blur,
+        get composing() { return state.composing; },
         get pty() { return pty.join(''); },
         get chunks() { return pty.slice(); },
         get field() { return field; },
@@ -418,6 +505,76 @@ describe('一行文本恰好进 PTY 一次（barMode 双发问题的结论）', 
         s.tick(999_999);
         expect(s.field).toBe('abc');
         expect(s.pty).toBe('abc');
+    });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 合成在途停手：**tick 绝不把 preedit 当正文发出去**（2026-08-14 实证泄漏）
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 现场：`?input=own` 下打一半拼音去候选窗翻页（**翻页不产生 `compositionupdate`**），
+ * 停手 6.6s 后 PTY 里出现 `"ni hao"`，随后模型自己发 6 个 `\x7f` 纠正；
+ * `?input=xterm` 无此现象。泄漏点与原兜底阈值 5s 一致。
+ *
+ * 下面每个用例都跑到远超阈值的时间（tick 是 250ms 一次，这里直接 +60s），
+ * 于是"重新加一条按时钟观测的兜底"必然把其中至少一条打红。
+ */
+describe('合成在途的 tick 不泄漏 preedit（原兜底 tick 的回归锚）', () => {
+    const FAR = 999_999; // 远超 COMPOSITION_STALE_MS
+
+    it('停手多久都不发：拉丁 preedit 留在字段里，PTY 一个字节没有', () => {
+        const s = makeSurface({ policy: 'clear-on-idle', barMode: false });
+        s.compositionStart();
+        s.preedit('ni hao');
+        for (let t = 0; t <= FAR; t += 250) s.tick(t); // 停手，只有 tick 在走
+        expect(s.pty).toBe('');
+        expect(s.field).toBe('ni hao');
+        // 合成期也绝不清空字段（清了会打断在途 preedit）。
+        expect(s.composing).toBe(true);
+    });
+
+    it('边界 ①（非合成 input，IME 中止/切走）：停手很久之后仍一次补齐，不吞字', () => {
+        const s = makeSurface({ policy: 'clear-on-idle', barMode: false });
+        s.compositionStart();
+        s.preedit('ni hao');
+        for (let t = 0; t <= FAR; t += 250) s.tick(t);
+        expect(s.pty).toBe('');
+        s.plainInput('ni hao'); // 浏览器：合成结束了，这是当前字段全量
+        expect(s.pty).toBe('ni hao');
+    });
+
+    it('边界 ②（compositionend）：提交的是汉字，而且只有汉字', () => {
+        const s = makeSurface({ policy: 'clear-on-idle', barMode: false });
+        s.compositionStart();
+        s.preedit('ni hao');
+        for (let t = 0; t <= FAR; t += 250) s.tick(t);
+        s.compositionEnd('你好');
+        // 关键：PTY 上没有 "ni hao"，也没有纠正用的 \x7f —— 一次干净的提交。
+        expect(s.pty).toBe('你好');
+        expect(s.pty.includes('\x7f')).toBe(false);
+        expect(s.composing).toBe(false);
+    });
+
+    it('边界 ③（blur）：焦点离开时把在途内容恰好提交一次', () => {
+        const s = makeSurface({ policy: 'clear-on-idle', barMode: false });
+        s.compositionStart();
+        s.preedit('ni hao');
+        for (let t = 0; t <= FAR; t += 250) s.tick(t);
+        s.blur();
+        expect(s.pty).toBe('ni hao'); // 迟到总比吞掉好，且这是浏览器给的真边界
+        // 迟到的 compositionend 不会重复发（模型是单调 diff）。
+        s.compositionEnd('ni hao');
+        expect(s.pty).toBe('ni hao');
+    });
+
+    it('正常快打（无合成）不受影响：tick 不观测也不会漏字', () => {
+        const s = makeSurface({ policy: 'clear-on-idle', barMode: false });
+        s.type('ls -la');
+        expect(s.pty).toBe('ls -la'); // 每个非合成 input 都已观测过
+        for (let t = 0; t <= FAR; t += 250) s.tick(t);
+        expect(s.pty).toBe('ls -la'); // idle 清空只清字段，不发字节
+        expect(s.field).toBe('');
     });
 });
 
@@ -567,10 +724,88 @@ describe('结构约束', () => {
         expect(/document\.addEventListener/.test(host)).toBe(false);
     });
 
-    it('CSS：粗指针静止不可见、只在合成期露出（sticky 下常显会与 PTY 回显叠字）', () => {
+    it('CSS：粗指针静止不可见（sticky 下常显会与 PTY 回显叠字）', () => {
         const coarse = css.slice(css.indexOf('.vh-term-input.is-coarse {'));
         expect(coarse.startsWith('.vh-term-input.is-coarse {\n  opacity: 0;\n}')).toBe(true);
-        expect(css.includes('.vh-term-input.is-coarse.is-composing {')).toBe(true);
+    });
+
+    it('CSS：合成气泡对**两端**生效，且排在 .is-coarse 之后（同特异性，后者赢 opacity）', () => {
+        // 桌面也要气泡：preedit 与终端正文同字体同前景色 ⇒ 看起来就是"已经打进去的
+        // 英文"，这是"以为中文输入法坏了"的直接原因（旧路径靠 xterm 的 teal 气泡区分）。
+        const bubble = '.vh-term-input.is-composing {';
+        expect(css.includes(bubble)).toBe(true);
+        // 不能再是 `.is-coarse.is-composing` 复合选择器（那样桌面永远拿不到气泡）。
+        expect(css.includes('.vh-term-input.is-coarse.is-composing {')).toBe(false);
+        expect(css.indexOf(bubble)).toBeGreaterThan(css.indexOf('.vh-term-input.is-coarse {'));
+        const block = css.slice(css.indexOf(bubble), css.indexOf('}', css.indexOf(bubble)));
+        expect(block.includes('opacity: 1;')).toBe(true);
+        // 不透明底 + teal 边框 = "这是输入法在合成"的一眼可辨观感。
+        expect(block.includes('background: #181f2a;')).toBe(true);
+        expect(block.includes('outline: 1px solid #34e2c4;')).toBe(true);
+        // 气泡用 outline 而不是 border：border-box + 抄来的 inline 宽高下，
+        // 1px border 会吃掉内容盒把 preedit 削顶。
+        expect(/border:\s/.test(block)).toBe(false);
+        // 也不许有 box-shadow —— 这个元素上任何"发光"都是 bug 1 的形态。
+        expect(block.includes('box-shadow')).toBe(false);
+    });
+
+    it('CSS：`.vh-term-input` 上焦点环被彻底掐掉（outline **和** box-shadow）', () => {
+        const block = css.slice(css.indexOf('.vh-term-input {'), css.indexOf('.vh-term-input.is-coarse {'));
+        // 原 bug：作者写了 outline: none，但全局焦点环画的是 box-shadow（3px teal
+        // glow）⇒ 一个跟着光标走的绿框。两条都要在。
+        expect(block.includes('outline: none;')).toBe(true);
+        expect(block.includes('box-shadow: none;')).toBe(true);
+        expect(css.includes('.vh-term-input:focus,\n.vh-term-input:focus-visible {')).toBe(true);
+    });
+
+    it('base.css 的全局焦点环把终端 pane 结构性排除，且**不改变特异性**', () => {
+        const base = read('../../styles/base.css');
+        // `:where()` 在 `:not()` 里贡献 0 特异性 ⇒ 选择器仍是 (0,1,0)，既有组件
+        // 覆盖的胜负关系一个都不变；这条修正只可能"少画"，不可能重排层叠。
+        expect(base.includes(':focus-visible:not(:where(.xterm, .xterm *)) {')).toBe(true);
+        // 裸的元素级 `:focus-visible {` 不许再出现（那是绿框的来源）。
+        expect(/(^|\n):focus-visible\s*\{/.test(base)).toBe(false);
+        // 环本身还在（无障碍要求：全站控件默认有可见焦点环，不是逐个 opt-in）。
+        const ring = base.slice(base.indexOf(':focus-visible:not('));
+        expect(ring.includes('box-shadow: 0 0 0 3px var(--accent-glow);')).toBe(true);
+    });
+
+    it('宿主的定时器不观测输入域 —— observe 只挂在三个真实边界上', () => {
+        // 定时器体里不许出现 observe()：那正是"停滞就无条件观测"的形状。
+        const timer = host.slice(host.indexOf('const timer = setInterval('));
+        const body = timer.slice(0, timer.indexOf('}, tickMs);'));
+        expect(body.includes('observe()')).toBe(false);
+        // 它只做三件不产生字节的事 + 记数。
+        expect(body.includes('tallyCompositionStale(')).toBe(true);
+        expect(body.includes("apply({ type: 'tick', now: t })")).toBe(true);
+        expect(body.includes('syncGeometry()')).toBe(true);
+        expect(body.includes('syncPreedit()')).toBe(true);
+        // 全文件里只有一处**调用**（`onInput` 的 `{ kind: 'input' }`）；
+        // `composition-end`/`blur` 两条边界恒观测，直接 observe()。
+        expect((host.match(/shouldObserveField\(\{/g) ?? []).length).toBe(1);
+        expect(host.includes("shouldObserveField({ kind: 'tick'")).toBe(false);
+        // observe() 的调用点：onCompositionEnd(+0ms 补跑) / onBlur / sendLine / onInput。
+        expect((host.match(/observe\(\);/g) ?? []).length).toBe(5);
+    });
+
+    it('停滞计数器只进诊断快照，不进任何判断（记数 ≠ 动作）', () => {
+        const diagCounters = stripComments(read('./termDiag.ts'));
+        expect(diagCounters.includes('compositionStaleSeen: number;')).toBe(true);
+        expect(screen.includes('compositionStaleSeen: ownInput?.counters.compositionStaleSeen ?? 0')).toBe(true);
+        // 接线层（installTermInput 的函数体）里这个量只被 tally 更新、只被 counters
+        // 的 getter 读出，**绝不出现在任何 if 里**（那就变回闸门了）。纯判定函数
+        // `isCompositionStale`/`tallyCompositionStale` 自己当然要分支，不在此列。
+        const wiring = host.slice(host.indexOf('export function installTermInput'));
+        expect(/if\s*\([^)]*stale/i.test(wiring)).toBe(false);
+        expect(wiring.includes('get compositionStaleSeen() { return stale.seen; }')).toBe(true);
+    });
+
+    it('合成气泡两端都装：syncPreedit 不再按粗指针提前返回', () => {
+        const sync = host.slice(host.indexOf('const syncPreedit = ()'));
+        const body = sync.slice(0, sync.indexOf('};'));
+        expect(body.includes('!coarse')).toBe(false);
+        expect(body.includes('shouldShowPreedit(')).toBe(true);
+        expect(body.includes('classList.toggle(COMPOSING_CLASS, on)')).toBe(true);
     });
 
     it('宿主不重写规则：路由与模型都是 import 来的', () => {

@@ -416,6 +416,9 @@ export function WebTerminalScreen() {
             focusRestores: focusWatchdog?.counters.restores ?? 0,
             focusSkippedOverlay: focusWatchdog?.counters.skippedOverlay ?? 0,
             focusSkippedComposing: focusWatchdog?.counters.skippedComposing ?? 0,
+            // own 路径的合成停滞观察量（记数不动作，见termInputHost 的
+            // COMPOSITION_STALE_MS）。xterm 路径下恒 0。
+            compositionStaleSeen: ownInput?.counters.compositionStaleSeen ?? 0,
           },
           lastRestoreAt: focusWatchdog?.lastRestoreAt ?? 0,
         };

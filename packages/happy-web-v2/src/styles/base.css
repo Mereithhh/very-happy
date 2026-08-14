@@ -114,8 +114,32 @@ pre,
   background: var(--accent-glow);
 }
 
-/* focus ring: accent border + 3px glow */
-:focus-visible {
+/* ── focus ring: accent border + 3px glow ──────────────────────────────────
+   Element-level on purpose: EVERY control in the app gets a visible focus ring
+   for free, and that free-ness is the accessibility guarantee — a component
+   author cannot forget to add it. Component rules that own their own focus
+   treatment neutralize it explicitly (`.ci-textarea`, `.term-inputbar-ta`, …).
+
+   ONE structural carve-out: nothing inside the terminal pane (`.xterm`).
+   A bare element-level `:focus-visible` also matches the *machinery* that
+   lives in there — xterm's own helper <textarea> and our `.vh-term-input`
+   overlay (see terminal.css). Those are not controls anyone looks at; they are
+   the surface the keyboard talks to while the pane paints its own indicator
+   (the blinking teal block cursor — terminal.css says it in as many words:
+   "No focus ring either"). Keeping them in the selector was a latent bug that
+   went off the moment an input element in there became deliberately VISIBLE:
+   the 3px glow rendered as a teal box gliding along with the cursor
+   (2026-08-14, `?input=own`). xterm's hidden helper textarea had been
+   collecting the exact same glow since day one — it is 8px wide with
+   opacity:0, so the rule was invisible, not innocent.
+
+   `:where()` inside `:not()` contributes ZERO specificity, so this selector is
+   still (0,1,0) — identical to the bare `:focus-visible` it replaces. Every
+   component override that used to win keeps winning by the same margin; this
+   change can only ever REMOVE the ring from `.xterm` descendants, never
+   reshuffle the cascade anywhere else. Any future functional, deliberately
+   visible input element mounted in the pane is covered by construction. */
+:focus-visible:not(:where(.xterm, .xterm *)) {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
