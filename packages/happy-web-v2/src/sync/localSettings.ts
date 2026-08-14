@@ -148,14 +148,19 @@ export const localSettingsDefaults: LocalSettings = {
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
-    // Step 3 (2026-08-14): the new path is now the DEFAULT. Gate evidence
-    // before flipping: 142/142 key-scan cases byte-identical between the two
-    // paths (`scripts/probe/term-input-goldendiff.mjs`, DECCKM both states,
-    // paths verified truly forked), click-focus handoff 5/5, 1104 unit tests.
-    // Rolling back is a settings toggle — deliberately NOT a release, because
-    // the input path is load-bearing. The old path stays in the bundle for one
-    // batch as the escape hatch (Step 4 deletes it, only after real use).
-    terminalInputOwnership: 'own',
+    // ⚠️ ROLLED BACK to 'xterm' the same day (2026-08-14). Owner field report on
+    // the flipped default: Chinese IME still produced only English, plus a green
+    // bar tracking the cursor (= the overlay itself, which must be invisible at
+    // rest). Root cause not yet known.
+    //
+    // The process failure that let this ship: the hard gate
+    // (`term-input-goldendiff.mjs`) covers NON-TEXT keys only — its README lists
+    // "可打印字符与 IME 全线" as an explicit blind spot, and the spec's IME
+    // replay scenarios (A–E) were never run. A gate that does not exercise the
+    // very failure mode being fixed is not a gate for it. Do not flip this back
+    // to 'own' until an IME replay harness reproduces real composition on the
+    // new path and passes.
+    terminalInputOwnership: 'xterm',
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.
     clipboardAutoCopy: true,
