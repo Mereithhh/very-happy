@@ -165,9 +165,11 @@ Step 0 暴露的关键问题：**"何时把输入域内容喂给模型"是宿主
 1. `input` 且 `ev.isComposing === false` ⇒ 观测（emit diff）。
 2. `compositionend` ⇒ 观测。
 3. `blur` ⇒ 观测（提交在途内容，恰好一次）。
-4. **兜底 tick**：距上一次 composition 事件超过 5s 时**无条件观测**——自过期的有界看门狗
+4. ~~**兜底 tick**：距上一次 composition 事件超过 5s 时**无条件观测**——自过期的有界看门狗
    （与 `termFocusOwnership` 的合成布尔同款），保证任何病理路径下文本最多迟到 5s，
-   **绝不永久吞字**。
+   **绝不永久吞字**。~~
+   ⚠️ **第 4 条已于 2026-08-14 上线后删除**（实证是一条真泄漏，改由三条真实边界承担
+   "绝不永久吞字"）——见文末「上线后实测修正」第 2 条。
 
 为什么这不违反铁律：铁律约束的是**模型**不得用 `composing` 门控 emit；宿主选择观测时机是
 另一回事——因为模型对 composition 事件无状态，即使 `compositionend` 永远不来，下一次
@@ -508,3 +510,90 @@ xterm 的 helper textarea 与 `.vh-term-input`），不是「都没收到」的�
   `onViewport` 第一条守卫是 `scale > 1.001` 直接 return ⇒ **软键盘避让数学整个停摆**
   （键盘盖住终端且不再还原）。移动端终端字号 12px 正好踩线 ⇒ overlay 在粗指针下抬到 16px、
   宽度上限收窄到 24 列、静止透明只在合成期露出。
+
+## 上线后实测修正（2026-08-14，`?input=own` 真机三问题）
+
+Step 3 把默认值翻成 `own` 之后 Owner 真机实报两条病象：「一个绿条跟着光标走」＋「中文输入法
+没法用（只进英文）」。默认值当场撤回 `xterm`（576874a9），CDP 取证得到三个独立问题——
+**三条都不是"新架构选错了"，而是两个潜伏缺陷被显影 + 一条设计判断做反了**。
+
+### 1. 「绿条跟着光标」= 全局 `:focus-visible` 焦点环被显影（不是新代码画的）
+
+`CSS.getMatchedStylesForNode` 点名：`textarea.vh-term-input` 命中的唯一规则是 `base.css` 的
+**元素级** `:focus-visible { outline:none; border-color:accent; box-shadow:0 0 0 3px accent-glow }`，
+实测 `boxShadow = rgba(52,226,196,0.16) 0 0 0 3px`。**旧路径同样命中这条规则** —— xterm 的
+helper textarea 一直在收同一个 3px 光晕，只是它 8px 宽、`opacity:0`，所以规则是**看不见**，
+不是无害。`.vh-term-input` 作者写了 `outline: none`（想到了 outline）却漏了 `box-shadow`
+（**规则真正画环用的就是 box-shadow**），于是一个刻意 `opacity:1`、宽 40 列的元素把它显影了。
+
+修法两条（都做）：
+- `.vh-term-input` 补 `box-shadow: none`，并加 `.vh-term-input:focus, :focus-visible`
+  （0,2,0）一份，使它**即使全局规则再被放宽也免疫**；
+- **结构性收窄**全局规则为 `:focus-visible:not(:where(.xterm, .xterm *))` ——
+  终端 pane 内不画 app chrome 的焦点环（pane 自己的指示器是那颗 teal 块光标，
+  `terminal.css` 原文就写着 "No focus ring either"）。`:where()` 在 `:not()` 里贡献
+  **0 特异性**，所以选择器仍是 (0,1,0)：既有组件覆盖的胜负关系一个都不变，这条修改
+  **只可能少画，不可能重排层叠**。将来任何"刻意可见的功能性输入元素"挂进 pane 都自动免疫。
+
+### 2. own 路径独有的真泄漏：合成在途停手 >5s 把拉丁 preedit 当正文灌进 PTY
+
+差分实证：停手 4.0s 无泄漏；停手 6.6s 时 `?input=own` 泄漏 `"ni hao"`（随后模型自己发 6 个
+`\x7f` 纠正），`?input=xterm` 无此现象——与 `COMPOSITION_STALE_MS = 5000` 一致。机制是
+★ 规则 4 的兜底 tick **无条件观测输入域**，而此刻输入域里装的正是拉丁 preedit。触发面比设计时
+以为的宽得多：**在候选窗里翻页不产生 `compositionupdate`**，所以"打一半翻候选"就会踩。
+
+**判断复盘（这是设计错，不是实现错）**：那条兜底防的失效模式是"`compositionend` 永不到来
+导致永久吞字"，而**那个失效模式只存在于旧架构** —— 旧路径卡的是 xterm 自己的持久标志
+`_isComposing`。新架构里合成状态由**浏览器**持有且是准的（IME 中止会发 `compositionend`，
+或下一个 `input` 的 `isComposing` 直接是 false）。用"把 preedit 当正文发出去"去防一个
+已不存在的问题，在**终端**里方向是反的：那几个字母在 vim normal mode 会被当命令吃掉，
+`\x7f` 纠正是不可逆副作用之后的补救，不是预防。
+
+**定稿：删掉第 4 条。** 「绝不永久吞字」改由三个**真实边界**承担，任意一条到达即补齐
+（模型是单调 diff，重复到达恒 emit `''`，多兜零成本）：
+1. **非合成 `input`** —— IME 中止/切走/继续打字时浏览器给的下一个 `input` 就是
+   `isComposing:false`，它携带字段全量；
+2. **`compositionend`** —— 正常提交（含 0ms 补跑，Safari/Firefox 晚一拍写字段）；
+3. **`blur`** —— 焦点离开（失焦后 IME 不会再给 `compositionend`）。
+
+`ObserveTrigger` 里**删掉 `tick` 这个 kind**（不是"tick 返回 false"）：让"拿时钟问该不该观测"
+在类型层面无法表达。阈值本身留下来只做一件事——合成停滞超过它时**记数不动作**：
+`isCompositionStale` / `tallyCompositionStale`（纯函数，一个停滞窗口只记一次）→
+`__vhTermDiag.guardCounters.compositionStaleSeen`。万一将来真出现"永不结束的合成"，
+我们**问得出来**，而不是靠一个会伤字节的兜底去猜（上次事故一半代价就是线上问不到状态）。
+
+### 3. preedit 与终端正文视觉无法区分（「以为 IME 坏了」的直接原因）
+
+新路径的 preedit 用**终端同一个字体 + 同一个前景色**内联画在光标处，看起来和"已经打进终端的
+英文"完全一样；旧路径是 xterm `.composition-view` 的 teal 边框气泡，一眼能看出"这是输入法在
+合成"。叠上问题 1 的绿框，用户看到的就是「光标处一个绿框、拼音以英文出现在里面」⇒ 判定
+"中文输入法不能用" ⇒ 按 Enter（**macOS 简体拼音的 Enter = 提交原始拉丁字母**）⇒ 真的只进英文。
+**"打不了中文"不是通路坏了，是观感把用户引到了一个会毁掉输入的操作上。**
+
+修法：`.vh-term-input.is-composing` 从"粗指针专用"改成**两端都用**（`syncPreedit` 去掉粗指针
+早退），观感与 `imeFix` 给 xterm 注的气泡**同两个色值**：不透明 `#181f2a` 底 + 1px `#34e2c4`
+描边 + 3px 圆角 + `z-index:10`。用 `outline` 而不是 `border`：`border-box` 加上抄来的 inline
+宽高下，1px border 会吃掉内容盒把 preedit 削顶；outline 不进布局。静止时依旧完全不可见
+（桌面 `clear-on-idle` 把字段收空、粗指针 `opacity:0`）。这个 class **纯装饰**、不 gate 任何
+字节，最坏后果是一个空框或 preedit 不显。
+
+### 验证方式（除单测门禁之外）
+
+- **焦点环**：真浏览器（Chrome 151）加载**本次构建产物**，把 `base.css` 里那条规则
+  **原地**（同 sheet 同 index）换回老写法做 A/B —— ⚠️ 不能用"在 head 末尾追加老规则"模拟，
+  那会让它排在所有组件 CSS 之后凭"同特异性后来者胜"拿到本来没有的话语权（实测把
+  `.vh-input` 的 border-color 抢成 accent，是**工具**的假阳性）。结果：Tab 扫描 8 站的真实控件
+  （`.vh-input` / `.auth-alt`）**逐属性一致**，光晕仍是 `rgba(52,226,196,0.16) 0 0 0 3px`；
+  `.xterm` 内的 `xterm-helper-textarea` 老规则下有光晕、新规则下 `none`（差异恰好落在
+  carve-out 上）；`.ci-textarea`（组件自带覆盖）两种写法下都是 `none`（特异性未变）。
+- **`.xterm` 里到底有什么可聚焦元素**：xterm 5.5 只给 helper textarea 设 `tabIndex=0`
+  （accessibility tree 不可 Tab），本仓在 `term.element` 内只有一处 `appendChild`
+  （overlay）。所以 carve-out 影响到的可聚焦元素**穷举就是这两个 textarea**，都不是
+  用户会看的控件。
+- **气泡**：同一构建下量 computed style —— 桌面静止 `background: rgba(0,0,0,0)` / 无描边；
+  桌面合成期 `rgb(24,31,42)` + `solid 1px rgb(52,226,196)` + `radius 3px` + `z-index 10`
+  + `box-shadow: none`；粗指针静止 `opacity 0`、合成期 `opacity 1`（`.is-composing` 排在
+  `.is-coarse` 之后，同特异性后者胜 —— 这条顺序有结构测试钉住）。
+- **留真机验证**：合成气泡宽度沿用 overlay 的 `min(40ch, 到右边缘)`，合成期会是一个
+  40 列宽的不透明框（旧路径的 xterm 气泡是贴合内容宽的）。行尾打字无所谓，**行中编辑
+  （vim）时它会盖住光标右侧的字**；要不要做"贴合内容宽"等真机看过再定。

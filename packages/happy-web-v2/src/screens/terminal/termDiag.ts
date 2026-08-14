@@ -36,6 +36,14 @@ export interface TermDiagGuardCounters {
     focusRestores: number;
     focusSkippedOverlay: number;
     focusSkippedComposing: number;
+    /**
+     * termInputHost（own 路径）：见过多少次「合成停滞超过
+     * `COMPOSITION_STALE_MS` 」的窗口。**纯观察量，不驱动任何动作** —— 原先那条
+     * "停滞就无条件观测输入域"的兜底会把拉丁 preedit 当正文灌进 PTY（2026-08-14
+     * 实证），已删；留这个计数器是为了万一真出现"永不结束的合成"时**问得出来**。
+     * 正常使用下它恒 0；持续增长 = 该回来看这条路径。
+     */
+    compositionStaleSeen: number;
 }
 
 export interface TermDiagSnapshot {

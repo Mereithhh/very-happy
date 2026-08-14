@@ -61,13 +61,27 @@ import { TERM_INPUT_CLASS } from './termInputElement';
 // ════════════════════════════════════════════════════════════════════════
 
 /**
- * ★ 宿主观测时机的兜底阈值（spec「★ 宿主观测时机」第 4 条）。
+ * 「合成停滞多久算病态」——**纯诊断阈值，不驱动任何动作**（2026-08-14 修正）。
  *
- * 距上一次 composition 事件超过这么久，就**无条件**观测一次输入域 —— 一个
- * **自过期的有界看门狗**（与 `termFocusOwnership` 的合成布尔同款）。
- * 它存在的唯一理由：保证任何病理路径（`compositionend` 永不到达、输入法不发
- * composition 事件、事件乱序）下，已经打进输入域的文本最多迟到 5s，
- * **绝不永久吞字**。注意它不是"闸门"——正常路径根本走不到它。
+ * 原设计（spec「★ 宿主观测时机」第 4 条）在这里放了一条兜底：距上一次 composition
+ * 事件超过 5s 就**无条件观测输入域**，理由是"保证任何病理路径下绝不永久吞字"。
+ * 上线后 CDP 实证它是一条**真泄漏**：合成在途停手 6.6s（打一半去翻候选窗——
+ * **翻页不产生 `compositionupdate`**，所以停手时钟照走），拉丁 preedit 被当正文
+ * 灌进 PTY（实测 `"ni hao"`，随后模型自己发 6 个 `\x7f` 纠正）。
+ *
+ * 为什么这条兜底整条删掉而不是调阈值：它防的失效模式是"`compositionend` 永不到来
+ * 导致永久吞字"，而**那个失效模式只存在于旧架构** —— 旧路径卡的是 xterm 自己那个
+ * 持久标志 `_isComposing`（`termInputModel` 头注的病根）。新架构里合成状态由
+ * **浏览器**持有且是准的：IME 中止时浏览器会发 `compositionend`，或者下一个 `input`
+ * 的 `isComposing` 直接就是 false。用"把 preedit 当正文发出去"去防一个已不存在的
+ * 问题，在终端里这笔交易方向是反的 —— 那几个字母在 vim normal mode 会被当命令吃掉，
+ * 而 `\x7f` 纠正是不可逆副作用之后的补救，不是预防。
+ *
+ * "绝不永久吞字"改由三个**真实边界**承担（见 `shouldObserveField`）：
+ * `compositionend` / 非合成 `input` / `blur`。阈值本身留下来只做一件事：
+ * 合成停滞超过它时**记数不动作**（`tallyCompositionStale` → `__vhTermDiag`
+ * 的 `guardCounters.compositionStaleSeen`），这样万一将来真出现"永不结束的合成"，
+ * 我们能**问得出来**，而不是靠猜 —— 上次事故一半的代价就是线上问不到状态。
  */
 export const COMPOSITION_STALE_MS = 5000;
 
@@ -103,26 +117,38 @@ export const COARSE_CLASS = 'is-coarse';
 export const COMPOSING_CLASS = 'is-composing';
 
 /**
- * 「现在该不该把输入域内容喂给模型」——spec「★ 宿主观测时机」的四条规则。
+ * 「现在该不该把输入域内容喂给模型」——**三条真实边界，没有第四条**
+ * （spec「★ 宿主观测时机」，2026-08-14 删掉原第 4 条兜底 tick，理由见
+ * `COMPOSITION_STALE_MS`）。
  *
- * 关键：**合成期不观测**。若合成期也全量观测，preedit 拼音会被回显进 PTY，
+ * 关键：**合成期不观测**。若合成期也观测，preedit 拼音会被回显进 PTY，
  * 与 §B ① 想要的"原生 inline preedit 画在光标处"叠字（PTY 回显的 "ni" 在下、
  * preedit 的 "ni" 在上），提交时还要看到一串退格。
  *
+ * 「绝不永久吞字」由这三条各自兜住，**任意一条到达就够**（模型是单调 diff，
+ * 重复到达恒 emit `''`，所以多兜零成本）：
+ *  ① 非合成 `input`：IME 中止/切走/直接打字时浏览器给出的下一个 `input` 就是
+ *    `isComposing:false`，它携带的是**字段全量**，diff 一次补齐所有在途文本；
+ *  ② `compositionend`：正常提交（含 0ms 补跑，Safari/Firefox 晚一拍写字段）；
+ *  ③ `blur`：焦点离开（失焦后 IME 不会再给我们 `compositionend`）。
+ * 这三条都是**浏览器给的事实**，不是我们维护的持久标志 —— 没有"标志与现实不同步"
+ * 这种失效模式，所以不再需要一个定时器去猜。
+ *
  * 为什么这不违反 `termInputModel` 的铁律：铁律约束的是**模型**不得用 `composing`
- * 门控 emit；宿主选择观测时机是另一回事 —— 模型对 composition 事件无状态，
- * 即使 `compositionend` 永远不来，下一次非合成 `input` 携带的**完整 diff**
- * 也会一次性补齐。
+ * 门控 emit；宿主选择观测时机是另一回事 —— 模型对 composition 事件无状态。
+ *
+ * ⚠️ `ObserveTrigger` 里**故意没有 `tick`**：这不是"tick 时返回 false"，而是让
+ * "拿一个时钟来问该不该观测"在类型层面无法表达 —— 那条规则是靠时钟猜合成状态，
+ * 已实证会把 preedit 当正文发出去。
  */
 export type ObserveTrigger =
     | { kind: 'input'; isComposing: boolean }
     | { kind: 'composition-end' }
-    | { kind: 'blur' }
-    | { kind: 'tick'; now: number; lastCompositionAt: number };
+    | { kind: 'blur' };
 
 export function shouldObserveField(trigger: ObserveTrigger): boolean {
     switch (trigger.kind) {
-        // ① 非合成的 input：正常桌面打字、粘贴后的字段变化、死键结算。
+        // ① 非合成的 input：正常桌面打字、粘贴后的字段变化、死键结算、IME 中止。
         case 'input':
             return trigger.isComposing === false;
         // ② 合成结束：提交文本到位（有的浏览器要等下一拍，见 onCompositionEnd 的 0ms 补跑）。
@@ -131,10 +157,58 @@ export function shouldObserveField(trigger: ObserveTrigger): boolean {
         // ③ 失焦：把在途内容提交掉，恰好一次（迟到的 end 不会重复发 —— 模型是 diff）。
         case 'blur':
             return true;
-        // ④ 兜底 tick：自过期看门狗，见 COMPOSITION_STALE_MS。
-        case 'tick':
-            return trigger.now - trigger.lastCompositionAt > COMPOSITION_STALE_MS;
     }
+}
+
+// ── 合成停滞：只记数，不动作（见 COMPOSITION_STALE_MS）─────────────────────
+
+export interface CompositionStaleInput {
+    /** 模型当前是否认为在合成中（`state.composing`）。 */
+    composing: boolean;
+    now: number;
+    /** 最近一次 composition 事件（start/update/end）的时刻；0 = 从未合成过。 */
+    lastCompositionAt: number;
+}
+
+/**
+ * 「这次合成停滞得不正常」——**纯诊断判定，调用方不许据此产生任何字节**。
+ *
+ * 只在合成中才有意义（非合成期字段内容早已由 ① 观测提交，"停滞"本身是正常稳态：
+ * 桌面稳态下 `lastCompositionAt` 恒 0，这里恒 false，不会把稳态记成病态）。
+ */
+export function isCompositionStale(i: CompositionStaleInput): boolean {
+    if (!i.composing) return false;
+    if (i.lastCompositionAt <= 0) return false;
+    return i.now - i.lastCompositionAt > COMPOSITION_STALE_MS;
+}
+
+/**
+ * 停滞计数器。`seen` 只增不减（诊断用），`noted` 保证**一个停滞窗口只记一次**
+ * —— 不然 250ms 一 tick，一次翻候选窗就能刷出几十条，数字失去意义。
+ */
+export interface CompositionStaleTally {
+    seen: number;
+    noted: boolean;
+}
+
+export const initialStaleTally = (): CompositionStaleTally => ({ seen: 0, noted: false });
+
+/** tick 时调用：越过阈值就记一次（幂等到窗口结束）。**永不返回动作。** */
+export function tallyCompositionStale(
+    t: CompositionStaleTally,
+    i: CompositionStaleInput,
+): CompositionStaleTally {
+    if (!isCompositionStale(i)) return t;
+    if (t.noted) return t;
+    return { seen: t.seen + 1, noted: true };
+}
+
+/**
+ * composition 事件到达 ⇒ 停滞窗口重开（IME 又活了）。
+ * 于是"打一半停手很久、再回来接着打、又停手很久"会记成 2 次，如实反映两段停滞。
+ */
+export function resetStaleWindow(t: CompositionStaleTally): CompositionStaleTally {
+    return t.noted ? { seen: t.seen, noted: false } : t;
 }
 
 /**
@@ -240,10 +314,18 @@ export function vtKeyClearsField(ev: {
 /**
  * 合成气泡该不该显示 —— **纯装饰**（spec §B ① 末段明确允许的那种镜像）。
  *
- * 只在粗指针下用。为什么移动端要这个开关而桌面不要：移动端策略是 `sticky`，
- * 字段里会留着当前这一行；一个常显的 opacity:1 元素会把这一行画在光标处，与
- * PTY 的回显叠字。于是移动端默认 `opacity:0`（与旧路径的 helper textarea 观感
- * 一致），只在合成期露出来给 preedit 用。
+ * **两端都用**（2026-08-14 起；原先只在粗指针下）。粗指针的理由是"静止不可见"：
+ * 移动端策略是 `sticky`，字段里会留着当前这一行；一个常显的 opacity:1 元素会把
+ * 这一行画在光标处，与 PTY 的回显叠字。于是移动端默认 `opacity:0`（与旧路径的
+ * helper textarea 观感一致），只在合成期露出来给 preedit 用。
+ *
+ * 桌面新增的理由是**可辨识性**：桌面 overlay 用终端同一个字体 + 同一个前景色把
+ * preedit 内联画在光标处，看起来和"已经打进终端的英文"一模一样 —— 用户据此判定
+ * "中文输入法不能用"，然后按 Enter（macOS 简体拼音的 Enter = **提交原始拉丁
+ * 字母**），于是真的只进去英文。旧路径没这个问题：xterm 的 `.composition-view`
+ * 是个 teal 边框气泡，一眼就能看出"这是输入法在合成"。所以合成期两端都给一个
+ * 同款气泡观感（`terminal.css` 的 `.vh-term-input.is-composing`），静止时桌面
+ * 依旧完全不可见（`clear-on-idle` 会把字段收空）。
  *
  * 这不违反铁律：它**不参与任何字节的产生**，最坏后果是"一个空的透明框留在屏上"
  * 或"preedit 没露出来"，绝不吞键。而且它是**自过期**的 —— 每次 tick 重新求值，
@@ -345,6 +427,11 @@ export interface TermInputHostHandle {
      * 绝不参与"是否发送文本"的判断，见 `termInputModel` 的铁律。
      */
     isComposing(): boolean;
+    /**
+     * 只读诊断计数器（进 `__vhTermDiag.guardCounters`）。**没有任何一条是闸门**
+     * —— 见 `COMPOSITION_STALE_MS`：把"记数"和"动作"分开正是这次修正的要点。
+     */
+    readonly counters: { readonly compositionStaleSeen: number };
     dispose(): void;
 }
 
@@ -394,7 +481,9 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     term.attachCustomKeyEventHandler((ev) => ev.isTrusted === false);
 
     let state: TermInputState = initialState(opts.policy ?? 'clear-on-idle');
+    /** 最近一次 composition 事件的时刻。**只喂诊断计数器**，不参与任何 emit 判断。 */
     let lastCompositionAt = 0;
+    let stale: CompositionStaleTally = initialStaleTally();
     let disposed = false;
     let commitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -478,13 +567,17 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     };
     const onCompositionStart = (): void => {
         lastCompositionAt = now();
+        stale = resetStaleWindow(stale);
         apply({ type: 'composition-start' });
         syncPreedit();
     };
     const onCompositionUpdate = (): void => {
         // **一个字节都不读**：`compositionupdate.data` 从不参与输入通路
-        // （spec §B ① 的"零 JS 镜像"）。这里只给兜底 tick 续命。
+        // （spec §B ① 的"零 JS 镜像"）。这里只更新诊断用的停滞时钟。
+        // ⚠️ 注意它**不是**"合成还活着"的可靠信号：在候选窗里翻页不产生
+        // `compositionupdate`，所以停手时钟照走 —— 原兜底 tick 正是踩在这上面。
         lastCompositionAt = now();
+        stale = resetStaleWindow(stale);
     };
     const onCompositionEnd = (): void => {
         lastCompositionAt = now();
@@ -578,11 +671,11 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     };
 
     /**
-     * 合成气泡的**纯装饰**同步（粗指针专用，见 `shouldShowPreedit`）。
+     * 合成气泡的**纯装饰**同步（两端都做，见 `shouldShowPreedit`）。
      * 每个 composition/焦点事件与每个 tick 都重新求值 ⇒ 自过期，不可能卡住。
      */
     const syncPreedit = (): void => {
-        if (disposed || !coarse) return;
+        if (disposed) return;
         const on = shouldShowPreedit({
             composing: state.composing,
             focused: document.activeElement === el,
@@ -603,12 +696,19 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     const resizeDisp = term.onResize(syncGeometry);
     syncGeometry();
 
-    // 唯一的定时器：驱动 ★ 规则 4（兜底观测）、模型的 clear-on-idle `tick`、
-    // 以及几何重算（字号/布局变化不一定伴随 onCursorMove）。
+    // 唯一的定时器。它**不观测输入域** —— 观测只由三个真实边界触发
+    // （`shouldObserveField`；原第 4 条"停滞就无条件观测"已删，见
+    // `COMPOSITION_STALE_MS`）。定时器只做三件不产生字节的事：
+    // 模型的 clear-on-idle `tick`、几何重算（字号/布局变化不一定伴随
+    // `onCursorMove`）、以及合成停滞的**记数**。
     const timer = setInterval(() => {
         if (disposed) return;
         const t = now();
-        if (shouldObserveField({ kind: 'tick', now: t, lastCompositionAt })) observe();
+        stale = tallyCompositionStale(stale, {
+            composing: state.composing,
+            now: t,
+            lastCompositionAt,
+        });
         apply({ type: 'tick', now: t });
         syncGeometry();
         syncPreedit();
@@ -620,6 +720,9 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         blur: () => el.blur(),
         isFocused: () => document.activeElement === el,
         isComposing: () => state.composing,
+        counters: {
+            get compositionStaleSeen() { return stale.seen; },
+        },
         dispose() {
             disposed = true;
             clearInterval(timer);

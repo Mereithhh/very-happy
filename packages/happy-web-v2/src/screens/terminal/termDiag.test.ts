@@ -22,6 +22,7 @@ const baseRead = () => ({
         focusRestores: 4,
         focusSkippedOverlay: 5,
         focusSkippedComposing: 6,
+        compositionStaleSeen: 7,
     },
     lastRestoreAt: 1234,
 });
