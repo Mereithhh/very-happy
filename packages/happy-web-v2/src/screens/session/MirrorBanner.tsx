@@ -17,11 +17,12 @@
  */
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, TerminalSquare } from 'lucide-react';
-import { useSession, useLocalSettingMutable } from '@/sync/storage';
+import { useSession, useSessionUsage, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { withTerminalViewOverride } from '@/sync/terminalViewPref';
 import { useTranslation } from '@/i18n/useTranslation';
+import { contextPercentUsed } from './format';
 import './mirror.css';
 
 export function MirrorBanner({ sessionId }: { sessionId: string }) {
@@ -37,6 +38,12 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
         (s) => !!terminalId && s.terminals.some((x) => x.id === terminalId),
     );
     const [overrides, setOverrides] = useLocalSettingMutable('terminalViewOverrides');
+    // Context meter: the mirror gets usage for free from the mapper, but its
+    // usual home (the composer status row) is hidden here — surface it in the
+    // note strip instead.
+    const usage = useSessionUsage(sessionId);
+    const contextSize = usage?.contextSize ?? 0;
+    const percentUsed = contextSize > 0 ? contextPercentUsed(contextSize) : null;
 
     const canGoTerminal = terminalLive && !!machineId && !!terminalId;
 
@@ -57,6 +64,14 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
             )}
             <div className="mrb-note" role="note">
                 <span className="mrb-note-text">{t('session.mirror.readOnly')}</span>
+                {percentUsed !== null && (
+                    <span
+                        className="mrb-meter mono"
+                        title={t('session.chat.contextMeter', { percent: percentUsed })}
+                    >
+                        {t('session.chat.contextLeft', { percent: 100 - percentUsed })}
+                    </span>
+                )}
                 {canGoTerminal && (
                     <button type="button" className="mrb-term-btn mono" onClick={goTerminal}>
                         <TerminalSquare size={13} />

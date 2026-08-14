@@ -49,6 +49,11 @@
   flex: 1;
   min-width: 0;
 }
+.mrb-meter {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
 .mrb-term-btn {
   flex: none;
   display: inline-flex;
