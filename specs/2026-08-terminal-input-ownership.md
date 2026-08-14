@@ -1,6 +1,6 @@
 # 终端输入路径所有权改造（Input Ownership）
 
-> 状态：Draft
+> 状态：**Shipped（Step 0-3，2026-08-14）** ｜ Step 4（删旧路径）刻意押后
 > 日期：2026-08-14 ｜ 关联 backlog：B-093 ｜ 前身：无（前两轮是补丁：`imeStuckGuard.ts` 自愈 + `utils/ime.ts` 守卫）
 
 ## 背景
@@ -474,3 +474,37 @@ IME 打"你好"，断言 emitted 拼接恰好等于期望串；④结构断言 `
 6. **iPad + 硬件键盘**（coarse pointer 但有真键盘）：路由表在这台设备上的表现。
 7. **vim / less / tmux copy-mode** 逐键交互：方向键、Ctrl+方向、F 键、Shift+Tab。
 8. **⌘C 复制选区 + copy-on-select + OSC 52**（tmux yank）三条路径各一次。
+
+## 上线记录（2026-08-14）
+
+| Step | 内容 | 上线构建 | 门禁证据 |
+|---|---|---|---|
+| 0 | 纯函数 `termInputRoute`/`termInputModel` + 病理序列与性质测试 | （零接线） | 单测 940→1021；**做了变异验证**（故意加 `composing` 闸门 → 11 条红） |
+| 1 | 桌面自有 overlay 输入元素 + renderer 间接层 + 开关（默认关） | `202608141113` | 1021→1071；**golden 差分 142/142 逐字节一致**；点击焦点交接 5/5 |
+| — | B-095 `isAppChord`（macOS 上 Ctrl+K/J/N/R 归还终端） | `202608141113` 后 | 复跑差分：4 个用例从「两边都空」变成 `\x0b`/`\x0a` 且一致 |
+| 2 | 移动端接入同一路径（sticky 策略 + iOS 16px 防自动放大） | `202608141145` | 1071→1104；复跑 golden 142/142 无回归 |
+| 3 | **默认值翻成 `own`** | `202608141151` | 全部门禁复跑绿；旧路径留作逃生门 |
+| 4 | 删旧路径与三个补丁文件 | **未做（刻意）** | 需真实使用一批之后再清理 |
+
+**关键实证**：两条路径经指纹确认**真的分叉**（`ownInputEls` 0 vs 1、activeElement 分别是
+xterm 的 helper textarea 与 `.vh-term-input`），不是「都没收到」的假绿。`tmux` 前后逐行零差异。
+
+**实施中回流的设计修正**见上文「Step 0 实施回流的设计修订」，另有 Step 1/2 的补充发现：
+- 耦合点实际是 **11 处**（spec 写 8），漏的那个是 `classifyFocusHolder` 的 class 判定——漏改不会
+  立刻打不了字，但诊断快照会把 overlay 报成 `'other'`，而「焦点在谁手里」正是上次事故唯一
+  问得出真相的量。
+- **`pointer-events:none` 与「点击终端要能聚焦」冲突**：点击仍走 xterm 的 mousedown →
+  `term.focus()` → helper textarea 拿到焦点 → 真实按键被安全带全部否决 = **打字全哑**。
+  spec 完全没提这条通路。实现用 `focusin` 弹回自愈（**整个改造里唯一靠时序自愈而非构造
+  成立的地方**），已由 focus-handoff 探针 5/5 背书。
+- 因此验收标准「`term.textarea` 永不等于 `document.activeElement`」**字面上做不到**（click 期间
+  有同步的瞬时窗口）；要构造性成立需给 xterm textarea 加 `inert`，那是又一个赌注，未押。
+- **拖放文本落到输入元素做不到**（`pointer-events:none` 的元素不能当 drop target）；行为与旧
+  路径一致，非回归。
+- **barMode 双发风险不成立**：`TermInputBar` 在 `term.element` 之外，两个输入面 DOM 不相交。
+  反向才是真风险——barMode 下停用增量观测会让 overlay 变成**静默缓冲区**（打字零回显直到
+  回车），正是本 spec 要消灭的吞字形态。
+- **iOS 的真雷不是 pan 是自动放大**：Safari 聚焦字号 <16px 的表单控件会放大整页，而
+  `onViewport` 第一条守卫是 `scale > 1.001` 直接 return ⇒ **软键盘避让数学整个停摆**
+  （键盘盖住终端且不再还原）。移动端终端字号 12px 正好踩线 ⇒ overlay 在粗指针下抬到 16px、
+  宽度上限收窄到 24 列、静止透明只在合成期露出。
