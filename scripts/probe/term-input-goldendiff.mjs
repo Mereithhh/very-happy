@@ -345,7 +345,7 @@ async function httpJson(url, method = 'GET') {
     try { return JSON.parse(text); } catch { return text; }
 }
 
-async function ensureChrome(opts) {
+export async function ensureChrome(opts) {
     const version = await httpJson(`http://127.0.0.1:${opts.port}/json/version`).catch(() => null);
     if (version && version.Browser) return { launched: false, version: version.Browser };
     mkdirSync(opts.profile, { recursive: true });
@@ -367,7 +367,7 @@ async function ensureChrome(opts) {
 }
 
 /** 打开一个新 tab 并连上；返回一个带 evalJs/send 的会话。 */
-async function openTab(port, url) {
+export async function openTab(port, url) {
     const created = await httpJson(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, 'PUT');
     const target = typeof created === 'object' && created.webSocketDebuggerUrl
         ? created
@@ -375,7 +375,7 @@ async function openTab(port, url) {
     return attach(port, target);
 }
 
-async function attachExisting(port, url) {
+export async function attachExisting(port, url) {
     const list = await httpJson(`http://127.0.0.1:${port}/json`);
     const page = list.find((t) => t.type === 'page' && !t.url.startsWith('devtools://'));
     if (page) return attach(port, page);
@@ -432,7 +432,7 @@ async function attach(port, target) {
     return { target, ws, send, on, evalJs, evalJson, close: () => { try { ws.close(); } catch { /* 已关 */ } } };
 }
 
-async function closeTab(port, targetId, tab) {
+export async function closeTab(port, targetId, tab) {
     try { await tab?.send('Page.handleJavaScriptDialog', { accept: true }); } catch { /* 没有对话框 */ }
     tab?.close();
     // Target.closeTarget（走 HTTP /json/close）是强制关闭，不会卡在 beforeunload 上。
@@ -448,7 +448,7 @@ async function closeTab(port, targetId, tab) {
  * T5：**每次路由变化后必须重跑** —— WebTerminalScreen 会 remount，握着旧实例
  * 测出来的一切都是假的（ime-diag 有一轮就是这么废掉的）。
  */
-const FIND_TERM = `(()=>{
+export const FIND_TERM = `(()=>{
   let host = document.querySelector('.xterm');
   if (!host) return 'no .xterm';
   let key = null;
@@ -774,7 +774,7 @@ function createBrowserSession(ctx) {
     };
 }
 
-async function waitFor(fn, timeoutMs, message) {
+export async function waitFor(fn, timeoutMs, message) {
     const t0 = Date.now();
     for (;;) {
         let ok = false;
@@ -789,7 +789,7 @@ async function waitFor(fn, timeoutMs, message) {
 // 登录 / 建终端 / 清理
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function ensureLoggedIn(tab, opts) {
+export async function ensureLoggedIn(tab, opts) {
     await tab.send('Page.navigate', { url: `${opts.base}/` });
     await sleep(4000);
     const path = await tab.evalJs('location.pathname');
@@ -822,7 +822,7 @@ async function ensureLoggedIn(tab, opts) {
 }
 
 /** __vhTermInput 只在 debugMode 下挂。这个 profile 是本工具专用的独立"设备"，翻它无副作用。 */
-async function ensureDebugMode(tab) {
+export async function ensureDebugMode(tab) {
     const changed = await tab.evalJs(`(()=>{
       const K='mmkv:default:local-settings';
       let s = {}; try { s = JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) { s = {}; }
@@ -860,7 +860,7 @@ function tmuxSessions() {
  *   ③  断言 `vh-<tid>` 不在点击**之前**的 tmux 会话集合里（本机才有效）。
  * 清理时还会再查一次 ②③ 的 before 集合（见 cleanupTerminal 的调用点）。
  */
-async function createTestTerminal(tab, opts) {
+export async function createTestTerminal(tab, opts) {
     const before = new Set(tmuxSessions());
     await tab.send('Page.navigate', { url: `${opts.base}/terminal` });
     await sleep(4000);
@@ -918,7 +918,7 @@ async function createTestTerminal(tab, opts) {
  * 把终端压成字节水槽：raw 模式后 Ctrl+C/D/Z/S 都只是普通字节，扫描表里的危险键
  * 既杀不掉 shell 也执行不了东西。走 term.paste（= xterm 既有粘贴通路 → onData → sendInput）。
  */
-async function prepSink(tab) {
+export async function prepSink(tab) {
     const cmd = 'stty raw -echo -isig -ixon 2>/dev/null; cat > /dev/null\r';
     await tab.evalJs(`(()=>{const T=window.__VHGD_T; if(!T) return 'no term'; T.paste(${JSON.stringify(cmd)}); return 'ok';})()`);
     await sleep(1200);
@@ -933,7 +933,7 @@ const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  *   复活"的第二道闸，第一道闸（tmux 会话已经不存在）永远成立，所以可以接受；
  *   写成 read-modify-write + 原子 rename，至少不会踩掉别人的条目。
  */
-function cleanupTerminal(tid, { log = console.error, preExisting = null } = {}) {
+export function cleanupTerminal(tid, { log = console.error, preExisting = null } = {}) {
     if (!tid) return { killed: false, tombstoned: false };
     // 最后一道保险：只杀"本次跑起来之前不存在"的会话。preExisting 是开跑前的 tmux
     // 快照；2026-08-14 的误杀就是死在没有这一条上。

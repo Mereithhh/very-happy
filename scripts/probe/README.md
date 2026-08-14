@@ -80,6 +80,9 @@ Enter 也执行不了任何东西。`--no-prep` 关掉这层保护（不建议�
 
 ### 已知盲区（这套差分兜不住的）
 
+（下面这条盲区里的「点击焦点交接」现在有专门的脚本，见本文件末尾
+`term-focus-handoff.mjs`。）
+
 - **可打印字符与 IME**：扫描表只有非文本键。P7 那条腿（输入域 → `input` → diff → PTY）、
   死键、Option 字符、中文合成一概没测，那是 `term-input-replay.mjs` 五场景的活。
 - **粘贴 / 复制 / 拖放**：独立于按键表，spec 另有一张粘贴矩阵。
@@ -103,3 +106,25 @@ Enter 也执行不了任何东西。`--no-prep` 关掉这层保护（不建议�
   （Ctrl+K = readline kill-line，Ctrl+J = 换行/accept-line，都是真实终端键）。
   Ctrl+K 会弹出命令面板并夺走焦点，Ctrl+J 静默吞掉。Linux/Windows 上 Ctrl+K/J
   作为 app 和弦是合理的 ⇒ 修法多半是 `isMac ? metaKey : ctrlKey`。
+
+## term-focus-handoff.mjs —— 点击后的焦点交接（`?input=own` 的最高真机风险）
+
+自有输入元素是 `pointer-events:none`（不能挡住光标附近的拖选，spec §R6），所以点终端
+画面仍然走 xterm 自己的 `mousedown → term.focus()` → **helper textarea 拿到焦点**；
+此时安全带会把真实按键全部否决 = **光标看着还在、打字全哑**。实现靠 root 上的
+`focusin` 把焦点弹回 `.vh-term-input` 自愈（`termInputHost.ts` 的 `onFocusIn`）。
+
+```sh
+node scripts/probe/term-focus-handoff.mjs        # 5 个位置各点一次
+```
+
+每个位置：先 `blur()` 丢掉焦点 → 点击 → 断言 `document.activeElement` 是
+`.vh-term-input` → 发一个可打印键与一个方向键，断言 `__vhTermInput.routed` 有增长且
+`emitted` 是期望字节 → 最后打一份 `__vhTermDiag.snapshot()`（看 `focusOwner` 是不是
+`'terminal'`；报成 `'other'` 说明 `classifyFocusHolder` 的 class 兜底那层漏了）。
+
+终端的新建/清理与三道闸**直接复用** `term-input-goldendiff.mjs` 导出的函数
+（取第一个候选 + 硬断言 `fresh=1` + 断言新 id 不在开跑前的 tmux 快照里；清理时拒绝杀
+开跑前就存在的会话）—— 这套闸只能有一份实现，不许各抄一遍。
+
+退出码：`0` 全通过 · `1` 有断言失败 · `2` 跑不出结论。
