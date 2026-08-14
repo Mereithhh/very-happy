@@ -33,6 +33,18 @@ describe('closedTerminalsOf', () => {
     expect(out[0].title).toBeUndefined();
     expect(out[0].cwd).toBeUndefined();
   });
+
+  it('B-105: keeps a string mirrorSessionId, drops junk shapes', () => {
+    const out = closedTerminalsOf({
+      closedTerminals: [
+        { id: 'a', closedAt: 1, mirrorSessionId: 'mir-1' },
+        { id: 'b', closedAt: 2, mirrorSessionId: 42 },
+        { id: 'c', closedAt: 3, mirrorSessionId: '' },
+        { id: 'd', closedAt: 4 },
+      ],
+    });
+    expect(out.map((r) => r.mirrorSessionId)).toEqual(['mir-1', undefined, undefined, undefined]);
+  });
 });
 
 describe('buildClosedTerminalRows', () => {
@@ -62,6 +74,15 @@ describe('buildClosedTerminalRows', () => {
       new Set(['a']),
     );
     expect(rows.map((r) => r.terminalId)).toEqual(['b']);
+  });
+
+  it('B-105: rows carry mirrorSessionId through (structured-history link)', () => {
+    const rows = buildClosedTerminalRows(
+      [machine('m1', [{ id: 'a', closedAt: 1, mirrorSessionId: 'mir-1' }, { id: 'b', closedAt: 2 }])],
+      new Set(),
+    );
+    expect(rows.find((r) => r.terminalId === 'a')!.mirrorSessionId).toBe('mir-1');
+    expect(rows.find((r) => r.terminalId === 'b')!.mirrorSessionId).toBeUndefined();
   });
 
   it('falls back to the machine name when the record has no title', () => {

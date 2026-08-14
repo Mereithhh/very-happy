@@ -37,6 +37,8 @@ import { machineLabel } from '@/utils/machineUtils';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentStates } from '@/sync/terminalAgentState';
 import { pushedMachineSnapshots } from '@/sync/terminalPushOps';
+import { closedTerminalsOf } from '@/sync/closedTerminals';
+import { pruneTerminalViewOverrides } from '@/sync/terminalViewPref';
 import type { Machine } from '@/sync/storageTypes';
 
 function allMachines(): Machine[] {
@@ -57,9 +59,11 @@ function syncPushes(): void {
   const machines = allMachines();
   const pushed = pushedMachineSnapshots(machines);
   const trusted = new Set(pushed.map((p) => p.id));
+  let applied = false;
   for (const { id, snapshot } of pushed) {
     if (appliedPushVersions.get(id) === snapshot.updatedAt) continue;
     appliedPushVersions.set(id, snapshot.updatedAt);
+    applied = true;
     const machine = machines.find((m) => m.id === id)!;
     useTerminalSessions.getState().applyPush(id, machineLabel(machine), snapshot.terminals);
     useTerminalAgentStates.getState().ingest(id, snapshot.terminals);
@@ -68,6 +72,23 @@ function syncPushes(): void {
     if (trusted.has(id)) continue;
     appliedPushVersions.delete(id);
     useTerminalSessions.getState().clearPush(id);
+  }
+  // B-105: the per-terminal view overrides (localSettings) ride the same
+  // ingestion beat — a terminal with a closed record no longer needs its
+  // override, and pruning here bounds the record's growth (M-3③). Only when
+  // a snapshot actually advanced; a no-op prune returns the same object, so
+  // this can't ping-pong with the storage subscription that re-runs us.
+  if (applied) {
+    const closed = new Set<string>();
+    for (const m of machines) {
+      for (const r of closedTerminalsOf(m.daemonState)) closed.add(r.id);
+    }
+    if (closed.size > 0) {
+      const st = storage.getState();
+      const cur = st.localSettings.terminalViewOverrides;
+      const next = pruneTerminalViewOverrides(cur, closed);
+      if (next !== cur) st.applyLocalSettings({ terminalViewOverrides: next });
+    }
   }
 }
 

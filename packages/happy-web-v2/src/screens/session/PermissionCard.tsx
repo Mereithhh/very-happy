@@ -8,6 +8,7 @@ import { ShieldAlert } from 'lucide-react';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { useSession } from '@/sync/storage';
+import { isMirrorSession } from '@/assistant/assistantSession';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button } from '@/ui';
 import { CodeView } from './CodeView';
@@ -117,6 +118,9 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
     const requestsObj = session?.agentState?.requests ?? null;
     const [busyAll, setBusyAll] = useState<null | 'approve' | 'deny'>(null);
 
+    // B-105: a terminal mirror is strictly read-only — permission UI never
+    // renders, whatever agentState claims (approval happens in the TUI).
+    if (session && isMirrorSession(session)) return null;
     if (!requestsObj) return null;
     const requests: Pending[] = Object.entries(requestsObj).map(([id, r]) => ({
         id,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, X } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, MessagesSquare, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket } from '@/sync/apiSocket';
 import {
@@ -50,6 +50,7 @@ import {
   type TermFocusEvent,
   type TermFocusAction,
 } from './termFocusPolicy';
+import { resolveTerminalView, withTerminalViewOverride } from '@/sync/terminalViewPref';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
 import {
@@ -131,6 +132,37 @@ export function WebTerminalScreen() {
   const renameTerminal = useTerminalSessions((s) => s.rename);
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
+
+  // ── B-105 terminal mirror: xterm ↔ structured toggle ──────────────────────
+  // The daemon pushes `mirrorSessionId` on terminals whose hand-launched
+  // `claude` is being mirrored. The toggle is a plain ROUTE JUMP to the mirror
+  // session (its banner jumps back) — deliberately not an in-page embed, so
+  // this file's input/focus/layout machinery is untouched (the tmux session
+  // stays alive; unmount/remount reattaches from the snapshot). Both
+  // directions record a per-terminal override (M-3③).
+  const mirrorSessionId = meta?.mirrorSessionId;
+  const [viewDefault] = useLocalSettingMutable('terminalViewDefault');
+  const [viewOverrides, setViewOverrides] = useLocalSettingMutable('terminalViewOverrides');
+  const goStructured = () => {
+    if (!tid || !mirrorSessionId) return;
+    setViewOverrides(withTerminalViewOverride(viewOverrides, tid, 'structured'));
+    navigate(`/session/${mirrorSessionId}`);
+  };
+  // Auto-open the structured face when the device preference resolves to it
+  // (常驻结构化). Only within a short window after mount: the mirror id can
+  // also APPEAR later (push lag, or claude launched minutes in) and a late
+  // redirect would yank the user out of the terminal mid-typing.
+  const mirrorMountAtRef = useRef(Date.now());
+  const mirrorAutoRef = useRef(false);
+  useEffect(() => {
+    if (mirrorAutoRef.current || !tid || !mirrorSessionId) return;
+    if (Date.now() - mirrorMountAtRef.current > 3000) return;
+    mirrorAutoRef.current = true;
+    if (resolveTerminalView(viewDefault, viewOverrides, tid) === 'structured') {
+      navigate(`/session/${mirrorSessionId}`, { replace: true });
+    }
+  }, [tid, mirrorSessionId, viewDefault, viewOverrides, navigate]);
+  // ───────────────────────────────────────────────────────────────────────────
 
   // Realtime sidebar ordering, layer 1 — the "I'm looking at this one" stamp.
   // Opening a terminal and having it on screen IS an interaction with it, even
@@ -1533,6 +1565,19 @@ export function WebTerminalScreen() {
         </button>
         <div className="term-header-right">
           {connecting && <span className="term-connecting mono">{t('common.loading')}</span>}
+          {/* B-105: structured-view toggle — header-level on purpose (mobile
+              must reach it in one glance, never inside a menu). Only exists
+              while the daemon reports a mirror session for this terminal. */}
+          {mirrorSessionId && (
+            <button
+              className="sb-icon-btn"
+              title={t('terminal.structuredView')}
+              aria-label={t('terminal.structuredView')}
+              onClick={goStructured}
+            >
+              <MessagesSquare size={18} />
+            </button>
+          )}
           {!isDesktop && (
             <button
               className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}

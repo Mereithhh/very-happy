@@ -458,6 +458,13 @@ export const zhHans: TranslationStructure = {
             collapse: '收起输入框',
         },
         inactiveArchived: '此会话处于非活动状态。',
+        // B-105 终端镜像：只读影子会话的横幅
+        mirror: {
+            readOnly: '只读镜像 · 比终端慢半拍 · 交互请回终端',
+            backToTerminal: '回终端',
+            needsInput: 'Claude 正在终端里等待输入',
+            needsInputAction: '点击切回',
+        },
         resumeFromTerminal: '要从终端恢复它：',
         done: '完成',
         completedChanges: ({ count }: { count: number }) => `${count} 个文件改动`,
@@ -949,6 +956,7 @@ export const zhHans: TranslationStructure = {
         unmarkPriority: '取消优先',
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
+        closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
         rowUnread: '有未读',
     },
@@ -1260,6 +1268,7 @@ export const zhHans: TranslationStructure = {
         claudeWorking: 'Claude：工作中',
         claudeNeedsInput: 'Claude：等待输入',
         claudeNeedsInputBody: 'Claude 需要你的输入',
+        structuredView: '结构化视图',
         selectMode: '选择/复制模式',
         selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
         keybarLabel: '终端按键',
@@ -1603,6 +1612,16 @@ export const zhHans: TranslationStructure = {
         inputOwnershipDescriptions: {
             xterm: '由终端库处理按键与输入法合成——当前行为。',
             own: '由我们处理按键与合成；拼音就地显示在光标处。',
+        },
+        viewDefaultGroup: '终端默认视图',
+        viewDefaultFooter: '终端里跑着 Claude 且有结构化镜像时，本设备默认用哪个视图打开。终端内的切换会按终端记忆，优先于此默认值。',
+        viewDefaultOptions: {
+            xterm: '终端（xterm）',
+            structured: '结构化聊天',
+        },
+        viewDefaultDescriptions: {
+            xterm: '原始终端——完整 TUI 保真。',
+            structured: 'Claude 对话的只读聊天渲染。',
         },
     },
 
