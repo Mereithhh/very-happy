@@ -64,35 +64,14 @@
  * Desktop is untouched — install only under a coarse pointer.
  */
 import type { Terminal } from '@xterm/xterm';
+import { diffTextValue, toPtyText } from './termInputModel';
 
 /**
- * END-RELATIVE edit diff between two textarea values, expressed as what a
- * terminal cursor at end-of-line can actually perform: delete everything after
- * the common PREFIX (as a CODE POINT count — one `\x7f` erases one code point
- * on the pty side), then retype the rest. Deliberately NO common-suffix
- * preservation: "helo "→"hello " must become "delete 2, type 'lo '", not an
- * impossible mid-string insert. End-of-line edits (the 99% mobile case:
- * typing, backspace, autocorrect replacing the last word) are minimal.
+ * The diff engine now lives in `termInputModel.ts` (shared with the input-
+ * ownership core, spec §E) — moved verbatim, behavior unchanged. Re-exported
+ * here so this module's public surface (and its tests) stay exactly as before.
  */
-export function diffTextValue(prev: string, next: string): { deletes: number; insert: string } {
-    if (prev === next) return { deletes: 0, insert: '' };
-    const minLen = Math.min(prev.length, next.length);
-    let p = 0;
-    while (p < minLen && prev.charCodeAt(p) === next.charCodeAt(p)) p++;
-    // Don't split a surrogate pair at the prefix boundary.
-    if (p > 0 && p < prev.length && p < next.length) {
-        const c = prev.charCodeAt(p - 1);
-        if (c >= 0xd800 && c <= 0xdbff) p--;
-    }
-    const removed = prev.slice(p);
-    const insert = next.slice(p);
-    return { deletes: [...removed].length, insert };
-}
-
-/** Normalize textarea-borne text for the pty: newlines become CR. */
-export function toPtyText(insert: string): string {
-    return insert.replace(/\r?\n/g, '\r');
-}
+export { diffTextValue, toPtyText };
 
 export interface MobileBridgeHandle {
     dispose(): void;
