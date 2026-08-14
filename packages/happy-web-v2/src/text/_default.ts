@@ -1641,6 +1641,20 @@ export const en = {
         startupGroup: 'Terminal startup command',
         startupFooter: 'Runs automatically when a NEW web terminal is created — never again when reattaching to an existing session. Leave empty to disable.',
         startupPlaceholder: 'e.g. cd ~/code && claude — empty = off',
+        // Experimental input-path switch (B-093). Wording is deliberately
+        // blunt about "flip it back if anything breaks": the whole reason this
+        // is a device-local setting and not a build flag is zero-release
+        // rollback.
+        inputOwnershipGroup: 'Terminal input method (experimental)',
+        inputOwnershipFooter: 'Who owns the terminal keyboard and IME state machine. The new path takes over composition itself, so an interrupted IME (switching input sources mid-word) can no longer wedge it. If anything misbehaves — a key doing nothing, odd focus, candidate window in the wrong place — switch back to Standard; it takes effect immediately, no reload or release needed. Desktop only for now.',
+        inputOwnershipOptions: {
+            xterm: 'Standard',
+            own: 'Own input (experimental)',
+        },
+        inputOwnershipDescriptions: {
+            xterm: 'The terminal library handles keys and composition — today\'s behavior.',
+            own: 'We handle keys and composition; pinyin/kana is drawn in place at the cursor.',
+        },
     },
 
     tmuxHelp: {

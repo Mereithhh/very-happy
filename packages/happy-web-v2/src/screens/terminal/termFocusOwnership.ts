@@ -31,6 +31,7 @@
  * 判定是纯函数（`shouldRestoreTerminalFocus`），全表单测；DOM 探测
  * （`hasOpenOverlay` / `classifyFocusHolder`）是鸭子类型的薄壳，可在 node 下测。
  */
+import { isTerminalInputElement } from './termInputElement';
 
 /** 谁拿着键盘焦点。'nobody' = body / null / documentElement —— 实测的病态。 */
 export type FocusHolder = 'terminal' | 'other' | 'nobody';
@@ -140,16 +141,23 @@ interface ElementLike {
 /**
  * 焦点主人分类（鸭子类型，无 DOM 依赖 / 无 instanceof，可在 node 下测）。
  * `body` / `html` / null 都算「没人」—— 这三种正是实测的失焦态。
+ *
+ * `terminalInput` = 当前生效的终端输入元素（`renderer.inputElement()`）：
+ * 旧路径是 xterm 的 helper textarea，输入所有权改造后是我们自己的 overlay。
  */
 export function classifyFocusHolder(
     active: unknown,
-    terminalTextarea: unknown,
+    terminalInput: unknown,
 ): FocusHolder {
     if (active == null) return 'nobody';
-    if (terminalTextarea != null && active === terminalTextarea) return 'terminal';
+    if (terminalInput != null && active === terminalInput) return 'terminal';
+    // Input-element coupling point 11/11 —— **spec 现状表漏列的一处**：焦点
+    // 看门狗自己也在按 class 名判断"焦点是不是在终端"。漏改它不会立刻打不了字
+    // （身份比较那一行已经能命中），但诊断快照会把我们的 overlay 报成 'other'，
+    // 而"焦点在谁手里"正是上次事故里唯一问得出真相的那个量。
+    // 输入元素可能被重建（renderer 重挂载 / 开关翻转），按 class 兜一层。
+    if (isTerminalInputElement(active)) return 'terminal';
     const el = active as ElementLike;
-    // 终端的 helper textarea 可能被重建（renderer 重挂载），按 class 兜一层。
-    if (el.classList?.contains?.('xterm-helper-textarea')) return 'terminal';
     const tag = el.tagName?.toUpperCase?.();
     if (tag === 'BODY' || tag === 'HTML') return 'nobody';
     return 'other';

@@ -48,6 +48,18 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
     const mouseFilter = installMouseModeFilter(term);
     term.open(opts.mount);
 
+    // Input-ownership seam (see TerminalRenderer's "Keyboard-input seam"):
+    // null = xterm's own helper textarea (today's path); set to our overlay by
+    // the screen when `terminalInputOwnership === 'own'`. Queried live rather
+    // than cached because the renderer can rebuild its textarea.
+    let ownInput: HTMLElement | null = null;
+    const inputElement = (): HTMLElement | null => ownInput ?? term.textarea ?? null;
+    const focusInput = () => {
+        const el = inputElement();
+        if (el === term.textarea) term.focus(); // xterm path: keep its own bookkeeping
+        else el?.focus({ preventScroll: true });
+    };
+
     return {
         get cols() { return term.cols; },
         get rows() { return term.rows; },
@@ -59,10 +71,52 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
         onData: (cb) => term.onData(cb),
         onKey: (cb) => term.onKey(cb),
         paste: (data) => term.paste(data),
-        focus: () => term.focus(),
-        blur: () => term.blur(),
+        focus: focusInput,
+        blur: () => { const el = inputElement(); if (el === term.textarea) term.blur(); else el?.blur(); },
         hasSelection: () => term.hasSelection(),
         getSelection: () => term.getSelection(),
+        inputElement,
+        setInputElement: (el) => { ownInput = el; },
+        focusInput,
+        blurInput: () => { const el = inputElement(); if (el === term.textarea) term.blur(); else el?.blur(); },
+        isInputFocused: () => {
+            const el = inputElement();
+            return el != null && typeof document !== 'undefined' && document.activeElement === el;
+        },
+        // Synthetic keydown against xterm's own textarea → its `_keyDown` runs
+        // the full encoder (DECCKM / application keypad / modifier params /
+        // F-keys / macOptionIsMeta / scrollOnUserInput) and the bytes land on
+        // `term.onData` → the screen's single `sendInput` chokepoint.
+        //
+        // KEYDOWN ONLY (spec §D discipline 1): `_keyUp` calls `this.focus()`.
+        // `bubbles:false` keeps the synthetic event out of the bubble phase —
+        // the app's window-CAPTURE shortcuts still see it (capture always runs)
+        // but they are stateless predicates that already declined the real
+        // event one tick earlier, so a second pass decides the same way.
+        //
+        // The legacy `keyCode`/`which` members are NOT in TS's
+        // KeyboardEventInit but every engine honours them — and xterm's
+        // `evaluateKeyboardEvent` reads `ev.keyCode` for most of its table, so
+        // they are load-bearing, not cosmetic.
+        sendKey: (ev) => {
+            const ta = term.textarea;
+            if (!ta) return;
+            ta.dispatchEvent(new KeyboardEvent('keydown', {
+                key: ev.key,
+                code: ev.code,
+                location: ev.location,
+                repeat: ev.repeat,
+                ctrlKey: ev.ctrlKey,
+                altKey: ev.altKey,
+                shiftKey: ev.shiftKey,
+                metaKey: ev.metaKey,
+                bubbles: false,
+                cancelable: true,
+                composed: true,
+                keyCode: ev.keyCode,
+                which: ev.keyCode,
+            } as KeyboardEventInit));
+        },
         dispose: () => { mouseFilter.dispose(); term.dispose(); },
         raw: term,
     };

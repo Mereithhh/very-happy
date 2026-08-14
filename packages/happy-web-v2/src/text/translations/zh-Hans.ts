@@ -1585,6 +1585,16 @@ export const zhHans: TranslationStructure = {
         startupGroup: '终端启动命令',
         startupFooter: '新建网页终端时自动执行；重连 / 附着已有会话绝不会再跑一遍。留空则不执行。',
         startupPlaceholder: '如 cd ~/code && claude，留空 = 关闭',
+        inputOwnershipGroup: '终端输入方式（实验性）',
+        inputOwnershipFooter: '决定由谁掌管终端的键盘与输入法状态机。新方式由我们自己接管输入法（composition）状态，打字打一半切换输入法不会再把中文输入卡死。若出现异常——某个键没反应、焦点跑掉、候选窗位置不对——切回「标准」即可，立即生效，不用刷新也不用发版。目前仅桌面端生效。',
+        inputOwnershipOptions: {
+            xterm: '标准',
+            own: '自有输入（实验性）',
+        },
+        inputOwnershipDescriptions: {
+            xterm: '由终端库处理按键与输入法合成——当前行为。',
+            own: '由我们处理按键与合成；拼音就地显示在光标处。',
+        },
     },
 
     tmuxHelp: {

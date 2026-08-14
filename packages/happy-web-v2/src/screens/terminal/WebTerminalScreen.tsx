@@ -25,6 +25,9 @@ import {
   type FocusOwnershipWatchdog,
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
+import { installTermInput, resolveInputOwnership } from './termInputHost';
+import { installTermInputDiag } from './termInputDiag';
+import { isTerminalInputElement } from './termInputElement';
 import { TermInputBar } from './TermInputBar';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
@@ -107,6 +110,14 @@ const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, M
 // gated on this so desktop is untouched.
 const IS_COARSE_POINTER =
   typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+
+// Platform, for the key routing table only (mac's ⌥ is a third-level shift
+// that PRODUCES characters — `∑` — while elsewhere Alt is a Meta prefix that
+// must be VT-encoded as ESC+char, or readline's M-b/M-f go silently dead).
+// Evaluated once: the keyboard doesn't change platform at runtime.
+const IS_MAC =
+  typeof navigator !== 'undefined'
+  && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
 
 export function WebTerminalScreen() {
   const { machineId } = useParams<{ machineId: string }>();
@@ -231,6 +242,20 @@ export function WebTerminalScreen() {
   // trait); remembered across sessions.
   const [inputBarMode, setInputBarMode] = useLocalSettingMutable('terminalInputBarMode');
 
+  // ── Input ownership (B-093, spec 2026-08-terminal-input-ownership) ────────
+  // Which input path this mount runs: xterm's helper textarea (legacy) or our
+  // own controlled element. `?input=own|xterm` overrides the stored setting for
+  // ONE navigation so the CDP golden key-scan can run both paths on the SAME
+  // build. Resolved OUTSIDE the effect and put in its deps: flipping the switch
+  // tears the terminal down and rebuilds it, which is what makes "never two
+  // input paths at once" structural rather than a cleanup we have to remember.
+  const [inputOwnershipSetting] = useLocalSettingMutable('terminalInputOwnership');
+  const inputOwnership = resolveInputOwnership({
+    setting: inputOwnershipSetting,
+    urlParam: params.get('input'),
+    coarsePointer: IS_COARSE_POINTER,
+  });
+
   // ── Mobile focus/keyboard policy ──────────────────────────────────────────
   // Pure state machine (see ./termFocusPolicy): decides whether taps / key-bar
   // keys / snippets may (re)focus the terminal — i.e. whether the soft keyboard
@@ -256,7 +281,8 @@ export function WebTerminalScreen() {
   const runFocusAction = (a: TermFocusAction) => {
     switch (a) {
       case 'focus-terminal':
-        termRef.current?.focus();
+        // Input-element coupling point 1/11 (spec 现状表) — via the renderer's input seam, never term.focus().
+        termRef.current?.focusInput();
         break;
       case 'focus-input-bar':
         inputBarRef.current?.focus();
@@ -265,9 +291,10 @@ export function WebTerminalScreen() {
         inputBarRef.current?.blur();
         break;
       case 'blur-all': {
-        const tm = termRef.current;
-        tm?.blur?.();
-        (tm?.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null)?.blur();
+        // Input-element coupling point 2/11 (spec 现状表) — one call instead of "blur() AND also hunt down
+        // the helper textarea by class", which is exactly the shape that
+        // silently misses the second input element.
+        termRef.current?.blurInput();
         inputBarRef.current?.blur();
         break;
       }
@@ -321,14 +348,17 @@ export function WebTerminalScreen() {
     const term = renderer.raw!;
     termRef.current = renderer;
 
-    // xterm's hidden input element — the ONE thing that "the terminal has
-    // keyboard focus" means. Queried live: the renderer can rebuild it.
-    const helperTextarea = () =>
-      (term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null);
     // Installed further down (desktop only); declared here so the focus/diag
     // closures below can read them (they only ever run on later events).
     let imeGuard: ReturnType<typeof installImeStuckGuard> = null;
     let focusWatchdog: FocusOwnershipWatchdog | null = null;
+    let ownInput: ReturnType<typeof installTermInput> = null;
+    // "Is an IME composition in flight?" — used ONLY to decide whether focus
+    // may be moved (moving it mid-composition silently eats the pinyin: that
+    // was the direct cause of "切输入法就打不了中文"). NEVER a send gate.
+    // Whoever owns the input path owns this answer.
+    const composingForFocus = () =>
+      ownInput?.isComposing() ?? imeGuard?.isComposingForFocus() ?? false;
 
     // Router basename-aware pathname (the app can be served under a subpath;
     // BASE_URL is what AppRoot feeds createBrowserRouter). NOTE: closeGuard's
@@ -341,9 +371,9 @@ export function WebTerminalScreen() {
     const readFocusOwnership = (): FocusOwnershipInput => ({
       onTerminalRoute: isOpenTerminalRoute(routePath()),
       hasOverlay: hasOpenOverlay(document),
-      holder: classifyFocusHolder(document.activeElement, helperTextarea()),
-      // Focus-only composition flag (imeStuckGuard header): never a send gate.
-      composing: imeGuard?.isComposingForFocus() ?? false,
+      holder: classifyFocusHolder(document.activeElement, renderer.inputElement()),
+      // Focus-only composition flag (see composingForFocus): never a send gate.
+      composing: composingForFocus(),
       documentHidden: document.hidden,
       windowFocused: typeof document.hasFocus === 'function' ? document.hasFocus() : true,
       coarsePointer: IS_COARSE_POINTER,
@@ -358,8 +388,17 @@ export function WebTerminalScreen() {
     // input path could be queried in the field: the guard's counters lived in a
     // closure and focus ownership had no readable snapshot. Off in production
     // unless `debugMode` is on; onData sampling records metadata only.
+    const diagEnabled =
+      import.meta.env.DEV || storage.getState().localSettings.debugMode === true;
+    // ── Golden key-scan surface (see ./termInputDiag.ts) ────────────────────
+    // Installed on BOTH paths — the whole point is diffing `?input=xterm`
+    // against `?input=own` byte-for-byte on the same build (spec §R3).
+    const inputDiag = installTermInputDiag({
+      enabled: diagEnabled,
+      ownership: inputOwnership,
+    });
     const diag = installTermDiag({
-      enabled: import.meta.env.DEV || storage.getState().localSettings.debugMode === true,
+      enabled: diagEnabled,
       read: () => {
         const snap = readFocusOwnership();
         return {
@@ -459,6 +498,9 @@ export function WebTerminalScreen() {
     const sendInput = (d: string) => {
       // Diagnostics: metadata only (length / CJK / control), never the text.
       diag.noteOnData(d);
+      // Golden key-scan buffer — records the LITERAL bytes (debugMode/dev only;
+      // see termInputDiag's header for why that exception is worth its cost).
+      inputDiag.noteEmitted(d);
       // Release a stuck gesture write-hold: if a lost mouseup left output
       // frozen, the user's own input (keystroke, IME commit, paste) must not
       // have its echo invisibly swallowed. No-op mid-normal-click (mouseup
@@ -519,6 +561,43 @@ export function WebTerminalScreen() {
       else if (key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey && !domEvent.altKey) titleBuf += key;
     });
 
+    // Same fallback, fed from the OTHER input path. Under input-ownership the
+    // PRINTABLE characters never reach xterm at all (they go field → diff →
+    // sendInput), so `term.onKey` above would only ever see the VT-routed keys
+    // and the heuristic would silently title nothing. Enter/Backspace still go
+    // through xterm's encoder (hence still through onKey), so this half only
+    // accumulates printables — counting `\x7f` here too would double-decrement.
+    const noteTitleFromOwnInput = (d: string) => {
+      if (titled || d === '') return;
+      if (startupCommandRef.current?.trim()) { titled = true; return; }
+      for (const ch of d) if (ch >= ' ' && ch !== '\x7f') titleBuf += ch;
+    };
+
+    // ── Own input element (input-ownership 'own', desktop only in Step 1) ───
+    // Installed AFTER sendInput exists (it is the pty writer) and after
+    // term.open (the renderer factory already ran, so term.element and the
+    // helper textarea whose geometry we copy both exist). See ./termInputHost
+    // for the mechanism; the two paths are mutually exclusive by construction —
+    // `inputOwnership` is an effect dep, so flipping it rebuilds the terminal,
+    // and coarse pointers (where mobileInputBridge lives) can't reach 'own'.
+    if (inputOwnership === 'own') {
+      ownInput = installTermInput({
+        term,
+        sendInput: (d) => { noteTitleFromOwnInput(d); sendInput(d); },
+        sendKey: (ev) => renderer.sendKey(ev),
+        paste: (text) => renderer.paste(text),
+        isMac: IS_MAC,
+        foreground: THEME.foreground,
+        // Desktop only in Step 1: the line-input bar is a coarse-pointer mode
+        // and coarse pointers are forced onto the legacy path (see
+        // resolveInputOwnership), so this is constant-false here by design.
+        barMode: () => false,
+        policy: 'clear-on-idle',
+        diag: inputDiag,
+      });
+      if (ownInput) renderer.setInputElement(ownInput.element);
+    }
+
     const doFit = () => {
       safeFit();
       if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
@@ -571,10 +650,11 @@ export function WebTerminalScreen() {
     // Fine pointers only, so mobile never force-opens the soft keyboard.
     const refocusTerminal = () => {
       if (IS_COARSE_POINTER || disposed || document.hidden) return;
-      const ta = helperTextarea();
-      if (ta && document.activeElement === ta) return; // rule 1
-      if (imeGuard?.isComposingForFocus()) return; // rule 3
-      term.focus(); // rule 2: focus only, never blur
+      // Input-element coupling point 3/11 (spec 现状表) — asks the renderer seam instead of hunting the
+      // helper textarea by class, so it is right on both input paths.
+      if (renderer.isInputFocused()) return; // rule 1
+      if (composingForFocus()) return; // rule 3
+      renderer.focusInput(); // rule 2: focus only, never blur
     };
     // rAF is paused while the tab is hidden, so a resize that lands in the
     // background never gets fitted; re-fit when the tab becomes visible again.
@@ -856,7 +936,8 @@ export function WebTerminalScreen() {
       requestAnimationFrame(doFit);
       // Don't steal focus from the line-input bar (input-bar mode): this runs
       // async after mount, and the bar may already own the keyboard.
-      if (!(IS_COARSE_POINTER && focusStateRef.current.barMode)) term.focus();
+      // Input-element coupling point 4/11 (spec 现状表).
+      if (!(IS_COARSE_POINTER && focusStateRef.current.barMode)) renderer.focusInput();
       // Arm the blank-screen belt once the restore (and stash flush) has been
       // written; give late tmux-attach repaint chunks a moment to land first.
       outChain = outChain.then(() => {
@@ -1101,8 +1182,10 @@ export function WebTerminalScreen() {
         settleTimers.delete(timer);
         if (disposed) return;
         const ae = document.activeElement;
+        // Input-element coupling point 5/11 (spec 现状表) — "focus is still on the terminal" must be true
+        // for EITHER input element, not just xterm's helper textarea.
         const target =
-          ae && ae.classList?.contains('xterm-helper-textarea') ? 'terminal'
+          isTerminalInputElement(ae) ? 'terminal'
           : ae && bottomBarsRef.current?.contains(ae) ? 'input-bar'
           : 'none';
         // 'none' ⇒ keyboard is gone: mark dismissed (no auto-refocus until the
@@ -1218,7 +1301,13 @@ export function WebTerminalScreen() {
       // cleared at blur, once the helper settles (desktop only —
       // mobileInputBridge OWNS the textarea model on coarse pointers).
       // Full failure-mode write-up in ./imeStuckGuard.ts.
-      imeGuard = installImeStuckGuard(term);
+      //
+      // NOT installed on the 'own' path: there the stuck state it detects is
+      // UNREACHABLE (xterm's CompositionHelper never receives a composition
+      // event because its textarea never gets focus), and a guard that pokes
+      // xterm's helper flags while our element owns the field is pure risk —
+      // round 2's lesson was that the treatment itself became the disease.
+      if (inputOwnership !== 'own') imeGuard = installImeStuckGuard(term);
       // ── Focus-ownership watchdog (./termFocusOwnership.ts) ────────────────
       // The persistent half of the 2026-08-14 failure was NOT an IME bug: after
       // ⌘K palette → Esc / ⌘R rename → Esc, `document.activeElement === BODY`
@@ -1290,7 +1379,11 @@ export function WebTerminalScreen() {
         focusWatchdog?.dispose();
         focusWatchdog = null;
       }
+      ownInput?.dispose();
+      ownInput = null;
+      renderer.setInputElement(null);
       diag.dispose();
+      inputDiag.dispose();
       writeHoldRef.current = null;
       sendInputRef.current = null;
       scheduleFitRef.current = null;
@@ -1300,7 +1393,7 @@ export function WebTerminalScreen() {
       term.dispose();
       termRef.current = null;
     };
-  }, [machineId, tid]);
+  }, [machineId, tid, inputOwnership]);
 
   const runCommand = (command: string) => {
     const tm = termRef.current;
@@ -1309,8 +1402,9 @@ export function WebTerminalScreen() {
     // Mobile: route through the focus policy (explicit menu gesture → may
     // focus + clear a dismissal; in input-bar mode it leaves focus with the
     // bar). Desktop keeps the unconditional historical refocus.
+    // Input-element coupling point 6/11 (spec 现状表).
     if (IS_COARSE_POINTER) dispatchFocus({ type: 'snippet' });
-    else tm.focus();
+    else tm.focusInput();
   };
 
   // Shortcut (insert kind) → terminal input. Bracketed paste — never
@@ -1435,7 +1529,8 @@ export function WebTerminalScreen() {
               onManage={() => navigateTo('/settings/snippets')}
               // Keyboard cancel (Esc / ⌘.) — back to the terminal, matching
               // where focus lived before the chord opened the menu.
-              onCancel={() => termRef.current?.focus()}
+              // Input-element coupling point 7/11 (spec 现状表).
+              onCancel={() => termRef.current?.focusInput()}
             />
           )}
           <button

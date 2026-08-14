@@ -150,6 +150,40 @@
 .term-host .xterm-viewport {
   overflow-y: auto;
 }
+/* ── Own terminal input element (input-ownership, spec §设计 B ①) ──────────
+   `terminalInputOwnership: 'own'` mounts this textarea INSIDE .xterm-helpers
+   (same coordinate origin as xterm's helper textarea, z-index 5 = above the
+   rows) and positions it on the cursor cell. It is deliberately VISIBLE
+   (opacity 1) so the browser paints IME preedit natively, in place, at the
+   cursor — the Claude TUI already has its own input box, and a second visible
+   box would create "where am I typing?" confusion. At rest its content is
+   empty, so nothing is on screen.
+
+   Colors: `color` is set INLINE from the same THEME constant xterm paints
+   from (WebTerminalScreen) — the terminal pane is the documented exception to
+   the no-raw-color rule, and duplicating the hex here would be a second
+   source of truth. Everything below is geometry/behavior only.
+
+   pointer-events:none is load-bearing: at up to 40 columns wide this element
+   sits on top of real terminal text, and a hit-testable overlay would eat
+   drag-selection near the cursor. Clicks therefore still reach xterm, which
+   focuses ITS textarea — termInputHost's focusin guard bounces focus back. */
+.vh-term-input {
+  position: absolute;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  opacity: 1;
+  background: transparent;
+  /* xterm's block cursor is the ONE cursor; a second caret would double up. */
+  caret-color: transparent;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
 /* ── Mobile bottom bars (key bar + optional line-input bar) ────────────────
    Wrapper for everything that sits between the terminal host and the soft
    keyboard. The keyboard-avoidance math (onViewport) reserves this wrapper's
