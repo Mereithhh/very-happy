@@ -6,6 +6,7 @@ import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
+import { NotesDock } from '@/screens/notes/NotesDock';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { useTerminalSync } from '@/sync/terminalSync';
 import { useNewTerminalShortcuts } from '@/app/newTerminal';
@@ -86,9 +87,14 @@ export function AppLayout() {
                 the expanded sidebar's footer row instead of moving on collapse */}
             <NotificationBell />
           </div>
-          <main className="app-detail">
-            <Outlet />
-          </main>
+          {/* main row: detail + notes dock share the cell so the dock
+              squeezes the active screen (B-094) */}
+          <div className="app-main-row">
+            <main className="app-detail">
+              <Outlet />
+            </main>
+            <NotesDock />
+          </div>
         </div>
       );
     } else {
@@ -103,9 +109,12 @@ export function AppLayout() {
           role="separator"
           aria-orientation="vertical"
         />
-        <main className="app-detail">
-          <Outlet />
-        </main>
+        <div className="app-main-row">
+          <main className="app-detail">
+            <Outlet />
+          </main>
+          <NotesDock />
+        </div>
       </div>
     );
     }
@@ -122,6 +131,9 @@ export function AppLayout() {
           <Outlet />
         </main>
       )}
+      {/* mobile dock is a fixed full-screen overlay (CSS) — mounts fine as a
+          sibling; still one instance total across the branches above */}
+      <NotesDock />
     </div>
   );
   }

@@ -25,6 +25,7 @@ import {
     getEffortLevelsForModel,
 } from '@/components/modelModeOptions';
 import { useImeGuard } from '@/utils/ime';
+import { onInsertToInput } from '@/app/insertToInput';
 import { ModeMenu } from './ModeMenu';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
@@ -127,6 +128,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
         requestAnimationFrame(() => taRef.current?.focus());
     };
+
+    // Insert target for the notes dock (vh:insert-to-input) — same semantics
+    // as picking a preset: append, never send. Latest closure via ref so the
+    // listener binds once.
+    const insertPresetRef = useRef(insertPreset);
+    insertPresetRef.current = insertPreset;
+    useEffect(() => onInsertToInput((textToInsert) => insertPresetRef.current(textToInsert)), []);
 
     const onPickFiles = () => fileInputRef.current?.click();
 

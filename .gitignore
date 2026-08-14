@@ -56,9 +56,11 @@ CLAUDE.local.md
 .environments/
 environments/data/
 
-# Development planning notes (keep local, don't commit)
-notes/
-docs/notes/
+# Development planning notes (keep local, don't commit).
+# Anchored to the repo root on purpose: a bare `notes/` swallows ANY notes
+# directory, including real source (src/screens/notes — B-094).
+/notes/
+/docs/notes/
 # ralphex progress logs
 progress*.txt
 

@@ -78,6 +78,19 @@ body.vh-col-resizing iframe {
   overflow: hidden;
   background: var(--bg-0);
 }
+/* main row: the detail pane + the notes dock (B-094) sharing one grid cell,
+   so the dock squeezes the active screen instead of floating over it */
+.app-main-row {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.app-main-row > .app-detail {
+  flex: 1;
+}
 /* generic picker/scroll page surface used by terminal picker etc. */
 .picker {
   display: flex;

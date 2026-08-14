@@ -18,6 +18,7 @@ import { installImeStuckGuard } from './imeStuckGuard';
 import { TermInputBar } from './TermInputBar';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
+import { onInsertToInput } from '@/app/insertToInput';
 import { useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
@@ -1220,6 +1221,12 @@ export function WebTerminalScreen() {
     const paste = presetPasteText(text);
     if (paste) runCommand(paste);
   };
+
+  // Insert target for the notes dock (vh:insert-to-input) — same insert-only
+  // semantics as presets (normalized, bracketed paste, never auto-executes).
+  const insertPresetRef = useRef(insertPreset);
+  insertPresetRef.current = insertPreset;
+  useEffect(() => onInsertToInput((text) => insertPresetRef.current(text)), []);
 
   // Shortcut (run kind, run:true) → paste THEN execute. The paste lands via
   // xterm's synchronous onData → sendInput, so the trailing \r is sequenced

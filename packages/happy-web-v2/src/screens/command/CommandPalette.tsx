@@ -9,6 +9,7 @@ import {
   Pencil,
   Archive,
   ClipboardList,
+  StickyNote,
   AudioLines,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
@@ -23,6 +24,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
+import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import {
   parseSidebarQuery,
   sidebarQueryIsEmpty,
@@ -210,6 +212,23 @@ export function CommandPalette() {
       icon: <ClipboardList size={16} />,
       haystack: (t('commandPalette.actionClipboardHistory') as string).toLowerCase(),
       run: openClipboardHistory,
+    });
+    out.push({
+      key: 'action:notes',
+      group: 'actions',
+      title: t('commandPalette.actionNotes'),
+      icon: <StickyNote size={16} />,
+      haystack: `notes ${(t('commandPalette.actionNotes') as string).toLowerCase()}`,
+      hint: '⌘J',
+      run: toggleNotesPanel,
+    });
+    out.push({
+      key: 'action:notes-all',
+      group: 'actions',
+      title: t('commandPalette.actionAllNotes'),
+      icon: <StickyNote size={16} />,
+      haystack: `notes ${(t('commandPalette.actionAllNotes') as string).toLowerCase()}`,
+      run: () => navigate('/notes'),
     });
     out.push({
       key: 'action:settings',

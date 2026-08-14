@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -42,6 +42,7 @@ import {
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
+import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import './sidebar.css';
 
 function rowHref(r: Row): string {
@@ -952,6 +953,15 @@ export function Sidebar() {
       <footer className="sb-footer">
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
           <Settings size={16} /> {t('tabs.settings')}
+        </button>
+        {/* notes dock toggle (B-094) — app chrome, so it shares the footer row */}
+        <button
+          className="sb-footer-btn sb-footer-notes"
+          onClick={toggleNotesPanel}
+          aria-label={t('notes.title')}
+          title={`${t('notes.title')} (⌘J)`}
+        >
+          <StickyNote size={16} />
         </button>
         {/* Notification center: bell + unread badge + panel (self-contained;
             the collapsed desktop rail carries its own instance). It used to

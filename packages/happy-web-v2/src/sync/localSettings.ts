@@ -79,6 +79,13 @@ export const LocalSettingsSchema = z.object({
     // Separate switch because it is a different mechanism with different costs
     // (it also fires on ⌘R / window close, and its UI belongs to the browser).
     closeTabWarning: z.boolean().describe('Ask the browser to confirm closing/reloading the tab while a session view is open'),
+    // Prompt-notes dock (B-094). All device-local like filesPanelWidth: which
+    // panel is open / how wide / which tabs are showing is screen geometry,
+    // not account state — note CONTENT syncs via account KV (notesStore.ts).
+    notesPanelOpen: z.boolean().describe('Notes dock visible (right-side panel on every route)'),
+    notesPanelWidth: z.number().nullable().describe('User-dragged notes dock width in px (null = responsive default)'),
+    notesOpenTabs: z.array(z.string()).describe('Note ids open as tabs in the notes dock, in tab order'),
+    notesActiveTab: z.string().nullable().describe('Note id of the active notes-dock tab (null = list view)'),
 });
 
 //
@@ -135,6 +142,10 @@ export const localSettingsDefaults: LocalSettings = {
     // stray ⌘W is the annoyance; one switch each turns them back off.
     closeViewConfirm: true,
     closeTabWarning: true,
+    notesPanelOpen: false,
+    notesPanelWidth: null,
+    notesOpenTabs: [],
+    notesActiveTab: null,
 };
 Object.freeze(localSettingsDefaults);
 
