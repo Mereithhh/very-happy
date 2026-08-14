@@ -15,11 +15,21 @@ import {
 } from '@/sync/ops';
 import { installMobileInputBridge, toPtyText } from './mobileInputBridge';
 import { installImeStuckGuard } from './imeStuckGuard';
+import {
+  classifyFocusHolder,
+  hasNonCollapsedSelection,
+  hasOpenOverlay,
+  installFocusOwnershipWatchdog,
+  isOpenTerminalRoute,
+  type FocusOwnershipInput,
+  type FocusOwnershipWatchdog,
+} from './termFocusOwnership';
+import { installTermDiag } from './termDiag';
 import { TermInputBar } from './TermInputBar';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
-import { useSettings, useLocalSettingMutable } from '@/sync/storage';
+import { storage, useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
@@ -311,6 +321,64 @@ export function WebTerminalScreen() {
     const term = renderer.raw!;
     termRef.current = renderer;
 
+    // xterm's hidden input element — the ONE thing that "the terminal has
+    // keyboard focus" means. Queried live: the renderer can rebuild it.
+    const helperTextarea = () =>
+      (term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null);
+    // Installed further down (desktop only); declared here so the focus/diag
+    // closures below can read them (they only ever run on later events).
+    let imeGuard: ReturnType<typeof installImeStuckGuard> = null;
+    let focusWatchdog: FocusOwnershipWatchdog | null = null;
+
+    // Router basename-aware pathname (the app can be served under a subpath;
+    // BASE_URL is what AppRoot feeds createBrowserRouter). NOTE: closeGuard's
+    // route matchers read the raw pathname — same known gap, not touched here.
+    const routePath = (): string => {
+      const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+      const p = window.location.pathname;
+      return base && p.startsWith(base) ? p.slice(base.length) || '/' : p;
+    };
+    const readFocusOwnership = (): FocusOwnershipInput => ({
+      onTerminalRoute: isOpenTerminalRoute(routePath()),
+      hasOverlay: hasOpenOverlay(document),
+      holder: classifyFocusHolder(document.activeElement, helperTextarea()),
+      // Focus-only composition flag (imeStuckGuard header): never a send gate.
+      composing: imeGuard?.isComposingForFocus() ?? false,
+      documentHidden: document.hidden,
+      windowFocused: typeof document.hasFocus === 'function' ? document.hasFocus() : true,
+      coarsePointer: IS_COARSE_POINTER,
+      // Dragging a selection in the sidebar also leaves activeElement on body —
+      // that's "I'm about to copy", not "focus is lost"; stealing focus could
+      // collapse the selection.
+      hasTextSelection: hasNonCollapsedSelection(window.getSelection?.()),
+    });
+
+    // ── Diagnostics hook (see ./termDiag.ts) ────────────────────────────────
+    // Half the cost of the 2026-08-14 recurrence was that NOTHING about the
+    // input path could be queried in the field: the guard's counters lived in a
+    // closure and focus ownership had no readable snapshot. Off in production
+    // unless `debugMode` is on; onData sampling records metadata only.
+    const diag = installTermDiag({
+      enabled: import.meta.env.DEV || storage.getState().localSettings.debugMode === true,
+      read: () => {
+        const snap = readFocusOwnership();
+        return {
+          focusOwner: snap.holder,
+          hasOverlay: snap.hasOverlay,
+          composing: snap.composing,
+          guardCounters: {
+            heals: imeGuard?.counters.heals ?? 0,
+            residueClears: imeGuard?.counters.residueClears ?? 0,
+            focusChecks: focusWatchdog?.counters.checks ?? 0,
+            focusRestores: focusWatchdog?.counters.restores ?? 0,
+            focusSkippedOverlay: focusWatchdog?.counters.skippedOverlay ?? 0,
+            focusSkippedComposing: focusWatchdog?.counters.skippedComposing ?? 0,
+          },
+          lastRestoreAt: focusWatchdog?.lastRestoreAt ?? 0,
+        };
+      },
+    });
+
     const safeFit = () => renderer.fit();
     requestAnimationFrame(safeFit);
     const t0 = setTimeout(safeFit, 60);
@@ -389,6 +457,8 @@ export function WebTerminalScreen() {
     apiSocket.onMessage('terminal-exit', onExit);
 
     const sendInput = (d: string) => {
+      // Diagnostics: metadata only (length / CJK / control), never the text.
+      diag.noteOnData(d);
       // Release a stuck gesture write-hold: if a lost mouseup left output
       // frozen, the user's own input (keystroke, IME commit, paste) must not
       // have its echo invisibly swallowed. No-op mid-normal-click (mouseup
@@ -421,7 +491,6 @@ export function WebTerminalScreen() {
     // view of the field, and could strand an undeletable last letter). Installed
     // after term.open (below, in the IS_COARSE_POINTER block).
     let mobileBridge: ReturnType<typeof installMobileInputBridge> = null;
-    let imeGuard: ReturnType<typeof installImeStuckGuard> = null;
 
     // FALLBACK auto-title from the first typed line — plain-shell terminals
     // only. The PRIMARY auto-title is the daemon following the pane's OSC
@@ -482,35 +551,47 @@ export function WebTerminalScreen() {
     const ro = new ResizeObserver(scheduleFit);
     ro.observe(mount);
     window.addEventListener('resize', scheduleFit);
-    // Regain input focus + clear any stuck IME composition. Two failure modes
-    // this fixes on desktop: (1) after switching browser tab / app window away
-    // and back, the hidden textarea has lost focus and typing goes nowhere until
-    // you click; (2) switching input method (IME) mid-session can leave xterm's
-    // internal _isComposing=true — every keydown is then silently swallowed and
-    // the terminal appears frozen. Blurring the helper textarea fires
-    // compositionend per spec, which resets that flag; then we refocus. Guarded
-    // to fine pointers so mobile never force-opens the soft keyboard.
-    const refocus = () => {
+    // Give the terminal keyboard focus back. Three rules, all of them paid for
+    // (2026-08-14, CDP-measured):
+    //  1. IDEMPOTENT — already focused ⇒ do nothing. A focus() on the element
+    //     that already has focus is harmless, but the check keeps every caller
+    //     of this function free of "did I just disturb an active field?".
+    //  2. NEVER blur(). The previous version did `ta.blur(); term.focus()` to
+    //     also clear a stuck IME composition, and THAT was the direct cause of
+    //     "切输入法就打不了中文": blurring mid-composition delivers
+    //     compositionend to xterm, which emits ZERO onData — the pinyin the
+    //     user had already typed is silently discarded. English never noticed,
+    //     which is why this looked like a CJK-only bug for two rounds.
+    //     Clearing a genuinely stuck composition is imeStuckGuard's job (its
+    //     non-229 heal branch, measured to work) plus its blur-scoped residue
+    //     clear; focus is not a treatment.
+    //  3. SKIP WHILE COMPOSING — same reason as (2), for any other trigger.
+    //     The flag comes from imeStuckGuard's browser-event-fed tracker, not
+    //     from xterm's private `_isComposing`.
+    // Fine pointers only, so mobile never force-opens the soft keyboard.
+    const refocusTerminal = () => {
       if (IS_COARSE_POINTER || disposed || document.hidden) return;
-      const ta = term.element?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
-      if (ta) ta.blur();
-      term.focus();
+      const ta = helperTextarea();
+      if (ta && document.activeElement === ta) return; // rule 1
+      if (imeGuard?.isComposingForFocus()) return; // rule 3
+      term.focus(); // rule 2: focus only, never blur
     };
     // rAF is paused while the tab is hidden, so a resize that lands in the
     // background never gets fitted; re-fit when the tab becomes visible again.
-    // Becoming visible again (tab switch, or mobile screen unlock) → re-fit,
-    // refocus (desktop), and catch up any output missed while hidden. catchUp
-    // is defined below in the same effect scope; onVisible only runs on events,
-    // long after the effect body (and catchUp) has initialized.
-    const onVisible = () => { if (!document.hidden) { scheduleFit(); refocus(); catchUp(); } };
+    // Becoming visible again (tab switch, or mobile screen unlock) → re-fit and
+    // catch up any output missed while hidden. catchUp is defined below in the
+    // same effect scope; onVisible only runs on events, long after the effect
+    // body (and catchUp) has initialized. Focus is NOT restored from here any
+    // more: visibilitychange, window 'focus' and stray focus moves all feed the
+    // ownership watchdog (installed below), which only acts when focus is
+    // genuinely unowned — the old unconditional refocus on these events could
+    // steal focus from a dialog input and fired mid-composition.
+    const onVisible = () => { if (!document.hidden) { scheduleFit(); catchUp(); } };
     document.addEventListener('visibilitychange', onVisible);
     // bfcache restore (iOS Safari commonly restores from bfcache on unlock and
     // fires pageshow rather than visibilitychange) → same catch-up path.
     const onPageShow = () => { if (!document.hidden) { scheduleFit(); catchUp(); } };
     window.addEventListener('pageshow', onPageShow);
-    // Returning to the window (alt-tab / app switch) restores focus to the body,
-    // not the terminal — refocus so the user can type immediately.
-    window.addEventListener('focus', refocus);
     // The web font loads async; xterm caches glyph cell size at open time from
     // whatever font was available then. Once the real font is ready, force a
     // re-measure so the cell size matches and text isn't clipped, then refit.
@@ -1092,7 +1173,10 @@ export function WebTerminalScreen() {
       // (termWriteHold keeps holding if mobile select-mode owns a hold too.)
       writeHold.gestureEnd();
       if (dragged || term.hasSelection()) return;
-      refocus(); // also clears a stuck IME composition, not just plain focus
+      // Plain click on the terminal = explicit intent to type here. Idempotent
+      // and composition-safe (see refocusTerminal); it no longer blurs, so a
+      // click can't eat an in-flight composition either.
+      refocusTerminal();
     };
     // Safety: a drag released outside the browser window never fires mouseup —
     // don't leave output frozen. (Mobile select-mode intentionally keeps its
@@ -1135,6 +1219,20 @@ export function WebTerminalScreen() {
       // mobileInputBridge OWNS the textarea model on coarse pointers).
       // Full failure-mode write-up in ./imeStuckGuard.ts.
       imeGuard = installImeStuckGuard(term);
+      // ── Focus-ownership watchdog (./termFocusOwnership.ts) ────────────────
+      // The persistent half of the 2026-08-14 failure was NOT an IME bug: after
+      // ⌘K palette → Esc / ⌘R rename → Esc, `document.activeElement === BODY`
+      // and typing went nowhere (0 bytes to the pty, both languages), while
+      // xterm's cursor merely turned hollow — invisible to the user. Handing
+      // focus back was an accidental behavior written in three places and
+      // MISSING in every non-⌘W dialog. Instead of patching each dialog, the
+      // invariant is enforced centrally: terminal route + no overlay + focus
+      // owned by nobody ⇒ the terminal gets it back. Never blurs, never steals
+      // from a real owner, never acts mid-composition.
+      focusWatchdog = installFocusOwnershipWatchdog({
+        read: readFocusOwnership,
+        restore: refocusTerminal,
+      });
     }
     // Mobile select-mode: freeze output for the whole mode — the mode exists
     // solely to let the OS long-press selection work on stable DOM text, and a
@@ -1151,7 +1249,6 @@ export function WebTerminalScreen() {
       clearTimeout(t0);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
-      window.removeEventListener('focus', refocus);
       window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
@@ -1190,7 +1287,10 @@ export function WebTerminalScreen() {
         window.removeEventListener('blur', onWinBlur);
         imeGuard?.dispose();
         imeGuard = null;
+        focusWatchdog?.dispose();
+        focusWatchdog = null;
       }
+      diag.dispose();
       writeHoldRef.current = null;
       sendInputRef.current = null;
       scheduleFitRef.current = null;
