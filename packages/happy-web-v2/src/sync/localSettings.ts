@@ -148,9 +148,14 @@ export const localSettingsDefaults: LocalSettings = {
     // Default to per-key mode: it's the full-fidelity terminal; users who hit
     // IME pain opt into the line-input bar from the key bar toggle.
     terminalInputBarMode: false,
-    // Step 1 ships the new path OFF: it is opt-in (settings toggle or
-    // `?input=own`) until a full batch of real-machine use says otherwise.
-    terminalInputOwnership: 'xterm',
+    // Step 3 (2026-08-14): the new path is now the DEFAULT. Gate evidence
+    // before flipping: 142/142 key-scan cases byte-identical between the two
+    // paths (`scripts/probe/term-input-goldendiff.mjs`, DECCKM both states,
+    // paths verified truly forked), click-focus handoff 5/5, 1104 unit tests.
+    // Rolling back is a settings toggle — deliberately NOT a release, because
+    // the input path is load-bearing. The old path stays in the bundle for one
+    // batch as the escape hatch (Step 4 deletes it, only after real use).
+    terminalInputOwnership: 'own',
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.
     clipboardAutoCopy: true,
