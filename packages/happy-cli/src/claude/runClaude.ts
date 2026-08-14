@@ -55,8 +55,13 @@ export interface StartOptions {
 }
 
 const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
-const DEFAULT_CLAUDE_MODEL = 'opus';
-const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
+// B-103: model/effort default to UNDEFINED — nothing is passed to the SDK, so
+// a fresh remote chat runs whatever the machine's own `claude` is configured
+// with (/model, adaptive thinking), exactly like a local invocation. The old
+// hardcoded 'opus'/'medium' silently overrode that and defeated the web-side
+// "default = follow the machine" contract (agentDefaults.ts).
+const DEFAULT_CLAUDE_MODEL: string | undefined = undefined;
+const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = undefined;
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);

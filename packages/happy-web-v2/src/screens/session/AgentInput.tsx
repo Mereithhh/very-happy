@@ -26,7 +26,13 @@ import {
 } from '@/components/modelModeOptions';
 import { useImeGuard } from '@/utils/ime';
 import { onInsertToInput } from '@/app/insertToInput';
+import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { ModeMenu } from './ModeMenu';
+
+// Sentinel key for the「默认」effort entry — not a real SDK effort level
+// (the CLI validates against low/medium/high/xhigh/max, so this can never
+// collide); picking it clears effortLevel and the wire carries effort:null.
+const EFFORT_DEFAULT_KEY = 'default';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentUsed } from './format';
@@ -74,6 +80,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default');
     const permKey = session?.permissionMode ?? null;
     const effortKey = session?.effortLevel ?? null;
+    // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
+    const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
 
     // context meter — always visible when we have a usage snapshot.
     const contextSize = usage?.contextSize ?? 0;
@@ -228,9 +236,22 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 {efforts.length > 0 && (
                     <ModeMenu
                         label={t('session.chat.effortLabel')}
-                        options={efforts}
-                        value={effortKey}
-                        onChange={(k) => setMode('updateSessionEffortLevel', k)}
+                        // B-103: claude gets an explicit「默认」entry (= send
+                        // nothing to the SDK → the machine's own adaptive
+                        // default). Before this, a null effortLevel fell back
+                        // to options[0] and the UI showed "low" while the CLI
+                        // actually ran its own default — a straight-up lie.
+                        options={isClaudeFlavor
+                            ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
+                            : efforts}
+                        value={isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey}
+                        onChange={(k) => {
+                            if (isClaudeFlavor && k === EFFORT_DEFAULT_KEY) {
+                                storage.getState().updateSessionEffortLevel(sessionId, null);
+                            } else {
+                                setMode('updateSessionEffortLevel', k);
+                            }
+                        }}
                     />
                 )}
             </div>

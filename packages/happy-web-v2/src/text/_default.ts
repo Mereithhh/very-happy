@@ -501,6 +501,8 @@ export const en = {
             modelLabel: 'model',
             permissionLabel: 'mode',
             effortLabel: 'effort',
+            effortDefault: 'default',
+            effortDefaultDesc: "follow the machine's own default (adaptive)",
             attach: 'Attach image',
             // Unified shortcuts (B-052): same list as the terminal menu, but
             // in the chat composer EVERY entry inserts (run flag ignored).
