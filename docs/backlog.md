@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-109 | 终端顶部 claude logo/欢迎框渲染少一截——Owner 实报。两个候选机制待定性：①经典渲染器（CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1）下横幅是一次性打印的静态历史，pane 尺寸变化后 tmux reflow 裁行、claude 不重画（固有代价）；②铁律 6 的 xterm/FitAddon 布局余量坑（顶行被视口裁掉）。区分法：上滚能看到=②布局问题；上滚也没有=①reflow。主 agent 将在发布后浏览器 E2E 里复现定性 | bug | Owner 实报 2026-08-15 | todo | 若为①：candidate 修法=开终端时先按当前几何 resize tmux 再注入 startup command，或接受为已知代价并在文档注明 |
 | B-106 | 镜像「中间过程看不到」定性与打磨：Owner 实报镜像里中间文本/过程缺失。已知三层机制性不可见：①TUI 交互层（权限对话/选择菜单）不进 transcript（needs_input 横幅即为此兜底）②长 assistant 文本整条落盘才可见（无 token 级流式）③system/isMeta 行刻意跳过（与正式会话一致）。待拿具体例子核对是否另有真 bug（thinking/subagent 泳道渲染） | bug | Owner 实报 2026-08-15 | todo | 先真机定性再决定修什么；spec「留真机验证项」已含滞后体感 |
 | B-107 | 镜像 v2 交互：底部行输入条走 **pty 通道**（整行组稿→送 pty→回车，镜像会话保持只读，输入经 transcript 自然回流）——needs_input 时手机上可直接回复，不必切回 xterm | feat | Owner 2026-08-15 | doing | 本批实现中（feat/mirror-v2）：machine RPC `mirror-terminal-send` + daemon 侧 sendToVhTerminal（bracketed paste 先例）+ 服务端 active-binding 硬守卫 |
 | B-108 | 镜像 tokens/context meter 数据链路断点：mapper 未把 transcript assistant 行的 `message.usage` 塞进 text envelope 的 `usage` 字段（wire schema 已有、web reducer 已消费 `processUsageData`→contextSize），turn-end usage 又仅 SDK result 行有（transcript 无）→ 镜像 meter 恒 0。修 mapper 填充即可；顺带核验 AskUserQuestion 选项卡（B-100 特化，只读不可点）与 subagent 泳道在镜像下的渲染 | bug | Owner 实报 2026-08-15 | doing | 本批实现中（feat/mirror-v2）：envelope 顶层加 optional usage（wire+web 双 schema）+ mapper stamp。**排查升级**：processUsageData 只被 legacy claude 格式喂，session-protocol 管线下所有会话 meter 均恒 0——修复面覆盖正式会话 |
