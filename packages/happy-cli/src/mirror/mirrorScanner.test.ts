@@ -111,3 +111,25 @@ describe('createMirrorScanner', () => {
         await waitFor(() => c.messages.some((m) => (m as any).uuid === 'u3'));
     });
 });
+
+describe('late transcript (regression: 60s give-up killed live mirrors)', () => {
+    it('waits out a transcript that appears late (claude writes nothing before the first user message)', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'mirror-scan-'));
+        const file = join(dir, 'late.jsonl');
+        // NOT created yet — the real-world shape of a freshly-opened claude.
+        const c = collector();
+        const scanner = createMirrorScanner({ backfillLines: 500, events: c.events, pollIntervalMs: 50 });
+        try {
+            scanner.addFile(file, 'backfill-tail');
+            await new Promise((r) => setTimeout(r, 400)); // well past several polls
+            expect(c.messages.length).toBe(0);
+
+            writeFileSync(file, userLine('first', 'finally typed something'));
+            await waitFor(() => c.messages.length >= 1);
+            expect((c.messages[0] as any).uuid).toBe('first');
+        } finally {
+            await scanner.cleanup();
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+});
