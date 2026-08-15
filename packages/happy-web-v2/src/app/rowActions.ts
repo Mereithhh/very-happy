@@ -20,6 +20,17 @@ import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionMarkComplet
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
+import { pickNextSessionId } from './nextSession';
+
+/** B-111: route to land on after closing `closedId` — the most recently
+ *  active other visible session, or '/' when none is left. Read the store at
+ *  CALL time (after the archive flipped local state is fine — the candidate
+ *  set excludes the closed id explicitly). */
+export function nextSessionPathAfterClose(closedId: string): string {
+  const all = Object.values(storage.getState().sessions ?? {}) as Session[];
+  const next = pickNextSessionId(all, closedId);
+  return next ? `/session/${next}` : '/';
+}
 
 /** The kill-first archive itself (no confirm). Mirrors happy-app's
  *  performArchive: server-side archive alone doesn't stick for a LIVE

@@ -9,7 +9,7 @@ import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows } from '@/sync/closedTerminals';
-import { confirmArchiveSession, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
+import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
@@ -1147,15 +1147,21 @@ function SidebarRow({
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
   // no delete flow exists for chat sessions.
-  const onArchiveOrClose = () =>
-    isTerminal
-      ? confirmCloseTerminal(row.machineId!, row.terminalId!, () => {
-          // Leaving the screen BEFORE the kill: a mounted terminal screen (or
-          // a refresh on its URL) would otherwise re-open the id and recreate
-          // the killed tmux session (see rowActions.confirmCloseTerminal).
-          if (selected) navigate('/');
-        })
-      : confirmArchiveSession(row.session!);
+  const onArchiveOrClose = async () => {
+    if (isTerminal) {
+      await confirmCloseTerminal(row.machineId!, row.terminalId!, () => {
+        // Leaving the screen BEFORE the kill: a mounted terminal screen (or
+        // a refresh on its URL) would otherwise re-open the id and recreate
+        // the killed tmux session (see rowActions.confirmCloseTerminal).
+        if (selected) navigate('/');
+      });
+      return;
+    }
+    const archived = await confirmArchiveSession(row.session!);
+    // B-111: archiving the OPEN session used to leave you stranded on the
+    // archived detail view — land on the next session instead.
+    if (archived && selected) navigate(nextSessionPathAfterClose(row.session!.id));
+  };
 
   // ONE item list feeds both the "…" dropdown and the right-click menu.
   const menuItems = rowMenuItems({

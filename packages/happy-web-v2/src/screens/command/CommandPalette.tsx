@@ -20,6 +20,7 @@ import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
+import { nextSessionPathAfterClose } from '@/app/rowActions';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
@@ -146,8 +147,8 @@ export function CommandPalette() {
   const archiveCurrent = useCallback(async () => {
     if (!currentSessionId) return;
     await sessionArchive(currentSessionId);
-    // leave the archived session's detail view
-    navigate('/');
+    // B-111: leave the archived detail view onto the next session.
+    navigate(nextSessionPathAfterClose(currentSessionId));
   }, [currentSessionId, navigate]);
 
   // ── build the full item index (unfiltered) ──

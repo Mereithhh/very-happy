@@ -58,6 +58,7 @@ import {
   archiveSessionNow,
   closeTerminalNow,
   confirmArchiveSession,
+  nextSessionPathAfterClose,
   confirmCloseTerminal,
 } from '@/app/rowActions';
 
@@ -117,8 +118,9 @@ async function archiveOrCloseTarget(
       } else {
         await archiveSessionNow(session);
       }
-      // Same landing spot as the command palette's "archive current chat".
-      navigate('/');
+      // B-111: land on the next session (most recently active other visible
+      // one) — same rule as the command palette's archive action.
+      navigate(nextSessionPathAfterClose(target.sessionId));
     } else {
       // Navigate BEFORE the kill: a still-mounted terminal screen would
       // re-open the id and recreate the killed tmux session (see
