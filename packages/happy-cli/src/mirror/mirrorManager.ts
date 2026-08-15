@@ -66,6 +66,11 @@ export interface MirrorManager {
     /** Shadow session id for a terminal (active or ended) — feeds the
      *  webTerminals push + closed-terminal records. */
     resolveMirrorSessionId(terminalId: string): string | undefined;
+    /** B-107 hard guard for mirror-terminal-send: only a terminal whose
+     *  mirror binding is ACTIVE (claude verifiably running) may receive
+     *  pasted input — after claude exits the same bytes would execute in a
+     *  bare shell. */
+    isMirrorInputAllowed(terminalId: string): boolean;
     /** Rebuild bindings for still-alive terminals after a daemon restart. */
     restore(): Promise<void>;
     /** Daemon shutdown: flush + close clients WITHOUT archiving (a restart
@@ -323,6 +328,10 @@ export function createMirrorManager(deps: {
 
         resolveMirrorSessionId(terminalId: string): string | undefined {
             return bindings.get(terminalId)?.happySessionId;
+        },
+
+        isMirrorInputAllowed(terminalId: string): boolean {
+            return bindings.get(terminalId)?.status === 'active';
         },
 
         async restore(): Promise<void> {

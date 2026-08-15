@@ -133,6 +133,23 @@ function getActiveSubagents(state: ClaudeSessionProtocolState): Set<string> {
     return state.activeSubagents;
 }
 
+/** Per-API-call usage of an assistant transcript line, in the wire shape
+ *  (B-108). Only assistant lines carry usage; malformed shapes are dropped.
+ *  Stamped onto EVERY envelope the line maps to — the web keeps the newest
+ *  by timestamp, so duplicates are harmless — because a tool-only line has
+ *  no text envelope to be picky about. */
+function pickAssistantUsage(message: RawJSONLines): { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } | undefined {
+    if (message.type !== 'assistant') return undefined;
+    const usage = message.message?.usage;
+    if (!usage || typeof usage.input_tokens !== 'number' || typeof usage.output_tokens !== 'number') return undefined;
+    return {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        ...(typeof usage.cache_creation_input_tokens === 'number' ? { cache_creation_input_tokens: usage.cache_creation_input_tokens } : {}),
+        ...(typeof usage.cache_read_input_tokens === 'number' ? { cache_read_input_tokens: usage.cache_read_input_tokens } : {}),
+    };
+}
+
 function pickUuid(message: RawJSONLines): string | undefined {
     const raw = message as { uuid?: unknown };
     if (typeof raw.uuid === 'string' && raw.uuid.length > 0) {
@@ -503,16 +520,17 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     if (message.type === 'assistant') {
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
+        const usage = pickAssistantUsage(message);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
 
         for (const block of blocks) {
             if (block.type === 'text' && typeof block.text === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid, usage }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string') {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid, usage }));
                 continue;
             }
 
@@ -550,7 +568,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                     title,
                     description: title,
                     args,
-                }, { turn: turnId, subagent }));
+                }, { turn: turnId, subagent, usage }));
                 const buffered = consumeBufferedSubagentMessages(state, call);
                 for (const bufferedMessage of buffered) {
                     const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);

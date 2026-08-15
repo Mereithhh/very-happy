@@ -70,3 +70,56 @@
 .mrb-term-btn:hover {
   background: var(--bg-3);
 }
+
+/* ── B-107 mirror input bar ── the ONLY interactive surface of a mirror.
+   Sits on the bg token ladder; --accent appears solely as the focus ring
+   (focus = live semantics, allowed). */
+.mri {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.mri-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-0);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.mri-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.mri-input::placeholder {
+  color: var(--text-faint);
+}
+.mri-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.mri-send:hover:not(:disabled) {
+  background: var(--bg-3);
+}
+.mri-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

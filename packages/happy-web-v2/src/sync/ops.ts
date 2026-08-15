@@ -412,6 +412,43 @@ export async function machineUploadFile(
  * Returns false when the daemon doesn't support the RPC (old CLI) so the
  * caller can fall back to xterm's default wheel behavior.
  */
+/**
+ * B-107: paste one message into the terminal hosting an ACTIVE mirrored
+ * claude (the structured view's input bar). The daemon pastes via tmux
+ * bracketed paste + Enter; it HARD-refuses when the mirror binding is not
+ * active (claude gone → the bytes would execute in a bare shell). Returns a
+ * typed failure so the UI can distinguish "claude exited" from "old CLI".
+ */
+export async function machineMirrorTerminalSend(
+    machineId: string,
+    terminalId: string,
+    text: string,
+): Promise<{ success: true } | { success: false; reason: 'not-active' | 'unsupported' | 'error'; error: string }> {
+    try {
+        const r = await apiSocket.machineRPC<
+            { type?: string; error?: string },
+            { terminalId: string; text: string; submit: boolean }
+        >(machineId, 'mirror-terminal-send', { terminalId, text, submit: true });
+        // Daemon-side handler errors ride back as `{ error }` in a normal
+        // response (RpcHandlerManager envelope) — machineRPC doesn't throw.
+        if (typeof r?.error === 'string') {
+            return {
+                success: false,
+                reason: r.error === 'mirror-not-active' ? 'not-active' : 'error',
+                error: r.error,
+            };
+        }
+        if (r?.type === 'success') return { success: true };
+        return { success: false, reason: 'error', error: 'unexpected response' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'send failed';
+        // An old CLI has no handler registered → the relay reports an unknown
+        // method; surface it as "upgrade the CLI" instead of a generic error.
+        const unsupported = /unknown|not.*(found|registered)|no handler/i.test(message);
+        return { success: false, reason: unsupported ? 'unsupported' : 'error', error: message };
+    }
+}
+
 export async function machineScrollTerminal(
     machineId: string,
     terminalId: string,

@@ -128,6 +128,11 @@ export const sessionEnvelopeSchema = z
     // Codex app-server item id for this envelope. Used as the precise
     // rollback point for Codex thread duplicate/fork-from-message.
     codexItemId: z.string().min(1).optional(),
+    // Per-API-call token usage of the assistant message this envelope was
+    // mapped from (B-108). Envelope-level (not inside `ev`) so every envelope
+    // type carries it uniformly — the web feeds it into its context meter.
+    // Old clients strip unknown keys (zod default) and ignore it.
+    usage: sessionTurnUsageSchema.optional(),
     ev: sessionEventSchema,
   })
   .superRefine((envelope, ctx) => {
@@ -156,6 +161,7 @@ export type CreateEnvelopeOptions = {
   subagent?: string;
   claudeUuid?: string;
   codexItemId?: string;
+  usage?: SessionTurnUsage;
 };
 
 export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: CreateEnvelopeOptions = {}): SessionEnvelope {
@@ -167,6 +173,7 @@ export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: Create
     ...(opts.subagent ? { subagent: opts.subagent } : {}),
     ...(opts.claudeUuid ? { claudeUuid: opts.claudeUuid } : {}),
     ...(opts.codexItemId ? { codexItemId: opts.codexItemId } : {}),
+    ...(opts.usage ? { usage: opts.usage } : {}),
     ev,
   });
 }

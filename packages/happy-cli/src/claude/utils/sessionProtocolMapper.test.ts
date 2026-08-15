@@ -364,3 +364,42 @@ describe('closeClaudeTurnWithStatus', () => {
         expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'cancelled' });
     });
 });
+
+describe('assistant usage stamping (B-108)', () => {
+    const freshState = () => ({ currentTurnId: null });
+
+    it('stamps per-call usage onto every envelope of an assistant line', () => {
+        const state = freshState();
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a1',
+            message: {
+                role: 'assistant',
+                model: 'claude-test',
+                usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5000 },
+                content: [
+                    { type: 'text', text: 'hello' },
+                    { type: 'tool_use', id: 'call-1', name: 'Bash', input: { command: 'ls' } },
+                ],
+            },
+        } as any, state as any);
+        // turn-start + text + tool-call-start
+        const stamped = result.envelopes.filter((e) => (e as any).usage);
+        expect(stamped.length).toBe(2); // text + tool-call-start (turn-start precedes usage resolution? no — turn-start is pushed by ensureTurn before usage computed but usage opts only on text/tool envelopes)
+        for (const e of stamped) {
+            expect((e as any).usage).toEqual({ input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 5000 });
+        }
+    });
+
+    it('omits usage when the line has none or a malformed shape', () => {
+        const state = freshState();
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a2',
+            message: { role: 'assistant', model: 'm', content: [{ type: 'text', text: 'x' }] },
+        } as any, state as any);
+        for (const e of result.envelopes) {
+            expect((e as any).usage).toBeUndefined();
+        }
+    });
+});

@@ -142,6 +142,10 @@ const sessionEnvelopeSchema = z.object({
     claudeUuid: z.string().min(1).optional(),
     // Codex app-server item id for precise thread rollback points.
     codexItemId: z.string().min(1).optional(),
+    // B-108: per-API-call token usage of the assistant line this envelope was
+    // mapped from. Envelope-level so every ev type carries it uniformly —
+    // this is what feeds the context meter under the session protocol.
+    usage: sessionTurnUsageSchema.optional(),
     ev: sessionEventSchema,
 }).superRefine((envelope, ctx) => {
     if (envelope.ev.t === 'service' && envelope.role !== 'agent') {
@@ -675,6 +679,7 @@ function normalizeSessionEnvelope(
                 }
             ],
             meta,
+            usage: envelope.usage,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
         } satisfies NormalizedMessage;
@@ -696,7 +701,8 @@ function normalizeSessionEnvelope(
                 uuid: contentUUID,
                 parentUUID
             }],
-            meta
+            meta,
+            usage: envelope.usage
         } satisfies NormalizedMessage;
     }
 

@@ -443,10 +443,18 @@ export const en = {
         resumeFromTerminal: 'To resume it from the terminal:',
         // B-105 terminal mirror: read-only shadow session banners
         mirror: {
-            readOnly: 'Read-only mirror · trails the terminal slightly · interact in the terminal',
+            readOnly: 'Read-only mirror · trails the terminal slightly · the bar below sends straight to the terminal',
             backToTerminal: 'Terminal',
             needsInput: 'Claude is waiting for input in the terminal',
             needsInputAction: 'Switch back',
+            // B-107: the mirror input bar — text is pasted into the terminal's
+            // claude (pty channel), not sent as a session message.
+            inputPlaceholder: 'Send to the claude running in this terminal…',
+            send: 'Send to terminal',
+            sendHint: 'Pasted into the terminal + Enter (Shift+Enter for a newline)',
+            sendNotActive: 'Claude is no longer running in that terminal — input was refused',
+            sendUnsupported: 'The machine\'s CLI is too old for mirror input — update very-happy-cli',
+            sendFailed: ({ error }: { error: string }) => `Send failed: ${error}`,
         },
         // Compact "done with uncommitted changes" bar shown above the composer
         // when the agent is idle and the working tree is dirty.
