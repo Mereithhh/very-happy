@@ -4,15 +4,29 @@
  */
 import type { FsEntry } from '@/sync/fsOps';
 
-/** Display order: directories first, then name. (The daemon pre-sorts for
- *  deterministic truncation, but the web owns the display ordering rule.) */
-export function sortFsEntries(entries: FsEntry[]): FsEntry[] {
+export type FsSortMode = 'name' | 'mtime';
+
+/** Display order: directories always first, then the chosen key within each
+ *  group — 'mtime' = newest first (entries without an mtime sink to the
+ *  bottom, ties fall back to name), 'name' = locale name order. (The daemon
+ *  pre-sorts for deterministic truncation, but the web owns display order.) */
+export function sortFsEntries(entries: FsEntry[], mode: FsSortMode = 'name'): FsEntry[] {
     return [...entries].sort((a, b) => {
         const aDir = a.type === 'dir';
         const bDir = b.type === 'dir';
         if (aDir !== bDir) return aDir ? -1 : 1;
+        if (mode === 'mtime') {
+            const diff = (b.mtimeMs ?? 0) - (a.mtimeMs ?? 0);
+            if (diff !== 0) return diff;
+        }
         return a.name.localeCompare(b.name);
     });
+}
+
+/** Read-side validation of the persisted sort mode (kept tolerant so a junk
+ *  value degrades to the default instead of surprising the list). */
+export function resolveFsSortMode(raw: unknown): FsSortMode {
+    return raw === 'name' ? 'name' : 'mtime';
 }
 
 /** Hidden files (dotfiles) are returned by the daemon and filtered here. */

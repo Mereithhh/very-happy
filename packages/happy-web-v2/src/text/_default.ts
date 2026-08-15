@@ -558,6 +558,11 @@ export const en = {
     fsBrowser: {
         browseTab: 'Browse',
         breadcrumbs: 'Path',
+        // B-110 sort toggle: title shows the CURRENT order, aria the action.
+        sortedByTime: 'Sorted by modified time (newest first) — click for name order',
+        sortedByName: 'Sorted by name — click for newest-first',
+        sortByTime: 'Sort by modified time',
+        sortByName: 'Sort by name',
         showHidden: 'Show hidden files',
         hideHidden: 'Hide hidden files',
         empty: 'Empty directory',

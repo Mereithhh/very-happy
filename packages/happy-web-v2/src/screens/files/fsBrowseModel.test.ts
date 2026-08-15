@@ -6,6 +6,7 @@ import {
     imageMimeOf,
     joinFsPath,
     parentFsPath,
+    resolveFsSortMode,
     sortFsEntries,
     visibleFsEntries,
 } from './fsBrowseModel';
@@ -78,5 +79,43 @@ describe('imageMimeOf', () => {
         expect(imageMimeOf('photo.jpeg')).toBe('image/jpeg');
         expect(imageMimeOf('doc.txt')).toBeNull();
         expect(imageMimeOf('Makefile')).toBeNull();
+    });
+});
+
+describe('sortFsEntries mtime mode (B-110)', () => {
+    const e = (name: string, type: 'file' | 'dir', mtimeMs?: number) => ({ name, type, mtimeMs }) as any;
+
+    it('keeps directories first, newest first within each group', () => {
+        const out = sortFsEntries([
+            e('old.txt', 'file', 1000),
+            e('new.txt', 'file', 3000),
+            e('zdir', 'dir', 500),
+            e('adir', 'dir', 2000),
+            e('mid.txt', 'file', 2000),
+        ], 'mtime');
+        expect(out.map((x) => x.name)).toEqual(['adir', 'zdir', 'new.txt', 'mid.txt', 'old.txt']);
+    });
+
+    it('entries without mtime sink to the bottom, ties fall back to name', () => {
+        const out = sortFsEntries([
+            e('b.txt', 'file'),
+            e('a.txt', 'file'),
+            e('c.txt', 'file', 100),
+        ], 'mtime');
+        expect(out.map((x) => x.name)).toEqual(['c.txt', 'a.txt', 'b.txt']);
+    });
+
+    it("default mode stays 'name' (existing call sites unchanged)", () => {
+        const out = sortFsEntries([e('b.txt', 'file', 999), e('a.txt', 'file', 1)]);
+        expect(out.map((x) => x.name)).toEqual(['a.txt', 'b.txt']);
+    });
+});
+
+describe('resolveFsSortMode', () => {
+    it('tolerates junk and defaults to mtime', () => {
+        expect(resolveFsSortMode('name')).toBe('name');
+        expect(resolveFsSortMode('mtime')).toBe('mtime');
+        expect(resolveFsSortMode(undefined)).toBe('mtime');
+        expect(resolveFsSortMode('junk')).toBe('mtime');
     });
 });
