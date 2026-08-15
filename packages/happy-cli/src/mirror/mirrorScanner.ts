@@ -80,6 +80,17 @@ export interface MirrorScanner {
 }
 
 export const MIRROR_POLL_INTERVAL_MS = 3_000;
+/**
+ * How long a transcript may stay absent before the watcher gives up.
+ * Effectively FOREVER (setTimeout's max delay, ~24.8 days): claude does NOT
+ * create the transcript until the FIRST user message, so a user who opens
+ * claude and thinks for a while must not get their mirror killed (real
+ * production incident: 60s default timeout ended the binding, watcher torn
+ * down, mirror permanently mute + input bar refused with mirror-not-active).
+ * Phantom-binding cleanup is the job of the hook/terminal lifecycle paths
+ * (SessionEnd / pane observation / terminal close), never of file absence.
+ */
+export const MIRROR_MISSING_FILE_TIMEOUT_MS = 2 ** 31 - 1;
 /** Bound watched files per binding — a long resume chain keeps only the most
  *  recent files live (older ones stopped; they were only kept because claude
  *  may still append task output to them for a short while). */
@@ -167,7 +178,7 @@ export function createMirrorScanner(opts: {
                 mode,
                 dead: false,
                 stopWatcher: startFileWatcher(path, () => sync.invalidate(), {
-                    missingFileTimeoutMs: opts.missingFileTimeoutMs,
+                    missingFileTimeoutMs: opts.missingFileTimeoutMs ?? MIRROR_MISSING_FILE_TIMEOUT_MS,
                     onGaveUp: () => {
                         tail.dead = true;
                         files.delete(path);
