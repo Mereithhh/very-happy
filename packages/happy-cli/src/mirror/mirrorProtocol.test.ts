@@ -6,6 +6,7 @@ import {
     mirrorLocalId,
     extractCompleteLines,
     decideBackfill,
+    parseMirrorSendParams,
     type MirrorBindingSnapshot,
 } from './mirrorProtocol';
 import type { RawJSONLines } from '@/claude/types';
@@ -146,5 +147,21 @@ describe('decideBackfill', () => {
     });
     it('cap of 0 replays nothing', () => {
         expect(decideBackfill([1, 2], 0)).toEqual({ replay: [], truncated: true });
+    });
+});
+
+describe('parseMirrorSendParams', () => {
+    const isValid = (id: unknown): id is string => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(id);
+    it('accepts valid params and defaults submit to true', () => {
+        expect(parseMirrorSendParams({ terminalId: 't1', text: 'hi' }, isValid))
+            .toEqual({ terminalId: 't1', text: 'hi', submit: true });
+        expect(parseMirrorSendParams({ terminalId: 't1', text: 'hi', submit: false }, isValid))
+            .toEqual({ terminalId: 't1', text: 'hi', submit: false });
+    });
+    it('rejects bad shapes', () => {
+        expect(parseMirrorSendParams(null, isValid)).toHaveProperty('error');
+        expect(parseMirrorSendParams({ terminalId: 'bad id!', text: 'x' }, isValid)).toHaveProperty('error');
+        expect(parseMirrorSendParams({ terminalId: 't1', text: '' }, isValid)).toHaveProperty('error');
+        expect(parseMirrorSendParams({ terminalId: 't1', text: 'x'.repeat(20000) }, isValid)).toHaveProperty('error');
     });
 });

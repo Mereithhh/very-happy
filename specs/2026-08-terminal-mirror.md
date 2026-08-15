@@ -181,6 +181,22 @@ v1 接受此边界（镜像严格只读），但架构**不得堵死**二期通�
 送 pty→回车）——输入走 **pty 通道**而非会话消息（镜像会话保持只读，敲的字经
 transcript 自然回流镜像），与本方案零冲突。v1 实现不做，但组件留槽位。
 
+**v2 已落地（B-107，2026-08-15 第二批）**：镜像底部 MirrorInputBar → machine RPC
+`mirror-terminal-send`（daemon 侧复用 assistant terminal_send 的 tmux bracketed
+paste 先例：load-buffer + paste-buffer -p + Enter，字节不经 shell 解析）。
+**服务端硬守卫**：仅当该终端的镜像绑定 status==='active'（claude 可证实在跑）才发
+——claude 退出后同样的字节会在裸 shell 里执行，陈旧页面必须被拒绝（错误码
+`mirror-not-active`）而非被信任；web 侧另有 agentState==='shell' 即藏输入条的
+礼貌性 gate。文本上限 16384 字符（纯函数 parseMirrorSendParams + 测试）。
+兼容矩阵：老 CLI 无该 RPC → web 按 unknown-method 识别并提示升级；老 web 不发。
+
+**M1 补丁（B-108，同批）**：envelope 顶层新增 optional `usage`（happy-wire 与
+web 双 schema 同步），mapper 把 assistant 行的 `message.usage` stamp 到该行产出的
+每个 envelope（含 tool-call-start——纯 tool 行也有 usage）。排查升级：web 的
+`processUsageData`（context meter 唯一数据源）此前只被 legacy claude 消息格式喂，
+session-protocol 管线下**所有会话** meter 恒 0，非镜像独有；本补丁一并修复正式
+会话。兼容：老 web zod 默认 strip 未知字段，忽略之。
+
 ### 生命周期（M4①③）
 
 - claude 退出：SessionEnd hook（主）/ classifyPane 不再 claude（辅）→ 停 scanner、

@@ -151,6 +151,28 @@ export function extractCompleteLines(buf: Buffer): { lines: string[]; consumedBy
     return { lines, consumedBytes: lastNl + 1 };
 }
 
+// ── Mirror input (B-107) ─────────────────────────────────────────────────────
+
+/** Hard cap on one mirror-input send — a full prompt, not a file upload. */
+export const MIRROR_SEND_MAX_CHARS = 16384;
+
+export type MirrorSendParams = { terminalId: string; text: string; submit: boolean };
+
+/**
+ * Validate the `mirror-terminal-send` RPC params (B-107). The daemon-side
+ * guard that the terminal's mirror binding is ACTIVE lives in the manager —
+ * this only validates shape. Text is pasted opaquely (bracketed paste, B-013
+ * precedent), so no content escaping is needed; only length is bounded.
+ */
+export function parseMirrorSendParams(params: unknown, isValidTerminalId: (id: unknown) => id is string): MirrorSendParams | { error: string } {
+    if (!params || typeof params !== 'object') return { error: 'invalid params' };
+    const { terminalId, text, submit } = params as Record<string, unknown>;
+    if (!isValidTerminalId(terminalId)) return { error: 'invalid terminalId' };
+    if (typeof text !== 'string' || text.length === 0) return { error: 'text is required' };
+    if (text.length > MIRROR_SEND_MAX_CHARS) return { error: `text too long (max ${MIRROR_SEND_MAX_CHARS} chars)` };
+    return { terminalId, text, submit: submit !== false };
+}
+
 // ── Backfill truncation (M2) ─────────────────────────────────────────────────
 
 export const MIRROR_BACKFILL_LINES_DEFAULT = 500;

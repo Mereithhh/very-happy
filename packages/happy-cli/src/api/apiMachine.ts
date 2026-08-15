@@ -14,6 +14,9 @@ import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
+import { sendToVhTerminal } from '@/assistant/terminals';
+import { isValidTerminalId } from '@/assistant/ids';
+import { parseMirrorSendParams } from '@/mirror/mirrorProtocol';
 import { sendTerminalNotification, terminalNotifyLink, terminalNotifyMessage } from '@/terminal/terminalNotify';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
@@ -312,6 +315,27 @@ export class ApiMachineClient {
             return { type: 'success', ...result, encStream: !!encStream };
         });
 
+        // B-107: paste one line of user input into the terminal that hosts an
+        // ACTIVE mirrored claude (the structured view's input bar). Bracketed
+        // paste via tmux buffers (B-013 precedent — opaque bytes, never
+        // synthesized keystrokes), Enter only when submit. HARD daemon-side
+        // guard: after claude exits the same bytes would run in a bare shell,
+        // so a stale web page must be refused, not trusted.
+        this.rpcHandlerManager.registerHandler('mirror-terminal-send', async (params: any) => {
+            const parsed = parseMirrorSendParams(params, isValidTerminalId);
+            if ('error' in parsed) {
+                throw new Error(parsed.error);
+            }
+            if (!this.mirrorInputAllowed?.(parsed.terminalId)) {
+                throw new Error('mirror-not-active');
+            }
+            const result = sendToVhTerminal(parsed.terminalId, parsed.text, parsed.submit);
+            if (!result.ok) {
+                throw new Error(result.error ?? 'send failed');
+            }
+            return { type: 'success' };
+        });
+
         // Scroll a terminal's tmux history (wheel/touch scrollback). The
         // attach-client pty keeps the outer terminal in the alternate screen,
         // so the web xterm has no scrollback of its own — the web intercepts
@@ -554,14 +578,20 @@ export class ApiMachineClient {
      *  detection via pane observation). Set by the daemon at startup. */
     private mirrorListObserver: ((terminals: TerminalListItem[]) => void) | null = null;
 
+    /** B-107: gate for mirror-terminal-send — set with the rest of the
+     *  mirror integration; absent (daemon still starting) means refuse. */
+    private mirrorInputAllowed: ((terminalId: string) => boolean) | null = null;
+
     setMirrorIntegration(integration: {
         resolveMirrorSessionId: (terminalId: string) => string | undefined;
         onTerminalClosed: (terminalId: string) => void;
         onTerminalList: (terminals: TerminalListItem[]) => void;
+        isMirrorInputAllowed: (terminalId: string) => boolean;
     }): void {
         this.webTerminal.setMirrorSessionResolver(integration.resolveMirrorSessionId);
         this.webTerminal.setOnTerminalClosed(integration.onTerminalClosed);
         this.mirrorListObserver = integration.onTerminalList;
+        this.mirrorInputAllowed = integration.isMirrorInputAllowed;
     }
 
     /** Mirror bindings changed → re-derive and (on diff) push the list now. */

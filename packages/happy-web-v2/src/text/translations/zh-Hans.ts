@@ -460,10 +460,16 @@ export const zhHans: TranslationStructure = {
         inactiveArchived: '此会话处于非活动状态。',
         // B-105 终端镜像：只读影子会话的横幅
         mirror: {
-            readOnly: '只读镜像 · 比终端慢半拍 · 交互请回终端',
+            readOnly: '只读镜像 · 比终端慢半拍 · 底部输入直达终端',
             backToTerminal: '回终端',
             needsInput: 'Claude 正在终端里等待输入',
             needsInputAction: '点击切回',
+            inputPlaceholder: '发送给这个终端里的 claude…',
+            send: '发送到终端',
+            sendHint: '以粘贴方式送进终端并回车（Shift+Enter 换行）',
+            sendNotActive: '该终端里的 claude 已退出——为安全起见输入被拒绝',
+            sendUnsupported: '机器上的 CLI 版本过旧，不支持镜像输入——请升级 very-happy-cli',
+            sendFailed: ({ error }: { error: string }) => `发送失败：${error}`,
         },
         resumeFromTerminal: '要从终端恢复它：',
         done: '完成',

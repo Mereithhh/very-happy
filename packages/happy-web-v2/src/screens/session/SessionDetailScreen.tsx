@@ -13,6 +13,7 @@ import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
 import { MirrorBanner } from './MirrorBanner';
+import { MirrorInputBar } from './MirrorInputBar';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import './session.css';
 
@@ -94,6 +95,11 @@ export function SessionDetailScreen() {
                         <AgentInput sessionId={id} />
                     </div>
                 )}
+                {/* B-107: the mirror's only interactive surface — a pty-channel
+                    input bar (NOT a session composer; the mirror session stays
+                    read-only, input flows back via the transcript). The bar
+                    self-hides when the terminal is gone or claude exited. */}
+                {mirror && <MirrorInputBar sessionId={id} />}
             </div>
             {filesOpen && (
                 <>
