@@ -565,6 +565,10 @@ export const zhHans: TranslationStructure = {
     fsBrowser: {
         browseTab: '浏览',
         breadcrumbs: '路径',
+        sortedByTime: '按修改时间排序（最新在上）——点击切换为名称序',
+        sortedByName: '按名称排序——点击切换为最新在上',
+        sortByTime: '按修改时间排序',
+        sortByName: '按名称排序',
         showHidden: '显示隐藏文件',
         hideHidden: '不显示隐藏文件',
         empty: '空目录',

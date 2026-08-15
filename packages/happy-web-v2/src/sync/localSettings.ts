@@ -82,6 +82,9 @@ export const LocalSettingsSchema = z.object({
     // Level 1 — device default for terminals that have a mirror session.
     // Enum values are only ever ADDED (whole-blob safeParse — see boardLayout).
     terminalViewDefault: z.enum(['xterm', 'structured']).describe('Default face of a mirrored web terminal on this device: raw xterm or the structured chat view'),
+    // B-110: file browser display order. Enum is safe here (ships with its
+    // writer, unlike the per-terminal record above).
+    fsBrowserSort: z.enum(['mtime', 'name']).describe('File browser ordering: newest-first by modification time, or by name'),
     // Level 2 — per-terminal override (terminalId → view), the
     // acknowledgedCliVersions record precedent. Values kept as plain strings
     // (NOT an enum) so one junk value can never fail the whole-blob safeParse
@@ -175,6 +178,8 @@ export const localSettingsDefaults: LocalSettings = {
     terminalInputOwnership: 'xterm',
     // B-105: xterm stays the default face — structured is an opt-in lens.
     terminalViewDefault: 'xterm',
+    // B-110: Owner-specified default — newest files on top.
+    fsBrowserSort: 'mtime',
     terminalViewOverrides: {},
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.

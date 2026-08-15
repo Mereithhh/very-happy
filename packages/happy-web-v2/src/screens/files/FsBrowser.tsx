@@ -13,7 +13,7 @@
  * host Esc handlers don't also fire.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, FileText, Folder, Link as LinkIcon, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { ArrowDownAZ, Clock, Eye, EyeOff, FileText, Folder, Link as LinkIcon, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { machineFsList, type FsEntry, type FsFailure } from '@/sync/fsOps';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -23,9 +23,11 @@ import {
     formatFsSize,
     fsBreadcrumbs,
     joinFsPath,
+    resolveFsSortMode,
     sortFsEntries,
     visibleFsEntries,
 } from './fsBrowseModel';
+import { useLocalSettingMutable } from '@/sync/storage';
 import './fsbrowser.css';
 
 function formatMtime(mtimeMs: number | undefined): string {
@@ -51,6 +53,9 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
     const [loading, setLoading] = useState(true);
     const [failure, setFailure] = useState<FsFailure | null>(null);
     const [showHidden, setShowHidden] = useState(false);
+    // B-110: display order, remembered per device (default: newest first).
+    const [sortRaw, setSortSetting] = useLocalSettingMutable('fsBrowserSort');
+    const sortMode = resolveFsSortMode(sortRaw);
     const [file, setFile] = useState<string | null>(null);
     const [fullscreen, setFullscreen] = useState(false);
     // Monotonic request id: only the LATEST navigation may apply its result
@@ -123,7 +128,7 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
         );
     }
 
-    const rows = entries ? visibleFsEntries(sortFsEntries(entries), showHidden) : null;
+    const rows = entries ? visibleFsEntries(sortFsEntries(entries, sortMode), showHidden) : null;
     const crumbs = fsBreadcrumbs(path);
 
     return (
@@ -143,6 +148,15 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
                         </span>
                     ))}
                 </nav>
+                <button
+                    type="button"
+                    className="fsb-iconbtn"
+                    aria-label={sortMode === 'mtime' ? t('fsBrowser.sortByName') : t('fsBrowser.sortByTime')}
+                    title={sortMode === 'mtime' ? t('fsBrowser.sortedByTime') : t('fsBrowser.sortedByName')}
+                    onClick={() => setSortSetting(sortMode === 'mtime' ? 'name' : 'mtime')}
+                >
+                    {sortMode === 'mtime' ? <Clock size={14} /> : <ArrowDownAZ size={14} />}
+                </button>
                 <button
                     type="button"
                     className={`fsb-iconbtn${showHidden ? ' is-active' : ''}`}
