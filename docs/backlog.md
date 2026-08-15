@@ -19,7 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-111 | 关闭/归档会话后自动跳到下一个会话（现在三处落点都回首页空态）：下一个=除被关者外最近活跃的可见会话，无候选回首页 | ux | Owner 2026-08-15 | doing | 纯 web；落点=⌘W(viewShortcuts)/命令面板/侧栏行菜单（第三处现在归档后根本不导航，停留在已归档页） |
+| B-111 | 关闭/归档会话后自动跳到下一个会话（现在三处落点都回首页空态）：下一个=除被关者外最近活跃的可见会话，无候选回首页 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 9017ae9b，web 已部署）：三处落点统一跳最近活跃的其他可见会话（排除 archived/hidden），无候选回首页；侧栏归档打开中会话不导航的隐藏问题一并修；3 纯函数测试。取舍：不复刻侧栏视觉顺序（组件内部状态），Owner 用后可再调 |
 | B-110 | 文件浏览器排序：默认按修改时间最新在上，可切回名称序（目录仍置顶）；偏好设备本地记忆 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 4bb57a0c，web 已部署）：默认修改时间最新在上、目录置顶、无 mtime 沉底；工具栏时钟/AZ 图标一键切换、设备本地记忆；4 纯函数测试。生产 bundle 已核实（202608150739）|
 | B-109 | 终端顶部 claude logo/欢迎框渲染少一截——Owner 实报。两个候选机制待定性：①经典渲染器（CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1）下横幅是一次性打印的静态历史，pane 尺寸变化后 tmux reflow 裁行、claude 不重画（固有代价）；②铁律 6 的 xterm/FitAddon 布局余量坑（顶行被视口裁掉）。区分法：上滚能看到=②布局问题；上滚也没有=①reflow。主 agent 将在发布后浏览器 E2E 里复现定性 | bug | Owner 实报 2026-08-15 | todo | **已定性（浏览器 E2E zoom 实证）**：两候选都不对——是 xterm.js 对八分块字形（U+2580-259F，▐▛▜▝▘）渲染破碎（tmux 原始输出完整，web 里画成断裂色块），字体/customGlyphs/renderer atlas 问题；铁律 6 无关。修方向：查 renderer 的 customGlyphs 配置与字体栈 |
 | B-106 | 镜像「中间过程看不到」定性与打磨：Owner 实报镜像里中间文本/过程缺失。已知三层机制性不可见：①TUI 交互层（权限对话/选择菜单）不进 transcript（needs_input 横幅即为此兜底）②长 assistant 文本整条落盘才可见（无 token 级流式）③system/isMeta 行刻意跳过（与正式会话一致）。待拿具体例子核对是否另有真 bug（thinking/subagent 泳道渲染） | bug | Owner 实报 2026-08-15 | done | **真主因抓到并热修（v0.2.45）**：claude 在第一条用户消息前不创建 transcript，scanner 的 60s missing-file 判死把「用户还没说话」误判成幽灵 → 绑定归档+watcher 拆除 → 镜像永久哑（浏览器 E2E 实锤：mirror-not-active 拒发 + 日志 transcript never appeared）。修：镜像文件等待改为实质永不放弃（幽灵清理归 hook/终端生命周期三路）+ 回归测试。三层机制性不可见（TUI 层/整条落盘粒度/isMeta 跳过）仍为设计内已知 |
