@@ -1,9 +1,10 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：Draft v3（R2 修 R1 自引入的 2 BLOCKING + capture -a 语义实证反转：历史改走
-> **machineRPC 分页**（server 零改动回归）+ **二段式打开**（秒开当前屏→历史后台拉齐→
-> 原子重建）；丢弃规则限 fresh-spawn；capture 按 alternate_on 三段分支；粘贴走新
-> terminal-paste RPC 与 send-keys 同 FIFO；reaper/cap 平移；7 MUST-FIX 全采纳。待 R3）
+> 状态：Draft v4（R3 修 v3 新文本的 2 BLOCKING + 4 MUST-FIX：snapshot 单次 capture 分发
+> + snapshotId 生命周期与 open schema 落死、D3 R1 残骸清除、assembly 显式状态机
+> （安静时刻 gate 合并解决 writeHold 冲突与视口跳动）、alt-active 小快照带 1049 态。
+> R3 正面实证：单 write 批在洪水下块间零插入；RPC 超时/上限/并发/膨胀全实测兼容。
+> 待 R4（范围限 v4 新写段落））
 > 日期：2026-08-17 ｜ 关联 backlog：B-121 ｜ 出处：Owner 实报手机滑动不跟手 → 三层方案 Owner 拍板直接根治
 
 ## 背景
@@ -159,17 +160,43 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   daemon 对同一终端做 **capture single-flight**（M-R2-6：并发 catchUp 合并
   为一次 capture，分发各请求方）。
 
-  **传输与重建（R2 B-R2-1：绝不走 terminal-output 广播通道）**：
-  - 历史与快照经 **machineRPC 分页**下发（新 RPC `terminal-history
-    {terminalId, snapshotId, page}` → `{seq, page, totalPages, data}`，
-    每页 ≤256KB base64，加密照旧走 RPC 信封）——RPC 是现有通用机制，
-    **server 零改动**、点对点不打扰其他设备；历史块**不进 ring、不进
-    headless、不占 seq**（与 ingest 完全解耦）；
-  - **二段式打开**：open 响应内嵌「当前屏小快照」（capture 可见区，
-    ≤300 行级，v1 尺寸哲学）→ 秒开 + live 跟流；web 后台并发拉历史页，
-    拉齐后**原子重建**（reset → 历史 → 当前屏 → 重放 assembly 期间缓冲的
-    live 块）——termStreamSync 新增 assembly 状态（meta→收块→齐后 ASSIGN
-    baseline）；重建对用户呈现为 scrollback 无感变深；
+  **传输与重建（R2 B-R2-1 定向通道 + R3 B-R3-1 生命周期落死）**：
+  - **单次 capture 分发（时点唯一）**：capture 在 open/catchUp 时刻执行
+    **一次**（single-flight 覆盖 fresh 与 running、含并发 open——R3 N-R3-3：
+    per-terminal open 互斥，共享同一锚点与载荷）；可见区切片进 open 响应，
+    **全量按 snapshotId hold 在 daemon 内存**供分页拉取。绝不允许「首个
+    history 请求到达时现场再 capture」——两个时间点的 capture 必然产生
+    scrollback 重复+时间倒序（R3 推演）。
+  - **open 响应 schema（lines 模式）**：`{streamMode:'lines', seq,
+    mode:'snapshot', data:<可见区小快照 base64>, snapshotId, totalPages,
+    alternateOn}`——`data` 沿用 v1 字段名与 300 行级尺寸（秒开）；
+    `alternateOn=true` 时小快照**前缀合成 `\x1b[?1049h`**（R3 M-R3-3：
+    否则拉齐前双轨判定错轨、交互坏死数秒）。
+  - **snapshotId hold 生命周期**：拉齐即释放；TTL 90s 兜底；同终端新
+    capture 替换旧 id（旧 id 立即失效）；stale id 的分页请求回错误
+    `snapshot-expired`——web 收到即放弃本次 assembly（保持小快照形态，
+    功能完好仅历史浅）并重试整个 open 一次。内存上界 = 1MB × live 终端数，
+    与 reaper 共同封顶。
+  - **历史分页 RPC**：`terminal-history {terminalId, snapshotId, page}` →
+    `{page, totalPages, data(≤256KB base64)}`——RPC 信封加密后 ~342KB，
+    对 server 1e6 上限余量 2.9×（R3 实测）；**并发 2 页**（R3 N-R3-1：防
+    与 live 输出在单 socket 上 HOL）；web 侧每页 15s 超时，失败重试 1 次后
+    放弃 assembly（同 stale 路径）。历史页**不进 ring、不进 headless、
+    不占 seq**（与 ingest 完全解耦）。
+  - **assembly 状态机（web，R3 M-R3-2 显式转移表）**：
+    `open-ASSIGN`（baseline=S0 **立即** ASSIGN，live 跟流全程走 termStreamSync
+    正常 dup/gap 判定）→ `buffering`（后台拉页；到达的 live 块正常上屏
+    **并同时留副本**于 assembly 缓冲）→ 等待**安静时刻 gate**（见下）→
+    `rebuilding`（reset → 历史 → 当前屏 → assembly 缓冲的 live 副本，
+    全程 **raw write 绕过 liveChunk/seq 判定**——这些块 seq≤lastSeq，走正路
+    会被 'dup' 全丢；重建期间新到 live 块排队，重建完按序补写）→ `done`
+    （释放缓冲）。abort 转移：gap→catchUp 触发 / snapshot-expired / 页拉取
+    失败——一律回 `done`（小快照形态），不半途重建。
+  - **安静时刻 gate（R3 M-R3-1+M-R3-4 合并解）**：重建仅在
+    `!termWriteHold.isHolding() && 用户视口位于底部` 时执行，否则挂起等待
+    ——一次解决「重建毁选区」（beginSnapshotRestore 语义是给重连的，不给
+    后台美化用）与「重建跳视口」两个问题；「无感变深」的承诺由此 gate
+    支撑而非声称。
   - capture 字节预算 1MB（原始）截断更早历史（总量有界）。
 - 生命周期：`%exit` / 进程退出 → 与现状 pty onExit 同路；**停 client 一律
   SIGTERM→2s 超时→SIGKILL**（3.6b 退出挂起 bug 兜底；spec 附注：建议
@@ -255,14 +282,12 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 
 - `open-terminal` 请求加 `streamMode:'lines'`（能力声明），响应回
   `streamMode:'lines'|'attach'`。
-- **snapshot 分块传输（R1 B1——server socket.io 默认 maxHttpBufferSize=1e6，
-  超限直接断 daemon socket=该机全部终端瞬断）**：lines 模式下 open 响应不再
-  内嵌大载荷——响应只带 `{streamMode, seq, historyChunks: n}` 元信息，历史
-  按 ≤64KB(base64 前) 分块经现有 `terminal-output` chunk 通道顺序下发
-  （每块带 seq、encStream 加密照旧），web 按 seq 顺序 write。双保险 =
-  分块（单帧不爆）+ D1 的 1MB capture 字节预算（总量有界）。出 ring 重连
-  同样走此路径（代价如实：手机后台一晚回来 = 全量 capture + ≤1MB 传输 +
-  xterm 毫秒级重写；验收含其耗时实测）。
+- **历史传输 = D1 的 terminal-history RPC 分页 + 二段式重建**（权威描述在
+  D1「传输与重建」节，此处不重复——R3 B-R3-2 清除了本段与 D1 互斥的 R1
+  残骸描述）。约束背景：server socket.io 默认 maxHttpBufferSize=1e6，超限
+  直接断 daemon socket = 该机全部终端瞬断——单页 ≤256KB 的余量实测 2.9×。
+  出 ring 重连同走此路径（代价如实：手机后台一晚回来 = 一次全量 capture +
+  ≤1MB 分页传输 + 安静时刻原子重建；验收含端到端耗时实测）。
 - 兼容矩阵：
   - **新 web + 老 daemon**：请求字段被忽略、响应无 streamMode → web 走现状
     attach 路径（滚动劫持、合成 wheel 全保留为 fallback 分支）。
@@ -324,7 +349,8 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - [ ] 新旧四象限兼容矩阵实测
 - [ ] 多行粘贴进已开 2004 的 pane：不逐行执行（M4 专项）
 - [ ] 用户本地 attach 后 split：web 端行为符合单 pane 声明（M6）
-- [ ] 出 ring 重连：snapshot 分块大小与端到端耗时实测（B1/B2）
+- [ ] 出 ring 重连：terminal-history 分页总耗时与重建时机实测（含拉齐前
+  live 跟流不中断、安静时刻 gate 生效）
 - [ ] 门禁全绿 + 解码器金样本 + encodeSendKeys 金样本（B-096 差分 142 用例硬门）
 
 ## 留真机验证项（Draft）
