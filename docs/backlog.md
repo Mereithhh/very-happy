@@ -19,6 +19,8 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-112 | 折叠屏/平板进双栏：isDesktop=纯 min-width:980px，Fold 8 展开内屏（CSS ~800-910px）够不着 → 被当大手机单栏。改复合判定 `≥980px ∨ (≥800px ∧ 高≥600px)`（手机横放高度不足进不来；iPad 竖放顺带受益），TS/CSS 共 ~10 处 980 锚点统一 | ux | Owner 实报 2026-08-16（Fold 8） | doing | 真机验证项待登记（Fold 展开横/竖两姿态） |
+| B-113 | 折叠屏半折 Flex mode：竖放半折时 UI 收上半屏、下半留键盘。两层：①打字场景大概率已可用（Android 键盘 resize 视口 + 现有 dvh/keyboard-pin 布局跟随）——先真机定性；②主动姿态检测走 Device Posture API（`device-posture: folded`，Chrome/三星 Internet Android 支持）+ Viewport Segments 把 UI 钉上半 segment——增强项，需 Owner 真机配合调试 | feat | Owner 2026-08-16（Fold 8） | todo | 先在 Fold 半折竖放打字实测现状再定 ② 的范围 |
 | B-111 | 关闭/归档会话后自动跳到下一个会话（现在三处落点都回首页空态）：下一个=除被关者外最近活跃的可见会话，无候选回首页 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 9017ae9b，web 已部署）：三处落点统一跳最近活跃的其他可见会话（排除 archived/hidden），无候选回首页；侧栏归档打开中会话不导航的隐藏问题一并修；3 纯函数测试。取舍：不复刻侧栏视觉顺序（组件内部状态），Owner 用后可再调 |
 | B-110 | 文件浏览器排序：默认按修改时间最新在上，可切回名称序（目录仍置顶）；偏好设备本地记忆 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 4bb57a0c，web 已部署）：默认修改时间最新在上、目录置顶、无 mtime 沉底；工具栏时钟/AZ 图标一键切换、设备本地记忆；4 纯函数测试。生产 bundle 已核实（202608150739）|
 | B-109 | 终端顶部 claude logo/欢迎框渲染少一截——Owner 实报。两个候选机制待定性：①经典渲染器（CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1）下横幅是一次性打印的静态历史，pane 尺寸变化后 tmux reflow 裁行、claude 不重画（固有代价）；②铁律 6 的 xterm/FitAddon 布局余量坑（顶行被视口裁掉）。区分法：上滚能看到=②布局问题；上滚也没有=①reflow。主 agent 将在发布后浏览器 E2E 里复现定性 | bug | Owner 实报 2026-08-15 | todo | **已定性（浏览器 E2E zoom 实证）**：两候选都不对——是 xterm.js 对八分块字形（U+2580-259F，▐▛▜▝▘）渲染破碎（tmux 原始输出完整，web 里画成断裂色块），字体/customGlyphs/renderer atlas 问题；铁律 6 无关。修方向：查 renderer 的 customGlyphs 配置与字体栈 |
