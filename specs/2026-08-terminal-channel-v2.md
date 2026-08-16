@@ -1,10 +1,10 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：Draft v4（R3 修 v3 新文本的 2 BLOCKING + 4 MUST-FIX：snapshot 单次 capture 分发
-> + snapshotId 生命周期与 open schema 落死、D3 R1 残骸清除、assembly 显式状态机
-> （安静时刻 gate 合并解决 writeHold 冲突与视口跳动）、alt-active 小快照带 1049 态。
-> R3 正面实证：单 write 批在洪水下块间零插入；RPC 超时/上限/并发/膨胀全实测兼容。
-> 待 R4（范围限 v4 新写段落））
+> 状态：**Final**（v5——四轮对抗性 review 收敛：R1 修 3 BLOCKING+8 MUST-FIX（输入命令化/
+> 应答过滤/锚点/码点均实证）；R2 抓 R1 自引入 2 BLOCKING + capture -a 语义实证反转
+> （→RPC 分页+二段式，server 零改动）；R3 抓 v3 空洞（snapshotId 生命周期/状态机/gate）；
+> R4 限域终审判 Final-with-edits，5 项句子级编辑已并入（切片禁令/绕过作用域/副本规则/
+> 缓冲上界/replay 形状）。待 Owner 过目后立项实现）
 > 日期：2026-08-17 ｜ 关联 backlog：B-121 ｜ 出处：Owner 实报手机滑动不跟手 → 三层方案 Owner 拍板直接根治
 
 ## 背景
@@ -162,17 +162,28 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
 
   **传输与重建（R2 B-R2-1 定向通道 + R3 B-R3-1 生命周期落死）**：
   - **单次 capture 分发（时点唯一）**：capture 在 open/catchUp 时刻执行
-    **一次**（single-flight 覆盖 fresh 与 running、含并发 open——R3 N-R3-3：
-    per-terminal open 互斥，共享同一锚点与载荷）；可见区切片进 open 响应，
-    **全量按 snapshotId hold 在 daemon 内存**供分页拉取。绝不允许「首个
-    history 请求到达时现场再 capture」——两个时间点的 capture 必然产生
-    scrollback 重复+时间倒序（R3 推演）。
+    **一次**（single-flight 覆盖 fresh 与 running、含并发 open——per-terminal
+    open 互斥共享同一锚点与载荷）；**小快照 = 同一原子 write 批内额外一条
+    范围限定 capture 命令**（normal：`-S -300` 至当前；alt：可见屏。R4 实证：
+    范围限定 capture 在起点自含样式开启码，而对全量 blob 按行做字符串切片
+    会撕裂跨行 SGR 状态、且 -J 逻辑行上「可见区」不可定位——**禁止字符串
+    切片**）；小快照另加字节预算（-J 逻辑行长度无上界）。全量按 snapshotId
+    hold 在 daemon 内存供分页。绝不允许「首个 history 请求到达时现场再
+    capture」——两个时点的 capture 必产生 scrollback 重复+时间倒序（R3 推演）。
   - **open 响应 schema（lines 模式）**：`{streamMode:'lines', seq,
     mode:'snapshot', data:<可见区小快照 base64>, snapshotId, totalPages,
     alternateOn}`——`data` 沿用 v1 字段名与 300 行级尺寸（秒开）；
     `alternateOn=true` 时小快照**前缀合成 `\x1b[?1049h`**（R3 M-R3-3：
     否则拉齐前双轨判定错轨、交互坏死数秒）。
-  - **snapshotId hold 生命周期**：拉齐即释放；TTL 90s 兜底；同终端新
+  - **lines 模式 replay 形状（R4 M-R4-5）**：catchUp 命中 ring 时响应 =
+    v1 replay 形状 + `streamMode:'lines'`（无 snapshotId/totalPages/
+    alternateOn）——per-mount 锁存依赖每个响应携带 streamMode。
+  - **重建后光标（R4 N-R4-2 显式化）**：重建序列写完当前屏后光标停在文本尾，
+    依赖 capture 批末 `refresh-client -C` 触发的重绘块（S0 后首批 live 块，
+    天然在副本缓冲且靠前）自愈——金样本覆盖；list-panes 的 cursor_x/y
+    不在重建序列消费（仅诊断用）。
+  - **snapshotId hold 生命周期**：末页送达后 10s 宽限再释放（R4 N-R4-3：
+    末页在途丢失的重试不至于整个 open 重来）；TTL 90s 兜底；同终端新
     capture 替换旧 id（旧 id 立即失效）；stale id 的分页请求回错误
     `snapshot-expired`——web 收到即放弃本次 assembly（保持小快照形态，
     功能完好仅历史浅）并重试整个 open 一次。内存上界 = 1MB × live 终端数，
@@ -183,20 +194,25 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
     与 live 输出在单 socket 上 HOL）；web 侧每页 15s 超时，失败重试 1 次后
     放弃 assembly（同 stale 路径）。历史页**不进 ring、不进 headless、
     不占 seq**（与 ingest 完全解耦）。
-  - **assembly 状态机（web，R3 M-R3-2 显式转移表）**：
-    `open-ASSIGN`（baseline=S0 **立即** ASSIGN，live 跟流全程走 termStreamSync
-    正常 dup/gap 判定）→ `buffering`（后台拉页；到达的 live 块正常上屏
-    **并同时留副本**于 assembly 缓冲）→ 等待**安静时刻 gate**（见下）→
-    `rebuilding`（reset → 历史 → 当前屏 → assembly 缓冲的 live 副本，
-    全程 **raw write 绕过 liveChunk/seq 判定**——这些块 seq≤lastSeq，走正路
-    会被 'dup' 全丢；重建期间新到 live 块排队，重建完按序补写）→ `done`
-    （释放缓冲）。abort 转移：gap→catchUp 触发 / snapshot-expired / 页拉取
-    失败——一律回 `done`（小快照形态），不半途重建。
-  - **安静时刻 gate（R3 M-R3-1+M-R3-4 合并解）**：重建仅在
-    `!termWriteHold.isHolding() && 用户视口位于底部` 时执行，否则挂起等待
-    ——一次解决「重建毁选区」（beginSnapshotRestore 语义是给重连的，不给
-    后台美化用）与「重建跳视口」两个问题；「无感变深」的承诺由此 gate
-    支撑而非声称。
+  - **assembly 状态机（web，显式转移表；R4 M-R4-2/3 收紧作用域）**：
+    `open-ASSIGN`（baseline=S0 立即 ASSIGN；**副本规则与状态无关**：一切
+    seq>S0 且被 apply 的 live 块自 ASSIGN 起原子留副本，贯穿拉页与 gate
+    挂起全程，done/abort 统一释放——漏一块=重建产物与真实屏幕永久分叉）
+    → `buffering`（后台拉页；live 块正常上屏+留副本）→ **安静时刻 gate**
+    → `rebuilding`（reset → 历史 → 当前屏 → live 副本；**raw write 绕过
+    seq 判定的只有重放的副本与历史页**——重建期间**新到的 live 块到达时
+    照常过 liveChunk（推进 lastSeq / gap 检测），仅 write 延迟排队**，重建
+    完按序补写。若全绕过：lastSeq 停滞 → 重建后首个正常块被判 gap →
+    catchUp 的 reset 把刚建好的深历史立即抹掉——功能自毁路径，禁止）
+    → `done`（释放缓冲）。abort：gap→catchUp / snapshot-expired / 页失败 /
+    **缓冲超上限（web 侧 2MB，对齐 ring——回看+持续输出的主用例下缓冲
+    无界正好死在本 feature 的场景上，R4 M-R4-4）** ——一律回 done
+    （小快照形态），seq 簿记全程走正路故无需恢复动作。
+  - **用户安静 gate（R3 M-R3-1+M-R3-4 合并解；「安静」指用户不指输出）**：
+    重建仅在 `!termWriteHold.isHolding() && 视口位于底部` 时执行，否则挂起
+    （挂起期缓冲上限见上，超限放弃）——一次解决「重建毁选区」
+    （beginSnapshotRestore 语义是给重连的，不给后台美化用）与「重建跳
+    视口」；「无感变深」由此 gate 支撑而非声称。
   - capture 字节预算 1MB（原始）截断更早历史（总量有界）。
 - 生命周期：`%exit` / 进程退出 → 与现状 pty onExit 同路；**停 client 一律
   SIGTERM→2s 超时→SIGKILL**（3.6b 退出挂起 bug 兜底；spec 附注：建议
@@ -296,8 +312,10 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
     `streamMode` → 回 v1 形状（`mode:'snapshot'` 内嵌 base64(当前屏
     capture)，尺寸沿用 300 行级预算躲 1MB 上限）——老 web 的
     `applyOpenResult` 硬依赖该形状，回 meta 形状会让它在 `res.chunks` 处
-    抛异常永远 connecting。老 web 无深历史（如实降级），其余行为如 N1
-    推演。老 happy-app 未实测，废弃产品 Owner 自担。
+    抛异常永远 connecting。老 web 无深历史（如实降级）；其 snapshot data
+    从 serialize() 换为 capture 文本——光标错位由批末 refresh 重绘块自愈，
+    静默行为差异如实注记（R4 N-R4-5）。其余行为如 N1 推演。老 happy-app
+    未实测，废弃产品 Owner 自担。
   - **streamMode per-mount 锁存（R2 M-R2-4）**：vh-update/回滚使 daemon 在
     web 存活期换代是常态（铁律 5）；catchUp 响应的 streamMode 与 mount 时
     翻转（attach↔lines）→ 强制整屏重建（remount 等价路径），不做热切换。
