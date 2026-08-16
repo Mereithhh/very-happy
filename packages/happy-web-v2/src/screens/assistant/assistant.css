@@ -273,7 +273,8 @@
 }
 /* PC: the mobile-first sizes starve the reading area — widen the column,
    give the text ~half the viewport, and bump body copy to 16px. */
-@media (min-width: 980px) {
+/* B-112: the desktop-shell query (useMediaQuery.DESKTOP_SHELL_MQ) */
+@media (min-width: 980px), (min-width: 800px) and (min-height: 600px) {
   .as-col {
     max-width: 760px;
   }

@@ -211,7 +211,8 @@
 }
 
 /* mobile (< AppLayout's 980px two-pane breakpoint): fullscreen panel */
-@media (max-width: 979px) {
+/* B-112: inverse of the desktop-shell query (useMediaQuery.DESKTOP_SHELL_MQ) */
+@media (max-width: 799px), (max-width: 979px) and (max-height: 599px) {
   .nc-backdrop {
     background: var(--scrim);
   }

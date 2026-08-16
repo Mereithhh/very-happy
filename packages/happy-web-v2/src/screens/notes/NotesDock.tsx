@@ -15,7 +15,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { List, Maximize2, Plus, X } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
-import { useMediaQuery } from '@/app/useMediaQuery';
+import { DESKTOP_SHELL_MQ, useMediaQuery } from '@/app/useMediaQuery';
 import { useLocalSetting } from '@/sync/storage';
 import { useNotes, setNotesCredentials } from '@/sync/notesStore';
 import { deriveNoteTitle, pruneNoteTabs } from '@/sync/notes';
@@ -40,8 +40,8 @@ export function NotesDock() {
     const loaded = useNotes((s) => s.loaded);
     // Breakpoints follow useIsDesktop (980px): below it AppLayout renders the
     // single-pane mobile shell, where the dock must be the fixed overlay.
-    const resizable = useMediaQuery('(min-width: 980px) and (pointer: fine)');
-    const wide = useMediaQuery('(min-width: 980px)');
+    const resizable = useMediaQuery('(min-width: 980px) and (pointer: fine), (min-width: 800px) and (min-height: 600px) and (pointer: fine)');
+    const wide = useMediaQuery(DESKTOP_SHELL_MQ);
     const { width, onHandleMouseDown } = useNotesPanelWidth();
     const bindTarget = useCurrentBindTarget();
     const bindTargetRef = useRef(bindTarget);

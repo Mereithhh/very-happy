@@ -18,6 +18,7 @@
  * and records the spawned sessionId on the task (manual mapping — the LLM's
  * metadata.board.taskId only claims sessions no task claims manually).
  */
+import { DESKTOP_SHELL_MQ } from '@/app/useMediaQuery';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Rocket, Trash2 } from 'lucide-react';
@@ -87,7 +88,7 @@ function DoneColumn({ entries, now }: { entries: CompletedEntry[]; now: number }
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return typeof window.matchMedia === 'function'
-        ? !window.matchMedia('(min-width: 980px)').matches
+        ? !window.matchMedia(DESKTOP_SHELL_MQ).matches
         : false;
     } catch {
       return false;
