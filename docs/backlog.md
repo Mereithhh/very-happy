@@ -19,9 +19,9 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-118 | 笔记归档：用完的 note 归档出默认列表（dock 只显未归档；/notes 加归档视图切换）；NoteRecord+archived 字段 | feat | Owner 2026-08-17 | doing | 笔记管理批（notes-mgmt）；⚠️ parseNoteRecord 白名单式——旧 web 编辑会抹掉新字段，Owner 全设备刷新后风险窗口关闭 |
-| B-119 | 笔记标签 + 显式标题：NoteRecord+tags/title（显式标题覆盖首行自动标题——解决「自动标题太长」的根），列表行 TagChip、filter 匹配 tags/标题；编辑走 RenameModal 复用（标题+标签一个弹窗） | feat | Owner 2026-08-17 | doing | 同批 |
-| B-120 | 笔记右键/长按菜单：钉成标签、重命名/标签、归档/取消归档、删除（confirm）——ActionContextMenu 复用（Radix 自带触屏长按，移动端天然覆盖） | ux | Owner 2026-08-17 | doing | 同批 |
+| B-118 | 笔记归档：用完的 note 归档出默认列表（dock 只显未归档；/notes 加归档视图切换）；NoteRecord+archived 字段 | feat | Owner 2026-08-17 | done | **Shipped 2026-08-17**（merge 8531516c，web 已部署）：菜单归档/取消归档，dock 只显未归档，/notes 工具栏归档视图切换。⚠️ 旧 web 编辑会抹新字段——全设备刷新后窗口关闭 |
+| B-119 | 笔记标签 + 显式标题：NoteRecord+tags/title（显式标题覆盖首行自动标题——解决「自动标题太长」的根），列表行 TagChip、filter 匹配 tags/标题；编辑走 RenameModal 复用（标题+标签一个弹窗） | feat | Owner 2026-08-17 | done | **Shipped 同批**：tags（上限8）+显式标题（clamp 64，tab/列表优先用），RenameModal 复用，filter 匹配 tags/标题；3 纯函数测试 |
+| B-120 | 笔记右键/长按菜单：钉成标签、重命名/标签、归档/取消归档、删除（confirm）——ActionContextMenu 复用（Radix 自带触屏长按，移动端天然覆盖） | ux | Owner 2026-08-17 | done | **Shipped 同批**：行右键/触屏长按菜单（钉/重命名标签/归档/删除 confirm），ActionContextMenu 复用 |
 | B-115 | 笔记快捷入口：会话页 + 终端页 header 加便签按钮（toggleNotesPanel）——现在只有 ⌘J/侧栏 footer/⌘K，移动端等于无入口 | ux | Owner 2026-08-16 | done | **Shipped 2026-08-16**（merge 3b42453d，web 已部署）：会话/终端 header 便签按钮 |
 | B-116 | /notes 全屏没有退出/关闭控件——dock 放大进去后（尤其移动端）困住，只能靠浏览器返回 | bug | Owner 实报 2026-08-16 | done | **Shipped 同批**：/notes 工具栏「收回侧边栏」，回上页+恢复 dock，深链兜底首页 |
 | B-117 | 笔记 dock 上下分屏：列表常驻上半，点一条下半就地编辑（不再强制开 tab）——匹配「一堆短 prompt 扫着改」的真实用法；tab 降级为钉住常用（列表项 hover 钉按钮），tab 宽度收紧 | ux | Owner 2026-08-16 | done | **Shipped 同批**：dock 上下分屏（40/60 固定比例）、点行就地编辑、tab 降级为钉住（行钉按钮）、新建落分屏、tab 宽 160→104。未做：比例拖拽（形态验证后可加） |
