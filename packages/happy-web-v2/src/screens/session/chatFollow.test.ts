@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth } from './chatFollow';
+import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
 
 describe('nextAwaySnapshot', () => {
     it('贴底时永远没有快照', () => {
@@ -59,5 +59,14 @@ describe('shouldFollowGrowth', () => {
     it('高度不变或收缩不跟随', () => {
         expect(shouldFollowGrowth(150, 150, true)).toBe(false);
         expect(shouldFollowGrowth(150, 100, true)).toBe(false);
+    });
+});
+
+describe('shouldFollowShrink (B-114 键盘弹起保持贴底)', () => {
+    it('follows only when at bottom AND the container got shorter', () => {
+        expect(shouldFollowShrink(800, 420, true)).toBe(true);   // keyboard opened
+        expect(shouldFollowShrink(420, 800, true)).toBe(false);  // keyboard closed — browser clamps
+        expect(shouldFollowShrink(800, 800, true)).toBe(false);  // no change
+        expect(shouldFollowShrink(800, 420, false)).toBe(false); // reading history — never yank
     });
 });

@@ -42,3 +42,17 @@ export function shouldFollowGrowth(
 ): boolean {
     return atBottom && nextHeight > prevHeight;
 }
+
+/**
+ * 滚动容器自身变矮时是否应保持贴底（B-114）：软键盘弹起 resize 视口把容器
+ * 压矮，内容高度不变——growth 那条路永远不触发，贴底状态就丢了。仅当
+ * 「已贴底」且「容器变矮」时跟随；用户上滚回看时键盘弹起不动他。
+ * （容器变高——键盘收起——不需要处理：scrollTop 被浏览器 clamp，贴底自持。）
+ */
+export function shouldFollowShrink(
+    prevHeight: number,
+    nextHeight: number,
+    atBottom: boolean,
+): boolean {
+    return atBottom && nextHeight < prevHeight;
+}

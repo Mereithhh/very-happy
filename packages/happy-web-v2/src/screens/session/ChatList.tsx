@@ -14,7 +14,7 @@ import { Button, EmptyState, Spinner } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { PermissionCard } from './PermissionCard';
-import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth } from './chatFollow';
+import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
 import './chatlist.css';
 
 type Row =
@@ -164,8 +164,28 @@ export function ChatList({ sessionId }: { sessionId: string }) {
             });
         });
         ro.observe(inner);
+        // B-114 ②：滚动容器自身变矮（软键盘弹起 resize 视口）时保持贴底——
+        // 内容没变，上面的 growth 路永远不触发。同一个 rAF 防抖共用。
+        const scroller = scrollRef.current;
+        let prevScrollerHeight = scroller?.getBoundingClientRect().height ?? 0;
+        const roScroller = scroller
+            ? new ResizeObserver((entries) => {
+                const next =
+                    entries[entries.length - 1]?.contentRect.height ??
+                    scroller.getBoundingClientRect().height;
+                const follow = shouldFollowShrink(prevScrollerHeight, next, atBottomRef.current);
+                prevScrollerHeight = next;
+                if (!follow || raf) return;
+                raf = requestAnimationFrame(() => {
+                    raf = 0;
+                    scrollToBottom(false);
+                });
+            })
+            : null;
+        if (roScroller && scroller) roScroller.observe(scroller);
         return () => {
             ro.disconnect();
+            roScroller?.disconnect();
             if (raf) cancelAnimationFrame(raf);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
