@@ -19,9 +19,9 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-115 | 笔记快捷入口：会话页 + 终端页 header 加便签按钮（toggleNotesPanel）——现在只有 ⌘J/侧栏 footer/⌘K，移动端等于无入口 | ux | Owner 2026-08-16 | doing | 笔记优化批①（worktree notes-ux） |
-| B-116 | /notes 全屏没有退出/关闭控件——dock 放大进去后（尤其移动端）困住，只能靠浏览器返回 | bug | Owner 实报 2026-08-16 | doing | 笔记优化批②：工具栏加「收成侧栏」（回上页+恢复 dock，直链兜底回首页） |
-| B-117 | 笔记 dock 上下分屏：列表常驻上半，点一条下半就地编辑（不再强制开 tab）——匹配「一堆短 prompt 扫着改」的真实用法；tab 降级为钉住常用（列表项 hover 钉按钮），tab 宽度收紧 | ux | Owner 2026-08-16 | doing | 笔记优化批③；分屏选中项设备本地记忆（notesSplitNote） |
+| B-115 | 笔记快捷入口：会话页 + 终端页 header 加便签按钮（toggleNotesPanel）——现在只有 ⌘J/侧栏 footer/⌘K，移动端等于无入口 | ux | Owner 2026-08-16 | done | **Shipped 2026-08-16**（merge 3b42453d，web 已部署）：会话/终端 header 便签按钮 |
+| B-116 | /notes 全屏没有退出/关闭控件——dock 放大进去后（尤其移动端）困住，只能靠浏览器返回 | bug | Owner 实报 2026-08-16 | done | **Shipped 同批**：/notes 工具栏「收回侧边栏」，回上页+恢复 dock，深链兜底首页 |
+| B-117 | 笔记 dock 上下分屏：列表常驻上半，点一条下半就地编辑（不再强制开 tab）——匹配「一堆短 prompt 扫着改」的真实用法；tab 降级为钉住常用（列表项 hover 钉按钮），tab 宽度收紧 | ux | Owner 2026-08-16 | done | **Shipped 同批**：dock 上下分屏（40/60 固定比例）、点行就地编辑、tab 降级为钉住（行钉按钮）、新建落分屏、tab 宽 160→104。未做：比例拖拽（形态验证后可加） |
 | B-114 | 键盘弹起聊天列表不保持贴底：滚动跟随只盯内容变高（.cl-inner RO），键盘 resize 视口把**滚动容器压矮**时无人触发 → 底部消息被推出视野（Fold 展开竖放实报，所有移动端同理） | bug | Owner 实报 2026-08-16 | done | **Shipped 2026-08-16**（merge 3c7b5112，web 已部署）：容器自身 RO + shouldFollowShrink，贴底∧变矮→跟随、回看不动、收起靠 clamp 自持；对全部移动端生效。真机随 V-060 一并验 |
 | B-112 | 折叠屏/平板进双栏：isDesktop=纯 min-width:980px，Fold 8 展开内屏（CSS ~800-910px）够不着 → 被当大手机单栏。改复合判定 `≥980px ∨ (≥800px ∧ 高≥600px)`（手机横放高度不足进不来；iPad 竖放顺带受益），TS/CSS 共 ~10 处 980 锚点统一 | ux | Owner 实报 2026-08-16（Fold 8） | done | **Shipped 2026-08-16**（merge a98f8830，web 已部署）：复合断点 DESKTOP_SHELL_MQ + 4 处 CSS 面板取反同步；真机 V-060 |
 | B-113 | 折叠屏半折 Flex mode：竖放半折时 UI 收上半屏、下半留键盘。两层：①打字场景大概率已可用（Android 键盘 resize 视口 + 现有 dvh/keyboard-pin 布局跟随）——先真机定性；②主动姿态检测走 Device Posture API（`device-posture: folded`，Chrome/三星 Internet Android 支持）+ Viewport Segments 把 UI 钉上半 segment——增强项，需 Owner 真机配合调试 | feat | Owner 2026-08-16（Fold 8) | dropped | Owner 实测 Fold 8 物理上无法半折固定 → ②姿态检测无意义撤销；①「键盘一半视图一半」即键盘弹起的现状行为，其缺口以 B-114（贴底丢失）落地 |
