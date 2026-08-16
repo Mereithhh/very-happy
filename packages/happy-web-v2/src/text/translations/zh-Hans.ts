@@ -707,6 +707,8 @@ export const zhHans: TranslationStructure = {
     notes: {
         title: '笔记',
         allNotes: '所有笔记',
+        exitFullscreen: '收回侧边栏',
+        pinTab: '钉成标签',
         new: '新建笔记',
         close: '关闭面板',
         closeTab: '关闭标签',

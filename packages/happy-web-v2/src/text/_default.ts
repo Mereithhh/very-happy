@@ -702,6 +702,8 @@ export const en = {
     notes: {
         title: 'Notes',
         allNotes: 'All notes',
+        exitFullscreen: 'Back to side panel',
+        pinTab: 'Pin as tab',
         new: 'New note',
         close: 'Close panel',
         closeTab: 'Close tab',
