@@ -19,8 +19,8 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-114 | 键盘弹起聊天列表不保持贴底：滚动跟随只盯内容变高（.cl-inner RO），键盘 resize 视口把**滚动容器压矮**时无人触发 → 底部消息被推出视野（Fold 展开竖放实报，所有移动端同理） | bug | Owner 实报 2026-08-16 | doing | 修法对称：容器自身 RO + shouldFollowShrink（贴底∧变矮→保持贴底；回看不动） |
-| B-112 | 折叠屏/平板进双栏：isDesktop=纯 min-width:980px，Fold 8 展开内屏（CSS ~800-910px）够不着 → 被当大手机单栏。改复合判定 `≥980px ∨ (≥800px ∧ 高≥600px)`（手机横放高度不足进不来；iPad 竖放顺带受益），TS/CSS 共 ~10 处 980 锚点统一 | ux | Owner 实报 2026-08-16（Fold 8） | doing | 真机验证项待登记（Fold 展开横/竖两姿态） |
+| B-114 | 键盘弹起聊天列表不保持贴底：滚动跟随只盯内容变高（.cl-inner RO），键盘 resize 视口把**滚动容器压矮**时无人触发 → 底部消息被推出视野（Fold 展开竖放实报，所有移动端同理） | bug | Owner 实报 2026-08-16 | done | **Shipped 2026-08-16**（merge 3c7b5112，web 已部署）：容器自身 RO + shouldFollowShrink，贴底∧变矮→跟随、回看不动、收起靠 clamp 自持；对全部移动端生效。真机随 V-060 一并验 |
+| B-112 | 折叠屏/平板进双栏：isDesktop=纯 min-width:980px，Fold 8 展开内屏（CSS ~800-910px）够不着 → 被当大手机单栏。改复合判定 `≥980px ∨ (≥800px ∧ 高≥600px)`（手机横放高度不足进不来；iPad 竖放顺带受益），TS/CSS 共 ~10 处 980 锚点统一 | ux | Owner 实报 2026-08-16（Fold 8） | done | **Shipped 2026-08-16**（merge a98f8830，web 已部署）：复合断点 DESKTOP_SHELL_MQ + 4 处 CSS 面板取反同步；真机 V-060 |
 | B-113 | 折叠屏半折 Flex mode：竖放半折时 UI 收上半屏、下半留键盘。两层：①打字场景大概率已可用（Android 键盘 resize 视口 + 现有 dvh/keyboard-pin 布局跟随）——先真机定性；②主动姿态检测走 Device Posture API（`device-posture: folded`，Chrome/三星 Internet Android 支持）+ Viewport Segments 把 UI 钉上半 segment——增强项，需 Owner 真机配合调试 | feat | Owner 2026-08-16（Fold 8) | dropped | Owner 实测 Fold 8 物理上无法半折固定 → ②姿态检测无意义撤销；①「键盘一半视图一半」即键盘弹起的现状行为，其缺口以 B-114（贴底丢失）落地 |
 | B-111 | 关闭/归档会话后自动跳到下一个会话（现在三处落点都回首页空态）：下一个=除被关者外最近活跃的可见会话，无候选回首页 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 9017ae9b，web 已部署）：三处落点统一跳最近活跃的其他可见会话（排除 archived/hidden），无候选回首页；侧栏归档打开中会话不导航的隐藏问题一并修；3 纯函数测试。取舍：不复刻侧栏视觉顺序（组件内部状态），Owner 用后可再调 |
 | B-110 | 文件浏览器排序：默认按修改时间最新在上，可切回名称序（目录仍置顶）；偏好设备本地记忆 | ux | Owner 2026-08-15 | done | **Shipped 2026-08-15**（merge 4bb57a0c，web 已部署）：默认修改时间最新在上、目录置顶、无 mtime 沉底；工具栏时钟/AZ 图标一键切换、设备本地记忆；4 纯函数测试。生产 bundle 已核实（202608150739）|
