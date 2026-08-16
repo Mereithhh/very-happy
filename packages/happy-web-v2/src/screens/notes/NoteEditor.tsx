@@ -12,7 +12,7 @@ import { Modal } from '@/modal';
 import { toast } from '@/ui/Toast';
 import { requestInsertToInput } from '@/app/insertToInput';
 import { useNotes } from '@/sync/notesStore';
-import { NOTE_CONTENT_MAX_CHARS, deriveNoteTitle } from '@/sync/notes';
+import { NOTE_CONTENT_MAX_CHARS, noteDisplayTitle } from '@/sync/notes';
 import { bindingHref, useCurrentBindTarget } from './useCurrentBindTarget';
 import { closeNoteTab } from './notesPanelState';
 
@@ -36,7 +36,7 @@ export function NoteEditor({ noteId, autoFocus, onDeleted }: {
 
     const remove = useCallback(async () => {
         if (!note) return;
-        const title = deriveNoteTitle(note.content) || t('notes.untitled');
+        const title = noteDisplayTitle(note) || t('notes.untitled');
         const ok = await Modal.confirm(
             t('notes.deleteTitle'),
             t('notes.deleteConfirm', { title }),

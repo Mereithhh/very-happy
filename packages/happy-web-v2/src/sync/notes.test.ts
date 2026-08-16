@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
+import { noteDisplayTitle,
     NOTE_CONTENT_MAX_CHARS,
     NOTE_KV_PREFIX,
     deriveNoteTitle,
@@ -129,5 +129,33 @@ describe('newNoteId', () => {
         const b = newNoteId();
         expect(a).toMatch(/^[0-9a-f]{12}$/);
         expect(a).not.toBe(b);
+    });
+});
+
+describe('note meta fields (B-118/119)', () => {
+    const base = { id: 'n1', content: 'first line\nrest', createdAt: 1, updatedAt: 2 };
+
+    it('parseNoteRecord keeps title/tags/archived and clamps them', () => {
+        const r = parseNoteRecord({ ...base, title: 'My Prompt', tags: ['a', '', 'b'.repeat(50)], archived: true })!;
+        expect(r.title).toBe('My Prompt');
+        expect(r.tags).toEqual(['a', 'b'.repeat(24)]);
+        expect(r.archived).toBe(true);
+    });
+
+    it('parseNoteRecord omits absent/invalid meta (old-writer records unchanged)', () => {
+        const r = parseNoteRecord(base)!;
+        expect(r.title).toBeUndefined();
+        expect(r.tags).toBeUndefined();
+        expect(r.archived).toBeUndefined();
+        const junk = parseNoteRecord({ ...base, title: '   ', tags: 'nope', archived: 'yes' })!;
+        expect(junk.title).toBeUndefined();
+        expect(junk.tags).toBeUndefined();
+        expect(junk.archived).toBeUndefined();
+    });
+
+    it('noteDisplayTitle: explicit title wins, else first content line', () => {
+        expect(noteDisplayTitle({ title: 'Short name', content: 'long first line' })).toBe('Short name');
+        expect(noteDisplayTitle({ content: '# heading line\nbody' })).toBe('heading line');
+        expect(noteDisplayTitle({ title: 'x'.repeat(60), content: 'y' })).toBe('x'.repeat(31) + '…');
     });
 });

@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minimize2, Plus } from 'lucide-react';
+import { Archive, ArrowLeft, Minimize2, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -24,6 +24,8 @@ export function NotesScreen() {
     const notesMap = useNotes((s) => s.notes);
     const [selected, setSelected] = useState<string | null>(null);
     const [filter, setFilter] = useState('');
+    // B-118: archived view toggle (default = live notes only).
+    const [showArchived, setShowArchived] = useState(false);
 
     useEffect(() => {
         setNotesCredentials(credentials);
@@ -51,6 +53,16 @@ export function NotesScreen() {
                     placeholder={t('notes.filterPlaceholder')}
                     spellCheck={false}
                 />
+                <button
+                    type="button"
+                    className={`notes-screen-new${showArchived ? ' is-active' : ''}`}
+                    onClick={() => { setShowArchived((v) => !v); setSelected(null); }}
+                    aria-pressed={showArchived}
+                    aria-label={t('notes.archivedView')}
+                    title={t('notes.archivedView')}
+                >
+                    <Archive size={15} />
+                </button>
                 <button type="button" className="notes-screen-new" onClick={createNote} aria-label={t('notes.new')} title={t('notes.new')}>
                     <Plus size={15} />
                 </button>
@@ -73,7 +85,7 @@ export function NotesScreen() {
                 </button>
             </div>
             <div className="notes-screen-listbody">
-                <NotesList filter={filter} activeId={selected} onOpen={setSelected} />
+                <NotesList filter={filter} activeId={selected} onOpen={setSelected} archivedView={showArchived} />
             </div>
         </div>
     );

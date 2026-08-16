@@ -21,6 +21,11 @@ export const NOTES_MAX_COUNT = 200;
 
 /** Derived tab/list titles are clipped to this many chars. */
 export const NOTE_TITLE_MAX_CHARS = 32;
+/** Explicit (user-set) titles are clamped to this many chars (B-119). */
+export const NOTE_EXPLICIT_TITLE_MAX_CHARS = 64;
+/** Tag caps (B-119) — mirrors the session-tag conventions. */
+export const NOTE_TAGS_MAX = 8;
+export const NOTE_TAG_MAX_CHARS = 24;
 
 export interface NoteBinding {
     kind: 'session' | 'terminal';
@@ -36,6 +41,12 @@ export interface NoteRecord {
     id: string;
     content: string;
     boundTo?: NoteBinding | null;
+    /** B-119: explicit user-set title; absent/empty → first content line. */
+    title?: string;
+    /** B-119: user tags (chips + filter). Absent = none. */
+    tags?: string[];
+    /** B-118: archived notes leave the default lists (data survives). */
+    archived?: boolean;
     createdAt: number;
     updatedAt: number;
 }
@@ -71,15 +82,36 @@ export function parseNoteRecord(raw: unknown): NoteRecord | null {
             };
         }
     }
+    const tags = Array.isArray(o.tags)
+        ? (o.tags.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+            .map((x) => x.slice(0, NOTE_TAG_MAX_CHARS))
+            .slice(0, NOTE_TAGS_MAX))
+        : undefined;
     return {
         id: o.id,
         // Defensive clamp: a foreign writer (older/newer client) must not blow
         // the MMKV mirror past the localStorage quota.
         content: o.content.slice(0, NOTE_CONTENT_MAX_CHARS),
         boundTo,
+        ...(typeof o.title === 'string' && o.title.trim().length > 0
+            ? { title: o.title.slice(0, NOTE_EXPLICIT_TITLE_MAX_CHARS) }
+            : {}),
+        ...(tags && tags.length > 0 ? { tags } : {}),
+        ...(o.archived === true ? { archived: true } : {}),
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
     };
+}
+
+/** Display title: explicit title wins (B-119), else the derived first line. */
+export function noteDisplayTitle(note: Pick<NoteRecord, 'title' | 'content'>): string {
+    const explicit = note.title?.trim();
+    if (explicit) {
+        return explicit.length > NOTE_TITLE_MAX_CHARS
+            ? explicit.slice(0, NOTE_TITLE_MAX_CHARS - 1) + '…'
+            : explicit;
+    }
+    return deriveNoteTitle(note.content);
 }
 
 /**
