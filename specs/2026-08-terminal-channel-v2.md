@@ -1,7 +1,9 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：Draft（调研完成：代码兼容面全链路 + tmux 3.6b control mode 本机实证 + 外部经验；
-> 待对抗性 review 收敛）
+> 状态：Draft v2（R1 对抗已修：3 BLOCKING + 8 MUST-FIX 全采纳——snapshot 分块与字节预算、
+> 统一 capture-snapshot 语义、alt-screen 滚动双轨保留、应答过滤实证坐实、丢弃锚点修正、
+> send-keys 码点语义、粘贴走 paste-buffer 权威包裹、单 pane 声明、几何第 6 步、fallback 保留；
+> 命令通道拥塞担忧被 R1 实测证伪。待 R2 收敛）
 > 日期：2026-08-17 ｜ 关联 backlog：B-121 ｜ 出处：Owner 实报手机滑动不跟手 → 三层方案 Owner 拍板直接根治
 
 ## 背景
@@ -104,26 +106,42 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   命令编号）FIFO 配对路由到命令 promise 队列（同一连接跑 capture/set-option/
   refresh-client，替代散落 spawnSync）；`%output %<pane>` octal-unescape 后
   产出 **bytes**（→base64 直接进现有 ring/信道，不过 UTF-8 string）；
-  `%layout-change/%exit` 等路由到生命周期。写入端硬纪律：**绝不发裸空行**
-  （= detach）。
+  `%layout-change/%exit` 等路由到生命周期；greeting 空块排除在 FIFO 配对外
+  （N5）；单行长度上限（截块防二进制场景无界行，N4）。写入端硬纪律：
+  **绝不发裸空行**（= detach）。
 - **headless 权威屏保留**：同一条解码后的输出流喂 headless xterm——agentState
-  零 subprocess 快路径、serialize snapshot、`pty.process` 的替代
-  （`pane_current_command` 改从 list 轮询字段取，已在 7 字段里）全部延续。
+  零 subprocess 快路径延续。`pty.process` 的替代：`pane_current_command`
+  **需要新增进 LIST_SESSIONS_FORMAT**（R1 M3 打假：现有 7 字段没有它）
+  + `parseSessionListLine` 同步；降级如实写明：command 从实时值变 ≤10s
+  轮询值，needs_input 判据主要靠 tail 文本不受影响，shell/idle 分类容忍。
+- **单 pane 声明（R1 M6）**：%output 自带 pane id；ingest **只跟随该 window
+  的首个 pane**，其他 pane（用户本地 `tmux attach` 后 split 出来的）的
+  %output 丢弃——v1 镜像 tmux 合成画面（含分屏可见），v2 分屏内容不可见，
+  行为变化写入验收与文档。
+- **no-tmux fallback 保留（R1 M8）**：无 tmux 时的裸 shell pty 路径原样保留
+  （含 startupCommand 直写、MAX_LIVE_PTYS/reaper 机制留守）——「PTY 上限
+  约束消失」只对 tmux 路径成立。
 - **seq/ring 机制原样保留**：解码后的输出块 = ingest(chunk)（seq+ring+广播），
   wire 事件 `terminal-output` 语义不变（encStream 不变）。gap→catchUp、
   snapshot-ASSIGN/replay-max 两铁律不变（行流丢块虽不再「永久错位」，但会
   丢内容——catchUp 补齐语义照旧成立）。
-- **打开时序（历史回填的无竞态设计，capture 走 iTerm2 验证组合）**：
-  1. spawn control client（%output 进解码器缓冲区，暂不 ingest）；
-  2. 命令通道顺发三连：主屏+历史 `capture-pane -peqJN -S -<N> -t <pane>`
-     （**-J 逻辑长行**：xterm 按自己列宽重 wrap，天然吸收宽度差）、
-     alt 屏 `…-a`（-q 容错无 alt 时静默）、未完成序列尾巴 `-p -P -C`；
-     光标/DECCKM/DECTCEM 状态用 `list-panes -F` 状态包补（首版可裁剪：
-     只补光标位置与 alternate_on，其余观察后加）；
-  3. 首个 `%begin` 之前缓冲的 %output **丢弃**（已含于 capture）；
-  4. capture 三连拼装为「历史块」写 headless + 作为 open 响应 snapshot 载荷；
-  5. 末个 `%end` 之后 %output 恢复 ingest——同一条 stdout 的顺序即权威顺序，
-     增量与历史无缝不重复。
+- **打开/快照时序（R1 M2/M7 修正后；此时序同时是初开、重连、gap 出 ring、
+  forceSnapshot 的统一 snapshot 语义——B2）**：
+  1. spawn control client（attach 最先到达的是 greeting `%begin/%end` 空块，
+     **排除在命令 FIFO 配对外**；实证 attach 不自发重放屏幕）；
+  2. 全部 open 命令**一次 write** 管道化写入（防 %output 插进应答块间隙——
+     实证会发生）：主屏+历史 `capture-pane -peqJN -S -<N>`、alt 屏 `…-a`
+     （-q 无 alt 静默）、尾巴 `-p -P -C`、`list-panes -F` 状态包（首版只取
+     cursor_x/y 与 alternate_on）、**第 6 步 `refresh-client -C WxH`**（宽度
+     不同触发 SIGWINCH 全屏重绘自愈 capture 后的相对光标错位——iTerm2 同法）；
+  3. **ingest 切换锚点 = 活动绘制面那次 capture 的 `%end`**（普通屏=主 capture，
+     alt 活动=alt capture）——锚点前缓冲的 %output 丢弃（含于 capture），
+     锚点后恢复 ingest。同一条 stdout 顺序即权威顺序（接缝逐字节无缝已实证：
+     capture 末行半行、%end 后首 %output 精确续起）；
+  4. **snapshot 的 seq = 该 `%end` 到达时刻的 ingest seq**（B2：与载荷在流序
+     上原子一致，termStreamSync 的 snapshot-ASSIGN 铁律得以延续）；
+  5. capture 拼装块受**字节预算 1MB（原始）**截断（超预算丢更早历史，深度
+     动态缩水）——B1 的第一道防线。
 - 生命周期：`%exit` / 进程退出 → 与现状 pty onExit 同路；**停 client 一律
   SIGTERM→2s 超时→SIGKILL**（3.6b 退出挂起 bug 兜底；spec 附注：建议
   mac-office 升 tmux ≥3.7 消根因，但代码不得依赖升级）。
@@ -139,32 +157,45 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
 照抄 iTerm2 生产验证的三通道分类（按码点 run-length 合并）：
 - ASCII 可打印段 → `send-keys -lt <pane> -- '<literal>'`（单引号 quoting，
   内部单引号按 shell 规则拆接）；
-- 非 ASCII 码点（中文/emoji）→ `send-keys -t <pane> 0xNN…`（tmux UTF-8
-  encoder 展开）——**中文输入的主通道，金样本必须覆盖 IME 提交串**；
+- 非 ASCII → `send-keys -t <pane> 0xNNNN…`——**按 Unicode 码点**（R1 M5 实证：
+  按字节发 0xE4 0xB8 0xAD 得到乱码 `ä¸­`，按码点 0x4E2D 才是 `中`；emoji
+  0x1F600 同验）——中文输入主通道，金样本必须覆盖 IME 提交串；
 - C0 控制字节（回车/Esc/Ctrl-*）→ `send-keys -H -t <pane> <hex>`（3.5+ 的
   `0xNN` C0 静默劣化 bug 的规避通道）；
-- 单条命令 ≤1000 字节分片；分片间保序（命令通道天然 FIFO）。
-纯函数 `encodeSendKeys(bytes) → string[]`（vitest + 金样本：71 项按键差分
-工具 B-096 现成，跑 attach vs send-keys 两通道逐字节比对）。
+- 单条命令 ≤1000 字节分片；FIFO 保序，**fire-and-forget（不等 %end）**——
+  R1 实测 200 条管道化 1.9ms、串行等待中位 0.03ms，拥塞担忧证伪。
+纯函数 `encodeSendKeys(text) → string[]`（vitest + 金样本：B-096 71 项按键
+差分工具现成，attach vs send-keys 两通道逐字节比对作为硬门）。
+**粘贴专路（R1 M4）**：tmux 3.6b 无 bracketed-paste(2004) 的 format 字段、
+attach 时的模式重放 v2 拿不到——pane 已开 2004 时 web 侧 `term.paste()`
+不知情、多行粘贴会逐行执行。修法：lines 模式下 web 粘贴/B-013 快捷指令
+改走 daemon `load-buffer` + `paste-buffer -p`（现成路径，tmux 按 pane 真实
+2004 状态权威包裹），`term.paste()` 仅留 attach fallback 分支。
 
-**查询应答过滤（外部调研的头号输入坑）**：pane 应用发的 DA/DSR/CSI 6n/OSC
-查询透传进 %output，tmux 已代答；xterm.js 在 onData 会再自动吐一份应答，
-回灌即重复应答。处理：web sendInput 链**保持不动**（它只送用户输入？——
-错，xterm onData 混合用户输入与自动应答，无法在 web 侧区分来源）→
-**daemon 侧过滤**：encodeSendKeys 前剥离已知自动应答模式（CSI [>?]…c、
-CSI ?6n 应答 CSI R、OSC 10/11 应答等，白名单纯函数 + 测试）。
-【对抗待验：现状 attach 模式下这些应答本来就流向 tmux 且行为正常——
-需确认 v2 下 tmux 对 send-keys 进来的应答串的实际处理，若无害可简化】
+**查询应答过滤（R1 M1 四步实证坐实，必须过滤）**：pane 查询（CSI c/6n、
+OSC 10/11）tmux 无 client 也代答且原样透传进 %output → web xterm onData
+自动再吐一份；v1 下 attach client 的应答被 tmux 吞掉（实测 pane 收 0 字节，
+tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**（实测 7
+字节全到）= 脏输入。修法：**daemon 侧过滤**——encodeSendKeys 前剥离已知
+自动应答模式（CSI [>?]…c、CSI ?6n→CSI R、OSC 10/11 应答），白名单纯函数
++ 测试。R1 N2 顺带指出唯一可插进粘贴分片间的写者也是 tmux 代答，窗口极小。
 - startupCommand/tombstones/attachOnly/closedTerminals/镜像注入/B-013 daemon 侧
   paste-buffer：**全部不动**（都作用于 tmux session 生命周期层，与 client 形态无关）。
 
 ### D2 web：本地 scrollback 生效
 
-- open 响应 `streamMode:'lines'` 时：不再劫持 wheel（xterm 原生 scrollback 滚动）、
-  **移除 touch→合成 wheel 链路并撤 `.term-host` 的 `touch-action:none`**
-  ——xterm viewport 原生触摸滚动（跟手+惯性）。alt-buffer 场景（用户在终端里
-  跑 vim / `/tui fullscreen`）交给 xterm 默认行为（wheel→方向键），
-  `terminal-scroll` RPC 不再调用。
+- open 响应 `streamMode:'lines'` 时**滚动双轨（R1 B3 修正——alt-screen 一轨
+  不能砍）**：
+  - **normal buffer（回看，95% 场景）**：不劫持 wheel、放行原生触摸滚动
+    ——xterm 本地 scrollback，跟手+惯性；
+  - **alternate buffer（vim / `/tui fullscreen` / 存量无 classic-env 的
+    claude）**：v1 的 wheel 劫持 + touch→合成 wheel + `terminal-scroll` RPC
+    **原样保留**——xterm 默认的 wheel→方向键在 claude TUI 里是「滚轮翻
+    prompt 历史」的老坑（planScrollAction 的验尸注释为证），不能回归；
+  - `touch-action` 随 buffer 态动态切换（xterm `buffer.onBufferChange` →
+    `.term-host--alt` class；normal=原生滚动，alt=none 供合成 wheel）；
+  - `termMouseModeFilter` **保留**（alt 轨的 SGR wheel 语义依赖它维持
+    「应用以为没开鼠标」的现状；R1 指出退役清单漏了它的去留）。
 - 历史块（snapshot 新载荷）直接 `term.write`——xterm scrollback(5000) 首次
   真正生效；`@xterm/addon-search` 顺带解锁（B-037，本批不做 UI 只留能力）。
 - **三个解冻机制的重审**（现状事实里互相中和、v2 同时变活）：
@@ -185,16 +216,24 @@ CSI ?6n 应答 CSI R、OSC 10/11 应答等，白名单纯函数 + 测试）。
 ### D3 协议与兼容矩阵
 
 - `open-terminal` 请求加 `streamMode:'lines'`（能力声明），响应回
-  `streamMode:'lines'|'attach'`。snapshot 载荷在 lines 模式下 =
-  base64(历史裸字节)（语义从「serialize 整屏」变为「历史流」），replay/live
-  chunk 格式与加密完全不变。
+  `streamMode:'lines'|'attach'`。
+- **snapshot 分块传输（R1 B1——server socket.io 默认 maxHttpBufferSize=1e6，
+  超限直接断 daemon socket=该机全部终端瞬断）**：lines 模式下 open 响应不再
+  内嵌大载荷——响应只带 `{streamMode, seq, historyChunks: n}` 元信息，历史
+  按 ≤64KB(base64 前) 分块经现有 `terminal-output` chunk 通道顺序下发
+  （每块带 seq、encStream 加密照旧），web 按 seq 顺序 write。双保险 =
+  分块（单帧不爆）+ D1 的 1MB capture 字节预算（总量有界）。出 ring 重连
+  同样走此路径（代价如实：手机后台一晚回来 = 全量 capture + ≤1MB 传输 +
+  xterm 毫秒级重写；验收含其耗时实测）。
 - 兼容矩阵：
   - **新 web + 老 daemon**：请求字段被忽略、响应无 streamMode → web 走现状
     attach 路径（滚动劫持、合成 wheel 全保留为 fallback 分支）。
-  - **老 web + 新 daemon**：请求无 streamMode → daemon 回 attach 模式？
-    【对抗待定：双模并存 vs daemon 一刀切+老 web 行流降级实测——初步分析
-    老 web 在行流下基本工作（buffer 非 alternate → wheel 走原生 scrollback，
-    5000 已配），但 blank-belt/termStreamSync 行为需实证】
+  - **老 web + 新 daemon**：daemon 一刀切 lines（R1 N1 推演裁决：老 web
+    wheel 劫持门=alternate 判定，lines 下只在 alt TUI 触发且 planScrollAction
+    的 send-keys 类分支实证可用；blank-belt 是一次性 800ms 定时器最坏多打一
+    次 forceSnapshot 无循环；touch 合成 wheel 在 normal buffer 返回 true 反而
+    走原生 scrollback）。前提=B1 分块先行。老 happy-app 未实测，废弃产品
+    Owner 自担。
   - 老 happy-app 消费者：同「老 web」处理。
 - 发布顺序：web 先（带 fallback）→ CLI；回滚=CLI 回滚即回 attach 模式。
 
@@ -237,7 +276,10 @@ CSI ?6n 应答 CSI R、OSC 10/11 应答等，白名单纯函数 + 测试）。
 - [ ] 多设备同开：几何 latest 语义、两端内容一致
 - [ ] daemon 重启/pty reap 等价物（client reap）后重连：无黑屏、无重复、无冻屏（termStreamSync 三事故回归）
 - [ ] 新旧四象限兼容矩阵实测
-- [ ] 门禁全绿 + 解码器金样本测试
+- [ ] 多行粘贴进已开 2004 的 pane：不逐行执行（M4 专项）
+- [ ] 用户本地 attach 后 split：web 端行为符合单 pane 声明（M6）
+- [ ] 出 ring 重连：snapshot 分块大小与端到端耗时实测（B1/B2）
+- [ ] 门禁全绿 + 解码器金样本 + encodeSendKeys 金样本（B-096 差分 142 用例硬门）
 
 ## 留真机验证项（Draft）
 
