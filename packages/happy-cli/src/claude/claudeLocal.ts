@@ -5,6 +5,7 @@ import { mkdirSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { ensureLocalProxyBypass } from "./utils/proxyBypass";
+import { pinSmallFastModel } from "./utils/smallFastModel";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
@@ -261,6 +262,10 @@ export async function claudeLocal(opts: {
                 ...process.env,
                 ...opts.claudeEnvVars
             }
+
+            // Keep background/utility calls (built-in session-title generation
+            // etc.) on haiku instead of the main model. Main model unaffected.
+            pinSmallFastModel(env);
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
                 ensureLocalProxyBypass(env);

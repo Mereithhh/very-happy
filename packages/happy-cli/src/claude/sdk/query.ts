@@ -7,6 +7,7 @@ import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claud
 import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
+import { pinSmallFastModel } from '../utils/smallFastModel'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
 
 /**
@@ -75,6 +76,9 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         if (typeof value === 'string') env[key] = value
     }
     env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(process.env.CLAUDE_CODE_ENTRYPOINT)
+    // Keep background/utility calls (built-in session-title generation etc.)
+    // on haiku instead of the session's main model. Main model is unaffected.
+    pinSmallFastModel(env)
     if (opts?.mcpServers && Object.keys(opts.mcpServers).length > 0) {
         ensureLocalProxyBypass(env)
     }
