@@ -3,11 +3,12 @@
  * and the global back button.
  */
 import { useState } from 'react';
-import { Check, FolderTree, Pencil, X } from 'lucide-react';
+import { StickyNote, Check, FolderTree, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
 import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
+import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot, type Status } from '@/ui';
 import { useImeGuard } from '@/utils/ime';
@@ -114,6 +115,17 @@ export function ChatHeader({
             <div className="ch-status">
                 <StatusDot status={status} size={9} pulse={status === 'connected'} />
             </div>
+            {/* B-115: quick notes entry — the dock's only reachable entry on
+                mobile (⌘J / sidebar footer don't exist there). */}
+            <button
+                type="button"
+                className="ch-icon"
+                onClick={toggleNotesPanel}
+                aria-label={t('notes.title')}
+                title={t('notes.title')}
+            >
+                <StickyNote size={16} />
+            </button>
             {onToggleFiles && (
                 <button
                     type="button"

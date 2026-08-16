@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, MessagesSquare, X } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket } from '@/sync/apiSocket';
 import {
@@ -51,6 +51,7 @@ import {
   type TermFocusAction,
 } from './termFocusPolicy';
 import { resolveTerminalView, withTerminalViewOverride } from '@/sync/terminalViewPref';
+import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
 import {
@@ -1578,6 +1579,16 @@ export function WebTerminalScreen() {
               <MessagesSquare size={18} />
             </button>
           )}
+          {/* B-115: quick notes entry (prompt stash lives one tap away). */}
+          <button
+            type="button"
+            className="sb-icon-btn"
+            title={t('notes.title')}
+            aria-label={t('notes.title')}
+            onClick={toggleNotesPanel}
+          >
+            <StickyNote size={18} />
+          </button>
           {!isDesktop && (
             <button
               className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}

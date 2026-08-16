@@ -42,3 +42,10 @@ export function closeNoteTab(id: string): void {
 export function showNotesList(): void {
     storage.getState().applyLocalSettings({ notesPanelOpen: true, notesActiveTab: null });
 }
+
+/** B-117: pick the note shown in the split view's lower editor (null = none).
+ *  Deliberately does NOT touch tabs — split selection is the browse-and-edit
+ *  lane, tabs are the pinned lane. */
+export function setNotesSplitNote(id: string | null): void {
+    storage.getState().applyLocalSettings({ notesSplitNote: id });
+}

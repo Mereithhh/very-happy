@@ -114,6 +114,9 @@ export const LocalSettingsSchema = z.object({
     notesPanelWidth: z.number().nullable().describe('User-dragged notes dock width in px (null = responsive default)'),
     notesOpenTabs: z.array(z.string()).describe('Note ids open as tabs in the notes dock, in tab order'),
     notesActiveTab: z.string().nullable().describe('Note id of the active notes-dock tab (null = list view)'),
+    // B-117: the note open in the dock's split view (list on top, editor
+    // below) — device-local selection, independent of pinned tabs.
+    notesSplitNote: z.string().nullable().describe('Note id shown in the notes-dock split editor (null = none)'),
 });
 
 //
@@ -192,6 +195,7 @@ export const localSettingsDefaults: LocalSettings = {
     notesPanelWidth: null,
     notesOpenTabs: [],
     notesActiveTab: null,
+    notesSplitNote: null,
 };
 Object.freeze(localSettingsDefaults);
 

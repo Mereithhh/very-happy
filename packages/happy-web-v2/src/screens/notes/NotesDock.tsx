@@ -25,7 +25,7 @@ import { useNotesPanelWidth } from './useNotesPanelWidth';
 import { useCurrentBindTarget } from './useCurrentBindTarget';
 import { NoteEditor } from './NoteEditor';
 import { NotesList } from './NotesList';
-import { closeNoteTab, openNoteTab, setNotesPanelOpen, showNotesList, toggleNotesPanel } from './notesPanelState';
+import { closeNoteTab, openNoteTab, setNotesPanelOpen, setNotesSplitNote, showNotesList, toggleNotesPanel } from './notesPanelState';
 import './notes.css';
 
 export function NotesDock() {
@@ -36,6 +36,7 @@ export function NotesDock() {
     const open = useLocalSetting('notesPanelOpen');
     const tabs = useLocalSetting('notesOpenTabs');
     const activeTab = useLocalSetting('notesActiveTab');
+    const splitNote = useLocalSetting('notesSplitNote');
     const notesMap = useNotes((s) => s.notes);
     const loaded = useNotes((s) => s.loaded);
     // Breakpoints follow useIsDesktop (980px): below it AppLayout renders the
@@ -94,10 +95,15 @@ export function NotesDock() {
             toast.error(t('notes.capReached'));
             return;
         }
-        openNoteTab(id);
+        // B-117: new notes open in the split editor (browse-and-edit lane),
+        // not as a pinned tab.
+        showNotesList();
+        setNotesSplitNote(id);
     };
 
     const activeNote = activeTab ? notesMap[activeTab] : undefined;
+    // Split selection tolerates a note deleted elsewhere (renders list-only).
+    const splitNoteRecord = splitNote ? notesMap[splitNote] : undefined;
 
     return (
         <>
@@ -168,7 +174,27 @@ export function NotesDock() {
                     {activeNote ? (
                         <NoteEditor noteId={activeNote.id} autoFocus />
                     ) : (
-                        <NotesList activeId={activeTab} onOpen={openNoteTab} />
+                        /* B-117 split view: list stays on top, tapping a row
+                           edits it in place below (tabs are the PINNED lane —
+                           the pin affordance on each row). */
+                        <div className="notes-split">
+                            <div className="notes-split-list">
+                                <NotesList
+                                    activeId={splitNote}
+                                    onOpen={(id) => setNotesSplitNote(id === splitNote ? null : id)}
+                                    onPin={openNoteTab}
+                                    pinLabel={t('notes.pinTab')}
+                                />
+                            </div>
+                            {splitNoteRecord && (
+                                <div className="notes-split-editor">
+                                    <NoteEditor
+                                        noteId={splitNoteRecord.id}
+                                        onDeleted={() => setNotesSplitNote(null)}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </aside>

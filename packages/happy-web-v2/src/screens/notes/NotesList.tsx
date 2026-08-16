@@ -2,7 +2,7 @@
  * NotesList — the all-notes list (dock list view + /notes screen left pane):
  * derived title, binding chip, compact mono age, filter passthrough.
  */
-import { Link2, StickyNote } from 'lucide-react';
+import { Link2, Pin, StickyNote } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useNotes } from '@/sync/notesStore';
 import { deriveNoteTitle, sortNotes, type NoteRecord } from '@/sync/notes';
@@ -18,10 +18,13 @@ function ago(at: number, now: number): string {
     return `${Math.floor(h / 24)}d`;
 }
 
-export function NotesList({ filter, activeId, onOpen }: {
+export function NotesList({ filter, activeId, onOpen, onPin, pinLabel }: {
     filter?: string;
     activeId?: string | null;
     onOpen: (id: string) => void;
+    /** B-117: dock split view — pin this note as a tab (hover affordance). */
+    onPin?: (id: string) => void;
+    pinLabel?: string;
 }) {
     const { t } = useTranslation();
     const notesMap = useNotes((s) => s.notes);
@@ -48,7 +51,18 @@ export function NotesList({ filter, activeId, onOpen }: {
             {notes.map((note) => {
                 const title = deriveNoteTitle(note.content);
                 return (
-                    <li key={note.id}>
+                    <li key={note.id} className="notes-list-item">
+                        {onPin && (
+                            <button
+                                type="button"
+                                className="notes-list-pin"
+                                onClick={() => onPin(note.id)}
+                                aria-label={pinLabel}
+                                title={pinLabel}
+                            >
+                                <Pin size={11} />
+                            </button>
+                        )}
                         <button
                             type="button"
                             className={`notes-list-row${note.id === activeId ? ' is-active' : ''}`}

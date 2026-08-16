@@ -83,7 +83,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    max-width: 160px;
+    max-width: 104px; /* B-117: auto titles are long — fit more pinned tabs */
     padding: 0 var(--sp-1);
     border: none;
     border-top: 2px solid transparent;
@@ -473,4 +473,59 @@
 .notes-screen-back:hover {
     background: var(--bg-2);
     color: var(--text);
+}
+
+/* ── B-117 split view: list on top, in-place editor below ── */
+.notes-split {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+.notes-split-list {
+    flex: 1 1 40%;
+    min-height: 80px;
+    overflow-y: auto;
+}
+.notes-split-editor {
+    flex: 1 1 60%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+    background: var(--bg-1);
+}
+/* pin-as-tab affordance on list rows (dock split view only) */
+.notes-list-item {
+    position: relative;
+}
+.notes-list-pin {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--line-2);
+    border-radius: 6px;
+    background: var(--bg-2);
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.notes-list-item:hover .notes-list-pin,
+.notes-list-pin:focus-visible {
+    display: inline-flex;
+}
+.notes-list-pin:hover {
+    background: var(--bg-3);
+    color: var(--text);
+}
+/* coarse pointers have no hover — keep the pin always visible there */
+@media (pointer: coarse) {
+    .notes-list-pin {
+        display: inline-flex;
+    }
 }

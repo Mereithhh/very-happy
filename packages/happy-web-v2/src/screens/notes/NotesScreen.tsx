@@ -4,7 +4,8 @@
  * (back returns to the list). The dock hides itself on this route.
  */
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Minimize2, Plus } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAuth } from '@/auth/AuthContext';
 import { useMediaQuery } from '@/app/useMediaQuery';
@@ -12,10 +13,12 @@ import { useNotes, setNotesCredentials } from '@/sync/notesStore';
 import { toast } from '@/ui/Toast';
 import { NoteEditor } from './NoteEditor';
 import { NotesList } from './NotesList';
+import { setNotesPanelOpen } from './notesPanelState';
 import './notes.css';
 
 export function NotesScreen() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const { credentials } = useAuth();
     const wide = useMediaQuery('(min-width: 861px)');
     const notesMap = useNotes((s) => s.notes);
@@ -50,6 +53,23 @@ export function NotesScreen() {
                 />
                 <button type="button" className="notes-screen-new" onClick={createNote} aria-label={t('notes.new')} title={t('notes.new')}>
                     <Plus size={15} />
+                </button>
+                {/* B-116: the fullscreen view had NO exit — collapse back to
+                    the side dock on whatever page you came from (deep links /
+                    fresh loads have no history entry → land on home). */}
+                <button
+                    type="button"
+                    className="notes-screen-new"
+                    onClick={() => {
+                        setNotesPanelOpen(true);
+                        const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+                        if (idx > 0) navigate(-1);
+                        else navigate('/');
+                    }}
+                    aria-label={t('notes.exitFullscreen')}
+                    title={t('notes.exitFullscreen')}
+                >
+                    <Minimize2 size={15} />
                 </button>
             </div>
             <div className="notes-screen-listbody">
