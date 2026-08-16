@@ -1,9 +1,9 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：Draft v2（R1 对抗已修：3 BLOCKING + 8 MUST-FIX 全采纳——snapshot 分块与字节预算、
-> 统一 capture-snapshot 语义、alt-screen 滚动双轨保留、应答过滤实证坐实、丢弃锚点修正、
-> send-keys 码点语义、粘贴走 paste-buffer 权威包裹、单 pane 声明、几何第 6 步、fallback 保留；
-> 命令通道拥塞担忧被 R1 实测证伪。待 R2 收敛）
+> 状态：Draft v3（R2 修 R1 自引入的 2 BLOCKING + capture -a 语义实证反转：历史改走
+> **machineRPC 分页**（server 零改动回归）+ **二段式打开**（秒开当前屏→历史后台拉齐→
+> 原子重建）；丢弃规则限 fresh-spawn；capture 按 alternate_on 三段分支；粘贴走新
+> terminal-paste RPC 与 send-keys 同 FIFO；reaper/cap 平移；7 MUST-FIX 全采纳。待 R3）
 > 日期：2026-08-17 ｜ 关联 backlog：B-121 ｜ 出处：Owner 实报手机滑动不跟手 → 三层方案 Owner 拍板直接根治
 
 ## 背景
@@ -107,7 +107,9 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   refresh-client，替代散落 spawnSync）；`%output %<pane>` octal-unescape 后
   产出 **bytes**（→base64 直接进现有 ring/信道，不过 UTF-8 string）；
   `%layout-change/%exit` 等路由到生命周期；greeting 空块排除在 FIFO 配对外
-  （N5）；单行长度上限（截块防二进制场景无界行，N4）。写入端硬纪律：
+  （N5）；超长 %output 行**拆分为多个连续 chunk 完整 ingest**（R2 M-R2-7：
+  截断丢字节=撕裂转义序列，termWriteHold「chunk 边界原样保留」同族铁律；
+  上限只管单块大小，一个字节不丢）。写入端硬纪律：
   **绝不发裸空行**（= detach）。
 - **headless 权威屏保留**：同一条解码后的输出流喂 headless xterm——agentState
   零 subprocess 快路径延续。`pty.process` 的替代：`pane_current_command`
@@ -117,7 +119,11 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
 - **单 pane 声明（R1 M6）**：%output 自带 pane id；ingest **只跟随该 window
   的首个 pane**，其他 pane（用户本地 `tmux attach` 后 split 出来的）的
   %output 丢弃——v1 镜像 tmux 合成画面（含分屏可见），v2 分屏内容不可见，
-  行为变化写入验收与文档。
+  行为变化写入验收与文档。**%layout-change → headless.resize 跟随**（R2 NIT：
+  v2 不再踢本地 attach，本地改尺寸后 headless 几何须同步，否则 serialize
+  与 agentProbe 折行漂移）。
+- `LIST_SESSIONS_FORMAT` 新增 `pane_current_command` **必须插在 pane_title
+  之前**（R2 NIT：防 0x1f 设计要求 pane_title 恒为最后一列）。
 - **no-tmux fallback 保留（R1 M8）**：无 tmux 时的裸 shell pty 路径原样保留
   （含 startupCommand 直写、MAX_LIVE_PTYS/reaper 机制留守）——「PTY 上限
   约束消失」只对 tmux 路径成立。
@@ -125,26 +131,53 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   wire 事件 `terminal-output` 语义不变（encStream 不变）。gap→catchUp、
   snapshot-ASSIGN/replay-max 两铁律不变（行流丢块虽不再「永久错位」，但会
   丢内容——catchUp 补齐语义照旧成立）。
-- **打开/快照时序（R1 M2/M7 修正后；此时序同时是初开、重连、gap 出 ring、
-  forceSnapshot 的统一 snapshot 语义——B2）**：
-  1. spawn control client（attach 最先到达的是 greeting `%begin/%end` 空块，
-     **排除在命令 FIFO 配对外**；实证 attach 不自发重放屏幕）；
-  2. 全部 open 命令**一次 write** 管道化写入（防 %output 插进应答块间隙——
-     实证会发生）：主屏+历史 `capture-pane -peqJN -S -<N>`、alt 屏 `…-a`
-     （-q 无 alt 静默）、尾巴 `-p -P -C`、`list-panes -F` 状态包（首版只取
-     cursor_x/y 与 alternate_on）、**第 6 步 `refresh-client -C WxH`**（宽度
-     不同触发 SIGWINCH 全屏重绘自愈 capture 后的相对光标错位——iTerm2 同法）；
-  3. **ingest 切换锚点 = 活动绘制面那次 capture 的 `%end`**（普通屏=主 capture，
-     alt 活动=alt capture）——锚点前缓冲的 %output 丢弃（含于 capture），
-     锚点后恢复 ingest。同一条 stdout 顺序即权威顺序（接缝逐字节无缝已实证：
-     capture 末行半行、%end 后首 %output 精确续起）；
-  4. **snapshot 的 seq = 该 `%end` 到达时刻的 ingest seq**（B2：与载荷在流序
-     上原子一致，termStreamSync 的 snapshot-ASSIGN 铁律得以延续）；
-  5. capture 拼装块受**字节预算 1MB（原始）**截断（超预算丢更早历史，深度
-     动态缩水）——B1 的第一道防线。
+- **打开/快照时序（R2 重构：二段式 + fresh/running 分治）**：
+
+  **共同底座**：capture 命令批**一次 write** 管道化（防 %output 插进应答块
+  间隙——实证会发生）；greeting 空块排除在 FIFO 配对外；**capture 组合按
+  `alternate_on` 分支（R2 B3 实证：无 `-a` 的 capture 返回历史+当前活动面
+  ——alt 活动时那就是 alt 内容；`-a` 返回的是"另一块屏"=保存的普通屏，
+  且拿不到历史）**：
+  - normal 活动：历史+主屏 `capture-pane -peqJN -S -<N>` 一发；
+  - alt 活动：三段拼装——历史 `…-S -<N> -E -1`（实证精确 history-only）+
+    普通屏 `…-a` + `\x1b[?1049h` + 可见区（无 -a 默认范围 capture）——
+    否则 alt TUI 画面灌进 normal scrollback，违反本方案命门；
+  - 附 `list-panes -F`（cursor_x/y、alternate_on）+ 尾巴 `-p -P -C` +
+    末尾 `refresh-client -C WxH`（SIGWINCH 重绘自愈相对光标错位；R2 实证
+    该重绘落在锚点后，不被误伤）。
+
+  **fresh-spawn（daemon 首次为该终端起 client）**：
+  1. spawn → 锚点前缓冲的 %output **丢弃**（含于 capture）——丢弃规则
+     **仅限本场景**（此前无人 ingest，无内容洞风险）；
+  2. 锚点 = 活动绘制面那次 capture 的 `%end`；锚点后恢复 ingest；
+     snapshot seq = 锚点时刻 ingest seq（=0 起点）。
+
+  **running client（重连 / gap 出 ring / forceSnapshot——R2 B-R2-2）**：
+  ingest **全程不停、一个块都不丢**（丢弃即对其他订阅者制造无 gap 信号的
+  永久内容洞）；锚点仅用于**读取 seq 值** S——请求方拿到快照后以 S 为
+  baseline，≤S 的 live 块自然 dedup（termStreamSync 现有 'dup' 语义）。
+  daemon 对同一终端做 **capture single-flight**（M-R2-6：并发 catchUp 合并
+  为一次 capture，分发各请求方）。
+
+  **传输与重建（R2 B-R2-1：绝不走 terminal-output 广播通道）**：
+  - 历史与快照经 **machineRPC 分页**下发（新 RPC `terminal-history
+    {terminalId, snapshotId, page}` → `{seq, page, totalPages, data}`，
+    每页 ≤256KB base64，加密照旧走 RPC 信封）——RPC 是现有通用机制，
+    **server 零改动**、点对点不打扰其他设备；历史块**不进 ring、不进
+    headless、不占 seq**（与 ingest 完全解耦）；
+  - **二段式打开**：open 响应内嵌「当前屏小快照」（capture 可见区，
+    ≤300 行级，v1 尺寸哲学）→ 秒开 + live 跟流；web 后台并发拉历史页，
+    拉齐后**原子重建**（reset → 历史 → 当前屏 → 重放 assembly 期间缓冲的
+    live 块）——termStreamSync 新增 assembly 状态（meta→收块→齐后 ASSIGN
+    baseline）；重建对用户呈现为 scrollback 无感变深；
+  - capture 字节预算 1MB（原始）截断更早历史（总量有界）。
 - 生命周期：`%exit` / 进程退出 → 与现状 pty onExit 同路；**停 client 一律
   SIGTERM→2s 超时→SIGKILL**（3.6b 退出挂起 bug 兜底；spec 附注：建议
   mac-office 升 tmux ≥3.7 消根因，但代码不得依赖升级）。
+  **reaper/cap 语义原样平移（R2 M-R2-5）**：每 live 终端 = 1 tmux 子进程 +
+  headless(5000) + 2MB ring，无界增长不可接受——reapIdle（无订阅 20min →
+  kill client，tmux session 存活）与 enforceCap 保留，cap 从 24 上调
+  （不再受 ptmx 制约，具体值实现期定，建议 48）。
   tmux `history-limit` 上调至 5000（=xterm scrollback，capture 深度上限）
   ——只对新建 session 生效，存量终端历史深度不变（如实降级）。
 - flow control：**v1 不开 pause-after**——%pause→capture 重填→%continue 状态机
@@ -166,11 +199,15 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   R1 实测 200 条管道化 1.9ms、串行等待中位 0.03ms，拥塞担忧证伪。
 纯函数 `encodeSendKeys(text) → string[]`（vitest + 金样本：B-096 71 项按键
 差分工具现成，attach vs send-keys 两通道逐字节比对作为硬门）。
-**粘贴专路（R1 M4）**：tmux 3.6b 无 bracketed-paste(2004) 的 format 字段、
-attach 时的模式重放 v2 拿不到——pane 已开 2004 时 web 侧 `term.paste()`
-不知情、多行粘贴会逐行执行。修法：lines 模式下 web 粘贴/B-013 快捷指令
-改走 daemon `load-buffer` + `paste-buffer -p`（现成路径，tmux 按 pane 真实
-2004 状态权威包裹），`term.paste()` 仅留 attach fallback 分支。
+**粘贴专路（R1 M4 + R2 M-R2-2 具体化）**：tmux 3.6b 无 bracketed-paste(2004)
+format、attach 模式重放 v2 拿不到——pane 已开 2004 时 `term.paste()` 不知情、
+多行粘贴逐行执行。修法：新 **machineRPC `terminal-paste` {terminalId, text}**
+（RPC 通用机制，server 零改动；mirror-terminal-send 同款形状）——daemon 侧
+经 **control 命令通道**执行 `load-buffer`（stdin 喂字节）+ `paste-buffer -p`，
+与 send-keys **同一 stdin FIFO 保序**（R2 指出 spawnSync 双执行器会让
+「粘贴+立刻回车」乱序——Enter 经 send-keys 先落地=空行先执行；同通道则
+天然有序）。web 侧 lines 模式下粘贴/B-013 插入从 `term.paste()` 切到该 RPC；
+attach fallback 分支维持 `term.paste()`。
 
 **查询应答过滤（R1 M1 四步实证坐实，必须过滤）**：pane 查询（CSI c/6n、
 OSC 10/11）tmux 无 client 也代答且原样透传进 %output → web xterm onData
@@ -203,8 +240,9 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
     ——保留 select-mode toggle（语义变为「冻结输出+允许选择」），触摸滚动不再
     被它独占。
   - termWriteHold：保留（选择期间冻结输出的理由在行流下依然成立）。
-  - blank-screen belt：判据前提失效（空终端真的可以全空）——退役或改为
-    「snapshot 载荷为空且 daemon 报 session 存活」的窄条件，待对抗定。
+  - blank-screen belt：**lines 分支退役**（R2 裁决：fresh shell 必有 prompt
+    文本，误触发面大于价值；「终端存在但空」由 open meta 显式表达，前端
+    不再定时器猜）。attach fallback 分支保留现状。
 - 铁律 6 布局链路（fit/padding/键盘视口）不动——通道形态与 cell 测量无关。
 - **几何第三条路（候选，对抗定）**：不调 `refresh-client -C` 的 control
   client 完全不参与 window-size——手机端可默认「纯镜像不声明尺寸」（以 tmux
@@ -228,20 +266,25 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - 兼容矩阵：
   - **新 web + 老 daemon**：请求字段被忽略、响应无 streamMode → web 走现状
     attach 路径（滚动劫持、合成 wheel 全保留为 fallback 分支）。
-  - **老 web + 新 daemon**：daemon 一刀切 lines（R1 N1 推演裁决：老 web
-    wheel 劫持门=alternate 判定，lines 下只在 alt TUI 触发且 planScrollAction
-    的 send-keys 类分支实证可用；blank-belt 是一次性 800ms 定时器最坏多打一
-    次 forceSnapshot 无循环；touch 合成 wheel 在 normal buffer 返回 true 反而
-    走原生 scrollback）。前提=B1 分块先行。老 happy-app 未实测，废弃产品
-    Owner 自担。
+  - **老 web + 新 daemon**：daemon 输出侧一刀切 lines 流（R1 N1 推演裁决
+    成立），但 **open 响应形状按请求能力分叉（R2 M-R2-3）**：请求无
+    `streamMode` → 回 v1 形状（`mode:'snapshot'` 内嵌 base64(当前屏
+    capture)，尺寸沿用 300 行级预算躲 1MB 上限）——老 web 的
+    `applyOpenResult` 硬依赖该形状，回 meta 形状会让它在 `res.chunks` 处
+    抛异常永远 connecting。老 web 无深历史（如实降级），其余行为如 N1
+    推演。老 happy-app 未实测，废弃产品 Owner 自担。
+  - **streamMode per-mount 锁存（R2 M-R2-4）**：vh-update/回滚使 daemon 在
+    web 存活期换代是常态（铁律 5）；catchUp 响应的 streamMode 与 mount 时
+    翻转（attach↔lines）→ 强制整屏重建（remount 等价路径），不做热切换。
   - 老 happy-app 消费者：同「老 web」处理。
 - 发布顺序：web 先（带 fallback）→ CLI；回滚=CLI 回滚即回 attach 模式。
 
 ### D4 退役清单
 
-- `terminal-scroll` RPC 调用侧（web）退役，daemon handler 保留 ≥1 版兼容期。
-- planScrollAction/sgrWheelHexBytes 随 handler 保留；touch→合成 wheel、
-  wheelAccum 批量、scroll RPC 健康度机制删除（lines 分支）。
+- `terminal-scroll` RPC：**normal-buffer 轨**退役调用（本地 scrollback 接管）；
+  **alt-buffer 轨照旧调用**（D2 双轨）——daemon handler、planScrollAction、
+  sgrWheelHexBytes、wheelAccum 批量、健康度退避、touch→合成 wheel **机制
+  本体全部保留**（R2 M-R2-1：它们是 alt 轨的依赖，只是 normal 轨不再进入）。
 - `attach-session -d` 的踢客户端语义随 attach 路径退役后消失——用户本地
   `tmux attach` 与 web 并存的行为变化写入验收。
 
@@ -271,7 +314,10 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - [ ] 手机真机：终端回看滑动跟手（原生惯性），流式输出中回看不被拉底
 - [ ] 桌面滚轮回看本地化（断网后仍可滚历史）
 - [ ] vim / `/tui fullscreen` 进出：alt buffer 正确切换、退出后 scrollback 完整
-- [ ] claude 长会话（数千行）：历史回填完整、颜色正确、打字延迟无退化
+- [ ] claude 长会话（数千行）：历史回填完整、颜色正确；打字延迟以可测口径
+  验（daemon 收 input → 命令落 control stdin 的耗时上界 <5ms；体感项挪真机）
+- [ ] **存量 alt-屏 claude（v2 前创建、无 classic env）**：回看仍走 alt 轨
+  RPC、normal scrollback 近空——零增益是预期不是 bug，文档明写
 - [ ] agentState/needs_input 通知、@vh_title 跟随、镜像绑定/输入条、B-013 快捷指令回归全绿
 - [ ] 多设备同开：几何 latest 语义、两端内容一致
 - [ ] daemon 重启/pty reap 等价物（client reap）后重连：无黑屏、无重复、无冻屏（termStreamSync 三事故回归）
