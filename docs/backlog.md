@@ -19,7 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| B-121 | 终端通道 v2（根治手机滑动不跟手）：弃 tmux attach 全屏镜像，改内容流式通道（tmux control mode / pipe 流派）——xterm 本地 scrollback，滚动/选择/搜索/回看全本地化。Owner 拍板直接根治（跳过快照回看层中间态） | feat | Owner 2026-08-17 | doing | spec 前置（B-105 同款对抗性 review 流程），大工程跨 CLI+web+协议 |
+| B-121 | 终端通道 v2（根治手机滑动不跟手）：弃 tmux attach 全屏镜像，改内容流式通道（tmux control mode / pipe 流派）——xterm 本地 scrollback，滚动/选择/搜索/回看全本地化。Owner 拍板直接根治（跳过快照回看层中间态） | feat | Owner 2026-08-17 | doing | **spec 已定稿 Final**（specs/2026-08-terminal-channel-v2.md，四轮对抗收敛：R1 3B+8M / R2 抓自引入 2B+capture 语义反转 / R3 抓空洞 / R4 判 Final-with-edits）；待 Owner 过目立项实现批 |
 | B-118 | 笔记归档：用完的 note 归档出默认列表（dock 只显未归档；/notes 加归档视图切换）；NoteRecord+archived 字段 | feat | Owner 2026-08-17 | done | **Shipped 2026-08-17**（merge 8531516c，web 已部署）：菜单归档/取消归档，dock 只显未归档，/notes 工具栏归档视图切换。⚠️ 旧 web 编辑会抹新字段——全设备刷新后窗口关闭 |
 | B-119 | 笔记标签 + 显式标题：NoteRecord+tags/title（显式标题覆盖首行自动标题——解决「自动标题太长」的根），列表行 TagChip、filter 匹配 tags/标题；编辑走 RenameModal 复用（标题+标签一个弹窗） | feat | Owner 2026-08-17 | done | **Shipped 同批**：tags（上限8）+显式标题（clamp 64，tab/列表优先用），RenameModal 复用，filter 匹配 tags/标题；3 纯函数测试 |
 | B-120 | 笔记右键/长按菜单：钉成标签、重命名/标签、归档/取消归档、删除（confirm）——ActionContextMenu 复用（Radix 自带触屏长按，移动端天然覆盖） | ux | Owner 2026-08-17 | done | **Shipped 同批**：行右键/触屏长按菜单（钉/重命名标签/归档/删除 confirm），ActionContextMenu 复用 |
