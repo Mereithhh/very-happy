@@ -18,7 +18,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { DESKTOP_SHELL_MQ, useMediaQuery } from '@/app/useMediaQuery';
 import { useLocalSetting } from '@/sync/storage';
 import { useNotes, setNotesCredentials } from '@/sync/notesStore';
-import { deriveNoteTitle, pruneNoteTabs } from '@/sync/notes';
+import { noteDisplayTitle, pruneNoteTabs } from '@/sync/notes';
 import { isImeGuardedEvent } from '@/utils/ime';
 import { toast } from '@/ui/Toast';
 import { useNotesPanelWidth } from './useNotesPanelWidth';
@@ -130,7 +130,7 @@ export function NotesDock() {
                     <div className="notes-dock-tabstrip">
                         {tabs.map((id) => {
                             const note = notesMap[id];
-                            const title = note ? deriveNoteTitle(note.content) || t('notes.untitled') : t('notes.untitled');
+                            const title = note ? noteDisplayTitle(note) || t('notes.untitled') : t('notes.untitled');
                             return (
                                 <div key={id} className={`notes-tab${id === activeTab ? ' is-active' : ''}`}>
                                     <button type="button" className="notes-tab-label" onClick={() => openNoteTab(id)} title={title}>

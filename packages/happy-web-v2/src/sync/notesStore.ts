@@ -21,6 +21,9 @@ import { accountFingerprint } from '@/sync/accountFingerprint';
 import { kvGetByPrefix, kvMutate } from '@/sync/apiKv';
 import { onKvChanges } from '@/sync/kvUpdates';
 import {
+    NOTE_EXPLICIT_TITLE_MAX_CHARS,
+    NOTE_TAGS_MAX,
+    NOTE_TAG_MAX_CHARS,
     NOTE_CONTENT_MAX_CHARS,
     NOTE_KV_PREFIX,
     NOTES_MAX_COUNT,
@@ -269,6 +272,8 @@ interface NotesState {
     updateContent(id: string, content: string): void;
     /** Re-bind (or unbind) a note. */
     updateBinding(id: string, boundTo: NoteBinding | null): void;
+    /** B-118/119: patch title / tags / archived (empty title clears it). */
+    updateMeta(id: string, patch: { title?: string | null; tags?: string[]; archived?: boolean }): void;
     /** Delete a note everywhere (tombstone on the server). */
     deleteNote(id: string): void;
 }
@@ -359,6 +364,31 @@ export const useNotes = create<NotesState>((set, get) => ({
         const note = state[id];
         if (!note) return;
         setNotesState({ ...state, [id]: { ...note, boundTo, updatedAt: Date.now() } });
+        schedulePush(id);
+    },
+    updateMeta: (id, patch) => {
+        const state = get().notes;
+        const note = state[id];
+        if (!note) return;
+        const next = { ...note, updatedAt: Date.now() };
+        if (patch.title !== undefined) {
+            const clean = patch.title?.trim() ?? '';
+            if (clean) next.title = clean.slice(0, NOTE_EXPLICIT_TITLE_MAX_CHARS);
+            else delete next.title;
+        }
+        if (patch.tags !== undefined) {
+            const tags = patch.tags
+                .filter((x) => x.trim().length > 0)
+                .map((x) => x.slice(0, NOTE_TAG_MAX_CHARS))
+                .slice(0, NOTE_TAGS_MAX);
+            if (tags.length > 0) next.tags = tags;
+            else delete next.tags;
+        }
+        if (patch.archived !== undefined) {
+            if (patch.archived) next.archived = true;
+            else delete next.archived;
+        }
+        setNotesState({ ...state, [id]: next });
         schedulePush(id);
     },
     deleteNote: (id) => {
