@@ -409,6 +409,22 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
    7 字段格式，加 `pane_current_command` 时静默错位（4 个测试炸出来）。现在它
    re-export webTerminal 的常量，不再有第二份。
 
+### B'. 上线首小时的事故（B-123，已修 v0.2.47）
+
+**关掉一个终端 = 整台机器的终端全死。** tmux session 消失 → control client 的 stdin
+关闭 → 下一次写入抛 `EPIPE`，而它是**stream 的 error 事件**，没有监听器就是未捕获
+异常，daemon 顶层按致命处理直接退出进程。
+
+根因层面这是 v1→v2 的**传输形态变更的连带责任**：node-pty 自己吞掉了这类管道错误，
+换成裸 `child_process` 管道后，**每一个 stdio 流都必须显式挂 error 监听**——spec 只
+写了「停 client 要 SIGTERM→SIGKILL」，没写「写端要能承受对端已经消失」。
+
+修法三层（缺一不可）：stdin/stdout 的 `error` 监听；写前 `writable` 守卫（`exited`
+标志不够用——child 的 exit 事件是异步的，管道可能先没）；`writeRaw` 的 try/catch
+（destroyed 流会**同步**抛）。回归测试见 `webTerminal.v2.integration.test.ts`
+（杀 session 后连打 20 次 write+resize，断言无 uncaughtException），并已验证它在未修
+代码上真的红。
+
 ### C. 其他实现事实
 
 - 粘贴临时文件落在 `$HAPPY_HOME_DIR/paste-spool/`（0700 目录 + 0600 文件、5s 后删），
