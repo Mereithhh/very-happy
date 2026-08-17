@@ -1,8 +1,11 @@
 # `open_preview` —— claude 主动把 web 端切到某个文件的预览
 
 > 状态：Draft
-> 日期：2026-08-17 ｜ 关联 backlog：B-131 ｜ 前置：B-130（`2026-08-terminal-injection.md`）
+> 日期：2026-08-17 ｜ 关联 backlog：B-131 ｜ 前置：B-130（`2026-08-agent-guidance.md`）
 > 拆分自：原 `2026-08-agent-tool-surface.md`
+> **2026-08-17 Owner 收范围为「只要 web 起的 session + 聊天会话」**：终端里手打的裸
+> claude 出范围，于是 daemon 那一段（`POST /preview` + `apiMachine.pushFilePreview`）
+> 整个不需要——推送链路从五跳变四跳，只留 session 侧。
 
 ## 背景
 
@@ -21,6 +24,9 @@ web 端指过去」这一下。
 - 不做 URL 深链 / 可分享（选中路径不进 URL，见风险 5）。
 - 不做 diff 模式的实现（只留参数位，实现依赖 B-036）。
 - 不改 `FsBrowser`、不改现有两个宿主（终端抽屉 / 会话 FilesPanel）。
+- **不覆盖 web 终端里手打的裸 claude**（B-130 同步收的范围）：那条要走用户手动注册的
+  stdio MCP + daemon control server，是本 spec 删掉的那一半。terminal-mirror 影子
+  会话同理出范围（里面的 claude 是终端里手打的）。
 
 ## 现状事实（代码已确认）
 
@@ -32,20 +38,24 @@ web 端指过去」这一下。
 | **`fs-read` 无 cwd 沙箱，是有意设计**（注释原文 "No cwd sandbox by design (single-user daemon that already exposes `bash`)"） | `packages/happy-cli/src/modules/fs/fsRpc.ts:10` |
 | 选中文件只活在 `FsBrowser` 局部 state，无 store、无路由 | `FsBrowser.tsx:59`、`src/app/AppRoot.tsx:115-127` |
 | singleton overlay 挂载点 + window-event 开法先例 | `src/screens/AppLayout.tsx:146`、`src/screens/clipboard/ClipboardHistoryPanel.tsx:44-47` |
-| clipboard relay 的载荷是**加密**的：`encodeBase64(encrypt(machine.encryptionKey, machine.encryptionVariant, text))` + `enc: true` | `packages/happy-cli/src/api/apiMachine.ts:212`；session 侧 `apiSession.ts:666` |
+| clipboard relay 的载荷是**加密**的：`encodeBase64(encrypt(key, variant, text))` + `enc: true`。**范围内要照抄的是 session 侧那条**（machine 侧是 daemon 路径，已出范围） | session 侧 `packages/happy-cli/src/api/apiSession.ts:666`；machine 侧 `apiMachine.ts:212`（仅作参照） |
+| 工具挂在每会话的 http MCP 上，与 `change_title`/`copy_to_clipboard` 同处；`allowedTools` 自动派生 | `src/claude/utils/startHappyServer.ts:40,73,170-174`、`runClaude.ts:891` |
+| 聊天会话的 machineId 在 session metadata 里 | `packages/happy-web-v2/src/sync/storage.ts` 的 `session.metadata.machineId` |
 | server 纯 relay 不解密；来源身份只从**已认证连接**盖章；每字段显式转发；1MB 字符硬顶 | `packages/happy-server/sources/app/api/socket/clipboardHandler.ts:28, 39-46, 50-60` |
 | server 无 catch-all，每个事件名显式注册 | `packages/happy-server/sources/app/api/socket.ts:209-218` |
 | web 侧 `apiSocket.onMessage` 是 **Map 语义，一个事件名只能有一个 handler** | `packages/happy-web-v2/src/sync/apiSocket.ts:138-141`；注册点 `sync.ts:2208` |
 | 解密要处理 key 未就绪竞态（push 与首次同步赛跑，12s 轮询等待） | `packages/happy-web-v2/src/sync/clipboardPush.ts:36-70` |
 | 通用 ephemeral 广播通道存在，但承载的是**明文状态**（`activity` / `machine-activity` / `usage` / `machine-status` / `session-event`） | `packages/happy-server/sources/app/events/eventRouter.ts:166-195, 266-278` |
-| 工具注册点 3 处；`allowedTools` 从 `toolNames` 自动派生，加工具不用手动加白 | `startHappyServer.ts:170-174`、`runClaude.ts:891` |
 
 ## 设计
 
 ### D1. 新 relay 事件 `file-preview-push`，载荷=**加密后的路径**
 
-照 clipboard 五跳（stdio MCP → daemon `POST /preview` → `apiMachine.pushFilePreview` →
-server relay → web），但**只推路径、不推内容**：web 收到后用既有 `machineFsRead` 自己拉。
+照 clipboard 的 session 侧链路，**四跳**：http MCP 工具 → `apiSession.pushFilePreview`
+→ server relay → web。**只推路径、不推内容**：web 收到后用既有 `machineFsRead` 自己拉。
+
+（终端路径出范围后，daemon 的 `POST /preview` + `controlClient` + `apiMachine` 这三段
+全部不需要——这是本次收范围省下的主要工作量。）
 
 这样 (a) 不引入任何新的文件访问权限——`fs-read` 本就暴露；(b) 绕开 1MB relay 上限，
 大文件/图片/PDF 全部走既有分段读取。
@@ -67,8 +77,11 @@ ephemeral 是**明文状态**广播通道（现有 5 种 payload 全是 activity
 
 ### D2. machineId 的来源
 
-- machine 源：server 从已认证连接盖章（沿用 clipboardHandler 的做法）。
-- session 源：push 里没有 machineId，web 侧用 `session.metadata.machineId` 映射一次。
+只有 session 一种来源：server 从已认证连接盖章 `sessionId`（沿用 clipboardHandler
+「来源只信认证连接、绝不信事件体」的做法），web 侧再用
+`session.metadata.machineId` 映射出机器。
+
+⚠️ 映射失败（metadata 里没有 machineId）要显式降级提示，不能静默什么都不发生。
 
 ### D3. 展示：singleton overlay
 
@@ -86,7 +99,8 @@ overlay 不抢焦点，Esc / 点遮罩关闭。
 但被 prompt injection 的模型可以 `open_preview('~/.secrets/env/tanka.env')`
 把凭据直接渲染到屏幕上。
 
-因此 daemon 侧在 `POST /preview` 入口做 denylist（**不是**在 web 侧，web 可以被绕过）：
+因此在 **http MCP 的工具 handler 入口**（`startHappyServer.ts`）做 denylist——
+即 CLI 侧、模型请求刚落地的那一刻，**不是**在 web 侧（web 可以被绕过）：
 
 - 命中 `~/.secrets/**`、`~/.ssh/**`、`~/.claude.json`、`**/.env`、`**/.git/config`、
   `**/*.pem`、`**/*.key` 的路径 → 拒绝，返回明确错误让 claude 知道被拒。
@@ -134,14 +148,18 @@ web 侧多余的 handler 空转无害。
 
 ## 验收标准
 
-- [ ] 从 web 终端里的 claude 调 `open_preview`，所有已打开的 web 客户端弹出 overlay
+- [ ] 在**聊天会话**里让 claude 调 `open_preview`，所有已打开的 web 客户端弹出 overlay
       并正确渲染 md / 图片 / PDF / 代码四类文件。
+- [ ] 把会话切到 **local CLI 模式**后再调一次，同样生效（两种模式都走同一个 http MCP，
+      但要实测确认——`loop.ts` 的模式切换会重起 claude 进程）。
 - [ ] 抓包/日志确认 relay 上传的是**密文**路径（`enc: true`），server 侧看不到明文路径。
 - [ ] 关掉 localSetting 开关后不再弹出。
 - [ ] denylist 纯函数单元测试：`~/.secrets/env/x.env`、`~/.ssh/id_ed25519`、
       `~/.claude.json`、`a/.env`、`.git/config` 全部被拒；普通路径全部放行。
       且**验证过它在未加 denylist 的代码上真的红**。
-- [ ] daemon 停掉后调 `open_preview`，overlay 显示「机器不在线」而不是空白/转圈。
+- [ ] daemon 停掉、聊天会话仍存活时调 `open_preview`（这是范围内最现实的失败路径，
+      见风险 2），overlay 显示「机器不在线」而不是空白/转圈。
+- [ ] session metadata 缺 machineId 时有显式提示，不是静默无反应。
 - [ ] 旧 web 端（硬刷新前的旧 SW 版本）收到该事件不报错、不白屏。
 - [ ] 门禁：web 三件套（vitest / vite build / tsc 零新增）、cli（test + 运行冒烟）、
       server（tsc + vitest）全绿。
