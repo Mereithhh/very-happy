@@ -18,25 +18,17 @@
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 import {
-    LIST_FIELD_SEP,
+    LIST_SESSIONS_FORMAT,
     parseSessionListLine,
     deriveAutoTitle,
 } from '@/terminal/webTerminal'
 
 const TMUX_TIMEOUT_MS = 3000
 
-/** Same field set webTerminal's list path requests (≥7 fields required by
- *  parseSessionListLine; pane_title last so embedded separators only ever
- *  garble the title). */
-export const VH_LIST_SESSIONS_FORMAT = [
-    '#{session_name}',
-    '#{session_created}',
-    '#{session_activity}',
-    '#{pane_current_path}',
-    '#{@vh_title}',
-    '#{@vh_title_manual}',
-    '#{pane_title}',
-].join(LIST_FIELD_SEP)
+/** THE field set — re-exported, never re-declared: parseSessionListLine is
+ *  strict about the field count, so a local copy desyncs the day webTerminal
+ *  adds a field (which B-121 did). */
+export const VH_LIST_SESSIONS_FORMAT = LIST_SESSIONS_FORMAT
 
 export interface VhTerminal {
     id: string

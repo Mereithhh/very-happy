@@ -534,7 +534,11 @@ export function deriveAutoTitle(paneTitle: unknown, hostname: string): string | 
  *  pathological embedded 0x1f only garbles the title, never the fields. */
 export const LIST_FIELD_SEP = '\x1f';
 
-const LIST_SESSIONS_FORMAT = [
+/** The ONE list-sessions field set. Exported because the assistant's terminal
+ *  list (assistant/terminals.ts) parses the same lines with the same parser —
+ *  a second copy of this array silently desyncs the moment a field is added
+ *  (B-121 added pane_current_command and broke exactly that). */
+export const LIST_SESSIONS_FORMAT = [
     '#{session_name}',
     '#{session_created}',
     '#{session_activity}',

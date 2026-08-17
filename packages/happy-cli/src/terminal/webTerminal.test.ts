@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -536,5 +536,18 @@ describe('diffTerminalActivity', () => {
         diffTerminalActivity(last, cur);
         expect(last).toEqual({ a: 1 });
         expect(cur).toEqual({ a: 2 });
+    });
+});
+
+describe('parseLayoutSize (B-121: follow a LOCAL tmux client\'s resize)', () => {
+    it('reads the window size out of a %layout-change payload', () => {
+        expect(parseLayoutSize('@0 b25d,80x24,0,0,0 b25d,80x24,0,0,0 *')).toEqual({ cols: 80, rows: 24 });
+        expect(parseLayoutSize('@195 2ce9,127x40,0,0,195 2ce9,127x40,0,0,195 *')).toEqual({ cols: 127, rows: 40 });
+    });
+
+    it('returns undefined rather than guessing (a wrong resize is worse than none)', () => {
+        expect(parseLayoutSize('')).toBeUndefined();
+        expect(parseLayoutSize('@0 nosize')).toBeUndefined();
+        expect(parseLayoutSize('@0 aaaa,1x1,0,0,0')).toBeUndefined(); // below the 2x2 floor
     });
 });

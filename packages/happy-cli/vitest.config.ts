@@ -32,6 +32,9 @@ export default defineConfig({
                         'src/codex/codex.integration.test.ts',
                         'src/sandbox/network.integration.test.ts',
                         'src/terminal/webTerminal.tracker.integration.test.ts',
+                        // B-121: the control-mode channel end to end (isolated
+                        // tmux server via TMUX_TMPDIR, like the tracker test).
+                        'src/terminal/webTerminal.v2.integration.test.ts',
                     ],
                     setupFiles: ['./src/testing/integration.setup.empty.ts'],
                     sequence: {
