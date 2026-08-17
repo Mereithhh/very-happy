@@ -1,0 +1,29 @@
+%begin 1786940466 284 0
+%end 1786940466 284 0
+%session-changed $0 golden
+%window-renamed @0 bash
+%begin 1786940466 290 1
+%end 1786940466 290 1
+%begin 1786940466 291 1
+%end 1786940466 291 1
+%output %0 less /tmp/v
+%output %0 h-golden-le
+%output %0 ss.txt\015\012
+%output %0 \033[?1049h\033[?1h\033=\015
+%output %0 alt-line-1\015\012alt-line-2\015\012alt-line-3\015\012alt-line-4\015\012alt-line-5\015\012alt-line-6\015\012alt-line-7\015\012alt-line-8\015\012alt-line-9\015\012alt-line-10\015\012alt-line-11\015\012alt-line-12\015\012alt-line-13\015\012alt-line-14\015\012alt-line-15\015\012alt-line-16\015\012alt-line-17\015\012alt-line-18\015\012alt-line-19\015\012alt-line-20\015\012alt-line-21\015\012alt-line-22\015\012alt-line-23\015\012\033[7m/tmp/vh-golden-less.txt\033[27m\033[K
+%window-renamed @0 less
+%begin 1786940468 293 1
+%end 1786940468 293 1
+%output %0 \015\033[Kalt-line-24\015\012alt-line-25\015\012alt-line-26\015\012alt-line-27\015\012alt-line-28\015\012alt-line-29\015\012alt-line-30\015\012alt-line-31\015\012alt-line-32\015\012alt-line-33\015\012alt-line-34\015\012alt-line-35\015\012alt-line-36\015\012alt-line-37\015\012alt-line-38\015\012alt-line-39\015\012alt-line-40\015\012alt-line-41\015\012alt-line-42\015\012alt-line-43\015\012alt-line-44\015\012alt-line-45\015\012alt-line-46\015\012:\033[K
+%begin 1786940469 294 1
+%0 alternate_on=1
+%end 1786940469 294 1
+%begin 1786940470 295 1
+%end 1786940470 295 1
+%output %0 \015\033[K\033[?1l\033>\033[?1049l
+%window-renamed @0 env
+%output %0 vh$ 
+%window-renamed @0 bash
+%begin 1786940471 298 1
+%end 1786940471 298 1
+%exit

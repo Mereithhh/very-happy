@@ -1,0 +1,29 @@
+{
+  "scenario": "shell",
+  "description": "普通 shell 会话：若干命令、prompt 重绘、SGR、tab",
+  "recordedAt": "2026-08-17T04:20:50.180Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 927,
+  "streamSha256": "d1efd25688506cf10002d9ad8b86b227aba27a7056519da363ff20195f455a02",
+  "assert": {
+    "markers": [
+      "hello world",
+      "done"
+    ],
+    "containsHex": [],
+    "embedded": false,
+    "seqRange": null,
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}

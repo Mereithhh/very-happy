@@ -1,0 +1,98 @@
+{
+  "scenario": "cjk",
+  "streamBytes": 627,
+  "streamSha256": "5a70e9a8243bf51be2c3b15cfe3cfa05d55f1dc5ff75faeac382e7403ca09371",
+  "eventCounts": {
+    "output": 7,
+    "block": 6,
+    "notification": 3,
+    "protocolError": 0
+  },
+  "output": {
+    "totalBytes": 189,
+    "sha256": "3bdd441cbbf6848edd0883bc2e5c1d4a08e71c8ac0cfbb31dc18ef5e68dee97a",
+    "panes": {
+      "%0": {
+        "bytes": 189,
+        "sha256": "3bdd441cbbf6848edd0883bc2e5c1d4a08e71c8ac0cfbb31dc18ef5e68dee97a"
+      }
+    }
+  },
+  "blocks": [
+    {
+      "epoch": 1786940450,
+      "cmdNum": 284,
+      "flags": 0,
+      "solicited": false,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940451,
+      "cmdNum": 290,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940451,
+      "cmdNum": 291,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940452,
+      "cmdNum": 292,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940452,
+      "cmdNum": 293,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940453,
+      "cmdNum": 294,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    }
+  ],
+  "notifications": [
+    {
+      "name": "session-changed",
+      "args": "$0 golden"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 bash"
+    },
+    {
+      "name": "exit",
+      "args": ""
+    }
+  ],
+  "protocolErrors": []
+}

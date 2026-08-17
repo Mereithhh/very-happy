@@ -128,3 +128,78 @@ node scripts/probe/term-focus-handoff.mjs        # 5 个位置各点一次
 开跑前就存在的会话）—— 这套闸只能有一份实现，不许各抄一遍。
 
 退出码：`0` 全通过 · `1` 有断言失败 · `2` 跑不出结论。
+
+## tmux-control-golden.mjs —— control mode 金样本录制（B-121 Phase 0a）
+
+`packages/happy-cli/src/terminal/controlModeDecoder.ts`（tmux control mode 按字节
+增量解码器）的回放样本来源。样本落 `packages/happy-cli/src/terminal/__fixtures__/controlmode/`，
+测试 `controlModeDecoder.test.ts` 逐字节回放 + 随机切分点重放。
+
+```sh
+node scripts/probe/tmux-control-golden.mjs                    # record + bless 全部
+node scripts/probe/tmux-control-golden.mjs record --only cjk  # 只重录一个场景
+node scripts/probe/tmux-control-golden.mjs bless              # 按现有 .bin 重算 expected
+node scripts/probe/tmux-control-golden.mjs --list
+```
+
+### 每个场景三个文件
+
+| 文件 | 内容 | 谁产生 |
+|---|---|---|
+| `<name>.bin` | control client stdout 的**原始字节** | tmux |
+| `<name>.truth.json` | 录制环境 + **与解码器无关**的断言（喂进 pane 的确切字节 sha、必须出现的标记、块形态） | 录制脚本 |
+| `<name>.expected.json` | 事件摘要（回归基线） | 解码器自己 |
+| `<name>.embedded.bin` | 喂进 pane 的确切字节（binary/cjk 场景） | 录制脚本 |
+
+`.expected.json` 是解码器算的 —— 单看它等于自证。所以 **`bless` 只在 `.truth.json`
+的独立断言全过时才肯写**（binary 场景的 2048 字节 urandom 必须在解出的输出里**连续
+原样**出现；burst 场景 1..5000 必须按序全在；altscreen 必须有 `\033[?1049h/l`；
+commands 必须有 `%error` 块、块体里的假 `%end 1 2 3` 必须没有提前关块、块体里必须有
+**裸 ESC**）。真正的回归价值来自「同一 `.bin` 任意切分点重放结果必须一致」。
+
+### 场景
+
+| 场景 | 覆盖 |
+|---|---|
+| `shell` | 普通会话、prompt 重绘、SGR、tab |
+| `cjk` | 中文/emoji（含 tmux 把多字节切在两条 %output 之间的真实情况） |
+| `altscreen` | less 进出 alt 屏，`\033[?1049h/l` 原样透传 |
+| `burst` | `seq 1 5000`，合并 %output 与长行 |
+| `binary` | 2048 字节 urandom，非法 UTF-8 不被破坏 |
+| `commands` | capture-pane / list-panes / refresh-client / %error 块 / 块体内假 `%end` / 块体裸 ESC |
+| `claude-tui` | 真实 claude TUI 片段（不提交 prompt、不调 API），含 DA/DSR 查询序列 |
+
+### 字节精确的前提：`stty raw` 必须和载荷同一行
+
+`stty raw -echo; cat x.bin; stty sane` —— 交互式 bash/sh 每次出提示符都会把 termios
+按 readline 的意思重设，**单独一行的 `stty raw` 在载荷命令跑之前就被撤销了**。同一行
+才能让 OPOST 关着（无 LF→CRLF 翻译）跑完载荷。
+
+### 纪律：隔离 socket
+
+全程 `tmux -L b121-p0a`，**绝不碰默认 socket 上的生产 `vh-*` 会话**（mac-office 上跑着
+Owner 的生产 daemon 和真实工作会话）。`finally` 与 SIGINT 都 `kill-server`。
+
+### 版本注记
+
+样本录自 **tmux 3.7b**（客户端 3.7b，隔离 socket 上的 server 也是 3.7b）。默认 socket
+上的现役 server 仍是 3.6b 代码，3.6b 二进制已不在本机；主 agent 2026-08-17 用 3.6b
+现役 server 与 3.7b 隔离 socket 双跑同一批命令，**协议行结构逐行一致**（只有 session/
+pane/命令编号不同）。解码器不得依赖任何版本特有形状。
+
+### 血泪
+
+- **`flags` 不是「greeting 标记」**：`cmd-queue.c` 的 `flags = !!(state->flags &
+  CMDQ_STATE_CONTROL)`，而 `CMDQ_STATE_CONTROL` 只在 `control.c:control_read_callback`
+  （命令来自本 client 的 stdin）设置。所以 flags=0 的块除了 attach greeting，**还包括
+  tmux hook 触发的命令块**（实测：`set-hook -g after-set-option 'display-message …'`
+  会在流中间插一个 flags=0 的块）。按「下一个块配下一条命令」而不看 flags，在任何配了
+  hook 的机器上都会错位。
+- **块体里可以出现长得像 `%end` 的行**：`set-buffer -b g "before\n%end 1 2 3\nafter"` +
+  `show-buffer` 实测复现。只能按 (epoch, cmdNum) 精确配对。
+- **两种编码并存**：`%output` 载荷是八进制转义（`<0x20` 与 `\` 转成 `\ooo`，`>=0x80`
+  原样），`%begin` 块体是**裸字节**（ESC 不转义）。`capture-pane -C` 的转义规则与
+  `%output` **逐字节相同**（`cmd-capture-pane.c:93` 与 `control.c:control_append_data`
+  同一条判据），所以 `unescapeOctal()` 一份实现两处用。
+- **行尾是裸 LF 不是 CRLF**（管道传输，tmux 用 `EVBUFFER_EOL_LF` 读写）。
+- **向 control client 的 stdin 写空行 = detach**：脚本的 `send()` 里有硬断言挡着。

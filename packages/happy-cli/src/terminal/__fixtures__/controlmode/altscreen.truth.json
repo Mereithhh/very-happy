@@ -1,0 +1,29 @@
+{
+  "scenario": "altscreen",
+  "description": "alt 屏进出：less 打开/翻页/退出，验证 \\033[?1049h/l 原样透传",
+  "recordedAt": "2026-08-17T04:21:12.604Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 1592,
+  "streamSha256": "317e54d941893d126b559bd02ebf86ccc51acc5958fd533097e2ca5d3d21cb77",
+  "assert": {
+    "markers": [],
+    "containsHex": [
+      "1b5b3f3130343968",
+      "1b5b3f313034396c"
+    ],
+    "embedded": false,
+    "seqRange": null,
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}

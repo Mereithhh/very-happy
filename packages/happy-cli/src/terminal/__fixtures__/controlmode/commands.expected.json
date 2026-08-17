@@ -1,0 +1,180 @@
+{
+  "scenario": "commands",
+  "streamBytes": 1281,
+  "streamSha256": "f6f75202ee9ee22177ecb080cb454d76d762f859b66d02fb7cdc94cb0a5e2f78",
+  "eventCounts": {
+    "output": 9,
+    "block": 13,
+    "notification": 6,
+    "protocolError": 0
+  },
+  "output": {
+    "totalBytes": 106,
+    "sha256": "3dd15e02d36d8fabfe60368d4d9b00fbac1ef4e0d975e0aa734efed2edb7ce2d",
+    "panes": {
+      "%0": {
+        "bytes": 106,
+        "sha256": "3dd15e02d36d8fabfe60368d4d9b00fbac1ef4e0d975e0aa734efed2edb7ce2d"
+      }
+    }
+  },
+  "blocks": [
+    {
+      "epoch": 1786940708,
+      "cmdNum": 284,
+      "flags": 0,
+      "solicited": false,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940709,
+      "cmdNum": 290,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940709,
+      "cmdNum": 291,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940710,
+      "cmdNum": 292,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940710,
+      "cmdNum": 293,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940711,
+      "cmdNum": 294,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 111,
+      "bodySha256": "1b106f46622f1b214b9aef685ac83bb18986ce5a066d60622bad81f30352add8",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940711,
+      "cmdNum": 295,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 14,
+      "bodySha256": "24146602a0277ffe3b0d7b57c8667137ee8c467159806b0a7e76acbc48ca5790",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940712,
+      "cmdNum": 296,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940713,
+      "cmdNum": 299,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940713,
+      "cmdNum": 301,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 37,
+      "bodySha256": "0d0d45df0ac78b403996dec975cbff99daa6980a21bcd676a9e4c64206bc5cbd",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940713,
+      "cmdNum": 302,
+      "flags": 1,
+      "solicited": true,
+      "error": true,
+      "bodyBytes": 58,
+      "bodySha256": "60ad02c9187ec1d03fbe8ebce1e9e288dd7914e4164ae40b0c4b6366ff4eebd2",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940714,
+      "cmdNum": 303,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940715,
+      "cmdNum": 306,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    }
+  ],
+  "notifications": [
+    {
+      "name": "session-changed",
+      "args": "$0 golden"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 bash"
+    },
+    {
+      "name": "layout-change",
+      "args": "@0 a87d,100x30,0,0,0 a87d,100x30,0,0,0 *"
+    },
+    {
+      "name": "paste-buffer-changed",
+      "args": "vhgold"
+    },
+    {
+      "name": "layout-change",
+      "args": "@0 b25d,80x24,0,0,0 b25d,80x24,0,0,0 *"
+    },
+    {
+      "name": "exit",
+      "args": ""
+    }
+  ],
+  "protocolErrors": []
+}

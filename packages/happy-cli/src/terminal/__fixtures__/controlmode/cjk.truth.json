@@ -1,0 +1,26 @@
+{
+  "scenario": "cjk",
+  "description": "CJK/emoji：先普通 echo（真实折行/宽度），再 raw 模式逐字节透传",
+  "recordedAt": "2026-08-17T04:20:54.915Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 627,
+  "streamSha256": "5a70e9a8243bf51be2c3b15cfe3cfa05d55f1dc5ff75faeac382e7403ca09371",
+  "assert": {
+    "markers": [],
+    "containsHex": [],
+    "embedded": true,
+    "seqRange": null,
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}
