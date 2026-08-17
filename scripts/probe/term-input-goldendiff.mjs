@@ -969,11 +969,16 @@ export function cleanupTerminal(tid, { log = console.error, preExisting = null }
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * 一个够用的 VT 参考编码器 —— **只服务于自测**。
+ * 一个够用的 VT 参考编码器 —— **只服务于自测与激励生成**。
  * 它不是 xterm 的权威复刻，也不该被当成 golden 期望值：真跑时两条路径的期望值
  * 来自对方，不来自这个表。它存在的唯一意义是让假会话吐出"形状真实"的字节。
+ *
+ * 导出给 `term-sendkeys-bytecmp.mjs`（B-121 D1b 硬门）复用：那边拿它把同一张
+ * 扫描表变成 142 条**输入字节序列**，同一串字节分别灌进旧/新两条 daemon 写入端，
+ * 比对 pane 侧真正落盘的字节。那里同样**不拿它当期望值**——期望值是"另一条路径
+ * 收到的字节"。这套表只能有一份实现，不许各抄一遍（同 README 的建/清闸规矩）。
  */
-function refEncode(kase, deckm) {
+export function refEncode(kase, deckm) {
     const mods = kase.mods ?? [];
     const has = (m) => mods.includes(m);
     const mbit = 1 + (has('Shift') ? 1 : 0) + (has('Alt') ? 2 : 0) + (has('Ctrl') ? 4 : 0);
