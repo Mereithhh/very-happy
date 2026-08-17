@@ -39,6 +39,7 @@ import { logger } from '@/ui/logger';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { RawJSONLines } from '@/claude/types';
 import { resolveClaudeBinary, runClaudeOneShot } from './titleGenerator';
+import { type SelfReportState, isSelfReportFresh } from './boardReport';
 
 export const ANALYZE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export const HOURLY_LIMIT = 30;
@@ -247,6 +248,12 @@ export interface BoardAnalyzerOptions {
     fetchTasks: () => Promise<BoardTaskRef[] | null>;
     /** machine-wide hourly limiter (file-backed) */
     rateLimiter: FileRateLimiter;
+    /**
+     * B-132: 与 MCP server 共享的自报水位（同一个 session 进程内的内存对象）。
+     * 最近有自报就跳过 LLM 分析——claude 自己说的比 haiku 猜的准。
+     * 不传 = 老行为（一直靠猜）。
+     */
+    selfReportState?: SelfReportState;
 }
 
 export class BoardAnalyzer {
@@ -326,6 +333,12 @@ export class BoardAnalyzer {
         };
         const hash = computeInputHash(input);
         const now = Date.now();
+        // B-132: claude 自报优先。最近有过自报 → 它比 haiku 猜的更准更新，
+        // 不必再花钱。analyzer 就此退化成「没自报时的兜底」。
+        if (this.options.selfReportState && isSelfReportFresh(this.options.selfReportState, now)) {
+            logger.debug('[boardAnalyzer] recent self-report; skipping LLM analysis');
+            return;
+        }
         if (!shouldAnalyze(this.throttle, hash, now)) {
             logger.debug(`[boardAnalyzer] throttled (${reason})`);
             return;

@@ -39,10 +39,12 @@ CLAUDE.md（本文件）── 入口：门禁 / 铁律 / 热区
 ## 质量门禁（任何 merge 前，硬性）
 
 ```sh
-# happy-web-v2：测试 + 构建 + tsc 零新增（存量 ~490 债只减不增，与 main 基线对照）
+# happy-web-v2：测试 + 构建 + tsc **零错误**（2026-08-18 实测已是 0，不再有存量债）
 pnpm -C packages/happy-web-v2 exec vitest run
 pnpm -C packages/happy-web-v2 exec vite build
-pnpm -C packages/happy-web-v2 exec tsc --noEmit 2>&1 | wc -l   # 与 main 上同命令的输出比较
+pnpm -C packages/happy-web-v2 exec tsc --noEmit 2>&1 | grep -cE 'error TS'   # 必须是 0
+# ⚠️ 别用 `| wc -l`：0 错误时它输出 1（pnpm 那行 WARN），这个指标会骗人。
+# 「存量 ~490 债只减不增」是过期口径（债已还完），照它判会把新引入的错误当成在预算内。
 
 # happy-cli：build + unit + 运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例）
 pnpm -C packages/happy-cli test        # = build + vitest unit

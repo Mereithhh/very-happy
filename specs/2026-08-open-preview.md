@@ -88,7 +88,19 @@ ephemeral 是**明文状态**广播通道（现有 5 种 payload 全是 activity
 新建 `FsPreviewOverlay`，挂在 `AppLayout.tsx:146` 的 `<ClipboardHistoryPanel />` 旁边，
 内部直接渲染 `<FsFileViewer machineId path … />`。投递策略与 clipboard 一致
 「所有 web client 都收」，受一个 localSetting 开关控制（默认开，手机端可关）。
-overlay 不抢焦点，Esc / 点遮罩关闭。
+
+**焦点与 Esc（本 spec 第一版写歪的地方，实现时修正）**：初稿照 `ClipboardHistoryPanel`
+写了「overlay 不抢焦点 + 点遮罩关闭 + Esc 关闭」。这三条互相矛盾——「点遮罩」意味着
+遮罩铺满视口（模态），而模态 + 不抢焦点的后果是：**用户看不见终端却还在往里打字，
+击键落进一个看不见的目标**；而全局吞 Escape 又会把本想给 vim 的 Esc 抢掉。
+
+那套写法对 `ClipboardHistoryPanel` 成立，因为它**由用户主动打开**（⌘K / 设置）；
+本 overlay 是 **claude 推送、不请自来**的，先例不适用。
+
+定稿：**overlay 接管焦点**（`tabIndex={-1}` + 打开时 `focus()`），Esc 绑在面板上而不是
+window capture。理由：击键落进 overlay（无害、被丢弃）远好过落进看不见的终端
+（会变成一条残缺命令）——既然 scrim 已经把终端遮住了，接管焦点是**更安全**的一侧。
+「不打扰」的诉求改由 localSetting 开关承担，不由焦点行为承担。
 
 `mode: 'file' | 'diff'` 只留参数位；B-036 未做时 diff 降级为普通预览并在顶部提示。
 
@@ -154,6 +166,8 @@ web 侧多余的 handler 空转无害。
       但要实测确认——`loop.ts` 的模式切换会重起 claude 进程）。
 - [ ] 抓包/日志确认 relay 上传的是**密文**路径（`enc: true`），server 侧看不到明文路径。
 - [ ] 关掉 localSetting 开关后不再弹出。
+- [ ] overlay 打开后 Esc 关闭它，且**关闭后焦点行为不影响终端**；overlay 未打开时 Esc
+      不被它吞掉（回归：不能再用 window capture）。
 - [ ] denylist 纯函数单元测试：`~/.secrets/env/x.env`、`~/.ssh/id_ed25519`、
       `~/.claude.json`、`a/.env`、`.git/config` 全部被拒；普通路径全部放行。
       且**验证过它在未加 denylist 的代码上真的红**。

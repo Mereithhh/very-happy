@@ -6,6 +6,7 @@ import { activityKeyForSession } from '@/sync/activityOverlay';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
+import { handleFilePreviewPush } from '@/sync/filePreviewPush';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, isSessionDeleted } from './storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -2207,6 +2208,13 @@ class Sync {
         // clipboard (decrypt + focus/gesture handling live in clipboardPush).
         apiSocket.onMessage('clipboard-push', (data) => {
             void handleClipboardPush(this.encryption, data);
+        });
+        // open_preview tool: session pushed an ENCRYPTED absolute path for this
+        // account's web clients to preview (decrypt + machine resolution +
+        // overlay open live in filePreviewPush). NOTE: onMessage is Map-keyed —
+        // one handler per event name, so never reuse a name above.
+        apiSocket.onMessage('file-preview-push', (data) => {
+            void handleFilePreviewPush(this.encryption, data);
         });
 
         // Subscribe to connection state changes

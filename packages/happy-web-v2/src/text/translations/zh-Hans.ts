@@ -703,6 +703,19 @@ export const zhHans: TranslationStructure = {
         sourceSession: '会话',
     },
 
+    // open_preview 推送：文件预览浮层（B-131）
+    filePreview: {
+        title: '文件预览',
+        receiveTitle: '接收预览推送',
+        receiveSubtitle: 'agent 调用 open_preview 时，在本设备弹出文件预览。关闭后本设备忽略这类推送（其他设备照旧弹出）。',
+        diffUnavailable: 'diff 视图尚未实现，这里按普通文件展示',
+        machineOffline: ({ machine }: { machine: string }) =>
+            `${machine} 不在线，读不到这个文件。在那台机器上把 happy daemon 起起来，预览会自己加载。`,
+        machineUnknown: '这台机器还不在当前账号里，读不到这个文件',
+        noMachineForSession: 'agent 请求预览文件，但这个会话没有记录所属机器，没有可读取的目标',
+        noSource: 'agent 请求预览文件，但请求里没说明从哪台机器读取',
+    },
+
     // prompt 笔记：右侧面板 + /notes 页（B-094）
     notes: {
         title: '笔记',

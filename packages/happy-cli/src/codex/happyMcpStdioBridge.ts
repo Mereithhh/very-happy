@@ -17,6 +17,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import { CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from '@/clipboard/limits';
+import { PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE } from '@/claude/utils/agentGuidance';
 
 function parseArgs(argv: string[]): { url: string | null } {
   let url: string | null = null;
@@ -84,6 +85,35 @@ async function main() {
         return {
           content: [
             { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // B-131: forward open_preview too. codex/gemini/acp sessions are happy-managed
+  // sessions like any other, so they get the same user-facing tool surface; the
+  // path denylist and the actual push both live on the HTTP MCP side.
+  server.registerTool(
+    PREVIEW_TOOL_NAME,
+    {
+      description: PREVIEW_TOOL_DESCRIPTION,
+      title: PREVIEW_TOOL_TITLE,
+      inputSchema: {
+        path: z.string().describe('Absolute path (or ~/…) of the file to show the user'),
+        mode: z.enum(['file', 'diff']).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        const client = await ensureHttpClient();
+        const response = await client.callTool({ name: PREVIEW_TOOL_NAME, arguments: args });
+        return response as any;
+      } catch (error) {
+        return {
+          content: [
+            { type: 'text', text: `Failed to open preview: ${error instanceof Error ? error.message : String(error)}` },
           ],
           isError: true,
         };

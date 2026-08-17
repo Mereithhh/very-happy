@@ -6,6 +6,7 @@ import { useSidebarPrefs, SIDEBAR_MIN, SIDEBAR_MAX } from '@/app/useSidebarPrefs
 import { Sidebar } from '@/screens/sessions/Sidebar';
 import { CommandPalette } from '@/screens/command/CommandPalette';
 import { ClipboardHistoryPanel } from '@/screens/clipboard/ClipboardHistoryPanel';
+import { FsPreviewOverlay } from '@/screens/files/FsPreviewOverlay';
 import { NotesDock } from '@/screens/notes/NotesDock';
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { useTerminalSync } from '@/sync/terminalSync';
@@ -144,6 +145,8 @@ export function AppLayout() {
       <CommandPalette />
       {/* clipboard-push history — singleton like the palette (⌘K / settings open it) */}
       <ClipboardHistoryPanel />
+      {/* open_preview pushes — singleton overlay opened by sync/filePreviewPush */}
+      <FsPreviewOverlay />
     </>
   );
 }

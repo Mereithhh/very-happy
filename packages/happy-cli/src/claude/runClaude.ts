@@ -35,6 +35,7 @@ import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
 import { TitleGenerator } from './utils/titleGenerator';
 import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/boardAnalyzer';
+import { createSelfReportState } from './utils/boardReport';
 import { bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { withAssistantDenylist } from '@/assistant/dispatcherTools';
 
@@ -380,8 +381,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // ~/.happy/settings.json) — the synced web settings blob is client-side
     // encrypted, so the CLI cannot read a synced toggle. Disabled = all
     // methods are no-ops; nothing is spawned and no tokens are burned.
+    // B-132: 自报水位在这里创建，analyzer 与 MCP server 共享同一个对象
+    // （两者都活在本 session 进程里，所以不需要落文件）。
+    const boardSelfReport = createSelfReportState();
     const boardAnalyzer = new BoardAnalyzer(session, {
         enabled: settings?.boardLlm === true,
+        selfReportState: boardSelfReport,
         fetchTasks: async (): Promise<BoardTaskRef[] | null> => {
             // Board task titles live in account KV `vh.board-tasks.v1` as plain
             // base64 JSON (same non-e2e convention as `vh.terminal-sessions`).
@@ -441,7 +446,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Start Happy MCP server (assistant variant additionally registers the
     // machine management tool surface — see assistant/assistantTools.ts)
-    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
+    const happyServer = await startHappyServer(session, { assistant: isAssistantVariant, selfReportState: boardSelfReport });
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)

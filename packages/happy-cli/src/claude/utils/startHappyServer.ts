@@ -16,13 +16,32 @@ import { ApiSessionClient } from "@/api/apiSession";
 import { randomUUID } from "node:crypto";
 import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from "@/clipboard/limits";
 import { ASSISTANT_TOOL_NAMES, registerAssistantTools } from "@/assistant/assistantTools";
+import {
+    PREVIEW_TOOL_DESCRIPTION, PREVIEW_TOOL_NAME, PREVIEW_TOOL_TITLE,
+    REPORT_PROGRESS_TOOL_DESCRIPTION, REPORT_PROGRESS_TOOL_NAME, REPORT_PROGRESS_TOOL_TITLE,
+} from "./agentGuidance";
+import {
+    type BoardAttention, type SelfReportState,
+    createSelfReportState, normalizeProgress, shouldAcceptSelfReport,
+} from "./boardReport";
+import { checkPreviewPath } from "./previewPath";
 
 interface HappyMcpHandlers {
     changeTitle: (title: string) => Promise<{ success: boolean; error?: string }>;
     copyToClipboard: (text: string) => Promise<{ delivered: boolean; truncated: boolean; totalBytes: number; error?: string }>;
+    /** B-131: ask the user's web clients to open a file preview. */
+    openPreview: (path: string, mode: 'file' | 'diff') => Promise<{ delivered: boolean; resolved?: string; error?: string }>;
+    /** B-132: claude self-reports progress onto the task board. */
+    reportProgress: (progress: string, attention: BoardAttention) => Promise<{ accepted: boolean; error?: string }>;
 }
 
 export interface StartHappyServerOptions {
+    /**
+     * B-132: 自报水位，由调用方（runClaude）创建并同时交给 BoardAnalyzer——
+     * 两者在同一个 session 进程里，所以是共享的内存对象，不需要落文件。
+     * 不传则本 server 自己建一个（水位无人消费，只起节流作用）。
+     */
+    selfReportState?: SelfReportState;
     /**
      * B-051: assistant-variant sessions additionally get the machine
      * management tool surface (sessions_* / terminal_* / memory_update).
@@ -101,6 +120,57 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
         };
     });
 
+    // B-131 open_preview —— 只推路径，web 端自己用既有 fs-read 拉内容。
+    mcp.registerTool(PREVIEW_TOOL_NAME, {
+        description: PREVIEW_TOOL_DESCRIPTION,
+        title: PREVIEW_TOOL_TITLE,
+        inputSchema: {
+            path: z.string().describe('Absolute path (or ~/…) of the file to show the user'),
+            mode: z.enum(['file', 'diff']).optional()
+                .describe("'file' (default) renders the file; 'diff' is reserved and currently falls back to 'file'"),
+        },
+    }, async (args) => {
+        const response = await handlers.openPreview(args.path, args.mode ?? 'file');
+        logger.debug('[happyMCP] open_preview response:', response);
+        if (response.delivered) {
+            return {
+                content: [{
+                    type: 'text',
+                    // 明说不保证用户看到了——否则 claude 会基于「已预览」做后续推断（spec 风险 8）
+                    text: `Asked the user's open web client(s) to preview ${response.resolved ?? args.path}. `
+                        + 'This does not confirm they looked at it.',
+                }],
+                isError: false,
+            };
+        }
+        return {
+            content: [{ type: 'text', text: `Could not open preview: ${response.error || 'unknown error'}` }],
+            isError: true,
+        };
+    });
+
+    // B-132 report_progress —— 写 session metadata 的 board 字段，复用既有 sessions push。
+    mcp.registerTool(REPORT_PROGRESS_TOOL_NAME, {
+        description: REPORT_PROGRESS_TOOL_DESCRIPTION,
+        title: REPORT_PROGRESS_TOOL_TITLE,
+        inputSchema: {
+            progress: z.string().describe('One short line describing the current state of this task'),
+            attention: z.enum(['none', 'review', 'blocked']).optional()
+                .describe("'blocked' = cannot proceed without the user; 'review' = wants their eyes; 'none' = ordinary progress"),
+        },
+    }, async (args) => {
+        const response = await handlers.reportProgress(args.progress, args.attention ?? 'none');
+        logger.debug('[happyMCP] report_progress response:', response);
+        if (response.accepted) {
+            return { content: [{ type: 'text', text: 'Board updated.' }], isError: false };
+        }
+        // 被节流不是错误——告诉它「收到但没写」，别让它重试
+        return {
+            content: [{ type: 'text', text: response.error || 'Report skipped (reported too recently); no need to retry.' }],
+            isError: false,
+        };
+    });
+
     if (options?.assistant) {
         registerAssistantTools(mcp);
     }
@@ -111,7 +181,51 @@ function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerO
 export async function startHappyServer(client: ApiSessionClient, options?: StartHappyServerOptions) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId} assistant=${!!options?.assistant}`);
 
+    const selfReportState = options?.selfReportState ?? createSelfReportState();
+
     const handlers: HappyMcpHandlers = {
+        openPreview: async (path: string, mode: 'file' | 'diff') => {
+            // 这道闸必须在 CLI 侧（模型请求刚落地时），不能放 web——web 可绕过。
+            const verdict = checkPreviewPath(path);
+            if (verdict.deniedReason) {
+                logger.debug(`[happyMCP] open_preview denied: ${verdict.deniedReason}`);
+                return { delivered: false, error: verdict.deniedReason };
+            }
+            try {
+                const result = client.pushFilePreview(verdict.resolved, mode);
+                return { delivered: result.delivered, resolved: verdict.resolved, error: result.error };
+            } catch (error) {
+                return { delivered: false, error: String(error) };
+            }
+        },
+        reportProgress: async (progress: string, attention: BoardAttention) => {
+            const text = normalizeProgress(progress);
+            if (!text) {
+                return { accepted: false, error: 'progress must be a non-empty one-line string' };
+            }
+            const now = Date.now();
+            if (!shouldAcceptSelfReport(selfReportState, now)) {
+                return { accepted: false };
+            }
+            // 只有被接受时才推进水位——否则疯狂刷就能把 analyzer 永久压制住
+            selfReportState.lastAcceptedAt = now;
+            try {
+                client.updateMetadata((metadata) => ({
+                    ...metadata,
+                    board: {
+                        ...(metadata as { board?: Record<string, unknown> })?.board,
+                        attention,
+                        progress: text,
+                        analyzedAt: now,
+                        // 让 web/看板能区分「claude 自己报的」和「haiku 猜的」
+                        source: 'self-report' as const,
+                    },
+                }));
+                return { accepted: true };
+            } catch (error) {
+                return { accepted: false, error: String(error) };
+            }
+        },
         changeTitle: async (title: string) => {
             logger.debug('[happyMCP] Changing title to:', title);
             try {
@@ -170,6 +284,8 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
         toolNames: [
             'change_title',
             CLIPBOARD_TOOL_NAME,
+            PREVIEW_TOOL_NAME,
+            REPORT_PROGRESS_TOOL_NAME,
             ...(options?.assistant ? ASSISTANT_TOOL_NAMES : []),
         ],
         stop: () => {

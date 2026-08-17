@@ -70,6 +70,11 @@ export interface ClientToServerEvents {
   // `payload` is the clipboard text, encrypted with the session key when
   // `enc` is true. `truncated`/`totalBytes` describe producer-side capping.
   'clipboard-push': (data: { payload: string, enc?: boolean, truncated?: boolean, totalBytes?: number }) => void,
+  // B-131 file preview push: session → server → all of the user's web clients.
+  // `payload` is the file's ABSOLUTE PATH (not its contents), encrypted with the
+  // session key when `enc` is true. The web client reads the file itself over the
+  // existing fs-read RPC — that keeps this relay tiny and adds no new file access.
+  'file-preview-push': (data: { payload: string, enc?: boolean, mode?: 'file' | 'diff' }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     result: 'error'
   } | {

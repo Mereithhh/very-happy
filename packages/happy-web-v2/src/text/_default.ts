@@ -698,6 +698,20 @@ export const en = {
         sourceSession: 'Session',
     },
 
+    // open_preview pushes: the singleton file-preview overlay (B-131)
+    filePreview: {
+        title: 'File preview',
+        receiveTitle: 'Open pushed previews',
+        receiveSubtitle: 'When an agent calls open_preview, pop the file preview on this device. Off = this device ignores the push (your other devices still show it).',
+        // diff mode is a parameter placeholder until B-036 lands
+        diffUnavailable: 'Diff view is not built yet — showing the file as-is',
+        machineOffline: ({ machine }: { machine: string }) =>
+            `${machine} is offline, so the file cannot be read. Start the happy daemon there and this preview loads itself.`,
+        machineUnknown: 'That machine is not on this account yet — the file cannot be read',
+        noMachineForSession: 'An agent asked to preview a file, but this session has no machine recorded — nothing to read from',
+        noSource: 'An agent asked to preview a file, but the request named no machine to read from',
+    },
+
     // prompt notes: right-side dock + /notes screen (B-094)
     notes: {
         title: 'Notes',

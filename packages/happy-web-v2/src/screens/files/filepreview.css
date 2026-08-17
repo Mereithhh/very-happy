@@ -1,0 +1,78 @@
+/* FsPreviewOverlay — tokens only (Console discipline): panel = bg-1 floating
+ * surface over --scrim with --shadow-pop, exactly the clipboard-history shelf.
+ * No accent anywhere: a pushed preview is content, not a LIVE indicator. The
+ * viewer chrome/body inside comes from fsbrowser.css unchanged.
+ * Form factor mirrors clipboard.css: desktop floating panel, <980px fullscreen. */
+
+.fpo-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1600; /* same shelf as clipboard/notification panels: above chrome, below toast (2000) and modal (4000) */
+}
+.fpo-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+/* 面板用 tabIndex=-1 + 脚本取焦点来接管 Esc 与击键（见 FsPreviewOverlay 注释）。
+   它不是可交互控件，只是键盘边界，所以不画焦点环——模态边界已由 scrim 表达。
+   内部真正的控件（关闭/全屏按钮）保留自己的 focus 样式。 */
+.fpo-panel:focus {
+  outline: none;
+}
+
+.fpo-panel {
+  position: absolute;
+  top: 8vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 920px;
+  max-width: calc(100vw - 24px);
+  height: min(760px, 80vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+/* Fullscreen: the viewer inside also promotes itself (.fsb--full is fixed +
+   inset 0), so the wrapper only needs to stop constraining it. */
+.fpo-panel--full {
+  inset: 0;
+  top: 0;
+  left: 0;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* diff-mode fallback notice sits above the viewer, warn tone from .fsb-notice.
+   Child selector so this wins over .fsb-notice's own margin regardless of the
+   order the two stylesheets land in the bundle. */
+.fpo-panel > .fpo-notice {
+  flex: none;
+  margin: var(--sp-2) var(--sp-2) 0;
+}
+
+/* mobile (< the AppLayout two-pane breakpoint): fullscreen panel.
+   B-112: inverse of the desktop-shell query (useMediaQuery.DESKTOP_SHELL_MQ) */
+@media (max-width: 799px), (max-width: 979px) and (max-height: 599px) {
+  .fpo-panel {
+    inset: 0;
+    top: 0;
+    left: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    border: none;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

@@ -22,6 +22,7 @@ import {
   ExternalLink,
   BookOpen,
   ClipboardList,
+  FileText,
 } from 'lucide-react';
 import {
   ItemList,
@@ -1279,6 +1280,7 @@ function Channels() {
             <CodeView code={MCP_CMD} lang="bash" />
           </div>
           <ClipboardReceiveItems />
+          <FilePreviewReceiveItems />
         </ItemGroup>
 
         <ItemGroup title={t('settingsChannels.imTitle')}>
@@ -1325,6 +1327,29 @@ function ClipboardReceiveItems() {
         onClick={openClipboardHistory}
       />
     </>
+  );
+}
+
+/** Receive-side behaviour of the open_preview tool (B-131): device-local switch
+ *  for whether an agent may pop the file-preview overlay on THIS device. The
+ *  push itself always reaches every web client; this only decides if this
+ *  screen acts on it. */
+function FilePreviewReceiveItems() {
+  const { t } = useTranslation();
+  const [receive, setReceive] = useLocalSettingMutable('filePreviewReceive');
+  return (
+    <Item
+      title={t('filePreview.receiveTitle')}
+      subtitle={t('filePreview.receiveSubtitle')}
+      left={<FileText size={18} />}
+      right={
+        <Toggle
+          checked={receive}
+          onChange={setReceive}
+          label={t('filePreview.receiveTitle')}
+        />
+      }
+    />
   );
 }
 

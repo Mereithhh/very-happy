@@ -1044,6 +1044,19 @@ export const pl: PartialTranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
+    // pushe open_preview: nakładka podglądu pliku (B-131)
+    filePreview: {
+        title: 'Podgląd pliku',
+        receiveTitle: 'Otwieraj otrzymane podglądy',
+        receiveSubtitle: 'Gdy agent wywoła open_preview, pokaż podgląd pliku na tym urządzeniu. Wyłączone = to urządzenie ignoruje powiadomienie (pozostałe urządzenia nadal je pokazują).',
+        diffUnavailable: 'Widok różnic jeszcze nie istnieje — plik jest pokazany bez zmian',
+        machineOffline: ({ machine }: { machine: string }) =>
+            `${machine} jest offline, więc nie można odczytać pliku. Uruchom tam demona happy, a podgląd wczyta się sam.`,
+        machineUnknown: 'Ta maszyna nie należy jeszcze do tego konta — nie można odczytać pliku',
+        noMachineForSession: 'Agent poprosił o podgląd pliku, ale ta sesja nie ma zapisanej maszyny — nie ma skąd czytać',
+        noSource: 'Agent poprosił o podgląd pliku, ale w żądaniu nie wskazano maszyny do odczytu',
+    },
+
 } as const;
 
 export type TranslationsPl = typeof pl;

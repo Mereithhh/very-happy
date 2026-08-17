@@ -1012,6 +1012,19 @@ export const pt: PartialTranslationStructure = {
         friendAcceptedGeneric: 'Pedido de amizade aceito',
     },
 
+    // pushes de open_preview: sobreposição de pré-visualização de arquivos (B-131)
+    filePreview: {
+        title: 'Pré-visualização do arquivo',
+        receiveTitle: 'Abrir pré-visualizações recebidas',
+        receiveSubtitle: 'Quando um agente chama open_preview, mostrar a pré-visualização do arquivo neste dispositivo. Desligado = este dispositivo ignora o aviso (seus outros dispositivos continuam mostrando).',
+        diffUnavailable: 'A visualização de diferenças ainda não existe — mostrando o arquivo como está',
+        machineOffline: ({ machine }: { machine: string }) =>
+            `${machine} está offline, então o arquivo não pode ser lido. Inicie o daemon do happy lá e esta pré-visualização carrega sozinha.`,
+        machineUnknown: 'Essa máquina ainda não pertence a esta conta — o arquivo não pode ser lido',
+        noMachineForSession: 'Um agente pediu para pré-visualizar um arquivo, mas esta sessão não tem máquina registrada — não há de onde ler',
+        noSource: 'Um agente pediu para pré-visualizar um arquivo, mas o pedido não indicou de qual máquina ler',
+    },
+
 } as const;
 
 export type TranslationsPt = typeof pt;

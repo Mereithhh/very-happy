@@ -14,6 +14,7 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { terminalHandler } from "./socket/terminalHandler";
 import { clipboardHandler } from "./socket/clipboardHandler";
+import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 
@@ -216,6 +217,7 @@ export function startSocket(app: Fastify) {
         accessKeyHandler(userId, socket);
         terminalHandler(userId, socket, io, connection);
         clipboardHandler(userId, socket, io, connection);
+        filePreviewHandler(userId, socket, io, connection);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);

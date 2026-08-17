@@ -96,6 +96,13 @@ export const LocalSettingsSchema = z.object({
     // "tap to copy" toast instead. Device-local on purpose: whether a browser
     // may auto-write its clipboard is a per-device trust/capability choice.
     clipboardAutoCopy: z.boolean().describe('Auto-copy incoming clipboard pushes into this device\'s clipboard'),
+    // open_preview pushes (B-131): pop the file-preview overlay when a session
+    // asks this account's web clients to look at a file. Device-local on
+    // purpose — "every web client receives the push" is the delivery rule, so
+    // whether a given screen may be interrupted by it is a per-device choice
+    // (the phone in a pocket vs the desktop next to the terminal). NO
+    // .default() here either: defaults live only in localSettingsDefaults.
+    filePreviewReceive: z.boolean().describe('Open the file-preview overlay when an agent pushes a preview to this device'),
     // ⌘W/⌥W close-session guard, layer 1 (B-089): ask before the shortcut
     // archives the open chat session / closes the open terminal; OFF = act
     // immediately without a dialog. Device-local on purpose — whether the chord
@@ -187,6 +194,10 @@ export const localSettingsDefaults: LocalSettings = {
     // Default on: the tool exists to land text in the clipboard without
     // ceremony; the failure path degrades to the tap-to-copy toast.
     clipboardAutoCopy: true,
+    // Default on: the tool only fires when the agent was asked to show
+    // something, and the overlay never steals focus. One switch turns it off
+    // per device (the phone case).
+    filePreviewReceive: true,
     // Both close guards default ON (Owner request): losing the open view to a
     // stray ⌘W is the annoyance; one switch each turns them back off.
     closeViewConfirm: true,
