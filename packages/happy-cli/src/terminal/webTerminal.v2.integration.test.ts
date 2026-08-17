@@ -237,6 +237,45 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         );
     });
 
+    it('writing to a terminal whose tmux session just died must not kill the daemon (EPIPE regression)', async () => {
+        // 2026-08-17, first hour in production: closing ONE terminal took the
+        // whole daemon down. The control client's stdin closes with its tmux
+        // session, and the next write (a keystroke, a resize's refresh-client,
+        // anything already queued) raised EPIPE as an unhandled stream error →
+        // `Starting proper cleanup (source: exception, errorMessage: write
+        // EPIPE)` → every terminal on the machine died with it.
+        const id = 'v2epipe1';
+        const fatal: unknown[] = [];
+        const onUncaught = (e: unknown) => fatal.push(e);
+        process.on('uncaughtException', onUncaught);
+        process.on('unhandledRejection', onUncaught);
+        try {
+            await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });
+            await waitFor(() => seen(id).length > 0, 15_000, 'session live');
+            // Kill the session out from under the client — the same shape as a
+            // user's `exit`, another device's delete, or a machine reboot.
+            spawnSync('tmux', ['kill-session', '-t', `=vh-${id}:`], { stdio: 'ignore' });
+            // Write into the void, repeatedly, without waiting for the exit
+            // event: this IS the race that crashed the daemon.
+            for (let i = 0; i < 20; i++) {
+                mgr.write(id, Buffer.from('x', 'utf8').toString('base64'));
+                mgr.resize(id, 100 + i, 30);
+            }
+            await new Promise((r) => setTimeout(r, 1500));
+            for (let i = 0; i < 10; i++) mgr.write(id, Buffer.from('y', 'utf8').toString('base64'));
+            await new Promise((r) => setTimeout(r, 500));
+            expect(fatal).toEqual([]);
+            // …and the manager is still healthy for OTHER terminals.
+            const other = 'v2epipe2';
+            const res = await mgr.open({ terminalId: other, cols: 80, rows: 24, streamMode: 'lines' });
+            expect(res.streamMode).toBe('lines');
+            mgr.killSession(other);
+        } finally {
+            process.off('uncaughtException', onUncaught);
+            process.off('unhandledRejection', onUncaught);
+        }
+    });
+
     it('killing a terminal stops its control client (no zombie tmux children)', async () => {
         const id = 'v2kill1';
         await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });

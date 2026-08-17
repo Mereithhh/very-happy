@@ -105,6 +105,24 @@ export class ControlClient {
         this.child.stderr.on('data', (chunk: Buffer) => {
             logger.debug(`[CONTROL ${tmuxSession}] stderr: ${chunk.toString('utf8').trim()}`);
         });
+        // ⚠️ TOOK THE WHOLE DAEMON DOWN ONCE (2026-08-17, first hour in
+        // production): when the tmux session dies, the client's stdin closes,
+        // and the very next write — a keystroke, a resize's `refresh-client`,
+        // anything already in flight — raises EPIPE **as a stream error event**.
+        // A stream error with no listener is an uncaught exception, and the
+        // daemon's top-level handler treats that as fatal: `Starting proper
+        // cleanup (source: exception, errorMessage: write EPIPE)` → every
+        // terminal on the machine goes down because ONE terminal was closed.
+        // The write path additionally refuses to write to a dead pipe (below),
+        // but this listener is the belt: the race between "tmux went away" and
+        // "we noticed" can never be closed from the writer's side alone.
+        this.child.stdin.on('error', (e) => {
+            logger.debug(`[CONTROL ${tmuxSession}] stdin error (session gone?): ${e}`);
+        });
+        this.child.stdout.on('error', (e) => {
+            logger.debug(`[CONTROL ${tmuxSession}] stdout error: ${e}`);
+        });
+        this.child.stderr.on('error', () => { /* same discipline as stdout */ });
         this.child.on('error', (e) => {
             logger.debug(`[CONTROL ${tmuxSession}] spawn error: ${e}`);
             this.failAll(new Error(`control client failed: ${e}`));
@@ -123,6 +141,14 @@ export class ControlClient {
 
     get alive(): boolean {
         return !this.exited;
+    }
+
+    /** Can we still write commands? `exited` alone is not enough: the child's
+     *  exit event is async, so the pipe can already be gone while the flag says
+     *  otherwise (that gap is exactly the EPIPE window). */
+    private get writable(): boolean {
+        return !this.exited && !this.stopping
+            && this.child.stdin.writable && !this.child.stdin.destroyed;
     }
 
     private consume(events: ControlModeEvent[]): void {
@@ -180,7 +206,7 @@ export class ControlClient {
                 return Promise.reject(new Error(`unsafe control command: ${JSON.stringify(c.command)}`));
             }
         }
-        if (this.exited) return Promise.reject(new Error('control client exited'));
+        if (!this.writable) return Promise.reject(new Error('control client exited'));
         const promises = commands.map((c) => new Promise<Buffer>((resolve, reject) => {
             const timer = setTimeout(() => {
                 // Do NOT shift the queue here: tmux may still answer, and the
@@ -191,7 +217,7 @@ export class ControlClient {
             timer.unref?.();
             this.queue.push({ resolve, reject, timer, label: c.label ?? c.command, onBlock: c.onBlock });
         }));
-        this.child.stdin.write(`${commands.map((c) => c.command).join('\n')}\n`);
+        this.writeRaw(`${commands.map((c) => c.command).join('\n')}\n`);
         return Promise.all(promises);
     }
 
@@ -203,13 +229,24 @@ export class ControlClient {
      */
     sendFireAndForget(commands: string[]): void {
         const safe = commands.filter((c) => isSafeControlCommand(c));
-        if (safe.length === 0 || this.exited) return;
+        if (safe.length === 0 || !this.writable) return;
         for (const command of safe) {
             const timer = setTimeout(() => { /* nobody is waiting */ }, CONTROL_COMMAND_TIMEOUT_MS);
             timer.unref?.();
             this.queue.push({ resolve: () => { }, reject: () => { }, timer, label: command });
         }
-        this.child.stdin.write(`${safe.join('\n')}\n`);
+        this.writeRaw(`${safe.join('\n')}\n`);
+    }
+
+    /** The ONE place that touches the pipe. A destroyed stream can also throw
+     *  synchronously, so the try/catch is not redundant with the 'error'
+     *  listener — both have taken this daemon down in one shape or another. */
+    private writeRaw(text: string): void {
+        try {
+            this.child.stdin.write(text);
+        } catch (e) {
+            logger.debug(`[CONTROL ${this.tmuxSession}] write failed (session gone?): ${e}`);
+        }
     }
 
     /** SIGTERM → grace → SIGKILL (rule 3). Resolves once the child is gone. */
