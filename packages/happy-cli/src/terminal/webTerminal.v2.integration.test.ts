@@ -26,6 +26,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { WebTerminalManager, type OpenTerminalResult } from './webTerminal';
 
 /** Narrow an open result to its snapshot form (every lines-mode open here is
@@ -235,6 +236,55 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
             10_000,
             'tmux session gone',
         );
+    });
+
+    it('the restore reproduces the pane row-for-row, cursor included (B-126)', async () => {
+        // The bug this pins: the spec left the restored CURSOR to "the batch's
+        // closing refresh-client -C triggers a repaint that heals it" — which is
+        // only true when that call CHANGES the size (measured: a refresh to the
+        // same size emits zero %output). Once client and pane agreed on geometry
+        // the cursor was never healed, so ink's erase-and-redraw landed rows off:
+        // three different strings stacked on one line, the input box drawn over
+        // its own border (Owner's screenshot 2026-08-17).
+        const id = 'v2fidelity';
+        const cols = 80; const rows = 24;
+        await mgr.open({ terminalId: id, cols, rows, streamMode: 'lines' });
+        await waitFor(() => seen(id).length > 0, 15_000, 'session live');
+        // History, a line that WRAPS, a bottom-anchored box, and a half-typed
+        // line so the cursor is somewhere non-trivial.
+        mgr.write(id, Buffer.from(
+            `clear; for i in $(seq 1 12); do echo "fid-$i"; done; printf '%.0sW' $(seq 1 140); echo; printf '+---+\\n| B |\\n+---+\\n'\r`,
+            'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('+---+'), 20_000, 'screen drawn');
+        mgr.write(id, Buffer.from('half-typed-no-enter', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('half-typed-no-enter'), 15_000, 'cursor parked mid-line');
+        await new Promise((r) => setTimeout(r, 400));
+
+        const res = await mgr.open({ terminalId: id, cols, rows, streamMode: 'lines', resub: true, attachOnly: true });
+        const parts: Buffer[] = [];
+        for (let p = 0; p < (res.totalPages ?? 0); p++) {
+            const page = mgr.getHistoryPage(id, res.snapshotId!, p) as { data: string };
+            parts.push(Buffer.from(page.data, 'base64'));
+        }
+        const restore = Buffer.concat(parts);
+
+        // Render the restore exactly like a client does.
+        const term = new HeadlessTerminal({ cols, rows, allowProposedApi: true, scrollback: 5000 });
+        await new Promise<void>((resolve) => { term.write(new Uint8Array(restore), () => resolve()); });
+        const buf = term.buffer.active;
+        const rendered: string[] = [];
+        for (let y = buf.viewportY; y < buf.viewportY + rows; y++) {
+            rendered.push((buf.getLine(y)?.translateToString(true) ?? '').trimEnd());
+        }
+        const tmuxScreen = spawnSync('tmux', ['capture-pane', '-p', '-t', `=vh-${id}:`], { encoding: 'utf8' })
+            .stdout.split('\n').slice(0, rows).map((l) => l.trimEnd());
+        const cursor = spawnSync('tmux', ['display', '-p', '-t', `=vh-${id}:`, '#{cursor_x},#{cursor_y}'], { encoding: 'utf8' })
+            .stdout.trim();
+        const renderedCursor = `${buf.cursorX},${buf.cursorY}`;
+        term.dispose();
+
+        expect(rendered).toEqual(tmuxScreen);
+        expect(renderedCursor).toBe(cursor);
     });
 
     it('opening an EXISTING terminal at a new size reports the size that will actually apply', async () => {

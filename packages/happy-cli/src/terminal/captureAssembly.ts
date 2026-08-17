@@ -47,17 +47,21 @@
 
 /** Which capture in the batch a response belongs to. */
 export type CaptureKey =
-    /** history + current screen — the whole restore when normal is active. */
-    | 'normalFull'
-    /** history only (`-E -1`) — first third of the alt assembly. */
-    | 'altHistory'
-    /** the saved normal screen (`-a`) — second third of the alt assembly. */
+    /** Scrollback only (`-E -1`), as LOGICAL lines (`-J`) so the client can
+     *  re-wrap it at its own width. */
+    | 'history'
+    /** The same, shallow — the "秒开" snapshot's scrollback. */
+    | 'smallHistory'
+    /** the saved normal screen (`-a`) — the lines the alt screen hid. */
     | 'altSaved'
-    /** the pane's visible content with no range flags: the alt screen when alt
-     *  is active, the current screen otherwise. */
+    /**
+     * The visible screen as PHYSICAL ROWS (no `-J`): exactly one row per screen
+     * line. The screen is the part the application addresses with cursor moves,
+     * so it must be reproduced row for row — joining wrapped lines here would
+     * make the restored screen a different height than the pane and every
+     * relative cursor move afterwards would land on the wrong row.
+     */
     | 'visible'
-    /** shallow (SNAPSHOT-sized) capture for the fast first paint, normal case. */
-    | 'normalSmall'
     /** `list-panes -F` state line (alternate_on, cursor, geometry). */
     | 'panes'
     /** `-p -P -C`: bytes of an escape sequence the pane has not finished. */
@@ -132,11 +136,11 @@ export function buildCaptureBatch(o: CaptureBatchOptions): CaptureCommand[] {
     const cols = Math.max(2, Math.floor(o.cols));
     const rows = Math.max(2, Math.floor(o.rows));
     return [
-        { key: 'normalFull', command: `capture-pane -peqJN -t ${t} -S -${n}` },
-        { key: 'altHistory', command: `capture-pane -peqJN -t ${t} -S -${n} -E -1` },
+        { key: 'history', command: `capture-pane -peqJN -t ${t} -S -${n} -E -1` },
+        { key: 'smallHistory', command: `capture-pane -peqJN -t ${t} -S -${small} -E -1` },
         { key: 'altSaved', command: `capture-pane -peqJN -t ${t} -a` },
-        { key: 'visible', command: `capture-pane -peqJN -t ${t}` },
-        { key: 'normalSmall', command: `capture-pane -peqJN -t ${t} -S -${small}` },
+        // No `-J`: physical rows (see CaptureKey.visible).
+        { key: 'visible', command: `capture-pane -peqN -t ${t}` },
         { key: 'panes', command: `list-panes -t ${t} -F "${PANE_STATE_FORMAT}"` },
         { key: 'tail', command: `capture-pane -p -P -C -t ${t}` },
         // ANCHOR. Also makes tmux repaint the pane, which is what puts the
@@ -227,29 +231,117 @@ export function assembleRestore(
     budget = CAPTURE_FULL_BUDGET_BYTES,
 ): RestorePayload {
     const get = (k: CaptureKey) => responses[k] ?? Buffer.alloc(0);
-    const tail = get('tail');
+    // `-p -P -C` returns the pane's UNFINISHED escape sequence — but it prints
+    // it as a LINE, so it comes back with a trailing newline even when there is
+    // nothing pending (measured: 1 byte, just the LF). Replaying that newline
+    // scrolls the restored screen up by one row: the top row falls off the
+    // viewport, a blank shows up at the bottom, and the absolutely-positioned
+    // cursor lands one row below the text it belongs to — the input box drawn
+    // over its own border (B-126). A pending escape sequence never ends with a
+    // newline, so stripping it is free.
+    const tail = stripTrailingNewlines(get('tail'));
     const alternateOn = paneState?.alternateOn === true;
+    const rows = paneState?.height;
+
+    // The screen, rebuilt row for row and made exactly `rows` tall, followed by
+    // an explicit cursor position.
+    //
+    // ⚠️ The cursor is NOT optional decoration — it is what every later repaint
+    // is relative to. The spec originally left it to "the batch's closing
+    // `refresh-client -C` triggers a repaint that heals it", which is only true
+    // when that call CHANGES the size: measured on tmux 3.7b, a refresh to the
+    // SAME size produces zero %output. Once the client and the pane agreed on
+    // geometry (B-124), "same size" became the normal case, so nothing ever
+    // healed the cursor: ink's erase-and-redraw then landed rows away from
+    // where it meant to, stacking three different strings onto one line and
+    // drawing the input box over its own border (Owner's screenshot, B-126).
+    const screen = (): Buffer => {
+        const raw = get('visible');
+        const lines = splitLines(raw);
+        if (rows !== undefined && rows > 0) {
+            while (lines.length > rows) lines.shift();      // keep the LAST rows
+            while (lines.length < rows) lines.push(EMPTY);  // pad to a full screen
+        }
+        const body = joinCrlf(lines);
+        const cursor = paneState
+            ? Buffer.from(`\x1b[${paneState.cursorY + 1};${paneState.cursorX + 1}H`, 'ascii')
+            : Buffer.alloc(0);
+        return Buffer.concat([body, tail, cursor]);
+    };
 
     if (!alternateOn) {
-        const full = Buffer.concat([truncateToBudget(normalizeCaptureLines(get('normalFull')), budget), tail]);
-        const small = Buffer.concat([normalizeCaptureLines(get('normalSmall')), tail]);
-        return { full, small, alternateOn };
+        const history = trimTrailingBlankRows(normalizeCaptureLines(get('history')));
+        const smallHistory = trimTrailingBlankRows(normalizeCaptureLines(get('smallHistory')));
+        const withHistory = (h: Buffer) => Buffer.concat(
+            h.length > 0 ? [truncateToBudget(h, budget), CRLF, screen()] : [screen()],
+        );
+        return { full: withHistory(history), small: withHistory(smallHistory), alternateOn };
     }
 
-    // Alt: history + the screen the alt buffer hid, then switch the receiving
-    // emulator to ITS alt buffer and paint the visible content there — so the
-    // fullscreen app's frame never pollutes the scrollback we just rebuilt.
-    const history = normalizeCaptureLines(get('altHistory'));
-    const saved = normalizeCaptureLines(get('altSaved'));
-    const visible = normalizeCaptureLines(get('visible'));
+    // Alt: scrollback = history + the normal screen the alt buffer hid; then
+    // switch the emulator to ITS alt buffer and paint the frame there, so the
+    // fullscreen app never pollutes the scrollback we just rebuilt.
+    const history = trimTrailingBlankRows(normalizeCaptureLines(get('history')));
+    const saved = trimTrailingBlankRows(normalizeCaptureLines(get('altSaved')));
     const scrollback = truncateToBudget(
         Buffer.concat(history.length > 0 && saved.length > 0 ? [history, CRLF, saved] : [history, saved]),
         budget,
     );
-    const altScreen = Buffer.concat([ALT_ENTER, CURSOR_HOME, visible, tail]);
+    const altScreen = Buffer.concat([ALT_ENTER, CURSOR_HOME, screen()]);
     return {
         full: Buffer.concat([scrollback, scrollback.length > 0 ? CRLF : Buffer.alloc(0), altScreen]),
         small: altScreen,
         alternateOn,
     };
 }
+
+const EMPTY = Buffer.alloc(0);
+
+function stripTrailingNewlines(blob: Buffer): Buffer {
+    let end = blob.length;
+    while (end > 0 && (blob[end - 1] === 0x0a || blob[end - 1] === 0x0d)) end -= 1;
+    return blob.subarray(0, end);
+}
+
+/**
+ * Drop blank rows at the END of a scrollback blob.
+ *
+ * Why this is not cosmetic: the screen is written straight after the history,
+ * and every extra newline between them scrolls the screen up by one row. A
+ * single trailing blank history line therefore pushes the whole restored screen
+ * up one row — the top row falls off, a blank appears at the bottom, and the
+ * cursor (positioned absolutely, from list-panes) ends up one row below the
+ * text it belongs to. That is exactly what the input box drawn over its own
+ * border looked like (B-126). Trailing blank scrollback carries no information,
+ * so trimming it is free.
+ */
+function trimTrailingBlankRows(blob: Buffer): Buffer {
+    const lines = splitLines(blob);
+    while (lines.length > 0 && lines[lines.length - 1].length === 0) lines.pop();
+    return joinCrlf(lines);
+}
+
+/** Split on LF, dropping a single trailing empty element and any CR before LF. */
+function splitLines(blob: Buffer): Buffer[] {
+    const out: Buffer[] = [];
+    let start = 0;
+    for (let i = 0; i < blob.length; i++) {
+        if (blob[i] !== 0x0a) continue;
+        let end = i;
+        if (end > start && blob[end - 1] === 0x0d) end -= 1;
+        out.push(blob.subarray(start, end));
+        start = i + 1;
+    }
+    if (start < blob.length) out.push(blob.subarray(start));
+    return out;
+}
+
+function joinCrlf(lines: Buffer[]): Buffer {
+    const parts: Buffer[] = [];
+    lines.forEach((l, i) => {
+        if (i > 0) parts.push(CRLF);
+        parts.push(l);
+    });
+    return Buffer.concat(parts);
+}
+

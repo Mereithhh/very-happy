@@ -23,20 +23,23 @@ describe('buildCaptureBatch', () => {
 
     it('sends BOTH screen shapes plus the pane state (双份全发)', () => {
         const keys = batch.map((c) => c.key);
-        expect(keys).toContain('normalFull');
-        expect(keys).toContain('altHistory');
+        expect(keys).toContain('history');
+        expect(keys).toContain('smallHistory');
         expect(keys).toContain('altSaved');
         expect(keys).toContain('visible');
-        expect(keys).toContain('normalSmall');
         expect(keys).toContain('panes');
     });
 
-    it('uses the verified capture flags for each shape', () => {
-        expect(cmd('normalFull')).toBe('capture-pane -peqJN -t %7 -S -5000');
-        expect(cmd('altHistory')).toBe('capture-pane -peqJN -t %7 -S -5000 -E -1'); // history ONLY
-        expect(cmd('altSaved')).toBe('capture-pane -peqJN -t %7 -a');               // saved normal screen
-        expect(cmd('visible')).toBe('capture-pane -peqJN -t %7');                   // no range = visible
-        expect(cmd('normalSmall')).toBe('capture-pane -peqJN -t %7 -S -300');
+    it('captures history as LOGICAL lines and the screen as PHYSICAL rows', () => {
+        // The split is the whole point: scrollback is free-flowing text the
+        // client re-wraps at its own width (-J), while the screen is what the
+        // application addresses with cursor moves and must come back row for
+        // row (no -J) or every later repaint lands on the wrong row.
+        expect(cmd('history')).toBe('capture-pane -peqJN -t %7 -S -5000 -E -1');
+        expect(cmd('smallHistory')).toBe('capture-pane -peqJN -t %7 -S -300 -E -1');
+        expect(cmd('altSaved')).toBe('capture-pane -peqJN -t %7 -a');
+        expect(cmd('visible')).toBe('capture-pane -peqN -t %7');
+        expect(cmd('visible')).not.toContain('J');
         expect(cmd('tail')).toBe('capture-pane -p -P -C -t %7');
         expect(cmd('panes')).toBe(`list-panes -t %7 -F "${PANE_STATE_FORMAT}"`);
     });
@@ -48,8 +51,8 @@ describe('buildCaptureBatch', () => {
     it('clamps absurd geometry / depths instead of emitting nonsense', () => {
         const b = buildCaptureBatch({ paneTarget: '%1', historyLines: 0, smallLines: -5, cols: 0, rows: 1 });
         const find = (k: CaptureKey) => b.find((c) => c.key === k)!.command;
-        expect(find('normalFull')).toContain('-S -1');
-        expect(find('normalSmall')).toContain('-S -1');
+        expect(find('history')).toContain('-S -1');
+        expect(find('smallHistory')).toContain('-S -1');
         expect(find('anchor')).toBe('refresh-client -C 2x2');
     });
 });
@@ -134,73 +137,79 @@ describe('truncateToBudget', () => {
 });
 
 describe('assembleRestore', () => {
-    const paneNormal = { paneId: '%0', alternateOn: false, cursorX: 0, cursorY: 0, width: 80, height: 24 };
-    const paneAlt = { ...paneNormal, alternateOn: true };
-
-    it('normal screen: the single full capture IS the restore', () => {
-        const r = assembleRestore(
-            { normalFull: buf('hist1\nhist2\nprompt$ \n'), normalSmall: buf('prompt$ \n'), tail: buf('') },
-            paneNormal,
-        );
-        expect(r.alternateOn).toBe(false);
-        expect(str(r.full)).toBe('hist1\r\nhist2\r\nprompt$ ');
-        expect(str(r.small)).toBe('prompt$ ');
-        expect(str(r.full)).not.toContain('\x1b[?1049h');
+    const pane = (over: Partial<{ alternateOn: boolean; cursorX: number; cursorY: number; height: number }> = {}) => ({
+        paneId: '%0', alternateOn: false, cursorX: 0, cursorY: 0, width: 80, height: 4, ...over,
     });
+    const CUP = (y: number, x: number) => `\x1b[${y + 1};${x + 1}H`;
 
-    it('alt screen: history + saved normal screen, THEN 1049h + the alt frame', () => {
+    it('normal: scrollback + a FULL-height screen + the cursor where the app left it', () => {
         const r = assembleRestore(
             {
-                altHistory: buf('h1\nh2\n'),
-                altSaved: buf('s1\ns2\n'),
-                visible: buf('TUI-FRAME\n'),
-                normalFull: buf('MUST NOT BE USED\n'),
+                history: buf('hist1\nhist2\n'),
+                smallHistory: buf('hist2\n'),
+                visible: buf('prompt$ typed\n\n'),   // 2 rows captured, pane is 4 tall
                 tail: buf(''),
             },
-            paneAlt,
+            pane({ cursorX: 13, cursorY: 0 }),
+        );
+        expect(r.alternateOn).toBe(false);
+        // screen padded to the pane's height so CUP rows mean what tmux meant
+        expect(str(r.full)).toBe(`hist1\r\nhist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
+        expect(str(r.small)).toBe(`hist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
+    });
+
+    it('a screen taller than the pane keeps the LAST rows (never the first)', () => {
+        const r = assembleRestore(
+            { visible: buf('a\nb\nc\nd\ne\nf\n'), tail: buf('') },
+            pane({ height: 3, cursorY: 2, cursorX: 0 }),
+        );
+        expect(str(r.full)).toBe(`d\r\ne\r\nf${CUP(2, 0)}`);
+    });
+
+    it('alt: scrollback + saved normal screen, THEN 1049h + the alt frame + cursor', () => {
+        const r = assembleRestore(
+            {
+                history: buf('h1\n'),
+                altSaved: buf('s1\n'),
+                visible: buf('TUI\n'),
+                tail: buf(''),
+            },
+            pane({ alternateOn: true, height: 2, cursorX: 3, cursorY: 1 }),
         );
         expect(r.alternateOn).toBe(true);
-        expect(str(r.full)).toBe('h1\r\nh2\r\ns1\r\ns2\r\n\x1b[?1049h\x1b[HTUI-FRAME');
-        // The命门: the fullscreen frame must sit AFTER the alt switch, never in
-        // the scrollback part.
-        const idx = str(r.full).indexOf('\x1b[?1049h');
-        expect(str(r.full).indexOf('TUI-FRAME')).toBeGreaterThan(idx);
-        expect(str(r.full)).not.toContain('MUST NOT BE USED');
+        expect(str(r.full)).toBe(`h1\r\ns1\r\n\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
+        // The命门: the fullscreen frame sits AFTER the alt switch, never in the
+        // scrollback part.
+        expect(str(r.full).indexOf('TUI')).toBeGreaterThan(str(r.full).indexOf('\x1b[?1049h'));
+        expect(str(r.small)).toBe(`\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
     });
 
-    it('alt small snapshot carries the 1049h prefix (web picks the alt lane immediately)', () => {
-        const r = assembleRestore({ visible: buf('FRAME\n'), tail: buf('') }, paneAlt);
-        expect(str(r.small)).toBe('\x1b[?1049h\x1b[HFRAME');
-    });
-
-    it('unknown pane state falls back to the normal assembly', () => {
-        const r = assembleRestore({ normalFull: buf('a\n'), normalSmall: buf('a\n') }, undefined);
+    it('unknown pane state: no padding, no cursor — degrade instead of guessing', () => {
+        const r = assembleRestore({ history: buf('a\n'), visible: buf('b\n') }, undefined);
         expect(r.alternateOn).toBe(false);
-        expect(str(r.full)).toBe('a');
+        expect(str(r.full)).toBe('a\r\nb');
+        expect(str(r.full)).not.toContain('\x1b[');
     });
 
-    it('appends the unfinished-escape tail to both payloads', () => {
+    it('appends the unfinished-escape tail before the cursor move', () => {
         const r = assembleRestore(
-            { normalFull: buf('a\n'), normalSmall: buf('a\n'), tail: Buffer.from('\x1b[3', 'ascii') },
-            paneNormal,
+            { visible: buf('a\n'), tail: Buffer.from('\x1b[3', 'ascii') },
+            pane({ height: 1, cursorX: 1, cursorY: 0 }),
         );
-        expect(str(r.full)).toBe('a\x1b[3');
-        expect(str(r.small)).toBe('a\x1b[3');
+        expect(str(r.full)).toBe(`a\x1b[3${CUP(0, 1)}`);
     });
 
     it('missing responses degrade instead of throwing', () => {
-        expect(() => assembleRestore({}, paneNormal)).not.toThrow();
-        expect(assembleRestore({}, paneNormal).full.length).toBe(0);
-        const alt = assembleRestore({}, paneAlt);
-        expect(str(alt.full)).toBe('\x1b[?1049h\x1b[H'); // still a valid (empty) alt frame
+        expect(() => assembleRestore({}, pane())).not.toThrow();
+        const alt = assembleRestore({}, pane({ alternateOn: true, height: 2 }));
+        expect(str(alt.full)).toContain('\x1b[?1049h');
     });
 
-    it('applies the byte budget to the full payload only', () => {
+    it('applies the byte budget to the scrollback, never to the screen', () => {
         const big = buf(`${'l'.repeat(50)}\n`.repeat(100));
-        const r = assembleRestore({ normalFull: big, normalSmall: buf('now\n') }, paneNormal, 200);
-        expect(r.full.length).toBeLessThanOrEqual(220);
-        expect(str(r.small)).toBe('now');
-        // Suffix-preserving: the NEWEST lines survive.
-        expect(str(r.full).endsWith('l'.repeat(50))).toBe(true);
+        const r = assembleRestore({ history: big, visible: buf('now\n'), smallHistory: buf('') }, pane({ height: 1 }), 200);
+        expect(r.full.length).toBeLessThanOrEqual(260);
+        expect(str(r.full)).toContain('now');            // the screen always survives
+        expect(str(r.full)).toContain(CUP(0, 0));
     });
 });
