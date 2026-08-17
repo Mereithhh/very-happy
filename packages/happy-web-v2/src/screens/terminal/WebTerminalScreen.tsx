@@ -12,6 +12,9 @@ import {
   machineUploadFile,
   machineSetTerminalTitle,
   machineScrollTerminal,
+  machineTerminalPaste,
+  machineTerminalHistory,
+  type TerminalHistoryPage,
 } from '@/sync/ops';
 import { installMobileInputBridge, toPtyText } from './mobileInputBridge';
 import { installImeStuckGuard } from './imeStuckGuard';
@@ -54,6 +57,11 @@ import { resolveTerminalView, withTerminalViewOverride } from '@/sync/terminalVi
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
+import {
+  createTermAssembly,
+  prefixAlternateEnter,
+  type AssemblyRebuildPlan,
+} from './termAssembly';
 import {
   createViewportStabilizer,
   computeKbAvail,
@@ -263,6 +271,31 @@ export function WebTerminalScreen() {
   // up once), the state drives the button + host className.
   const [selectMode, setSelectMode] = useState(false);
   const selectModeRef = useRef(false);
+
+  // ── B-121 terminal channel v2 (spec 2026-08-terminal-channel-v2 §D2) ──────
+  // `lines` = the daemon streams the pane's CONTENT (tmux control mode) instead
+  // of a full-screen tmux mirror, so xterm finally owns a real local
+  // scrollback. Scrolling then splits into two tracks:
+  //   • NORMAL buffer (95% of reading): the browser scrolls natively —
+  //     pixel-perfect, with system inertia. That gesture is the entire reason
+  //     this batch exists, and it only works if `touch-action` is handed back.
+  //   • ALTERNATE buffer (vim, /tui fullscreen, pre-v2 claude sessions): the v1
+  //     machinery stays exactly as it was — wheel hijack → `terminal-scroll`
+  //     RPC, touch → synthetic wheel — because xterm's default wheel there is
+  //     "send arrow keys", i.e. claude's TUI cycling through prompt history.
+  // Both flags are rendered as classes (React owns the className string) and
+  // `touch-action` follows them in terminal.css.
+  const [linesMode, setLinesMode] = useState(false);
+  const [altBuffer, setAltBuffer] = useState(false);
+  // Per-mount streamMode LATCH (spec §D3 M-R2-4). A daemon switching generation
+  // under a live web client is routine (vh-update / rollback — 铁律 5), and the
+  // two tracks wire up different mechanisms at mount time; a hot switch would
+  // leave half of them pointing at the wrong channel. Bumping this counter
+  // rebuilds the terminal effect from scratch = the remount-equivalent path.
+  const [streamRemount, setStreamRemount] = useState(0);
+  // Paste seam, bridged out of the effect (same pattern as sendInputRef): in
+  // lines mode a paste is a daemon RPC, not a local xterm bracketed paste.
+  const pasteTextRef = useRef<((text: string) => Promise<void>) | null>(null);
   // Mobile assistive key bar: soft keyboards have no Esc/Tab/Ctrl/arrows/pipe,
   // which makes claude/shell/vim painful. `ctrlSticky` is a one-shot modifier —
   // tap Ctrl, then the next letter is sent as Ctrl+<letter> (\x01..\x1a).
@@ -478,6 +511,21 @@ export function WebTerminalScreen() {
     // and the old Math.max baseline then silently dropped ALL further output
     // (frozen screen, no echo).
     const sync = createTermStreamSync();
+    // ── B-121 deep-history assembly (see ./termAssembly.ts) ─────────────────
+    // lines mode opens with a SMALL snapshot (instant) plus a snapshotId naming
+    // the full capture the daemon holds; this machine pulls it page by page in
+    // the background and rebuilds the screen at a quiet moment. Every failure
+    // path just gives up and keeps the small snapshot (功能完好，仅历史浅).
+    const assembly = createTermAssembly();
+    // Which channel THIS mount speaks — latched by the first successful open.
+    let mountStreamMode: 'lines' | 'attach' | null = null;
+    let linesActive = false;
+    let quietTimer: ReturnType<typeof setInterval> | null = null;
+    let remountRequested = false;
+    // A fresh mount starts on the fallback track until the daemon answers;
+    // stale classes from the previous mount must not survive a tid change.
+    setLinesMode(false);
+    setAltBuffer(false);
     // Chunks that arrive before the open RPC resolves. We can't attribute them
     // yet (a NEW terminal's id is assigned by the daemon, and the RPC ack's
     // payload decrypt is async, so socket events can be processed first) —
@@ -498,6 +546,19 @@ export function WebTerminalScreen() {
     // this effect only feeds it events (mouse handlers + sendInput below).
     const writeHold = createTermWriteHold((d) => term.write(d));
     const gatedWrite = writeHold.gatedWrite;
+    /** Write chunks the assembly handed back (deferred or released). */
+    const flushAssembly = (chunks: Uint8Array[]) => {
+      for (const c of chunks) gatedWrite(c);
+    };
+    // Every APPLIED chunk (live or replay) funnels through here so the assembly
+    // can take its atomic copy — the copy rule is INDEPENDENT of the assembly's
+    // state (spec §D1: miss one chunk and the rebuilt screen forks from the
+    // real one forever, because the rebuild's reset erases whatever it didn't
+    // replay). It also decides write-now vs defer-behind-a-rebuild; the seq
+    // bookkeeping already happened, synchronously, at the call site.
+    const liveWrite = (bytes: Uint8Array) => {
+      flushAssembly(assembly.noteLiveChunk(bytes));
+    };
 
     // Apply one output chunk: seq bookkeeping SYNCHRONOUSLY (so chunks arriving
     // during an async decrypt still dedup against the right baseline), write
@@ -508,14 +569,23 @@ export function WebTerminalScreen() {
     const applyLiveChunk = (e: { data: string; seq?: number; enc?: boolean }) => {
       const decision = sync.liveChunk(e.seq);
       if (decision === 'dup') return;
-      if (decision === 'gap') { catchUp(); return; }
+      if (decision === 'gap') {
+        // The catch-up owns the screen from here (reset + snapshot, or a ring
+        // replay) — a half-assembled deep history would be overwritten anyway.
+        // Whatever the rebuild had deferred is still written: its seq was
+        // already accepted, so no catch-up will ever replay it.
+        flushAssembly(assembly.abort('gap'));
+        clearQuietPoll();
+        catchUp();
+        return;
+      }
       if (e.enc) {
         outChain = outChain.then(async () => {
           const plain = await decryptTerminalData(machineId, e.data);
-          if (plain && !disposed) gatedWrite(b64ToBytes(plain));
+          if (plain && !disposed) liveWrite(b64ToBytes(plain));
         });
       } else {
-        gatedWrite(b64ToBytes(e.data));
+        liveWrite(b64ToBytes(e.data));
       }
     };
     const onOutput = (e: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
@@ -625,7 +695,15 @@ export function WebTerminalScreen() {
         term,
         sendInput: (d) => { noteTitleFromOwnInput(d); sendInput(d); },
         sendKey: (ev) => renderer.sendKey(ev),
-        paste: (text) => renderer.paste(text),
+        // Through the paste chokepoint, not renderer.paste: in lines mode the
+        // bytes must reach the pane via the daemon's tmux paste-buffer. (In
+        // practice the host's capture-phase paste listener consumes clipboard
+        // text first; this keeps the seam correct if it ever doesn't.)
+        paste: (text) => {
+          const viaChokepoint = pasteTextRef.current;
+          if (viaChokepoint) void viaChokepoint(text);
+          else renderer.paste(text);
+        },
         isMac: IS_MAC,
         foreground: THEME.foreground,
         // Presentation/geometry fork only (font size vs iOS zoom, preedit
@@ -745,16 +823,17 @@ export function WebTerminalScreen() {
       res: Extract<Awaited<ReturnType<typeof machineOpenTerminal>>, { success: true }>,
       seqAtCall: number,
     ): (() => Promise<void>) => {
-      const writeMaybeEnc = async (dataB64: string) => {
-        if (res.encStream) {
-          const plain = await decryptTerminalData(machineId, dataB64);
-          if (plain && !disposed) gatedWrite(b64ToBytes(plain));
-        } else {
-          gatedWrite(b64ToBytes(dataB64));
-        }
+      const decodeMaybeEnc = async (dataB64: string): Promise<Uint8Array | null> => {
+        if (!res.encStream) return b64ToBytes(dataB64);
+        const plain = await decryptTerminalData(machineId, dataB64);
+        return plain ? b64ToBytes(plain) : null;
       };
       if (res.mode === 'snapshot') {
         sync.snapshotApplied(res.seq, seqAtCall);
+        // The copy rule starts at the ASSIGN, not when the restore closure
+        // finally runs: chunks racing the restore are applied against the new
+        // baseline and therefore belong in the rebuild's replay.
+        startAssembly(res);
         return async () => {
           // A full restore replaces the screen — drop any drag-held chunks
           // (they predate the snapshot) and write directly. If mobile
@@ -766,7 +845,15 @@ export function WebTerminalScreen() {
           // running stream).
           writeHold.beginSnapshotRestore();
           term.reset();
-          await writeMaybeEnc(res.data);
+          const bytes = await decodeMaybeEnc(res.data);
+          // `alternateOn` (lines mode): the capture is the pane's ALT screen,
+          // so it needs a synthesized \x1b[?1049h in front — otherwise the alt
+          // content lands in the normal buffer, poisoning the very scrollback
+          // this batch exists to build AND putting the scroll track on the
+          // wrong rail until the deep rebuild lands (spec §D1 R3 M-R3-3).
+          if (bytes && !disposed) {
+            gatedWrite(prefixAlternateEnter(bytes, res.alternateOn === true));
+          }
           writeHold.endSnapshotRestore();
         };
       }
@@ -776,8 +863,184 @@ export function WebTerminalScreen() {
       const fresh = res.chunks.filter((c) => sync.replayChunk(c.seq));
       sync.replayDone(res.seq);
       return async () => {
-        for (const c of fresh) await writeMaybeEnc(c.data);
+        // Through liveWrite, not gatedWrite: replayed chunks are APPLIED
+        // post-baseline content, so an assembly in flight must copy them too.
+        for (const c of fresh) {
+          const bytes = await decodeMaybeEnc(c.data);
+          if (bytes && !disposed) liveWrite(bytes);
+        }
       };
+    };
+
+    // ── Deep-history assembly driver (spec §D1「传输与重建」) ────────────────
+    // Page fetch discipline: 2 requests in flight (more would head-of-line
+    // block the live output stream sharing this socket), 15s per attempt, one
+    // retry, then the whole assembly is abandoned. `snapshot-expired` (the
+    // daemon replaced or dropped the held capture) abandons it too and retries
+    // the open exactly once.
+    const HISTORY_PAGE_TIMEOUT_MS = 15_000;
+    const HISTORY_PAGE_CONCURRENCY = 2;
+    const HISTORY_PAGE_ATTEMPTS = 2; // = one retry
+    const QUIET_POLL_MS = 400;
+    let openRetriedAfterExpiry = false;
+
+    const withPageTimeout = (p: Promise<TerminalHistoryPage>): Promise<TerminalHistoryPage> =>
+      new Promise((resolve) => {
+        let settled = false;
+        const finish = (v: TerminalHistoryPage) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(v);
+        };
+        const timer = setTimeout(
+          () => finish({ ok: false, expired: false, error: 'history page timeout' }),
+          HISTORY_PAGE_TIMEOUT_MS,
+        );
+        p.then(finish, () => finish({ ok: false, expired: false, error: 'history page failed' }));
+      });
+
+    const fetchHistoryPage = async (
+      snapshotId: string,
+      page: number,
+      encPages: boolean,
+    ): Promise<Uint8Array | 'expired' | 'failed'> => {
+      for (let attempt = 0; attempt < HISTORY_PAGE_ATTEMPTS; attempt++) {
+        const r = await withPageTimeout(
+          machineTerminalHistory(machineId, terminalId, snapshotId, page),
+        );
+        if (disposed) return 'failed';
+        if (r.ok) {
+          // History pages follow the SAME encStream rule as the snapshot they
+          // belong to. A payload we can't decrypt is not something to write
+          // onto the screen — give up and keep the small snapshot.
+          if (!encPages) return b64ToBytes(r.data);
+          const plain = await decryptTerminalData(machineId, r.data);
+          return plain ? b64ToBytes(plain) : 'failed';
+        }
+        if (r.expired) return 'expired'; // retrying can't resurrect the capture
+      }
+      return 'failed';
+    };
+
+    const fetchHistoryPages = async (
+      gen: number,
+      snapshotId: string,
+      totalPages: number,
+      encPages: boolean,
+    ) => {
+      let next = 0;
+      let stopped = false;
+      const worker = async () => {
+        while (!stopped) {
+          const page = next++;
+          if (page >= totalPages) return;
+          const r = await fetchHistoryPage(snapshotId, page, encPages);
+          // A newer open/catch-up superseded this run — its pages are stale.
+          if (disposed || gen !== assembly.generation) { stopped = true; return; }
+          if (r === 'expired') {
+            stopped = true;
+            flushAssembly(assembly.abort('snapshot-expired'));
+            clearQuietPoll();
+            // Retry the whole open ONCE: forceSnapshot makes the daemon take a
+            // new capture and hand back a fresh snapshotId.
+            if (!openRetriedAfterExpiry) {
+              openRetriedAfterExpiry = true;
+              catchUp({ forceSnapshot: true });
+            }
+            return;
+          }
+          if (r === 'failed') {
+            stopped = true;
+            flushAssembly(assembly.abort('page-failed'));
+            clearQuietPoll();
+            return;
+          }
+          if (assembly.pageArrived(gen, page, r) === 'stale') { stopped = true; return; }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(HISTORY_PAGE_CONCURRENCY, totalPages) }, worker),
+      );
+    };
+
+    /** Start (or restart) the background history pull for a lines snapshot. */
+    const startAssembly = (
+      res: Extract<Awaited<ReturnType<typeof machineOpenTerminal>>, { success: true }>,
+    ) => {
+      // A lines-mode REPLAY carries no snapshotId (spec §D1 M-R4-5) — nothing
+      // to assemble; anything in flight keeps running against its own capture.
+      if (res.streamMode !== 'lines' || !res.snapshotId) return;
+      // Supersede: flush what the old run had deferred BEFORE dropping it (the
+      // upcoming reset will erase it, but a silently dropped write is exactly
+      // the shape that turns into a content hole when the reset doesn't come).
+      flushAssembly(assembly.abort('superseded'));
+      if (!assembly.start({ snapshotId: res.snapshotId, totalPages: res.totalPages ?? 0 })) return;
+      const gen = assembly.generation;
+      armQuietPoll();
+      void fetchHistoryPages(gen, res.snapshotId, res.totalPages ?? 0, res.encStream === true);
+    };
+
+    // ── The quiet gate (spec §D1 R3 M-R3-1 + M-R3-4, merged) ────────────────
+    // A rebuild resets the screen, so it may only run when the user is neither
+    // SELECTING (a reset destroys the selection — and beginSnapshotRestore's
+    // "drop the hold" semantics exist for reconnects, not for background
+    // beautification) nor READING scrolled-back history (a reset yanks the
+    // viewport to the bottom). Polled rather than event-driven: both conditions
+    // are owned elsewhere, and "wait one more beat" is always a safe answer —
+    // the small snapshot stays usable the entire time.
+    const atBottom = () => {
+      const buf = term.buffer.active;
+      return buf.viewportY >= buf.baseY;
+    };
+    const clearQuietPoll = () => {
+      if (quietTimer == null) return;
+      clearInterval(quietTimer);
+      quietTimer = null;
+    };
+    let rebuildScheduled = false;
+    const armQuietPoll = () => {
+      if (quietTimer != null) return;
+      quietTimer = setInterval(() => {
+        if (disposed || assembly.state === 'done' || assembly.state === 'idle') {
+          clearQuietPoll();
+          return;
+        }
+        if (assembly.state !== 'awaiting-quiet' || rebuildScheduled) return;
+        // Cheap pre-check, so a user who is reading scrolled-back history
+        // doesn't get work queued on the write chain every 400ms.
+        if (writeHold.isHolding() || !atBottom()) return;
+        rebuildScheduled = true;
+        outChain = outChain.then(() => runRebuild());
+      }, QUIET_POLL_MS);
+    };
+
+    // The atomic rebuild, in ONE outChain slot so nothing interleaves:
+    // reset → history pages → the live chunks applied since the baseline.
+    // These are the ONLY writes in the client allowed to bypass seq judgement
+    // (they are daemon history and replays of already-applied content). Live
+    // chunks arriving while this is queued still go through liveChunk — lastSeq
+    // keeps advancing and gaps keep being detected — only their WRITE waits,
+    // and it is flushed in arrival order the instant the rebuild is written.
+    // (Routing them raw instead would freeze lastSeq → the next normal chunk
+    // reads as a gap → catch-up resets → the deep history just built is wiped.)
+    const runRebuild = () => {
+      rebuildScheduled = false;
+      if (disposed) { assembly.abort('disposed'); return; }
+      // The gate is re-evaluated HERE, inside the slot that does the writing:
+      // the user can start a selection or scroll up in the gap between the poll
+      // tick and this slot reaching the front of the queue, and a rebuild is
+      // precisely what must not happen then. A failed re-check just leaves the
+      // assembly in awaiting-quiet for the next tick.
+      const plan: AssemblyRebuildPlan | null =
+        assembly.tryRebuild(!writeHold.isHolding() && atBottom());
+      if (!plan) return;
+      clearQuietPoll();
+      term.reset();
+      for (const b of plan.pages) term.write(b);
+      for (const b of plan.copies) term.write(b);
+      flushAssembly(assembly.finishRebuild());
+      term.scrollToBottom();
     };
 
     // Catch up to the daemon's authoritative screen by re-subscribing with
@@ -803,6 +1066,8 @@ export function WebTerminalScreen() {
     let gone = false;
     const onGone = () => {
       gone = true;
+      clearQuietPoll();
+      assembly.abort('disposed');
       if (tid) useTerminalSessions.getState().remove(tid);
       // Raw (unlocalized) line, same style as shell output/daemon errors.
       term.writeln('\r\n\x1b[38;2;255;107;107m✗ terminal no longer exists on this machine\x1b[0m');
@@ -826,12 +1091,29 @@ export function WebTerminalScreen() {
             // recreate a tmux session that was killed while we were away.
             resub: true,
             attachOnly: true,
+            // Same capability declaration as the mount-time open — the daemon
+            // needs it on EVERY open to know which response shape to build.
+            streamMode: 'lines',
           });
           if (disposed) return;
           if (!res.success) {
             if (res.gone) onGone();
             return;
           }
+          // streamMode latch (spec §D3 M-R2-4): the daemon changed generation
+          // under us (vh-update / rollback). The two tracks wire up different
+          // mechanisms at mount time, so rebuild the mount instead of hot-
+          // switching — and do NOT apply this response, the new mount opens
+          // from scratch.
+          const mode = res.streamMode ?? 'attach';
+          if (mountStreamMode != null && mode !== mountStreamMode && !remountRequested) {
+            remountRequested = true;
+            clearQuietPoll();
+            assembly.abort('disposed');
+            setStreamRemount((n) => n + 1);
+            return;
+          }
+          if (remountRequested) return;
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
           // Restore runs INSIDE this outChain slot: live chunks that arrived
@@ -847,6 +1129,14 @@ export function WebTerminalScreen() {
     };
 
     // ── tmux-native scrollback (wheel / touch scroll) ────────────────────────
+    // B-121 SCOPE NOTE: everything in this block is the ALTERNATE-buffer track
+    // and stays exactly as it was — in lines mode the normal buffer simply
+    // never enters it (the guard below already returns early there, because
+    // xterm's local scrollback is real), while vim / `/tui fullscreen` / any
+    // pre-v2 claude session still needs it. The `terminal-scroll` RPC, the
+    // 60ms wheel batching, the failure backoff and the touch→synthetic-wheel
+    // bridge are therefore NOT retired (spec §D4 M-R2-1).
+    //
     // Verified mechanism (pty probe + xterm 5.5 src): the daemon's pty runs
     // `tmux attach`, and tmux switches the OUTER terminal to the ALTERNATE
     // screen (\x1b[?1049h) for its whole life. In the alt buffer xterm has no
@@ -921,12 +1211,31 @@ export function WebTerminalScreen() {
       return false; // handled — don't let xterm synthesize arrow keys
     });
 
+    // Which scroll track is live is a function of the ACTIVE BUFFER, so the
+    // screen has to follow xterm in and out of the alternate screen: normal =
+    // native scrolling (touch-action handed back to the browser), alternate =
+    // the synthetic-wheel track (touch-action: none, or our preventDefault is
+    // silently ignored and the gesture scrolls the page instead). Only the CSS
+    // class is driven from here — the JS handlers read term.buffer directly.
+    const bufferDisp = term.buffer.onBufferChange(() => {
+      if (disposed) return;
+      setAltBuffer(term.buffer.active.type === 'alternate');
+    });
+
     // Blank-screen belt (defense in depth behind the seq fixes): if the mount's
     // restore left the screen with NO text at all while the daemon reports a
     // live tmux session, something upstream returned an empty snapshot (e.g. a
     // just-recreated session whose tmux attach repaint got lost) — force one
     // full re-snapshot. tmux always paints a status line, so an attached
     // session is never legitimately all-blank for long.
+    //
+    // RETIRED on the lines track (spec §D2, R2 裁决): the belt's premise is
+    // "tmux always paints something", which only holds for the full-screen
+    // mirror. A content stream from a fresh shell legitimately shows nothing
+    // until the prompt prints, so the timer would fire false re-snapshots on
+    // exactly the quiet terminals it can least afford to disturb. "Terminal
+    // exists but is empty" is the open response's job to state, not a timer's
+    // to guess. The attach fallback keeps it verbatim.
     let blankCheckTimer: ReturnType<typeof setTimeout> | null = null;
     const isScreenBlank = () => {
       const buf = term.buffer.active;
@@ -952,6 +1261,10 @@ export function WebTerminalScreen() {
         // a deleted terminal's stale URL must not resurrect it (>= 0.2.29;
         // older daemons keep create-or-attach).
         attachOnly: !isFresh,
+        // B-121 capability declaration. An old daemon ignores it and answers
+        // with the v1 shape (no `streamMode`), which is exactly the attach
+        // fallback below — so it is safe to send unconditionally (铁律 4).
+        streamMode: 'lines',
       });
       if (disposed) return;
       if (!res.success) {
@@ -970,6 +1283,12 @@ export function WebTerminalScreen() {
       terminalId = res.terminalId;
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;
+      // Latch the channel for this mount (see mountStreamMode / streamRemount).
+      // Absent streamMode = old daemon = the v1 attach path, fully preserved.
+      mountStreamMode = res.streamMode ?? 'attach';
+      linesActive = mountStreamMode === 'lines';
+      setLinesMode(linesActive);
+      setAltBuffer(term.buffer.active.type === 'alternate');
       // Seq bookkeeping is synchronous in applyOpenResult; the restore itself
       // is serialized behind outChain so any live chunk arriving mid-restore
       // is applied after it (and seq-deduped), never interleaved.
@@ -993,6 +1312,7 @@ export function WebTerminalScreen() {
       // written; give late tmux-attach repaint chunks a moment to land first.
       outChain = outChain.then(() => {
         if (disposed || !res.tmuxSession) return;
+        if (linesActive) return; // belt retired on the lines track (see above)
         blankCheckTimer = setTimeout(() => {
           blankCheckTimer = null;
           if (disposed || !isScreenBlank()) return;
@@ -1008,16 +1328,43 @@ export function WebTerminalScreen() {
     const offReconnected = apiSocket.onReconnected(() => catchUp());
 
     const host = hostRef.current;
+
+    // ── Paste chokepoint (spec §D1b「粘贴专路」) ─────────────────────────────
+    // Attach mode: xterm's local bracketed paste, unchanged.
+    // Lines mode: the daemon has NO pty — it writes to the pane with send-keys,
+    // where a multi-line literal EXECUTES line by line, and it cannot re-derive
+    // the pane's bracketed-paste state (tmux 3.6b exposes no such format). So a
+    // paste becomes its own RPC: the daemon does load-buffer + `paste-buffer -p`
+    // on the SAME control-mode command FIFO the keystrokes ride, which is also
+    // what keeps "paste, then Enter" in order — two executors let the Enter land
+    // first and run an empty line. Awaitable for exactly that reason (the run
+    // preset sends \r after this resolves).
+    //
+    // Text goes out with LF separators; tmux's paste-buffer translates them to
+    // CR. Local-side bookkeeping that normally rides sendInput (activity stamp,
+    // stuck-hold release) is done here, since these bytes bypass it.
+    const pasteText = async (text: string): Promise<void> => {
+      if (!text || disposed) return;
+      if (!linesActive || !terminalId) {
+        term.paste(text);
+        return;
+      }
+      writeHold.noteUserInput();
+      stampLocalActivity(activityKeyForTerminal(terminalId));
+      await machineTerminalPaste(machineId, terminalId, text.replace(/\r\n?/g, '\n'));
+    };
+    pasteTextRef.current = pasteText;
+
     // Upload files to the machine (→ ~/.happy/uploads/terminal/) and paste the
     // absolute paths at the cursor. Shared by drag-drop and clipboard paste.
-    // term.paste() uses bracketed paste, so nothing auto-executes. Paths are
-    // single-quoted; the daemon sanitizes names to [\w.-] so no quoting edge.
+    // Bracketed paste (local or via the daemon), so nothing auto-executes. Paths
+    // are single-quoted; the daemon sanitizes names to [\w.-] so no quoting edge.
     const uploadFilesToTerminal = async (files: File[]) => {
       for (const f of files) {
         const buf = new Uint8Array(await f.arrayBuffer());
         let bin = ''; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
         const r = await machineUploadFile(machineId, f.name || 'file', btoa(bin));
-        if (r.success && r.path && !disposed) term.paste(`'${r.path}' `);
+        if (r.success && r.path && !disposed) await pasteText(`'${r.path}' `);
       }
     };
     const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
@@ -1039,7 +1386,21 @@ export function WebTerminalScreen() {
     // overwrite each other on the machine.
     const onPaste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
-      if (files.length === 0) return; // text paste → xterm handles it
+      if (files.length === 0) {
+        // Attach mode: text paste → xterm's own bracketed-paste path, as before.
+        if (!linesActive) return;
+        // Lines mode: clipboard TEXT must go through the daemon too, or a
+        // multi-line paste is re-encoded as send-keys and executes line by line
+        // (spec §D1b M4). Consumed HERE, on the host's capture listener, so it
+        // covers both input paths at once — xterm's helper textarea and the
+        // own-input overlay both live inside this host element.
+        const text = e.clipboardData?.getData('text') ?? '';
+        if (!text) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void pasteText(text);
+        return;
+      }
       e.preventDefault();
       e.stopImmediatePropagation();
       const stamped = files.map((f) => new File([f], `paste-${Date.now().toString(36)}-${f.name || 'file'}`, { type: f.type }));
@@ -1095,6 +1456,14 @@ export function WebTerminalScreen() {
     let scrollAccum = 0;
     const onTouchMove = (e: TouchEvent) => {
       if (selectModeRef.current) return; // native selection/scroll, don't hijack
+      // B-121 lines mode, NORMAL buffer = the native track: hands completely
+      // off. xterm owns a real local scrollback here, so the browser scrolls it
+      // with pixel-level tracking and system inertia — the entire point of this
+      // batch. No preventDefault, no synthetic wheel, no RPC. (`touch-action`
+      // is handed back in CSS via .term-host--lines; without both halves the
+      // gesture either doesn't scroll or isn't cancelable.) The ALTERNATE
+      // buffer falls through to the v1 synthetic-wheel track below.
+      if (linesActive && term.buffer.active.type !== 'alternate') return;
       if (e.touches.length > 1) { scrollActive = false; return; }
       const p = e.touches[0];
       if (!p) return;
@@ -1408,6 +1777,11 @@ export function WebTerminalScreen() {
       host.removeEventListener('paste', onPaste, true);
       if (wheelFlushTimer != null) clearTimeout(wheelFlushTimer);
       if (blankCheckTimer != null) clearTimeout(blankCheckTimer);
+      clearQuietPoll();
+      // No flush on the way out — the screen is going away, and writing to a
+      // disposed terminal is what we'd get for the trouble.
+      assembly.abort('disposed');
+      bufferDisp.dispose();
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
         host.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
@@ -1445,24 +1819,37 @@ export function WebTerminalScreen() {
       writeHoldRef.current = null;
       sendInputRef.current = null;
       scheduleFitRef.current = null;
+      pasteTextRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();
       if (terminalId) apiSocket.send('terminal-close', { machineId, terminalId });
       term.dispose();
       termRef.current = null;
     };
-  }, [machineId, tid, inputOwnership]);
+    // `streamRemount` is a dep on purpose: a daemon that swaps channel under a
+    // live mount (vh-update / rollback) is handled by REBUILDING this effect,
+    // never by hot-switching tracks inside it (spec §D3 M-R2-4).
+  }, [machineId, tid, inputOwnership, streamRemount]);
 
-  const runCommand = (command: string) => {
+  // Returns when the text has actually reached the pane — load-bearing for
+  // execPreset: in lines mode the paste is an RPC while the trailing \r rides
+  // the terminal-input channel, and firing them concurrently is exactly the
+  // "Enter lands first and runs an empty line" reordering the spec calls out.
+  const runCommand = (command: string): Promise<void> => {
     const tm = termRef.current;
-    if (!tm) return;
-    tm.paste(command); // user presses Enter to run — never auto-execute
+    if (!tm) return Promise.resolve();
+    // Paste seam (B-121): lines mode routes through the daemon's tmux
+    // paste-buffer RPC, attach mode keeps xterm's local bracketed paste.
+    // Either way the user presses Enter to run — never auto-execute.
+    const viaChokepoint = pasteTextRef.current;
+    const done = viaChokepoint ? viaChokepoint(command) : (tm.paste(command), Promise.resolve());
     // Mobile: route through the focus policy (explicit menu gesture → may
     // focus + clear a dismissal; in input-bar mode it leaves focus with the
     // bar). Desktop keeps the unconditional historical refocus.
     // Input-element coupling point 6/11 (spec 现状表).
     if (IS_COARSE_POINTER) dispatchFocus({ type: 'snippet' });
     else tm.focusInput();
+    return done;
   };
 
   // Shortcut (insert kind) → terminal input. Bracketed paste — never
@@ -1471,7 +1858,7 @@ export function WebTerminalScreen() {
   // auto-submit on paste paths without bracketed paste.
   const insertPreset = (text: string) => {
     const paste = presetPasteText(text);
-    if (paste) runCommand(paste);
+    if (paste) void runCommand(paste);
   };
 
   // Insert target for the notes dock (vh:insert-to-input) — same insert-only
@@ -1489,8 +1876,10 @@ export function WebTerminalScreen() {
   const execPreset = (text: string) => {
     const paste = presetPasteText(text);
     if (!paste) return;
-    runCommand(paste);
-    sendInputRef.current?.('\r');
+    // AWAITED (B-121): in attach mode runCommand resolves synchronously and
+    // this is the historical behavior verbatim; in lines mode the paste is an
+    // RPC and the \r must not race it onto the pane.
+    void runCommand(paste).then(() => sendInputRef.current?.('\r'));
   };
 
   const onRename = async () => {
@@ -1637,7 +2026,18 @@ export function WebTerminalScreen() {
           child of .term-screen — the mobile keyboard-avoidance maxHeight math
           on .term-host depends on that column geometry. */}
       <div className="term-mid">
-        <div ref={hostRef} className={`term-host${selectMode ? ' is-selecting' : ''}`}>
+        {/* term-host--lines / --alt drive `touch-action` (see terminal.css):
+            the lines track hands the touch gesture back to the browser for
+            native scrollback scrolling, except on the alternate screen where
+            the v1 synthetic-wheel track still needs to own it. */}
+        <div
+          ref={hostRef}
+          className={
+            `term-host${selectMode ? ' is-selecting' : ''}`
+            + `${linesMode ? ' term-host--lines' : ''}`
+            + `${altBuffer ? ' term-host--alt' : ''}`
+          }
+        >
           {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
           <div ref={innerRef} className="term-host-inner" />
         </div>

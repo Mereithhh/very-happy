@@ -670,7 +670,9 @@ describe('结构约束', () => {
         expect((screen.match(/installTermInput\(/g) ?? []).length).toBe(1);
         expect(screen.includes("if (inputOwnership === 'own') {")).toBe(true);
         // 开关是 effect 依赖 ⇒ 翻开关会重建终端，两条路径不可能并存。
-        expect(screen.includes('}, [machineId, tid, inputOwnership]);')).toBe(true);
+        // （依赖数组可以再加别的重建触发器——B-121 的 streamRemount 就是一个——
+        // 这里断言的不变量是 inputOwnership 必须在里面，不是数组长度。）
+        expect(/\}, \[machineId, tid, inputOwnership[^\]]*\]\);/.test(screen)).toBe(true);
         // 旧路径的 imeStuckGuard 在 own 模式下不安装。
         expect(screen.includes("if (inputOwnership !== 'own') imeGuard = installImeStuckGuard(term);")).toBe(true);
     });

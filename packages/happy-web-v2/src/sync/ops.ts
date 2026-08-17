@@ -314,6 +314,23 @@ export type OpenTerminalOk = {
     tmuxSession?: string;
     encStream?: boolean;
     seq: number;
+    /** B-121 terminal channel v2. Absent = an old daemon that only speaks the
+     *  full-screen tmux mirror ('attach'); the client keeps every v1 behavior
+     *  (wheel hijack → terminal-scroll RPC, synthetic touch wheel, blank belt).
+     *  'lines' = the daemon streams the pane's CONTENT (tmux control mode), so
+     *  xterm owns a real local scrollback. LATCHED PER MOUNT: a daemon that
+     *  changes generation mid-session (vh-update) must trigger a remount, never
+     *  a hot switch (spec §D3 M-R2-4). */
+    streamMode?: 'lines' | 'attach';
+    /** lines-mode snapshot only: names the FULL capture the daemon is holding
+     *  for `terminal-history` paging. Absent on a lines-mode REPLAY. */
+    snapshotId?: string;
+    /** lines-mode snapshot only: how many pages that full capture splits into. */
+    totalPages?: number;
+    /** lines-mode snapshot only: the pane was on the alternate screen when the
+     *  capture ran → `data` is just its visible area and needs a synthesized
+     *  `\x1b[?1049h` in front (spec §D1 R3 M-R3-3). */
+    alternateOn?: boolean;
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -339,6 +356,11 @@ export async function machineOpenTerminal(
          *  terminal can't be resurrected by a lingering screen or a stale
          *  URL. Old daemons (< 0.2.29) ignore it = legacy create-or-attach. */
         attachOnly?: boolean;
+        /** B-121 capability declaration: "I can consume the CONTENT stream".
+         *  Old daemons ignore the field and answer with the v1 shape (no
+         *  `streamMode`), which is exactly the attach fallback the client keeps
+         *  around — so this is safe to send unconditionally (铁律 4). */
+        streamMode?: 'lines';
     },
 ): Promise<OpenTerminalOk | { success: false; error: string; gone?: boolean }> {
     try {
@@ -348,11 +370,12 @@ export async function machineOpenTerminal(
         const result = await apiSocket.machineRPC<
             {
                 type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean; seq: number;
+                streamMode?: 'lines' | 'attach'; snapshotId?: string; totalPages?: number; alternateOn?: boolean;
             } & (
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines' }
         >(machineId, 'open-terminal', options);
         // A daemon-side handler error comes back as `{ error }` WITH a
         // relay-level ok (RpcHandlerManager encrypts the error object as a
@@ -372,6 +395,13 @@ export async function machineOpenTerminal(
             tmuxSession: result.tmuxSession,
             encStream: result.encStream === true,
             seq: result.seq,
+            // Passed through verbatim, INCLUDING absent: "no streamMode" is the
+            // load-bearing signal for the attach fallback, so it must never be
+            // defaulted to a value here.
+            streamMode: result.streamMode,
+            snapshotId: result.snapshotId,
+            totalPages: result.totalPages,
+            alternateOn: result.alternateOn,
         };
         return result.mode === 'replay'
             ? { ...base, mode: 'replay', chunks: result.chunks }
@@ -446,6 +476,96 @@ export async function machineMirrorTerminalSend(
         // method; surface it as "upgrade the CLI" instead of a generic error.
         const unsupported = /unknown|not.*(found|registered)|no handler/i.test(message);
         return { success: false, reason: unsupported ? 'unsupported' : 'error', error: message };
+    }
+}
+
+/**
+ * B-121 (spec §D1b「粘贴专路」): paste text into a lines-mode terminal through
+ * the daemon instead of `term.paste()`.
+ *
+ * Why the local paste stops working in v2: the daemon no longer has a pty — it
+ * writes to the pane with `send-keys`, and a multi-line literal sent that way
+ * EXECUTES line by line. Bracketed paste can't save it either: xterm brackets
+ * only what it believes the app enabled, and tmux 3.6b exposes no
+ * bracketed-paste format for the daemon to re-derive it. The daemon instead
+ * does `load-buffer` + `paste-buffer -p -d` on the SAME control-mode command
+ * FIFO the keystrokes use — which also keeps "paste then Enter" in order (two
+ * executors would let the Enter land first and run an empty line).
+ *
+ * Wire contract: `text` carries LF (`\n`) line separators and no trailing
+ * newline for insert-style pastes; tmux's `paste-buffer` translates LF→CR and
+ * `-p` wraps it in the bracketed-paste markers when the pane asked for them.
+ * Attach-mode (v1 daemon) terminals keep using `term.paste()`.
+ */
+export async function machineTerminalPaste(
+    machineId: string,
+    terminalId: string,
+    text: string,
+): Promise<boolean> {
+    try {
+        const r = await apiSocket.machineRPC<
+            { type?: string; error?: string },
+            { terminalId: string; text: string }
+        >(machineId, 'terminal-paste', { terminalId, text });
+        // Daemon handler errors ride back inside a normal response envelope.
+        if (typeof r?.error === 'string') return false;
+        return r?.type === 'success';
+    } catch {
+        return false;
+    }
+}
+
+/** One page of a held full capture, or the reason it can't be served. */
+export type TerminalHistoryPage =
+    | { ok: true; page: number; totalPages: number; data: string }
+    /** The daemon dropped or replaced the capture named by `snapshotId`
+     *  (new capture / TTL / terminal reaped) — the client gives up on this
+     *  assembly and retries the whole open once. */
+    | { ok: false; expired: true }
+    | { ok: false; expired: false; error: string };
+
+/**
+ * B-121 (spec §D1「历史分页 RPC」): fetch one page of the full capture the
+ * daemon is holding under `snapshotId` (established by the lines-mode open
+ * response). `data` is base64, ≤256KB per page so the encrypted RPC envelope
+ * (~342KB) stays well under the server's 1e6 socket.io frame limit — going over
+ * disconnects the daemon socket, which would drop EVERY terminal on that
+ * machine at once.
+ *
+ * History pages are completely decoupled from the live stream: they never enter
+ * the ring, never touch seq, and are written raw during the atomic rebuild.
+ */
+export async function machineTerminalHistory(
+    machineId: string,
+    terminalId: string,
+    snapshotId: string,
+    page: number,
+): Promise<TerminalHistoryPage> {
+    try {
+        const r = await apiSocket.machineRPC<
+            { page?: number; totalPages?: number; data?: string; error?: string },
+            { terminalId: string; snapshotId: string; page: number }
+        >(machineId, 'terminal-history', { terminalId, snapshotId, page });
+        if (typeof r?.error === 'string') {
+            return r.error === 'snapshot-expired'
+                ? { ok: false, expired: true }
+                : { ok: false, expired: false, error: r.error };
+        }
+        if (typeof r?.data !== 'string') {
+            return { ok: false, expired: false, error: 'malformed history page' };
+        }
+        return {
+            ok: true,
+            page: typeof r.page === 'number' ? r.page : page,
+            totalPages: typeof r.totalPages === 'number' ? r.totalPages : 0,
+            data: r.data,
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            expired: false,
+            error: error instanceof Error ? error.message : 'history page failed',
+        };
     }
 }
 
