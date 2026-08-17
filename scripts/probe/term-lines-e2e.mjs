@@ -240,6 +240,20 @@ try {
     })();
     check('④ 改视口后仍收敛到 pane 尺寸', converged, `term=${await termOf()} pane=${paneOf()}`);
     await tab.send('Emulation.clearDeviceMetricsOverride');
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // ⑤ B-125：pane 被**别处**改了尺寸（另一台设备 / 本地 tmux attach）——这正是
+    //    Owner 撞到「输入框在上、光标在下」的场景。要求：客户端要么跟着改、要么把
+    //    尺寸要回来，总之**不许停在与 pane 不一致的状态**。
+    spawnSync('tmux', ['resize-window', '-t', `=vh-${tid}:`, '-x', '150', '-y', '45'], { stdio: 'ignore' });
+    const healed = await (async () => {
+        for (let i = 0; i < 24; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (await termOf() === paneOf()) return true;
+        }
+        return false;
+    })();
+    check('⑤ 外部改 pane 尺寸后仍收敛（B-125 错位场景）', healed, `term=${await termOf()} pane=${paneOf()}`);
 } catch (e) {
     console.error(`\n跑不出结论：${e?.message ?? e}`);
     // --keep 在失败路径上同样生效：诊断时最需要的就是现场。
