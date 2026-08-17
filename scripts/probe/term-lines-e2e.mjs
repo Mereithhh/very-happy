@@ -131,7 +131,6 @@ try {
         process.exit(bad.length === 0 ? 0 : 1);
     }
     check('① open 协商到 streamMode:lines', true);
-    check('③ 未处于 alternate 轨', mode.alt === false);
 
     // ③ normal 轨把触摸滚动交还浏览器（v1 是 touch-action:none 才能合成 wheel）。
     //    必须在粗指针下读——规则全在 @media (pointer: coarse) 里。
@@ -145,26 +144,27 @@ try {
     check('③ 移动端 normal 轨把纵向滚动交还浏览器（v1 恒为 none）', ta === 'pan-y', `touch-action=${ta}`);
     await emulateCoarsePointer(tab, false);
 
-    // ② 造历史 → normal buffer + 本地 scrollback 真的有内容
-    await tab.send('Runtime.evaluate', {
-        expression: `${FIND_TERM}
-            (async () => {
-                const t = window.__vhFindTerm();
-                t?.focus?.();
-            })()`,
-    });
-    // 用页面自己的输入路径打字（与用户一致），命令产出 200 行历史
+    // ② 造历史 → normal buffer + 本地 scrollback 真的有内容。
+    //    走 xterm 自己的 paste 通道（= onData → sendInput，与 prepSink 同款），
+    //    比 dispatchKeyEvent 稳：不依赖窗口焦点，也不受 app 层快捷键干扰。
     const cmd = 'for i in $(seq 1 200); do echo "e2e-line-$i"; done\r';
-    for (const ch of cmd) {
-        await tab.send('Input.dispatchKeyEvent', {
-            type: 'char', text: ch === '\r' ? '\r' : ch,
-        });
-    }
-    const buf = await waitFor(async () => {
+    await tab.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
+    const fed = await tab.send('Runtime.evaluate', {
+        expression: `(()=>{ const T = window.__VHGD_T; if (!T) return 'no term'; T.paste(${JSON.stringify('for i in $(seq 1 200); do echo "e2e-line-$i"; done\r')}); return 'ok'; })()`,
+        returnByValue: true,
+    });
+    if (fed.result?.result?.value !== 'ok') throw new Error(`拿不到 term 实例：${fed.result?.result?.value}`);
+    void cmd;
+    // 判据刻意**不依赖具体文本**：Owner 的新终端会自动起 claude（startupCommand），
+    // 粘进去的东西是 prompt 不是 shell 命令——2026-08-17 首跑就撞上这个，白等了 60s。
+    // 本批要证的是「本地 scrollback 真的长出来了」，那就直接判 baseY/length。
+    let buf = null;
+    await waitFor(async () => {
+        await tab.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
         const r = await tab.send('Runtime.evaluate', {
-            expression: `${FIND_TERM}
+            expression: `
                 (() => {
-                    const t = window.__vhFindTerm();
+                    const t = window.__VHGD_T;
                     if (!t) return null;
                     const b = t.buffer.active;
                     let text = '';
@@ -174,19 +174,26 @@ try {
             returnByValue: true,
         });
         const v = r.result?.result?.value;
-        return v && v.tail.includes('e2e-line-200') ? v : null;
-    }, 60_000, '200 行输出到达');
+        if (v && v.baseY > 0 && v.length > v.rows) { buf = v; return true; }
+        return false;
+    }, 90_000, '本地 scrollback 长出内容');
 
     check('② xterm 处在 normal buffer（不是 v1 的 alternate 全屏镜像）', buf.type === 'normal', `type=${buf.type}`);
+    const cls = await tab.send('Runtime.evaluate', {
+        expression: `document.querySelector('.term-host').className`, returnByValue: true,
+    });
+    const className = cls.result?.result?.value ?? '';
+    check('③ 稳定后不在 alternate 轨（class 与 buffer 一致）', !/term-host--alt/.test(className), `class="${className}"`);
     check('② 本地 scrollback 真的有内容（v1 恒为 0）', buf.baseY > 0 && buf.length > buf.rows,
         `baseY=${buf.baseY} length=${buf.length} rows=${buf.rows}`);
 
     // ② 续：本地滚动可用——直接调 xterm 的 scrollLines（不经任何 RPC），
     //    v1 下 alternate buffer 没有 scrollback，这一步位移恒为 0。
+    await tab.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
     const scrolled = await tab.send('Runtime.evaluate', {
-        expression: `${FIND_TERM}
+        expression: `
             (() => {
-                const t = window.__vhFindTerm();
+                const t = window.__VHGD_T;
                 const before = t.buffer.active.viewportY;
                 t.scrollLines(-50);
                 const after = t.buffer.active.viewportY;
@@ -199,7 +206,9 @@ try {
     check('② 纯本地滚动生效（零 RPC 往返）', sc && sc.after < sc.before, `viewportY ${sc?.before} → ${sc?.after}`);
 } catch (e) {
     console.error(`\n跑不出结论：${e?.message ?? e}`);
-    if (tid) cleanupTerminal(tid, { preExisting });
+    // --keep 在失败路径上同样生效：诊断时最需要的就是现场。
+    if (tid && !opts.keep) cleanupTerminal(tid, { preExisting });
+    else if (tid) console.error(`（--keep：保留 vh-${tid} 供诊断，记得手动清理）`);
     if (tab && targetId) await closeTab(opts.port, targetId, tab).catch(() => { });
     process.exit(2);
 }
