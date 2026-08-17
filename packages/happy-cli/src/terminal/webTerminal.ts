@@ -24,7 +24,7 @@
  * Cross-browser survival: closing the web view only marks the session as having
  * no subscribers; the pty (and headless buffer) live on. An idle reaper detaches
  * the pty only when it has no subscribers AND has been idle past the timeout
- * (tmux stays alive → reopening reattaches instantly). MAX_LIVE_PTYS still
+ * (tmux stays alive → reopening reattaches instantly). MAX_LIVE_SESSIONS still
  * LRU-evicts to protect the system PTY pool.
  *
  * Transport: raw bytes are relayed base64 over the (TLS) socket through the
@@ -206,8 +206,14 @@ interface OutputChunk {
 // ptys so orphaned ones — sessions no browser is watching — can't accumulate and
 // exhaust the system PTY pool (kern.tty.ptmx_max ~511 → node-pty
 // `posix_spawnp failed` → black screen).
-const MAX_LIVE_PTYS = 24;              // hard cap; LRU-evict oldest-touched beyond this
-const PTY_IDLE_MS = 20 * 60 * 1000;    // detach ptys with no subscriber + idle 20 min
+// B-121: the tmux path no longer holds a pty at all — a control-mode client is
+// a plain pipe child, so kern.tty.ptmx_max stopped being the binding constraint
+// and the cap rose 24 → 48. It did NOT go away: every live terminal still costs
+// one tmux child + a headless xterm (HEADLESS_SCROLLBACK lines) + a 2MB ring, so
+// unbounded growth remains unacceptable. The no-tmux fallback still spawns a
+// real pty and is bounded by the same number.
+const MAX_LIVE_SESSIONS = 48;          // hard cap; LRU-evict oldest-touched beyond this
+const SESSION_IDLE_MS = 20 * 60 * 1000; // reap clients with no subscriber + idle 20 min
 const REAP_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Ring-buffer cap per terminal. Bounds memory for reconnect replay; once the
@@ -470,6 +476,15 @@ const LIST_SESSIONS_FORMAT = [
     '#{pane_current_path}',
     '#{@vh_title}',
     '#{@vh_title_manual}',
+    // B-121: the control-mode client has no `pty.process`, so the agent-state
+    // fast path lost its live `#{pane_current_command}` equivalent. Carry it in
+    // the ONE list-sessions call the tracker already makes — the value goes
+    // from "live" to "≤ LIST_TRACK_INTERVAL_MS old", which classifyPane
+    // tolerates (its dialog/working judgments come from the pane TEXT; the
+    // command only separates shell/idle). MUST stay before pane_title: that
+    // field is deliberately last so a pathological 0x1f inside a title can only
+    // garble the title, never shift the fields.
+    '#{pane_current_command}',
     '#{pane_title}',
 ].join(LIST_FIELD_SEP);
 
@@ -482,6 +497,9 @@ export interface SessionListLine {
     vhTitle?: string;
     /** `@vh_title_manual` is set → the user renamed it; never auto-follow. */
     manual: boolean;
+    /** `#{pane_current_command}` of the active pane (B-121: the poll-cadence
+     *  replacement for the pty's live foreground name). */
+    paneCurrentCommand?: string;
     /** Raw `#{pane_title}` of the session's active pane. */
     paneTitle?: string;
 }
@@ -490,8 +508,8 @@ export interface SessionListLine {
 export function parseSessionListLine(line: string): SessionListLine | undefined {
     if (!line) return undefined;
     const parts = line.split(LIST_FIELD_SEP);
-    if (parts.length < 7) return undefined;
-    const [name, created, activity, cwd, vhTitle, manual] = parts;
+    if (parts.length < 8) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual, paneCommand] = parts;
     if (!name) return undefined;
     return {
         name,
@@ -500,7 +518,10 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         cwd: cwd || undefined,
         vhTitle: vhTitle.trim() || undefined,
         manual: manual.trim().length > 0,
-        paneTitle: parts.slice(6).join(LIST_FIELD_SEP) || undefined,
+        paneCurrentCommand: paneCommand.trim() || undefined,
+        // pane_title is last, so anything after field 8 is title content that
+        // contained the separator — rejoin it rather than dropping it.
+        paneTitle: parts.slice(7).join(LIST_FIELD_SEP) || undefined,
     };
 }
 
@@ -1204,7 +1225,7 @@ export class WebTerminalManager {
     private reapIdle() {
         const now = Date.now();
         for (const [id, session] of [...this.terminals]) {
-            if (session.subscribers === 0 && now - session.lastTouch > PTY_IDLE_MS) {
+            if (session.subscribers === 0 && now - session.lastTouch > SESSION_IDLE_MS) {
                 logger.debug(`[WEB TERMINAL] reaping orphaned idle pty ${id} (idle ${Math.round((now - session.lastTouch) / 60000)}m)`);
                 this.detach(id);
             }
@@ -1215,7 +1236,7 @@ export class WebTerminalManager {
      *  that currently have no subscribers (their tmux sessions survive). Never
      *  evicts a session someone is actively watching. */
     private enforceCap() {
-        while (this.terminals.size >= MAX_LIVE_PTYS) {
+        while (this.terminals.size >= MAX_LIVE_SESSIONS) {
             // Prefer the least-recently-touched UNWATCHED session. But the cap is a
             // HARD safety limit against exhausting the system PTY pool
             // (kern.tty.ptmx_max ~511 → spawn failures → black screens), so if
@@ -1386,7 +1407,7 @@ export class WebTerminalManager {
             // (`=name:` = exact-match target, see startupInjectionArgs.)
             const optArgs = [
                 ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
-                ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '5000'],
                 // Native-terminal feel: hide tmux's green status bar. The web
                 // header already shows the session title, so the bar is pure
                 // tmux noise there. Session-scoped ⇒ a LOCAL `tmux attach -t
@@ -1443,16 +1464,15 @@ export class WebTerminalManager {
             //     (copy-on-select handles the rest). Wheel scrolls xterm's own
             //     scrollback; the deep tmux history is still reachable via
             //     keyboard copy-mode (prefix + [).
-            //   - history-limit: deep scrollback for panes in the session. Kept
-            //     modest (2000): the daemon's headless buffer (HEADLESS_SCROLLBACK)
-            //     is now the authoritative scrollback the web renders from, so a
-            //     100k-line tmux history was mostly dead redundant memory. 2000
-            //     still gives copy-mode a useful recent window — and with the
-            //     classic-renderer claude default (CLAUDE_CLASSIC_RENDERER_ENV)
-            //     this history is where the transcript lands, i.e. the wheel's
-            //     copy-mode review depth. NOTE it only affects panes created
-            //     AFTER it's set; the initial pane keeps the server default,
-            //     which is also 2000 — the option pins that against user configs.
+            //   - history-limit: deep scrollback for panes in the session.
+            //     B-121 raised it 2000 → 5000 to match HEADLESS_SCROLLBACK and
+            //     the web xterm's own scrollback: in the lines-mode channel the
+            //     open-time `capture-pane -S -N` reads THIS history to backfill
+            //     the browser's scrollback, so tmux's depth is now the ceiling
+            //     on how far a user can scroll back after a reconnect (it used
+            //     to be pure copy-mode review depth). NOTE it only affects panes
+            //     created AFTER it's set — pre-B-121 sessions keep 2000, an
+            //     honest degradation rather than a retro-fix.
             //   - status OFF: native-terminal feel — the web renders these
             //     sessions as plain terminals, so tmux's green status bar is
             //     noise (the web header owns the title). tmux reclaims the row
@@ -1465,7 +1485,7 @@ export class WebTerminalManager {
             //     browser clipboard. Benign + desirable globally.
             const setOpts = [
                 `tmux set-option -t ${tmuxSession} mouse off`,
-                `tmux set-option -t ${tmuxSession} history-limit 2000`,
+                `tmux set-option -t ${tmuxSession} history-limit 5000`,
                 `tmux set-option -t ${tmuxSession} status off`,
                 `tmux set-option -t ${tmuxSession} set-titles on`,
                 `tmux set-option -t ${tmuxSession} set-titles-string '#{pane_title}'`,
@@ -1709,7 +1729,7 @@ export class WebTerminalManager {
                     // tmux last-activity (epoch s) → ms; optional so old daemons
                     // simply omit it and web clients fall back to createdAt.
                     activityAt: s.activity,
-                    agentState: this.probeAgentState(s.name),
+                    agentState: this.probeAgentState(s.name, s.paneCurrentCommand),
                 });
             }
             return out;
@@ -1725,13 +1745,17 @@ export class WebTerminalManager {
      *  the old path spawned 2 tmux procs EACH (2×N per refresh) — now a terminal
      *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
      *  (pty reaped / never attached) fall back to the tmux probe. */
-    private probeAgentState(sessionName: string): AgentState | undefined {
+    private probeAgentState(sessionName: string, polledCommand?: string): AgentState | undefined {
         const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
         const live = this.terminals.get(id);
         if (live) {
             try {
                 const { command, tail } = live.agentProbeInput();
-                return classifyPane(command, tail);
+                // B-121: a control-mode session has no pty, so `command` is
+                // empty — the same list-sessions read that produced this line
+                // carries `#{pane_current_command}` instead (≤ one tick old).
+                // The pty value still wins when there IS one (no-tmux fallback).
+                return classifyPane(command || polledCommand || '', tail);
             } catch { /* fall through to the tmux probe */ }
         }
         return this.probeAgentStateViaTmux(sessionName);
