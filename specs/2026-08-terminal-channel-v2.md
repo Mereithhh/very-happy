@@ -1,10 +1,10 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：**Final**（v5——四轮对抗性 review 收敛：R1 修 3 BLOCKING+8 MUST-FIX（输入命令化/
-> 应答过滤/锚点/码点均实证）；R2 抓 R1 自引入 2 BLOCKING + capture -a 语义实证反转
-> （→RPC 分页+二段式，server 零改动）；R3 抓 v3 空洞（snapshotId 生命周期/状态机/gate）；
-> R4 限域终审判 Final-with-edits，5 项句子级编辑已并入（切片禁令/绕过作用域/副本规则/
-> 缓冲上界/replay 形状）。待 Owner 过目后立项实现）
+> 状态：**Final**（v6——四轮对抗 review（R1:3B+8M / R2:抓自引入 2B+capture 语义实证反转
+> / R3:抓空洞 / R4:限域判 Final-with-edits）+ 实现者视角盲审补 5 处返工级缺口（粘贴
+> load-buffer stdin 实测证伪→临时文件路径、capture 双份全发+锚点统一批末、B-096 硬门
+> 假绿→pane 侧字节捕获 harness、预算行边界截断、open 超时契约）。可零返工开工；
+> goal 投放文件 = specs/2026-08-terminal-channel-v2.goal.md）
 > 日期：2026-08-17 ｜ 关联 backlog：B-121 ｜ 出处：Owner 实报手机滑动不跟手 → 三层方案 Owner 拍板直接根治
 
 ## 背景
@@ -95,7 +95,7 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
 | xterm.js：write 非阻塞入队 <16ms/帧分片消化（5-35MB/s，50MB 队列上限静默丢）；reflow 仅 normal buffer（alt buffer 永无 scrollback/reflow）；一次灌几百 KB 历史毫秒级 | 历史回填性能无虞；持续洪水由 tmux 内建限速管上游 |
 | tmux 与 xterm 的 Unicode 宽度裁决独立（CJK/emoji 折行可能不一致）；-J 逻辑行缓解折行差异但宽度判定仍双源 | 中文主场景必须真机专项验证 |
 
-## 设计（Draft——待对抗收敛）
+## 设计（Final——四轮对抗 + 实现者盲审收敛）
 
 ### D1 daemon：TerminalSession v2
 
@@ -135,10 +135,13 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
 - **打开/快照时序（R2 重构：二段式 + fresh/running 分治）**：
 
   **共同底座**：capture 命令批**一次 write** 管道化（防 %output 插进应答块
-  间隙——实证会发生）；greeting 空块排除在 FIFO 配对外；**capture 组合按
-  `alternate_on` 分支（R2 B3 实证：无 `-a` 的 capture 返回历史+当前活动面
-  ——alt 活动时那就是 alt 内容；`-a` 返回的是"另一块屏"=保存的普通屏，
-  且拿不到历史）**：
+  间隙——实证会发生）；greeting 空块排除在 FIFO 配对外。**批内容 =
+  「双份全发」（盲审 A2 裁决：alternate_on 要从 list-panes 应答读出，
+  单次原子批无法先读后发——故 normal 组合与 alt 三段所需命令全部同批发出
+  + list-panes，daemon 按应答中的 alternate_on 挑用哪份拼装，多余一份
+  丢弃；时点唯一与批原子性保住）**。两种拼装（R2 B3 实证：无 `-a` 的
+  capture 返回历史+当前活动面——alt 活动时那就是 alt 内容；`-a` 返回的是
+  "另一块屏"=保存的普通屏，且拿不到历史）：
   - normal 活动：历史+主屏 `capture-pane -peqJN -S -<N>` 一发；
   - alt 活动：三段拼装——历史 `…-S -<N> -E -1`（实证精确 history-only）+
     普通屏 `…-a` + `\x1b[?1049h` + 可见区（无 -a 默认范围 capture）——
@@ -150,8 +153,15 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   **fresh-spawn（daemon 首次为该终端起 client）**：
   1. spawn → 锚点前缓冲的 %output **丢弃**（含于 capture）——丢弃规则
      **仅限本场景**（此前无人 ingest，无内容洞风险）；
-  2. 锚点 = 活动绘制面那次 capture 的 `%end`；锚点后恢复 ingest；
-     snapshot seq = 锚点时刻 ingest seq（=0 起点）。
+  2. **锚点统一 = 批内最后一条命令（`refresh-client -C`）的 `%end`**
+     （盲审 A2 附带简化：所有 capture 都在它之前、R4 实测整批块间零插入
+     ——锚点后的 %output 必然不含于任何 capture，无歧义）；锚点后恢复
+     ingest；snapshot seq = 锚点时刻 ingest seq（=0 起点）。
+
+  **open 失败契约（盲审 A5：v2 的 open 从同步变异步）**：capture 批 10s
+  无应答（tmux 卡死/竞态 kill）→ open RPC 回错误串 `terminal-open-timeout`
+  （契约字符串，同 `terminal-gone` 惯例），杀重起 control client；web 呈现
+  现有 failure+重试路径，不做静默降级（永远 connecting 是禁止形态）。
 
   **running client（重连 / gap 出 ring / forceSnapshot——R2 B-R2-2）**：
   ingest **全程不停、一个块都不丢**（丢弃即对其他订阅者制造无 gap 信号的
@@ -213,7 +223,9 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
     （挂起期缓冲上限见上，超限放弃）——一次解决「重建毁选区」
     （beginSnapshotRestore 语义是给重连的，不给后台美化用）与「重建跳
     视口」；「无感变深」由此 gate 支撑而非声称。
-  - capture 字节预算 1MB（原始）截断更早历史（总量有界）。
+  - capture 字节预算 1MB（原始）截断更早历史（总量有界）；**截断必须落在
+    行边界**（盲审 A4：按字节截撕裂转义序列，与 R4 切片禁令同理；行边界截
+    的 SGR 失真只延续到下一变更码，被「可读不承诺像素一致」承诺覆盖）。
 - 生命周期：`%exit` / 进程退出 → 与现状 pty onExit 同路；**停 client 一律
   SIGTERM→2s 超时→SIGKILL**（3.6b 退出挂起 bug 兜底；spec 附注：建议
   mac-office 升 tmux ≥3.7 消根因，但代码不得依赖升级）。
@@ -240,14 +252,19 @@ xterm 拥有本地 scrollback。滚动/惯性/选择/搜索全部本地化，镜
   `0xNN` C0 静默劣化 bug 的规避通道）；
 - 单条命令 ≤1000 字节分片；FIFO 保序，**fire-and-forget（不等 %end）**——
   R1 实测 200 条管道化 1.9ms、串行等待中位 0.03ms，拥塞担忧证伪。
-纯函数 `encodeSendKeys(text) → string[]`（vitest + 金样本：B-096 71 项按键
-差分工具现成，attach vs send-keys 两通道逐字节比对作为硬门）。
+纯函数 `encodeSendKeys(text) → string[]`（vitest 全覆盖）。**硬门 = pane 侧
+字节捕获 harness（新工程，盲审 A3：B-096 工具比对的是 web 侧两条输入路径的
+emitted，对 daemon→pane 段恒等=假绿）**：B-096 的扫描表与终端建清函数复用
+（README 已导出），字节水槽从 `cat > /dev/null` 改为落文件，新旧两种 daemon
+写入端对同一按键序列对跑、pane 侧落盘字节逐字节比对（142 用例）。
 **粘贴专路（R1 M4 + R2 M-R2-2 具体化）**：tmux 3.6b 无 bracketed-paste(2004)
 format、attach 模式重放 v2 拿不到——pane 已开 2004 时 `term.paste()` 不知情、
 多行粘贴逐行执行。修法：新 **machineRPC `terminal-paste` {terminalId, text}**
 （RPC 通用机制，server 零改动；mirror-terminal-send 同款形状）——daemon 侧
-经 **control 命令通道**执行 `load-buffer`（stdin 喂字节）+ `paste-buffer -p`，
-与 send-keys **同一 stdin FIFO 保序**（R2 指出 spawnSync 双执行器会让
+写**临时文件**后经 control 命令通道执行 `load-buffer -b <name> <path>` +
+`paste-buffer -p -d -b <name>`（盲审实测：control mode 下 `load-buffer -`
+stdin 喂字节不可行——stdin 就是命令通道，返回 Bad file descriptor；临时
+文件路径实测可行且命令仍与 send-keys **同一 stdin FIFO 保序**；用后即删）（R2 指出 spawnSync 双执行器会让
 「粘贴+立刻回车」乱序——Enter 经 send-keys 先落地=空行先执行；同通道则
 天然有序）。web 侧 lines 模式下粘贴/B-013 插入从 `term.paste()` 切到该 RPC；
 attach fallback 分支维持 `term.paste()`。
@@ -287,12 +304,12 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
     文本，误触发面大于价值；「终端存在但空」由 open meta 显式表达，前端
     不再定时器猜）。attach fallback 分支保留现状。
 - 铁律 6 布局链路（fit/padding/键盘视口）不动——通道形态与 cell 测量无关。
-- **几何第三条路（候选，对抗定）**：不调 `refresh-client -C` 的 control
+- **几何第三条路（定稿：v1 不做，enhancement 注记）**：不调 `refresh-client -C` 的 control
   client 完全不参与 window-size——手机端可默认「纯镜像不声明尺寸」（以 tmux
   实际宽度渲染 + fit 缩字号或横向滚动，回看零几何影响），获得焦点/开始输入
   才声明尺寸。解决「手机瞄一眼把桌面终端挤窄」的老毛病。v1 保守方案 =
   照搬现状（都声明，latest 赢）；此候选若定采纳，限 coarse pointer 且
-  作为 localSettings 开关。
+  作为 localSettings 开关。本批不实现。
 
 ### D3 协议与兼容矩阵
 
@@ -331,7 +348,7 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - `attach-session -d` 的踢客户端语义随 attach 路径退役后消失——用户本地
   `tmux attach` 与 web 并存的行为变化写入验收。
 
-## 风险（Draft）
+## 风险
 
 1. **daemon 写入端命令化（D1b）是全 spec 风险最高的面**：quoting/分片/C0
    通道/应答过滤，任何一处漏=诡异输入损坏，而 IME/中文正是本 repo 刚踩过
@@ -352,7 +369,7 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 8. Unicode 宽度双裁决（tmux wcwidth vs xterm Unicode11）——中文/emoji 折行
    错位风险，真机专项。
 
-## 验收标准（Draft）
+## 验收标准
 
 - [ ] 手机真机：终端回看滑动跟手（原生惯性），流式输出中回看不被拉底
 - [ ] 桌面滚轮回看本地化（断网后仍可滚历史）
@@ -369,9 +386,10 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - [ ] 用户本地 attach 后 split：web 端行为符合单 pane 声明（M6）
 - [ ] 出 ring 重连：terminal-history 分页总耗时与重建时机实测（含拉齐前
   live 跟流不中断、安静时刻 gate 生效）
-- [ ] 门禁全绿 + 解码器金样本 + encodeSendKeys 金样本（B-096 差分 142 用例硬门）
+- [ ] 门禁全绿 + 解码器金样本 + 写入端 pane 侧字节捕获 harness（B-096 扫描表
+  复用、比对面新建，142 用例逐字节一致硬门）
 
-## 留真机验证项（Draft）
+## 留真机验证项
 
 - 手机滑动手感（本批的存在理由）
 - 极端刷屏（yes/大 build 日志）下的前端帧率与 daemon CPU
