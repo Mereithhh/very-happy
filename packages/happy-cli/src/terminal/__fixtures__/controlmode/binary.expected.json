@@ -1,0 +1,78 @@
+{
+  "scenario": "binary",
+  "streamBytes": 3329,
+  "streamSha256": "8ff8b494ea2ab08a9a97f5d6dbfd750cd2a57189e404e9bfe83f3ac48ec17e8a",
+  "eventCounts": {
+    "output": 20,
+    "block": 4,
+    "notification": 3,
+    "protocolError": 0
+  },
+  "output": {
+    "totalBytes": 2107,
+    "sha256": "49ad0742071e6488fa741d02ef93f01718c08f1e053139c4750aacf74931f538",
+    "panes": {
+      "%0": {
+        "bytes": 2107,
+        "sha256": "49ad0742071e6488fa741d02ef93f01718c08f1e053139c4750aacf74931f538"
+      }
+    }
+  },
+  "blocks": [
+    {
+      "epoch": 1786940476,
+      "cmdNum": 284,
+      "flags": 0,
+      "solicited": false,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940477,
+      "cmdNum": 290,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940477,
+      "cmdNum": 291,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940478,
+      "cmdNum": 294,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    }
+  ],
+  "notifications": [
+    {
+      "name": "session-changed",
+      "args": "$0 golden"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 bash"
+    },
+    {
+      "name": "exit",
+      "args": ""
+    }
+  ],
+  "protocolErrors": []
+}

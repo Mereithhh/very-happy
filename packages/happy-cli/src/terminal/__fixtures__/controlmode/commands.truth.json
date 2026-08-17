@@ -1,0 +1,29 @@
+{
+  "scenario": "commands",
+  "description": "命令块：capture-pane / list-panes / refresh-client / 错误块 / 块体内假 %end",
+  "recordedAt": "2026-08-17T04:25:16.289Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 1281,
+  "streamSha256": "f6f75202ee9ee22177ecb080cb454d76d762f859b66d02fb7cdc94cb0a5e2f78",
+  "assert": {
+    "markers": [
+      "block-scenario"
+    ],
+    "containsHex": [],
+    "embedded": false,
+    "seqRange": null,
+    "expectErrorBlock": true,
+    "expectFakeGuardBody": true,
+    "expectRawEscInBlock": true,
+    "expectGreeting": true
+  }
+}

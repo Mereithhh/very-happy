@@ -1,0 +1,120 @@
+{
+  "scenario": "altscreen",
+  "streamBytes": 1592,
+  "streamSha256": "317e54d941893d126b559bd02ebf86ccc51acc5958fd533097e2ca5d3d21cb77",
+  "eventCounts": {
+    "output": 8,
+    "block": 7,
+    "notification": 6,
+    "protocolError": 0
+  },
+  "output": {
+    "totalBytes": 701,
+    "sha256": "4d182f02f9d1d1187fab8566d6b151a25d21e15955f4e6b220ab7c180df4a367",
+    "panes": {
+      "%0": {
+        "bytes": 701,
+        "sha256": "4d182f02f9d1d1187fab8566d6b151a25d21e15955f4e6b220ab7c180df4a367"
+      }
+    }
+  },
+  "blocks": [
+    {
+      "epoch": 1786940466,
+      "cmdNum": 284,
+      "flags": 0,
+      "solicited": false,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940466,
+      "cmdNum": 290,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940466,
+      "cmdNum": 291,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940468,
+      "cmdNum": 293,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940469,
+      "cmdNum": 294,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 18,
+      "bodySha256": "b6d5ac7bdf4c852cecbd237b33f699a93a72848ead67385aba467e1b425bde95",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940470,
+      "cmdNum": 295,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    },
+    {
+      "epoch": 1786940471,
+      "cmdNum": 298,
+      "flags": 1,
+      "solicited": true,
+      "error": false,
+      "bodyBytes": 0,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "truncated": false
+    }
+  ],
+  "notifications": [
+    {
+      "name": "session-changed",
+      "args": "$0 golden"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 bash"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 less"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 env"
+    },
+    {
+      "name": "window-renamed",
+      "args": "@0 bash"
+    },
+    {
+      "name": "exit",
+      "args": ""
+    }
+  ],
+  "protocolErrors": []
+}

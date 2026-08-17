@@ -1,0 +1,29 @@
+{
+  "scenario": "burst",
+  "description": "burst：raw 模式 seq 1 5000，验证合并 %output 与长行",
+  "recordedAt": "2026-08-17T04:21:15.934Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 39543,
+  "streamSha256": "87d102d85c3e0b84a6528b3a1008f88e87667b8d403418d30be8e1c92b7f9186",
+  "assert": {
+    "markers": [],
+    "containsHex": [],
+    "embedded": false,
+    "seqRange": [
+      1,
+      5000
+    ],
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}

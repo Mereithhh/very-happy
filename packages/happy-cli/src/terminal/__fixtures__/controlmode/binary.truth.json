@@ -1,0 +1,26 @@
+{
+  "scenario": "binary",
+  "description": "二进制：raw 模式 cat 2048 字节 urandom，验证非法 UTF-8 不被破坏",
+  "recordedAt": "2026-08-17T04:21:19.251Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 3329,
+  "streamSha256": "8ff8b494ea2ab08a9a97f5d6dbfd750cd2a57189e404e9bfe83f3ac48ec17e8a",
+  "assert": {
+    "markers": [],
+    "containsHex": [],
+    "embedded": true,
+    "seqRange": null,
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}

@@ -1,0 +1,71 @@
+%begin 1786940708 284 0
+%end 1786940708 284 0
+%session-changed $0 golden
+%window-renamed @0 bash
+%begin 1786940709 290 1
+%end 1786940709 290 1
+%begin 1786940709 291 1
+%end 1786940709 291 1
+%output %0 echo block-sc
+%output %0 enario\015\012
+%output %0 block-scenario\015\012
+%output %0 vh$ 
+%begin 1786940710 292 1
+%end 1786940710 292 1
+%begin 1786940710 293 1
+%end 1786940710 293 1
+%output %0 printf "\134033[31mRED\134033[0m\134n"\015\012
+%output %0 \033[31mRED\033[0m\015\012
+%output %0 vh$ 
+%begin 1786940711 294 1
+vh$ echo block-scenario
+block-scenario
+vh$ printf "\033[31mRED\033[0m\n"
+[31mRED
+[39mvh$ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%end 1786940711 294 1
+%begin 1786940711 295 1
+%0 0 4 4 bash
+%end 1786940711 295 1
+%begin 1786940712 296 1
+%end 1786940712 296 1
+%layout-change @0 a87d,100x30,0,0,0 a87d,100x30,0,0,0 *
+%output %0 \015\033[Kvh$ 
+%begin 1786940713 299 1
+%end 1786940713 299 1
+%paste-buffer-changed vhgold
+%begin 1786940713 301 1
+before
+%end 1 2 3
+%error 4 5 6
+after
+%end 1786940713 301 1
+%begin 1786940713 302 1
+parse error: unknown command: this-command-does-not-exist
+%error 1786940713 302 1
+%begin 1786940714 303 1
+%end 1786940714 303 1
+%layout-change @0 b25d,80x24,0,0,0 b25d,80x24,0,0,0 *
+%output %0 \015\033[Kvh$ 
+%begin 1786940715 306 1
+%end 1786940715 306 1
+%exit
