@@ -92,6 +92,25 @@
        preventDefault is silently ignored. Taps/focus are unaffected. */
     touch-action: none;
   }
+  /* B-121 terminal channel v2, lines mode: xterm owns a REAL local scrollback,
+     so the normal buffer's touch gesture goes back to the browser — that is
+     what buys pixel-level tracking and system inertia (the whole point of the
+     batch; the synthetic-wheel + cross-ocean RPC track physically cannot feel
+     "跟手"). `pan-y` and not `auto`: vertical scrolling is handed over, while
+     horizontal pans and double-tap zoom stay suppressed on the terminal pane.
+     The JS half (WebTerminalScreen's onTouchMove) bails on the same condition
+     — both halves are required, one alone gives a dead or a hijacked gesture. */
+  .term-host--lines {
+    touch-action: pan-y;
+  }
+  /* …except on the ALTERNATE screen (vim, /tui fullscreen, pre-v2 claude),
+     where there is no local scrollback and the v1 synthetic-wheel →
+     terminal-scroll track is still the only way to look back. It needs the
+     gesture, so take it away again. Follows xterm's buffer live via
+     onBufferChange. */
+  .term-host--lines.term-host--alt {
+    touch-action: none;
+  }
 }
 /* Select mode (mobile): hand the touch gesture + text back to the browser so
    the OS long-press selection works on the DOM-rendered terminal text. Override
