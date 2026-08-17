@@ -1,0 +1,35 @@
+%begin 1786940445 284 0
+%end 1786940445 284 0
+%session-changed $0 golden
+%window-renamed @0 bash
+%begin 1786940445 290 1
+%end 1786940445 290 1
+%begin 1786940445 291 1
+%end 1786940445 291 1
+%output %0 echo 
+%output %0 hell
+%output %0 o world\015\012
+%output %0 hello world\015\012vh$ 
+%begin 1786940446 292 1
+%end 1786940446 292 1
+%begin 1786940446 293 1
+%end 1786940446 293 1
+%output %0 print
+%output %0 f "a\134tb\134n"\015\012
+%output %0 a\011b\015\012
+%output %0 vh$ 
+%begin 1786940447 294 1
+%end 1786940447 294 1
+%begin 1786940447 295 1
+%end 1786940447 295 1
+%output %0 ls -1 /usr\015\012
+%output %0 bin\015\012lib\015\012libexec\015\012local\015\012sbin\015\012share\015\012standalone\015\012X11\015\012X11R6\015\012
+%output %0 vh$ 
+%begin 1786940447 296 1
+%end 1786940447 296 1
+%begin 1786940447 297 1
+%end 1786940447 297 1
+%output %0 echo done\015\012done\015\012vh$ 
+%begin 1786940449 298 1
+%end 1786940449 298 1
+%exit

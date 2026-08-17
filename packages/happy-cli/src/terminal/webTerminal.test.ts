@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -428,7 +428,7 @@ describe('parseSessionListLine', () => {
     const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
 
     it('parses a full line (epoch seconds → ms, trims titles)', () => {
-        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '✳ task');
+        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', 'node', '✳ task');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: 1700000000000,
@@ -436,12 +436,13 @@ describe('parseSessionListLine', () => {
             cwd: '/Users/x/code',
             vhTitle: 'my title',
             manual: true,
+            paneCurrentCommand: 'node',
             paneTitle: '✳ task',
         });
     });
 
     it('empty optional fields become undefined / manual=false', () => {
-        const line = mk('vh-abc', '', '', '', '', '', '');
+        const line = mk('vh-abc', '', '', '', '', '', '', '');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: undefined,
@@ -449,6 +450,7 @@ describe('parseSessionListLine', () => {
             cwd: undefined,
             vhTitle: undefined,
             manual: false,
+            paneCurrentCommand: undefined,
             paneTitle: undefined,
         });
     });
@@ -457,15 +459,27 @@ describe('parseSessionListLine', () => {
         expect(parseSessionListLine('')).toBeUndefined();
         expect(parseSessionListLine('vh-abc\t123')).toBeUndefined();          // old tab format
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x'))).toBeUndefined(); // too few fields
-        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', 't'))).toBeUndefined(); // no name
+        // B-121: the 7-field (pre pane_current_command) shape is now malformed
+        // — daemon and format ship together, so a short line means a garbled
+        // read, not an old daemon.
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', 't'))).toBeUndefined();
+        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', 'zsh', 't'))).toBeUndefined(); // no name
     });
 
     it('a pathological separator inside pane_title only garbles the title, never the fields', () => {
-        const line = mk('vh-abc', '1', '2', '/x', 'v', '', `weird${LIST_FIELD_SEP}title`);
+        const line = mk('vh-abc', '1', '2', '/x', 'v', '', 'zsh', `weird${LIST_FIELD_SEP}title`);
         const parsed = parseSessionListLine(line)!;
         expect(parsed.name).toBe('vh-abc');
         expect(parsed.cwd).toBe('/x');
+        expect(parsed.paneCurrentCommand).toBe('zsh');
         expect(parsed.paneTitle).toBe(`weird${LIST_FIELD_SEP}title`);
+    });
+
+    it('pane_current_command sits BEFORE pane_title (a title with a separator cannot shift it)', () => {
+        // The whole reason for the field order: if the command were last, a
+        // title containing 0x1f would silently steal it.
+        const line = mk('vh-abc', '1', '2', '/x', '', '', '2.1.228', `a${LIST_FIELD_SEP}b`);
+        expect(parseSessionListLine(line)!.paneCurrentCommand).toBe('2.1.228');
     });
 });
 
@@ -522,5 +536,18 @@ describe('diffTerminalActivity', () => {
         diffTerminalActivity(last, cur);
         expect(last).toEqual({ a: 1 });
         expect(cur).toEqual({ a: 2 });
+    });
+});
+
+describe('parseLayoutSize (B-121: follow a LOCAL tmux client\'s resize)', () => {
+    it('reads the window size out of a %layout-change payload', () => {
+        expect(parseLayoutSize('@0 b25d,80x24,0,0,0 b25d,80x24,0,0,0 *')).toEqual({ cols: 80, rows: 24 });
+        expect(parseLayoutSize('@195 2ce9,127x40,0,0,195 2ce9,127x40,0,0,195 *')).toEqual({ cols: 127, rows: 40 });
+    });
+
+    it('returns undefined rather than guessing (a wrong resize is worse than none)', () => {
+        expect(parseLayoutSize('')).toBeUndefined();
+        expect(parseLayoutSize('@0 nosize')).toBeUndefined();
+        expect(parseLayoutSize('@0 aaaa,1x1,0,0,0')).toBeUndefined(); // below the 2x2 floor
     });
 });

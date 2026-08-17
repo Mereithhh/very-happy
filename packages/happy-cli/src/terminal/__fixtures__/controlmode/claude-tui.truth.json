@@ -1,0 +1,26 @@
+{
+  "scenario": "claude-tui",
+  "description": "真实 claude TUI 片段（alt 屏 + 重绘，不提交 prompt、不调 API）",
+  "recordedAt": "2026-08-17T04:21:49.282Z",
+  "env": {
+    "tmuxClient": "tmux 3.7b",
+    "tmuxServer": "tmux 3.7b (isolated socket; server killed after recording)",
+    "socket": "b121-p0a",
+    "geometry": "80x24",
+    "shell": "env 'PS1=vh$ ' /bin/sh",
+    "platform": "darwin",
+    "node": "v26.7.0",
+    "note": "3.6b/3.7b 协议行结构实测一致（主 agent 2026-08-17 双跑）"
+  },
+  "streamBytes": 3071,
+  "streamSha256": "bf8c87b300004fd9b21e4895ad2c7cedee42887443a95e17ee2c4fa46230bc38",
+  "assert": {
+    "markers": [],
+    "containsHex": [],
+    "embedded": false,
+    "seqRange": null,
+    "expectErrorBlock": false,
+    "expectFakeGuardBody": false,
+    "expectGreeting": true
+  }
+}

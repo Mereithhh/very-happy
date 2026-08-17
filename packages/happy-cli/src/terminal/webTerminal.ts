@@ -24,7 +24,7 @@
  * Cross-browser survival: closing the web view only marks the session as having
  * no subscribers; the pty (and headless buffer) live on. An idle reaper detaches
  * the pty only when it has no subscribers AND has been idle past the timeout
- * (tmux stays alive → reopening reattaches instantly). MAX_LIVE_PTYS still
+ * (tmux stays alive → reopening reattaches instantly). MAX_LIVE_SESSIONS still
  * LRU-evicts to protect the system PTY pool.
  *
  * Transport: raw bytes are relayed base64 over the (TLS) socket through the
@@ -68,8 +68,19 @@ import os from 'node:os';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { logger } from '@/ui/logger';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { ControlClient } from './controlClient';
+import {
+    buildCaptureBatch,
+    parsePaneState,
+    assembleRestore,
+    type CaptureKey,
+    type PaneState,
+} from './captureAssembly';
+import { SnapshotStore } from './snapshotStore';
+import { unescapeOctal } from './controlModeDecoder';
+import { encodeTerminalWrite, buildPastePlan, toControlStdin } from './sendKeysEncoding';
 import { configuration } from '@/configuration';
 import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
 import {
@@ -171,6 +182,12 @@ export interface OpenTerminalOptions {
      *  never send it (legacy = every open counts, conservative). Implies
      *  `attachOnly`. */
     resub?: boolean;
+    /** B-121 capability declaration: the client understands the LINES channel
+     *  (content byte stream + paged history + its own scrollback). Absent →
+     *  the client is an old web/app and gets the v1 response shape verbatim.
+     *  The daemon's OUTPUT side is one stream either way — only the shape of
+     *  this response and of the history transport differ. */
+    streamMode?: 'lines';
     /** Attach to an EXISTING terminal only — never create the tmux session.
      *  Sent by every new-web open except the fresh-create navigation, so a
      *  deleted terminal can't be resurrected by a lingering screen's catch-up
@@ -188,10 +205,35 @@ export type OpenTerminalResult = {
     tmuxSession?: string;
     /** Current output seq at the moment of subscribe; the client's new baseline. */
     seq: number;
+    /** Echoed capability (B-121). Present ⇒ this response is a LINES response
+     *  and the daemon is streaming pane content, so the client owns scrollback.
+     *  Absent ⇒ v1 shape, byte-for-byte what an old web expects. The client
+     *  latches this per mount: a daemon that changes generation mid-session
+     *  (vh-update, rollback) forces a full remount rather than a hot switch. */
+    streamMode?: 'lines';
+    /** Lines + snapshot only: handle for pulling the DEEP history through
+     *  `terminal-history`. The inline `data` is just the shallow screen. */
+    snapshotId?: string;
+    /** Lines + snapshot only: how many pages the deep history has (0 = none). */
+    totalPages?: number;
+    /** Lines + snapshot only: was the pane on its alternate screen? The client
+     *  needs this BEFORE the deep rebuild lands to pick the right scroll lane. */
+    alternateOn?: boolean;
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
 );
+
+/** One page of a held history snapshot, or the single failure the client
+ *  handles (`expired` → keep the shallow screen, retry the open once). */
+export type TerminalHistoryPage =
+    | { page: number; totalPages: number; data: string }
+    | { expired: true };
+
+/** Contract string the web matches on when a capture batch never answered —
+ *  same convention as `terminal-gone`. Never fail silently into a terminal
+ *  that stays "connecting" forever. */
+export const TERMINAL_OPEN_TIMEOUT = 'terminal-open-timeout';
 
 type EmitFn = (event: string, payload: any) => void;
 
@@ -206,8 +248,14 @@ interface OutputChunk {
 // ptys so orphaned ones — sessions no browser is watching — can't accumulate and
 // exhaust the system PTY pool (kern.tty.ptmx_max ~511 → node-pty
 // `posix_spawnp failed` → black screen).
-const MAX_LIVE_PTYS = 24;              // hard cap; LRU-evict oldest-touched beyond this
-const PTY_IDLE_MS = 20 * 60 * 1000;    // detach ptys with no subscriber + idle 20 min
+// B-121: the tmux path no longer holds a pty at all — a control-mode client is
+// a plain pipe child, so kern.tty.ptmx_max stopped being the binding constraint
+// and the cap rose 24 → 48. It did NOT go away: every live terminal still costs
+// one tmux child + a headless xterm (HEADLESS_SCROLLBACK lines) + a 2MB ring, so
+// unbounded growth remains unacceptable. The no-tmux fallback still spawns a
+// real pty and is bounded by the same number.
+const MAX_LIVE_SESSIONS = 48;          // hard cap; LRU-evict oldest-touched beyond this
+const SESSION_IDLE_MS = 20 * 60 * 1000; // reap clients with no subscriber + idle 20 min
 const REAP_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Ring-buffer cap per terminal. Bounds memory for reconnect replay; once the
@@ -312,6 +360,29 @@ export function diffTerminalActivity(
         if (at > (lastEmitted[id] ?? 0)) out.push({ id, activityAt: at });
     }
     return out;
+}
+
+/**
+ * Deadline for a whole capture batch (spec D1: on expiry the open fails with
+ * TERMINAL_OPEN_TIMEOUT rather than hanging the client on "connecting").
+ * Generous on purpose — a busy tmux server answering a 5000-line capture on a
+ * loaded machine is slow, not broken.
+ */
+const CAPTURE_TIMEOUT_MS = 10_000;
+
+/**
+ * Size of a `%layout-change` layout string: `@0 b25d,80x24,0,0,0 …`. The first
+ * `<cols>x<rows>` in the layout is the window size. Pure; unit-tested.
+ * Returns undefined for anything unparseable (the headless simply keeps its
+ * current geometry — a wrong resize is worse than a missed one).
+ */
+export function parseLayoutSize(args: string): { cols: number; rows: number } | undefined {
+    const m = /(\d+)x(\d+)/.exec(args);
+    if (!m) return undefined;
+    const cols = Number(m[1]);
+    const rows = Number(m[2]);
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return undefined;
+    return { cols, rows };
 }
 
 /** Timeout for the synchronous `tmux new-session -d` in open(). More generous
@@ -463,13 +534,26 @@ export function deriveAutoTitle(paneTitle: unknown, hostname: string): string | 
  *  pathological embedded 0x1f only garbles the title, never the fields. */
 export const LIST_FIELD_SEP = '\x1f';
 
-const LIST_SESSIONS_FORMAT = [
+/** The ONE list-sessions field set. Exported because the assistant's terminal
+ *  list (assistant/terminals.ts) parses the same lines with the same parser —
+ *  a second copy of this array silently desyncs the moment a field is added
+ *  (B-121 added pane_current_command and broke exactly that). */
+export const LIST_SESSIONS_FORMAT = [
     '#{session_name}',
     '#{session_created}',
     '#{session_activity}',
     '#{pane_current_path}',
     '#{@vh_title}',
     '#{@vh_title_manual}',
+    // B-121: the control-mode client has no `pty.process`, so the agent-state
+    // fast path lost its live `#{pane_current_command}` equivalent. Carry it in
+    // the ONE list-sessions call the tracker already makes — the value goes
+    // from "live" to "≤ LIST_TRACK_INTERVAL_MS old", which classifyPane
+    // tolerates (its dialog/working judgments come from the pane TEXT; the
+    // command only separates shell/idle). MUST stay before pane_title: that
+    // field is deliberately last so a pathological 0x1f inside a title can only
+    // garble the title, never shift the fields.
+    '#{pane_current_command}',
     '#{pane_title}',
 ].join(LIST_FIELD_SEP);
 
@@ -482,6 +566,9 @@ export interface SessionListLine {
     vhTitle?: string;
     /** `@vh_title_manual` is set → the user renamed it; never auto-follow. */
     manual: boolean;
+    /** `#{pane_current_command}` of the active pane (B-121: the poll-cadence
+     *  replacement for the pty's live foreground name). */
+    paneCurrentCommand?: string;
     /** Raw `#{pane_title}` of the session's active pane. */
     paneTitle?: string;
 }
@@ -490,8 +577,8 @@ export interface SessionListLine {
 export function parseSessionListLine(line: string): SessionListLine | undefined {
     if (!line) return undefined;
     const parts = line.split(LIST_FIELD_SEP);
-    if (parts.length < 7) return undefined;
-    const [name, created, activity, cwd, vhTitle, manual] = parts;
+    if (parts.length < 8) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual, paneCommand] = parts;
     if (!name) return undefined;
     return {
         name,
@@ -500,7 +587,10 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         cwd: cwd || undefined,
         vhTitle: vhTitle.trim() || undefined,
         manual: manual.trim().length > 0,
-        paneTitle: parts.slice(6).join(LIST_FIELD_SEP) || undefined,
+        paneCurrentCommand: paneCommand.trim() || undefined,
+        // pane_title is last, so anything after field 8 is title content that
+        // contained the separator — rejoin it rather than dropping it.
+        paneTitle: parts.slice(7).join(LIST_FIELD_SEP) || undefined,
     };
 }
 
@@ -700,6 +790,23 @@ function tmuxSupportsEnvFlag(): boolean {
     return tmuxEnvFlagCache;
 }
 
+/** How long a paste spool file survives before it is unlinked. tmux reads it
+ *  when `load-buffer` runs, which is ordered behind our stdin write but not
+ *  synchronous with it — so the unlink is deferred rather than immediate. */
+const PASTE_FILE_TTL_MS = 5000;
+
+/**
+ * Directory for paste spool files. Inside HAPPY_HOME_DIR rather than /tmp: the
+ * pasted text is user content (it can be a password being pasted into a
+ * prompt), so it stays in the daemon's own 0700 area with 0600 files, and dev
+ * and stable daemons never share a spool.
+ */
+function pasteSpoolDir(): string {
+    const dir = join(configuration.happyHomeDir, 'paste-spool');
+    try { mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* exists */ }
+    return dir;
+}
+
 function defaultShell(): string {
     if (process.platform === 'win32') return process.env.COMSPEC || 'powershell.exe';
     return process.env.SHELL || '/bin/bash';
@@ -730,13 +837,44 @@ function ptyEnv(): Record<string, string> {
 }
 
 /**
- * One long-lived daemon-side terminal session. Owns the pty, the authoritative
- * headless screen, the output seq counter and the reconnect ring buffer.
+ * How a session is attached to its terminal (B-121).
+ *  - `control`: tmux control-mode client — a pipe child that delivers the
+ *    PANE's own bytes plus a command channel. The web gets a content stream and
+ *    therefore its own scrollback.
+ *  - `pty`: the no-tmux fallback (no tmux installed) — an actual login shell on
+ *    a real pty, exactly as in v1. Everything about ptys (the ptmx pool, the
+ *    cap, startup-command injection as raw input) still applies to it.
+ */
+export type SessionTransport =
+    | { kind: 'control'; client: ControlClient }
+    | { kind: 'pty'; pty: pty.IPty };
+
+/**
+ * One long-lived daemon-side terminal session. Owns the transport, the
+ * authoritative headless screen, the output seq counter and the reconnect ring.
  */
 class TerminalSession {
     readonly id: string;
     readonly tmuxSession?: string;
-    pty: pty.IPty;
+    transport: SessionTransport;
+    /**
+     * The pane this terminal follows, latched from the open capture's
+     * `list-panes` (first pane of the window). `%output` from any OTHER pane is
+     * dropped: a user who splits the window in a local `tmux attach` keeps his
+     * split locally, but the web mirrors one pane — v1 mirrored tmux's composed
+     * screen and therefore showed splits; this is a deliberate behaviour change
+     * (spec D1, written into the acceptance list).
+     */
+    paneId?: string;
+    /**
+     * False between spawning a control client and its opening capture's anchor:
+     * output produced in that window is ALREADY inside the capture, so ingesting
+     * it would duplicate content. Only ever false for a FRESH spawn — for a
+     * client that is already streaming, ingestion never stops (dropping a chunk
+     * would punch a hole into every other subscriber's stream with no gap
+     * signal to heal it).
+     */
+    ingesting = true;
     private readonly headless: HeadlessTerminal;
     private readonly serializer: SerializeAddon;
     /** Last emitted output seq. Starts at 0; first chunk is seq 1. */
@@ -755,9 +893,9 @@ class TerminalSession {
     cols: number;
     rows: number;
 
-    constructor(id: string, ptyProc: pty.IPty, tmuxSession: string | undefined, cols: number, rows: number) {
+    constructor(id: string, transport: SessionTransport, tmuxSession: string | undefined, cols: number, rows: number) {
         this.id = id;
-        this.pty = ptyProc;
+        this.transport = transport;
         this.tmuxSession = tmuxSession;
         this.cols = cols;
         this.rows = rows;
@@ -779,11 +917,20 @@ class TerminalSession {
         this.headless.onTitleChange(cb);
     }
 
-    /** Record one pty output chunk: bump seq, feed the authoritative screen,
-     *  push to the ring. Returns the assigned seq so the caller can emit it. */
-    ingest(dataUtf8: string, dataBase64: string): number {
+    /**
+     * Record one output chunk: bump seq, feed the authoritative screen, push to
+     * the ring. Returns the assigned seq so the caller can emit it.
+     *
+     * Bytes, not a string: a `%output` payload is whatever the pane printed and
+     * is not guaranteed to be valid UTF-8 (`cat /dev/urandom`), and a chunk
+     * boundary can fall inside a multi-byte character — xterm's decoder is
+     * stateful across writes and handles that, a JS string round-trip would
+     * replace the bytes with U+FFFD.
+     */
+    ingest(data: Buffer): OutputChunk {
         this.lastOutputAt = Date.now();
-        this.headless.write(dataUtf8);
+        this.headless.write(new Uint8Array(data));
+        const dataBase64 = data.toString('base64');
         this.seq += 1;
         const chunk: OutputChunk = { seq: this.seq, data: dataBase64 };
         this.ring.push(chunk);
@@ -794,11 +941,28 @@ class TerminalSession {
             const dropped = this.ring.shift()!;
             this.ringBytes -= dropped.data.length;
         }
-        return this.seq;
+        return chunk;
     }
 
-    /** Keep the authoritative screen's dimensions in lockstep with the pty so a
-     *  later snapshot serialize() reflects the real geometry. */
+    /**
+     * Write a RESTORE payload (the open capture) into the authoritative screen
+     * WITHOUT giving it a seq: it is not a live chunk, so it must not enter the
+     * ring, must not be broadcast, and must not move any client's baseline.
+     *
+     * Why the daemon replays the capture into its own headless at all: after a
+     * client restart (reaper, daemon restart) the headless is empty while the
+     * pane has a long history. agentState's zero-subprocess fast path reads the
+     * headless tail, so without this the sidebar would report nothing until the
+     * pane happened to print again — and an old web's snapshot (serialize) would
+     * come back blank.
+     */
+    restoreHeadless(data: Buffer): void {
+        if (data.length === 0) return;
+        this.headless.write(new Uint8Array(data));
+    }
+
+    /** Keep the authoritative screen's dimensions in lockstep with the terminal
+     *  so a later snapshot serialize() reflects the real geometry. */
     resizeHeadless(cols: number, rows: number) {
         this.cols = cols;
         this.rows = rows;
@@ -818,9 +982,25 @@ class TerminalSession {
             const l = buf.getLine(y);
             lines.push(l ? l.translateToString(true) : '');
         }
+        // A control-mode session has no pty and therefore no live foreground
+        // name; the caller passes `#{pane_current_command}` from the tracking
+        // tick's list-sessions read instead (see probeAgentState).
         let command = '';
-        try { command = this.pty.process || ''; } catch { /* platform quirk — text signals carry it */ }
+        if (this.transport.kind === 'pty') {
+            try { command = this.transport.pty.process || ''; } catch { /* platform quirk */ }
+        }
         return { command, tail: lines.join('\n') };
+    }
+
+    /** Does the ring still cover a client sitting at `fromSeq`? */
+    ringCovers(fromSeq: number): boolean {
+        const oldest = this.ring.length > 0 ? this.ring[0].seq : this.seq + 1;
+        return fromSeq <= this.seq && fromSeq + 1 >= oldest;
+    }
+
+    /** Ring chunks strictly newer than `fromSeq` (the replay payload). */
+    chunksAfter(fromSeq: number): OutputChunk[] {
+        return this.ring.filter((c) => c.seq > fromSeq);
     }
 
     /**
@@ -853,16 +1033,51 @@ class TerminalSession {
         };
     }
 
+    /**
+     * Tear the transport down. For a control client this is SIGTERM → grace →
+     * SIGKILL (tmux 3.6b can hang a control client that still has queued pane
+     * data; the kill fallback is version-independent insurance). Fire-and-
+     * forget: the caller has already removed the session from the map, and a
+     * hung child must not stall the reaper.
+     */
     dispose() {
-        try { this.pty.kill(); } catch { /* already gone */ }
+        if (this.transport.kind === 'control') {
+            void this.transport.client.stop().catch(() => { /* already gone */ });
+        } else {
+            try { this.transport.pty.kill(); } catch { /* already gone */ }
+        }
         try { this.headless.dispose(); } catch { /* already disposed */ }
         this.ring = [];
         this.ringBytes = 0;
     }
 }
 
+/** What one capture batch produced (payloads + the anchor's seq). */
+interface RestoreOutcome {
+    full: Buffer;
+    small: Buffer;
+    alternateOn: boolean;
+    /** The session's output seq at the anchor — the client's new baseline. */
+    seqAtAnchor: number;
+    paneState?: PaneState;
+    /**
+     * The held-snapshot handle, created ONCE per capture. It must not be minted
+     * per caller: a `put()` invalidates the terminal's previous snapshot, so two
+     * clients sharing one single-flight capture would hand the first client an
+     * id that the second one just expired — its history pull would fail and
+     * restart the whole open for no reason.
+     */
+    snapshotId: string;
+    totalPages: number;
+}
+
 export class WebTerminalManager {
     private terminals = new Map<string, TerminalSession>();
+    /** Deep history snapshots held for `terminal-history` paging (B-121). */
+    private snapshots = new SnapshotStore();
+    /** Per-terminal capture single-flight: concurrent opens/catch-ups share ONE
+     *  capture, so every client of a terminal restores from the same instant. */
+    private captureInFlight = new Map<string, Promise<RestoreOutcome>>();
     /** killed terminal ids → killedAt; blocks stale-client resurrection. */
     private tombstones: Record<string, number> = loadTombstones();
     // ── Closed-terminal records (B-084) ─────────────────────────────────────
@@ -1203,9 +1418,12 @@ export class WebTerminalManager {
      *  instantly with a fresh snapshot. */
     private reapIdle() {
         const now = Date.now();
+        // Held history snapshots expire on the same tick — no separate timer,
+        // and the store stays a pure state machine (B-121).
+        this.snapshots.sweep(now);
         for (const [id, session] of [...this.terminals]) {
-            if (session.subscribers === 0 && now - session.lastTouch > PTY_IDLE_MS) {
-                logger.debug(`[WEB TERMINAL] reaping orphaned idle pty ${id} (idle ${Math.round((now - session.lastTouch) / 60000)}m)`);
+            if (session.subscribers === 0 && now - session.lastTouch > SESSION_IDLE_MS) {
+                logger.debug(`[WEB TERMINAL] reaping orphaned idle session ${id} (idle ${Math.round((now - session.lastTouch) / 60000)}m)`);
                 this.detach(id);
             }
         }
@@ -1215,7 +1433,7 @@ export class WebTerminalManager {
      *  that currently have no subscribers (their tmux sessions survive). Never
      *  evicts a session someone is actively watching. */
     private enforceCap() {
-        while (this.terminals.size >= MAX_LIVE_PTYS) {
+        while (this.terminals.size >= MAX_LIVE_SESSIONS) {
             // Prefer the least-recently-touched UNWATCHED session. But the cap is a
             // HARD safety limit against exhausting the system PTY pool
             // (kern.tty.ptmx_max ~511 → spawn failures → black screens), so if
@@ -1257,18 +1475,20 @@ export class WebTerminalManager {
      * exist yet. Reopening an existing id does NOT recreate the pty — it just
      * re-subscribes and returns a snapshot or a seq-based replay of the gap.
      */
-    open(opts: OpenTerminalOptions): OpenTerminalResult {
+    async open(opts: OpenTerminalOptions): Promise<OpenTerminalResult> {
         const cols = Math.max(2, Math.floor(opts.cols ?? 80));
         const rows = Math.max(2, Math.floor(opts.rows ?? 24));
         const cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
         const id = opts.terminalId && /^[a-zA-Z0-9_-]{1,64}$/.test(opts.terminalId)
             ? opts.terminalId
             : randomBytes(5).toString('hex');
+        const lines = opts.streamMode === 'lines';
 
         const existing = this.terminals.get(id);
         if (existing) {
-            // Re-subscribe to the live session. The pty stays; we only bump the
-            // subscriber count and resize to the (possibly new) client geometry.
+            // Re-subscribe to the live session. The transport stays; we only
+            // bump the subscriber count and resize to the (possibly new) client
+            // geometry.
             //
             // `resub` marks a catch-up from a viewer that ALREADY holds a
             // subscription (visibility/reconnect refresh): it must not inflate
@@ -1279,6 +1499,24 @@ export class WebTerminalManager {
             if (!opts.resub || existing.subscribers === 0) existing.subscribers += 1;
             existing.lastTouch = Date.now();
             this.applyResize(existing, cols, rows);
+            // Ring hit → replay, identical to v1 apart from the echoed
+            // capability (the client latches streamMode per mount, so EVERY
+            // response has to carry it).
+            if (opts.fromSeq !== undefined && existing.ringCovers(opts.fromSeq)) {
+                const chunks = existing.chunksAfter(opts.fromSeq);
+                logger.debug(`[WEB TERMINAL] re-subscribed ${id} (subs=${existing.subscribers}, mode=replay, seq=${existing.seq})`);
+                return {
+                    terminalId: id, tmuxSession: existing.tmuxSession, seq: existing.seq,
+                    mode: 'replay', chunks, ...(lines ? { streamMode: 'lines' as const } : {}),
+                };
+            }
+            if (lines && existing.transport.kind === 'control') {
+                // RUNNING client: ingestion never pauses (a dropped chunk would
+                // be an invisible content hole for every other subscriber). The
+                // capture only READS the seq at its anchor; chunks at or below
+                // it dedup client-side against the snapshot baseline.
+                return await this.linesSnapshotResponse(id, existing);
+            }
             const state = existing.subscribeState(opts.fromSeq);
             logger.debug(`[WEB TERMINAL] re-subscribed ${id} (subs=${existing.subscribers}, mode=${state.mode}, seq=${state.seq})`);
             return { terminalId: id, tmuxSession: existing.tmuxSession, ...state };
@@ -1316,8 +1554,10 @@ export class WebTerminalManager {
         }
 
         const env = ptyEnv();
-        let file: string;
-        let args: string[];
+        // Only the no-tmux fallback spawns a process of its own; the tmux path
+        // attaches a control client instead (which needs no argv here).
+        let file = defaultShell();
+        let args: string[] = [];
         let tmuxSession: string | undefined;
 
         if (isTmuxAvailable()) {
@@ -1386,7 +1626,7 @@ export class WebTerminalManager {
             // (`=name:` = exact-match target, see startupInjectionArgs.)
             const optArgs = [
                 ['set-option', '-t', `=${tmuxSession}:`, 'mouse', 'off'],
-                ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '2000'],
+                ['set-option', '-t', `=${tmuxSession}:`, 'history-limit', '5000'],
                 // Native-terminal feel: hide tmux's green status bar. The web
                 // header already shows the session title, so the bar is pure
                 // tmux noise there. Session-scoped ⇒ a LOCAL `tmux attach -t
@@ -1434,8 +1674,10 @@ export class WebTerminalManager {
             // exactly one steady client for the session's whole life, so there is
             // no client churn to jitter against. id is validated to [A-Za-z0-9_-],
             // cols/rows are ints → safe to inline.
-            file = '/bin/sh';
-            // tmux options applied on (re)attach, idempotent.
+            // B-121: the session-scoped options are applied ONCE, above, by the
+            // optArgs spawnSync loop — the v1 copies inlined into the pty's
+            // `/bin/sh -c` script are gone with the pty itself. Kept here as the
+            // record of WHY each option exists:
             //  Session-scoped (`-t`, touch only THIS vh- session):
             //   - mouse OFF: with mouse on, tmux swallows drag as its own mouse
             //     events so the browser never gets a selection → copy broke (esp.
@@ -1443,16 +1685,15 @@ export class WebTerminalManager {
             //     (copy-on-select handles the rest). Wheel scrolls xterm's own
             //     scrollback; the deep tmux history is still reachable via
             //     keyboard copy-mode (prefix + [).
-            //   - history-limit: deep scrollback for panes in the session. Kept
-            //     modest (2000): the daemon's headless buffer (HEADLESS_SCROLLBACK)
-            //     is now the authoritative scrollback the web renders from, so a
-            //     100k-line tmux history was mostly dead redundant memory. 2000
-            //     still gives copy-mode a useful recent window — and with the
-            //     classic-renderer claude default (CLAUDE_CLASSIC_RENDERER_ENV)
-            //     this history is where the transcript lands, i.e. the wheel's
-            //     copy-mode review depth. NOTE it only affects panes created
-            //     AFTER it's set; the initial pane keeps the server default,
-            //     which is also 2000 — the option pins that against user configs.
+            //   - history-limit: deep scrollback for panes in the session.
+            //     B-121 raised it 2000 → 5000 to match HEADLESS_SCROLLBACK and
+            //     the web xterm's own scrollback: in the lines-mode channel the
+            //     open-time `capture-pane -S -N` reads THIS history to backfill
+            //     the browser's scrollback, so tmux's depth is now the ceiling
+            //     on how far a user can scroll back after a reconnect (it used
+            //     to be pure copy-mode review depth). NOTE it only affects panes
+            //     created AFTER it's set — pre-B-121 sessions keep 2000, an
+            //     honest degradation rather than a retro-fix.
             //   - status OFF: native-terminal feel — the web renders these
             //     sessions as plain terminals, so tmux's green status bar is
             //     noise (the web header owns the title). tmux reclaims the row
@@ -1463,58 +1704,122 @@ export class WebTerminalManager {
             //     emit an OSC 52 escape when copying (keyboard copy-mode yank), so
             //     the web xterm (with @xterm/addon-clipboard) mirrors it into the
             //     browser clipboard. Benign + desirable globally.
-            const setOpts = [
-                `tmux set-option -t ${tmuxSession} mouse off`,
-                `tmux set-option -t ${tmuxSession} history-limit 2000`,
-                `tmux set-option -t ${tmuxSession} status off`,
-                `tmux set-option -t ${tmuxSession} set-titles on`,
-                `tmux set-option -t ${tmuxSession} set-titles-string '#{pane_title}'`,
-                `tmux set-option -g set-clipboard on`,
-                `tmux set-option -ga terminal-features ',xterm-256color:clipboard'`,
-            ].join(' >/dev/null 2>&1; ') + ' >/dev/null 2>&1; ';
-            // The script's `-A` create fallback carries the same `-e` env flag
-            // (see envFlags above): only effective if THIS line is what creates
-            // the session (pre-create failed); ignored on the attach path. The
-            // value contains no shell metacharacters — safe to inline.
-            const envFlagsSh = envFlags.length > 0 ? ` -e ${CLAUDE_CLASSIC_RENDERER_ENV}` : '';
-            // Attach-only: no `new-session -A` fallback either — if the session
-            // died between the has-session gate and here (concurrent kill), the
-            // bare attach fails and the pty exits, instead of resurrecting it.
-            const createFallback = attachOnly
-                ? ''
-                : `tmux new-session -A -d${envFlagsSh} -s ${tmuxSession} -x ${cols} -y ${rows} >/dev/null 2>&1; `;
-            args = ['-c',
-                createFallback
-                + setOpts
-                + `exec tmux attach-session -d -t ${tmuxSession}`];
+            // The v1 pty script also carried a `new-session -A` fallback for the
+            // case where the pre-create above failed. A control client cannot
+            // create anything, so the fallback moves here — one honest retry,
+            // and only for opens that are ALLOWED to create (an attach-only
+            // open racing a kill must fail, not resurrect).
+            if (!attachOnly && !createdNew) {
+                const alive = spawnSync('tmux', ['has-session', '-t', `=${tmuxSession}:`],
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+                if (!alive) {
+                    const retry = spawnSync('tmux',
+                        ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                        { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
+                    createdNew = retry.status === 0;
+                    if (createdNew) {
+                        const startup = normalizeStartupCommand(opts.startupCommand);
+                        if (startup) {
+                            for (const a of startupInjectionArgs(tmuxSession, startup)) {
+                                try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             file = defaultShell();
             args = [];
         }
 
-        // Bound live ptys before spawning a new one.
+        // Bound live sessions before spawning another transport.
         this.enforceCap();
 
-        const proc = pty.spawn(file, args, {
-            name: 'xterm-256color',
-            cols,
-            rows,
-            cwd,
-            env,
-        });
-
-        // No-tmux fallback: there IS no attach path — reaching this point (no
-        // live map entry, no tmux) always means a brand-new shell, so injecting
-        // the startup command as pty input is safe (the kernel pty buffers it
-        // until the shell starts reading). '\r' = the Enter keypress.
-        if (!tmuxSession) {
+        let session: TerminalSession;
+        if (tmuxSession) {
+            // ── Control-mode transport ───────────────────────────────────────
+            // No pty, no `-d`: a control client that never calls
+            // `refresh-client -C` does not even take part in the window size,
+            // so there is no client to kick. (`refresh-client -C` IS sent — in
+            // the capture batch and on every resize — so geometry still follows
+            // the last client to speak, exactly like v1.)
+            const created = new TerminalSession(id, {
+                kind: 'control',
+                client: undefined as unknown as ControlClient, // replaced below
+            }, tmuxSession, cols, rows);
+            const client = new ControlClient(tmuxSession, env, {
+                onOutput: (pane, data) => {
+                    if (this.terminals.get(id) !== created) return;
+                    // Pre-anchor output on a FRESH spawn is already inside the
+                    // capture we are about to send — ingesting it would double
+                    // the content. (Never true for a running client.)
+                    if (!created.ingesting) return;
+                    // Single-pane declaration: a split the user made locally is
+                    // not mirrored (spec D1).
+                    if (created.paneId && pane !== created.paneId) return;
+                    const chunk = created.ingest(data);
+                    this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
+                    this.noteActivity();
+                },
+                onNotification: (name, args2) => {
+                    if (this.terminals.get(id) !== created) return;
+                    if (name === 'layout-change') {
+                        // v2 no longer kicks other clients, so a LOCAL
+                        // `tmux attach` can resize the window under us. The
+                        // headless screen has to follow or serialize()/the agent
+                        // probe drift out of alignment with the real pane.
+                        const size = parseLayoutSize(args2);
+                        if (size) created.resizeHeadless(size.cols, size.rows);
+                        return;
+                    }
+                    if (name === 'exit') {
+                        logger.debug(`[WEB TERMINAL] control client for ${id} got %exit (${args2})`);
+                    }
+                },
+                onExit: (code) => {
+                    if (this.terminals.get(id) !== created) return;
+                    this.terminals.delete(id);
+                    this.snapshots.drop(id);
+                    created.dispose();
+                    this.emit('terminal-exit', { terminalId: id, exitCode: code ?? 0 });
+                    // The tmux session usually died with its shell — refresh the
+                    // tracked list so the terminal vanishes everywhere.
+                    this.kickListRefresh();
+                },
+            });
+            created.transport = { kind: 'control', client };
+            // Fresh spawn: everything the pane printed before the anchor is
+            // covered by the capture (spec D1 fresh/running split).
+            created.ingesting = false;
+            session = created;
+        } else {
+            // ── No-tmux fallback: unchanged v1 pty path ──────────────────────
+            const proc = pty.spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env });
+            // There IS no attach path here — reaching this point always means a
+            // brand-new shell, so injecting the startup command as pty input is
+            // safe (the kernel pty buffers it until the shell reads). '\r' = Enter.
             const startup = normalizeStartupCommand(opts.startupCommand);
             if (startup) {
                 try { proc.write(startup + '\r'); } catch { /* best-effort */ }
             }
+            const created = new TerminalSession(id, { kind: 'pty', pty: proc }, undefined, cols, rows);
+            proc.onData((data) => {
+                if (this.terminals.get(id) !== created) return;
+                const chunk = created.ingest(Buffer.from(data, 'utf8'));
+                this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
+                this.noteActivity();
+            });
+            proc.onExit(({ exitCode }) => {
+                if (this.terminals.get(id) !== created) return;
+                this.terminals.delete(id);
+                this.snapshots.drop(id);
+                created.dispose();
+                this.emit('terminal-exit', { terminalId: id, exitCode });
+                this.kickListRefresh();
+            });
+            session = created;
         }
 
-        const session = new TerminalSession(id, proc, tmuxSession, cols, rows);
         session.subscribers = 1;
         this.terminals.set(id, session);
 
@@ -1525,42 +1830,211 @@ export class WebTerminalManager {
         // title-writing code path to keep consistent.
         session.onTitleChange(() => this.kickListRefresh());
 
-        // Every pty chunk: ingest into the authoritative screen + ring (assigning
-        // a seq), then relay to subscribers tagged with that seq. The guard
-        // ensures a stale pty replaced by a re-attach can't emit for this id.
-        proc.onData((data) => {
-            if (this.terminals.get(id) !== session) return;
-            const b64 = Buffer.from(data, 'utf8').toString('base64');
-            const seq = session.ingest(data, b64);
-            this.emit('terminal-output', { terminalId: id, data: b64, seq });
-            // Realtime sidebar ordering: `ingest` just stamped lastOutputAt —
-            // tell the clients about it (throttled; see noteActivity).
-            this.noteActivity();
-        });
-        proc.onExit(({ exitCode }) => {
-            if (this.terminals.get(id) !== session) return;
-            this.terminals.delete(id);
-            session.dispose();
-            this.emit('terminal-exit', { terminalId: id, exitCode });
-            // The tmux session usually died with its client (shell exit) —
-            // refresh the tracked list so the terminal vanishes everywhere.
-            this.kickListRefresh();
-        });
-
-        logger.debug(`[WEB TERMINAL] opened ${id} (${file} ${args.join(' ')}) ${cols}x${rows} cwd=${cwd}`);
+        logger.debug(`[WEB TERMINAL] opened ${id} (${tmuxSession ? 'control' : 'pty'}) ${cols}x${rows} cwd=${cwd}`);
         // Membership may have changed (a genuinely new tmux session) — let the
         // tracker see it now instead of at the next tick.
         this.kickListRefresh();
-        // A brand-new session has an empty screen — always a (trivial) snapshot.
-        const state = session.subscribeState(undefined);
-        return { terminalId: id, tmuxSession, ...state };
+
+        if (session.transport.kind !== 'control') {
+            // Fallback shell: nothing to capture, the screen starts empty.
+            const state = session.subscribeState(undefined);
+            return { terminalId: id, tmuxSession, ...state, ...(lines ? { streamMode: 'lines' as const } : {}) };
+        }
+        // The opening capture doubles as the ingest anchor, so it runs for BOTH
+        // client generations — an old web still needs the headless primed (its
+        // snapshot is a serialize() of it).
+        const restored = await this.captureRestore(session, true);
+        if (!lines) {
+            const state = session.subscribeState(undefined);
+            return { terminalId: id, tmuxSession, ...state };
+        }
+        return this.linesResponse(id, session, restored);
     }
 
+    /**
+     * Run the opening/catch-up capture for a control session and prime the
+     * daemon's own screen with it. SINGLE-FLIGHT per terminal: concurrent opens
+     * and catch-ups share one capture, so two clients can never be handed
+     * snapshots taken at different instants (which would duplicate scrollback
+     * and reorder history — R3's推演).
+     */
+    private captureRestore(session: TerminalSession, fresh: boolean): Promise<RestoreOutcome> {
+        const inFlight = this.captureInFlight.get(session.id);
+        if (inFlight) return inFlight;
+        const run = this.runCaptureBatch(session, fresh)
+            .finally(() => this.captureInFlight.delete(session.id));
+        this.captureInFlight.set(session.id, run);
+        return run;
+    }
+
+    private async runCaptureBatch(session: TerminalSession, fresh: boolean): Promise<RestoreOutcome> {
+        if (session.transport.kind !== 'control') throw new Error('capture requires a control client');
+        const { client } = session.transport;
+        // `:.0` = first pane of the session's current window — the pane this
+        // terminal follows (single-pane declaration).
+        const batch = buildCaptureBatch({
+            paneTarget: `=${session.tmuxSession}:.0`,
+            historyLines: HEADLESS_SCROLLBACK,
+            smallLines: SNAPSHOT_SCROLLBACK,
+            cols: session.cols,
+            rows: session.rows,
+        });
+        // Read at the ANCHOR, synchronously (see ControlClient.onBlock): every
+        // %output after this point is NOT in the capture, and everything before
+        // it is.
+        let seqAtAnchor = session.seq;
+        const requests = batch.map((c) => ({
+            command: c.command,
+            label: c.key,
+            onBlock: c.key === 'anchor'
+                ? () => {
+                    seqAtAnchor = session.seq;
+                    // A fresh client starts ingesting exactly here.
+                    if (fresh) session.ingesting = true;
+                }
+                : undefined,
+        }));
+        let bodies: Buffer[];
+        try {
+            bodies = await client.send(requests, CAPTURE_TIMEOUT_MS);
+        } catch (e) {
+            // Never leave the client half-alive on a wedged capture: kill it so
+            // the next open starts from a clean transport, and hand the client
+            // a contract error instead of an eternal "connecting".
+            logger.debug(`[WEB TERMINAL] capture batch failed for ${session.id}: ${e}`);
+            if (fresh) {
+                this.terminals.delete(session.id);
+                session.dispose();
+            }
+            throw new Error(TERMINAL_OPEN_TIMEOUT);
+        }
+        const byKey: Partial<Record<CaptureKey, Buffer>> = {};
+        batch.forEach((c, i) => { byKey[c.key] = bodies[i]; });
+        const paneState = parsePaneState((byKey.panes ?? Buffer.alloc(0)).toString('utf8'));
+        if (paneState) session.paneId = paneState.paneId;
+        // `-C` octal-escapes the unfinished-escape tail; the decoder owns that
+        // primitive, this is its only other consumer.
+        const payload = assembleRestore({ ...byKey, tail: unescapeOctal(byKey.tail ?? Buffer.alloc(0)) }, paneState);
+        if (fresh) {
+            // Prime the daemon's authoritative screen: agentState's zero-
+            // subprocess path and an old web's serialize() snapshot both read it.
+            session.restoreHeadless(payload.full);
+        }
+        // ONE handle per capture (see RestoreOutcome.snapshotId).
+        const handle = this.snapshots.put(session.id, payload.full);
+        return { ...payload, seqAtAnchor, paneState, ...handle };
+    }
+
+    /** Build the lines-mode open response from a completed capture. */
+    private linesResponse(id: string, session: TerminalSession, restored: RestoreOutcome): OpenTerminalResult {
+        logger.debug(`[WEB TERMINAL] lines open ${id}: seq=${restored.seqAtAnchor} small=${restored.small.length}B full=${restored.full.length}B pages=${restored.totalPages} alt=${restored.alternateOn}`);
+        return {
+            terminalId: id,
+            tmuxSession: session.tmuxSession,
+            seq: restored.seqAtAnchor,
+            mode: 'snapshot',
+            data: restored.small.toString('base64'),
+            streamMode: 'lines',
+            snapshotId: restored.snapshotId,
+            totalPages: restored.totalPages,
+            alternateOn: restored.alternateOn,
+        };
+    }
+
+    /** Catch-up on a RUNNING control client (ring miss / forced snapshot). */
+    private async linesSnapshotResponse(id: string, session: TerminalSession): Promise<OpenTerminalResult> {
+        const restored = await this.captureRestore(session, false);
+        return this.linesResponse(id, session, restored);
+    }
+
+    /**
+     * One page of a terminal's held history snapshot. Pages never touch the
+     * ring, the headless screen or the seq counter — the deep history is a
+     * completely separate transport from the live stream.
+     */
+    getHistoryPage(terminalId: string, snapshotId: string, page: number): TerminalHistoryPage {
+        const session = this.terminals.get(terminalId);
+        if (session) session.lastTouch = Date.now();
+        return this.snapshots.getPage(terminalId, snapshotId, page);
+    }
+
+    /**
+     * Client keystrokes → the pane. With no pty to write into, a control
+     * session encodes the bytes as tmux `send-keys` commands (three channels:
+     * literal ASCII / Unicode code points / `-H` hex for C0) and pushes them
+     * down the SAME stdin FIFO the capture uses, so ordering against paste and
+     * everything else is free.
+     *
+     * The encoder also drops the terminal's own AUTO-REPLIES (DA/DSR/OSC 10-11):
+     * tmux answers those queries itself and passes the query through to us, so
+     * the browser's xterm dutifully answers a second time — in v1 tmux's input
+     * parser ate that echo, in v2 send-keys would deliver it straight into the
+     * application's stdin as garbage input.
+     */
     write(terminalId: string, dataBase64: string) {
         const session = this.terminals.get(terminalId);
         if (!session) return;
         session.lastTouch = Date.now();
-        session.pty.write(Buffer.from(dataBase64, 'base64').toString('utf8'));
+        const text = Buffer.from(dataBase64, 'base64').toString('utf8');
+        if (session.transport.kind === 'pty') {
+            session.transport.pty.write(text);
+            return;
+        }
+        const target = session.paneId ?? `=${session.tmuxSession}:.0`;
+        // `normalizeKeyNames` ON (spec D1b says three channels; this is the one
+        // deviation, taken because the spec's own hard gate demands it). The
+        // v1 attach client was never a byte pipe: it DECODED bytes into keys and
+        // re-encoded them with the pane's terminfo, and Home/End are exactly
+        // where xterm's encoding (ESC[H / ESC[F) and tmux's (ESC[1~ / ESC[4~)
+        // disagree. Injecting raw bytes made 4 of the 142 harness cases differ
+        // from v1; sending the tmux KEY NAME for those four restores 142/142.
+        const { commands, dropped } = encodeTerminalWrite(text, target, { normalizeKeyNames: true });
+        if (dropped) {
+            logger.debug(`[WEB TERMINAL] dropped terminal auto-reply for ${terminalId}`);
+            return;
+        }
+        if (commands.length === 0) return;
+        session.transport.client.sendFireAndForget(commands.map((c) => c.line));
+    }
+
+    /**
+     * Paste text into the pane (B-013 presets, the mirror input bar, and the
+     * web's own paste in lines mode). NOT send-keys: when the application has
+     * bracketed paste (2004) enabled — Claude Code does — synthesized keystrokes
+     * arrive unwrapped and a multi-line paste executes line by line. tmux's
+     * `paste-buffer -p` wraps according to the pane's REAL 2004 state.
+     *
+     * The buffer is loaded from a temp file, not stdin: in control mode stdin IS
+     * the command channel, and `load-buffer -` fails with "Bad file descriptor"
+     * (measured). Same FIFO as send-keys ⇒ "paste, then Enter" cannot land out
+     * of order, which the v1 two-executor path could not guarantee.
+     */
+    async paste(terminalId: string, text: string): Promise<void> {
+        const session = this.terminals.get(terminalId);
+        if (!session) throw new Error('terminal-gone');
+        session.lastTouch = Date.now();
+        if (session.transport.kind === 'pty') {
+            // Fallback shell: there is no tmux buffer to paste through. Writing
+            // the text as input is exactly what v1 did for this path.
+            session.transport.pty.write(text);
+            return;
+        }
+        const target = session.paneId ?? `=${session.tmuxSession}:.0`;
+        const plan = buildPastePlan(text, target, { dir: pasteSpoolDir() });
+        writeFileSync(plan.path, plan.bytes, { mode: 0o600 });
+        try {
+            // toControlStdin is the guard, not the transport: it throws on a
+            // blank or newline-carrying line (= detach) before anything is sent.
+            toControlStdin(plan.commands);
+            session.transport.client.sendFireAndForget(plan.commands.map((c) => c.line));
+        } finally {
+            // tmux reads the file when it runs load-buffer, which is ordered
+            // behind our write on the same FIFO — but the unlink races that
+            // read, so it is deferred by a tick rather than done inline.
+            setTimeout(() => {
+                try { unlinkSync(plan.path); } catch { /* already gone */ }
+            }, PASTE_FILE_TTL_MS).unref?.();
+        }
     }
 
     resize(terminalId: string, cols: number, rows: number) {
@@ -1570,17 +2044,25 @@ export class WebTerminalManager {
         this.applyResize(session, cols, rows);
     }
 
-    /** Resize the pty AND the authoritative headless screen together, so a later
-     *  snapshot matches the real geometry. Multiple tabs subscribed to one
-     *  terminal all drive the same pty — we simply take the LAST resize (tmux is
-     *  single-size anyway); there's no per-subscriber geometry to reconcile. */
+    /** Resize the transport AND the authoritative headless screen together, so a
+     *  later snapshot matches the real geometry. Multiple tabs subscribed to one
+     *  terminal all drive the same tmux window — we simply take the LAST resize
+     *  (tmux is single-size anyway); there's no per-subscriber geometry to
+     *  reconcile. For a control client the declaration IS `refresh-client -C`:
+     *  a client that never sends it doesn't participate in the window size at
+     *  all (which is the door the spec leaves open for "phone mirrors without
+     *  squeezing the desktop" — not implemented in this batch). */
     private applyResize(session: TerminalSession, cols: number, rows: number) {
         const c = Math.max(2, Math.floor(cols));
         const r = Math.max(2, Math.floor(rows));
-        try {
-            session.pty.resize(c, r);
-        } catch (e) {
-            logger.debug(`[WEB TERMINAL] resize ${session.id} failed: ${e}`);
+        if (session.transport.kind === 'pty') {
+            try {
+                session.transport.pty.resize(c, r);
+            } catch (e) {
+                logger.debug(`[WEB TERMINAL] resize ${session.id} failed: ${e}`);
+            }
+        } else if (c !== session.cols || r !== session.rows) {
+            session.transport.client.sendFireAndForget([`refresh-client -C ${c}x${r}`]);
         }
         session.resizeHeadless(c, r);
     }
@@ -1606,8 +2088,22 @@ export class WebTerminalManager {
         const session = this.terminals.get(terminalId);
         if (!session) return;
         this.terminals.delete(terminalId);
+        this.snapshots.drop(terminalId);
+        this.captureInFlight.delete(terminalId);
         session.dispose();
-        logger.debug(`[WEB TERMINAL] detached pty ${terminalId} (tmux session survives)`);
+        logger.debug(`[WEB TERMINAL] detached ${terminalId} (tmux session survives)`);
+    }
+
+    /** Stop every live session (test teardown / daemon shutdown). Control
+     *  clients get the SIGTERM→SIGKILL discipline, so no tmux child is left
+     *  behind when the daemon goes away. */
+    disposeAll(): void {
+        for (const id of [...this.terminals.keys()]) this.detach(id);
+    }
+
+    /** How many terminals hold a live transport right now (cap/diagnostics). */
+    liveSessionCount(): number {
+        return this.terminals.size;
     }
 
     /** Permanently destroy the terminal: detach the pty AND kill the tmux
@@ -1709,7 +2205,7 @@ export class WebTerminalManager {
                     // tmux last-activity (epoch s) → ms; optional so old daemons
                     // simply omit it and web clients fall back to createdAt.
                     activityAt: s.activity,
-                    agentState: this.probeAgentState(s.name),
+                    agentState: this.probeAgentState(s.name, s.paneCurrentCommand),
                 });
             }
             return out;
@@ -1725,13 +2221,17 @@ export class WebTerminalManager {
      *  the old path spawned 2 tmux procs EACH (2×N per refresh) — now a terminal
      *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
      *  (pty reaped / never attached) fall back to the tmux probe. */
-    private probeAgentState(sessionName: string): AgentState | undefined {
+    private probeAgentState(sessionName: string, polledCommand?: string): AgentState | undefined {
         const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
         const live = this.terminals.get(id);
         if (live) {
             try {
                 const { command, tail } = live.agentProbeInput();
-                return classifyPane(command, tail);
+                // B-121: a control-mode session has no pty, so `command` is
+                // empty — the same list-sessions read that produced this line
+                // carries `#{pane_current_command}` instead (≤ one tick old).
+                // The pty value still wins when there IS one (no-tmux fallback).
+                return classifyPane(command || polledCommand || '', tail);
             } catch { /* fall through to the tmux probe */ }
         }
         return this.probeAgentStateViaTmux(sessionName);

@@ -1,0 +1,22 @@
+%begin 1786940450 284 0
+%end 1786940450 284 0
+%session-changed $0 golden
+%window-renamed @0 bash
+%begin 1786940451 290 1
+%end 1786940451 290 1
+%begin 1786940451 291 1
+%end 1786940451 291 1
+%output %0 echo 中
+%output %0 文测试 你好世界\015\012
+%output %0 中文测试 你好世界\015\012vh$ 
+%begin 1786940452 292 1
+%end 1786940452 292 1
+%begin 1786940452 293 1
+%end 1786940452 293 1
+%output %0 stty raw -echo; cat
+%output %0  /tmp/vh-golden-cjk.bin; stty sane\015\012
+%output %0 中文测试 —— 你好，世界！絵文字 🌏🐟 混排 ok\012
+%output %0 vh$ 
+%begin 1786940453 294 1
+%end 1786940453 294 1
+%exit

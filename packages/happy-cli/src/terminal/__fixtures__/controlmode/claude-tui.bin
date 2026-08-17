@@ -1,0 +1,38 @@
+%begin 1786940500 284 0
+%end 1786940500 284 0
+%session-changed $0 golden
+%window-renamed @0 bash
+%begin 1786940500 290 1
+%end 1786940500 290 1
+%begin 1786940500 291 1
+%end 1786940500 291 1
+%output %0 command -v claude\015\012
+%output %0 /Users/jojo/.local/bin/claude\015\012vh$ 
+%begin 1786940501 292 1
+%end 1786940501 292 1
+%begin 1786940501 293 1
+%end 1786940501 293 1
+%output %0 cl
+%output %0 aude\015\012
+%output %0 \0337\033[r\0338\033[?25h
+%output %0 \033[?25l
+%output %0 \033[?2004h\033[?1004h
+%output %0 \033[?2031h
+%output %0 \033[<u\033[>1u\033[>4;2m
+%output %0 \015\015\012\033[38;5;220m────────────────────────────────────────────────────────────────────────────────\033[39m\015\015\012\033[2G\033[38;5;220m\033[1mAccessing\033[12Gworkspace:\033[22m\033[39m\015\015\012\015\015\012\033[2G\033[1m/private/tmp\033[22m\015\015\012\015\015\012\033[2GQuick\033[8Gsafety\033[15Gcheck:\033[22GIs\033[25Gthis\033[30Ga\033[32Gproject\033[40Gyou\033[44Gcreated\033[52Gor\033[55Gone\033[59Gyou\033[63Gtrust?\033[70G(Like\033[76Gyour\015\015\012\033[2Gown\033[6Gcode,\033[12Ga\033[14Gwell-known\033[25Gopen\033[30Gsource\033[37Gproject,\033[46Gor\033[49Gwork\033[54Gfrom\033[59Gyour\033[64Gteam).\033[71GIf\033[74Gnot,\015\015\012\033[2Gtake\033[7Ga\033[9Gmoment\033[16Gto\033[19Greview\033[26Gwhat's\033[33Gin\033[36Gthis\033[41Gfolder\033[48Gfirst.\015\015\012\015\015\012\033[2GClaude\033[9GCode'll\033[17Gbe\033[20Gable\033[25Gto\033[28Gread,\033[34Gedit,\033[40Gand\033[44Gexecute\033[52Gfiles\033[58Ghere.\015\015\012\015\015\012\033[2G\033]8;id=zaxmda;https://code.claude.com/docs/en/security\007\033[38;5;246mSecurity guide\033[39m\033]8;;\007\015\015\012\015\015\012\033[2G\033[38;5;153m❯\033[4G\033[38;5;246m1.\033[7G\033[38;5;153mYes,\033[12GI\033[14Gtrust\033[20Gthis\033[25Gfolder\033
+%output %0 [39m\015\015\012\033[4G\033[38;5;246m2.\033[7G\033[39mNo,\033[11Gexit\015\015\012\015\015\012\033[2G\033[38;5;246mEnter\033[8Gto\033[11Gconfirm\033[19G·\033[21GEsc\033[25Gto\033[28Gcancel\033[39m\015\015\012\033[1C\033[4A
+%output %0 \033[>0q
+%output %0 \033[c
+%output %0 \033[?2026$p\033[c
+%window-renamed @0 2.1.233
+%begin 1786940504 297 1
+%end 1786940504 297 1
+%output %0 \033[?2026h\033[1D\033[4B\015\033[1C\033[1A\033[38;5;246mPress\033[8GCtrl-C again\033[21Gto exit\033[39m\033[K\015\015\012\033[1C\033[4A\033[?2026l
+%output %0 \033[?2026h\033[1D\033[4B\015\033[1C\033[1A\033[38;5;246mEnter\033[8Gto confirm ·\033[21GEsc to cancel\033[39m\015\015\012\033[1C\033[4A\033[?2026l
+%begin 1786940506 298 1
+%end 1786940506 298 1
+%output %0 \033[?2026h\033[1D\033[4B\015\033[1C\033[1A\033[38;5;246mPress\033[8GCtrl-C again\033[21Gto exit\033[39m\033[K\015\015\012\033[1C\033[4A\033[?2026l
+%output %0 \033[?2026h\033[1D\033[4B\015\033[1C\033[1A\033[38;5;246mEnter\033[8Gto confirm ·\033[21GEsc to cancel\033[39m\015\015\012\033[1C\033[4A\033[?2026l
+%begin 1786940508 299 1
+%end 1786940508 299 1
+%exit

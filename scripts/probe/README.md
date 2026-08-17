@@ -107,6 +107,95 @@ Enter 也执行不了任何东西。`--no-prep` 关掉这层保护（不建议�
   Ctrl+K 会弹出命令面板并夺走焦点，Ctrl+J 静默吞掉。Linux/Windows 上 Ctrl+K/J
   作为 app 和弦是合理的 ⇒ 修法多半是 `isMac ? metaKey : ctrlKey`。
 
+## term-sendkeys-bytecmp.mjs —— pane 侧字节捕获对跑（B-121 写入端硬门）
+
+终端通道 v2（`specs/2026-08-terminal-channel-v2.md` §D1b）的**硬门**：daemon 写入端
+从 `pty.write()` 换成 tmux `send-keys` 命令化之后，**pane 侧真正落到程序 stdin 的
+字节**必须与现状一致。
+
+> ⚠️ **为什么不能拿上面那个 goldendiff 当门**（spec 盲审 A3）：它比的是 web 侧两条
+> 输入路径的 `emitted`，而这两条路径在 daemon→pane 那一段走的是同一个
+> `daemon.write()` —— **恒等 = 假绿**。v2 换掉的正是那一段，所以比对面必须挪到
+> pane 侧。
+
+```sh
+node scripts/probe/term-sendkeys-bytecmp.mjs             # 完整 142 用例（约 2.7 分钟）
+node scripts/probe/term-sendkeys-bytecmp.mjs --normalize # 打开 Home/End 键名归一
+node scripts/probe/term-sendkeys-bytecmp.mjs --keep-prefix
+node scripts/probe/term-sendkeys-bytecmp.mjs --filter 'Ctrl' -v
+```
+
+**退出码**：`0` 全一致 · `1` 有差异 · `2` 跑不出结论（子集跑、用例数不是 142、
+control 通道报错、两边都空超过 20%）。**2 绝不当 0 用**，同上面那条纪律。
+
+### 怎么比
+
+4 条泳道 = 2 条写入端 × DECCKM 两态，各自一个**隔离** tmux 会话：
+
+| 泳道 | 写入端 | 等价于 |
+|---|---|---|
+| attach | node-pty 起 `tmux attach-session -d`，`pty.write(bytes)` | v1 现状（`webTerminal.ts` 的 `write()`） |
+| sendkeys | `tmux -C attach-session`（control mode，pipe）+ `encodeSendKeys()` 命令行 | v2 |
+
+pane 压成**落文件**的字节水槽（`stty raw -echo -isig -ixon; cat > <file>`——goldendiff
+那边是 `> /dev/null`，这里必须落盘才能比对），逐用例采样新增字节，**逐字节比对**。
+
+142 条输入字节序列**直接 import** `term-input-goldendiff.mjs` 的 `buildScanTable()`
+（71 项）与 `refEncode()`（用例 + DECCKM → VT 字节）——**这套表只能有一份实现，
+不许各抄一遍**。repo 里没有落盘 golden，字节由 `refEncode` 现算；它在这里只是
+**激励生成器**，不是期望值（期望值永远是"另一条路径收到的字节"）。
+
+### 隔离纪律（本机是 mac-office，默认 socket 上是生产）
+
+所有 tmux 调用都经脚本里的 `tx()` 强制注入 `-L b121-p0b`，一次都不碰默认 socket 上
+Owner 的生产 daemon 与真实 `vh-*` 工作会话。`finally` 与 SIGINT 都 `kill-server`。
+
+### 血泪（三条都是第一轮实跑换来的，改脚本前先读）
+
+- **v1 的 attach client 不是透明字节管道**：它把字节**解成键、再按 pane 的
+  模式/terminfo 重新编码**。所以 DECCKM 必须**在 pane 上真的对齐**（deckm=on 的
+  泳道水槽写成 `printf '\033[?1h'; cat > f`，并用 `#{keypad_cursor_flag}` 断言），
+  否则喂 `ESC O A` 会被重编码成 `ESC [ A`，凭空造出十几条"差异"，全是 harness 自己的锅。
+- **孤立 ESC 在旧路径上迟到约 500ms**（tmux client 的 partial-key 超时；实测 400ms
+  还没到、1000ms 到）。采样的静默窗口必须比它长，否则 ESC 漏进**下一条用例**的
+  样本，一错错一串（症状：`off|Escape` 空、`on|F1` 多一个 `1b`）。现在 attach 泳道
+  750ms、sendkeys 泳道 250ms。慢是应该的——这是硬门，不是 CI。
+- **tmux 默认 prefix `C-b` 会吃掉扫描表里的 `Ctrl+b`**，还会把紧随其后的键当 tmux
+  命令解释（可能开窗/detach 污染整轮）。默认两条泳道都 `set prefix None`；
+  `--keep-prefix` 用来复现并量化那条差异。
+
+### 首轮结果（2026-08-17，mac-office，tmux 3.7b，Node v26.7.0）
+
+- 默认（spec 定稿的三通道）：**138/142 一致，4 条差异，exit 1**。差异全在 Home/End：
+  web 发 `ESC[H`/`ESC[F`（DECCKM 态 `ESCOH`/`ESCOF`），v1 的 pane 收到 tmux 编码的
+  `ESC[1~`/`ESC[4~`，v2 原样注入收到 `ESC[H`/`ESC[F`。
+- `--normalize`（打开 `encodeSendKeys` 的 `normalizeKeyNames`，这 4 条序列改发 tmux
+  键名 `send-keys -t <pane> Home`）：**142/142 一致，exit 0**。
+- 其余 138 条（F1–F12、方向键 ×4 修饰、PageUp/Down、Insert/Delete/Backspace、
+  Ctrl+a..z、Ctrl 标点 6、Tab/Shift+Tab/Enter/Escape）两条路径**逐字节相同**。
+- `--keep-prefix`（保留默认 prefix `C-b`，= 生产 `vh-*` 会话的真实配置）：
+  **134/142，8 条差异** = 上面 4 条 + `Ctrl+b`/`Ctrl+c` 各两态。旧路径下 `Ctrl+b`
+  被 attach client 当前缀吃掉（pane 收 0 字节），紧随其后的 `Ctrl+c` 作为「前缀后
+  的未绑定键」也被吃掉；新路径下两者都原样到 pane。**这是产品可见的行为变化**：
+  一方面 `Ctrl+b`（readline backward-char）在今天的 web 终端里其实是坏的、v2 修好了；
+  另一方面 `webTerminal.ts` 注释里写的「深 tmux 历史仍可用键盘 copy-mode（prefix + [）
+  抵达」这条逃生口在 v2 下**失效**（键不再进 tmux 客户端）。
+
+`normalizeKeyNames` 默认关（spec §D1b 定稿写死三通道，键名归一算设计变更），开关与
+实测表在 `packages/happy-cli/src/terminal/sendKeysEncoding.ts` 的
+`TMUX_KEY_NAME_ALIASES` 注释里。
+
+### 已知盲区
+
+- 只覆盖**非文本键**（扫描表的边界）。可打印字符、IME 提交串、CJK/emoji 由
+  `sendKeysEncoding.test.ts` 的纯函数用例覆盖，没在这条真 pane 链路上跑过。
+- 粘贴（`load-buffer`+`paste-buffer -p`）不在这 142 里；它的 2004 包裹行为在
+  spec §D1b 的实测记录与模块注释里，端到端验收另计。
+- 只在 macOS + tmux 3.7b 上跑过。**3.6b 没有可用二进制**（Homebrew Cellar 只剩
+  3.7b），而生产默认 socket 上的 server 仍是 3.6b 代码——`-H` 的裸字节语义、
+  `0xNNNN` 码点语义在 3.6b 上未复验。
+- 两条路径同时坏成一样不会被发现（同 goldendiff 的老盲区）。
+
 ## term-focus-handoff.mjs —— 点击后的焦点交接（`?input=own` 的最高真机风险）
 
 自有输入元素是 `pointer-events:none`（不能挡住光标附近的拖选，spec §R6），所以点终端
@@ -128,3 +217,78 @@ node scripts/probe/term-focus-handoff.mjs        # 5 个位置各点一次
 开跑前就存在的会话）—— 这套闸只能有一份实现，不许各抄一遍。
 
 退出码：`0` 全通过 · `1` 有断言失败 · `2` 跑不出结论。
+
+## tmux-control-golden.mjs —— control mode 金样本录制（B-121 Phase 0a）
+
+`packages/happy-cli/src/terminal/controlModeDecoder.ts`（tmux control mode 按字节
+增量解码器）的回放样本来源。样本落 `packages/happy-cli/src/terminal/__fixtures__/controlmode/`，
+测试 `controlModeDecoder.test.ts` 逐字节回放 + 随机切分点重放。
+
+```sh
+node scripts/probe/tmux-control-golden.mjs                    # record + bless 全部
+node scripts/probe/tmux-control-golden.mjs record --only cjk  # 只重录一个场景
+node scripts/probe/tmux-control-golden.mjs bless              # 按现有 .bin 重算 expected
+node scripts/probe/tmux-control-golden.mjs --list
+```
+
+### 每个场景三个文件
+
+| 文件 | 内容 | 谁产生 |
+|---|---|---|
+| `<name>.bin` | control client stdout 的**原始字节** | tmux |
+| `<name>.truth.json` | 录制环境 + **与解码器无关**的断言（喂进 pane 的确切字节 sha、必须出现的标记、块形态） | 录制脚本 |
+| `<name>.expected.json` | 事件摘要（回归基线） | 解码器自己 |
+| `<name>.embedded.bin` | 喂进 pane 的确切字节（binary/cjk 场景） | 录制脚本 |
+
+`.expected.json` 是解码器算的 —— 单看它等于自证。所以 **`bless` 只在 `.truth.json`
+的独立断言全过时才肯写**（binary 场景的 2048 字节 urandom 必须在解出的输出里**连续
+原样**出现；burst 场景 1..5000 必须按序全在；altscreen 必须有 `\033[?1049h/l`；
+commands 必须有 `%error` 块、块体里的假 `%end 1 2 3` 必须没有提前关块、块体里必须有
+**裸 ESC**）。真正的回归价值来自「同一 `.bin` 任意切分点重放结果必须一致」。
+
+### 场景
+
+| 场景 | 覆盖 |
+|---|---|
+| `shell` | 普通会话、prompt 重绘、SGR、tab |
+| `cjk` | 中文/emoji（含 tmux 把多字节切在两条 %output 之间的真实情况） |
+| `altscreen` | less 进出 alt 屏，`\033[?1049h/l` 原样透传 |
+| `burst` | `seq 1 5000`，合并 %output 与长行 |
+| `binary` | 2048 字节 urandom，非法 UTF-8 不被破坏 |
+| `commands` | capture-pane / list-panes / refresh-client / %error 块 / 块体内假 `%end` / 块体裸 ESC |
+| `claude-tui` | 真实 claude TUI 片段（不提交 prompt、不调 API），含 DA/DSR 查询序列 |
+
+### 字节精确的前提：`stty raw` 必须和载荷同一行
+
+`stty raw -echo; cat x.bin; stty sane` —— 交互式 bash/sh 每次出提示符都会把 termios
+按 readline 的意思重设，**单独一行的 `stty raw` 在载荷命令跑之前就被撤销了**。同一行
+才能让 OPOST 关着（无 LF→CRLF 翻译）跑完载荷。
+
+### 纪律：隔离 socket
+
+全程 `tmux -L b121-p0a`，**绝不碰默认 socket 上的生产 `vh-*` 会话**（mac-office 上跑着
+Owner 的生产 daemon 和真实工作会话）。`finally` 与 SIGINT 都 `kill-server`。
+
+### 版本注记
+
+样本录自 **tmux 3.7b**（客户端 3.7b，隔离 socket 上的 server 也是 3.7b）。默认 socket
+上的现役 server 仍是 3.6b 代码，3.6b 二进制已不在本机；主 agent 2026-08-17 用 3.6b
+现役 server 与 3.7b 隔离 socket 双跑同一批命令，**协议行结构逐行一致**（只有 session/
+pane/命令编号不同）。解码器不得依赖任何版本特有形状。
+
+### 血泪
+
+- **`flags` 不是「greeting 标记」**：`cmd-queue.c` 的 `flags = !!(state->flags &
+  CMDQ_STATE_CONTROL)`，而 `CMDQ_STATE_CONTROL` 只在 `control.c:control_read_callback`
+  （命令来自本 client 的 stdin）设置。所以 flags=0 的块除了 attach greeting，**还包括
+  tmux hook 触发的命令块**（实测：`set-hook -g after-set-option 'display-message …'`
+  会在流中间插一个 flags=0 的块）。按「下一个块配下一条命令」而不看 flags，在任何配了
+  hook 的机器上都会错位。
+- **块体里可以出现长得像 `%end` 的行**：`set-buffer -b g "before\n%end 1 2 3\nafter"` +
+  `show-buffer` 实测复现。只能按 (epoch, cmdNum) 精确配对。
+- **两种编码并存**：`%output` 载荷是八进制转义（`<0x20` 与 `\` 转成 `\ooo`，`>=0x80`
+  原样），`%begin` 块体是**裸字节**（ESC 不转义）。`capture-pane -C` 的转义规则与
+  `%output` **逐字节相同**（`cmd-capture-pane.c:93` 与 `control.c:control_append_data`
+  同一条判据），所以 `unescapeOctal()` 一份实现两处用。
+- **行尾是裸 LF 不是 CRLF**（管道传输，tmux 用 `EVBUFFER_EOL_LF` 读写）。
+- **向 control client 的 stdin 写空行 = detach**：脚本的 `send()` 里有硬断言挡着。
