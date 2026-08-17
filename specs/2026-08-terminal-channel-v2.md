@@ -1,6 +1,9 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：**Final**（v6——四轮对抗 review（R1:3B+8M / R2:抓自引入 2B+capture 语义实证反转
+> 状态：**Shipped**（2026-08-17，merge `d0e33d1d` + `1e7fd7e3`；实现批四阶段
+> 0a 解码器 / 0b 写入端 / 1 daemon / 2 web，门禁与实测见「实施纪要」节；
+> 真机验收项 V-061..067 待 Owner 清账）
+> 原状态：**Final**（v6——四轮对抗 review（R1:3B+8M / R2:抓自引入 2B+capture 语义实证反转
 > / R3:抓空洞 / R4:限域判 Final-with-edits）+ 实现者视角盲审补 5 处返工级缺口（粘贴
 > load-buffer stdin 实测证伪→临时文件路径、capture 双份全发+锚点统一批末、B-096 硬门
 > 假绿→pane 侧字节捕获 harness、预算行边界截断、open 超时契约）。可零返工开工；
@@ -349,6 +352,16 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
   `tmux attach` 与 web 并存的行为变化写入验收。
 
 ## 实施纪要（2026-08-17 实现批回写；spec 与现实冲突以本节为准）
+
+### 0. 验收实测数字（本机，隔离 tmux server）
+
+| 项 | spec 口径 | 实测 |
+|---|---|---|
+| 打字延迟（daemon 收 input → 命令落 control stdin，200 次） | 上界 <5ms | 中位 **0.005ms** / p95 0.019ms / 最大 0.405ms |
+| 出 ring 重连（5000 行历史） | 要求实测 | capture+小快照 **49ms**、全量 190KB / 2 页、小快照 12.9KB、daemon 侧取页 ~0ms |
+| 写入端 pane 侧字节比对（142 用例 × 新旧两条写入端） | 硬门：逐字节一致 | **142/142 一致，退出码 0**（生产配置：`normalizeKeyNames` 开） |
+| 解码器金样本 | 硬门：逐字节回放 | 7 组真机样本（含 CJK/alt/burst 5000 行/二进制/命令块/claude TUI）全过 |
+| 3.6b 现役 server 上的三通道 + 归一化 + 粘贴 | 盲区补测 | ASCII/CJK 码点/emoji/C0/混合/Home·End/单引号/临时文件粘贴 **全部一致** |
 
 实现中实测推翻/收紧了 5 处设计描述，另有 4 处实现选择与 spec 字面不同但更优，
 按 PROCESS.md 铁律回写在此（本节晚于上文，冲突时以本节为准）。
