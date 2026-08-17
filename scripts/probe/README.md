@@ -196,6 +196,31 @@ Owner 的生产 daemon 与真实 `vh-*` 工作会话。`finally` 与 SIGINT 都 
   `0xNNNN` 码点语义在 3.6b 上未复验。
 - 两条路径同时坏成一样不会被发现（同 goldendiff 的老盲区）。
 
+## term-lines-e2e.mjs —— 终端通道 v2（B-121）的真站 E2E 冒烟
+
+「手机滑动跟手」是手感、只能真机验（V-061）；但它成立的**技术前提**是可自动判定的，
+这个脚本就钉那三条：
+
+```sh
+node scripts/probe/term-lines-e2e.mjs                 # 期望 lines 轨（新 web + 新 daemon）
+node scripts/probe/term-lines-e2e.mjs --expect attach # 期望回退轨（新 web + 老 daemon 象限）
+```
+
+| 断言 | v1 下的值 | v2 期望 |
+|---|---|---|
+| `.term-host` 有 `--lines` class（= open 协商到 `streamMode:'lines'`） | 无 | 有 |
+| xterm `buffer.active.type` | `alternate`（tmux attach 全屏镜像） | `normal` |
+| `buffer.baseY` / `length`（本地 scrollback） | 恒 0 / = rows | > 0 / > rows |
+| `term.scrollLines(-50)` 后 `viewportY` 位移（零 RPC） | 恒不动 | 变小 |
+| 移动端 `touch-action`（**必须在粗指针模拟下读**） | `none` | `pan-y`（alt 轨仍 `none`） |
+
+**坑（踩过）**：`touch-action` 的规则全在 `@media (pointer: coarse)` 里，桌面 Chrome
+读到的永远是 `auto`——脚本用 CDP `Emulation.setTouchEmulationEnabled` +
+`setDeviceMetricsOverride({mobile:true})` 切成粗指针再读，否则是与手机无关的假红。
+
+终端建清与三道闸**直接复用** `term-input-goldendiff.mjs` 的导出（同 term-focus-handoff）。
+退出码：`0` 全通过 · `1` 有断言失败 · `2` 跑不出结论。
+
 ## term-focus-handoff.mjs —— 点击后的焦点交接（`?input=own` 的最高真机风险）
 
 自有输入元素是 `pointer-events:none`（不能挡住光标附近的拖选，spec §R6），所以点终端
