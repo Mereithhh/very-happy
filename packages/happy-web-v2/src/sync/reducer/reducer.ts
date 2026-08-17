@@ -214,6 +214,8 @@ export type ReducerState = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        /** 真实生效的模型 id（B-135）——上下文窗口分母按它选，不是按我们请求的那个 */
+        model?: string;
         timestamp: number;
     };
 };
@@ -294,6 +296,7 @@ export type ReducerResult = {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        model?: string;
     };
     hasReadyEvent?: boolean;
 };
@@ -446,6 +449,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 cacheCreation: 0,
                 cacheRead: 0,
                 contextSize: 0,
+                // clear/compact 只清用量，不清模型——模型没变，清了分母会退回默认值（B-135）
+                model: state.latestUsage?.model,
                 timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
             };
             // Don't continue - let the event be processed normally to create a message
@@ -460,6 +465,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 cacheCreation: 0,
                 cacheRead: 0,
                 contextSize: 0,
+                // clear/compact 只清用量，不清模型——模型没变，清了分母会退回默认值（B-135）
+                model: state.latestUsage?.model,
                 timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
             };
             // Don't continue - let the event be processed normally to create a message
@@ -813,7 +820,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
             // Process usage data if present
             if (msg.usage) {
-                processUsageData(state, msg.usage, msg.createdAt);
+                processUsageData(state, msg.usage, msg.createdAt, msg.model);
             }
 
             // Per-message usage snapshot (camelCase) for per-turn display.
@@ -1296,7 +1303,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             outputTokens: state.latestUsage.outputTokens,
             cacheCreation: state.latestUsage.cacheCreation,
             cacheRead: state.latestUsage.cacheRead,
-            contextSize: state.latestUsage.contextSize
+            contextSize: state.latestUsage.contextSize,
+            model: state.latestUsage.model
         } : undefined,
         hasReadyEvent: hasReadyEvent || undefined
     };
@@ -1310,7 +1318,7 @@ function allocateId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
+function processUsageData(state: ReducerState, usage: UsageData, timestamp: number, model?: string) {
     // Only update if this is newer than the current latest usage
     if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
         state.latestUsage = {
@@ -1319,6 +1327,8 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
             cacheCreation: usage.cache_creation_input_tokens || 0,
             cacheRead: usage.cache_read_input_tokens || 0,
             contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
+            // 模型缺失时保留上一次已知的：单条消息漏了不该让分母退回默认值
+            model: model ?? state.latestUsage?.model,
             timestamp: timestamp
         };
     }

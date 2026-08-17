@@ -555,6 +555,12 @@ export type NormalizedMessage = ({
     meta?: MessageMeta,
     usage?: UsageData,
     /**
+     * 真实生效的模型 id（Anthropic 在 assistant 消息里回传的，如 `claude-opus-4-5-…`）。
+     * ⚠️ 与 `meta.model` 不是一回事：那个是**我们请求的**，`modelMode='default'` 时为 null。
+     * 上下文窗口分母要按这个选，否则 1M 模型会被当成 190k（B-135）。
+     */
+    model?: string,
+    /**
      * Underlying Claude `uuid` for this message — used as the rewind point
      * for the session fork / duplicate flow. Optional because some message
      * sources (legacy events, server-emitted control messages) have none.
@@ -886,7 +892,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     isSidechain: raw.content.data.isSidechain ?? false,
                     content,
                     meta: raw.meta,
-                    usage: raw.content.data.message.usage
+                    usage: raw.content.data.message.usage,
+                    model: raw.content.data.message.model
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {

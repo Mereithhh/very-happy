@@ -1,7 +1,5 @@
 /** Shared formatting helpers for the chat screen. */
 
-export const MAX_CONTEXT_SIZE = 190_000;
-
 export function formatElapsed(totalSeconds: number): string {
     if (totalSeconds < 0) totalSeconds = 0;
     if (totalSeconds < 60) return `${totalSeconds}s`;
@@ -26,7 +24,8 @@ export function formatCost(usd: number): string {
     return `$${usd.toFixed(2)}`;
 }
 
-/** Percentage of the context window used, clamped 0..100. */
-export function contextPercentUsed(contextSize: number): number {
-    return Math.max(0, Math.min(100, Math.round((contextSize / MAX_CONTEXT_SIZE) * 100)));
-}
+/*
+ * 上下文百分比刻意**不在这里**：分母必须按真实生效的模型走，见
+ * `./contextWindow.ts`（B-135——原来这里写死 190_000，对 1M 模型直接钉死在
+ * 「剩余 0%」）。别再往这个文件加写死的窗口常量。
+ */

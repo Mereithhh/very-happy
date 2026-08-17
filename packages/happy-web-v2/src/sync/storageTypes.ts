@@ -171,6 +171,8 @@ export interface Session {
         cacheCreation: number;
         cacheRead: number;
         contextSize: number;
+        /** 真实生效的模型 id（B-135）；旧客户端写的记录里没有这个字段，消费方必须容忍 undefined */
+        model?: string;
         timestamp: number;
     } | null;
 }

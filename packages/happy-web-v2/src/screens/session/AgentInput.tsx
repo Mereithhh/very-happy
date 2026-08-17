@@ -35,7 +35,8 @@ import { ModeMenu } from './ModeMenu';
 const EFFORT_DEFAULT_KEY = 'default';
 import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
-import { contextPercentUsed } from './format';
+import { contextPercentOf, contextWindowFor } from './contextWindow';
+import { formatTokens } from './format';
 import { composerHeightCap } from './composerExpand';
 import './input.css';
 
@@ -85,8 +86,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     // context meter — always visible when we have a usage snapshot.
     const contextSize = usage?.contextSize ?? 0;
-    const percentUsed = contextPercentUsed(contextSize);
-    const meterTone = percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
+    // 分母按 assistant 消息回传的**真实**模型定（B-135）。拿不到模型就不显示百分比
+    // ——宁可只给 token 绝对数，也不给一个看着正常却是错的百分比。
+    const percentUsed = contextPercentOf(contextSize, contextWindowFor(usage?.model));
+    const contextTokens = formatTokens(contextSize);
+    const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
+    const meterTitle = percentUsed === null
+        ? contextTokens
+        : `${contextTokens} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
 
     // grow textarea — 高度上限的唯一事实源是 composerHeightCap（B-098 收敛了
     // 原 JS 常量 + input.css max-height 的双定义）：上限也写回 inline style，
@@ -366,11 +373,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             : t('session.chat.disconnected')}
                 </span>
                 <span className="ci-spacer" />
-                <span className={`ci-meter ci-meter--${meterTone}`} title={t('session.chat.contextMeter', { percent: percentUsed })}>
-                    <span className="ci-meter-track">
-                        <span className="ci-meter-fill" style={{ width: `${percentUsed}%` }} />
+                <span className={`ci-meter ci-meter--${meterTone}`} title={meterTitle}>
+                    {percentUsed !== null && (
+                        <span className="ci-meter-track">
+                            <span className="ci-meter-fill" style={{ width: `${percentUsed}%` }} />
+                        </span>
+                    )}
+                    <span className="ci-meter-label">
+                        {percentUsed === null
+                            ? contextTokens
+                            : `${contextTokens} · ${t('session.chat.contextLeft', { percent: 100 - percentUsed })}`}
                     </span>
-                    <span className="ci-meter-label">{t('session.chat.contextLeft', { percent: 100 - percentUsed })}</span>
                 </span>
                 <span className="ci-hint">
                     {enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}

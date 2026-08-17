@@ -22,7 +22,8 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { withTerminalViewOverride } from '@/sync/terminalViewPref';
 import { useTranslation } from '@/i18n/useTranslation';
-import { contextPercentUsed } from './format';
+import { contextPercentOf, contextWindowFor } from './contextWindow';
+import { formatTokens } from './format';
 import './mirror.css';
 
 export function MirrorBanner({ sessionId }: { sessionId: string }) {
@@ -43,7 +44,11 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
     // note strip instead.
     const usage = useSessionUsage(sessionId);
     const contextSize = usage?.contextSize ?? 0;
-    const percentUsed = contextSize > 0 ? contextPercentUsed(contextSize) : null;
+    // 与 AgentInput 的 meter 同源（B-135）：分母按真实模型，模型未知只给 token 数
+    const percentUsed = contextSize > 0
+        ? contextPercentOf(contextSize, contextWindowFor(usage?.model))
+        : null;
+    const contextTokens = contextSize > 0 ? formatTokens(contextSize) : null;
 
     const canGoTerminal = terminalLive && !!machineId && !!terminalId;
 
@@ -64,12 +69,16 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
             )}
             <div className="mrb-note" role="note">
                 <span className="mrb-note-text">{t('session.mirror.readOnly')}</span>
-                {percentUsed !== null && (
+                {contextTokens !== null && (
                     <span
                         className="mrb-meter mono"
-                        title={t('session.chat.contextMeter', { percent: percentUsed })}
+                        title={percentUsed === null
+                            ? contextTokens
+                            : `${contextTokens} · ${t('session.chat.contextMeter', { percent: percentUsed })}`}
                     >
-                        {t('session.chat.contextLeft', { percent: 100 - percentUsed })}
+                        {percentUsed === null
+                            ? contextTokens
+                            : `${contextTokens} · ${t('session.chat.contextLeft', { percent: 100 - percentUsed })}`}
                     </span>
                 )}
                 {canGoTerminal && (
