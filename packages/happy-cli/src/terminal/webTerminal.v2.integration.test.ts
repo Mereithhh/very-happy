@@ -55,12 +55,18 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
     /** Every terminal-output frame, decoded to bytes. */
     const out = new Map<string, Buffer[]>();
     const seen = (id: string) => Buffer.concat(out.get(id) ?? []).toString('utf8');
+    /** Listeners for `terminal-exit` (registered per test that cares). */
+    const exitSink: Array<(payload: { terminalId: string; exitCode: number }) => void> = [];
 
     beforeAll(() => {
         dir = mkdtempSync(join(tmpdir(), 'vh-v2-'));
         savedTmpdir = process.env.TMUX_TMPDIR;
         process.env.TMUX_TMPDIR = dir;
         mgr = new WebTerminalManager((event, payload) => {
+            if (event === 'terminal-exit') {
+                for (const cb of exitSink) cb(payload);
+                return;
+            }
             if (event !== 'terminal-output') return;
             const list = out.get(payload.terminalId) ?? [];
             list.push(Buffer.from(payload.data, 'base64'));
@@ -210,6 +216,25 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         // the old `applyOpenResult` throws on an unexpected shape.
         expect((res as Record<string, unknown>).snapshotId).toBeUndefined();
         expect((res as Record<string, unknown>).totalPages).toBeUndefined();
+    });
+
+    it('the shell exiting on its own ends the terminal (control client follows the session down)', async () => {
+        const id = 'v2exit1';
+        const exits: Array<{ terminalId: string; exitCode: number }> = [];
+        exitSink.push((p) => exits.push(p));
+        await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });
+        await waitFor(() => seen(id).length > 0, 15_000, 'session live');
+        // The user types `exit` — tmux tears the session down, which drops our
+        // control client. v1 learned this from the pty's exit; v2 has to learn
+        // it from the child ending, or the terminal would linger as a live row
+        // that answers nothing.
+        mgr.write(id, Buffer.from('exit\r', 'utf8').toString('base64'));
+        await waitFor(() => exits.some((e) => e.terminalId === id), 15_000, 'terminal-exit event');
+        await waitFor(
+            () => spawnSync('tmux', ['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
+            10_000,
+            'tmux session gone',
+        );
     });
 
     it('killing a terminal stops its control client (no zombie tmux children)', async () => {
