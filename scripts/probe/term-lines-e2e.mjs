@@ -254,6 +254,58 @@ try {
         return false;
     })();
     check('⑤ 外部改 pane 尺寸后仍收敛（B-125 错位场景）', healed, `term=${await termOf()} pane=${paneOf()}`);
+
+    // ⚠️ `resize-window -x/-y` 会把窗口钉成 **manual** 尺寸，之后 pane 不再跟随
+    //    任何客户端——不复位的话下面那条「重新挂载后收敛」永远不可能过（2026-08-17
+    //    第一次跑就被自己坑了）。`-A` 恢复自动跟随。
+    spawnSync('tmux', ['resize-window', '-t', `=vh-${tid}:`, '-A'], { stdio: 'ignore' });
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // ⑥ B-126：**重新挂载 = 重建**，这正是 Owner 截图里出问题的路径。新开一个 tab
+    //    打开同一个终端，把浏览器屏幕与 tmux 自己的屏幕逐行比对 —— 错一行就是错位。
+    const url = (await tab.send('Runtime.evaluate', { expression: 'location.href', returnByValue: true }))
+        .result?.result?.value;
+    const tab2 = await openTab(opts.port, url);
+    try {
+        // 先等这个 tab 的几何与 pane 收敛——它挂载后会先采纳 pane 尺寸、再按自己
+        // 的视口回提一次，收敛前比对到的是「两个不同尺寸的屏幕」，不是错位。
+        const shotOnce = async () => {
+            await tab2.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
+            const r = await tab2.send('Runtime.evaluate', {
+                expression: `(() => { const t = window.__VHGD_T; return t ? (t.cols + 'x' + t.rows) : null; })()`,
+                returnByValue: true,
+            });
+            return r.result?.result?.value;
+        };
+        let settled = false;
+        for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (await shotOnce() === paneOf()) { settled = true; break; }
+        }
+        check('（前置）重新挂载后几何收敛', settled, `term=${await shotOnce()} pane=${paneOf()}`);
+        await new Promise((r) => setTimeout(r, 1500));
+        await tab2.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
+        const shot = await tab2.send('Runtime.evaluate', {
+            expression: `(() => {
+                const t = window.__VHGD_T; if (!t) return null;
+                const b = t.buffer.active; const rows = [];
+                for (let y = b.viewportY; y < b.viewportY + t.rows; y++) rows.push((b.getLine(y)?.translateToString(true) ?? '').replace(/\\s+$/, ''));
+                return { rows, cursor: b.cursorX + ',' + b.cursorY, cols: t.cols, trows: t.rows };
+            })()`,
+            returnByValue: true,
+        });
+        const v = shot.result?.result?.value;
+        const cap = spawnSync('tmux', ['capture-pane', '-p', '-t', `=vh-${tid}:`], { encoding: 'utf8' })
+            .stdout.split('\n').slice(0, v?.trows ?? 0).map((l) => l.replace(/\s+$/, ''));
+        const curs = spawnSync('tmux', ['display', '-p', '-t', `=vh-${tid}:`, '#{cursor_x},#{cursor_y}'], { encoding: 'utf8' }).stdout.trim();
+        const sameRows = v && JSON.stringify(v.rows) === JSON.stringify(cap);
+        const firstDiff = v ? v.rows.findIndex((r, i) => r !== cap[i]) : -1;
+        check('⑥ 重新挂载后浏览器屏幕与 tmux 逐行一致（B-126 重建保真）', !!sameRows,
+            sameRows ? `${v.rows.length} 行全等` : `首个不同行 #${firstDiff}: web=${JSON.stringify(v?.rows?.[firstDiff])} tmux=${JSON.stringify(cap[firstDiff])}`);
+        check('⑥ 重新挂载后光标位置一致', v?.cursor === curs, `web=${v?.cursor} tmux=${curs}`);
+    } finally {
+        await closeTab(opts.port, tab2.target.id, tab2).catch(() => { });
+    }
 } catch (e) {
     console.error(`\n跑不出结论：${e?.message ?? e}`);
     // --keep 在失败路径上同样生效：诊断时最需要的就是现场。
