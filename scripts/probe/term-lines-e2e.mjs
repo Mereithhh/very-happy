@@ -21,6 +21,7 @@
  * 退出码：0 全通过 · 1 有断言失败 · 2 跑不出结论（2 绝不当 0 用）。
  */
 import { hostname } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import {
     ensureChrome, openTab, closeTab, ensureLoggedIn, ensureDebugMode,
     createTestTerminal, cleanupTerminal, waitFor, FIND_TERM,
@@ -204,6 +205,41 @@ try {
     });
     const sc = scrolled.result?.result?.value;
     check('② 纯本地滚动生效（零 RPC 往返）', sc && sc.after < sc.before, `viewportY ${sc?.before} → ${sc?.after}`);
+
+    // ④ B-124：浏览器列宽必须 == pane 列宽。lines 模式下客户端自己换行，
+    //    而 TUI 的「上移 N 行重画」按 pane 宽度算 —— 两者不等就会看到两个状态行。
+    //    改视口后重新量：这条不变量在**改窗口之后**依然必须成立。
+    const paneOf = () => {
+        const r = spawnSync('tmux', ['display', '-p', '-t', `=vh-${tid}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
+        return (r.stdout || '').trim();
+    };
+    const termOf = async () => {
+        await tab.send('Runtime.evaluate', { expression: FIND_TERM, returnByValue: true });
+        const r = await tab.send('Runtime.evaluate', {
+            expression: `(()=>{const t=window.__VHGD_T; return t ? t.cols + 'x' + t.rows : null;})()`,
+            returnByValue: true,
+        });
+        return r.result?.result?.value;
+    };
+    check('④ 稳态：浏览器列宽 == pane 列宽', await (async () => {
+        for (let i = 0; i < 20; i++) {
+            if (await termOf() === paneOf()) return true;
+            await new Promise((r) => setTimeout(r, 500));
+        }
+        return false;
+    })(), `term=${await termOf()} pane=${paneOf()}`);
+
+    // 改成一个明显不同的视口，再验一次（这正是「改窗口那一瞬间」的路径）
+    await tab.send('Emulation.setDeviceMetricsOverride', { width: 700, height: 900, deviceScaleFactor: 2, mobile: false });
+    const converged = await (async () => {
+        for (let i = 0; i < 24; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (await termOf() === paneOf()) return true;
+        }
+        return false;
+    })();
+    check('④ 改视口后仍收敛到 pane 尺寸', converged, `term=${await termOf()} pane=${paneOf()}`);
+    await tab.send('Emulation.clearDeviceMetricsOverride');
 } catch (e) {
     console.error(`\n跑不出结论：${e?.message ?? e}`);
     // --keep 在失败路径上同样生效：诊断时最需要的就是现场。
