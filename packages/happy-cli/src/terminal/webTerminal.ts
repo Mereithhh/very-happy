@@ -1981,7 +1981,14 @@ export class WebTerminalManager {
             return;
         }
         const target = session.paneId ?? `=${session.tmuxSession}:.0`;
-        const { commands, dropped } = encodeTerminalWrite(text, target);
+        // `normalizeKeyNames` ON (spec D1b says three channels; this is the one
+        // deviation, taken because the spec's own hard gate demands it). The
+        // v1 attach client was never a byte pipe: it DECODED bytes into keys and
+        // re-encoded them with the pane's terminfo, and Home/End are exactly
+        // where xterm's encoding (ESC[H / ESC[F) and tmux's (ESC[1~ / ESC[4~)
+        // disagree. Injecting raw bytes made 4 of the 142 harness cases differ
+        // from v1; sending the tmux KEY NAME for those four restores 142/142.
+        const { commands, dropped } = encodeTerminalWrite(text, target, { normalizeKeyNames: true });
         if (dropped) {
             logger.debug(`[WEB TERMINAL] dropped terminal auto-reply for ${terminalId}`);
             return;

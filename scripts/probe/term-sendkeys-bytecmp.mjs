@@ -86,11 +86,12 @@ const IDLE_MS = { attach: 750, sendkeys: 250 };
 const SETTLE_MAX_MS = 4000;
 
 function parseArgs(argv) {
-    const o = { keepPrefix: false, filter: null, verbose: false, help: false, normalize: false };
+    const o = { keepPrefix: false, filter: null, verbose: false, help: false, normalize: true };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--keep-prefix') o.keepPrefix = true;
         else if (a === '--normalize') o.normalize = true;
+        else if (a === '--raw-keys') o.normalize = false;
         else if (a === '--filter') o.filter = new RegExp(argv[++i]);
         else if (a === '-v' || a === '--verbose') o.verbose = true;
         else if (a === '-h' || a === '--help') o.help = true;
@@ -269,8 +270,12 @@ const HELP = `pane 侧字节捕获对跑（B-121 D1b 硬门）
   全程只用隔离 socket 'tmux -L ${SOCKET}'，不碰默认 socket 上的生产 vh-* 会话。
 
   --keep-prefix  保留 tmux 默认 prefix C-b（默认设成 None，见文件头 M3）
-  --normalize    打开 encodeSendKeys 的 normalizeKeyNames（Home/End 改发 tmux 键名，
-                 默认关；用来当场量化那条设计选择，见 TMUX_KEY_NAME_ALIASES 注释）
+  --normalize    （默认已开）encodeSendKeys 的 normalizeKeyNames：Home/End 改发 tmux
+                 键名，与 v1 的 pane 侧字节一致。**默认必须与生产写入端一致**——
+                 webTerminal.write() 传的就是 normalizeKeyNames:true，默认值跟着它走，
+                 否则这道硬门会永远报一个与生产无关的假红。
+  --raw-keys     关掉归一化（= spec 定稿的纯三通道），用来当场量化那 4 条 Home/End
+                 差异，见 TMUX_KEY_NAME_ALIASES 注释
   --filter <re>  只跑 id 匹配的用例（调试用；子集不构成硬门结论，退出码强制 2）
   -v             打印全部用例
 
