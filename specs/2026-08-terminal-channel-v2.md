@@ -1,6 +1,6 @@
 # 终端通道 v2：tmux control mode 内容流（根治移动端滚动不跟手）
 
-> 状态：**Shipped**（2026-08-17，merge `d0e33d1d` + `1e7fd7e3`；实现批四阶段
+> 状态：**Shipped**（2026-08-17，merge `d0e33d1d` + `1e7fd7e3`，热修 `576e42d6` = CLI v0.2.47；实现批四阶段
 > 0a 解码器 / 0b 写入端 / 1 daemon / 2 web，门禁与实测见「实施纪要」节；
 > 真机验收项 V-061..067 待 Owner 清账）
 > 原状态：**Final**（v6——四轮对抗 review（R1:3B+8M / R2:抓自引入 2B+capture 语义实证反转
@@ -362,6 +362,7 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 | 写入端 pane 侧字节比对（142 用例 × 新旧两条写入端） | 硬门：逐字节一致 | **142/142 一致，退出码 0**（生产配置：`normalizeKeyNames` 开） |
 | 解码器金样本 | 硬门：逐字节回放 | 7 组真机样本（含 CJK/alt/burst 5000 行/二进制/命令块/claude TUI）全过 |
 | 3.6b 现役 server 上的三通道 + 归一化 + 粘贴 | 盲区补测 | ASCII/CJK 码点/emoji/C0/混合/Home·End/单引号/临时文件粘贴 **全部一致** |
+| 生产站 E2E（`scripts/probe/term-lines-e2e.mjs`） | 四象限之二 | 新 web+新 daemon **7/7**（lines 协商 / normal buffer / 本地 scrollback baseY=186 / 零 RPC 本地滚动 / 移动端 touch-action=pan-y）；新 web+老 daemon **3/3**（回退 attach 轨、touch-action 仍 none） |
 
 实现中实测推翻/收紧了 5 处设计描述，另有 4 处实现选择与 spec 字面不同但更优，
 按 PROCESS.md 铁律回写在此（本节晚于上文，冲突时以本节为准）。
