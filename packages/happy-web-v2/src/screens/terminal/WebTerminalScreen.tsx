@@ -738,11 +738,24 @@ export function WebTerminalScreen() {
     // in-band OSC 6121 marker below). Resizing locally the instant the
     // container moved is precisely what produces the mismatch window.
     let geometryFallback: ReturnType<typeof setTimeout> | null = null;
+    let lastReproposeAt = 0;
     const adoptGeometry = (cols: number, rows: number) => {
       if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
       if (disposed || cols < 2 || rows < 2) return;
-      if (term.cols === cols && term.rows === rows) return;
-      renderer.resizeTo(cols, rows);
+      if (term.cols !== cols || term.rows !== rows) renderer.resizeTo(cols, rows);
+      // Self-heal: we now render what the stream assumes, but this viewport
+      // wants its own size (an old terminal carries whatever geometry the
+      // device that used it last left behind). Ask for ours — one proposal per
+      // adoption, and only from the window the user is actually looking at, so
+      // two open devices settle on the focused one instead of ping-ponging.
+      const want = renderer.proposeFit();
+      if (!want || !terminalId) return;
+      if (want.cols === cols && want.rows === rows) return;
+      const focused = typeof document === 'undefined'
+        || (document.visibilityState === 'visible' && document.hasFocus());
+      if (!focused || Date.now() - lastReproposeAt < 3000) return;
+      lastReproposeAt = Date.now();
+      apiSocket.send('terminal-resize', { machineId, terminalId, cols: want.cols, rows: want.rows });
     };
     // Safety belt: if the daemon never confirms (wedged tmux, a size tmux
     // silently refused, a proposal that matched the pane so no %layout-change

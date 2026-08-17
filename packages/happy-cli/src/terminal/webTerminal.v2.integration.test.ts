@@ -237,6 +237,32 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         );
     });
 
+    it('opening an EXISTING terminal at a new size reports the size that will actually apply', async () => {
+        // Production 2026-08-17: opening an OLD terminal (one another device had
+        // sized) rendered misaligned — input box drawn at the top while the
+        // cursor sat at the bottom. Two bugs covered for each other:
+        //  1. the reported geometry came from `list-panes`, which runs EARLIER
+        //     in the capture batch than the closing `refresh-client -C`, so the
+        //     client adopted the size the PREVIOUS device had left behind;
+        //  2. the `%layout-change` that our own refresh triggers was deduped
+        //     against "the size we asked for" — i.e. exactly itself — so the
+        //     correcting announcement never went out and the client stayed
+        //     wrong forever.
+        const id = 'v2geom2';
+        await mgr.open({ terminalId: id, cols: 120, rows: 40, streamMode: 'lines' });
+        mgr.unsubscribe(id);
+        // A different device opens the same terminal with its own viewport.
+        const res = await mgr.open({ terminalId: id, cols: 70, rows: 20, streamMode: 'lines', attachOnly: true });
+        expect(res.paneCols).toBe(70);
+        expect(res.paneRows).toBe(20);
+        // …and tmux really is at that size, so the live bytes match what the
+        // client was told to render at.
+        await waitFor(() => {
+            const r = spawnSync('tmux', ['display', '-p', '-t', `=vh-${id}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
+            return (r.stdout || '').trim() === '70x20';
+        }, 10_000, 'pane resized to the opening client size');
+    });
+
     it('an external resize is announced IN-BAND, in stream order (B-124 duplicate-status-line regression)', async () => {
         // The client wraps lines itself, so it must switch width exactly where
         // the pane did — an out-of-band event cannot express that ordering, and

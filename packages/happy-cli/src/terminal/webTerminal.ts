@@ -910,6 +910,16 @@ class TerminalSession {
      */
     paneId?: string;
     /**
+     * The geometry we have TOLD the clients about (B-124 follow-up). Dedupe must
+     * be against this, never against `cols/rows` (what we last *asked tmux for*):
+     * our own `refresh-client -C` produces a `%layout-change` that matches the
+     * request exactly, so comparing against the request swallowed the very
+     * announcement that corrects a client still rendering at another device's
+     * size — the misaligned screen reported in production 2026-08-17.
+     */
+    announcedCols?: number;
+    announcedRows?: number;
+    /**
      * False between spawning a control client and its opening capture's anchor:
      * output produced in that window is ALREADY inside the capture, so ingesting
      * it would duplicate content. Only ever false for a FRESH spawn — for a
@@ -1103,6 +1113,15 @@ interface RestoreOutcome {
     /** The session's output seq at the anchor — the client's new baseline. */
     seqAtAnchor: number;
     paneState?: PaneState;
+    /**
+     * The geometry in effect for everything the client will render FROM NOW —
+     * i.e. after the batch's closing `refresh-client -C`, not the `list-panes`
+     * reading (which runs earlier in the batch and reports whatever size the
+     * previous client left behind). The capture itself is width-agnostic: `-J`
+     * returns logical lines and the client re-wraps them.
+     */
+    paneCols: number;
+    paneRows: number;
     /**
      * The held-snapshot handle, created ONCE per capture. It must not be minted
      * per caller: a `put()` invalidates the terminal's previous snapshot, so two
@@ -1813,8 +1832,10 @@ export class WebTerminalManager {
                         // probe drift out of alignment with the real pane.
                         const size = parseLayoutSize(args2);
                         if (!size) return;
-                        if (size.cols === created.cols && size.rows === created.rows) return;
+                        if (size.cols === created.announcedCols && size.rows === created.announcedRows) return;
                         created.resizeHeadless(size.cols, size.rows);
+                        created.announcedCols = size.cols;
+                        created.announcedRows = size.rows;
                         // B-124: tell the clients WHERE in the stream the pane
                         // changed width. Injected through ingest() on purpose —
                         // it gets a seq, enters the ring and replays on catch-up
@@ -1975,7 +1996,11 @@ export class WebTerminalManager {
         }
         // ONE handle per capture (see RestoreOutcome.snapshotId).
         const handle = this.snapshots.put(session.id, payload.full);
-        return { ...payload, seqAtAnchor, paneState, ...handle };
+        // The anchor just set the pane to OUR geometry; that is what the client
+        // must render at, and it is now the announced value.
+        session.announcedCols = session.cols;
+        session.announcedRows = session.rows;
+        return { ...payload, seqAtAnchor, paneState, paneCols: session.cols, paneRows: session.rows, ...handle };
     }
 
     /** Build the lines-mode open response from a completed capture. */
@@ -1991,8 +2016,8 @@ export class WebTerminalManager {
             snapshotId: restored.snapshotId,
             totalPages: restored.totalPages,
             alternateOn: restored.alternateOn,
-            paneCols: restored.paneState?.width,
-            paneRows: restored.paneState?.height,
+            paneCols: restored.paneCols,
+            paneRows: restored.paneRows,
         };
     }
 
