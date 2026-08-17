@@ -219,6 +219,14 @@ export type OpenTerminalResult = {
     /** Lines + snapshot only: was the pane on its alternate screen? The client
      *  needs this BEFORE the deep rebuild lands to pick the right scroll lane. */
     alternateOn?: boolean;
+    /** Lines only: the pane's AUTHORITATIVE geometry at capture time (B-124).
+     *  A lines client wraps lines itself, so it must render at the width the
+     *  application inside the pane believes it has — otherwise a TUI's
+     *  "erase N rows and repaint" lands on the wrong row and leaves a duplicate
+     *  status line behind. Live changes arrive in-band (OSC 6121); this field
+     *  is the value a freshly mounting client starts from. */
+    paneCols?: number;
+    paneRows?: number;
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -377,12 +385,47 @@ const CAPTURE_TIMEOUT_MS = 10_000;
  * current geometry — a wrong resize is worse than a missed one).
  */
 export function parseLayoutSize(args: string): { cols: number; rows: number } | undefined {
-    const m = /(\d+)x(\d+)/.exec(args);
+    // `@0 b25d,80x24,0,0,0 …` — a single-pane window's layout starts with the
+    // WINDOW size, which is also the pane's. A split window nests each pane's
+    // own size inside `{…}` / `[…]`, and we follow the FIRST pane (spec D1
+    // single-pane declaration), so take the first size after the brace when
+    // there is one.
+    const brace = /[{[]/.exec(args);
+    const scope = brace ? args.slice(brace.index) : args;
+    const m = /(\d+)x(\d+)/.exec(scope) ?? /(\d+)x(\d+)/.exec(args);
     if (!m) return undefined;
     const cols = Number(m[1]);
     const rows = Number(m[2]);
     if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) return undefined;
     return { cols, rows };
+}
+
+/**
+ * ── In-band geometry (B-124) ────────────────────────────────────────────────
+ * The v2 channel ships the pane's own bytes, so the CLIENT decides where lines
+ * wrap. A TUI that repaints by "move up N rows and erase" (ink — Claude Code's
+ * renderer) computes N from the width IT sees, i.e. the tmux PANE width. The
+ * moment the browser's width differs, N is wrong and the previous status line
+ * survives the erase — the user sees the spinner twice. Measured: replaying one
+ * real Claude stream captured at a 100-column pane shows one footer at 100
+ * columns and TWO at 80 or 60.
+ *
+ * So the pane's geometry is authoritative and the client must adopt it — and it
+ * must adopt it AT THE RIGHT POINT IN THE STREAM, or the bytes produced around
+ * a resize get wrapped at the wrong width anyway (that is the "it happens while
+ * I resize the window" half of the bug). An out-of-band event cannot express
+ * that ordering; a marker inside the byte stream can, and it rides the existing
+ * seq/ring/replay machinery for free.
+ *
+ * Private OSC 6121 (= B-121, the batch that introduced the channel):
+ *   ESC ] 6121 ; <cols> ; <rows> BEL
+ * Unknown OSC codes are ignored by every terminal that does not know them, so
+ * an old web (or the daemon's own headless) just drops it.
+ */
+export const GEOMETRY_OSC_CODE = 6121;
+
+export function geometryMarker(cols: number, rows: number): Buffer {
+    return Buffer.from(`\x1b]${GEOMETRY_OSC_CODE};${Math.max(2, Math.floor(cols))};${Math.max(2, Math.floor(rows))}\x07`, 'ascii');
 }
 
 /** Timeout for the synchronous `tmux new-session -d` in open(). More generous
@@ -1769,7 +1812,17 @@ export class WebTerminalManager {
                         // headless screen has to follow or serialize()/the agent
                         // probe drift out of alignment with the real pane.
                         const size = parseLayoutSize(args2);
-                        if (size) created.resizeHeadless(size.cols, size.rows);
+                        if (!size) return;
+                        if (size.cols === created.cols && size.rows === created.rows) return;
+                        created.resizeHeadless(size.cols, size.rows);
+                        // B-124: tell the clients WHERE in the stream the pane
+                        // changed width. Injected through ingest() on purpose —
+                        // it gets a seq, enters the ring and replays on catch-up
+                        // exactly like content, because for a client that wraps
+                        // lines itself the width IS part of the content.
+                        const marker = created.ingest(geometryMarker(size.cols, size.rows));
+                        this.emit('terminal-output', { terminalId: id, data: marker.data, seq: marker.seq });
+                        logger.debug(`[WEB TERMINAL] ${id} pane geometry → ${size.cols}x${size.rows} (seq=${marker.seq})`);
                         return;
                     }
                     if (name === 'exit') {
@@ -1938,6 +1991,8 @@ export class WebTerminalManager {
             snapshotId: restored.snapshotId,
             totalPages: restored.totalPages,
             alternateOn: restored.alternateOn,
+            paneCols: restored.paneState?.width,
+            paneRows: restored.paneState?.height,
         };
     }
 

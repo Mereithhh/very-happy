@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {
@@ -545,9 +545,36 @@ describe('parseLayoutSize (B-121: follow a LOCAL tmux client\'s resize)', () => 
         expect(parseLayoutSize('@195 2ce9,127x40,0,0,195 2ce9,127x40,0,0,195 *')).toEqual({ cols: 127, rows: 40 });
     });
 
+    it('follows the FIRST pane in a split window (single-pane declaration)', () => {
+        // A split window nests each pane's own size; the window's own WxH is not
+        // what the pane we mirror is wrapped at.
+        expect(parseLayoutSize('@0 abcd,80x24,0,0{80x12,0,0,1,80x11,0,13,2}')).toEqual({ cols: 80, rows: 12 });
+        expect(parseLayoutSize('@0 abcd,200x50,0,0[200x25,0,0,3,200x24,0,26,4]')).toEqual({ cols: 200, rows: 25 });
+    });
+
     it('returns undefined rather than guessing (a wrong resize is worse than none)', () => {
         expect(parseLayoutSize('')).toBeUndefined();
         expect(parseLayoutSize('@0 nosize')).toBeUndefined();
         expect(parseLayoutSize('@0 aaaa,1x1,0,0,0')).toBeUndefined(); // below the 2x2 floor
+    });
+});
+
+describe('geometryMarker (B-124: in-band pane geometry)', () => {
+    it('is a private OSC carrying cols;rows', () => {
+        expect(geometryMarker(120, 40).toString('ascii')).toBe(`\x1b]${GEOMETRY_OSC_CODE};120;40\x07`);
+    });
+
+    it('clamps degenerate sizes instead of emitting them', () => {
+        expect(geometryMarker(0, -3).toString('ascii')).toBe(`\x1b]${GEOMETRY_OSC_CODE};2;2\x07`);
+        expect(geometryMarker(80.7, 24.9).toString('ascii')).toBe(`\x1b]${GEOMETRY_OSC_CODE};80;24\x07`);
+    });
+
+    it('is inert for anyone who does not know it (unknown OSC = ignored)', () => {
+        // The whole point of picking an OSC: an old web, the daemon's own
+        // headless, and `cat`ting the stream all just drop it.
+        const s = geometryMarker(100, 30).toString('ascii');
+        expect(s.startsWith('\x1b]')).toBe(true);
+        expect(s.endsWith('\x07')).toBe(true);
+        expect(s).not.toMatch(/[\r\n]/);
     });
 });

@@ -153,3 +153,51 @@ describe('paste routing (§D1b 粘贴专路)', () => {
         expect(screen.includes("void runCommand(paste).then(() => sendInputRef.current?.('\\r'));")).toBe(true);
     });
 });
+
+/**
+ * B-124: geometry ownership. In v1 the client's own width was cosmetic (tmux
+ * repainted an absolute screen); in v2 the client wraps the pane's bytes
+ * itself, so width IS content — a TUI repainting by "erase N rows" (ink, i.e.
+ * Claude Code) computes N from the PANE width, and any disagreement leaves the
+ * previous status line on screen. Measured on one real Claude stream captured
+ * at a 100-column pane: one footer row at 100 columns, TWO at 80 and at 60.
+ */
+describe('geometry ownership (B-124 duplicate status line)', () => {
+    it('lines mode PROPOSES a size instead of re-wrapping on the spot', () => {
+        // Re-wrapping the moment the container moved is the mismatch window:
+        // bytes produced before tmux applied the resize get wrapped at the new
+        // width while the application still assumes the old one.
+        expect(screen).toMatch(/if \(linesActive\) \{[\s\S]{0,400}renderer\.proposeFit\(\)/);
+        expect(screen).toMatch(/proposeFit[\s\S]{0,300}apiSocket\.send\('terminal-resize'/);
+    });
+
+    it('adopts the authoritative geometry in-band (OSC 6121), not out-of-band', () => {
+        // Ordering is the whole point: an event outside the byte stream cannot
+        // say WHERE the pane changed width.
+        expect(screen).toMatch(/registerOscHandler\(6121/);
+        expect(screen).toMatch(/registerOscHandler\(6121[\s\S]{0,300}adoptGeometry\(/);
+    });
+
+    it('adopts the pane size from the open response BEFORE the restore is written', () => {
+        const latch = screen.indexOf("linesActive = mountStreamMode === 'lines'");
+        const adopt = screen.indexOf('adoptGeometry(res.paneCols, res.paneRows)');
+        const restore = screen.indexOf('outChain = outChain.then(applyOpenResult(res, 0))');
+        expect(latch).toBeGreaterThan(-1);
+        expect(adopt).toBeGreaterThan(latch);
+        expect(restore).toBeGreaterThan(adopt);
+    });
+
+    it('keeps a confirmation fallback so a silent daemon cannot freeze the layout', () => {
+        expect(screen).toMatch(/GEOMETRY_CONFIRM_MS/);
+        expect(screen).toMatch(/geometryFallback[\s\S]{0,200}renderer\.resizeTo\(want\.cols, want\.rows\)/);
+    });
+
+    it('attach mode keeps v1 behavior (fit resizes locally, then reports)', () => {
+        expect(screen).toMatch(/safeFit\(\);\s*\n\s*if \(terminalId\) apiSocket\.send\('terminal-resize'/);
+    });
+
+    it('ops.ts carries the pane geometry through', () => {
+        expect(ops).toMatch(/paneCols\?: number;/);
+        expect(ops).toMatch(/paneCols: result\.paneCols/);
+    });
+});

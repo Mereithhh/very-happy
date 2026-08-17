@@ -40,6 +40,16 @@ export interface TerminalRenderer {
     reset(): void;
     /** Re-measure the container and resize cols/rows to fit it. */
     fit(): void;
+    /**
+     * What `fit()` WOULD resize to, without doing it (B-124). In the v2 lines
+     * channel the client wraps lines itself, so its width must change exactly
+     * where the pane's did — the screen therefore PROPOSES a size to the daemon
+     * and adopts the authoritative one when it arrives in-band, instead of
+     * re-wrapping the moment the container moved.
+     */
+    proposeFit(): { cols: number; rows: number } | undefined;
+    /** Adopt an authoritative geometry (pane size) without re-measuring. */
+    resizeTo(cols: number, rows: number): void;
 
     /** Keystrokes the user typed (already VT-encoded) → send to the pty. */
     onData(cb: (data: string) => void): RendererDisposable;

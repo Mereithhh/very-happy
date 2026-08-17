@@ -727,10 +727,54 @@ export function WebTerminalScreen() {
       if (ownInput) renderer.setInputElement(ownInput.element);
     }
 
+    // ── Geometry ownership (B-124) ──────────────────────────────────────────
+    // v1 rendered tmux's absolute repaint, so the client's own width was
+    // cosmetic. v2 ships the pane's bytes and the CLIENT wraps them, which
+    // makes width part of the CONTENT: a TUI that repaints by "erase N rows"
+    // (ink → Claude Code) computes N from the PANE width, so any disagreement
+    // leaves the previous status line on screen — the duplicated spinner.
+    // Therefore, in lines mode the screen only PROPOSES a size and adopts the
+    // authoritative one where the stream says the pane actually changed (the
+    // in-band OSC 6121 marker below). Resizing locally the instant the
+    // container moved is precisely what produces the mismatch window.
+    let geometryFallback: ReturnType<typeof setTimeout> | null = null;
+    const adoptGeometry = (cols: number, rows: number) => {
+      if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
+      if (disposed || cols < 2 || rows < 2) return;
+      if (term.cols === cols && term.rows === rows) return;
+      renderer.resizeTo(cols, rows);
+    };
+    // Safety belt: if the daemon never confirms (wedged tmux, a size tmux
+    // silently refused, a proposal that matched the pane so no %layout-change
+    // was emitted), fall back to the locally measured size rather than leave
+    // the screen stuck at a stale width.
+    const GEOMETRY_CONFIRM_MS = 1500;
     const doFit = () => {
+      if (linesActive) {
+        const want = renderer.proposeFit();
+        if (!want || !terminalId) return;
+        apiSocket.send('terminal-resize', { machineId, terminalId, cols: want.cols, rows: want.rows });
+        if (geometryFallback) clearTimeout(geometryFallback);
+        geometryFallback = setTimeout(() => {
+          geometryFallback = null;
+          if (!disposed) renderer.resizeTo(want.cols, want.rows);
+        }, GEOMETRY_CONFIRM_MS);
+        return;
+      }
       safeFit();
       if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
     };
+
+    // The daemon's in-band geometry marker: ESC ] 6121 ; cols ; rows BEL,
+    // injected into the output stream at the exact point tmux resized the pane
+    // (it rides the normal seq/ring/replay path, so a catch-up replays it too).
+    // A private OSC is inert everywhere that does not know it — an old web and
+    // the daemon's own headless simply drop it.
+    const geometryOsc = renderer.raw?.parser.registerOscHandler(6121, (payload: string) => {
+      const [c, r] = payload.split(';').map((n) => Number(n));
+      if (Number.isFinite(c) && Number.isFinite(r)) adoptGeometry(c, r);
+      return true;
+    });
     // Debounce refits to the next frame so a burst of resize ticks collapses into
     // one fit AFTER layout settles — otherwise the xterm canvas keeps its old
     // (too-tall) size mid-resize and the host shows a scrollbar instead of reflowing.
@@ -1288,6 +1332,10 @@ export function WebTerminalScreen() {
       mountStreamMode = res.streamMode ?? 'attach';
       linesActive = mountStreamMode === 'lines';
       setLinesMode(linesActive);
+      // Adopt the pane's authoritative geometry BEFORE the restore is written:
+      // the capture was taken at that width, and (more importantly) everything
+      // the application streams next assumes it (B-124).
+      if (linesActive && res.paneCols && res.paneRows) adoptGeometry(res.paneCols, res.paneRows);
       setAltBuffer(term.buffer.active.type === 'alternate');
       // Seq bookkeeping is synchronous in applyOpenResult; the restore itself
       // is serialized behind outChain so any live chunk arriving mid-restore
@@ -1765,6 +1813,8 @@ export function WebTerminalScreen() {
       clearTimeout(t0);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
+      if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
+      try { geometryOsc?.dispose(); } catch { /* already disposed */ }
       window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();

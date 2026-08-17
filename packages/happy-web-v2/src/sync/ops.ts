@@ -331,6 +331,12 @@ export type OpenTerminalOk = {
      *  capture ran → `data` is just its visible area and needs a synthesized
      *  `\x1b[?1049h` in front (spec §D1 R3 M-R3-3). */
     alternateOn?: boolean;
+    /** B-124: the pane's authoritative geometry at capture time. A lines client
+     *  wraps lines itself, so it must render at the width the application in the
+     *  pane believes it has — otherwise a TUI's "erase N rows" repaint leaves a
+     *  duplicate status line. Live changes arrive in-band (OSC 6121). */
+    paneCols?: number;
+    paneRows?: number;
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -370,7 +376,7 @@ export async function machineOpenTerminal(
         const result = await apiSocket.machineRPC<
             {
                 type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean; seq: number;
-                streamMode?: 'lines' | 'attach'; snapshotId?: string; totalPages?: number; alternateOn?: boolean;
+                streamMode?: 'lines' | 'attach'; snapshotId?: string; totalPages?: number; alternateOn?: boolean; paneCols?: number; paneRows?: number;
             } & (
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -402,6 +408,8 @@ export async function machineOpenTerminal(
             snapshotId: result.snapshotId,
             totalPages: result.totalPages,
             alternateOn: result.alternateOn,
+            paneCols: result.paneCols,
+            paneRows: result.paneRows,
         };
         return result.mode === 'replay'
             ? { ...base, mode: 'replay', chunks: result.chunks }

@@ -237,6 +237,30 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         );
     });
 
+    it('an external resize is announced IN-BAND, in stream order (B-124 duplicate-status-line regression)', async () => {
+        // The client wraps lines itself, so it must switch width exactly where
+        // the pane did — an out-of-band event cannot express that ordering, and
+        // getting it wrong is what leaves a second copy of a TUI's status line
+        // on screen (measured: one real Claude stream captured at 100 columns
+        // renders one footer at 100 and TWO at 80).
+        const id = 'v2geom1';
+        const res = await mgr.open({ terminalId: id, cols: 100, rows: 30, streamMode: 'lines' });
+        expect(res.paneCols).toBe(100);
+        expect(res.paneRows).toBe(30);
+        mgr.write(id, Buffer.from('echo before-resize-marker\r', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('before-resize-marker'), 15_000, 'pre-resize output');
+        const beforeLen = seen(id).length;
+
+        // Somebody else resizes the window — a local `tmux attach`, another
+        // device, anything. v2 deliberately no longer kicks them.
+        spawnSync('tmux', ['resize-window', '-t', `=vh-${id}:`, '-x', '64', '-y', '20'], { stdio: 'ignore' });
+
+        await waitFor(() => /\x1b\]6121;64;20\x07/.test(seen(id)), 15_000, 'in-band geometry marker');
+        // Ordering matters as much as the value: it must arrive AFTER the bytes
+        // that were produced at the old width.
+        expect(seen(id).indexOf('\x1b]6121;64;20\x07')).toBeGreaterThanOrEqual(beforeLen - 1);
+    });
+
     it('writing to a terminal whose tmux session just died must not kill the daemon (EPIPE regression)', async () => {
         // 2026-08-17, first hour in production: closing ONE terminal took the
         // whole daemon down. The control client's stdin closes with its tmux

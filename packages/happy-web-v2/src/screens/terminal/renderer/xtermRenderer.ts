@@ -68,6 +68,10 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
         writeln: (data) => term.writeln(data),
         reset: () => term.reset(),
         fit: () => { try { fit.fit(); } catch { /* not laid out yet */ } },
+        proposeFit: () => { try { return fit.proposeDimensions(); } catch { return undefined; } },
+        resizeTo: (cols, rows) => {
+            try { term.resize(Math.max(2, Math.floor(cols)), Math.max(2, Math.floor(rows))); } catch { /* invalid dims */ }
+        },
         onData: (cb) => term.onData(cb),
         onKey: (cb) => term.onKey(cb),
         paste: (data) => term.paste(data),
