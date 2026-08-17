@@ -66,7 +66,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
 
     it('pushes on open, live OSC title change, manual rename, and kill', async () => {
         // ── open: membership push ────────────────────────────────────────────
-        const result = mgr.open({ terminalId: TID, cols: 80, rows: 24, cwd: dir });
+        const result = await mgr.open({ terminalId: TID, cols: 80, rows: 24, cwd: dir });
         expect(result.terminalId).toBe(TID);
         expect(result.tmuxSession).toBe(`vh-${TID}`);
         await waitFor(
@@ -117,7 +117,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // The tracking interval here is 10 MINUTES, so nothing in this test can
         // be rescued by a periodic tick — every frame is output-driven.
         const TID5 = 'trkact1';
-        mgr.open({ terminalId: TID5, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID5, cols: 80, rows: 24, cwd: dir });
         try {
             const start = activity.length;
             const t0 = Date.now();
@@ -155,7 +155,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
 
     it('open() applies the native-feel session options (status bar off)', async () => {
         const TID4 = 'trkopts1';
-        mgr.open({ terminalId: TID4, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID4, cols: 80, rows: 24, cwd: dir });
         try {
             // Session-scoped `status off` is part of the per-open option batch
             // (native-terminal feel: the web header owns the title, the green
@@ -173,7 +173,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
 
     it('attach-only opens never resurrect a killed terminal (the delete-resurrection bug)', async () => {
         const TID2 = 'trkgone1';
-        mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
         await waitFor(
             () => pushes.some((l) => l.some((t) => t.id === TID2)),
             15_000, `open() membership push for ${TID2}`,
@@ -187,17 +187,17 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // A lingering screen's catch-up (`resub`) and any attach-only open must
         // FAIL — with create-or-attach they used to recreate `vh-<id>` and the
         // push re-adopted the "deleted" terminal everywhere.
-        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, resub: true }))
-            .toThrow('terminal-gone');
-        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, attachOnly: true }))
-            .toThrow('terminal-gone');
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, resub: true }))
+            .rejects.toThrow('terminal-gone');
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, attachOnly: true }))
+            .rejects.toThrow('terminal-gone');
         expect(spawnSync('tmux', ['has-session', '-t', `=vh-${TID2}:`], { stdio: 'ignore' }).status).not.toBe(0);
 
         // Attach-only DOES attach when the tmux session exists without a live
         // pty (daemon restart / idle-reaped pty): create one out-of-band.
         const TID3 = 'trkext1';
         expect(spawnSync('tmux', ['new-session', '-d', '-s', `vh-${TID3}`], { stdio: 'ignore' }).status).toBe(0);
-        const attached = mgr.open({ terminalId: TID3, cols: 80, rows: 24, cwd: dir, attachOnly: true });
+        const attached = await mgr.open({ terminalId: TID3, cols: 80, rows: 24, cwd: dir, attachOnly: true });
         expect(attached.terminalId).toBe(TID3);
         expect(attached.tmuxSession).toBe(`vh-${TID3}`);
         mgr.killSession(TID3);
@@ -205,7 +205,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // Kill tombstones: even a legacy create-or-attach open (no flags) must
         // NOT resurrect a killed id — this WAS the delete-resurrection bug
         // (stale-client legacy opens recreating deleted terminals).
-        expect(() => mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir }))
-            .toThrow('terminal-gone');
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir }))
+            .rejects.toThrow('terminal-gone');
     }, 60_000);
 });

@@ -56,17 +56,24 @@ describe('buildCaptureBatch', () => {
 
 describe('parsePaneState', () => {
     it('parses the state line', () => {
-        expect(parsePaneState('1|33|9|120|40')).toEqual({
-            alternateOn: true, cursorX: 33, cursorY: 9, width: 120, height: 40,
+        expect(parsePaneState('%7|1|33|9|120|40')).toEqual({
+            paneId: '%7', alternateOn: true, cursorX: 33, cursorY: 9, width: 120, height: 40,
         });
-        expect(parsePaneState('0|0|0|80|24\n')!.alternateOn).toBe(false);
+        expect(parsePaneState('%0|0|0|0|80|24\n')!.alternateOn).toBe(false);
+    });
+
+    it('takes the FIRST pane when the window is split (single-pane declaration)', () => {
+        const twoPanes = '%3|0|1|2|80|24\n%4|1|0|0|80|24\n';
+        expect(parsePaneState(twoPanes)!.paneId).toBe('%3');
+        expect(parsePaneState(twoPanes)!.alternateOn).toBe(false); // %4's alt must not leak
     });
 
     it('returns undefined (→ normal-screen default) for garbage', () => {
         expect(parsePaneState('')).toBeUndefined();
-        expect(parsePaneState('1|2|3')).toBeUndefined();
-        expect(parsePaneState('x|1|2|3|4')).toBeUndefined();
-        expect(parsePaneState('1|a|2|3|4')).toBeUndefined();
+        expect(parsePaneState('%1|2|3')).toBeUndefined();
+        expect(parsePaneState('%1|x|1|2|3|4')).toBeUndefined();
+        expect(parsePaneState('%1|1|a|2|3|4')).toBeUndefined();
+        expect(parsePaneState('7|1|0|0|80|24')).toBeUndefined(); // pane id must carry its %
     });
 });
 
@@ -127,7 +134,7 @@ describe('truncateToBudget', () => {
 });
 
 describe('assembleRestore', () => {
-    const paneNormal = { alternateOn: false, cursorX: 0, cursorY: 0, width: 80, height: 24 };
+    const paneNormal = { paneId: '%0', alternateOn: false, cursorX: 0, cursorY: 0, width: 80, height: 24 };
     const paneAlt = { ...paneNormal, alternateOn: true };
 
     it('normal screen: the single full capture IS the restore', () => {

@@ -82,10 +82,15 @@ export interface CaptureCommand {
     command: string;
 }
 
-/** `list-panes -F` fields, in order, that the batch asks for. */
-export const PANE_STATE_FORMAT = '#{alternate_on}|#{cursor_x}|#{cursor_y}|#{pane_width}|#{pane_height}';
+/** `list-panes -F` fields, in order, that the batch asks for. `pane_id` leads:
+ *  the session LATCHES it and afterwards ignores `%output` from every other
+ *  pane (spec D1 single-pane declaration — a user who splits the window locally
+ *  keeps his split, the web just doesn't mirror it). */
+export const PANE_STATE_FORMAT = '#{pane_id}|#{alternate_on}|#{cursor_x}|#{cursor_y}|#{pane_width}|#{pane_height}';
 
 export interface PaneState {
+    /** e.g. `%7` — matches `ControlModeOutputEvent.pane`. */
+    paneId: string;
     alternateOn: boolean;
     cursorX: number;
     cursorY: number;
@@ -99,14 +104,19 @@ export interface PaneState {
  * a normal assembly of an alt pane is ugly, an alt assembly of a normal pane
  * would leave the emulator stuck in its alt buffer with no scrollback).
  */
-export function parsePaneState(line: string): PaneState | undefined {
+export function parsePaneState(response: string): PaneState | undefined {
+    // list-panes prints one line per pane, ordered by index — the FIRST line is
+    // the pane this terminal follows.
+    const line = response.split('\n').find((l) => l.trim().length > 0);
+    if (!line) return undefined;
     const parts = line.trim().split('|');
-    if (parts.length < 5) return undefined;
-    const [alt, cx, cy, w, h] = parts.map((p) => p.trim());
+    if (parts.length < 6) return undefined;
+    const [paneId, alt, cx, cy, w, h] = parts.map((p) => p.trim());
+    if (!paneId.startsWith('%')) return undefined;
     if (alt !== '0' && alt !== '1') return undefined;
     const nums = [cx, cy, w, h].map(Number);
     if (nums.some((n) => !Number.isFinite(n))) return undefined;
-    return { alternateOn: alt === '1', cursorX: nums[0], cursorY: nums[1], width: nums[2], height: nums[3] };
+    return { paneId, alternateOn: alt === '1', cursorX: nums[0], cursorY: nums[1], width: nums[2], height: nums[3] };
 }
 
 /**

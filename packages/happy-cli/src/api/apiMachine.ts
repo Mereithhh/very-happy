@@ -299,8 +299,15 @@ export class ApiMachineClient {
             // `attachOnly` (never create the session — a deleted terminal must
             // not be resurrected; open throws 'terminal-gone' instead, which
             // reaches the client as the RPC error) pass through the same way.
-            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly } = params || {};
-            const result = this.webTerminal.open({ terminalId, cols, rows, cwd, fromSeq, startupCommand, resub, attachOnly });
+            // `streamMode:'lines'` (B-121) is the client's capability
+            // declaration; a client that doesn't send it gets the v1 response
+            // shape verbatim (its `applyOpenResult` throws on anything else and
+            // the terminal would stay "connecting" forever).
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode } = params || {};
+            const result = await this.webTerminal.open({
+                terminalId, cols, rows, cwd, fromSeq, startupCommand, resub, attachOnly,
+                streamMode: streamMode === 'lines' ? 'lines' : undefined,
+            });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
             // client knows whether to encrypt its input / decrypt output.
@@ -309,10 +316,44 @@ export class ApiMachineClient {
                 if (result.mode === 'snapshot') {
                     result.data = this.encTerminalData(result.data);
                 } else {
-                    result.chunks = result.chunks.map((c) => ({ seq: c.seq, data: this.encTerminalData(c.data) }));
+                    result.chunks = result.chunks.map((c: { seq: number; data: string }) => ({ seq: c.seq, data: this.encTerminalData(c.data) }));
                 }
             }
             return { type: 'success', ...result, encStream: !!encStream };
+        });
+
+        // B-121: one page of a terminal's deep history snapshot. Separate from
+        // the live stream in every way — no seq, no ring, no headless — so a
+        // slow history pull can never delay or reorder live output. The page
+        // payload is encrypted exactly like the live stream for terminals that
+        // negotiated encStream (the web decrypts it the same way).
+        this.rpcHandlerManager.registerHandler('terminal-history', async (params: any) => {
+            const { terminalId, snapshotId, page } = params || {};
+            if (typeof terminalId !== 'string' || typeof snapshotId !== 'string' || typeof page !== 'number') {
+                throw new Error('terminalId, snapshotId and page are required');
+            }
+            const result = this.webTerminal.getHistoryPage(terminalId, snapshotId, page);
+            if ('expired' in result) {
+                // Contract string: the web keeps its shallow screen and retries
+                // the open once, rather than hanging on a half-built rebuild.
+                throw new Error('snapshot-expired');
+            }
+            const data = this.encTerminals.has(terminalId) ? this.encTerminalData(result.data) : result.data;
+            return { type: 'success', page: result.page, totalPages: result.totalPages, data };
+        });
+
+        // B-121: paste text into a terminal through tmux's paste buffer. The
+        // web can no longer do this locally in lines mode: `term.paste()` wraps
+        // in bracketed-paste markers only if the BROWSER's xterm has 2004 on,
+        // which says nothing about the real pane — tmux's `paste-buffer -p`
+        // asks the pane. Multi-line text executing line by line was the bug.
+        this.rpcHandlerManager.registerHandler('terminal-paste', async (params: any) => {
+            const { terminalId, text } = params || {};
+            if (typeof terminalId !== 'string' || typeof text !== 'string') {
+                throw new Error('terminalId and text are required');
+            }
+            await this.webTerminal.paste(terminalId, text);
+            return { type: 'success' };
         });
 
         // B-107: paste one line of user input into the terminal that hosts an
