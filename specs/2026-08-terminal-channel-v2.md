@@ -348,6 +348,64 @@ tmux 是消费者），v2 下 send-keys 注入的应答**原样进 pane stdin**�
 - `attach-session -d` 的踢客户端语义随 attach 路径退役后消失——用户本地
   `tmux attach` 与 web 并存的行为变化写入验收。
 
+## 实施纪要（2026-08-17 实现批回写；spec 与现实冲突以本节为准）
+
+实现中实测推翻/收紧了 5 处设计描述，另有 4 处实现选择与 spec 字面不同但更优，
+按 PROCESS.md 铁律回写在此（本节晚于上文，冲突时以本节为准）。
+
+### A. 被实测修正的设计点
+
+1. **`%begin` 的 flags 语义比「greeting 空块」宽得多（返工级）。**
+   `flags & 1` 的真实含义是「本块是不是**本 client 的 stdin 命令**的应答」
+   （`cmd-queue.c`：`flags = !!(state->flags & CMDQ_STATE_CONTROL)`，而
+   `CMDQ_STATE_CONTROL` 只在 `control.c:control_read_callback` 设置）。所以
+   flags=0 的块**不止 attach greeting，还包括 tmux hook 触发的命令块**，会在
+   流中间任意时刻插入（实测用 `set-hook -g after-set-option 'display-message …'`
+   复现）。D1 那句「greeting 空块排除在 FIFO 配对外」**必须读作**：
+   **`flags & 1 == 0` 的块一律不参与 FIFO 配对**。按位置约定（「第一个块是
+   greeting」）实现的命令队列，在任何 tmux.conf 配了 hook 的机器上会整队错位。
+   实现：`ControlModeDecoder` 导出 `solicited`，`ControlClient` 只对
+   `solicited` 的块出队。
+2. **控制行行尾是裸 LF，不是 `\r\n`**（spec 原文是推测）。tmux 用
+   `EVBUFFER_EOL_LF` 收发控制行。
+3. **`capture-pane -C` 与 `%output` 的八进制转义规则逐字节相同**
+   （`cmd-capture-pane.c:93` vs `control.c:control_append_data`），CJK（≥0x80）
+   两处都不转义 → `unescapeOctal` **一份实现两处用**（拼装模块不得再抄一份）。
+4. **单条 %output 载荷上界 8192B**（`CONTROL_BUFFER_HIGH`），spec 担心的「超长行」
+   现实不出现；解码器仍按无上界实现（拆多 chunk、不截断）。
+5. **3.6b 的「control client 退出挂起」bug 在本次实测形状下未复现**：队列里已有
+   34–62MB 待发数据时 SIGTERM，3.6b 与 3.7b 均 6ms 干净退出。SIGTERM→2s→SIGKILL
+   兜底**照留**（成本为零的保险），但它不再被当作「已知必然路径」。
+   另：mac-office 的 tmux 已升 **3.6b→3.7b**（协议实测双向兼容，升级不打断在跑的
+   server 与会话）；**现役 server 进程仍是 3.6b 代码**，要等 server 重启才换代——
+   所以代码依旧不得依赖版本。3.6b/3.7b 的 control 协议**行结构实测逐行一致**
+   （greeting/命令块/`%layout-change`/`%exit`），金样本录在哪个版本都有效。
+
+### B. 与 spec 字面不同的实现选择（更优，已验证）
+
+1. **老 web 的 snapshot 继续用 `serialize()`，不是 capture 文本**（spec R4 N-R4-5
+   写的是换成 capture 文本）。理由：v2 的 headless 仍被同一条解码流喂养，且打开时
+   用 capture 的 `full` 回灌过，`serialize()` 因此**逐字保持 v1 语义**、零行为差异，
+   还省掉「光标错位靠重绘自愈」那条注记。
+2. **拼装缝合用 CRLF，并在 `\x1b[?1049h` 后补 `\x1b[H`**。capture 输出以裸 LF 分行，
+   直接回放会阶梯化；alt 切换后光标停在原处，不归位则 alt 帧从半截开始画。
+3. **capture 目标用 `=vh-<id>:.0`（窗口首个 pane），pane id 从同批 `list-panes`
+   首行锁存**——单 pane 声明因此在**打开那一刻**就确定，不靠「第一个看到的 %output」
+   race。
+4. **`LIST_SESSIONS_FORMAT` 收成单一事实源**：`assistant/terminals.ts` 原本抄了一份
+   7 字段格式，加 `pane_current_command` 时静默错位（4 个测试炸出来）。现在它
+   re-export webTerminal 的常量，不再有第二份。
+
+### C. 其他实现事实
+
+- 粘贴临时文件落在 `$HAPPY_HOME_DIR/paste-spool/`（0700 目录 + 0600 文件、5s 后删），
+  不落 `/tmp`：粘贴内容可能是密码，且 dev/stable 双 daemon 不共用假脱机目录。
+- 打开时把 capture 的 `full` 回灌 headless（不进 ring、不占 seq）——否则 client
+  重建后 daemon 自己的权威屏是空的，agentState 快路径与老 web 快照会一起变瞎。
+- `terminal-history` 的分页数据**沿用该终端的 encStream 规则**加密（与 live 流同款）。
+- daemon 侧 `open()` 由同步变**异步**（capture 往返）：`terminal-gone` 从 throw 变
+  reject，RPC 层 await 后错误串对客户端不变。
+
 ## 风险
 
 1. **daemon 写入端命令化（D1b）是全 spec 风险最高的面**：quoting/分片/C0
