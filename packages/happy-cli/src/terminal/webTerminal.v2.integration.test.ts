@@ -141,6 +141,25 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         expect(mgr.getHistoryPage(id, first.snapshotId!, 0)).toEqual({ expired: true });
     });
 
+    it('concurrent catch-ups share ONE capture — same instant, same snapshot id', async () => {
+        const id = 'v2race1';
+        await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });
+        mgr.write(id, Buffer.from('echo race-marker\r', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('race-marker'), 15_000, 'output before the race');
+        // Two viewers (phone + desktop) catch up at the same moment.
+        const [a, b] = await Promise.all([
+            mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines', resub: true, attachOnly: true }),
+            mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines', resub: true, attachOnly: true }),
+        ]);
+        // Single-flight: one capture, one held snapshot, one baseline. Minting a
+        // handle per caller would have expired the first viewer's id instantly.
+        expect(a.snapshotId).toBe(b.snapshotId);
+        expect(a.seq).toBe(b.seq);
+        expect(a.totalPages).toBe(b.totalPages);
+        const page = mgr.getHistoryPage(id, a.snapshotId!, 0);
+        expect('data' in page).toBe(true);
+    });
+
     it('an alt-screen pane restores as scrollback + alt frame, never polluting the scrollback', async () => {
         const id = 'v2alt1';
         await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });

@@ -1060,6 +1060,15 @@ interface RestoreOutcome {
     /** The session's output seq at the anchor — the client's new baseline. */
     seqAtAnchor: number;
     paneState?: PaneState;
+    /**
+     * The held-snapshot handle, created ONCE per capture. It must not be minted
+     * per caller: a `put()` invalidates the terminal's previous snapshot, so two
+     * clients sharing one single-flight capture would hand the first client an
+     * id that the second one just expired — its history pull would fail and
+     * restart the whole open for no reason.
+     */
+    snapshotId: string;
+    totalPages: number;
 }
 
 export class WebTerminalManager {
@@ -1911,13 +1920,14 @@ export class WebTerminalManager {
             // subprocess path and an old web's serialize() snapshot both read it.
             session.restoreHeadless(payload.full);
         }
-        return { ...payload, seqAtAnchor, paneState };
+        // ONE handle per capture (see RestoreOutcome.snapshotId).
+        const handle = this.snapshots.put(session.id, payload.full);
+        return { ...payload, seqAtAnchor, paneState, ...handle };
     }
 
     /** Build the lines-mode open response from a completed capture. */
     private linesResponse(id: string, session: TerminalSession, restored: RestoreOutcome): OpenTerminalResult {
-        const handle = this.snapshots.put(id, restored.full);
-        logger.debug(`[WEB TERMINAL] lines open ${id}: seq=${restored.seqAtAnchor} small=${restored.small.length}B full=${restored.full.length}B pages=${handle.totalPages} alt=${restored.alternateOn}`);
+        logger.debug(`[WEB TERMINAL] lines open ${id}: seq=${restored.seqAtAnchor} small=${restored.small.length}B full=${restored.full.length}B pages=${restored.totalPages} alt=${restored.alternateOn}`);
         return {
             terminalId: id,
             tmuxSession: session.tmuxSession,
@@ -1925,8 +1935,8 @@ export class WebTerminalManager {
             mode: 'snapshot',
             data: restored.small.toString('base64'),
             streamMode: 'lines',
-            snapshotId: handle.snapshotId,
-            totalPages: handle.totalPages,
+            snapshotId: restored.snapshotId,
+            totalPages: restored.totalPages,
             alternateOn: restored.alternateOn,
         };
     }
