@@ -572,6 +572,7 @@ export const en = {
         notFound: 'Path does not exist on this machine',
         permissionDenied: 'Permission denied',
         unsupported: 'Cannot browse files — the machine is offline, or its daemon is too old (upgrade very-happy-cli to ≥ 0.2.33)',
+        timeout: 'The machine did not answer in time. It may have gone offline mid-request — try again.',
         listTruncated: ({ count }: { count: number }) => `Large directory — showing the first ${count} entries`,
         fileTruncated: ({ size }: { size: string }) => `Preview truncated — full file is ${size}`,
         binaryFile: ({ size }: { size: string }) => `Binary file (${size}) — no preview`,
@@ -1662,7 +1663,7 @@ export const en = {
         tokens: 'Tokens',
         cost: 'Cost',
         usageOverTime: 'Usage over time',
-        byModel: 'By Model',
+        byKind: 'By Token Type',
         noData: 'No usage data available',
     },
 

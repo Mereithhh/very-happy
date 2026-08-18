@@ -1764,15 +1764,15 @@ function Usage() {
             </div>
           </ItemGroup>
 
-          <ItemGroup title={t('usage.byModel')}>
-            {Object.entries(totals.tokensByModel)
+          <ItemGroup title={t('usage.byKind')}>
+            {Object.entries(totals.tokensByKind)
               .sort((a, b) => b[1] - a[1])
               .map(([model, tokens]) => (
                 <Item
                   key={model}
                   title={model}
                   detail={`${formatCompact(tokens)} ${(t('usage.tokens')).toLowerCase()}`}
-                  right={<span className="set-value">${(totals.costByModel[model] ?? 0).toFixed(2)}</span>}
+                  right={<span className="set-value">${(totals.costByKind[model] ?? 0).toFixed(2)}</span>}
                 />
               ))}
           </ItemGroup>

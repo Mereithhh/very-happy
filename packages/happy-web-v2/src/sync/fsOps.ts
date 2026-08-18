@@ -26,8 +26,14 @@ export interface FsEntry {
     mtimeMs?: number;
 }
 
+export { isTimeoutError } from './rpcTimeout';
+import { isTimeoutError } from './rpcTimeout';
+
 export type FsFailureCode =
     | 'unsupported'
+    /** B-138: RPC 超时（server 或 daemon 没应答）——区别于 'unknown'，
+     *  它有明确的用户动作建议（等一下重试 / 查机器是否还活着）。 */
+    | 'timeout'
     | 'not-found'
     | 'permission-denied'
     | 'not-a-directory'
@@ -86,6 +92,10 @@ export async function machineFsList(machineId: string, path: string): Promise<Fs
         }
         return { ok: true, path: res.path, entries: res.entries, truncated: res.truncated === true };
     } catch (error) {
+        // B-138: 超时是有界等待的正常结局，不是 'unknown'——它有明确的用户动作建议
+        if (isTimeoutError(error)) {
+            return { ok: false, code: 'timeout', error: 'fs-list timed out' };
+        }
         return failureOf(error instanceof Error ? error.message : 'fs-list failed');
     }
 }
@@ -121,6 +131,10 @@ export async function machineFsRead(
             offset: typeof res.offset === 'number' ? res.offset : null,
         };
     } catch (error) {
+        // B-138: 超时是有界等待的正常结局，不是 'unknown'——它有明确的用户动作建议
+        if (isTimeoutError(error)) {
+            return { ok: false, code: 'timeout', error: 'fs-read timed out' };
+        }
         return failureOf(error instanceof Error ? error.message : 'fs-read failed');
     }
 }

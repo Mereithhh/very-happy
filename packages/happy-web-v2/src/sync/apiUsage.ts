@@ -96,36 +96,5 @@ export async function getUsageForPeriod(
 /**
  * Calculate total tokens and cost from usage data
  */
-export function calculateTotals(usage: UsageDataPoint[]): {
-    totalTokens: number;
-    totalCost: number;
-    tokensByModel: Record<string, number>;
-    costByModel: Record<string, number>;
-} {
-    const result = {
-        totalTokens: 0,
-        totalCost: 0,
-        tokensByModel: {} as Record<string, number>,
-        costByModel: {} as Record<string, number>
-    };
-    
-    for (const dataPoint of usage) {
-        // Sum tokens
-        for (const [model, tokens] of Object.entries(dataPoint.tokens)) {
-            if (typeof tokens === 'number') {
-                result.totalTokens += tokens;
-                result.tokensByModel[model] = (result.tokensByModel[model] || 0) + tokens;
-            }
-        }
-        
-        // Sum costs
-        for (const [model, cost] of Object.entries(dataPoint.cost)) {
-            if (typeof cost === 'number') {
-                result.totalCost += cost;
-                result.costByModel[model] = (result.costByModel[model] || 0) + cost;
-            }
-        }
-    }
-    
-    return result;
-}
+
+export { calculateTotals } from './usageTotals';

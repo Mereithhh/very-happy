@@ -11,6 +11,8 @@ export function fsFailureText(t: typeof translate, failure: FsFailure): string {
     switch (failure.code) {
         case 'unsupported':
             return t('fsBrowser.unsupported');
+        case 'timeout':
+            return t('fsBrowser.timeout');
         case 'not-found':
             return t('fsBrowser.notFound');
         case 'permission-denied':

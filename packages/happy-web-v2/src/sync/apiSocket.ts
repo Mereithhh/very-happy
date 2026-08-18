@@ -145,18 +145,32 @@ class ApiSocket {
     }
 
     /**
+     * RPC 超时（B-138）。此前两条 RPC 路径都用**裸 `emitWithAck`（无 timeout）**，
+     * server 一旦不应答就是永久 pending —— UI 一直转圈而不是报错。所有 fs 操作、
+     * 终端 open/list 都吃这个洞。
+     *
+     * 两个值刻意不同：machine RPC 全是 fs-list / fs-read / 终端操作，都该是秒级；
+     * session RPC 会跑 bash，可以合法地跑几分钟，所以给一个宽松但**有界**的上限
+     * ——重点不是卡得紧，是不能无限等。
+     */
+    static readonly MACHINE_RPC_TIMEOUT_MS = 60_000;
+    static readonly SESSION_RPC_TIMEOUT_MS = 300_000;
+
+    /**
      * RPC call for sessions - uses session-specific encryption
      */
-    async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
+    async sessionRPC<R, A>(sessionId: string, method: string, params: A, opts?: { timeoutMs?: number }): Promise<R> {
         const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
-            params: await sessionEncryption.encryptRaw(params)
-        });
+        const result = await this.socket!
+            .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
+            .emitWithAck('rpc-call', {
+                method: `${sessionId}:${method}`,
+                params: await sessionEncryption.encryptRaw(params)
+            });
         
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
@@ -167,16 +181,18 @@ class ApiSocket {
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
-    async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
+    async machineRPC<R, A>(machineId: string, method: string, params: A, opts?: { timeoutMs?: number }): Promise<R> {
         const machineEncryption = this.encryption!.getMachineEncryption(machineId);
         if (!machineEncryption) {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: await machineEncryption.encryptRaw(params)
-        });
+        const result = await this.socket!
+            .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
+            .emitWithAck('rpc-call', {
+                method: `${machineId}:${method}`,
+                params: await machineEncryption.encryptRaw(params)
+            });
 
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;

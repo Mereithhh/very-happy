@@ -15,6 +15,12 @@ export const TERMINAL_MIRROR_FORWARDER_BASENAME = 'terminal_mirror_forwarder.cjs
 
 const HOOK_EVENTS = ['SessionStart', 'SessionEnd'] as const;
 
+/**
+ * B-137: 每个 hook 条目的超时（秒）。SessionStart 的默认超时是 600s——一个卡住的
+ * hook 会把会话启动拖住十分钟。这个转发器只是往本机 daemon POST 一次，10s 绰绰有余。
+ */
+export const HOOK_TIMEOUT_SECONDS = 10;
+
 type HookCommandEntry = { type: string; command: string;[k: string]: unknown };
 type HookMatcherEntry = { matcher?: string; hooks?: HookCommandEntry[];[k: string]: unknown };
 
@@ -40,7 +46,7 @@ export function applyTerminalHooks(settings: unknown, hookCommand: string): { se
     for (const event of HOOK_EVENTS) {
         const existing = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
         const foreign = existing.filter((e) => !isOurs(e));
-        const ours: HookMatcherEntry = { matcher: '*', hooks: [{ type: 'command', command: hookCommand }] };
+        const ours: HookMatcherEntry = { matcher: '*', hooks: [{ type: 'command', command: hookCommand, timeout: HOOK_TIMEOUT_SECONDS }] };
         const alreadyExact = existing.length - foreign.length === 1
             && existing.some((e) => isOurs(e)
                 && (e as HookMatcherEntry).hooks!.some((h) => h.command === hookCommand));

@@ -984,7 +984,6 @@ export const it: PartialTranslationStructure = {
         tokens: 'Token',
         cost: 'Costo',
         usageOverTime: 'Utilizzo nel tempo',
-        byModel: 'Per modello',
         noData: 'Nessun dato di utilizzo disponibile',
     },
 
@@ -1012,17 +1011,6 @@ export const it: PartialTranslationStructure = {
     },
 
     // push di open_preview: overlay di anteprima file (B-131)
-    filePreview: {
-        title: 'Anteprima del file',
-        receiveTitle: 'Apri le anteprime ricevute',
-        receiveSubtitle: 'Quando un agente chiama open_preview, mostra l\'anteprima del file su questo dispositivo. Disattivato = questo dispositivo ignora la notifica (gli altri dispositivi continuano a mostrarla).',
-        diffUnavailable: 'La vista delle differenze non esiste ancora: il file viene mostrato così com\'è',
-        machineOffline: ({ machine }: { machine: string }) =>
-            `${machine} è offline, quindi il file non può essere letto. Avvia il daemon di happy su quella macchina e questa anteprima si caricherà da sola.`,
-        machineUnknown: 'Quella macchina non appartiene ancora a questo account: il file non può essere letto',
-        noMachineForSession: 'Un agente ha chiesto di visualizzare un file, ma questa sessione non ha una macchina registrata: non c\'è nulla da cui leggere',
-        noSource: 'Un agente ha chiesto di visualizzare un file, ma la richiesta non indicava da quale macchina leggerlo',
-    },
 
 } as const;
 

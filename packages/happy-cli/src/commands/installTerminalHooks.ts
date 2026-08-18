@@ -21,9 +21,19 @@ function claudeSettingsPath(): string {
     return join(configDir, 'settings.json');
 }
 
+/**
+ * B-137: 命令必须带存在性守卫。
+ *
+ * 之前写的是裸 `node "<绝对路径>"`。very-happy-cli 卸载 / 换安装方式 / 换成 dev
+ * checkout 后那个路径就没了，于是**每一次** SessionStart + SessionEnd 都报 hook 失败。
+ * （Owner 的 chezmoi 源里手写那份反而是对的——本机是被本命令覆盖退化的。）
+ *
+ * `[ -f … ] && node … || true` 让脚本缺失时静默跳过；配合条目上的 `timeout`
+ * （见 hookSettings.ts），一个卡住的 hook 也不会拖住会话启动。
+ */
 export function terminalMirrorHookCommand(): string {
     const script = resolve(projectPath(), 'scripts', TERMINAL_MIRROR_FORWARDER_BASENAME);
-    return `node "${script}"`;
+    return `[ -f "${script}" ] && node "${script}" || true`;
 }
 
 export async function installTerminalHooks(opts: { remove?: boolean } = {}): Promise<void> {

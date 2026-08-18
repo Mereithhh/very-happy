@@ -578,6 +578,7 @@ export const zhHans: TranslationStructure = {
         notFound: '路径在这台机器上不存在',
         permissionDenied: '没有权限访问',
         unsupported: '无法浏览文件——机器离线，或 daemon 版本过旧（请升级 very-happy-cli 到 ≥ 0.2.33）',
+        timeout: '机器没有及时应答，可能在请求过程中掉线了——稍后重试。',
         listTruncated: ({ count }: { count: number }) => `目录条目过多，仅显示前 ${count} 项`,
         fileTruncated: ({ size }: { size: string }) => `预览已截断——完整文件 ${size}`,
         binaryFile: ({ size }: { size: string }) => `二进制文件（${size}）——不支持预览`,
@@ -1587,7 +1588,7 @@ export const zhHans: TranslationStructure = {
         tokens: '令牌',
         cost: '费用',
         usageOverTime: '使用趋势',
-        byModel: '按模型',
+        byKind: '按 token 类型',
         noData: '暂无使用数据',
     },
 

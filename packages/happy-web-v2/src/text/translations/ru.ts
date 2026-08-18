@@ -1029,7 +1029,6 @@ export const ru: PartialTranslationStructure = {
         tokens: 'Токены',
         cost: 'Стоимость',
         usageOverTime: 'Использование во времени',
-        byModel: 'По модели',
         noData: 'Данные об использовании недоступны',
     },
 

@@ -998,7 +998,6 @@ export const ja: PartialTranslationStructure = {
         tokens: 'トークン',
         cost: 'コスト',
         usageOverTime: '使用量の推移',
-        byModel: 'モデル別',
         noData: '使用データがありません',
     },
 

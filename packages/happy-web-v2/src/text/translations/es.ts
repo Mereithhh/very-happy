@@ -989,7 +989,6 @@ export const es: PartialTranslationStructure = {
         totalCost: 'Costo total',
         cost: 'Costo',
         usageOverTime: 'Uso a lo largo del tiempo',
-        byModel: 'Por modelo',
         noData: 'No hay datos de uso disponibles',
     },
 
@@ -1017,17 +1016,6 @@ export const es: PartialTranslationStructure = {
     },
 
     // pushes de open_preview: superposición de vista previa de archivos (B-131)
-    filePreview: {
-        title: 'Vista previa del archivo',
-        receiveTitle: 'Abrir vistas previas recibidas',
-        receiveSubtitle: 'Cuando un agente llama a open_preview, mostrar la vista previa del archivo en este dispositivo. Desactivado = este dispositivo ignora el aviso (tus otros dispositivos lo seguirán mostrando).',
-        diffUnavailable: 'La vista de diferencias aún no existe: se muestra el archivo tal cual',
-        machineOffline: ({ machine }: { machine: string }) =>
-            `${machine} está desconectada, así que no se puede leer el archivo. Inicia el daemon de happy allí y esta vista previa se cargará sola.`,
-        machineUnknown: 'Esa máquina todavía no pertenece a esta cuenta: no se puede leer el archivo',
-        noMachineForSession: 'Un agente pidió previsualizar un archivo, pero esta sesión no tiene ninguna máquina registrada: no hay de dónde leerlo',
-        noSource: 'Un agente pidió previsualizar un archivo, pero la petición no indicó de qué máquina leerlo',
-    },
 
 } as const;
 

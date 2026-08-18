@@ -1145,7 +1145,6 @@ export const zhHant: PartialTranslationStructure = {
         tokens: '權杖',
         cost: '費用',
         usageOverTime: '使用趨勢',
-        byModel: '按模型',
         noData: '暫無使用資料',
     },
 
@@ -1252,16 +1251,5 @@ export const zhHant: PartialTranslationStructure = {
     },
 
     // open_preview 推送：檔案預覽浮層（B-131）
-    filePreview: {
-        title: '檔案預覽',
-        receiveTitle: '接收預覽推送',
-        receiveSubtitle: 'agent 呼叫 open_preview 時，在本裝置彈出檔案預覽。關閉後本裝置會忽略這類推送（其他裝置照舊彈出）。',
-        diffUnavailable: 'diff 檢視尚未實作，這裡以普通檔案方式顯示',
-        machineOffline: ({ machine }: { machine: string }) =>
-            `${machine} 不在線，讀不到這個檔案。在那台機器上啟動 happy daemon，預覽會自己載入。`,
-        machineUnknown: '這台機器還不在目前帳號中，讀不到這個檔案',
-        noMachineForSession: 'agent 要求預覽檔案，但這個工作階段沒有記錄所屬機器，沒有可讀取的目標',
-        noSource: 'agent 要求預覽檔案，但要求中沒有指明要從哪台機器讀取',
-    },
 
 } as const;

@@ -983,7 +983,6 @@ export const ca: PartialTranslationStructure = {
         totalTokens: 'Tokens totals',
         totalCost: 'Cost total',
         usageOverTime: 'Ús al llarg del temps',
-        byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
     },
 
