@@ -572,6 +572,7 @@ export const zhHans: TranslationStructure = {
         showHidden: '显示隐藏文件',
         hideHidden: '不显示隐藏文件',
         empty: '空目录',
+        useThisDirectory: '用这个目录',
         retry: '重试',
         copyPath: '复制路径',
         loadFailed: '加载失败',
@@ -625,6 +626,7 @@ export const zhHans: TranslationStructure = {
         actionNewChat: '新建对话',
         actionNewChatAdvanced: '新建对话（自定义选项）…',
         actionNewTerminal: '新建终端',
+        actionNewTerminalAt: '在指定目录新建终端…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
         actionOpenSettings: '打开设置',
@@ -893,6 +895,15 @@ export const zhHans: TranslationStructure = {
         chatSubtitle: '在某台机器上让 Claude / Codex 开始干活',
         terminalTitle: '网页终端',
         terminalSubtitle: '在已连接的机器上打开一个终端（tmux）',
+        terminalAtTitle: '在指定目录新建终端…',
+    },
+
+    newTerminalModal: {
+        eyebrow: '新建终端',
+        title: '在指定目录新建终端',
+        browse: '浏览这台机器',
+        create: '打开终端',
+        startupHint: '终端会在这个目录启动，然后执行「设置 → 终端」里的启动命令。',
     },
 
     emptyState: {

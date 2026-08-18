@@ -164,6 +164,23 @@
   opacity: 0.4;
 }
 
+/* B-144: the inline directory picker (FsBrowser in onPickDir mode). Fixed
+   height so the dialog doesn't jump when the listing loads, and its own
+   scroll area so a big directory never grows the card past the viewport. */
+.ns-browse {
+  display: flex;
+  height: 240px;
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ns-hint {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+
 /* touch: 16px floor stops iOS focus auto-zoom; anchor the card in the upper
  * third so the on-screen keyboard doesn't cover the path/name inputs
  * (position: fixed doesn't track the iOS visual viewport). */

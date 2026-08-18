@@ -257,6 +257,52 @@
   color: var(--text-faint);
 }
 
+/* Directory-picker mode (B-144): files stay visible for orientation but are
+   not destinations, and a footer bar confirms the listed directory. */
+.fsb-row.is-muted {
+  opacity: 0.45;
+  cursor: default;
+}
+.fsb-row.is-muted:hover {
+  background: transparent;
+}
+.fsb-pickbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.fsb-pickpath {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* long paths: keep the tail (the leaf dir) readable */
+  text-align: left;
+}
+.fsb-pickbtn {
+  flex: none;
+  font-size: var(--fs-12);
+  padding: 5px 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: var(--bg-2);
+  color: var(--text);
+}
+.fsb-pickbtn:not(:disabled):hover {
+  background: var(--bg-3);
+}
+.fsb-pickbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Fullscreen: promotes the browser/viewer root into a viewport overlay (both
    hosts share this via FsBrowser's toggle — see its header comment). Last in
    the file so its background wins over .fsb / .fsb-viewer. */

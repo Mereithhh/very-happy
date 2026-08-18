@@ -43,8 +43,23 @@ function entryIcon(type: FsEntry['type']) {
     return <FileText size={13} className="fsb-icon" />;
 }
 
-export function FsBrowser({ machineId, initialPath }: { machineId: string; initialPath: string }) {
+export function FsBrowser({
+    machineId,
+    initialPath,
+    onPickDir,
+}: {
+    machineId: string;
+    initialPath: string;
+    /**
+     * Directory-picker mode (B-144, "new terminal in a directory"). When set,
+     * the browser navigates dirs only — files and the file viewer are out of
+     * reach, fullscreen is hidden (it lives inside a modal), and a footer bar
+     * confirms the currently listed directory. Absent ⇒ the normal browser.
+     */
+    onPickDir?: (path: string) => void;
+}) {
     const { t } = useTranslation();
+    const picking = !!onPickDir;
     // `path` is the last successfully listed directory (normalized by the
     // daemon — so a '~' initialPath becomes the real home path once loaded).
     const [path, setPath] = useState(initialPath);
@@ -72,6 +87,9 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
             // A symlink row can point at a FILE — the probe-list answers
             // 'not-a-directory'; open it in the viewer instead of erroring.
             if (res.code === 'not-a-directory') {
+                // Picking a directory: a symlink-to-file is simply not a
+                // destination — stay where we are rather than opening a viewer.
+                if (picking) return;
                 setFile(target);
                 setFailure(null);
                 return;
@@ -83,7 +101,7 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
         setPath(res.path);
         setEntries(res.entries);
         setTruncated(res.truncated);
-    }, [machineId]);
+    }, [machineId, picking]);
 
     useEffect(() => {
         void load(initialPath);
@@ -95,6 +113,7 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
     const openEntry = (entry: FsEntry) => {
         const full = joinFsPath(path, entry.name);
         if (entry.type === 'file') {
+            if (picking) return;
             setFile(full);
         } else {
             // dir — and symlink, whose target kind the probe-list resolves.
@@ -176,15 +195,19 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
                 >
                     <RefreshCw size={14} className={loading ? 'fsb-spin' : undefined} />
                 </button>
-                <button
-                    type="button"
-                    className="fsb-iconbtn"
-                    aria-label={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
-                    title={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
-                    onClick={() => setFullscreen((v) => !v)}
-                >
-                    {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                </button>
+                {/* Picker mode already lives inside a modal — a second overlay
+                    on top of it would only trap the user. */}
+                {!picking && (
+                    <button
+                        type="button"
+                        className="fsb-iconbtn"
+                        aria-label={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
+                        title={fullscreen ? t('fsBrowser.exitFullscreen') : t('fsBrowser.fullscreen')}
+                        onClick={() => setFullscreen((v) => !v)}
+                    >
+                        {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                    </button>
+                )}
             </div>
 
             <div className="fsb-list">
@@ -205,8 +228,9 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
                             <button
                                 key={entry.name}
                                 type="button"
-                                className="fsb-row"
+                                className={`fsb-row${picking && entry.type === 'file' ? ' is-muted' : ''}`}
                                 onClick={() => openEntry(entry)}
+                                disabled={picking && entry.type === 'file'}
                                 title={entry.name}
                             >
                                 {entryIcon(entry.type)}
@@ -223,6 +247,20 @@ export function FsBrowser({ machineId, initialPath }: { machineId: string; initi
                     </>
                 )}
             </div>
+
+            {picking && (
+                <div className="fsb-pickbar">
+                    <span className="fsb-pickpath mono" title={path}>{path}</span>
+                    <button
+                        type="button"
+                        className="fsb-pickbtn"
+                        disabled={!!failure}
+                        onClick={() => onPickDir!(path)}
+                    >
+                        {t('fsBrowser.useThisDirectory')}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

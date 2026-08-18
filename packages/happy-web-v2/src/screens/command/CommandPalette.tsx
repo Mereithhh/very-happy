@@ -13,6 +13,7 @@ import {
   StickyNote,
   AudioLines,
   ListChecks,
+  FolderOpen,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -26,6 +27,7 @@ import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
+import { NewTerminalModal } from '@/screens/sessions/NewTerminalModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import {
@@ -77,6 +79,7 @@ export function CommandPalette() {
   const ime = useImeGuard();
   const [active, setActive] = useState(0);
   const [showNewSession, setShowNewSession] = useState(false);
+  const [showNewTerminal, setShowNewTerminal] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -165,6 +168,16 @@ export function CommandPalette() {
       haystack: (t('commandPalette.actionNewTerminal') as string).toLowerCase(),
       hint: NEW_TERMINAL_SHORTCUT_HINT,
       run: openNewTerminal,
+    });
+    out.push({
+      // B-144: the deliberate variant — choose the working directory first, so
+      // the configured startup command starts in the project, not in $HOME.
+      key: 'action:new-terminal-at',
+      group: 'actions',
+      title: t('commandPalette.actionNewTerminalAt'),
+      icon: <FolderOpen size={16} />,
+      haystack: `terminal directory cwd ${(t('commandPalette.actionNewTerminalAt') as string).toLowerCase()}`,
+      run: () => setShowNewTerminal(true),
     });
     out.push({
       key: 'action:new-chat',
@@ -456,6 +469,7 @@ export function CommandPalette() {
       )}
 
       {showNewSession && <NewSessionModal onClose={() => setShowNewSession(false)} />}
+      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
     </>
   );
 }

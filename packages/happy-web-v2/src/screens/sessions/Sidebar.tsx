@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -31,6 +31,7 @@ import { useBoardAttentionCount, useBoardItems } from '@/screens/board/useBoardI
 import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
+import { NewTerminalModal } from './NewTerminalModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
@@ -105,6 +106,7 @@ export function Sidebar() {
     [setSavedView],
   );
   const [showNew, setShowNew] = useState(false);
+  const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
@@ -801,6 +803,15 @@ export function Sidebar() {
                 icon: TerminalSquare,
                 onSelect: () => createTerminalOrPick(navigate),
               },
+              {
+                // B-144: same terminal, but pick the working directory first —
+                // the startup command then runs in the project, not in $HOME.
+                // ⌘N / ⌥N deliberately stay on the one-click path above.
+                key: 'terminal-at',
+                label: t('newSessionModal.terminalAtTitle'),
+                icon: FolderOpen,
+                onSelect: () => setShowNewTerminal(true),
+              },
             ]}
           >
             <button className="sb-icon-btn" title={t('sidebar.newSession')}>
@@ -996,6 +1007,7 @@ export function Sidebar() {
       </footer>
 
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
+      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}

@@ -566,6 +566,7 @@ export const en = {
         showHidden: 'Show hidden files',
         hideHidden: 'Hide hidden files',
         empty: 'Empty directory',
+        useThisDirectory: 'Use this directory',
         retry: 'Retry',
         copyPath: 'Copy path',
         loadFailed: 'Failed to load',
@@ -619,6 +620,7 @@ export const en = {
         actionNewChat: 'New chat',
         actionNewChatAdvanced: 'New chat (choose options)…',
         actionNewTerminal: 'New terminal',
+        actionNewTerminalAt: 'New terminal in a directory…',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
         actionOpenSettings: 'Open settings',
@@ -895,6 +897,17 @@ export const en = {
         chatSubtitle: 'Let Claude or Codex start working on a machine',
         terminalTitle: 'Web terminal',
         terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
+        // B-144: same terminal, but the working directory is chosen first.
+        terminalAtTitle: 'Web terminal in a directory…',
+    },
+
+    newTerminalModal: {
+        // Used by NewTerminalModal (B-144)
+        eyebrow: 'NEW TERMINAL',
+        title: 'Terminal in a directory',
+        browse: 'Browse the machine',
+        create: 'Open terminal',
+        startupHint: 'Starts here, then runs the startup command from Settings → Terminal.',
     },
 
     emptyState: {

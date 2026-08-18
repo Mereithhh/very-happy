@@ -12,6 +12,7 @@
 
 | id | 版本/批次 | 验证项 | 怎么验 | 登记日期 |
 |---|---|---|---|---|
+| V-075 | B-144：web（先选目录开终端） | **手机上的目录选择弹窗** | 手机端侧栏 + 号 → 「在指定目录新建终端…」→ ①预设 chip 点一下能填进输入框、× 能删；②点文件夹图标展开内嵌浏览器：目录能逐层点进、**文件行是灰的点不动**、底栏「用这个目录」能确认回填；③键盘弹起时弹窗是否被遮（`.ns-backdrop` 在粗指针下靠上 10dvh，输入框应仍可见）；④确认创建后终端应**开在该目录**（终端里 `pwd` 核对）且启动命令在那里执行 | 2026-08-18 |
 | V-074 | B-007：cli+web 待发布 | 外部 todo provider —— **失败态**（六种里最容易做砸的） | ①**不配** `todoProvider` 进 /todos → 应给「本机未配置」的引导（含怎么配、指向 docs/channels.md），不是报错也不是空白；②把 command 指向一个不存在的路径 → 明确报错；③指向一个 `exit 1` 且往 stderr 写话的脚本 → **那句话要原样出现在界面上**（显示 unknown error 就是没做到）；④指向一个 sleep 60 的脚本 → 按 timeoutMs 超时，不是一直转圈；⑤新 web + 旧 daemon（没注册这三个 RPC）→ 显示「daemon 版本过旧」而非白屏 | 2026-08-18 |
 | V-073 | B-007：cli+web 待发布 | 外部 todo provider —— 正常路径与真实源 | 先用仓库自带示例 provider（`packages/happy-cli/examples/todo-provider-jsonfile.mjs`）配上，在 /todos 里：列出、勾完成、新建各走一遍，确认**每次操作后都以重新 list 的结果为准**（勾完成后该条应按 provider 的实际状态消失/置灰，而不是只有前端变灰）。再接 Owner 真实的 dida/tanka provider 跑一次「看一眼今天要做什么 → 勾掉一条」。⚠️ 多机器时确认面板显示的是**哪台机器**（provider 是每台机器各配的） | 2026-08-18 |
 | V-072 | B-132：CLI 待发布 | 自报进度取代 haiku 猜 | 开 `boardLlm: true`，让 claude 跑一个多步任务并在过程中调 `report_progress` → ①看板卡片进度是否即时更新、文案是否像人写的；②daemon 日志里 15min 内应出现 `recent self-report; skipping LLM analysis` 而**不再**起 haiku 子进程；③故意让它连着调两次（<30s）确认第二次被静默节流且没重试 | 2026-08-18 |
