@@ -74,6 +74,16 @@
   flex-direction: column;
   gap: var(--sp-2);
 }
+/* B-145: detail 从 toggle 按钮里挪出来做兄弟节点（可点路径不能是嵌套 button），
+   所以外面加一层 flex 让两者仍在同一行；toggle 只占它自己的内容宽度。 */
+.tg-row-head-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
 .tg-row-head {
   display: flex;
   align-items: center;
@@ -81,10 +91,13 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--text-dim);
-  width: 100%;
   min-width: 0;
   text-align: left;
   padding: 2px 0;
+}
+/* detail 不在按钮里时，按钮只需要包住 label；detail 自己吃剩余宽度 */
+.tg-row-head-wrap > .tg-tool-detail {
+  flex: 1;
 }
 .tg-tool-label {
   flex: none;

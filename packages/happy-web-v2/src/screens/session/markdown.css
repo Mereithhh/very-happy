@@ -113,3 +113,10 @@
 .md-table tr:last-child td {
   border-bottom: none;
 }
+
+/* B-145: 正文里可点的文件路径（白名单命中）。
+   继承 .fpl 的基础样式（见 filepathlink.css），这里只让它在正文行内不破坏行高。 */
+.md .md-path {
+  font-size: 0.95em;
+  vertical-align: baseline;
+}

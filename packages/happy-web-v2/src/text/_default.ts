@@ -704,6 +704,8 @@ export const en = {
 
     // open_preview pushes: the singleton file-preview overlay (B-131)
     filePreview: {
+        /** B-144: tooltip on a clickable file path in chat / tool cards. */
+        openPath: ({ path }: { path: string }) => `Open ${path} in the preview panel`,
         title: 'File preview',
         receiveTitle: 'Open pushed previews',
         receiveSubtitle: 'When an agent calls open_preview, pop the file preview on this device. Off = this device ignores the push (your other devices still show it).',

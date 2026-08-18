@@ -12,6 +12,9 @@
 import React from 'react';
 import { CodeView } from './CodeView';
 import './markdown.css';
+import { FilePathLink } from './FilePathLink';
+import { collectSessionFilePaths, findPathHits } from './toolFilePath';
+import { useSessionMessages } from '@/sync/storage';
 
 type Block =
     | { type: 'heading'; level: number; text: string }
@@ -212,6 +215,38 @@ function renderEmphasis(text: string): React.ReactNode[] {
     return nodes;
 }
 
+/**
+ * B-145: 让正文里的文件路径可点。
+ *
+ * 只对**本会话工具调用碰过的路径**生效（白名单，见 toolFilePath.ts）——不用正则猜，
+ * 因为自由文本里认路径必然假阳性，而点了没反应比没链接更烦。
+ *
+ * 实现上把切口放在**叶子**：`renderInline` 在本文件里有 11 个调用点，透传参数会把
+ * 整个渲染管线搅一遍；而叶子换成组件后自己读 context 即可，改动面 = 两行。
+ */
+interface PathLinkCtx { sessionId: string; allowlist: ReadonlySet<string> }
+const PathLinkContext = React.createContext<PathLinkCtx | null>(null);
+
+function TextLeaf({ text }: { text: string }) {
+    const ctx = React.useContext(PathLinkContext);
+    const hits = React.useMemo(
+        () => (ctx ? findPathHits(text, ctx.allowlist) : []),
+        [text, ctx],
+    );
+    if (!ctx || hits.length === 0) return <>{text}</>;
+    const out: React.ReactNode[] = [];
+    let cursor = 0;
+    hits.forEach((hit, i) => {
+        if (hit.start > cursor) out.push(text.slice(cursor, hit.start));
+        out.push(
+            <FilePathLink key={`p${i}`} path={hit.path} sessionId={ctx.sessionId} className="md-path" />,
+        );
+        cursor = hit.end;
+    });
+    if (cursor < text.length) out.push(text.slice(cursor));
+    return <>{out}</>;
+}
+
 function renderBoldItalic(text: string): React.ReactNode[] {
     const nodes: React.ReactNode[] = [];
     // Bold (**x** / __x__) then italic (*x* / _x_)
@@ -219,7 +254,7 @@ function renderBoldItalic(text: string): React.ReactNode[] {
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-        if (m.index > last) nodes.push(text.slice(last, m.index));
+        if (m.index > last) nodes.push(<TextLeaf key={nextKey()} text={text.slice(last, m.index)} />);
         if (m[1]) {
             nodes.push(<strong key={nextKey()}>{m[2]}</strong>);
         } else {
@@ -227,13 +262,18 @@ function renderBoldItalic(text: string): React.ReactNode[] {
         }
         last = re.lastIndex;
     }
-    if (last < text.length) nodes.push(text.slice(last));
+    if (last < text.length) nodes.push(<TextLeaf key={nextKey()} text={text.slice(last)} />);
     return nodes;
 }
 
-export function Markdown({ text, onOption }: { text: string; onOption?: (option: string) => void }) {
+export function Markdown({ text, onOption, sessionId }: {
+    text: string;
+    onOption?: (option: string) => void;
+    /** 给了才启用文件路径可点（B-145）；不给则完全是老行为。 */
+    sessionId?: string;
+}) {
     const blocks = React.useMemo(() => parseBlocks(text), [text]);
-    return (
+    const body = (
         <div className="md">
             {blocks.map((b, idx) => {
                 switch (b.type) {
@@ -325,4 +365,23 @@ export function Markdown({ text, onOption }: { text: string; onOption?: (option:
             })}
         </div>
     );
+    return <MarkdownPathProvider sessionId={sessionId}>{body}</MarkdownPathProvider>;
+}
+
+/**
+ * 只有拿到 sessionId 时才建白名单并 provide —— 否则原样返回，零开销、零行为变化。
+ * 白名单来自本会话的工具调用（useSessionMessages），所以它随会话增长自动生效。
+ */
+function MarkdownPathProvider({ sessionId, children }: { sessionId?: string; children: React.ReactNode }) {
+    if (!sessionId) return <>{children}</>;
+    return <MarkdownPathProviderInner sessionId={sessionId}>{children}</MarkdownPathProviderInner>;
+}
+
+function MarkdownPathProviderInner({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
+    const { messages } = useSessionMessages(sessionId);
+    const value = React.useMemo(
+        () => ({ sessionId, allowlist: collectSessionFilePaths(messages) }),
+        [sessionId, messages],
+    );
+    return <PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider>;
 }

@@ -4,12 +4,15 @@
  * color encodes state: teal=running, danger=error, warn=mixed, line=done.
  */
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
 import { ToolView } from './ToolView';
 import { toolLabel, toolDetail } from './toolInfo';
+import { toolFilePathOf } from './toolFilePath';
+import { FilePathLink } from './FilePathLink';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import './toolgroup.css';
@@ -28,18 +31,30 @@ function groupState(tools: ToolCallMessage[]): GroupState {
 function ToolRow({ message, single }: { message: ToolCallMessage; single: boolean }) {
     const tool = message.tool;
     const [open, setOpen] = useState(single);
+    // 与 ToolView 同一手法（它也是 useParams），避免为了一个 id 改整条 props 链
+    const { id: sessionId } = useParams();
+    // B-145: 带文件路径的工具，头部的 detail 变成可点——点开预览而不是折叠这一行
+    const filePath = toolFilePathOf(tool);
     const status =
         tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
     const label = toolLabel(tool);
     const detail = toolDetail(tool);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
-            <button type="button" className="tg-row-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-                <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
-                <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
-                <span className="tg-tool-label">{label}</span>
-                {detail && detail !== label && <span className="tg-tool-detail">{detail}</span>}
-            </button>
+            <div className="tg-row-head-wrap">
+                <button type="button" className="tg-row-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+                    <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
+                    <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
+                    <span className="tg-tool-label">{label}</span>
+                    {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
+                </button>
+                {detail && detail !== label && filePath && sessionId && (
+                    <FilePathLink path={filePath} sessionId={sessionId} label={detail} className="tg-tool-detail" />
+                )}
+                {detail && detail !== label && filePath && !sessionId && (
+                    <span className="tg-tool-detail">{detail}</span>
+                )}
+            </div>
             {open && <ToolView message={message} />}
         </div>
     );

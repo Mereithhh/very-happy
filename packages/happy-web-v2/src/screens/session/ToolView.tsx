@@ -22,6 +22,13 @@ import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { detectSelectedLabels } from './askUserQuestion';
 import { asCommand, extractError, resultToText } from './toolInfo';
 import { langForPath } from './langForPath';
+import { FilePathLink } from './FilePathLink';
+
+/** B-145: 工具卡里的文件路径可点 —— sessionId 从路由取（同本文件既有做法）。 */
+function ToolPath({ path }: { path: string }) {
+    const { id: sessionId } = useParams();
+    return sessionId ? <FilePathLink path={path} sessionId={sessionId} /> : <>{path}</>;
+}
 import './toolview.css';
 
 function asString(v: unknown): string | null {
@@ -114,7 +121,7 @@ function ReadView({ tool }: { tool: ToolCall }) {
     const result = tool.result as any;
     const content = asString(result?.file?.content) ?? (typeof result === 'string' ? result : null);
     if (content == null || content.trim() === '') {
-        return filePath ? <div className="tv-path">{filePath}</div> : <DefaultView tool={tool} />;
+        return filePath ? <div className="tv-path"><ToolPath path={filePath} /></div> : <DefaultView tool={tool} />;
     }
     return <CodeView code={content} lang={langForPath(filePath)} showLineNumbers />;
 }

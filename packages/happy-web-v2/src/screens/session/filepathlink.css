@@ -1,0 +1,40 @@
+/* 可点文件路径（B-145）。
+   刻意不用 --accent：accent 严格只表示 live（focus/活跃/已连接/agent 在跑），
+   一个可点的路径不是 live 状态。用 text 阶梯 + 下划线表达「可点」。 */
+.fpl {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text-1);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.fpl:hover {
+  color: var(--text-0);
+  text-decoration-color: var(--text-2);
+}
+
+.fpl:focus-visible {
+  outline: 1px solid var(--text-2);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.fpl-icon {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--text-2);
+}
+
+.fpl-text {
+  overflow-wrap: anywhere;
+}
