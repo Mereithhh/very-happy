@@ -28,6 +28,7 @@ const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then(
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
+const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
 
 function Lazy({ children }: { children: ReactNode }) {
   return (
@@ -120,6 +121,7 @@ const router = createBrowserRouter(
             { index: true, element: <HomeGate /> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
+            { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy><WebTerminalScreen /></Lazy> },

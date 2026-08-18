@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -977,6 +977,15 @@ export function Sidebar() {
           title={`${t('notes.title')} (⌘J)`}
         >
           <StickyNote size={16} />
+        </button>
+        {/* external todo panel (B-007) — same "app chrome" row as notes */}
+        <button
+          className="sb-footer-btn sb-footer-icon"
+          onClick={() => navigate('/todos')}
+          aria-label={t('todos.title')}
+          title={t('todos.title')}
+        >
+          <ListChecks size={16} />
         </button>
         {/* Notification center: bell + unread badge + panel (self-contained;
             the collapsed desktop rail carries its own instance). It used to

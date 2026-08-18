@@ -12,6 +12,7 @@ import {
   ClipboardList,
   StickyNote,
   AudioLines,
+  ListChecks,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -233,6 +234,14 @@ export function CommandPalette() {
       icon: <StickyNote size={16} />,
       haystack: `notes ${(t('commandPalette.actionAllNotes') as string).toLowerCase()}`,
       run: () => navigate('/notes'),
+    });
+    out.push({
+      key: 'action:todos',
+      group: 'actions',
+      title: t('commandPalette.actionTodos'),
+      icon: <ListChecks size={16} />,
+      haystack: `todos todo ${(t('commandPalette.actionTodos') as string).toLowerCase()}`,
+      run: () => navigate('/todos'),
     });
     out.push({
       key: 'action:settings',

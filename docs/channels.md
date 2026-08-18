@@ -196,6 +196,102 @@ every web client the user has open. Payloads over 256KB are truncated.
 
 ---
 
+## Inbound: todo provider (external task lists in the web UI)
+
+Happy can show an external todo system in its web **Todo panel** (`/todos`) and
+let you tick items off and add new ones, without Happy knowing anything about
+that system. You supply a command; Happy runs it on the machine its daemon
+lives on and speaks a small text contract to it.
+
+Nothing is stored on the Happy server: the panel reads through the machine at
+view time and writes straight back out. There is no sync, no cache, and no
+second copy of your tasks.
+
+### Enabling it
+
+Add a `todoProvider` block to that machine's local `~/.happy/settings.json`:
+
+```jsonc
+{
+  "todoProvider": {
+    "command": "/absolute/path/to/your-provider",  // required
+    "args": ["--source", "work"],                  // optional, fixed prefix args
+    "cwd": "/optional/working/dir",                // optional
+    "timeoutMs": 20000                             // optional, default 20s
+  }
+}
+```
+
+> **Why this is machine-local and cannot be set from the web UI:** the command
+> runs as arbitrary code on that machine. The daemon already exposes `bash`, so
+> this is not new capability — but *who gets to choose the command* would be a
+> new attack surface. Keeping it in the local settings file means a hijacked web
+> session cannot turn it into remote code execution.
+
+With no `todoProvider` configured the panel simply reports that the machine has
+no provider; nothing is spawned.
+
+### The contract
+
+Happy invokes your command three ways. Arguments are passed as a real argv list
+— **no shell is involved**, so quotes and semicolons in a task title are just
+characters, never syntax.
+
+```text
+<command> [args...] list             # → JSON on stdout
+<command> [args...] complete <id>    # → exit code is the result
+<command> [args...] create <title>   # → exit code is the result
+```
+
+**Exit 0 means success.** On failure, exit non-zero and write something useful
+to stderr: Happy shows that text to the user verbatim, so `permission denied for
+project X` is far more helpful than a silent failure.
+
+`list` must print JSON shaped like this:
+
+```jsonc
+{ "items": [
+    { "id": "abc",          // REQUIRED — what `complete` will be called with
+      "title": "Write the weekly report",  // REQUIRED
+      "status": "open",     // optional: "open" | "done"  (default "open")
+      "due": "2026-08-20",  // optional, shown as-is
+      "priority": "high",   // optional: "none" | "low" | "medium" | "high"
+      "group": "Work",      // optional, used to group rows
+      "note": "…" }         // optional
+] }
+```
+
+Only `id` and `title` are required. **Unknown fields are ignored**, so you can
+return whatever else your system produces and add fields later without breaking
+older Happy clients. Items missing `id` or `title` are dropped (the panel tells
+the user how many); at most 500 items are shown.
+
+The output of `complete` and `create` is **not parsed** — only the exit code is.
+Different backends return wildly different bodies, and parsing them would weld
+one backend's shape into Happy. After either call the panel re-runs `list`, so
+what you see is always the external system's real state rather than an
+optimistic guess.
+
+### Reference implementation
+
+`packages/happy-cli/examples/todo-provider-jsonfile.mjs` implements the whole
+contract against a plain JSON file. It has no dependencies and talks to no
+service, so you can point `todoProvider` at it to see the panel work end to end,
+then copy its shape for your own system:
+
+```sh
+happy_dir=~/.happy
+"$PWD/packages/happy-cli/examples/todo-provider-jsonfile.mjs" \
+  --file "$happy_dir/todos.example.json" create "Try the todo panel"
+"$PWD/packages/happy-cli/examples/todo-provider-jsonfile.mjs" \
+  --file "$happy_dir/todos.example.json" list
+```
+
+A real provider is usually a thin shim over an existing CLI or HTTP API — the
+author's own is ~40 lines wrapping two personal task tools.
+
+---
+
 ## Adapter example (IM bridge, Tanka-style)
 
 Pseudocode for a quote-reply IM adapter — the pattern our Tanka integration

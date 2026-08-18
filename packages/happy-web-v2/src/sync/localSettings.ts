@@ -124,6 +124,11 @@ export const LocalSettingsSchema = z.object({
     // B-117: the note open in the dock's split view (list on top, editor
     // below) — device-local selection, independent of pinned tabs.
     notesSplitNote: z.string().nullable().describe('Note id shown in the notes-dock split editor (null = none)'),
+    // External todo panel (B-007). Device-local on purpose: the todo provider
+    // is configured per MACHINE, and "which machine this browser looks at" is a
+    // view preference, not account state. Nothing about the provider itself is
+    // ever writable from the web (spec risk 1) — this is only an id pointer.
+    todoMachineId: z.string().nullable().describe('Machine the /todos panel reads from (null = pick the first online machine)'),
 });
 
 //
@@ -207,6 +212,7 @@ export const localSettingsDefaults: LocalSettings = {
     notesOpenTabs: [],
     notesActiveTab: null,
     notesSplitNote: null,
+    todoMachineId: null,
 };
 Object.freeze(localSettingsDefaults);
 

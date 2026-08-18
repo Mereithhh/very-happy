@@ -9,6 +9,7 @@ import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerFsHandlers } from '../modules/fs/fsRpc';
+import { registerTodoHandlers } from '@/modules/todo/todoRpc';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff } from '@/utils/time';
@@ -241,6 +242,10 @@ export class ApiMachineClient {
         // directories and read file contents on this machine (terminal cwd,
         // session path, anywhere). See modules/fs/fsRpc.ts for scope notes.
         registerFsHandlers(this.rpcHandlerManager);
+        // B-007: external todo provider (todo-list / todo-complete / todo-create).
+        // Disabled unless the machine's own settings name a provider command —
+        // see modules/todo/todoRpc.ts for why that config is machine-local only.
+        registerTodoHandlers(this.rpcHandlerManager);
     }
 
     setRPCHandlers({

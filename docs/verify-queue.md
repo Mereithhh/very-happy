@@ -12,6 +12,8 @@
 
 | id | 版本/批次 | 验证项 | 怎么验 | 登记日期 |
 |---|---|---|---|---|
+| V-074 | B-007：cli+web 待发布 | 外部 todo provider —— **失败态**（六种里最容易做砸的） | ①**不配** `todoProvider` 进 /todos → 应给「本机未配置」的引导（含怎么配、指向 docs/channels.md），不是报错也不是空白；②把 command 指向一个不存在的路径 → 明确报错；③指向一个 `exit 1` 且往 stderr 写话的脚本 → **那句话要原样出现在界面上**（显示 unknown error 就是没做到）；④指向一个 sleep 60 的脚本 → 按 timeoutMs 超时，不是一直转圈；⑤新 web + 旧 daemon（没注册这三个 RPC）→ 显示「daemon 版本过旧」而非白屏 | 2026-08-18 |
+| V-073 | B-007：cli+web 待发布 | 外部 todo provider —— 正常路径与真实源 | 先用仓库自带示例 provider（`packages/happy-cli/examples/todo-provider-jsonfile.mjs`）配上，在 /todos 里：列出、勾完成、新建各走一遍，确认**每次操作后都以重新 list 的结果为准**（勾完成后该条应按 provider 的实际状态消失/置灰，而不是只有前端变灰）。再接 Owner 真实的 dida/tanka provider 跑一次「看一眼今天要做什么 → 勾掉一条」。⚠️ 多机器时确认面板显示的是**哪台机器**（provider 是每台机器各配的） | 2026-08-18 |
 | V-072 | B-132：CLI 待发布 | 自报进度取代 haiku 猜 | 开 `boardLlm: true`，让 claude 跑一个多步任务并在过程中调 `report_progress` → ①看板卡片进度是否即时更新、文案是否像人写的；②daemon 日志里 15min 内应出现 `recent self-report; skipping LLM analysis` 而**不再**起 haiku 子进程；③故意让它连着调两次（<30s）确认第二次被静默节流且没重试 | 2026-08-18 |
 | V-071 | B-131：三包待发布 | 预览 overlay 的焦点与 Esc（**spec 被推翻的那条**） | ①正在终端里打字时让 claude 推一个预览 → 确认击键不再落进被遮住的终端；②overlay 打开时按 Esc 应关闭它；③**关掉 overlay 后回 vim 里按 Esc，必须仍是 vim 的 Esc**（回归：不能再全局 capture）；④手机上确认弹出时机与遮挡程度可忍（「不打扰」现在唯一的承担者=localSetting 开关） | 2026-08-18 |
 | V-070 | B-131：三包待发布 | 预览四类文件与离线态 | 聊天会话里让 claude 调 `open_preview` 分别指向 md / 图片 / PDF / 源码 → 四类都要正确渲染；再把 daemon 停掉后调一次 → 必须显示「机器不在线」而非空白或转圈；⚠️ web 有 SW 缓存，先硬刷新再判断 | 2026-08-18 |

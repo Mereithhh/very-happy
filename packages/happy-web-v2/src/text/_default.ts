@@ -626,6 +626,7 @@ export const en = {
         actionAssistant: 'Voice assistant',
         actionNotes: 'Notes panel',
         actionAllNotes: 'All notes',
+        actionTodos: 'Todos',
         renamePromptTitle: 'Rename chat',
         hintNavigate: '↑↓ to navigate',
         hintSelect: '↵ to select',
@@ -744,6 +745,46 @@ export const en = {
         capReached: 'Note limit reached (200) — delete some notes first',
         pickOrCreate: 'Pick a note on the left, or create one',
         filterPlaceholder: 'Filter notes…',
+    },
+
+    // External todo panel — /todos (B-007). The provider is a user-written
+    // command configured on EACH machine, so every string here has to keep
+    // "which machine" and "your script, not ours" visible.
+    todos: {
+        title: 'Todos',
+        machine: 'Machine',
+        refresh: 'Refresh',
+        retry: 'Retry',
+        loading: 'Reading todos…',
+        empty: 'No todos — the provider returned an empty list',
+        addPlaceholder: 'Add a todo…',
+        add: 'Add',
+        markDone: 'Mark done',
+        done: 'Done',
+        ungrouped: 'Ungrouped',
+        due: ({ due }: { due: string }) => `Due ${due}`,
+        priorityHigh: 'High',
+        priorityMedium: 'Medium',
+        priorityLow: 'Low',
+        noMachines: 'No machines on this account yet',
+        noMachinesDescription: 'Todos are read live from the daemon on a machine — connect one first.',
+        // "some rows are missing" hints: never let the user think data was lost
+        omittedDropped: ({ count }: { count: number }) =>
+            `${count} ${plural({ count, singular: 'entry was', plural: 'entries were' })} skipped — the provider sent them without an id or a title.`,
+        omittedTruncated: 'The list is truncated — the provider returned more items than the panel shows.',
+        // failure states (all six codes of TodoFailureCode)
+        notConfiguredTitle: 'No todo provider on this machine',
+        notConfiguredBody: ({ machine }: { machine: string }) =>
+            `This panel stays off until ${machine} has one. Add a "todoProvider" block to ~/.happy/settings.json on that machine — for safety it can only be set there, never from the web.`,
+        notConfiguredDocs: 'The contract (argv subcommands list / complete / create, JSON on stdout) is documented in docs/channels.md.',
+        notConfiguredExample: 'A runnable, zero-dependency example ships with the repo: packages/happy-cli/examples/todo-provider-jsonfile.mjs',
+        unsupported: 'Cannot read todos — the machine is offline, or its daemon is too old (upgrade very-happy-cli on that machine).',
+        timeout: 'The machine did not answer in time. The provider may be slow or stuck — try again.',
+        providerError: ({ error }: { error: string }) => `The todo provider failed: ${error}`,
+        badOutput: ({ error }: { error: string }) => `The provider did not print valid todo JSON: ${error}`,
+        unknownError: ({ error }: { error: string }) => `Could not load todos: ${error}`,
+        completeFailed: 'Could not mark that todo done',
+        createFailed: 'Could not create that todo',
     },
 
     server: {

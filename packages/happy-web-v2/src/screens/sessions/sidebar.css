@@ -423,8 +423,10 @@
   background: var(--bg-2);
   color: var(--text);
 }
-/* icon-only footer buttons (notes toggle) must not stretch like the settings row */
-.sb-footer-notes {
+/* icon-only footer buttons (notes toggle, todos) must not stretch like the
+   settings row */
+.sb-footer-notes,
+.sb-footer-icon {
   flex: none;
   padding: 10px;
 }

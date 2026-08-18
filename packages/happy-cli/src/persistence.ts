@@ -53,6 +53,20 @@ interface Settings {
    * to flip this here. Absent/false = disabled (never burn tokens silently).
    */
   boardLlm?: boolean
+  /**
+   * B-007: external todo provider — a user-supplied command that speaks the
+   * contract in docs/channels.md (`<command> list|complete <id>|create <title>`).
+   *
+   * Machine-local AND deliberately NOT settable from the web: this command runs
+   * as arbitrary code on this machine, so letting a (potentially hijacked) web
+   * session set it would be an RCE. Absent = the web Todo panel stays disabled.
+   */
+  todoProvider?: {
+    command: string
+    args?: string[]
+    cwd?: string
+    timeoutMs?: number
+  }
 }
 
 const defaultSettings: Settings = {
