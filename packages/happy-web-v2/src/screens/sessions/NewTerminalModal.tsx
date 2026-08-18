@@ -15,7 +15,7 @@
  * edits, so one curated list serves both. Path arithmetic lives in
  * utils/terminalCwd.ts (unit-tested); this file is wiring only.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, FolderOpen, X } from 'lucide-react';
 import { useAllMachines, useSettingMutable } from '@/sync/storage';
@@ -56,6 +56,19 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // B-146: useAllMachines answers [] until the store is hydrated
+  // (storage.ts's `!isDataReady` guard), so the useState initializer above can
+  // freeze machineId at ''. Left alone, the <select> then matches no option and
+  // `canCreate` stays false FOREVER — Create permanently disabled on a cold
+  // start. Re-derive whenever the online set changes; `machineId` as the
+  // preferred value makes this a no-op once a live machine is selected, and it
+  // also re-picks when the chosen machine drops off.
+  const onlineIds = useMemo(() => online.map((m) => m.id), [online]);
+  useEffect(() => {
+    const next = pickDefaultMachineId(onlineIds, machineId);
+    if (next !== machineId) setMachineId(next);
+  }, [onlineIds, machineId]);
+
   const trimmed = normalizeCwdInput(directory);
   const canCreate = !!machineId && trimmed.length > 0 && !busy;
   const homeDir = (online.find((m) => m.id === machineId) as any)?.metadata?.homeDir as string | undefined;
@@ -85,7 +98,13 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
         toast.error(fsFailureText(t, probe));
         return;
       }
-      createTerminalAt(navigate, machineId, cwd);
+      // B-146: the machine can drop between the probe above and this call.
+      // Closing the dialog unconditionally would leave the user with a
+      // dismissed dialog, no terminal, and no explanation.
+      if (!createTerminalAt(navigate, machineId, cwd)) {
+        toast.error(t('newSession.machineOffline'));
+        return;
+      }
       onClose();
     } catch (e: any) {
       toast.error(e?.message || t('errors.networkError'));

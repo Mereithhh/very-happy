@@ -121,4 +121,19 @@ describe('pickDefaultMachineId', () => {
     it('returns empty when nothing is online', () => {
         expect(pickDefaultMachineId([], 'm1')).toBe('');
     });
+
+    it('adopts the first machine once the store hydrates (B-146)', () => {
+        // The dialog mounts before the machine store is ready, so its first
+        // pick is made from an EMPTY list. Re-running with the arrived list and
+        // the frozen '' must hand back a real machine — otherwise Create stays
+        // disabled forever.
+        const frozen = pickDefaultMachineId([], undefined);
+        expect(frozen).toBe('');
+        expect(pickDefaultMachineId(['m1', 'm2'], frozen)).toBe('m1');
+    });
+
+    it('is idempotent once a live machine is selected', () => {
+        // Guards the re-derive effect against a setState loop.
+        expect(pickDefaultMachineId(['m1', 'm2'], 'm2')).toBe('m2');
+    });
 });

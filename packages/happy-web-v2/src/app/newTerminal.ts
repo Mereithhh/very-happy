@@ -39,16 +39,20 @@ export function createTerminalOrPick(navigate: NavigateFunction): void {
  * `cwd` query param, which the terminal screen forwards into the EXISTING
  * open-terminal RPC `cwd` field (the daemon's create path has always done
  * `tmux new-session -c <cwd>` — no protocol change, old daemons included).
- * No-op when the machine is unknown or offline (callers disable the button,
- * this is the imperative backstop).
+ * Returns false (and does nothing) when the machine is unknown or offline.
+ * Callers disable the button, so this is the imperative backstop — but it can
+ * still lose the race (B-146: the machine drops between the dialog's fs-list
+ * probe and the click), and a caller that closes its dialog afterwards MUST
+ * check the result, or the user gets a dismissed dialog and no terminal.
  */
-export function createTerminalAt(navigate: NavigateFunction, machineId: string, cwd?: string): void {
+export function createTerminalAt(navigate: NavigateFunction, machineId: string, cwd?: string): boolean {
   const m = storage.getState().machines[machineId];
-  if (!m || !isMachineOnline(m)) return;
+  if (!m || !isMachineOnline(m)) return false;
   const term = useTerminalSessions.getState().create(machineId, machineLabel(m));
   const q = new URLSearchParams({ tid: term.id, fresh: '1' });
   if (cwd) q.set('cwd', cwd);
   navigate(`/terminal/${machineId}?${q.toString()}`);
+  return true;
 }
 
 /** Shown next to the palette's "New terminal" action (matches the ⌘-badge style). */
