@@ -67,6 +67,17 @@ describe('parseTodoList — 畸形输入只丢弃不抛错', () => {
         expect(r.dropped).toBe(6);  // 缺title + 缺id + null + string + 42 + 空白id
     });
 
+    it('丢弃后总数没超上限时**不该**报截断（review finding 7 的回归）', () => {
+        // provider 返回 520 条、其中 100 条缺 id/title → 处理完只留 420 条，
+        // 一条都没截。旧判据 `rawItems.length > MAX` 会骗人说「列表已截断」。
+        const good = Array.from({ length: 420 }, (_, i) => ({ id: `g${i}`, title: 't' }));
+        const bad = Array.from({ length: 100 }, () => ({ title: 'no id' }));
+        const r = ok(JSON.stringify({ items: [...good, ...bad] }));
+        expect(r.items).toHaveLength(420);
+        expect(r.dropped).toBe(100);
+        expect(r.truncated, '没有因为达上限而停下，就不该报截断').toBe(false);
+    });
+
     it('超上限截断并标记', () => {
         const items = Array.from({ length: TODO_LIST_MAX_ITEMS + 10 }, (_, i) => ({ id: `i${i}`, title: 't' }));
         const r = ok(JSON.stringify({ items }));

@@ -1765,16 +1765,26 @@ function Usage() {
           </ItemGroup>
 
           <ItemGroup title={t('usage.byKind')}>
+            {/* review finding 8：费用只对**有对应 cost 分项**的类型显示。CLI 上报的
+                cost 只有 total/input/output（apiSession.sendUsageData），而 total
+                本身**已包含** cache 读写费用。原来对所有 token 类型都查 costByKind，
+                于是出现「cache_read 1.2M tokens $0.00」这种明显误导的行，而且四行
+                费用加起来还少于上面的总费用。缺失就不显示，别编一个 $0.00。 */}
             {Object.entries(totals.tokensByKind)
               .sort((a, b) => b[1] - a[1])
-              .map(([model, tokens]) => (
-                <Item
-                  key={model}
-                  title={model}
-                  detail={`${formatCompact(tokens)} ${(t('usage.tokens')).toLowerCase()}`}
-                  right={<span className="set-value">${(totals.costByKind[model] ?? 0).toFixed(2)}</span>}
-                />
-              ))}
+              .map(([kind, tokens]) => {
+                const cost = totals.costByKind[kind];
+                return (
+                  <Item
+                    key={kind}
+                    title={kind}
+                    detail={`${formatCompact(tokens)} ${(t('usage.tokens')).toLowerCase()}`}
+                    right={cost === undefined
+                      ? undefined
+                      : <span className="set-value">${cost.toFixed(2)}</span>}
+                  />
+                );
+              })}
           </ItemGroup>
         </>
       )}

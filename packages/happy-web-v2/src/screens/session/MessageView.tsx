@@ -123,7 +123,7 @@ function AgentText({
                     </button>
                     {open && (
                         <div className="msg-thinking-body vh-copyhost">
-                            <Markdown text={content} sessionId={sessionId} />
+                            <Markdown text={content} />
                             {/* copies the thinking source text (wrapper stripped) */}
                             <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
                         </div>
@@ -139,7 +139,7 @@ function AgentText({
         <div className="msg msg--agent">
             {text && (
                 <div className="msg-agent-text vh-copyhost">
-                    <Markdown text={text} onOption={onOption} sessionId={sessionId} />
+                    <Markdown text={text} onOption={onOption} />
                     {/* copies the markdown SOURCE of the whole message, not the rendered text */}
                     <CopyButton text={text} className="vh-copy--overlay msg-copy--agent" label={t('message.copyMessage')} />
                 </div>

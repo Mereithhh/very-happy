@@ -33,15 +33,33 @@ export interface SelfReportState {
     /** 上一次被**接受**的自报时刻；0 = 从未。注意是「接受」不是「收到」——
      *  被节流掉的调用不推进水位，否则 claude 疯狂刷就能把水位一直顶住。 */
     lastAcceptedAt: number;
+    /** 上一次被接受的 attention，用于识别状态跃迁（见 shouldAcceptSelfReport）。 */
+    lastAttention?: BoardAttention;
 }
 
 export function createSelfReportState(): SelfReportState {
     return { lastAcceptedAt: 0 };
 }
 
-/** 这次自报该不该接受（节流）。首次总是接受。 */
-export function shouldAcceptSelfReport(state: SelfReportState, now: number): boolean {
+/**
+ * 这次自报该不该接受。首次总是接受。
+ *
+ * ⚠️ **attention 发生变化时必须绕过节流**（第一版的洞，2026-08-18 review 抓到）：
+ * 原来只看时间不看内容，于是 claude t=0 报「开始干活」(none) 被接受、t=10s 撞到
+ * 权限确认报 `blocked` → 被丢弃，而工具返回文案还告诉它「不用重试」；同时
+ * boardAnalyzer 因 15min 水位被压制 —— 看板在最长 15 分钟内既没有 blocked 红点也
+ * 没有新进度。那正是这套机制本来要解决的问题。
+ *
+ * 所以节流只管**同一 attention 下的进度刷新**（防它把工具当 log 逐步骤刷），
+ * 状态跃迁一律放行。
+ */
+export function shouldAcceptSelfReport(
+    state: SelfReportState,
+    now: number,
+    attention?: BoardAttention,
+): boolean {
     if (state.lastAcceptedAt === 0) return true;
+    if (attention !== undefined && attention !== state.lastAttention) return true;
     return now - state.lastAcceptedAt >= SELF_REPORT_MIN_INTERVAL_MS;
 }
 

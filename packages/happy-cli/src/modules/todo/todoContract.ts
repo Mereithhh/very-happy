@@ -71,8 +71,12 @@ export function parseTodoList(stdout: string): TodoListParse | { error: string }
 
     const items: TodoItem[] = [];
     let dropped = 0;
+    // review finding 7：truncated 的判据必须是「**真的**因为达上限而停下」。
+    // 原来用 `rawItems.length > MAX` —— provider 返回 520 条、其中 100 条缺
+    // id/title 时全部处理完只留 420 条，却仍报「列表已截断」，面板骗人。
+    let hitCap = false;
     for (const raw of rawItems) {
-        if (items.length >= TODO_LIST_MAX_ITEMS) break;
+        if (items.length >= TODO_LIST_MAX_ITEMS) { hitCap = true; break; }
         if (!raw || typeof raw !== 'object') { dropped++; continue; }
         const r = raw as Record<string, unknown>;
         const id = str(r.id);
@@ -91,7 +95,7 @@ export function parseTodoList(stdout: string): TodoListParse | { error: string }
             ...(str(r.note) ? { note: str(r.note)! } : {}),
         });
     }
-    return { items, dropped, truncated: rawItems.length > TODO_LIST_MAX_ITEMS };
+    return { items, dropped, truncated: hitCap };
 }
 
 /**

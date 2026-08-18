@@ -204,11 +204,14 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
                 return { accepted: false, error: 'progress must be a non-empty one-line string' };
             }
             const now = Date.now();
-            if (!shouldAcceptSelfReport(selfReportState, now)) {
+            // attention 跃迁绕过节流（review finding 4）：否则「开始干活 → 撞权限
+            // 卡住」的第二条会被静默吞掉，而 analyzer 又被 15min 水位压着。
+            if (!shouldAcceptSelfReport(selfReportState, now, attention)) {
                 return { accepted: false };
             }
             // 只有被接受时才推进水位——否则疯狂刷就能把 analyzer 永久压制住
             selfReportState.lastAcceptedAt = now;
+            selfReportState.lastAttention = attention;
             try {
                 client.updateMetadata((metadata) => ({
                     ...metadata,
@@ -217,7 +220,12 @@ export async function startHappyServer(client: ApiSessionClient, options?: Start
                         attention,
                         progress: text,
                         analyzedAt: now,
-                        // 让 web/看板能区分「claude 自己报的」和「haiku 猜的」
+                        // ⚠️ 这个字段**到不了 web**：web 的 MetadataSchema.board 是普通
+                        // zod object（非 passthrough），safeParse 会把它剥掉；而 web 下
+                        // 一次写 metadata 又会用剥净的对象回写，把它从服务端也删掉。
+                        // 留着是为了 daemon 侧日志/未来把字段加进 web schema 时能对上，
+                        // **别拿它做 UI**（review finding 5：原注释声称能区分自报与
+                        // haiku 猜的，不成立）。
                         source: 'self-report' as const,
                     },
                 }));

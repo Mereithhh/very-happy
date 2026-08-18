@@ -12,6 +12,13 @@
  *
  * ⚠️ 明确不做的事：**不改变 `fs-read` 无沙箱的既有事实**。用户手动导航到这些文件
  * 仍然看得到——那是用户的自主行为。这里只挡「模型主动推给用户看」这一条新入口。
+ *
+ * ⚠️ **这道闸是尽力而为，不是硬边界**（2026-08-18 review finding 6）：判定只做
+ * resolve 后的**字符串**比对，不做 `realpath`。被注入的模型（本就有 bash）可以
+ * `ln -s ~/.secrets/env/x.env /tmp/notes.md` 再 `open_preview('/tmp/notes.md')`，
+ * web 侧 `fs-read` 跟随 symlink，凭据照样渲染出来。`cp` 同样能绕。它挡的是「顺手
+ * 误推」和最省事的一类注入，不是一个决心绕过的攻击者。真要收紧需在 daemon 侧
+ * realpath 后再判——但那也只是把门槛抬高一档。
  */
 
 import { isAbsolute, resolve, sep } from 'node:path';

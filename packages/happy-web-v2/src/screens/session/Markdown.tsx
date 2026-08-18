@@ -178,9 +178,12 @@ function renderInline(text: string): React.ReactNode[] {
     for (const part of parts) {
         if (!part) continue;
         if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
+            // B-145 finding 1：反引号是 claude 写路径的**默认形式**
+            // （「已写入 `docs/report.md`」），所以代码段内容也必须过 TextLeaf。
+            // 原来这里直接输出原文，导致功能在主场景下完全不生效。
             nodes.push(
                 <code key={nextKey()} className="md-code-inline">
-                    {part.slice(1, -1)}
+                    <TextLeaf text={part.slice(1, -1)} />
                 </code>,
             );
         } else {
@@ -204,7 +207,10 @@ function renderEmphasis(text: string): React.ReactNode[] {
         const safe = /^(https?:|mailto:)/i.test(href) ? href : undefined;
         nodes.push(
             <a key={nextKey()} href={safe} target="_blank" rel="noopener noreferrer" className="md-link">
-                {renderBoldItalic(m[1])}
+                {/* B-145 finding 3：label 里禁用路径链接。<button> 嵌 <a> 是非法嵌套，
+                    且 stopPropagation 只挡 React 合成事件、浏览器仍会走 anchor 默认
+                    导航——点一次会同时开预览并把标签页导航走。 */}
+                <NoPathLinks>{renderBoldItalic(m[1])}</NoPathLinks>
             </a>,
         );
         last = linkRe.lastIndex;
@@ -226,6 +232,11 @@ function renderEmphasis(text: string): React.ReactNode[] {
  */
 interface PathLinkCtx { sessionId: string; allowlist: ReadonlySet<string> }
 const PathLinkContext = React.createContext<PathLinkCtx | null>(null);
+
+/** 在这棵子树里关掉路径链接（用于 markdown 链接的 label，见 finding 3）。 */
+function NoPathLinks({ children }: { children: React.ReactNode }) {
+    return <PathLinkContext.Provider value={null}>{children}</PathLinkContext.Provider>;
+}
 
 function TextLeaf({ text }: { text: string }) {
     const ctx = React.useContext(PathLinkContext);
@@ -266,11 +277,9 @@ function renderBoldItalic(text: string): React.ReactNode[] {
     return nodes;
 }
 
-export function Markdown({ text, onOption, sessionId }: {
+export function Markdown({ text, onOption }: {
     text: string;
     onOption?: (option: string) => void;
-    /** 给了才启用文件路径可点（B-145）；不给则完全是老行为。 */
-    sessionId?: string;
 }) {
     const blocks = React.useMemo(() => parseBlocks(text), [text]);
     const body = (
@@ -365,19 +374,19 @@ export function Markdown({ text, onOption, sessionId }: {
             })}
         </div>
     );
-    return <MarkdownPathProvider sessionId={sessionId}>{body}</MarkdownPathProvider>;
+    return body;
 }
 
 /**
- * 只有拿到 sessionId 时才建白名单并 provide —— 否则原样返回，零开销、零行为变化。
- * 白名单来自本会话的工具调用（useSessionMessages），所以它随会话增长自动生效。
+ * 会话级的路径白名单 provider（B-145 finding 2）。
+ *
+ * **必须挂在会话根上（ChatList），不是每条消息各挂一个。** 第一版挂在 `Markdown`
+ * 里，于是每条消息各自 `useSessionMessages`（订阅整个数组）+ 各扫一遍全量消息 →
+ * 长会话 O(N²)；而且 agent 流式追加时数组 identity 变，N 个 provider 全部重算、
+ * ctx identity 变又让全 transcript 每个 TextLeaf 的 useMemo 失效。白名单本来就是
+ * **会话级**的事实，挂一次就够。
  */
-function MarkdownPathProvider({ sessionId, children }: { sessionId?: string; children: React.ReactNode }) {
-    if (!sessionId) return <>{children}</>;
-    return <MarkdownPathProviderInner sessionId={sessionId}>{children}</MarkdownPathProviderInner>;
-}
-
-function MarkdownPathProviderInner({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
+export function MarkdownPathProvider({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
     const { messages } = useSessionMessages(sessionId);
     const value = React.useMemo(
         () => ({ sessionId, allowlist: collectSessionFilePaths(messages) }),

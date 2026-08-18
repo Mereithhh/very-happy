@@ -13,6 +13,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Button, EmptyState, Spinner } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
+import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
 import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
 import './chatlist.css';
@@ -235,6 +236,9 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     }
 
     return (
+        // B-145 finding 2: 路径白名单在**会话根**挂一次。挂在每条消息上会让长会话
+        // 变成 O(N²)（每条各订阅全量 messages 并各扫一遍），流式输出时尤其明显。
+        <MarkdownPathProvider sessionId={sessionId}>
         <div className="cl">
             <div
                 className="cl-scroll"
@@ -288,5 +292,6 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                 </button>
             )}
         </div>
+        </MarkdownPathProvider>
     );
 }
