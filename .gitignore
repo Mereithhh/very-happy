@@ -80,3 +80,4 @@ happy-workspaces/
 
 # local pnpm store (from filtered installs)
 .pnpm-store/
+.mcp.json
