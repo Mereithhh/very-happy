@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, FolderOpen, X } from 'lucide-react';
 import { useAllMachines, useSettingMutable } from '@/sync/storage';
-import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
+import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
 import { createTerminalAt } from '@/app/newTerminal';
 import { machineFsList } from '@/sync/fsOps';
 import { FsBrowser } from '@/screens/files/FsBrowser';
@@ -29,7 +29,6 @@ import { useTranslation } from '@/i18n/useTranslation';
 import {
   expandHomePath,
   normalizeCwdInput,
-  pickDefaultMachineId,
   removePathPreset,
   upsertPathPreset,
   type PathPreset,

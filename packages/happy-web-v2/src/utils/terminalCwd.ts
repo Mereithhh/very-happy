@@ -62,13 +62,3 @@ export function upsertPathPreset(
 export function removePathPreset(list: PathPreset[], id: string): PathPreset[] {
     return list.filter((p) => p.id !== id);
 }
-
-/**
- * Which machine the dialog opens on: the previously used one when it is still
- * online, otherwise the first online machine, otherwise ''. Never preselects a
- * machine that can't take the terminal.
- */
-export function pickDefaultMachineId(onlineIds: string[], preferred?: string): string {
-    if (preferred && onlineIds.includes(preferred)) return preferred;
-    return onlineIds[0] ?? '';
-}

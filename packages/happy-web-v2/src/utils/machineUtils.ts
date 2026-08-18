@@ -19,3 +19,20 @@ export function soleOnlineMachine(machines: Machine[]): Machine | null {
     const online = machines.filter(isMachineOnline);
     return online.length === 1 ? online[0] : null;
 }
+
+/**
+ * Which machine a create dialog should preselect: the one already chosen when
+ * it is still online, otherwise the first online machine, otherwise ''.
+ *
+ * Lives here (not in a dialog) because BOTH create dialogs need it for the same
+ * reason — `useAllMachines` answers [] until the store is hydrated (see
+ * storage.ts's `!isDataReady` guard), so a `useState` initializer freezes the
+ * selection at '' and the dialog's Create button never enables (B-146 in the
+ * terminal dialog, B-147 the same bug in the chat dialog). Passing the current
+ * selection as `preferred` makes a re-derive idempotent — safe to call from an
+ * effect on every machine-list change without fighting the user's own pick.
+ */
+export function pickDefaultMachineId(onlineIds: string[], preferred?: string): string {
+    if (preferred && onlineIds.includes(preferred)) return preferred;
+    return onlineIds[0] ?? '';
+}

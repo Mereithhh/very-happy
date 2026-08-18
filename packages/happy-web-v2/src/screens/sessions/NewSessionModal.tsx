@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
 import { useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
+import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { machineSpawnNewSession } from '@/sync/ops';
@@ -52,13 +52,54 @@ export function NewSessionModal({
 
   const defaultAgent = useSetting('newSessionAgent');
 
-  const [machineId, setMachineId] = useState(online[0]?.id ?? '');
+  const [machineId, setMachineId] = useState('');
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [agent, setAgent] = useState<(typeof AGENTS)[number]>(() => normalizeAgentKey(defaultAgent));
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
+
+  // ── B-147: nothing derived from the stores may live in a useState initializer.
+  // `useAllMachines` answers [] until the store is hydrated (storage.ts's
+  // `!isDataReady` guard) and settings can be overwritten by a later server
+  // sync, so every initializer below used to freeze at a pre-hydration value:
+  // machineId at '' (→ <select> matches no option, `canCreate` false FOREVER,
+  // Create permanently disabled on a cold start — the exact bug B-146 fixed in
+  // the terminal dialog), and directory/agent at "no presets / default agent"
+  // even after the real values arrived.
+  //
+  // Machine: re-derive on every change of the online set. Passing `machineId` as
+  // preferred makes it idempotent once a live machine is selected (no setState
+  // loop) and re-picks when the chosen machine drops off.
+  const onlineIds = useMemo(() => online.map((m) => m.id), [online]);
+  useEffect(() => {
+    const next = pickDefaultMachineId(onlineIds, machineId);
+    if (next !== machineId) setMachineId(next);
+  }, [onlineIds, machineId]);
+
+  // Directory + agent: adopt ONCE, and only while the user hasn't touched the
+  // field. These are edited values, not a projection of the store — re-deriving
+  // them on every store change would yank the path out from under someone
+  // mid-type (which is why this is a latch, not the machine effect's pattern).
+  const dirAdopted = useRef(false);
+  const firstPreset = list[0];
+  useEffect(() => {
+    if (dirAdopted.current) return;
+    if (directory !== '') { dirAdopted.current = true; return; } // user typed / prefilled
+    if (!firstPreset) return;                                    // presets not in yet
+    dirAdopted.current = true;
+    setDirectory(firstPreset.path);
+    setEditingId(firstPreset.id);
+  }, [firstPreset, directory]);
+
+  const agentAdopted = useRef(false);
+  useEffect(() => {
+    if (agentAdopted.current) return;
+    if (defaultAgent === undefined) return;   // setting hasn't landed yet
+    agentAdopted.current = true;
+    setAgent(normalizeAgentKey(defaultAgent));
+  }, [defaultAgent]);
 
   const canCreate = !!machineId && directory.trim().length > 0 && !busy;
   const trimmed = directory.trim();
