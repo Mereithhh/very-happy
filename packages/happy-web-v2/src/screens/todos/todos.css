@@ -61,6 +61,28 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
+/* 分组维度切换（B-007）。形制与刷新按钮一致；
+   刻意不用 --accent —— 切换态不是 live 状态，accent 严格只表示 live。 */
+.td-groupby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-dim);
+}
+.td-groupby:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.td-groupby:focus-visible {
+  outline: 1px solid var(--text-2);
+  outline-offset: 1px;
+}
+
 .td-refresh {
   display: flex;
   align-items: center;

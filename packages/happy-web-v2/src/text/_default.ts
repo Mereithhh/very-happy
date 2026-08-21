@@ -755,6 +755,14 @@ export const en = {
     // command configured on EACH machine, so every string here has to keep
     // "which machine" and "your script, not ours" visible.
     todos: {
+        // B-007 分组维度切换（四象限 = 按优先级分桶）
+        groupBy: 'Group by',
+        groupByPriorityHint: 'Group by priority',
+        groupByGroupHint: 'Group by list',
+        bucket_high: 'High priority',
+        bucket_medium: 'Medium priority',
+        bucket_low: 'Low priority',
+        bucket_none: 'No priority',
         title: 'Todos',
         machine: 'Machine',
         refresh: 'Refresh',

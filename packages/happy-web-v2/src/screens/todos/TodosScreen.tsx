@@ -23,6 +23,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { Check, Plus, RefreshCw } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation } from '@/i18n/useTranslation';
+import { LayoutList, SignalHigh } from 'lucide-react';
 import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
 import { machineTodoComplete, machineTodoCreate, machineTodoList, type TodoFailure, type TodoItem } from '@/sync/todoOps';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
@@ -38,6 +39,7 @@ import {
     isFlat,
     normalizeNewTitle,
     pickTodoMachine,
+    type TodoGroupBy,
 } from './todosModel';
 import './todos.css';
 
@@ -51,6 +53,7 @@ export function TodosScreen() {
     const { t } = useTranslation();
     const machines = useAllMachines({ includeOffline: true });
     const [storedMachineId, setStoredMachineId] = useLocalSettingMutable('todoMachineId');
+    const [groupBy, setGroupBy] = useLocalSettingMutable('todoGroupBy');
     const machineId = pickTodoMachine(machines, storedMachineId);
     const machine = machines.find((m) => m.id === machineId) ?? null;
     const machineName = machine ? machineLabel(machine) : (machineId ?? '');
@@ -161,6 +164,18 @@ export function TodosScreen() {
                         )}
                     </div>
                 )}
+                {/* 分组维度切换：'group'（provider 给的分组）↔ 'priority'（按优先级，
+                    即「四象限」——滴答的四象限本质就是按优先级分桶）。两种是正交的
+                    看法，都有用，所以给切换而不是二选一写死。 */}
+                <button
+                    type="button"
+                    className="td-groupby"
+                    onClick={() => setGroupBy(groupBy === 'group' ? 'priority' : 'group')}
+                    aria-label={t('todos.groupBy')}
+                    title={groupBy === 'group' ? t('todos.groupByPriorityHint') : t('todos.groupByGroupHint')}
+                >
+                    {groupBy === 'group' ? <LayoutList size={15} /> : <SignalHigh size={15} />}
+                </button>
                 <button
                     type="button"
                     className="td-refresh"
@@ -227,7 +242,7 @@ export function TodosScreen() {
                         {state.items.length === 0 ? (
                             <div className="td-empty">{t('todos.empty')}</div>
                         ) : (
-                            <TodoGroups items={state.items} completion={completion} onComplete={onComplete} />
+                            <TodoGroups items={state.items} completion={completion} onComplete={onComplete} groupBy={groupBy} />
                         )}
                     </>
                 )}
@@ -240,19 +255,28 @@ function TodoGroups({
     items,
     completion,
     onComplete,
+    groupBy,
 }: {
     items: TodoItem[];
     completion: { readonly pending: readonly string[] };
     onComplete: (item: TodoItem) => void;
+    groupBy: TodoGroupBy;
 }) {
     const { t } = useTranslation();
-    const groups = groupTodoItems(items);
-    const flat = isFlat(groups);
+    const groups = groupTodoItems(items, groupBy);
+    // 'priority' 模式恒有桶标题（四个桶是视图本体，没标题就没意义）
+    const flat = groupBy === 'group' && isFlat(groups);
     return (
         <div className="td-groups">
             {groups.map((group) => (
                 <section className="td-group" key={group.key ?? ' ungrouped'}>
-                    {!flat && <h2 className="td-group-label">{group.key ?? t('todos.ungrouped')}</h2>}
+                    {!flat && (
+                        <h2 className="td-group-label">
+                            {groupBy === 'priority'
+                                ? t(`todos.bucket_${group.key ?? 'none'}` as 'todos.bucket_none')
+                                : group.key ?? t('todos.ungrouped')}
+                        </h2>
+                    )}
                     <ul className="td-list">
                         {group.items.map((item) => (
                             <TodoRow key={item.id} item={item} completion={completion} onComplete={onComplete} />

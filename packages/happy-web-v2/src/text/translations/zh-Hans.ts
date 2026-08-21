@@ -757,6 +757,13 @@ export const zhHans: TranslationStructure = {
     // 外部待办面板 —— /todos（B-007）。provider 是用户自己写的命令、按机器各配一份，
     // 所以文案里必须始终点明「哪台机器」和「是你的脚本在报错，不是我们」。
     todos: {
+        groupBy: '分组方式',
+        groupByPriorityHint: '按优先级分组（四象限）',
+        groupByGroupHint: '按清单分组',
+        bucket_high: 'Ⅰ 重要且紧急（高）',
+        bucket_medium: 'Ⅱ 重要不紧急（中）',
+        bucket_low: 'Ⅲ 紧急不重要（低）',
+        bucket_none: 'Ⅳ 不重要不紧急（无）',
         title: '待办',
         machine: '机器',
         refresh: '刷新',

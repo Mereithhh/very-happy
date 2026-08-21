@@ -129,6 +129,9 @@ export const LocalSettingsSchema = z.object({
     // view preference, not account state. Nothing about the provider itself is
     // ever writable from the web (spec risk 1) — this is only an id pointer.
     todoMachineId: z.string().nullable().describe('Machine the /todos panel reads from (null = pick the first online machine)'),
+    // 分组维度：'group'（provider 给的分组）| 'priority'（按优先级 = 四象限）。
+    // ⚠️ 铁律：schema 里不写 .default()，默认值只放 localSettingsDefaults。
+    todoGroupBy: z.enum(['group', 'priority']).describe('How the /todos panel buckets rows'),
 });
 
 //
@@ -213,6 +216,7 @@ export const localSettingsDefaults: LocalSettings = {
     notesActiveTab: null,
     notesSplitNote: null,
     todoMachineId: null,
+    todoGroupBy: 'group',
 };
 Object.freeze(localSettingsDefaults);
 

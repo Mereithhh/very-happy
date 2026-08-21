@@ -75,12 +75,33 @@ export function sortTodoItems(items: readonly TodoItem[]): TodoItem[] {
 // ---------------------------------------------------------------------------
 
 export interface TodoGroup {
-    /** Provider-supplied group name, or null for the ungrouped bucket. */
+    /**
+     * 'group' 模式：provider 给的 group 名，null = 未分组桶。
+     * 'priority' 模式：优先级键（'high'|'medium'|'low'|'none'），由界面翻译成文案。
+     */
     key: string | null;
     items: TodoItem[];
 }
 
-function groupKey(item: TodoItem): string | null {
+/**
+ * 分组维度。两种是**正交的看法**，都要：
+ *  - 'group'    —— provider 给什么就按什么分（我这边是滴答项目 / Tanka 的 digest 分桶）
+ *  - 'priority' —— 按优先级分桶。这就是「四象限」：滴答自己的四象限本质上也**只是
+ *    按优先级分桶**（dida.py 的 cmd_quad：{5,3,1,0} 四档，API 没有象限端点）。
+ *    这里用通用的 high/medium/low/none 而不是艾森豪威尔那套命名——命名是滴答 app 的
+ *    约定，而 `priority` 是契约级字段，面板对所有 provider 都该说同一套话。
+ */
+export type TodoGroupBy = 'group' | 'priority';
+
+/** 'priority' 模式的桶顺序（高→低，无优先级垫底）。 */
+export const PRIORITY_BUCKETS = ['high', 'medium', 'low', 'none'] as const;
+
+function groupKey(item: TodoItem, by: TodoGroupBy): string | null {
+    if (by === 'priority') {
+        // 缺失/未知一律归 'none'——桶必须穷尽，否则条目会凭空消失
+        const p = item.priority;
+        return p === 'high' || p === 'medium' || p === 'low' ? p : 'none';
+    }
     const group = typeof item.group === 'string' ? item.group.trim() : '';
     return group === '' ? null : group;
 }
@@ -91,12 +112,12 @@ function groupKey(item: TodoItem): string | null {
  * bucket always goes last. Items with no group at all → exactly one bucket with
  * `key: null`, which the screen renders headerless.
  */
-export function groupTodoItems(items: readonly TodoItem[]): TodoGroup[] {
+export function groupTodoItems(items: readonly TodoItem[], by: TodoGroupBy = 'group'): TodoGroup[] {
     const sorted = sortTodoItems(items);
     const named = new Map<string, TodoItem[]>();
     const ungrouped: TodoItem[] = [];
     for (const item of sorted) {
-        const key = groupKey(item);
+        const key = groupKey(item, by);
         if (key === null) {
             ungrouped.push(item);
             continue;
@@ -104,6 +125,13 @@ export function groupTodoItems(items: readonly TodoItem[]): TodoGroup[] {
         const bucket = named.get(key);
         if (bucket) bucket.push(item);
         else named.set(key, [item]);
+    }
+    if (by === 'priority') {
+        // 固定桶序（高→低），空桶不渲染。不能沿用「首次出现顺序」——那会让桶序
+        // 随数据变化，四象限视图必须是稳定的四行。
+        return PRIORITY_BUCKETS
+            .map((key) => ({ key: key as string | null, items: named.get(key) ?? [] }))
+            .filter((g) => g.items.length > 0);
     }
     const groups: TodoGroup[] = [...named.entries()].map(([key, groupItems]) => ({ key, items: groupItems }));
     if (ungrouped.length > 0 || groups.length === 0) groups.push({ key: null, items: ungrouped });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { TodoItem } from '@/sync/todoOps';
 import {
+    PRIORITY_BUCKETS,
     completionReducer,
     displayStatus,
     emptyCompletion,
@@ -215,5 +216,39 @@ describe('pickTodoMachine', () => {
 
     it('falls back to the first machine when none is online', () => {
         expect(pickTodoMachine([m('a', false), m('b', false)], null)).toBe('a');
+    });
+});
+
+describe("按优先级分组（四象限）", () => {
+    const mk = (id: string, priority?: string, group?: string) =>
+        ({ id, title: id, status: 'open', ...(priority ? { priority } : {}), ...(group ? { group } : {}) }) as never;
+
+    it('桶序固定为 高→中→低→无，不随数据顺序变', () => {
+        // 故意乱序喂进去；四象限视图必须是稳定的四行
+        const groups = groupTodoItems([mk('a', 'none'), mk('b', 'high'), mk('c', 'low'), mk('d', 'medium')], 'priority');
+        expect(groups.map((g) => g.key)).toEqual([...PRIORITY_BUCKETS]);
+    });
+
+    it('空桶不渲染', () => {
+        const groups = groupTodoItems([mk('a', 'high'), mk('b', 'low')], 'priority');
+        expect(groups.map((g) => g.key)).toEqual(['high', 'low']);
+    });
+
+    it('缺失/未知优先级归入 none —— 桶必须穷尽，条目不能凭空消失', () => {
+        const groups = groupTodoItems([mk('a'), mk('b', 'URGENT'), mk('c', 'none')], 'priority');
+        expect(groups).toHaveLength(1);
+        expect(groups[0].key).toBe('none');
+        expect(groups[0].items.map((i) => i.id).sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('priority 模式**忽略** provider 给的 group（两种维度正交）', () => {
+        const groups = groupTodoItems([mk('a', 'high', '项目甲'), mk('b', 'high', '项目乙')], 'priority');
+        expect(groups).toHaveLength(1);
+        expect(groups[0].items).toHaveLength(2);
+    });
+
+    it('默认仍是 group 模式（不传 by 时行为不变）', () => {
+        const byDefault = groupTodoItems([mk('a', 'high', '甲')]);
+        expect(byDefault[0].key).toBe('甲');
     });
 });
