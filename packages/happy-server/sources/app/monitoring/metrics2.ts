@@ -135,6 +135,10 @@ type EstimatedCountRow = {
     estimated_count: bigint | number | null;
 };
 
+type ExactCountRow = {
+    count: bigint | number | null;
+};
+
 async function getEstimatedRecordCount(tableName: string): Promise<number> {
     const rows = await db.$queryRaw<EstimatedCountRow[]>`
         SELECT GREATEST(reltuples, 0)::bigint AS estimated_count
@@ -149,16 +153,21 @@ async function getEstimatedRecordCount(tableName: string): Promise<number> {
 export async function updateDatabaseMetrics(): Promise<void> {
     // Use catalog estimates instead of exact COUNT(*). Exact counts are full
     // scans in Postgres and this updater runs once a minute.
-    const [accountCount, sessionCount, messageCount, machineCount, exactAccountCount, activeLoginSessions] = await Promise.all([
+    const [accountCount, sessionCount, messageCount, machineCount, exactAccountCount, activeLoginSessionRows] = await Promise.all([
         getEstimatedRecordCount('"Account"'),
         getEstimatedRecordCount('"Session"'),
         getEstimatedRecordCount('"SessionMessage"'),
         getEstimatedRecordCount('"Machine"'),
         db.account.count(),
-        db.accountLoginSession.count({
-            where: { revokedAt: null, expiresAt: { gt: new Date() } },
-        }),
+        // Production bind-mounts sources and migrations onto an image whose
+        // generated Prisma Client can predate this model. Keep new-table reads
+        // on raw SQL so deploying a migration never requires image regeneration.
+        db.$queryRawUnsafe<ExactCountRow[]>(
+            `SELECT COUNT(*)::bigint AS "count" FROM "AccountLoginSession"
+             WHERE "revokedAt" IS NULL AND "expiresAt" > now()`,
+        ),
     ]);
+    const activeLoginSessions = Number(activeLoginSessionRows[0]?.count ?? 0);
 
     // Update metrics
     databaseRecordCountGauge.set({ table: 'accounts' }, accountCount);
