@@ -15,24 +15,25 @@
  *
  * Security — this is a server-side outbound request (SSRF surface):
  *   - https only, URL length capped, no userinfo in the URL;
- *   - literal loopback / private / link-local / CGNAT hosts are rejected
- *     (localhost, 127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10,
- *     ::1, fc00::/7, fe80::/10, v4-mapped forms, bare-number IP encodings);
- *   - redirects are refused (`redirect: 'error'`), so a public host can't
- *     bounce us to an internal one.
- *   DNS-resolution checks (hostname that resolves to an internal IP, DNS
- *   rebinding) are deliberately out of scope — documented tradeoff for a
- *   zero-dependency server.
+ *   - every resolved A/AAAA address must be public unicast;
+ *   - the HTTPS socket is pinned to one validated address while the original
+ *     hostname remains the Host header and TLS SNI name;
+ *   - redirects are not followed, responses are capped, and resolution or
+ *     validation failures fail closed.
  *
  * Delivery is best-effort: 5s timeout, no retry, failures only logged. A
  * webhook must never affect the main request path.
  */
 
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { request as httpsRequest } from 'node:https';
+import { isIP } from 'node:net';
 import { log } from '@/utils/log';
 
 export const WEBHOOK_TOKEN_PREFIX = 'webhook:';
 export const WEBHOOK_URL_MAX_LENGTH = 2048;
 export const WEBHOOK_TIMEOUT_MS = 5000;
+export const WEBHOOK_RESPONSE_MAX_BYTES = 64 * 1024;
 
 /** Webhook event categories users can subscribe to. */
 export const WEBHOOK_EVENTS = ['completed', 'permission'] as const;
@@ -75,7 +76,67 @@ function isForbiddenIpv4(host: string): boolean {
     if (a === 192 && b === 168) return true;           // RFC1918
     if (a === 169 && b === 254) return true;           // link-local
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT (also tailnets)
+    if (a === 192 && b === 0 && parts[2] === 0) return true; // IETF protocol assignments
+    if (a === 192 && b === 0 && parts[2] === 2) return true; // documentation
+    if (a === 192 && b === 88 && parts[2] === 99) return true; // deprecated 6to4 relay
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmark networks
+    if (a === 198 && b === 51 && parts[2] === 100) return true; // documentation
+    if (a === 203 && b === 0 && parts[2] === 113) return true; // documentation
+    if (a >= 224) return true;                         // multicast / reserved
     return false;
+}
+
+function parseIpv6(address: string): bigint | null {
+    const zoneIndex = address.indexOf('%');
+    const raw = (zoneIndex === -1 ? address : address.slice(0, zoneIndex)).toLowerCase();
+    const halves = raw.split('::');
+    if (halves.length > 2) return null;
+
+    const parseHalf = (half: string): number[] | null => {
+        if (!half) return [];
+        const words: number[] = [];
+        for (const part of half.split(':')) {
+            if (part.includes('.')) {
+                const octets = part.split('.').map(Number);
+                if (octets.length !== 4 || octets.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+                words.push((octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]);
+            } else {
+                if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+                words.push(parseInt(part, 16));
+            }
+        }
+        return words;
+    };
+
+    const left = parseHalf(halves[0]);
+    const right = parseHalf(halves[1] ?? '');
+    if (!left || !right) return null;
+    const missing = 8 - left.length - right.length;
+    if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null;
+    const words = [...left, ...Array(missing).fill(0), ...right];
+    if (words.length !== 8) return null;
+    return words.reduce((value, word) => (value << 16n) | BigInt(word), 0n);
+}
+
+function inIpv6Prefix(value: bigint, prefix: bigint, bits: number): boolean {
+    return (value >> BigInt(128 - bits)) === (prefix >> BigInt(128 - bits));
+}
+
+/** True only for routable public-unicast addresses accepted for egress. */
+export function isPublicWebhookAddress(address: string): boolean {
+    const family = isIP(address);
+    if (family === 4) return !isForbiddenIpv4(address);
+    if (family !== 6) return false;
+
+    const value = parseIpv6(address);
+    if (value === null) return false;
+    // Accept the global-unicast allocation only, then remove special-purpose
+    // subranges that must not be webhook destinations.
+    if (!inIpv6Prefix(value, 0x20000000000000000000000000000000n, 3)) return false;
+    if (inIpv6Prefix(value, 0x20010000000000000000000000000000n, 23)) return false; // IETF special-use
+    if (inIpv6Prefix(value, 0x20010db8000000000000000000000000n, 32)) return false; // documentation
+    if (inIpv6Prefix(value, 0x20020000000000000000000000000000n, 16)) return false; // 6to4
+    return true;
 }
 
 function isForbiddenHost(hostname: string): boolean {
@@ -368,6 +429,104 @@ export interface WebhookSendResult {
     error?: string;
 }
 
+export interface WebhookAddress {
+    address: string;
+    family: 4 | 6;
+}
+
+export interface WebhookDeliveryTarget extends WebhookAddress {
+    url: URL;
+    /** Original DNS name retained for Host and certificate verification/SNI. */
+    hostname: string;
+}
+
+export type WebhookResolver = (hostname: string) => Promise<WebhookAddress[]>;
+export type WebhookTransport = (
+    target: WebhookDeliveryTarget,
+    body: string,
+) => Promise<WebhookSendResult>;
+
+async function resolveWithSystemDns(hostname: string): Promise<WebhookAddress[]> {
+    const addresses = await dnsLookup(hostname, { all: true, verbatim: true });
+    return addresses
+        .filter((entry): entry is { address: string; family: 4 | 6 } => entry.family === 4 || entry.family === 6)
+        .map(entry => ({ address: entry.address, family: entry.family }));
+}
+
+/** Resolve and validate all answers before selecting the address to pin. */
+export async function resolveWebhookTarget(rawUrl: string, resolve: WebhookResolver): Promise<WebhookDeliveryTarget> {
+    const url = new URL(rawUrl);
+    const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']')
+        ? url.hostname.slice(1, -1)
+        : url.hostname;
+    const addresses = await resolve(hostname);
+    if (addresses.length === 0) throw new Error('webhook host did not resolve');
+    if (addresses.some(entry => isIP(entry.address) !== entry.family || !isPublicWebhookAddress(entry.address))) {
+        throw new Error('webhook host resolved to a non-public address');
+    }
+    return { url, hostname, ...addresses[0] };
+}
+
+/** HTTPS transport whose lookup callback can return only the validated IP. */
+export async function sendPinnedHttps(target: WebhookDeliveryTarget, body: string): Promise<WebhookSendResult> {
+    return new Promise((resolve, reject) => {
+        const request = httpsRequest(target.url, {
+            method: 'POST',
+            // A pooled socket could have been opened from an earlier DNS
+            // answer. Force a fresh connection so this delivery's validated
+            // address is the one that is actually dialed.
+            agent: false,
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+                Host: target.url.host,
+            },
+            servername: isIP(target.hostname) === 0 ? target.hostname : undefined,
+            lookup: (_hostname, _options, callback) => callback(null, target.address, target.family),
+        }, response => {
+            let responseBytes = 0;
+            response.on('data', (chunk: Buffer | string) => {
+                responseBytes += Buffer.byteLength(chunk);
+                if (responseBytes > WEBHOOK_RESPONSE_MAX_BYTES) {
+                    request.destroy(new Error('webhook response too large'));
+                }
+            });
+            response.on('end', () => {
+                const status = response.statusCode ?? 0;
+                // 3xx is deliberately an ordinary failed result: this client
+                // never follows Location and therefore never re-resolves it.
+                resolve({ ok: status >= 200 && status < 300, status });
+            });
+        });
+        request.setTimeout(WEBHOOK_TIMEOUT_MS, () => request.destroy(new Error('webhook request timed out')));
+        request.on('error', reject);
+        request.end(body);
+    });
+}
+
+export async function sendWebhookWithDependencies(
+    url: string,
+    payload: WebhookPayload,
+    dependencies: { resolve: WebhookResolver; transport: WebhookTransport },
+): Promise<WebhookSendResult> {
+    const invalid = validateWebhookUrl(url);
+    if (invalid) return { ok: false, error: `invalid url: ${invalid}` };
+    let resolutionTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const target = await Promise.race([
+            resolveWebhookTarget(url, dependencies.resolve),
+            new Promise<never>((_resolve, reject) => {
+                resolutionTimer = setTimeout(() => reject(new Error('webhook DNS resolution timed out')), WEBHOOK_TIMEOUT_MS);
+            }),
+        ]);
+        return await dependencies.transport(target, JSON.stringify(payload));
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+        if (resolutionTimer) clearTimeout(resolutionTimer);
+    }
+}
+
 /**
  * POST the payload to the webhook URL. Best-effort: 5s timeout, no retry,
  * refuses redirects, never throws. URL is re-validated at send time so a
@@ -375,31 +534,10 @@ export interface WebhookSendResult {
  * forbidden host.
  */
 export async function sendWebhook(url: string, payload: WebhookPayload): Promise<WebhookSendResult> {
-    const invalid = validateWebhookUrl(url);
-    if (invalid) {
-        return { ok: false, error: `invalid url: ${invalid}` };
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
-    try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            redirect: 'error',
-            // Cast: expo-server-sdk pulls in node-fetch v2 types whose global
-            // AbortSignal shadows the built-in fetch's — runtime is fine.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            signal: controller.signal as any,
-        });
-        // Drain/discard the body so the connection can be reused.
-        try { await res.arrayBuffer(); } catch { /* ignore */ }
-        return { ok: res.ok, status: res.status };
-    } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    } finally {
-        clearTimeout(timer);
-    }
+    return sendWebhookWithDependencies(url, payload, {
+        resolve: resolveWithSystemDns,
+        transport: sendPinnedHttps,
+    });
 }
 
 /** Log helper kept here so pushDispatch stays terse. */

@@ -37,9 +37,23 @@
     },
     "pnpm": {
         "overrides": {
+            "@hono/node-server": "1.19.15",
+            "@fastify/ajv-compiler>fast-uri": "3.1.5",
+            "@prisma/config>deepmerge-ts": "8.0.0",
+            "@prisma/config>effect": "3.20.0",
+            "ajv>fast-uri": "3.1.5",
+            "c12>defu": "6.1.5",
+            "express-rate-limit>ip-address": "10.3.1",
+            "fast-json-stringify>fast-uri": "3.1.5",
             "whatwg-url": "14.2.0",
             "parse-path": "7.0.3",
-            "@types/parse-path": "7.0.3"
+            "@types/parse-path": "7.0.3",
+            "engine.io": "6.6.9",
+            "hono": "4.12.34",
+            "minio>lodash": "4.18.0",
+            "router>path-to-regexp": "8.4.0",
+            "vite-tsconfig-paths>vite": "8.0.16",
+            "ws": "8.21.3"
         },
         "onlyBuiltDependencies": [
             "@more-tech/react-native-libsodium",

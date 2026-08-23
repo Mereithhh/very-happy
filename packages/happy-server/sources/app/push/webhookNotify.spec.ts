@@ -1,12 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     WEBHOOK_TOKEN_PREFIX,
     buildManualWebhookPayload,
     buildWebhookPayload,
     buildWebhookToken,
     createAccountRateLimiter,
+    isPublicWebhookAddress,
     mapKindToWebhookEvent,
     parseWebhookToken,
+    resolveWebhookTarget,
+    sendWebhookWithDependencies,
     validateWebhookUrl,
 } from './webhookNotify';
 
@@ -79,6 +82,101 @@ describe('validateWebhookUrl', () => {
         expect(validateWebhookUrl('https://printer.local/hook')).not.toBeNull();
         expect(validateWebhookUrl('https://db.internal/hook')).not.toBeNull();
         expect(validateWebhookUrl('https://localhost./hook')).not.toBeNull();
+    });
+});
+
+describe('DNS-pinned webhook delivery', () => {
+    const payload = { title: 'done', message: 'ok' };
+
+    it('classifies public unicast and special-purpose addresses', () => {
+        expect(isPublicWebhookAddress('8.8.8.8')).toBe(true);
+        expect(isPublicWebhookAddress('2606:4700:4700::1111')).toBe(true);
+        expect(isPublicWebhookAddress('10.0.0.1')).toBe(false);
+        expect(isPublicWebhookAddress('169.254.169.254')).toBe(false);
+        expect(isPublicWebhookAddress('192.0.2.10')).toBe(false);
+        expect(isPublicWebhookAddress('224.0.0.1')).toBe(false);
+        expect(isPublicWebhookAddress('2001:db8::1')).toBe(false);
+        expect(isPublicWebhookAddress('fc00::1')).toBe(false);
+        expect(isPublicWebhookAddress('::ffff:127.0.0.1')).toBe(false);
+    });
+
+    it('rejects a hostname whose DNS answer is private', async () => {
+        const transport = vi.fn();
+        const result = await sendWebhookWithDependencies('https://hooks.example.test/incoming', payload, {
+            resolve: async () => [{ address: '10.20.30.40', family: 4 }],
+            transport,
+        });
+        expect(result).toEqual({ ok: false, error: 'webhook host resolved to a non-public address' });
+        expect(transport).not.toHaveBeenCalled();
+    });
+
+    it('rejects mixed public/private A and AAAA answers fail closed', async () => {
+        const transport = vi.fn();
+        const result = await sendWebhookWithDependencies('https://hooks.example.test/incoming', payload, {
+            resolve: async () => [
+                { address: '8.8.8.8', family: 4 },
+                { address: 'fd00::1234', family: 6 },
+            ],
+            transport,
+        });
+        expect(result.ok).toBe(false);
+        expect(result.error).toContain('non-public');
+        expect(transport).not.toHaveBeenCalled();
+    });
+
+    it('pins the selected answer and never gives transport a chance to re-resolve', async () => {
+        let resolveCount = 0;
+        const transport = vi.fn(async target => ({
+            ok: target.address === '8.8.4.4',
+            status: 204,
+        }));
+        const result = await sendWebhookWithDependencies('https://hooks.example.test:8443/incoming', payload, {
+            resolve: async () => {
+                resolveCount += 1;
+                return resolveCount === 1
+                    ? [{ address: '8.8.4.4', family: 4 }]
+                    : [{ address: '127.0.0.1', family: 4 }];
+            },
+            transport,
+        });
+        expect(result).toEqual({ ok: true, status: 204 });
+        expect(resolveCount).toBe(1);
+        expect(transport).toHaveBeenCalledWith(
+            expect.objectContaining({
+                address: '8.8.4.4',
+                family: 4,
+                hostname: 'hooks.example.test',
+            }),
+            JSON.stringify(payload),
+        );
+    });
+
+    it('preserves the public TLS hostname/path and treats redirect as failure', async () => {
+        const target = await resolveWebhookTarget(
+            'https://hooks.example.test:9443/api/incoming?token=x',
+            async () => [{ address: '1.1.1.1', family: 4 }],
+        );
+        expect(target.hostname).toBe('hooks.example.test');
+        expect(target.url.host).toBe('hooks.example.test:9443');
+        expect(target.url.pathname).toBe('/api/incoming');
+
+        const result = await sendWebhookWithDependencies(target.url.href, payload, {
+            resolve: async () => [{ address: '1.1.1.1', family: 4 }],
+            // The transport contract reports the one response. There is no
+            // redirect URL or resolver callback through which to follow it.
+            transport: async () => ({ ok: false, status: 302 }),
+        });
+        expect(result).toEqual({ ok: false, status: 302 });
+    });
+
+    it('fails closed on empty or failed DNS resolution', async () => {
+        await expect(resolveWebhookTarget('https://hooks.example.test/x', async () => []))
+            .rejects.toThrow('did not resolve');
+        const result = await sendWebhookWithDependencies('https://hooks.example.test/x', payload, {
+            resolve: async () => { throw new Error('dns unavailable'); },
+            transport: vi.fn(),
+        });
+        expect(result).toEqual({ ok: false, error: 'dns unavailable' });
     });
 });
 
