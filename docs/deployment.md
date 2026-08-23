@@ -78,7 +78,9 @@ The same origin must be listed under **Authorized JavaScript origins** in Google
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
 - Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production).
 - Subscriptions: `REVENUECAT_API_KEY` (server-side RevenueCat key, required for voice subscription checks).
-- Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
+- Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` enables local file logging. The remote dev log endpoint is registered only when
+  `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN` is also set; the CLI
+  must receive the same token. Keep both unset outside a short debugging window.
 
 ## Docker image
 A production Dockerfile is provided at `Dockerfile.server`.

@@ -48,14 +48,17 @@ function getSessionLogPath(): string {
 
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
+  private dangerouslyUnencryptedServerLoggingToken: string | undefined
 
   constructor(
     public readonly logFilePath = getSessionLogPath()
   ) {
     // Remote logging enabled only when explicitly set with server URL
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING 
-      && process.env.HAPPY_SERVER_URL) {
+      && process.env.HAPPY_SERVER_URL
+      && process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN) {
       this.dangerouslyUnencryptedServerLoggingUrl = process.env.HAPPY_SERVER_URL
+      this.dangerouslyUnencryptedServerLoggingToken = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN
       console.log(chalk.yellow('[REMOTE LOGGING] Sending logs to server for AI debugging'))
     }
   }
@@ -188,7 +191,10 @@ class Logger {
     try {
       await fetch(this.dangerouslyUnencryptedServerLoggingUrl + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.dangerouslyUnencryptedServerLoggingToken}`,
+        },
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
