@@ -28,6 +28,13 @@ for (const name of ['quality.yml', 'cli-smoke-test.yml']) {
   }
 }
 
+const qualityHostedPrSelectors = workflows['quality.yml']?.match(
+  /github\.event_name == 'pull_request' && '\["ubuntu-latest"\]'/g,
+)?.length ?? 0;
+if (qualityHostedPrSelectors < 2) {
+  errors.push('quality.yml: both code-execution jobs must isolate fork PRs on ubuntu-latest');
+}
+
 for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
   if (/pull_request\s*:/.test(workflows[name] ?? '')) {
     errors.push(`${name}: privileged workflow must never accept pull_request`);

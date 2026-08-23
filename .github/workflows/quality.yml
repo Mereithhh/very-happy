@@ -54,7 +54,10 @@ permissions:
 jobs:
   server-container-smoke:
     name: server container / migration / persistence
-    runs-on: ubuntu-latest
+    # Fork PR code is isolated on GitHub-hosted capacity. Trusted main pushes
+    # may use the repository's Linux runner (private repos can have hosted
+    # billing disabled); this branch is never selected for pull_request.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
