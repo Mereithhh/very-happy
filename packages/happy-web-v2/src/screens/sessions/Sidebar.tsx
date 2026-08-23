@@ -70,6 +70,9 @@ interface Row {
   title: string;
   subtitle: string;
   tags?: string[];
+  /** B-150: terminal rows the daemon brought back after a restart. Cleared by
+   *  the daemon on first open, so the badge disappears by itself. */
+  restored?: boolean;
 }
 
 function sessionRow(s: Session): Row {
@@ -201,6 +204,7 @@ export function Sidebar() {
             machineId: tm.machineId,
             title: tm.title || tm.machineName,
             subtitle: tm.machineName,
+            restored: !!tm.restoredAt,
           }));
     // One place applies the overlay for every ACTIVITY-ORDERED surface, so
     // 列表/状态/归档 can't disagree about what "last active" means. (已完成(今日)
@@ -1245,6 +1249,14 @@ function SidebarRow({
         <span className="sb-row-text">
           <span className="sb-row-title-line">
             <span className="sb-row-title">{row.title}</span>
+            {/* B-150: this tmux session and its processes are NEW — only the
+                directory and the claude conversation carried over. Worth saying
+                once, so a fresh scrollback isn't read as lost work. */}
+            {row.restored && (
+              <span className="sb-row-restored" title={t('sidebar.terminalRestoredHint')}>
+                {t('sidebar.terminalRestored')}
+              </span>
+            )}
             {row.tags && row.tags.length > 0 && (
               <span className="sb-row-tags">
                 {row.tags.slice(0, 2).map((tag) => (

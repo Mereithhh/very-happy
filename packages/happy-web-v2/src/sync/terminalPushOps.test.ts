@@ -201,3 +201,30 @@ describe('pruneOverlay', () => {
     expect(pruneOverlay(overlay, pushes, NOW).created).toEqual([pending]);
   });
 });
+
+
+// ── B-150: the auto-restored marker rides the same push ──────────────────────
+describe('restoredAt (B-150)', () => {
+  it('accepts a positive number and ignores anything else', () => {
+    const snap = trustedWebTerminals({
+      startedAt: 1,
+      webTerminals: {
+        updatedAt: 10,
+        terminals: [
+          { id: 'a', restoredAt: 1700 },
+          { id: 'b', restoredAt: 0 },
+          { id: 'c', restoredAt: 'yes' },
+        ],
+      },
+    });
+    const rows = composeTerminalList(
+      { m1: { machineName: 'mac-office', terminals: snap!.terminals } },
+      EMPTY_OVERLAY,
+      2000,
+    );
+    const by = (id: string) => rows.find((r) => r.id === id);
+    expect(by('a')?.restoredAt).toBe(1700);
+    expect(by('b')?.restoredAt).toBeUndefined();
+    expect(by('c')?.restoredAt).toBeUndefined();
+  });
+});

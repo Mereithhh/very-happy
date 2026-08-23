@@ -53,6 +53,8 @@ export interface TerminalSession {
   /** B-105: shadow mirror session id, when the daemon is mirroring a
    *  hand-launched `claude` in this terminal (drives the structured toggle). */
   mirrorSessionId?: string;
+  /** B-150: auto-restored after a restart — badged until opened once. */
+  restoredAt?: number;
 }
 
 /** A trusted webTerminals snapshot read out of a machine's daemonState. */
@@ -132,6 +134,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
     // Off the wire from a daemon of unknown version — accept strings only.
     mirrorSessionId:
       typeof t.mirrorSessionId === 'string' && t.mirrorSessionId ? t.mirrorSessionId : undefined,
+    restoredAt: typeof t.restoredAt === 'number' && t.restoredAt > 0 ? t.restoredAt : undefined,
   };
 }
 

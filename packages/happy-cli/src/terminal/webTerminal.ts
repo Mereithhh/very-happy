@@ -68,7 +68,7 @@ import os from 'node:os';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { logger } from '@/ui/logger';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { ControlClient } from './controlClient';
 import {
@@ -91,7 +91,14 @@ import {
     type LiveTerminalInfo,
     type MirrorLookupSession,
 } from './liveTerminals';
-import { readPersistedSessions } from '@/persistence';
+import { readPersistedSessions, readSettings } from '@/persistence';
+import {
+    selectAutoRestore,
+    resolveAutoRestoreConfig,
+    autoRestoreSummary,
+    type AutoRestoreCandidate,
+    type AutoRestorePlan,
+} from './autoRestore';
 import {
     appendClosedTerminal,
     pruneClosedAgainstLive,
@@ -503,6 +510,11 @@ export function normalizeStartupCommand(raw: unknown): string | undefined {
  * ("can't find pane") — verified empirically.
  * Pure function (unit-tested without tmux).
  */
+/** Gap between two auto-restores (B-150): six claude TUIs starting at once
+ *  fight over CPU/IO and the first one's node startup dominates. Serial with a
+ *  breather is slower in wall-clock and much kinder to a just-booted machine. */
+export const AUTO_RESTORE_STAGGER_MS = 2000;
+
 export function startupInjectionArgs(tmuxSession: string, command: string): string[][] {
     return [
         ['send-keys', '-t', `=${tmuxSession}:`, '-l', '--', command],
@@ -535,6 +547,11 @@ export interface TerminalListItem {
      *  running inside this terminal (set via the daemon's mirror resolver).
      *  The web shows the xterm ↔ structured toggle when present. */
     mirrorSessionId?: string;
+    /** B-150: this terminal was AUTO-RESTORED after a restart (ms epoch) — the
+     *  tmux session and the processes inside it are new, only the directory and
+     *  the claude conversation carried over. The web badges it until the user
+     *  opens it once; the mark is daemon-local and never persisted. */
+    restoredAt?: number;
 }
 
 /**
@@ -1193,6 +1210,18 @@ export class WebTerminalManager {
     /** Change guard for the persisted copy: a tick where membership, titles and
      *  cwds are unchanged must not touch the disk (5s cadence otherwise = churn). */
     private lastPersistedSnapshot: Map<string, LiveTerminalInfo> = new Map(this.restoredSnapshot ?? []);
+    /** B-150: ids this daemon auto-restored, until the user opens each once.
+     *  In-memory on purpose — a badge is a "since you were away" hint, and a
+     *  restarted daemon has nothing to apologise for. */
+    private autoRestoredIds = new Map<string, number>();
+    /** Set once per daemon life, so a later tick can never re-run the restore. */
+    private autoRestoreDone = false;
+    private onAutoRestoreSummaryCb: ((line: string) => void) | null = null;
+
+    /** Report line for the account notification (wired by apiMachine). */
+    setOnAutoRestoreSummary(fn: (line: string) => void): void {
+        this.onAutoRestoreSummaryCb = fn;
+    }
     private emit: EmitFn;
     private reaper: ReturnType<typeof setInterval>;
 
@@ -1361,6 +1390,26 @@ export class WebTerminalManager {
         return this.closedTerminals;
     }
 
+    /** B-150: stamp the auto-restored marks onto a list (and drop marks whose
+     *  terminal is gone, so the map cannot leak one entry per restore ever). */
+    private markRestored(list: TerminalListItem[]): TerminalListItem[] {
+        if (this.autoRestoredIds.size === 0) return list;
+        const liveIds = new Set(list.map((t) => t.id));
+        for (const id of [...this.autoRestoredIds.keys()]) {
+            if (!liveIds.has(id)) this.autoRestoredIds.delete(id);
+        }
+        return list.map((t) => {
+            const at = this.autoRestoredIds.get(t.id);
+            return at ? { ...t, restoredAt: at } : t;
+        });
+    }
+
+    /** The user looked at it — the "restored while you were away" badge has done
+     *  its job (called from the open path). */
+    private clearRestoredMark(terminalId: string): void {
+        if (this.autoRestoredIds.delete(terminalId)) this.requestListRefresh();
+    }
+
     /** Refresh the per-id {title, cwd} cache from an observed live list. */
     private noteSeen(list: TerminalListItem[]): void {
         this.lastSeenInfo = new Map(list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]));
@@ -1389,7 +1438,8 @@ export class WebTerminalManager {
             const mirrorSessionId = this.mirrorResolver?.(item.id);
             if (mirrorSessionId) item.mirrorSessionId = mirrorSessionId;
         }
-        return list;
+        // B-150: last, so the badge rides every push (and stale marks get GC'd).
+        return this.markRestored(list);
     }
 
     /** Event kick: schedule a near-immediate refresh (debounced so bursts —
@@ -1514,6 +1564,9 @@ export class WebTerminalManager {
         if (!snapshot || snapshot.size === 0) return;
         let persisted: Record<string, MirrorLookupSession> | null = null;
         let recorded = 0;
+        // B-150 candidates: built from the SAME pass, so the resume id a row
+        // gets in the archive is exactly the one auto-restore would use.
+        const candidates: AutoRestoreCandidate[] = [];
         for (const [id, info] of snapshot) {
             if (liveIds.has(id)) continue;
             // Already archived by the daemon that watched it die — an ordinary
@@ -1531,11 +1584,112 @@ export class WebTerminalManager {
                 closedAt: info.seenAt,
             });
             recorded++;
+            candidates.push({
+                id,
+                title: info.title,
+                cwd: info.cwd,
+                seenAt: info.seenAt,
+                claudeSessionId: mirror?.claudeSessionId,
+            });
         }
         if (recorded > 0) {
             saveClosedTerminals(this.closedTerminals);
             logger.debug(`[WEB TERMINAL] daemon gap: archived ${recorded} terminal(s) from the persisted snapshot`);
         }
+        // Fire-and-forget: reading settings is async and the tracking tick must
+        // not wait on it (nor on six claude processes booting).
+        if (candidates.length > 0) void this.autoRestore(candidates, liveIds);
+    }
+
+    /**
+     * B-150: bring the last working set back without anyone clicking.
+     *
+     * Selection (pure, terminal/autoRestore.ts) is deliberately stingy — the
+     * only real hazard here is resource blast: one idle claude ≈ 400MB, and the
+     * 2026-08-23 working set of 22 measured 9.1GB on a 24GB machine. Anything
+     * beyond the cap keeps its one-click ↻ in the archive (B-149), and the
+     * summary says what was skipped: a silent cap reads as "all restored".
+     */
+    private async autoRestore(candidates: AutoRestoreCandidate[], liveIds: ReadonlySet<string>): Promise<void> {
+        if (this.autoRestoreDone) return;
+        this.autoRestoreDone = true;
+        try {
+            if (!isTmuxAvailable()) return;   // no tmux → nothing survives anyway
+            const settings = await readSettings();
+            const config = resolveAutoRestoreConfig(settings as unknown as Record<string, unknown>);
+            const selection = selectAutoRestore(candidates, {
+                now: Date.now(),
+                config,
+                liveIds,
+                cwdExists: (cwd) => {
+                    try { return existsSync(cwd) && statSync(cwd).isDirectory(); } catch { return false; }
+                },
+            });
+            for (const plan of selection.plans) {
+                const ok = this.restoreOneTerminal(plan);
+                if (!ok) continue;
+                this.autoRestoredIds.set(plan.terminalId, Date.now());
+                this.requestListRefresh();
+                if (plan !== selection.plans[selection.plans.length - 1]) {
+                    await new Promise((r) => setTimeout(r, AUTO_RESTORE_STAGGER_MS));
+                }
+            }
+            const line = autoRestoreSummary(selection);
+            if (line) {
+                logger.info(`[WEB TERMINAL] auto-restore: ${line}`);
+                try { this.onAutoRestoreSummaryCb?.(line); } catch (e) {
+                    logger.debug(`[WEB TERMINAL] auto-restore report failed: ${e}`);
+                }
+            }
+        } catch (e) {
+            // Never let a restore failure take the tracking loop with it.
+            logger.debug(`[WEB TERMINAL] auto-restore failed: ${e}`);
+        }
+    }
+
+    /**
+     * Recreate ONE terminal cold: the original id (so the web reattaches to the
+     * same row and the archive dedupes), the original cwd and title, the same
+     * create-only env markers the interactive path sets — VH_TERMINAL_ID above
+     * all, or the resumed claude could not re-bind its mirror (B-105) and the
+     * NEXT restart would find no conversation to resume.
+     *
+     * No pty is attached: the session stays cold until a web client opens it,
+     * exactly like a terminal whose pty was reaped.
+     */
+    private restoreOneTerminal(plan: AutoRestorePlan): boolean {
+        const env = ptyEnv();
+        const name = `vh-${plan.terminalId}`;
+        // Idempotence guard #2 (after the live-set filter): if it exists, leave
+        // it alone. Two daemons racing must not double-create.
+        const exists = spawnSync('tmux', ['has-session', '-t', `=${name}:`],
+            { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+        if (exists) return false;
+        const envFlags = tmuxSupportsEnvFlag() ? [
+            '-e', CLAUDE_CLASSIC_RENDERER_ENV,
+            '-e', `VH_TERMINAL_ID=${plan.terminalId}`,
+            '-e', `VH_HAPPY_HOME_DIR=${configuration.happyHomeDir}`,
+        ] : [];
+        // Geometry is provisional — the first web open resizes the pane. These
+        // numbers only decide how claude's first paint wraps.
+        const created = spawnSync('tmux',
+            ['new-session', '-d', ...envFlags, '-s', name, '-x', '120', '-y', '30', '-c', plan.cwd],
+            { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
+        if (created.status !== 0) {
+            logger.debug(`[WEB TERMINAL] auto-restore: tmux create failed for ${plan.terminalId}`);
+            return false;
+        }
+        if (plan.title) {
+            // No `@vh_title_manual`: let the normal auto-follow take over as soon
+            // as the resumed claude sets its own pane title.
+            spawnSync('tmux', ['set-option', '-t', `=${name}:`, '@vh_title', plan.title],
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+        }
+        for (const argv of startupInjectionArgs(name, plan.command)) {
+            spawnSync('tmux', argv, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+        }
+        logger.info(`[WEB TERMINAL] auto-restored ${plan.terminalId} in ${plan.cwd}`);
+        return true;
     }
 
     /** Mirror the in-memory cache to disk, but only when something a restart
@@ -1717,6 +1871,9 @@ export class WebTerminalManager {
                 throw new Error('terminal-gone');
             }
         }
+
+        // B-150: opening it IS the acknowledgement — drop the restored badge.
+        this.clearRestoredMark(id);
 
         const env = ptyEnv();
         // Only the no-tmux fallback spawns a process of its own; the tmux path

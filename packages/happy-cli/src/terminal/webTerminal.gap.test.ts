@@ -31,6 +31,14 @@ const GONE = 'gapgone1';
 const CLAUDE_ID = 'c0c26854-5e0c-4063-aaeb-d4428fe8ed94';
 const SEEN_AT = Date.now() - 60_000;
 
+// B-150 auto-restore is ON by default and would legitimately bring this
+// terminal BACK (recent, cwd exists, conversation known) — which is a different
+// test (webTerminal.autorestore.test.ts). Here we assert the ARCHIVE behaviour,
+// so the machine-local switch is explicitly off.
+writeFileSync(join(happyHome, 'settings.json'), JSON.stringify({
+    schemaVersion: 2, onboardingCompleted: true, terminalAutoRestore: false,
+}));
+
 // The snapshot the previous daemon life left on disk…
 writeFileSync(join(happyHome, 'live-terminals.json'), JSON.stringify({
     [GONE]: { title: 'llm-hub postgres 健康检查', cwd: '/tmp', seenAt: SEEN_AT },

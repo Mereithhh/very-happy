@@ -305,6 +305,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* B-150: "restored after a restart" marker. Deliberately quiet — it is context,
+   not a status the user must act on, and it disappears on first open. */
+.sb-row-restored {
+  flex: none;
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--text-faint);
+  background: var(--surface-3, rgba(127, 127, 127, 0.14));
+  white-space: nowrap;
+}
 .sb-row-menu {
   display: flex;
   align-items: center;

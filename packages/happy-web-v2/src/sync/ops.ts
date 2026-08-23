@@ -624,6 +624,11 @@ export interface MachineTerminal {
     /** B-105: id of this terminal's shadow mirror session (a hand-launched
      *  `claude` is being tailed into it). Absent when there is no mirror. */
     mirrorSessionId?: string;
+    /** B-150: the daemon auto-restored this terminal after a restart (ms epoch).
+     *  Directory and conversation carried over; the processes are new. The
+     *  daemon clears it once the terminal is opened, so it is a "while you were
+     *  away" hint, not a permanent property. */
+    restoredAt?: number;
 }
 
 /** Persist a terminal's title on the machine so every device sees it.

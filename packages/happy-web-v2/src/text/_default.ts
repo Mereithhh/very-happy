@@ -1057,6 +1057,8 @@ export const en = {
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
         closedTerminalResume: 'Continue this conversation here',
+        terminalRestored: 'restored',
+        terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new and the scrollback starts fresh.',
         closedTerminalGap: 'ended in a restart',
         // B-105: closed terminal that had a mirror — its history stays readable
         closedTerminalHistory: 'View structured history',

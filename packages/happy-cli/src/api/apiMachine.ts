@@ -246,6 +246,8 @@ export class ApiMachineClient {
         // Disabled unless the machine's own settings name a provider command —
         // see modules/todo/todoRpc.ts for why that config is machine-local only.
         registerTodoHandlers(this.rpcHandlerManager);
+        // B-150: route the auto-restore summary to the account notification.
+        this.wireAutoRestoreReport();
     }
 
     setRPCHandlers({
@@ -627,6 +629,22 @@ export class ApiMachineClient {
     /** B-107: gate for mirror-terminal-send — set with the rest of the
      *  mirror integration; absent (daemon still starting) means refuse. */
     private mirrorInputAllowed: ((terminalId: string) => boolean) | null = null;
+
+    /** B-150: one line per daemon start, only when something was restored or
+     *  deliberately skipped. Same channel the terminal notifications use, so it
+     *  lands wherever the user already routed those (webhook / inbox). */
+    private wireAutoRestoreReport(): void {
+        this.webTerminal.setOnAutoRestoreSummary((line) => {
+            sendTerminalNotification({
+                baseUrl: configuration.serverUrl,
+                token: this.token,
+                title: 'Terminals restored',
+                message: line,
+                link: `/machine/${this.machine.id}`,
+                event: 'completed',
+            });
+        });
+    }
 
     setMirrorIntegration(integration: {
         resolveMirrorSessionId: (terminalId: string) => string | undefined;

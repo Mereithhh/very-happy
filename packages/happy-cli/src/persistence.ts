@@ -67,6 +67,23 @@ interface Settings {
     cwd?: string
     timeoutMs?: number
   }
+  /**
+   * B-150 terminal auto-restore: after a daemon/machine restart, bring the last
+   * working set back by itself (same cwd, `claude --resume` into the same
+   * conversation) so logging in and opening the web shows the terminals already
+   * running — no clicking.
+   *
+   * Machine-local for two reasons: the CLI cannot read the client-encrypted
+   * synced settings blob (same constraint as `boardLlm`), AND a memory budget
+   * is a property of THIS machine — 6 restored claude TUIs is ~2.5GB, which is
+   * fine on a 24GB laptop and not on a small VM. Syncing it would be wrong.
+   *
+   * Absent → enabled with the conservative defaults in terminal/autoRestore.ts
+   * (max 6, 24h recency window). `terminalAutoRestoreMax: 0` also means off.
+   */
+  terminalAutoRestore?: boolean
+  terminalAutoRestoreMax?: number
+  terminalAutoRestoreWindowHours?: number
 }
 
 const defaultSettings: Settings = {

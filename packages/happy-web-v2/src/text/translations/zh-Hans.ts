@@ -1043,6 +1043,8 @@ export const zhHans: TranslationStructure = {
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
+        terminalRestored: '已恢复',
+        terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
         closedTerminalGap: '重启时结束',
         closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
