@@ -41,6 +41,11 @@ for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
   }
 }
 
+const macSmokeSource = (workflows['cli-smoke-test.yml'] ?? '').split('smoke-windows:')[0];
+if (/smoke-macos:[\s\S]*cache:\s*['"]pnpm['"]/.test(macSmokeSource)) {
+  errors.push('cli-smoke-test.yml: mac-office must use its persistent store, not GitHub cache-save');
+}
+
 if (!/^CMD .*standalone\.ts migrate.*standalone\.ts serve/m.test(dockerfile)) {
   errors.push('Dockerfile.server: startup must migrate before serving');
 }
