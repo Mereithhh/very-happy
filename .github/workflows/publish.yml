@@ -41,7 +41,7 @@ jobs:
       # self-hosted 上不能假设系统装了 node。不用 `cache: pnpm`（那要求反过来的顺序），
       # self-hosted 靠本地持久化 pnpm store。
       - name: Setup Node
-        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org

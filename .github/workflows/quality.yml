@@ -75,7 +75,7 @@ jobs:
       # self-hosted 上不能假设系统有 node；setup-node 自己只用 runner 内置 node 就能跑，
       # 所以先它、后 pnpm 才是零假设的顺序。（这个顺序的代价是不能用 setup-node 的
       # `cache: pnpm`——它要先有 pnpm 才能问出 store 路径；我们本来就不要 GitHub 缓存。）
-      - uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 

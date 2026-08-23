@@ -89,7 +89,7 @@ jobs:
       # node 就能跑）。代价是用不了 setup-node 的 `cache: pnpm`，而 self-hosted 本来
       # 就靠本地持久化 pnpm store，不需要 GitHub 缓存服务。
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -194,7 +194,7 @@ jobs:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
@@ -325,7 +325,7 @@ jobs:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
