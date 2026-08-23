@@ -22,6 +22,9 @@ CLAUDE.md（本文件）── 入口：门禁 / 铁律 / 热区
   │    ├─ specs/ ────────────────── 设计层：大改动前置 spec（规范见 specs/README.md）
   │    └─ docs/verify-queue.md ── 验收层：留真机验证项登记 / 清账
   ├─ docs/channels.md ─────── 对外契约：webhook 出站 + spawn/send/MCP 入站
+  ├─ docs/development.md ──── 本地：Web V2 + standalone server + CLI
+  ├─ docs/operations.md ───── 生产：hw-sg/mac-office 发布、恢复与回滚
+  ├─ .agents/skills/ ──────── Codex/Claude 共用的 repo-local dev/release 操作入口
   ├─ docs/*.md ────────────── 架构事实（protocol / backend / cli，多为上游遗留，以代码为准）
   └─ docs/plans/ ──────────── 上游遗留 plan 档案（只读；新设计一律进 specs/）
 ```
@@ -71,7 +74,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 绝不当装饰；等宽体是机器层身份（会话 id、机器名、chip、时间戳、终端全 mono）；
 **终端 pane 在两个主题里都保持深色**。着色纪律全文与豁免清单见
 `packages/happy-web-v2/src/styles/tokens.css` 头部注释（token 事实源；
-定稿规范在 Owner skills repo 的 design-tokens.md）。
+详细纪律同样以该文件为准，避免依赖仓库外知识）。
 
 ## 冲突热区（改前先确认有无并行工作在碰）
 
@@ -81,14 +84,17 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 
 派工时高冲突事项显式声明「别碰」；同文件冲突由主 agent 合并时解决。
 
-## 铁律（血泪精选，全史在 Owner skills repo build-state）
+## 铁律（血泪精选；机制细节以邻近代码、spec 与 backlog 为准）
 
 1. **synced settings 字段绝不加 zod `.default()`**——`loadPendingSettings` 会把
    注入的默认值当幽灵 pending，每次加载 POST 空值覆盖服务器（预设丢失事故真因）。
 2. **daemon 加纯 JS 的 CJS 依赖必须进 `devDependencies`** 让 pkgroll inline，
    否则 external ESM 具名 import 运行时崩（build 全绿只在运行时炸）；发版前实跑
    `HAPPY_HOME_DIR=$(mktemp -d) node dist/index.mjs --version`。
-3. **工具一律 `pnpm exec`，不用 npx**（npx 会解析到错误版本）。
+3. **仓库依赖里的构建/测试/生成工具一律 `pnpm exec`，不用裸 `npx`**
+   （npx 曾绕过 workspace/lockfile 解析到错误版本）。仓库外的一次性只读工具可用
+   版本化 plugin/skill runtime，或 `pnpm dlx <package>@<精确版本>`；禁止 `@latest`、
+   未固定版本的临时下载，以及因此改动 `package.json` / `pnpm-lock.yaml`。
 4. **双向兼容（旧端忽略新字段）是设计要求**不是可选项；协议改动写兼容矩阵。
 5. **server 部署后必须 `vh-update`** 重启 daemon（RPC 重注册 bug，backlog B-001）。
 6. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
+import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
+import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
 
 export function LoginScreen() {
@@ -17,6 +19,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   const canSubmit = username.trim().length > 0 && password.length > 0 && !busy;
 
@@ -25,6 +28,7 @@ export function LoginScreen() {
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
+    setGoogleError(null);
     try {
       const creds = await loginWithPassword(username, password);
       await login(creds.token, creds.secret);
@@ -41,6 +45,27 @@ export function LoginScreen() {
     }
   }
 
+  async function onGoogleCredential(credential: string, nonce: string) {
+    setBusy(true);
+    setGoogleError(null);
+    try {
+      const creds = await loginWithGoogle(credential, nonce);
+      await login(creds.token, creds.secret);
+      navigate('/', { replace: true });
+    } catch (err) {
+      if (err instanceof CloudAuthError && err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
+      else if (err instanceof CloudAuthError && err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
+      else if (err instanceof CloudAuthError && err.code === 'invite-required') {
+        toast.error(t('signup.errorInviteRequiredGoogle'));
+        navigate('/signup');
+      }
+      else if (err instanceof CloudAuthError && err.code === 'network') setGoogleError(t('errors.networkError'));
+      else setGoogleError(t('signup.errorGoogle'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="auth-page">
       <CyberBackdrop />
@@ -50,6 +75,15 @@ export function LoginScreen() {
           <div className="auth-wordmark">very happy</div>
         </div>
         <div className="auth-eyebrow eyebrow">{t('settings.connectAccount')}</div>
+
+        <GoogleLoginButton
+          disabled={busy}
+          dividerLabel={t('signup.orPassword')}
+          retryLabel={t('common.retry')}
+          unavailableLabel={t('signup.errorGoogle')}
+          onCredential={onGoogleCredential}
+        />
+        {googleError && <div className="auth-error" role="alert">{googleError}</div>}
 
         <Input
           label={t('common.name')}

@@ -34,10 +34,18 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
+import { isStandaloneVersionRequest } from './utils/versionArgs'
 
 
 (async () => {
   const args = process.argv.slice(2)
+
+  // A bare version probe is used by release/runtime health checks and must not
+  // fall through into authentication or forward to an agent CLI.
+  if (isStandaloneVersionRequest(args)) {
+    console.log(`happy version: ${packageJson.version}`)
+    return
+  }
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {

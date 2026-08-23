@@ -4,28 +4,8 @@ import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
-
-// Signup gating (self-host). New-account creation can be restricted so this
-// relay isn't open to the world (bandwidth/storage land on the host).
-//   SIGNUP_CLOSED=1            → no new accounts at all
-//   SIGNUP_INVITE_CODES=a,b,c  → new accounts require one of these codes
-//   (neither set)              → open (default; fine for single-user)
-// Existing accounts always re-authenticate freely — the gate only applies to
-// the create path, so it can't lock out current users or CLI pairing.
-function signupClosed(): boolean {
-    return process.env.SIGNUP_CLOSED === '1' || process.env.SIGNUP_CLOSED === 'true';
-}
-function inviteCodes(): string[] {
-    return (process.env.SIGNUP_INVITE_CODES ?? '')
-        .split(',')
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0);
-}
-function inviteAccepted(code: string | undefined): boolean {
-    const codes = inviteCodes();
-    if (codes.length === 0) return true; // invite not required
-    return !!code && codes.includes(code.trim());
-}
+import { SignupPolicyError, withSignupGate } from "@/app/auth/signupPolicy";
+import { signupRejectionsCounter } from "@/app/monitoring/metrics2";
 
 export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
@@ -34,7 +14,7 @@ export function authRoutes(app: Fastify) {
                 publicKey: z.string(),
                 challenge: z.string(),
                 signature: z.string(),
-                inviteCode: z.string().optional()
+                inviteCode: z.string().trim().max(256).optional()
             })
         }
     }, async (request, reply) => {
@@ -48,25 +28,27 @@ export function authRoutes(app: Fastify) {
         }
 
         const publicKeyHex = privacyKit.encodeHex(publicKey);
-        const existing = await db.account.findUnique({ where: { publicKey: publicKeyHex } });
-
-        // Gate the CREATE path only — existing accounts always pass.
-        if (!existing) {
-            if (signupClosed()) {
-                log({ module: 'auth' }, `Signup blocked (closed) for new pubkey ${publicKeyHex.slice(0, 12)}`);
-                return reply.code(403).send({ error: 'signup-closed' });
+        let user = await db.account.findUnique({ where: { publicKey: publicKeyHex } });
+        if (!user) {
+            try {
+                const result = await withSignupGate({
+                    provider: 'key',
+                    inviteCode: request.body.inviteCode,
+                    findExisting: (tx) => tx.account.findUnique({ where: { publicKey: publicKeyHex } }),
+                    create: (tx) => tx.account.create({ data: { publicKey: publicKeyHex } }),
+                    onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
+                });
+                user = result.value;
+            } catch (error) {
+                if (error instanceof SignupPolicyError) {
+                    log({ module: 'auth' }, `Signup blocked (${error.reason}) for new pubkey ${publicKeyHex.slice(0, 12)}`);
+                    return reply.code(403).send({ error: error.reason });
+                }
+                throw error;
             }
-            if (!inviteAccepted(request.body.inviteCode)) {
-                log({ module: 'auth' }, `Signup blocked (bad/no invite) for new pubkey ${publicKeyHex.slice(0, 12)}`);
-                return reply.code(403).send({ error: 'invite-required' });
-            }
+        } else {
+            await db.account.update({ where: { id: user.id }, data: { updatedAt: new Date() } });
         }
-
-        const user = await db.account.upsert({
-            where: { publicKey: publicKeyHex },
-            update: { updatedAt: new Date() },
-            create: { publicKey: publicKeyHex }
-        });
 
         return reply.send({
             success: true,

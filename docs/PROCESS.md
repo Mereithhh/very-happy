@@ -55,7 +55,10 @@ triage（分独立/冲突域）
 - 纯函数优先：新逻辑尽量抽纯函数模块（`termWriteHold`/`termStreamSync`/`boardTaskOps` 模式），
   这是 AI 并行开发下测试稳定性的支柱。
 - 推公开 remote 前 gitleaks（或等价 secret 扫描）；密钥永不进 repo。
-- 工具用 `pnpm exec`（npx 会解析到错误版本）。
+- 仓库依赖内的构建/测试/生成工具用 `pnpm exec`，不用裸 `npx`（它曾绕过
+  workspace/lockfile 解析到错误版本）。仓库外的一次性只读工具仅允许版本化
+  plugin/skill runtime，或 `pnpm dlx <package>@<精确版本>`；禁止 `@latest`、未固定
+  版本的临时下载，以及因此改动 package.json/pnpm-lock.yaml。
 
 ## 4. 发布工程
 
@@ -157,8 +160,10 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://happy.mereith.com$M"   # �
 
 - repo 内落账：`docs/backlog.md` 本批做完的项标 done 移入「近期完成」；
   留真机验证项登记 `docs/verify-queue.md`；本批的 spec 回标 Shipped + commit。
-- `skills/happy/references/very-happy-build-state.md` 追加本批节（现状、根因、教训、版本号）。
-- 稳定事实变更同步 `skills/happy/SKILL.md`；设计 token 变更同步 design-tokens.md。
+- 稳定开发/发布事实同步仓库内 `docs/development.md`、`docs/operations.md` 与
+  `.agents/skills/{dev,release}/SKILL.md`；外部个人 agent-system 只能镜像，不再做唯一事实源。
+- 设计 token 事实以 `packages/happy-web-v2/src/styles/tokens.css` 为准；事故机制进入
+  spec/backlog/代码注释中最贴近机制的位置，不再要求更新外部 build-state。
 - 新坑进"坑"清单——判据：下个 agent 不知道会再踩的，才值得写。
 
 ## 7. 健康度（轻量，每月看一眼）

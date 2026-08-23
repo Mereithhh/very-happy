@@ -1,6 +1,6 @@
 # Protocol
 
-This document describes the Happy wire protocol as implemented in `packages/happy-server`. The protocol is intentionally small: JSON over HTTP for reads/actions and Socket.IO for real-time sync. Most payloads are end-to-end encrypted client-side; see `encryption.md` for the encryption boundaries and encoding details. For the full HTTP surface and auth flows, see `api.md`.
+This document describes the Happy wire protocol as implemented in `packages/happy-server`. The protocol is intentionally small: JSON over HTTP for reads/actions and Socket.IO for real-time sync. Most payloads retain Happy's encrypted wire format, but this fork is server-trusted because account login can recover the key; see `encryption.md` for the boundary. For the full HTTP surface and auth flows, see `api.md`.
 
 ## Transport and versioning
 - HTTP API: JSON requests/responses on `/v1` and `/v2` routes.
@@ -15,7 +15,7 @@ The protocol is designed to stay minimal, explicit, and resilient under intermit
 - **Separation of persistent vs. ephemeral.** Anything that must be recoverable after reconnect is an `update` event with a sequence number. Presence and usage are `ephemeral` to avoid state confusion and minimize storage.
 - **Monotonic ordering at the user level.** `UpdatePayload.seq` is a single per-user counter. This makes client reconciliation simple: apply updates in order and you are consistent for that user.
 - **Optimistic concurrency by default.** Versioned fields (metadata, agent state, artifact parts, access keys, KV) require `expectedVersion`. This prevents silent overwrites and keeps conflict resolution client-driven.
-- **Client-side encryption boundaries.** The server never needs to understand plaintext. The protocol therefore treats most payloads as opaque strings or base64 blobs, which keeps server logic simple and privacy guarantees strong.
+- **Stable encrypted envelopes.** Most protocol routes treat payloads as opaque strings or base64 blobs. This simplifies compatibility and limits exposure to storage-only attackers, but it does not make the trusted application server zero-knowledge.
 - **Backward compatibility over breaking changes.** New routes/events are added rather than mutating existing shapes in incompatible ways. When dual behavior is needed (e.g., machines), the server emits both old and new updates.
 - **Avoid full REST verbs.** Reads are primarily `GET`, while writes/actions are primarily `POST`, with `DELETE` used when the intent is unambiguous. We avoid the full REST palette because many mutations are not cleanly tied to a single entity or involve more than CRUD logic. Keeping to `GET` + `POST` (plus occasional `DELETE`) makes the client simpler and the protocol clearer.
 

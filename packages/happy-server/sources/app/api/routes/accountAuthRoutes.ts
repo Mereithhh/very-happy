@@ -1,122 +1,323 @@
-import { z } from "zod";
-import { Fastify } from "../types";
-import { db } from "@/storage/db";
-import { auth } from "@/app/auth/auth";
-import { log } from "@/utils/log";
-import { scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { z } from 'zod';
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
+import { Fastify } from '../types';
+import { db } from '@/storage/db';
+import { auth } from '@/app/auth/auth';
+import { log } from '@/utils/log';
+import { loadAccountSecret, upsertAccountSecret } from '@/app/auth/accountSecrets';
+import { getSignupStatus, resolveSignupPolicy, SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
+import { verifyGoogleIdToken } from '@/app/auth/googleOidc';
+import {
+    consumeGoogleLoginChallenge,
+    isGoogleOriginAllowed,
+    issueGoogleLoginChallenge,
+    resolveGoogleLoginConfig,
+} from '@/app/auth/googleLoginSecurity';
+import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
+import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 
-/**
- * Classic username/password login bound to an existing happy Account.
- *
- * Server-trusted model (web-only, multi-tenant): the account's opaque `secret`
- * (the key happy clients use for encryption/sync) is stored server-side and
- * handed back on login. Anyone with username+password logs in on any browser
- * and gets the same account — no QR pairing. Uses raw SQL so the server can be
- * deployed by bind-mounting source (no Prisma client regen for the new table).
- */
+/** Username/password + Google identity for the server-trusted Cloud model. */
 
-// --- password hashing (node scrypt, no extra deps) ---
-function hashPassword(pw: string): string {
+function hashPassword(password: string): string {
     const salt = randomBytes(16);
-    const dk = scryptSync(pw, salt, 64);
-    return `scrypt$${salt.toString('hex')}$${dk.toString('hex')}`;
-}
-function verifyPassword(pw: string, stored: string): boolean {
-    const parts = stored.split('$');
-    if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
-    const salt = Buffer.from(parts[1], 'hex');
-    const expected = Buffer.from(parts[2], 'hex');
-    const dk = scryptSync(pw, salt, expected.length);
-    return expected.length === dk.length && timingSafeEqual(expected, dk);
+    const derived = scryptSync(password, salt, 64);
+    return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`;
 }
 
-// --- per-IP fixed-window rate limiter (protect public login) ---
-function createIpRateLimiter(opts: { max: number; windowMs: number }) {
-    const hits = new Map<string, { count: number; resetAt: number }>();
-    const sweep = setInterval(() => {
-        const now = Date.now();
-        for (const [ip, rec] of hits) if (rec.resetAt <= now) hits.delete(ip);
-    }, opts.windowMs);
-    if (typeof (sweep as any).unref === 'function') (sweep as any).unref();
-    return function allow(ip: string): boolean {
-        const now = Date.now();
-        const rec = hits.get(ip);
-        if (!rec || rec.resetAt <= now) { hits.set(ip, { count: 1, resetAt: now + opts.windowMs }); return true; }
-        if (rec.count >= opts.max) return false;
-        rec.count += 1;
-        return true;
-    };
+function verifyPassword(password: string, stored: string): boolean {
+    try {
+        const parts = stored.split('$');
+        if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+        if (!/^[a-f0-9]{32}$/i.test(parts[1]) || !/^[a-f0-9]{128}$/i.test(parts[2])) return false;
+        const salt = Buffer.from(parts[1], 'hex');
+        const expected = Buffer.from(parts[2], 'hex');
+        const derived = scryptSync(password, salt, expected.length);
+        return expected.length === derived.length && timingSafeEqual(expected, derived);
+    } catch {
+        return false;
+    }
 }
+
+function burnMissingPasswordLookup(password: string): void {
+    scryptSync(password, Buffer.alloc(16), 64);
+}
+
+const loginResponse = z.object({
+    token: z.string(),
+    secret: z.string(),
+    expiresAt: z.string().optional(),
+});
+const newUsernameSchema = z.string().trim().toLowerCase().min(3).max(64);
+const loginUsernameSchema = z.string().trim().toLowerCase().min(1).max(64);
+const passwordSchema = z.string().min(8).max(256);
 
 export function accountAuthRoutes(app: Fastify) {
-    const allowLogin = createIpRateLimiter({ max: 10, windowMs: 60_000 });
+    // Fail startup on a typo that could otherwise accidentally remove the cap.
+    resolveSignupPolicy();
+    const googleConfig = resolveGoogleLoginConfig();
+    app.get('/v1/auth/config', {
+        schema: {
+            response: {
+                200: z.object({
+                    googleClientId: z.string().optional(),
+                    signup: z.object({
+                        mode: z.enum(['open', 'invite', 'closed']),
+                        maxAccounts: z.number().int().nullable(),
+                        registeredAccounts: z.number().int(),
+                        remainingAccounts: z.number().int().nullable(),
+                        atCapacity: z.boolean(),
+                    }),
+                }),
+            },
+        },
+    }, async (_request, reply) => {
+        const status = await getSignupStatus();
+        const googleClientId = googleConfig.clientId ?? undefined;
+        return reply.send({ googleClientId, signup: status });
+    });
 
-    // POST /v1/account/credentials — AUTHENTICATED.
-    // Attach/replace username+password for the *current* account and store its secret.
-    // The authenticated client uploads the secret it already holds.
+    app.post('/v1/auth/google/challenge', {
+        schema: {
+            response: {
+                200: z.object({ nonce: z.string(), expiresAt: z.string() }),
+                403: z.object({ error: z.literal('origin_not_allowed') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('google_not_configured') }),
+            },
+        },
+    }, async (request, reply) => {
+        if (!googleConfig.clientId) return reply.code(501).send({ error: 'google_not_configured' as const });
+        if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
+            return reply.code(403).send({ error: 'origin_not_allowed' as const });
+        }
+        if (!(await allowAuthRequest(`google-challenge:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+            return reply.code(429).send({ error: 'too_many_requests' as const });
+        }
+        const challenge = await issueGoogleLoginChallenge();
+        return reply.send({ nonce: challenge.nonce, expiresAt: challenge.expiresAt.toISOString() });
+    });
+
     app.post('/v1/account/credentials', {
         preHandler: app.authenticate,
         schema: {
             body: z.object({
-                username: z.string().min(3).max(64),
-                password: z.string().min(8).max(256),
-                secret: z.string().min(1)
+                username: newUsernameSchema,
+                password: passwordSchema,
+                secret: z.string().min(1).max(1024),
             }),
             response: {
-                200: z.object({ success: z.literal(true) }),
+                200: z.object({
+                    success: z.literal(true),
+                    token: z.string().optional(),
+                    secret: z.string().optional(),
+                    expiresAt: z.string().optional(),
+                }),
                 409: z.object({ error: z.literal('username_taken') }),
-                500: z.object({ error: z.literal('failed') })
-            }
-        }
+                500: z.object({ error: z.literal('failed') }),
+            },
+        },
     }, async (request, reply) => {
         const accountId = request.userId;
-        const username = request.body.username.trim().toLowerCase();
+        const username = request.body.username;
         try {
             const existing = await db.$queryRawUnsafe<{ accountId: string }[]>(
                 'SELECT "accountId" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
-                username
+                username,
             );
             if (existing[0] && existing[0].accountId !== accountId) {
                 return reply.code(409).send({ error: 'username_taken' as const });
             }
+
             const passwordHash = hashPassword(request.body.password);
-            // One credential per account: drop any prior row, then insert fresh.
-            await db.$executeRawUnsafe('DELETE FROM "AccountCredential" WHERE "accountId" = $1', accountId);
-            await db.$executeRawUnsafe(
-                'INSERT INTO "AccountCredential" ("username", "accountId", "passwordHash", "secretEnc", "updatedAt") VALUES ($1, $2, $3, $4, now())',
-                username, accountId, passwordHash, request.body.secret
-            );
-            return reply.send({ success: true as const });
+            await db.$transaction(async (tx) => {
+                const secretEnc = await upsertAccountSecret(tx, accountId, request.body.secret);
+                await tx.$executeRawUnsafe('DELETE FROM "AccountCredential" WHERE "accountId" = $1', accountId);
+                await tx.$executeRawUnsafe(
+                    `INSERT INTO "AccountCredential"
+                     ("username", "accountId", "passwordHash", "secretEnc", "updatedAt")
+                     VALUES ($1, $2, $3, $4, now())`,
+                    username,
+                    accountId,
+                    passwordHash,
+                    secretEnc,
+                );
+                await tx.$executeRawUnsafe(
+                    `INSERT INTO "AccountIdentity"
+                     ("id", "accountId", "provider", "providerSubject", "updatedAt")
+                     VALUES ($1, $2, 'password', $3, now())
+                     ON CONFLICT ("provider", "providerSubject") DO NOTHING`,
+                    randomUUID(),
+                    accountId,
+                    username,
+                );
+            });
+
+            const session = await auth.createLoginToken(accountId);
+            return reply.send({
+                success: true as const,
+                token: session.token,
+                secret: request.body.secret,
+                expiresAt: session.expiresAt.toISOString(),
+            });
         } catch (error) {
             log({ module: 'api', level: 'error' }, `account credentials upsert failed: ${error}`);
             return reply.code(500).send({ error: 'failed' as const });
         }
     });
 
-    // POST /v1/account/login — PUBLIC + rate-limited.
     app.post('/v1/account/login', {
         schema: {
-            body: z.object({ username: z.string(), password: z.string() }),
+            body: z.object({
+                username: loginUsernameSchema,
+                // Keep login compatible with any historical 1–7 character
+                // password while bounding request cost. New passwords require 8.
+                password: z.string().min(1).max(256),
+            }),
             response: {
-                200: z.object({ token: z.string(), secret: z.string() }),
+                200: loginResponse,
                 401: z.object({ error: z.literal('invalid_credentials') }),
-                429: z.object({ error: z.literal('too_many_requests') })
-            }
-        }
+                429: z.object({ error: z.literal('too_many_requests') }),
+            },
+        },
     }, async (request, reply) => {
-        if (!allowLogin(request.ip)) {
+        const username = request.body.username;
+        if (!(await allowAuthRequest(`password:${request.ip}:${username}`, { max: 10, windowMs: 60_000 }))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
-        const username = request.body.username.trim().toLowerCase();
-        const rows = await db.$queryRawUnsafe<{ accountId: string; passwordHash: string; secretEnc: string }[]>(
+        const rows = await db.$queryRawUnsafe<Array<{ accountId: string; passwordHash: string; secretEnc: string }>>(
             'SELECT "accountId", "passwordHash", "secretEnc" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
-            username
+            username,
         );
         const row = rows[0];
+        if (!row) burnMissingPasswordLookup(request.body.password);
         if (!row || !verifyPassword(request.body.password, row.passwordHash)) {
             return reply.code(401).send({ error: 'invalid_credentials' as const });
         }
-        const token = await auth.createToken(row.accountId);
-        return reply.send({ token, secret: row.secretEnc });
+
+        const secret = await db.$transaction(async (tx) => {
+            const loaded = await loadAccountSecret(tx, row.accountId, row.secretEnc);
+            await tx.$executeRawUnsafe(
+                `INSERT INTO "AccountIdentity"
+                 ("id", "accountId", "provider", "providerSubject", "updatedAt")
+                 VALUES ($1, $2, 'password', $3, now())
+                 ON CONFLICT ("provider", "providerSubject") DO NOTHING`,
+                randomUUID(),
+                row.accountId,
+                username,
+            );
+            return loaded;
+        });
+        if (!secret) return reply.code(401).send({ error: 'invalid_credentials' as const });
+        const session = await auth.createLoginToken(row.accountId);
+        return reply.send({ token: session.token, secret, expiresAt: session.expiresAt.toISOString() });
+    });
+
+    app.post('/v1/account/login/google', {
+        schema: {
+            body: z.object({
+                credential: z.string().min(1).max(16_384),
+                nonce: z.string().min(32).max(256),
+                inviteCode: z.string().trim().max(256).optional(),
+            }),
+            response: {
+                200: loginResponse,
+                401: z.object({ error: z.literal('invalid_google_credential') }),
+                403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached', 'origin_not_allowed']) }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('google_not_configured') }),
+            },
+        },
+    }, async (request, reply) => {
+        const clientId = googleConfig.clientId;
+        if (!clientId) return reply.code(501).send({ error: 'google_not_configured' as const });
+        if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
+            return reply.code(403).send({ error: 'origin_not_allowed' as const });
+        }
+        if (!(await allowAuthRequest(`google-login:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+            return reply.code(429).send({ error: 'too_many_requests' as const });
+        }
+
+        let claims;
+        try {
+            claims = await verifyGoogleIdToken(request.body.credential, clientId, {
+                expectedNonce: request.body.nonce,
+            });
+        } catch (error) {
+            log({ module: 'google-auth', level: 'warn' }, `Google credential rejected: ${(error as Error).message}`);
+            return reply.code(401).send({ error: 'invalid_google_credential' as const });
+        }
+        if (!(await consumeGoogleLoginChallenge(db, request.body.nonce))) {
+            return reply.code(401).send({ error: 'invalid_google_credential' as const });
+        }
+
+        type GoogleAccount = { accountId: string; secret: string };
+        let result: { value: GoogleAccount; created: boolean };
+        try {
+            result = await withSignupGate<GoogleAccount>({
+                provider: 'google',
+                inviteCode: request.body.inviteCode,
+                findExisting: async (tx) => {
+                    const identities = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
+                        `SELECT "accountId" FROM "AccountIdentity"
+                         WHERE "provider" = 'google' AND "providerSubject" = $1 LIMIT 1`,
+                        claims.sub,
+                    );
+                    if (!identities[0]) return null;
+                    const secret = await loadAccountSecret(tx, identities[0].accountId);
+                    if (!secret) throw new Error('google-account-secret-missing');
+                    return { accountId: identities[0].accountId, secret };
+                },
+                create: async (tx) => {
+                    const secretBytes = randomBytes(32);
+                    const secret = secretBytes.toString('base64url');
+                    const tweetnacl = (await import('tweetnacl')).default;
+                    const publicKey = tweetnacl.sign.keyPair.fromSeed(secretBytes).publicKey;
+                    const account = await tx.account.create({
+                        data: {
+                            publicKey: Buffer.from(publicKey).toString('hex'),
+                            firstName: claims.name,
+                        },
+                    });
+                    await upsertAccountSecret(tx, account.id, secret);
+                    await tx.$executeRawUnsafe(
+                        `INSERT INTO "AccountIdentity"
+                         ("id", "accountId", "provider", "providerSubject", "email", "profile", "updatedAt")
+                         VALUES ($1, $2, 'google', $3, $4, $5::jsonb, now())`,
+                        randomUUID(),
+                        account.id,
+                        claims.sub,
+                        claims.email ?? null,
+                        JSON.stringify({ name: claims.name, picture: claims.picture, emailVerified: claims.emailVerified }),
+                    );
+                    return { accountId: account.id, secret };
+                },
+                onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
+            });
+        } catch (error) {
+            if (error instanceof SignupPolicyError) {
+                return reply.code(403).send({ error: error.reason });
+            }
+            throw error;
+        }
+
+        const session = await auth.createLoginToken(result.value.accountId);
+        return reply.send({
+            token: session.token,
+            secret: result.value.secret,
+            expiresAt: session.expiresAt.toISOString(),
+        });
+    });
+
+    app.post('/v1/account/logout', {
+        preHandler: app.authenticate,
+        schema: { response: { 200: z.object({ success: z.literal(true) }) } },
+    }, async (request, reply) => {
+        const authorization = request.headers.authorization;
+        if (authorization?.startsWith('Bearer ')) {
+            await auth.revokeLoginToken(authorization.slice(7), request.userId);
+        }
+        return reply.send({ success: true as const });
     });
 }
+
+export { hashPassword, verifyPassword };

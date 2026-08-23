@@ -14,9 +14,30 @@ Most endpoints require `Authorization: Bearer <token>`.
 
 Auth flows:
 - `POST /v1/auth`
-  - Body: `{ publicKey, challenge, signature }` (base64 strings)
+  - Body: `{ publicKey, challenge, signature, inviteCode? }` (base64 strings except invite code)
   - Verifies signature using the provided public key.
-  - Upserts account by public key and returns `{ success, token }`.
+  - Finds or creates an account by public key and returns `{ success, token }`; new Accounts obey signup mode/capacity.
+
+- `GET /v1/auth/config`
+  - Public Web auth configuration: Google client ID (when enabled), signup mode, and current Account capacity.
+
+- `POST /v1/account/credentials` (requires Bearer auth)
+  - Attaches/replaces a normalized username and scrypt password on the current Account and returns a revocable Web login token.
+
+- `POST /v1/account/login`
+  - Password login. Returns `{ token, secret, expiresAt }`.
+
+- `POST /v1/auth/google/challenge`
+  - Requires a browser `Origin` listed in `GOOGLE_ALLOWED_ORIGINS` and returns `{ nonce, expiresAt }`.
+  - The nonce expires after five minutes, is stored only as a SHA-256 digest, and can be consumed once.
+
+- `POST /v1/account/login/google`
+  - Body: `{ credential, nonce, inviteCode? }`, where `credential` is a Google Identity Services ID token initialized with that nonce.
+  - Requires an allowed browser `Origin`; verifies the Google signature/claims and nonce, then atomically consumes the challenge.
+  - An unknown Google subject creates an Account subject to signup mode/capacity.
+
+- `POST /v1/account/logout` (requires Bearer auth)
+  - Revokes the current Web login session. Legacy CLI/daemon tokens remain compatible and are not session-managed.
 
 - `POST /v1/auth/request`
   - Body: `{ publicKey, supportsV2? }`

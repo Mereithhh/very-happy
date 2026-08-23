@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { dbMock } = vi.hoisted(() => {
     const dbMock = {
         account: { count: vi.fn() },
+        accountLoginSession: { count: vi.fn() },
         session: { count: vi.fn() },
         sessionMessage: { count: vi.fn() },
         machine: { count: vi.fn() },
@@ -22,6 +23,7 @@ describe("updateDatabaseMetrics", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         dbMock.account.count.mockResolvedValue(10);
+        dbMock.accountLoginSession.count.mockResolvedValue(5);
         dbMock.session.count.mockResolvedValue(20);
         dbMock.sessionMessage.count.mockResolvedValue(30);
         dbMock.machine.count.mockResolvedValue(40);
@@ -31,7 +33,8 @@ describe("updateDatabaseMetrics", () => {
     it("uses estimated counts instead of exact table counts", async () => {
         await updateDatabaseMetrics();
 
-        expect(dbMock.account.count).not.toHaveBeenCalled();
+        expect(dbMock.account.count).toHaveBeenCalledOnce();
+        expect(dbMock.accountLoginSession.count).toHaveBeenCalledOnce();
         expect(dbMock.session.count).not.toHaveBeenCalled();
         expect(dbMock.sessionMessage.count).not.toHaveBeenCalled();
         expect(dbMock.machine.count).not.toHaveBeenCalled();

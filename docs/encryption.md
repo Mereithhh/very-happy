@@ -2,6 +2,11 @@
 
 This document details how client data is encrypted, how encrypted blobs are structured, and how those blobs map onto protocol fields. It is based on `packages/happy-cli/src/api/encryption.ts` and the server routes that accept/emit these values.
 
+> **Trust boundary:** the wire/storage formats below remain encrypted, but Very
+> Happy is not end-to-end encrypted. Password/Google login lets the trusted server
+> recover the account secret, so the operator can decrypt user content. “Encrypted
+> blob” describes the encoding, not a zero-knowledge guarantee.
+
 For transport and event shapes, see `protocol.md`. For HTTP endpoints, see `api.md`.
 
 ## Overview
@@ -33,7 +38,8 @@ graph TB
 ```
 
 ## Design goals
-- Keep the server blind to user content (end-to-end encryption on clients).
+- Keep data opaque to transport and raw-storage-only access while preserving the
+  explicit server-trusted account recovery model.
 - Use explicit, stable binary layouts so clients can interoperate across versions.
 - Prefer simple, consistent base64 encoding on the wire.
 

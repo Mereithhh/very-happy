@@ -213,6 +213,13 @@ Environment variables:
   REDIS_URL         Redis URL (optional, not required for standalone)
   PORT              Server port (default: 3005)
   HANDY_MASTER_SECRET  Required: master secret for auth/encryption
+  SIGNUP_MODE       open, invite, or closed (default: open/legacy behavior)
+  SIGNUP_MAX_ACCOUNTS  Global Account limit; unset or 0 means unlimited
+  SIGNUP_INVITE_CODES  Comma-separated codes used in invite mode
+  LOGIN_SESSION_TTL_DAYS  Password/Google session lifetime (default: 30)
+  GOOGLE_CLIENT_ID  Enables Google Identity Services login
+  GOOGLE_ALLOWED_ORIGINS  Exact comma-separated Web origins allowed for Google login
+  TRUST_PROXY        Trusted proxy hop count or IP/CIDR list (never unrestricted)
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);
     }

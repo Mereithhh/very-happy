@@ -4,10 +4,12 @@ import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
 import { authGetToken } from '@/auth/authGetToken';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
+import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
+import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
 
 const MIN_USERNAME = 3;
@@ -25,6 +27,7 @@ export function SignupScreen() {
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   // Field-level validation only surfaces after a field is touched (audit S2:
   // real-time inline validation that doesn't scream at an empty pristine form).
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean; c?: boolean }>({});
@@ -63,6 +66,7 @@ export function SignupScreen() {
     if (!canSubmit) return;
     setBusy(true);
     setServerError(null);
+    setGoogleError(null);
     try {
       // Generate a fresh 32-byte account secret and base64url-encode it. The
       // secret is what happy uses for encryption/sync; here we register it
@@ -71,8 +75,8 @@ export function SignupScreen() {
       const secretB64 = encodeBase64(secret, 'base64url');
       const inviteCode = invite.trim() || undefined;
       const token = await authGetToken(secret, inviteCode);
-      await setAccountCredentials(username, password, secretB64, { token, secret: secretB64 });
-      await login(token, secretB64);
+      const cloudCredentials = await setAccountCredentials(username, password, secretB64, { token, secret: secretB64 });
+      await login(cloudCredentials?.token ?? token, cloudCredentials?.secret ?? secretB64);
       toast.success(t('signup.success'));
       navigate('/', { replace: true });
     } catch (err: any) {
@@ -83,13 +87,37 @@ export function SignupScreen() {
       } else {
         const status = err?.response?.status;
         const code = err?.response?.data?.error ?? err?.response?.data?.code;
-        if (status === 403 && (code === 'invite-required' || /invite/i.test(String(code))))
+        if (code === 'capacity-reached')
+          setServerError(t('signup.errorCapacityReached'));
+        else if (status === 403 && (code === 'invite-required' || /invite/i.test(String(code))))
           setServerError(t('signup.errorInviteRequired'));
         else if (status === 403 && (code === 'signup-closed' || /closed/i.test(String(code))))
           setServerError(t('signup.errorSignupClosed'));
         else if (status === 429 || status === 403)
           setServerError(t('signup.errorRateLimited'));
         else setServerError(t('signup.errorGeneric'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onGoogleCredential(credential: string, nonce: string) {
+    setBusy(true);
+    setGoogleError(null);
+    try {
+      const creds = await loginWithGoogle(credential, nonce, invite.trim() || undefined);
+      await login(creds.token, creds.secret);
+      navigate('/', { replace: true });
+    } catch (err) {
+      if (err instanceof CloudAuthError) {
+        if (err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
+        else if (err.code === 'invite-required') setGoogleError(t('signup.errorInviteRequiredGoogle'));
+        else if (err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
+        else if (err.code === 'rate-limited') setGoogleError(t('signup.errorRateLimited'));
+        else setGoogleError(t('signup.errorGoogle'));
+      } else {
+        setGoogleError(t('signup.errorGoogle'));
       }
     } finally {
       setBusy(false);
@@ -105,6 +133,23 @@ export function SignupScreen() {
           <div className="auth-wordmark">very happy</div>
         </div>
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
+
+        <Input
+          label={t('signup.inviteCode')}
+          autoComplete="off"
+          value={invite}
+          onChange={(e) => setInvite(e.target.value)}
+          placeholder={t('signup.inviteCodePlaceholder')}
+        />
+
+        <GoogleLoginButton
+          disabled={busy}
+          dividerLabel={t('signup.orPassword')}
+          retryLabel={t('common.retry')}
+          unavailableLabel={t('signup.errorGoogle')}
+          onCredential={onGoogleCredential}
+        />
+        {googleError && <div className="auth-error" role="alert">{googleError}</div>}
 
         <Input
           label={t('signup.username')}
@@ -136,15 +181,7 @@ export function SignupScreen() {
           placeholder={t('signup.confirmPlaceholder')}
           error={confirmError}
         />
-        <Input
-          label={t('signup.inviteCode')}
-          autoComplete="off"
-          value={invite}
-          onChange={(e) => setInvite(e.target.value)}
-          placeholder={t('signup.inviteCodePlaceholder')}
-          error={serverError}
-        />
-
+        {serverError && <div className="auth-error" role="alert">{serverError}</div>}
         <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
           {t('signup.submit')}
         </Button>

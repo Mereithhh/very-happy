@@ -1,5 +1,7 @@
 import * as privacyKit from "privacy-kit";
+import { createHash, randomUUID } from "crypto";
 import { log } from "@/utils/log";
+import { db } from "@/storage/db";
 
 /** Cache entries expire after 24 hours */
 const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -7,6 +9,7 @@ const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
 const MAX_CACHE_SIZE = 10_000;
 /** Run cleanup every 10 minutes */
 const CLEANUP_INTERVAL = 10 * 60 * 1000;
+const DEFAULT_LOGIN_SESSION_TTL_DAYS = 30;
 
 interface TokenCacheEntry {
     userId: string;
@@ -85,6 +88,23 @@ class AuthModule {
         
         return token;
     }
+
+    async createLoginToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
+        const loginSessionId = randomUUID();
+        const ttlDays = parseLoginSessionTtlDays(process.env.LOGIN_SESSION_TTL_DAYS);
+        const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+        const token = await this.createToken(userId, { loginSessionId });
+        await db.$executeRawUnsafe(
+            `INSERT INTO "AccountLoginSession"
+             ("id", "accountId", "tokenHash", "expiresAt", "lastUsedAt", "createdAt")
+             VALUES ($1, $2, $3, $4, now(), now())`,
+            loginSessionId,
+            userId,
+            hashLoginToken(token),
+            expiresAt,
+        );
+        return { token, expiresAt };
+    }
     
     async verifyToken(token: string): Promise<{ userId: string; extras?: any } | null> {
         // Check cache first (with TTL)
@@ -93,6 +113,10 @@ class AuthModule {
             if (Date.now() - cached.cachedAt > TOKEN_CACHE_TTL) {
                 this.tokenCache.delete(token);
             } else {
+                if (!(await this.isLoginSessionValid(token, cached.userId, cached.extras))) {
+                    this.tokenCache.delete(token);
+                    return null;
+                }
                 return {
                     userId: cached.userId,
                     extras: cached.extras
@@ -113,6 +137,9 @@ class AuthModule {
             
             const userId = verified.user as string;
             const extras = verified.extras;
+            if (!(await this.isLoginSessionValid(token, userId, extras))) {
+                return null;
+            }
             
             // Evict oldest entries if cache is at capacity
             if (this.tokenCache.size >= MAX_CACHE_SIZE) {
@@ -152,6 +179,18 @@ class AuthModule {
     
     invalidateToken(token: string): void {
         this.tokenCache.delete(token);
+    }
+
+    async revokeLoginToken(token: string, userId: string): Promise<boolean> {
+        const updated = await db.$executeRawUnsafe(
+            `UPDATE "AccountLoginSession"
+             SET "revokedAt" = COALESCE("revokedAt", now())
+             WHERE "accountId" = $1 AND "tokenHash" = $2 AND "revokedAt" IS NULL`,
+            userId,
+            hashLoginToken(token),
+        );
+        this.invalidateToken(token);
+        return updated > 0;
     }
     
     getCacheStats(): { size: number; oldestEntry: number | null } {
@@ -215,6 +254,39 @@ class AuthModule {
             log({ module: 'auth' }, `Token cache cleanup: removed ${removed}, remaining ${this.tokenCache.size}`);
         }
     }
+
+    private async isLoginSessionValid(token: string, userId: string, extras: any): Promise<boolean> {
+        const loginSessionId = extras?.loginSessionId;
+        // CLI/daemon and pre-migration Web tokens deliberately remain valid.
+        if (typeof loginSessionId !== 'string' || loginSessionId.length === 0) return true;
+
+        const rows = await db.$queryRawUnsafe<Array<{
+            accountId: string;
+            tokenHash: string;
+            expiresAt: Date;
+            revokedAt: Date | null;
+        }>>(
+            `SELECT "accountId", "tokenHash", "expiresAt", "revokedAt"
+             FROM "AccountLoginSession" WHERE "id" = $1 LIMIT 1`,
+            loginSessionId,
+        );
+        const row = rows[0];
+        if (!row || row.accountId !== userId || row.revokedAt !== null) return false;
+        if (new Date(row.expiresAt).getTime() <= Date.now()) return false;
+        return row.tokenHash === hashLoginToken(token);
+    }
+}
+
+export function parseLoginSessionTtlDays(value: string | undefined): number {
+    if (!value) return DEFAULT_LOGIN_SESSION_TTL_DAYS;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 365
+        ? parsed
+        : DEFAULT_LOGIN_SESSION_TTL_DAYS;
+}
+
+export function hashLoginToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
 }
 
 // Global instance

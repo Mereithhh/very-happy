@@ -54,6 +54,79 @@ model Account {
     UserKVStore         UserKVStore[]
     VoiceConversation   VoiceConversation[]
     AccountUnlock       AccountUnlock?
+    AccountCredential   AccountCredential?
+    AccountSecret       AccountSecret?
+    AccountIdentity     AccountIdentity[]
+    AccountLoginSession AccountLoginSession[]
+}
+
+model AccountCredential {
+    username     String   @id
+    accountId    String   @unique
+    account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    passwordHash String
+    secretEnc    String
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+}
+
+model AccountSecret {
+    accountId String   @id
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    secretEnc String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model AccountIdentity {
+    id              String   @id @default(cuid())
+    accountId       String
+    account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    provider        String
+    providerSubject String
+    email           String?
+    profile         Json?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+
+    @@unique([provider, providerSubject])
+    @@index([accountId])
+}
+
+model AccountLoginSession {
+    id         String    @id
+    accountId  String
+    account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    tokenHash  String    @unique
+    expiresAt  DateTime
+    revokedAt  DateTime?
+    lastUsedAt DateTime  @default(now())
+    createdAt  DateTime  @default(now())
+
+    @@index([accountId, revokedAt, expiresAt])
+}
+
+model SignupCapacity {
+    id        Int      @id
+    updatedAt DateTime @updatedAt
+}
+
+model GoogleLoginChallenge {
+    nonceHash  String    @id
+    expiresAt  DateTime
+    consumedAt DateTime?
+    createdAt  DateTime  @default(now())
+
+    @@index([expiresAt])
+}
+
+model AuthRateLimitBucket {
+    key       String   @id
+    count     Int
+    resetAt   DateTime
+    updatedAt DateTime @updatedAt
+
+    @@index([resetAt])
 }
 
 model AccountUnlock {

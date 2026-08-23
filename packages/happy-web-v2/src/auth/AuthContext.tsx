@@ -7,6 +7,7 @@ import { unregisterPushToken } from '@/sync/apiPush';
 import { Platform } from 'react-native';
 import { trackLogout } from '@/track';
 import { markProgrammaticReload } from '@/app/programmaticReload';
+import { revokeCloudLogin } from '@/auth/cloudAuth';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -47,6 +48,9 @@ export function AuthProvider({ children, initialCredentials }: { children: React
             } catch (error) {
                 console.log('Failed to unregister push token during logout:', error);
             }
+        }
+        if (credentials) {
+            await revokeCloudLogin(credentials);
         }
         clearPersistence();
         await TokenStorage.removeCredentials();

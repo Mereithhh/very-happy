@@ -1,184 +1,111 @@
 ---
 name: dev
-description: >
-  Local development guide for the Happy monorepo. How to build, install,
-  test, and run the CLI, server, mobile app, and desktop (Tauri) locally.
-  Use when the user types /dev, asks how to "build", "start dev", "install
-  locally", or "run the ___ package".
+description: Local development guide for the very-happy monorepo: production Web V2, standalone server, CLI/daemon, wire schemas, isolated homes, builds, tests, and troubleshooting. Use when asked to build, install locally, start dev, run a package, or debug the local stack. The legacy Expo happy-app is not the production Web client.
 ---
 
-# /dev - Local Development
+# very-happy local development
 
-Happy is a pnpm monorepo. Everything uses pnpm workspaces — do not use `npm` or `yarn` directly.
+The repository uses pnpm workspaces. The production client is
+`packages/happy-web-v2`; do not route Web work to the legacy `happy-app`.
 
-## First-time setup
-
-```bash
-pnpm install                       # installs deps for every package
-pnpm --filter happy cli:install    # builds happy-cli + links it as the global `happy` binary
-```
-
-`cli:install` replaces whatever `happy` is on your PATH (npm-installed or not) with a symlink to `packages/happy-cli/`. Daemon is restarted as part of the script. Uses `~/.happy/` — same as production.
-
-To undo: `npm unlink -g happy && npm i -g happy@latest`.
-
-## Packages
-
-    packages/happy-cli     # the `happy` CLI and daemon, published to npm
-    packages/happy-server  # Node + Prisma server, deployed via TeamCity
-    packages/happy-app     # Expo app: iOS, Android, web, Tauri desktop
-    packages/happy-agent   # agent runtime
-    packages/happy-wire    # shared Zod schemas + wire types
-
-## happy-cli
-
-    packages/happy-cli
-    scripts in package.json:
-      typecheck      # tsc --noEmit
-      build          # rm -rf dist && tsc --noEmit && pkgroll
-      test           # build + vitest run
-      cli:install    # build + stop daemon + npm link + start daemon
-      prepublishOnly # pnpm test (runs build inside test)
-      postinstall    # unpacks difft + rg binaries into tools/unpacked/
-
-Work loop:
+## First setup
 
 ```bash
-pnpm --filter happy cli:install   # rebuild + relink + restart daemon
-happy daemon status               # confirm your build is running
-happy doctor                      # list all happy processes
-tail -f ~/.happy/logs/$(ls -t ~/.happy/logs/ | head -1)
+pnpm install --frozen-lockfile
+pnpm -C packages/happy-wire build
 ```
 
-Run a single test file quickly:
+`happy-wire/dist` is gitignored but consumed through the package entrypoint, so a
+clean checkout must build it before packages that import wire.
+
+## Fast package loops
+
+Web V2 (defaults to port 8082 and proxies API/socket traffic):
 
 ```bash
-pnpm --filter happy exec vitest run src/path/to/file.test.ts
+pnpm -C packages/happy-web-v2 dev
+pnpm -C packages/happy-web-v2 exec vitest run
+pnpm -C packages/happy-web-v2 exec tsc --noEmit
+pnpm -C packages/happy-web-v2 exec vite build
 ```
 
-Unit-only (fast, ~1 min):
+Standalone server (PGlite, no Postgres/Redis/S3 required):
 
 ```bash
-pnpm --filter happy exec vitest run --project unit
+pnpm -C packages/happy-server standalone:dev
+pnpm -C packages/happy-server exec vitest run
+pnpm -C packages/happy-server exec tsc --noEmit
 ```
 
-Integration tests hit real APIs and are flaky — run on demand, never in the release gate.
-
-### Dev data sandbox (optional)
-
-`happy` reads `HAPPY_HOME_DIR` to override `~/.happy/`. To run two versions side-by-side without touching your prod auth:
+CLI/daemon:
 
 ```bash
-HAPPY_HOME_DIR=~/.happy-dev happy daemon start
-HAPPY_HOME_DIR=~/.happy-dev happy auth
+pnpm -C packages/happy-cli test
+node packages/happy-cli/dist/index.mjs --version
 ```
 
-Point at a local server the same way:
+For a disposable CLI home, never reuse the production daemon state:
 
 ```bash
-HAPPY_SERVER_URL=http://localhost:3005 happy daemon start
+VH_DEV_HOME=$(mktemp -d)
+HAPPY_HOME_DIR="$VH_DEV_HOME" HAPPY_SERVER_URL=http://127.0.0.1:3005 \
+  node packages/happy-cli/dist/index.mjs daemon start
 ```
 
-## happy-server
+`packages/happy-cli`'s `cli:install` deliberately replaces the global binary and
+restarts the real daemon using `~/.happy`; use it only when that side effect is
+intended.
+
+## Full local Web V2 + server
+
+Terminal 1:
 
 ```bash
-pnpm --filter happy-server standalone:dev   # localhost:3005, embedded PGlite, no Docker
+pnpm -C packages/happy-server standalone:dev
 ```
 
-App auto-reloads on source changes. Point the CLI or the Expo app at it with `HAPPY_SERVER_URL=http://localhost:3005` / `EXPO_PUBLIC_HAPPY_SERVER_URL=...`.
-
-## happy-app (Expo)
+Terminal 2:
 
 ```bash
-pnpm --filter happy-app start           # expo start (Metro bundler)
-pnpm --filter happy-app ios:dev         # iOS simulator, development variant
-pnpm --filter happy-app android:dev
-pnpm --filter happy-app web             # web build, served locally
-pnpm --filter happy-app tauri:dev       # macOS desktop app
+VH_SERVER_URL=http://127.0.0.1:3005 pnpm -C packages/happy-web-v2 dev
 ```
 
-Variants:
+The Vite server uses the configured target for `/v1`, `/v2`, `/v3`, `/health`
+and WebSocket proxying, preserving the production same-origin shape.
 
-    development    com.slopus.happy.dev       # hot reload, internal
-    preview        com.slopus.happy.preview   # OTA / beta testing
-    production     com.ex3ndr.happy           # App Store
+The root `pnpm env:*` manager still contains upstream Expo assumptions. Until it
+is migrated to Web V2, do not use `pnpm env:web` as proof of the production Web
+path; prefer the two-terminal loop above.
 
-### Rebuild and reinstall the desktop .app
-
-When the user asks to "rebuild the desktop app", "kill the running one and reinstall", or anything in that shape — do all four steps in order, do not stop after building.
-
-Variants → product name → build script:
-
-    production    Happy.app           pnpm --filter happy-app tauri:build:production
-    preview       Happy (preview).app pnpm --filter happy-app tauri:build:preview
-    dev           Happy (dev).app     pnpm --filter happy-app tauri:build:dev
-
-Build output for all variants:
-
-    packages/happy-app/src-tauri/target/release/bundle/macos/<ProductName>.app
-
-If the variant is ambiguous, check what's running with `ps aux | grep "/Applications/.*Happy" | grep -v grep` and match. Production is the default.
-
-Steps (substitute `$NAME` with the product name, e.g. `Happy` or `Happy (dev)`):
+## Logs and daemon recovery
 
 ```bash
-# 1. build (slow: ~3–10 min, expo web export then cargo release build)
-pnpm --filter happy-app tauri:build:production
-
-# 2. quit the running app gracefully (no-op if not running)
-osascript -e 'tell application "$NAME" to quit' || true
-
-# 3. replace the installed bundle
-rm -rf "/Applications/$NAME.app"
-cp -R "packages/happy-app/src-tauri/target/release/bundle/macos/$NAME.app" /Applications/
-
-# 4. relaunch
-open -a "$NAME"
+ls -t ~/.happy/logs | head
+tail -f ~/.happy/logs/$(ls -t ~/.happy/logs | head -1)
+very-happy daemon status
 ```
 
-Notes:
-- Run the build in the background (`run_in_background: true` on Bash) and poll the output file. It prints `Finished \`release\` profile` near the end.
-- `osascript ... to quit` is graceful — it gives the app a chance to flush state. Only fall back to `pkill -f "/Applications/$NAME.app/Contents/MacOS/app"` if the quit hangs.
-- Do NOT skip the `rm -rf` before `cp` — `cp -R` over an existing `.app` merges directories and leaves stale files.
-- If macOS Gatekeeper complains on relaunch, `xattr -dr com.apple.quarantine "/Applications/$NAME.app"` clears it. Local builds are unsigned.
+If a dev daemon is stuck, resolve the exact `HAPPY_HOME_DIR` first, then stop it
+and remove only that home's `daemon.state.json.lock`. Never broadly delete
+`~/.happy`.
 
-## happy-app-logs (remote log receiver)
+The daemon resolves `claude` through PATH. Non-interactive shells and launchd do
+not source `.zshrc`, so PATH must explicitly include `~/.local/bin`.
 
-```bash
-pnpm --filter happy-app-logs dev       # starts on http://0.0.0.0:8787
-```
+## Cross-package rules
 
-Receives POST requests to `/logs` from the mobile app's patched console (see `consoleLogging.ts`).
-Logs to stdout and `~/.happy/app-logs/<timestamp>.log`.
+- Protocol/schema changes: update `happy-wire`, build its dist, and document the
+  old/new compatibility matrix in a spec.
+- Server changes must add no npm dependency unless the production image/bind-mount
+  deployment is changed deliberately.
+- Synced setting fields never receive Zod `.default()` values; defaults live in
+  the settings defaults layer.
+- Repository tools run through `pnpm exec`, never bare `npx`.
+- The merge gates and known exception are canonical in `AGENTS.md` and
+  `docs/PROCESS.md`; do not invent a lighter package-specific gate here.
 
-To connect: set the log server URL in the app's dev settings to `http://<LAN_IP>:8787`.
-The app's `consoleLogging.ts` sends all console.log/warn/error to this endpoint when configured.
+## Production is not a dev environment
 
-Console output must be enabled in the app (dev/preview variants default on, production defaults off,
-togglable from the dev settings screen).
-
-## Cross-cutting
-
-- **Hoisted deps:** pnpm hoists node_modules to the repo root. `packages/*/node_modules/` is mostly empty. Node's resolution walks up, so imports work transparently.
-- **Workspace deps:** `"@slopus/happy-wire": "workspace:*"` resolves to `packages/happy-wire/` — edits are picked up live.
-- **`$npm_execpath`:** legacy; happy-cli uses `pnpm` literally. Windows cmd.exe doesn't expand `$VAR`.
-- **Build before tests:** tests spawn the built CLI binary (for daemon integration), so `pnpm test` runs `build` first. Do not remove.
-
-## Releasing
-
-Do not publish by hand. Use `/release` — it handles npm publish, git tags, GitHub releases, and the smoke check.
-
-## Troubleshooting
-
-    happy: command not found     → pnpm --filter happy cli:install
-    daemon won't start           → happy daemon stop; rm ~/.happy/daemon.state.json.lock; happy daemon start
-    wrong `happy` version        → which happy && ls -la $(which happy) — confirms where it resolves to
-    tools/unpacked missing       → pnpm install (postinstall re-extracts)
-    stale deps after branch swap → pnpm install (pnpm is picky about lockfile drift)
-
-## Rules
-
-- Never use `npm install` or `yarn install` — only pnpm.
-- Never add a `dev` / `cli` tsx-based script back to happy-cli. The build step is not optional — daemon spawns the built binary and would desync.
-- Never bring back `release-it`. Releases go through `/release`.
-- Never introduce `~/.happy-dev` as a default. It exists as an opt-in via `HAPPY_HOME_DIR`, nothing more.
+Do not test local changes by mutating hw-sg or mac-office unless the user asked
+for a deployment. Production topology and recovery commands live in
+`docs/operations.md`.

@@ -77,17 +77,17 @@ Then open the web app, create an account, and your machine appears.
 
 For anything beyond a quick try, run your own relay so your sessions never leave infrastructure you control.
 
-1. **Server** — `packages/happy-server` is a Node + Postgres relay that also serves the web app. Configure its environment (database URL, signing secrets, optional invite codes) and deploy it behind TLS.
-2. **Web** — build the Expo web app in `packages/happy-app` and serve it from the relay (or any static host).
+1. **Server** — `packages/happy-server` supports a standalone PGlite/local-files mode and a full external Postgres/Redis/S3 mode. Configure a strong master secret, signup policy and TLS.
+2. **Web** — build the production Vite client in `packages/happy-web-v2` and serve it from the relay (or another static host).
 3. **CLI / daemon** — point the CLI at your relay and run it on each machine you want to control:
 
    ```bash
    HAPPY_SERVER_URL=https://your-relay.example.com very-happy
    ```
 
-   **Minimum daemon version for web terminals: `very-happy` ≥ 0.2.27.** The web's terminal list is fed entirely by daemon pushes (`daemonState.webTerminals`); the old polling fallback has been removed. An older daemon still runs chat sessions fine, but its web terminal list simply won't appear/update — upgrade the CLI on that machine. Terminal deletion is fully race-free with ≥ 0.2.29 (attach-only opens).
+   Keep the daemon and Web/server releases reasonably current. Protocol additions are designed for old clients to ignore new fields, but newer terminal features naturally require a daemon that implements them.
 
-See [`RELEASING.md`](RELEASING.md) for the exact npm + CI release/deploy runbook (tag-driven publish, manual server/web deploy over SSH).
+See [`docs/deployment.md`](docs/deployment.md) for self-hosting. Maintainer production procedures live in [`docs/operations.md`](docs/operations.md); CLI publishing is documented in [`RELEASING.md`](RELEASING.md).
 
 ## How it works
 
@@ -99,7 +99,8 @@ On your computer you run `very-happy` instead of `claude`. When you take control
 
 ## Project components
 
-- **happy-app** — web + mobile client (Expo)
+- **happy-web-v2** — production Vite/React Web client
+- **happy-app** — deprecated upstream Expo client retained for history; not the production frontend
 - **happy-cli** — the `very-happy` command-line wrapper for Claude Code
 - **happy-server** — relay + sync backend, and it also hosts the web app
 - **happy-agent** / **happy-wire** — remote agent control + shared protocol
@@ -148,13 +149,13 @@ Very Happy is a fork of [**slopus/happy**](https://github.com/slopus/happy) — 
 
 正式使用就跑你自己的中继，让会话不离开你掌控的设施：
 
-1. **服务端** —— `packages/happy-server` 是一个 Node + Postgres 中继，同时托管 Web 应用。配置好环境（数据库、签名密钥、可选邀请码）并部署在 TLS 后。
-2. **Web** —— 构建 `packages/happy-app` 的 Expo Web 应用，从中继（或任意静态托管）提供。
+1. **服务端** —— `packages/happy-server` 支持 PGlite/本地文件的 standalone 模式，也支持外部 Postgres/Redis/S3。至少配置强 master secret、注册策略与 TLS。
+2. **Web** —— 构建生产前端 `packages/happy-web-v2`，从中继（或任意静态托管）提供。
 3. **CLI / daemon** —— 把 CLI 指向你的中继，在每台要控制的机器上运行：`HAPPY_SERVER_URL=https://your-relay.example.com very-happy`
 
-   **Web 终端列表要求 daemon（`very-happy`）≥ 0.2.27**：列表完全由 daemon 推送（`daemonState.webTerminals`）驱动，旧的轮询回退已移除。更老的 daemon 跑聊天会话不受影响，但该机器的 Web 终端列表不会显示/更新——升级那台机器的 CLI 即可。终端删除的完整防复活语义需要 ≥ 0.2.29（attach-only open）。
+   daemon 与 Web/server 应保持在相近版本。协议新增字段遵循旧端忽略原则，但新的终端能力自然需要实现了对应协议的 daemon。
 
-发布/部署流程见 [`RELEASING.md`](RELEASING.md)。
+自托管见 [`docs/deployment.md`](docs/deployment.md)，维护者生产运维见 [`docs/operations.md`](docs/operations.md)，CLI 发布见 [`RELEASING.md`](RELEASING.md)。
 
 ### 工作原理
 

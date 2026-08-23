@@ -33,6 +33,64 @@
 .auth-eyebrow {
   margin-bottom: var(--sp-1);
 }
+.auth-google-block {
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.auth-google-block.is-ready {
+  display: flex;
+}
+.auth-google {
+  min-height: 44px;
+  display: flex;
+  justify-content: center;
+}
+.auth-google.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.auth-google-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-12);
+}
+.auth-google-unavailable button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.auth-google-unavailable button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+.auth-error {
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-12);
+}
 .auth-alt {
   font-size: var(--fs-13);
   color: var(--accent-2);

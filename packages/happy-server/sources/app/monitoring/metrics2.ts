@@ -1,12 +1,16 @@
-import { register, Counter, Gauge, Histogram } from 'prom-client';
+import { register, collectDefaultMetrics, Counter, Gauge, Histogram } from 'prom-client';
 import { db } from '@/storage/db';
 import { forever } from '@/utils/forever';
 import { delay } from '@/utils/delay';
 import { shutdownSignal } from '@/utils/shutdown';
 import { Socket } from 'socket.io';
+import { resolveSignupPolicy } from '@/app/auth/signupPolicy';
 
 // Global default labels — applied to ALL metrics at scrape time
 register.setDefaultLabels({ app: 'happy-server' });
+if (!register.getSingleMetric('process_resident_memory_bytes')) {
+    collectDefaultMetrics({ register });
+}
 
 // Expected client_type values (trust whatever the client sends):
 // cli-coding-session, cli-daemon, cli-control-plane, ios, android, web, desktop
@@ -102,6 +106,31 @@ export const databaseRecordCountGauge = new Gauge({
     registers: [register]
 });
 
+export const registeredAccountsGauge = new Gauge({
+    name: 'registered_accounts_total',
+    help: 'Exact number of registered Accounts (use max across replicas)',
+    registers: [register]
+});
+
+export const activeLoginSessionsGauge = new Gauge({
+    name: 'active_login_sessions_total',
+    help: 'Exact number of non-revoked, non-expired Cloud login sessions',
+    registers: [register]
+});
+
+export const signupCapacityRemainingGauge = new Gauge({
+    name: 'signup_capacity_remaining',
+    help: 'Remaining Account slots; -1 means unlimited',
+    registers: [register]
+});
+
+export const signupRejectionsCounter = new Counter({
+    name: 'signup_rejections_total',
+    help: 'New Account creation attempts rejected by signup policy',
+    labelNames: ['reason', 'provider'] as const,
+    registers: [register]
+});
+
 type EstimatedCountRow = {
     estimated_count: bigint | number | null;
 };
@@ -120,11 +149,15 @@ async function getEstimatedRecordCount(tableName: string): Promise<number> {
 export async function updateDatabaseMetrics(): Promise<void> {
     // Use catalog estimates instead of exact COUNT(*). Exact counts are full
     // scans in Postgres and this updater runs once a minute.
-    const [accountCount, sessionCount, messageCount, machineCount] = await Promise.all([
+    const [accountCount, sessionCount, messageCount, machineCount, exactAccountCount, activeLoginSessions] = await Promise.all([
         getEstimatedRecordCount('"Account"'),
         getEstimatedRecordCount('"Session"'),
         getEstimatedRecordCount('"SessionMessage"'),
-        getEstimatedRecordCount('"Machine"')
+        getEstimatedRecordCount('"Machine"'),
+        db.account.count(),
+        db.accountLoginSession.count({
+            where: { revokedAt: null, expiresAt: { gt: new Date() } },
+        }),
     ]);
 
     // Update metrics
@@ -132,6 +165,10 @@ export async function updateDatabaseMetrics(): Promise<void> {
     databaseRecordCountGauge.set({ table: 'sessions' }, sessionCount);
     databaseRecordCountGauge.set({ table: 'messages' }, messageCount);
     databaseRecordCountGauge.set({ table: 'machines' }, machineCount);
+    registeredAccountsGauge.set(exactAccountCount);
+    activeLoginSessionsGauge.set(activeLoginSessions);
+    const maxAccounts = resolveSignupPolicy().maxAccounts;
+    signupCapacityRemainingGauge.set(maxAccounts === null ? -1 : Math.max(0, maxAccounts - exactAccountCount));
 }
 
 export function startDatabaseMetricsUpdater(): void {

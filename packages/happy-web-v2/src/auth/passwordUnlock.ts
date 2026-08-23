@@ -57,10 +57,10 @@ export async function setAccountCredentials(
     password: string,
     secret: string,
     credentials: AuthCredentials,
-): Promise<void> {
+): Promise<AuthCredentials | null> {
     const serverUrl = getServerUrl();
     try {
-        await axios.post(
+        const response = await axios.post<{ token?: string; secret?: string }>(
             `${serverUrl}/v1/account/credentials`,
             { username: username.trim().toLowerCase(), password, secret },
             {
@@ -70,6 +70,9 @@ export async function setAccountCredentials(
                 },
             },
         );
+        return response.data.token && response.data.secret
+            ? { token: response.data.token, secret: response.data.secret }
+            : null;
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 409) throw new AccountAuthError('username-taken', 'That username is taken.');

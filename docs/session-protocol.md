@@ -22,7 +22,8 @@ The real [Agent Communication Protocol](https://agentcommunicationprotocol.dev) 
 
 **Why not ACP directly?**
 
-1. **Encryption** — ACP assumes plaintext REST. Our payloads are end-to-end encrypted.
+1. **Encrypted wire envelope** — ACP assumes plaintext REST. Our payloads keep the
+   Happy encrypted envelope, while the Very Happy server remains a trusted key holder.
 2. **Tool calls are UI-visible** — ACP models tools as metadata for debugging. We render them with spinners, descriptions, and permission dialogs.
 3. **Instant image rendering** — ACP has no thumbhash or dimensions. Our `file` event can carry image metadata for instant placeholder layout.
 4. **Simplicity** — 9 event types total. A client implements the full protocol in a single `switch`.

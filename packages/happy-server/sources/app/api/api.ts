@@ -28,12 +28,14 @@ import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
+import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 
 export interface StartApiOptions {
     port?: number;
     host?: string;
     staticDir?: string;
     injectHtmlConfig?: Record<string, unknown>;
+    trustProxy?: TrustedProxyConfig;
 }
 
 export async function startApi(opts: StartApiOptions = {}) {
@@ -45,6 +47,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     const app = fastify({
         loggerInstance: logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
+        trustProxy: opts.trustProxy ?? resolveTrustProxy(process.env.TRUST_PROXY),
     });
     app.register(import('@fastify/cors'), {
         origin: '*',

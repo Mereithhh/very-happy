@@ -1,32 +1,30 @@
-# Happy Server
+# Very Happy Server
 
-Minimal backend for open-source end-to-end encrypted Claude Code clients.
+Self-hosted synchronization relay and Web backend for Very Happy.
 
 ## What is Happy?
 
-Happy Server is the synchronization backbone for secure Claude Code clients. It enables multiple devices to share encrypted conversations while maintaining complete privacy - the server never sees your messages, only encrypted blobs it cannot read.
+Very Happy Server synchronizes Claude Code/Codex sessions, connects browser clients to CLI daemons, and serves the production Web UI when a static directory is configured.
+
+This fork uses a **server-trusted model**, not the upstream zero-knowledge/E2E model. Password and Google login require the server to recover the account secret. An operator—or an attacker controlling the server—may therefore read synchronized content and impersonate a Web client toward machines connected to that account. Only use a server whose operator you trust.
 
 ## Features
 
-- 🔐 **Zero Knowledge** - The server stores encrypted data but has no ability to decrypt it
-- 🎯 **Minimal Surface** - Only essential features for secure sync, nothing more  
-- 🕵️ **Privacy First** - No analytics, no tracking, no data mining
-- 📖 **Open Source** - Transparent implementation you can audit and self-host
-- 🔑 **Cryptographic Auth** - No passwords stored, only public key signatures
+- 🔑 **Password and Google login** - Multi-user Web accounts with signup policy and capacity controls
+- 🧭 **CLI pairing** - Existing cryptographic account/daemon flow remains compatible
+- 📖 **Open source** - Transparent implementation you can audit and self-host
 - ⚡ **Real-time Sync** - WebSocket-based synchronization across all your devices
-- 📱 **Multi-device** - Seamless session management across phones, tablets, and computers
-- 🔔 **Push Notifications** - Notify when Claude Code finishes tasks or needs permissions (encrypted, we can't see the content)
+- 🌐 **Browser-first** - Web V2, Web Terminal and multi-device session management
+- 🔔 **Push Notifications** - Notify when agents finish tasks or need permissions
 - 🌐 **Distributed Ready** - Built to scale horizontally when needed
 
 ## How It Works
 
-Your Claude Code clients generate encryption keys locally and use Happy Server as a secure relay. Messages are end-to-end encrypted before leaving your device. The server's job is simple: store encrypted blobs and sync them between your devices in real-time.
+The browser and CLI/daemon connect to the same account through the server. Wire payloads still use Happy's encrypted formats, but in this fork the server can recover account keys to support username/password and Google login. Encryption at rest/in transit does not remove the need to trust the server operator.
 
 ## Hosting
 
-**You don't need to self-host!** Our free cloud Happy Server at `happy-api.slopus.com` is just as secure as running your own. Since all data is end-to-end encrypted before it reaches our servers, we literally cannot read your messages even if we wanted to. The encryption happens on your device, and only you have the keys.
-
-That said, Happy Server is open source and self-hostable if you prefer running your own infrastructure. The security model is identical whether you use our servers or your own.
+You can self-host or connect to a maintainer-operated instance. These are not equivalent trust boundaries: a hosted instance's operator controls its server and deployment secrets. Read the instance's policy before connecting a daemon capable of remote command execution.
 
 ## Self-Hosting with Docker
 
@@ -61,6 +59,15 @@ Data persists in the `happy-data` Docker volume across container restarts.
 | `PORT` | No | `3005` | Server port |
 | `DATA_DIR` | No | `/data` | Base data directory |
 | `PGLITE_DIR` | No | `/data/pglite` | PGlite database directory |
+| `SIGNUP_MODE` | No | `open` | Account signup mode: `open`, `invite`, or `closed` |
+| `SIGNUP_MAX_ACCOUNTS` | No | unlimited | Global Account limit; existing users can still sign in |
+| `SIGNUP_INVITE_CODES` | No | - | Comma-separated codes for invite mode |
+| `LOGIN_SESSION_TTL_DAYS` | No | `30` | Password/Google Web session lifetime (1–365 days) |
+| `GOOGLE_CLIENT_ID` | No | - | Enables Google Identity Services account login |
+| `GOOGLE_ALLOWED_ORIGINS` | With Google | - | Comma-separated exact Web origins allowed to request/consume Google login challenges |
+| `TRUST_PROXY` | Behind proxy | - | Positive trusted hop count or comma-separated proxy IP/CIDR allowlist used to recover real client IPs safely |
+
+To enable Google login, create a **Web application** OAuth client in Google Cloud Console and add every deployed Web origin (for example `https://happy.example.com`) under **Authorized JavaScript origins**. Set that client ID and the same exact origin(s) in the two variables above. The popup ID-token callback does not use an Authorized redirect URI or client secret. Do not copy the maintainer Cloud client ID for a self-hosted domain; create a client owned by your deployment.
 
 ### Optional: External Services
 
@@ -103,10 +110,10 @@ mc ilm rule add myminio/happy-blobs \
   --prefix "sessions/"
 ```
 
-**2. Server-side encryption (defense-in-depth).** Blobs are already
-end-to-end encrypted by the client, but enabling AES-256 SSE on the
-bucket protects against an attacker who somehow obtains raw object
-storage access without the keys.
+**2. Server-side encryption (defense-in-depth).** Blobs use Happy's encrypted
+wire/storage format, but this fork remains server-trusted because the server can
+recover account secrets. Enabling AES-256 SSE still protects against an attacker
+who obtains only raw object-storage access without the application secrets.
 
 ```bash
 # AWS CLI

@@ -1,5 +1,10 @@
 # Dev Environments
 
+> **Legacy limitation:** this manager still launches the deprecated Expo
+> `happy-app`, and its authenticated URL seeding is not wired into
+> `happy-web-v2`. Do not use `pnpm env:web` as production Web V2 acceptance.
+> The supported Web V2 loop is documented in [`development.md`](development.md).
+
 This document covers the local environment manager in [`environments/environments.ts`](../environments/environments.ts).
 
 ## What `pnpm env:*` Does
