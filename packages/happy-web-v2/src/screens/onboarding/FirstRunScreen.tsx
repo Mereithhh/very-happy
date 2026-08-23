@@ -1,0 +1,70 @@
+import { Check, Copy, ExternalLink, Laptop, LogIn, PackagePlus } from 'lucide-react';
+import { useState } from 'react';
+import { Button, useToast } from '@/ui';
+import { useTranslation } from '@/i18n/useTranslation';
+import './firstRun.css';
+
+const INSTALL_COMMAND = 'npm install -g very-happy-cli';
+const LOGIN_COMMAND = 'very-happy auth login';
+
+function Command({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const toast = useToast();
+  const { t } = useTranslation();
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error(t('onboarding.copyFailed'));
+    }
+  }
+  return (
+    <div className="fr-command">
+      <code>{value}</code>
+      <button type="button" onClick={copy} aria-label={`Copy ${value}`}>
+        {copied ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+    </div>
+  );
+}
+
+export function FirstRunScreen() {
+  const { t } = useTranslation();
+  return (
+    <main className="fr-page">
+      <section className="fr-hero">
+        <div className="eyebrow">{t('onboarding.eyebrow')}</div>
+        <h1>{t('onboarding.title')}</h1>
+        <p>{t('onboarding.intro')}</p>
+      </section>
+
+      <ol className="fr-steps">
+        <li>
+          <div className="fr-step-icon"><PackagePlus size={19} /></div>
+          <div><h2>{t('onboarding.installTitle')}</h2><p>{t('onboarding.installDescription')}</p><Command value={INSTALL_COMMAND} /></div>
+        </li>
+        <li>
+          <div className="fr-step-icon"><LogIn size={19} /></div>
+          <div><h2>{t('onboarding.linkTitle')}</h2><p>{t('onboarding.linkDescription')}</p><Command value={LOGIN_COMMAND} /></div>
+        </li>
+        <li>
+          <div className="fr-step-icon"><Laptop size={19} /></div>
+          <div><h2>{t('onboarding.startTitle')}</h2><p>{t('onboarding.startDescription')}</p></div>
+        </li>
+      </ol>
+
+      <div className="fr-note">
+        {t('onboarding.trustNote')}
+      </div>
+      <Button
+        variant="secondary"
+        rightIcon={<ExternalLink size={14} />}
+        onClick={() => window.open('https://github.com/Mereithhh/very-happy#getting-started', '_blank', 'noopener,noreferrer')}
+      >
+        {t('onboarding.readQuickStart')}
+      </Button>
+    </main>
+  );
+}

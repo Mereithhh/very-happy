@@ -14,8 +14,12 @@ import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
-import { useLocalSetting } from '@/sync/storage';
+import { useAllMachines, useIsDataReady, useLocalSetting } from '@/sync/storage';
 import { useGlobalBackNav } from '@/app/appBack';
+import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
+import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
+import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
+import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
@@ -61,6 +65,9 @@ function RequireAuth() {
  *  device-local homeView preference says so (Settings → Appearance). */
 function HomeGate() {
   const homeView = useLocalSetting('homeView');
+  const dataReady = useIsDataReady();
+  const machines = useAllMachines({ includeOffline: true });
+  if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
   if (homeView === 'board') {
     return (
       <Lazy>
@@ -106,9 +113,12 @@ const router = createBrowserRouter(
         </RedirectIfAuthed>
       ),
     },
+    { path: '/privacy', element: <PrivacyScreen /> },
+    { path: '/terms', element: <TermsScreen /> },
     {
       element: <RequireAuth />,
       children: [
+        { path: 'terminal/connect', element: <TerminalConnectScreen /> },
         // Full-screen voice form — a SIBLING of the AppLayout tree on purpose:
         // AppLayout always renders the sidebar/rail chrome on desktop, and the
         // assistant is designed as a chromeless second form (mobile-first,

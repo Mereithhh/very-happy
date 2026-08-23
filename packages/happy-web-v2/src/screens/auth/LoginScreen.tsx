@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
 import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
@@ -8,10 +8,12 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
+import { authReturnTarget } from '@/app/authReturnTarget';
 
 export function LoginScreen() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { t } = useTranslation();
 
@@ -33,7 +35,7 @@ export function LoginScreen() {
       const creds = await loginWithPassword(username, password);
       await login(creds.token, creds.secret);
       toast.success(t('common.success'));
-      navigate('/', { replace: true });
+      navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {
       const msg =
         err?.response?.status === 401 || err?.response?.status === 403
@@ -51,13 +53,13 @@ export function LoginScreen() {
     try {
       const creds = await loginWithGoogle(credential, nonce);
       await login(creds.token, creds.secret);
-      navigate('/', { replace: true });
+      navigate(authReturnTarget(location.state), { replace: true });
     } catch (err) {
       if (err instanceof CloudAuthError && err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
       else if (err instanceof CloudAuthError && err.code === 'signup-closed') setGoogleError(t('signup.errorSignupClosed'));
       else if (err instanceof CloudAuthError && err.code === 'invite-required') {
         toast.error(t('signup.errorInviteRequiredGoogle'));
-        navigate('/signup');
+        navigate('/signup', { state: location.state });
       }
       else if (err instanceof CloudAuthError && err.code === 'network') setGoogleError(t('errors.networkError'));
       else setGoogleError(t('signup.errorGoogle'));
@@ -107,9 +109,14 @@ export function LoginScreen() {
           {t('common.continue')}
         </Button>
 
-        <button type="button" className="auth-alt" onClick={() => navigate('/signup')}>
+        <button type="button" className="auth-alt" onClick={() => navigate('/signup', { state: location.state })}>
           {t('settingsAccount.createAccountTitle')}
         </button>
+        <div className="auth-legal">
+          <Link to="/privacy">Privacy</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/terms">Terms</Link>
+        </div>
       </form>
     </div>
   );

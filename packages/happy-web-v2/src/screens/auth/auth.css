@@ -100,3 +100,14 @@
 .auth-alt:hover {
   text-decoration: underline;
 }
+.auth-legal {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-2);
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+}
+.auth-legal a:hover {
+  color: var(--text-dim);
+  text-decoration: underline;
+}

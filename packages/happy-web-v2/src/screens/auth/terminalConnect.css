@@ -1,0 +1,53 @@
+.tc-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+  background: var(--bg-0);
+}
+.tc-card {
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-1);
+  text-align: center;
+  box-shadow: var(--shadow-modal);
+}
+.tc-brand {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.tc-card h1 { margin: 0; font-size: var(--fs-28); }
+.tc-card p { margin: 0; color: var(--text-dim); line-height: 1.55; }
+.tc-card code { font-family: var(--font-mono); }
+.tc-status { margin-top: var(--sp-4); color: var(--text-dim); }
+.tc-status--live { color: var(--accent); }
+.tc-fingerprint {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
+.tc-error {
+  width: 100%;
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--danger-dim);
+  color: var(--danger);
+  font-size: var(--fs-12);
+  text-align: left;
+}

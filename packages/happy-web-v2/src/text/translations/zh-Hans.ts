@@ -922,6 +922,36 @@ export const zhHans: TranslationStructure = {
         openWebTerminal: '打开网页终端',
     },
 
+    onboarding: {
+        eyebrow: '连接第一台机器',
+        title: '连接一台电脑，开始使用',
+        intro: 'very happy 在你的电脑上运行 coding agent，再通过当前账号让这个 Web 界面控制它。',
+        installTitle: '安装 CLI',
+        installDescription: '需要 Node.js 20 或更高版本。',
+        linkTitle: '绑定当前账号',
+        linkDescription: '运行命令，选择「Web Browser」，然后回到这里批准连接。',
+        startTitle: '开始工作',
+        startDescription: '在项目目录中运行 very-happy，机器和会话会自动出现在这里。',
+        trustNote: '此连接采用服务端可信模型，服务器运营者能够访问中继的会话数据；敏感工作请使用你信任的自托管中继。',
+        readQuickStart: '查看入门指南',
+        copyFailed: '复制失败，请选中命令后手动复制。',
+    },
+
+    terminalConnect: {
+        connectedTitle: '机器已连接',
+        connectedDescription: '请回到终端。daemon 启动后，这台机器会自动出现在这里。',
+        openApp: '打开 very happy',
+        invalidTitle: '连接链接无效',
+        invalidDescription: '请重新运行 very-happy auth login，并打开终端生成的新链接。',
+        back: '返回 very happy',
+        title: '连接这台机器？',
+        description: '只有在你刚刚于可信电脑上运行过 very-happy auth login 时才批准。',
+        request: '请求',
+        error: '无法连接机器。服务器未找到这个请求或未能完成操作；请重试或重新生成链接。',
+        approve: '批准连接',
+        cancel: '取消',
+    },
+
     agentInput: {
         workingHint: '回车排队 · ⌘/Ctrl+回车 打断并发送',
         interruptAndSend: '打断并发送',

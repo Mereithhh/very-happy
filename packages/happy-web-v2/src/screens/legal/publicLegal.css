@@ -1,0 +1,9 @@
+.legal-page { min-height: 100dvh; padding: var(--sp-8) var(--sp-5); background: var(--bg-0); }
+.legal-card { width: min(100%, 760px); margin: 0 auto; padding: clamp(var(--sp-6), 6vw, var(--sp-12)); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-1); }
+.legal-brand { display: inline-flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-8); font-weight: 600; }
+.legal-card h1 { margin: 0 0 var(--sp-6); font-size: var(--fs-40); }
+.legal-card h2 { margin: var(--sp-8) 0 var(--sp-2); font-size: var(--fs-16); }
+.legal-card p { margin: 0 0 var(--sp-3); color: var(--text-dim); line-height: 1.7; }
+.legal-card a { color: var(--text); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.legal-card footer { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-10); padding-top: var(--sp-5); border-top: 1px solid var(--line); color: var(--text-faint); font-size: var(--fs-12); }
+@media (max-width: 599px) { .legal-page { padding: 0; } .legal-card { border: 0; border-radius: 0; } .legal-card h1 { font-size: var(--fs-28); } }

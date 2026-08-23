@@ -16,12 +16,12 @@ export const AuthSelector: React.FC<AuthSelectorProps> = ({ onSelect, onCancel }
         label: string; 
     }> = [
         {
-            method: 'mobile',
-            label: 'Mobile App'
-        },
-        {
             method: 'web',
             label: 'Web Browser'
+        },
+        {
+            method: 'mobile',
+            label: 'Legacy Mobile App'
         }
     ];
 

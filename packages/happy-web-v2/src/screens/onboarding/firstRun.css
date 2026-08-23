@@ -1,0 +1,71 @@
+.fr-page {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: clamp(var(--sp-6), 7vw, var(--sp-12));
+  background: var(--bg-0);
+}
+.fr-hero { max-width: 680px; }
+.fr-hero h1 { margin: var(--sp-2) 0 var(--sp-3); font-size: clamp(var(--fs-28), 5vw, var(--fs-40)); line-height: 1.1; }
+.fr-hero p { margin: 0; color: var(--text-dim); font-size: var(--fs-16); line-height: 1.55; }
+.fr-steps {
+  width: min(100%, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fr-steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.fr-step-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  background: var(--bg-2);
+}
+.fr-steps h2 { margin: 0 0 var(--sp-1); font-size: var(--fs-16); }
+.fr-steps p { margin: 0 0 var(--sp-3); color: var(--text-dim); font-size: var(--fs-13); line-height: 1.5; }
+.fr-steps p:last-child { margin-bottom: 0; }
+.fr-steps p code { font-family: var(--font-mono); color: var(--text); }
+.fr-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+}
+.fr-command code { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-12); }
+.fr-command button { flex: none; display: grid; place-items: center; color: var(--text-dim); }
+.fr-command button:hover { color: var(--text); }
+.fr-note {
+  max-width: 720px;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--warn);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
+@media (max-width: 599px) {
+  .fr-page { padding: var(--sp-6) var(--sp-4); }
+  .fr-steps li { padding: var(--sp-4); }
+}

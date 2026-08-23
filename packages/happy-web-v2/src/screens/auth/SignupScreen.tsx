@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
 import { authGetToken } from '@/auth/authGetToken';
@@ -11,6 +11,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
+import { authReturnTarget } from '@/app/authReturnTarget';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -18,6 +19,7 @@ const MIN_PASSWORD = 8;
 export function SignupScreen() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { t } = useTranslation();
 
@@ -78,7 +80,7 @@ export function SignupScreen() {
       const cloudCredentials = await setAccountCredentials(username, password, secretB64, { token, secret: secretB64 });
       await login(cloudCredentials?.token ?? token, cloudCredentials?.secret ?? secretB64);
       toast.success(t('signup.success'));
-      navigate('/', { replace: true });
+      navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {
       if (err instanceof AccountAuthError) {
         if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken'));
@@ -108,7 +110,7 @@ export function SignupScreen() {
     try {
       const creds = await loginWithGoogle(credential, nonce, invite.trim() || undefined);
       await login(creds.token, creds.secret);
-      navigate('/', { replace: true });
+      navigate(authReturnTarget(location.state), { replace: true });
     } catch (err) {
       if (err instanceof CloudAuthError) {
         if (err.code === 'capacity-reached') setGoogleError(t('signup.errorCapacityReached'));
@@ -186,9 +188,14 @@ export function SignupScreen() {
           {t('signup.submit')}
         </Button>
 
-        <button type="button" className="auth-alt" onClick={() => navigate('/login')}>
+        <button type="button" className="auth-alt" onClick={() => navigate('/login', { state: location.state })}>
           {t('signup.haveAccount')}
         </button>
+        <div className="auth-legal">
+          <Link to="/privacy">Privacy</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/terms">Terms</Link>
+        </div>
       </form>
     </div>
   );

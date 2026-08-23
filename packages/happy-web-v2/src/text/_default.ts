@@ -928,6 +928,36 @@ export const en = {
         openWebTerminal: 'Open web terminal',
     },
 
+    onboarding: {
+        eyebrow: 'YOUR FIRST MACHINE',
+        title: 'Connect a computer to get started',
+        intro: 'very happy runs the coding agent on your computer and lets this Web UI control it through your account.',
+        installTitle: 'Install the CLI',
+        installDescription: 'Requires Node.js 20 or newer.',
+        linkTitle: 'Link this account',
+        linkDescription: 'Run the command, choose Web Browser, then approve the connection here.',
+        startTitle: 'Start working',
+        startDescription: 'Run very-happy in a project folder. Your machine and sessions will appear automatically.',
+        trustNote: 'This connection uses a server-trusted model. The server operator can access relayed session data; use a relay you trust for sensitive work.',
+        readQuickStart: 'Read the getting started guide',
+        copyFailed: 'Could not copy — select the command and copy it manually.',
+    },
+
+    terminalConnect: {
+        connectedTitle: 'Machine connected',
+        connectedDescription: 'Return to your terminal. This machine will appear here as soon as the daemon starts.',
+        openApp: 'Open very happy',
+        invalidTitle: 'Invalid connection link',
+        invalidDescription: 'Run very-happy auth login again and open the new link from your terminal.',
+        back: 'Back to very happy',
+        title: 'Connect this machine?',
+        description: 'Only approve if you just ran very-happy auth login on a computer you trust.',
+        request: 'request',
+        error: 'Could not connect the machine. The request was not found or the server could not complete it; retry or generate a new link.',
+        approve: 'Approve connection',
+        cancel: 'Cancel',
+    },
+
     agentInput: {
         workingHint: 'Enter to queue · ⌘/Ctrl+Enter to interrupt & send',
         interruptAndSend: 'Interrupt and send',
