@@ -60,7 +60,7 @@ candidate source, the required gates passed:
 | Web V2 | 97 test files / 1,402 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Quality Gates run `32664272105` passed for workspace source `3a244dda`; setup/action pins resolve to real immutable commits |
+| CI | Quality Gates run `32664535539` passed for workspace source `212665e6`; setup/action pins resolve to real immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -131,9 +131,10 @@ coordinator are described as separate shipped paths. The regression test pins th
   JavaScript MIME, 390px layout, trust disclosure, public transfer size, and precache scope
   were verified afterward.
 - The scrubbed agent-system field note and Integrations chapter were Web-only deployed from
-  SHA `3a244dda4d5109181c81c0817536dcda61bc112d` by run `32664386530` after exact-SHA
-  Quality Gates run `32664272105` passed. Production health, JavaScript MIME, anonymous
-  bundle isolation, 390px no-overflow layout, and both integration safety notes were verified.
+  final SHA `212665e64f64be8814924383063e79bbc3a14af1` by run `32664648352` after exact-SHA
+  Quality Gates run `32664535539` passed. A fresh isolated production browser verified the
+  corrected configured-notification/fixed-workspace wording, JavaScript MIME, anonymous
+  bundle isolation, 390px no-overflow layout, and both integration safety notes.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
