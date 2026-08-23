@@ -9,6 +9,7 @@ const workflows = Object.fromEntries(
 const dockerfile = readFileSync(new URL('../../Dockerfile.server', import.meta.url), 'utf8');
 const dockerignore = readFileSync(new URL('../../.dockerignore', import.meta.url), 'utf8');
 const deployScript = readFileSync(new URL('./deploy-hwsg.sh', import.meta.url), 'utf8');
+const daemonUpdateScript = readFileSync(new URL('../update-daemon.sh', import.meta.url), 'utf8');
 
 const errors = [];
 for (const [name, source] of Object.entries(workflows)) {
@@ -60,6 +61,12 @@ if (!/server-container-smoke:[\s\S]*smoke-server-container\.sh/.test(workflows['
 }
 if (!/docker inspect happy-server[\s\S]*\*migrate\*/.test(deployScript)) {
   errors.push('deploy-hwsg.sh: server deploy must fail closed without migration-on-start');
+}
+if (!/npm view very-happy-cli@latest version/.test(daemonUpdateScript)
+  || !/very-happy-cli@\$LATEST_VERSION/.test(daemonUpdateScript)
+  || !/--allow-scripts=very-happy-cli,node-pty/.test(daemonUpdateScript)
+  || !/version verification failed/.test(daemonUpdateScript)) {
+  errors.push('update-daemon.sh: updater must resolve, allowlist, and verify an exact CLI version');
 }
 
 if (errors.length) {

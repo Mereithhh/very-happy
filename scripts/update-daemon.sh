@@ -13,8 +13,27 @@
 set -eu
 export PATH="$HOME/.local/bin:$PATH"
 
-echo "==> npm i -g very-happy-cli@latest"
-npm i -g very-happy-cli@latest
+echo "==> resolve latest very-happy-cli version"
+# Install the resolved version, not the moving @latest specifier. npm may cache
+# a dist-tag lookup across an immediately-following install and otherwise report
+# success while leaving the previous daemon version in place.
+LATEST_VERSION=$(npm view very-happy-cli@latest version)
+case "$LATEST_VERSION" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) echo "invalid registry version: $LATEST_VERSION" >&2; exit 1 ;;
+esac
+
+echo "==> npm i -g very-happy-cli@$LATEST_VERSION"
+# npm 11 blocks previously unseen install scripts unless they are allowlisted.
+# These are the package's reviewed tool-unpack hook and node-pty's native
+# prebuild hook; allowing only these two preserves the default deny posture.
+npm i -g --allow-scripts=very-happy-cli,node-pty "very-happy-cli@$LATEST_VERSION"
+
+INSTALLED_VERSION=$(very-happy --version)
+case "$INSTALLED_VERSION" in
+    *"$LATEST_VERSION"*) ;;
+    *) echo "version verification failed: expected $LATEST_VERSION, got $INSTALLED_VERSION" >&2; exit 1 ;;
+esac
 
 echo "==> restart daemon"
 very-happy daemon stop 2>/dev/null || true
