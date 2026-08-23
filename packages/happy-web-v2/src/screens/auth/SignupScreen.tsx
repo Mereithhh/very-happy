@@ -22,6 +22,8 @@ export function SignupScreen() {
   const toast = useToast();
   const { t } = useTranslation();
 
+  useEffect(() => { document.title = 'Create account — Very Happy'; }, []);
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');

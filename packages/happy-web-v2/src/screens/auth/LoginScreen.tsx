@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
 import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
@@ -17,6 +17,8 @@ export function LoginScreen() {
   const location = useLocation();
   const toast = useToast();
   const { t } = useTranslation();
+
+  useEffect(() => { document.title = 'Sign in — Very Happy'; }, []);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
