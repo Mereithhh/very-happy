@@ -7,8 +7,9 @@ const Constants = {
     runtimeVersion: APP_VERSION,
     ios: { bundleIdentifier: 'com.mereith.veryhappy' },
     android: { package: 'com.mereith.veryhappy' },
-    extra: {} as Record<string, unknown>,
+    extra: {} as Record<string, unknown> & { eas?: { projectId?: string } },
   },
+  easConfig: undefined as { projectId?: string } | undefined,
 };
 
 export default Constants;

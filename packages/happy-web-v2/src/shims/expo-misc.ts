@@ -12,7 +12,7 @@ export const applicationName: string | null = 'Very Happy';
 // expo-device
 export const deviceName: string | null =
   typeof navigator !== 'undefined' ? 'Browser' : null;
-export const isDevice = true;
+export const isDevice: boolean = true;
 export const modelName: string | null = 'Web';
 export const osName: string | null = 'Web';
 export const osVersion: string | null =

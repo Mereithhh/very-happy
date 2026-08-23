@@ -67,6 +67,7 @@ export const Linking = {
   async getInitialURL(): Promise<string | null> {
     return typeof window !== 'undefined' ? window.location.href : null;
   },
+  async openSettings(): Promise<void> {},
   addEventListener() {
     return { remove() {} };
   },

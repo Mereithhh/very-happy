@@ -7,6 +7,7 @@
     "skipLibCheck": true,
 
     "moduleResolution": "bundler",
+    "moduleSuffixes": [".web", ""],
     "allowImportingTsExtensions": true,
     "moduleDetection": "force",
     "noEmit": true,
@@ -23,8 +24,30 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "react-native": ["./src/shims/react-native.ts"],
+      "expo-crypto": ["./src/shims/expo-crypto.ts"],
+      "expo-constants": ["./src/shims/expo-constants.ts"],
+      "expo-secure-store": ["./src/shims/expo-secure-store.ts"],
+      "expo-localization": ["./src/shims/expo-localization.ts"],
+      "expo-modules-core": ["./src/shims/expo-modules-core.ts"],
+      "expo-application": ["./src/shims/expo-misc.ts"],
+      "expo-device": ["./src/shims/expo-misc.ts"],
+      "expo-updates": ["./src/shims/expo-misc.ts"],
+      "expo-notifications": ["./src/shims/expo-notifications.ts"],
+      "@expo/vector-icons": ["./src/shims/expo-vector-icons.tsx"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/encryption/aes.ts",
+    "src/encryption/base64.native.ts",
+    "src/encryption/libsodium.lib.ts",
+    "src/sync/revenueCat/revenueCat.ts",
+    "src/sync/uploadFormFile.ts",
+    "src/utils/pickFileBase64.ts",
+    "src/utils/pickTextFile.ts",
+    "src/utils/readFileBytes.ts",
+    "src/utils/saveFile.ts"
+  ]
 }

@@ -3,7 +3,7 @@
  * in pickFileBase64.ts. Returns null if the user cancels. Used to upload a file
  * to the machine (sessionUploadFile) so the agent can read it with its tools.
  */
-import * as DocumentPicker from 'expo-document-picker';
+import { pickBrowserFile } from './browserFilePicker';
 
 export interface PickedFile {
     name: string;
@@ -22,24 +22,12 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export async function pickFileBase64(): Promise<PickedFile | null> {
-    const res = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: false,
-        multiple: false,
-    });
-    if (res.canceled || !res.assets?.length) return null;
-    const asset = res.assets[0];
-    const file: File | undefined = (asset as any).file;
-    let bytes: Uint8Array;
-    let mimeType = asset.mimeType;
-    if (file) {
-        bytes = new Uint8Array(await file.arrayBuffer());
-        mimeType = mimeType || file.type;
-    } else {
-        const r = await fetch(asset.uri);
-        bytes = new Uint8Array(await r.arrayBuffer());
-    }
+    const file = await pickBrowserFile();
+    if (!file) return null;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const mimeType = file.type || undefined;
     return {
-        name: asset.name ?? 'file',
+        name: file.name || 'file',
         base64: bytesToBase64(bytes),
         mimeType,
         isImage: !!mimeType?.startsWith('image/'),

@@ -71,6 +71,7 @@ export default defineConfig({
   define: {
     __DEFAULT_SERVER_URL__: JSON.stringify(DEFAULT_SERVER_URL),
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     'process.env': '{}',
   },

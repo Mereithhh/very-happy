@@ -7,5 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: ['**/*.test.ts', '**/*.spec.ts'],
   },
-  plugins: [tsconfigPaths()]
-}); 
+  // Restrict discovery to the server config. Scanning every repository
+  // tsconfig would pull the intentionally unsupported legacy Expo tree into
+  // clean server installs.
+  plugins: [tsconfigPaths({ projects: ['./tsconfig.json'] })]
+});

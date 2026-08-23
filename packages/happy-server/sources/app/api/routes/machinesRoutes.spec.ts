@@ -2,9 +2,9 @@ import fastify from "fastify";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fastify } from "../types";
-// Cross-package contract check: the app's real update schema. apiTypes.ts is
+// Cross-package contract check: production Web V2's real update schema. apiTypes.ts is
 // pure zod (no react-native / @/ aliases), so it imports cleanly in node.
-import { ApiUpdateContainerSchema } from "../../../../../happy-app/sources/sync/apiTypes";
+import { ApiUpdateContainerSchema } from "../../../../../happy-web-v2/src/sync/apiTypes";
 
 const {
     state,

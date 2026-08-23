@@ -3,7 +3,7 @@
  * Native impl lives in pickTextFile.ts. Returns null if the user cancels.
  * Intended for inlining file content into the composer — not for binaries.
  */
-import * as DocumentPicker from 'expo-document-picker';
+import { pickBrowserFile } from './browserFilePicker';
 
 export interface PickedText {
     name: string;
@@ -11,19 +11,7 @@ export interface PickedText {
 }
 
 export async function pickTextFile(): Promise<PickedText | null> {
-    const res = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: false,
-        multiple: false,
-    });
-    if (res.canceled || !res.assets?.length) return null;
-    const asset = res.assets[0];
-    const file: File | undefined = (asset as any).file;
-    let content: string;
-    if (file) {
-        content = await file.text();
-    } else {
-        const r = await fetch(asset.uri);
-        content = await r.text();
-    }
-    return { name: asset.name ?? 'file.txt', content };
+    const file = await pickBrowserFile();
+    if (!file) return null;
+    return { name: file.name || 'file.txt', content: await file.text() };
 }
