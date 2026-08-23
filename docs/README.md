@@ -29,7 +29,8 @@ Start with the path that matches what you are doing.
 - [Shared wire schemas](happy-wire.md)
 
 The production frontend is `packages/happy-web-v2`; `packages/happy-app` is an
-unsupported upstream Expo artifact. Where old architecture notes disagree with
+unsupported upstream Expo artifact and is intentionally excluded from the pnpm
+workspace and security support scope. Where old architecture notes disagree with
 current source, the package code and current specs win.
 
 ## Maintainer internals

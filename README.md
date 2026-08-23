@@ -92,7 +92,8 @@ before operating a public instance.
 - [Security policy](SECURITY.md)
 
 The production frontend is `packages/happy-web-v2`. The upstream Expo
-`packages/happy-app` remains for history and is not a supported Very Happy client.
+`packages/happy-app` remains for history and is not a supported Very Happy client;
+it is intentionally excluded from the pnpm workspace and security support scope.
 
 ## Attribution and license
 

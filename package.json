@@ -12,7 +12,7 @@
     "scripts": {
         "cli": "pnpm --filter very-happy-cli cli",
         "release": "node ./scripts/release.cjs",
-        "web": "pnpm --filter happy-app web",
+        "web": "pnpm --filter @slopus/happy-web-v2 dev",
         "codium": "pnpm --filter codium dev",
         "app-logs": "pnpm --filter happy-app-logs start",
         "postinstall": "node ./scripts/postinstall.cjs",
@@ -34,7 +34,6 @@
     },
     "workspaces": {
         "packages": [
-            "packages/happy-app",
             "packages/happy-agent",
             "packages/happy-cli",
             "packages/happy-server",
@@ -58,8 +57,14 @@
             "@types/parse-path": "7.0.3",
             "engine.io": "6.6.9",
             "hono": "4.12.34",
+            "lodash-es": "4.18.1",
+            "micromatch>picomatch": "2.3.2",
             "minio>lodash": "4.18.0",
+            "minimatch>brace-expansion": "5.0.9",
             "router>path-to-regexp": "8.4.0",
+            "shell-quote": "1.10.0",
+            "socket.io-parser": "4.2.7",
+            "form-data": "4.0.6",
             "vite-tsconfig-paths>vite": "8.0.16",
             "ws": "8.21.3"
         },
