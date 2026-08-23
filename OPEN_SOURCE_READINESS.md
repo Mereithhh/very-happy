@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)  
 > Candidate branch: `main`  
-> Production CLI: `very-happy-cli@0.2.57` (`v0.2.57`)  
+> Production CLI: `very-happy-cli@0.2.58` (`v0.2.58`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
@@ -16,6 +16,10 @@ public until the procedure below is complete.
 
 - A responsive public landing page explains the product, capabilities, first connection,
   Cloud versus self-hosting, upstream origin, and the real trust boundary.
+- Public positioning now owns a broader agent-workspace category: “Work anywhere. Keep the
+  thread.” It distinguishes current Claude/Codex/ACP capabilities from Pi/provider-gateway
+  roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
+  for the optional meta-agent.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
   architecture/data flow, security/privacy, accounts/quotas, upgrades/rollback,
   troubleshooting, and contributing.
@@ -49,10 +53,10 @@ candidate source, the required gates passed:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 97 test files / 1,399 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 97 test files / 1,401 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Quality Gates run `32661895457` passed for final Web source `1f89ff56`; setup/action pins resolve to real immutable commits |
+| CI | Quality Gates run `32663412917` passed for workspace source `208dc4a5`; setup/action pins resolve to real immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -85,6 +89,10 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 - production health, hashed JavaScript MIME, signup capacity, landing, docs, and signup
   were rechecked after deployment. A fresh mobile browser also confirmed the final signup
   title, 390px no-overflow layout, complete auth choices/recovery links, and no console warning.
+- the anonymous public root is isolated from auth/sync/crypto: fresh production mobile loaded
+  about 217 KB and no `AppRoot`/crypto chunk. Under 1.6 Mbps, 150 ms RTT, 4x CPU review
+  throttling, LCP improved from 6.37 s to 1.85 s. The service worker now precaches only seven
+  entry/manifest/icon resources and caches hashed app assets on demand.
 
 ### Independent review
 
@@ -96,6 +104,11 @@ Three independent read-only review tracks were completed after implementation:
 
 Confirmed findings were fixed and re-reviewed rather than moved to a TODO list.
 
+The subsequent public-positioning release received two additional independent passes. The
+UX/docs pass closed misleading roadmap/status, meta-agent prerequisite, hero-concept, npm
+trust, and OpenCode-command findings. The browser pass closed the anonymous 1.12 MB / poor-LCP
+finding and rechecked landing→docs/signup/login routing. Both ended at P0=0, P1=0.
+
 ## Release and production state
 
 - Server then Web were deployed from release source SHA `e4ece34b7305135d19a12a1c8cf5caf8876d7e0f`
@@ -103,17 +116,24 @@ Confirmed findings were fixed and re-reviewed rather than moved to a TODO list.
 - The browser-discovered auth-title polish fix was Web-only deployed from SHA
   `1f89ff565aa4021fefd908e88bf2c24766ed1515` by run `32662050686` after its full Quality
   Gates run passed.
+- The agent-workspace landing, lightweight anonymous root, on-demand PWA asset cache, and
+  multi-agent documentation were Web-only deployed from SHA
+  `208dc4a5f403e0cdf8fb5898f50e568cf27bc6c1` by run `32663553280`. Production health,
+  JavaScript MIME, 390px layout, trust disclosure, public transfer size, and precache scope
+  were verified afterward.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
-- CLI `v0.2.57` points at the same release source SHA and was published by run `32661406111`.
-  The registry exposes `very-happy-cli@0.2.57` and marks it latest.
+- The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
+  published by run `32661406111`; it was later superseded by `v0.2.58` below.
 - Linux Node 20/24 pack/global-install smoke passed. The real mac-office Node 20 functional
   smoke passed; its old GitHub cache-save post-step hung and the run was stopped. The cache
   was removed from the self-hosted workflow because its local pnpm store is already persistent.
 - The corrected main workflow subsequently passed its normal Linux CLI smoke in run
   `32661785753`; the Windows hosted matrix remains the explicitly listed external limitation.
 - mac-office was restarted immediately after the server deploy, then upgraded again. The
-  running daemon, installed package manifest, and CLI all report **0.2.57**.
+  later public-positioning release published `very-happy-cli@0.2.58` from tag `v0.2.58`
+  (publish run `32663659805`; Linux Node 20/24 and mac-office Node 20/24 smoke run
+  `32663659807`). The running daemon reports **0.2.58**.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
