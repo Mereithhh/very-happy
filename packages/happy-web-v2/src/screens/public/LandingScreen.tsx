@@ -75,6 +75,25 @@ export function LandingScreen() {
           </div>
         </section>
 
+        <section className="pub-field-note" aria-labelledby="field-note-title">
+          <div className="pub-field-note-copy">
+            <div className="eyebrow">FIELD NOTE // IM TO WORKING CHANGE</div>
+            <h2 id="field-note-title">An agent system should meet work where it arrives.</h2>
+            <p>In our private Tanka deployment, a message can become a session on the right machine, report progress back to the same conversation, and accept a quote-reply as the next instruction. Very Happy supplies the workspace and machine control; a small external adapter owns the IM policy.</p>
+            <p className="pub-field-note-boundary"><strong>Separate path today:</strong> the Web and optional voice coordinator can inspect sessions and dispatch background Claude work. The IM adapter does not pass through it.</p>
+            <Link to="/docs/integrations">Build an adapter <ArrowRight size={15} /></Link>
+          </div>
+          <div className="pub-dispatch" aria-label="Tanka message dispatch flow">
+            <div className="pub-dispatch-row"><span className="mono">01 / INBOX</span><strong>[happy] investigate the failing build</strong><small>Tanka or another IM</small></div>
+            <div className="pub-dispatch-link mono">WEBHOOK / POLICY ADAPTER</div>
+            <div className="pub-dispatch-row"><span className="mono">02 / ROUTE</span><strong>choose machine · repo · agent</strong><small>your rules, outside the core</small></div>
+            <div className="pub-dispatch-link mono">VERY-HAPPY SPAWN</div>
+            <div className="pub-dispatch-row is-live"><span className="mono">03 / WORK</span><strong>atlas · Claude · session running</strong><small>terminal, files, tasks, conversation</small></div>
+            <div className="pub-dispatch-link mono">STATUS WEBHOOK</div>
+            <div className="pub-dispatch-row"><span className="mono">04 / RETURN</span><strong>fix ready · checks passed · review?</strong><small>reply from mobile to continue</small></div>
+          </div>
+        </section>
+
         <section className="pub-vision" aria-labelledby="vision-title">
           <div><div className="eyebrow">NORTH STAR</div><h2 id="vision-title">The interface should carry the overhead.</h2></div>
           <div className="pub-vision-copy"><p>Our roadmap is not “put more buttons around a terminal.” It is to make ambitious work feel lighter: persistent context, useful interruptions, agent handoffs, task memory, and presence across desktop and mobile.</p><p><strong>Long term:</strong> a multi-agent virtual office where people can see work move, talk to a coordinator, and step into the right room only when judgment is needed. The pixel office is a concept, not a shipped feature.</p></div>

@@ -119,6 +119,26 @@ roadmap concept, not a shipped feature. The non-negotiable philosophy behind it
 already guides the product: **work anywhere and make the interface carry as much
 operational overhead as possible.** See the [roadmap](docs/roadmap.md).
 
+### A concrete agent-system pattern
+
+Very Happy is most useful as the execution surface inside a personal agent
+system, not as a closed system of its own. In our private Tanka integration, a
+scoped `[happy]` message starts a session on an allowed machine, completion and
+permission events return to the originating conversation, and a quote-reply is
+sent back into the same session. The adapter owns sender policy and machine /
+directory allowlists; Very Happy stays IM-agnostic through generic webhooks plus
+[`very-happy spawn` and `very-happy send`](docs/channels.md).
+
+That same boundary works for a scheduler, issue tracker, home-grown gateway, or
+future provider-aware coordinator. We intend to publish a scrubbed reference
+agent-system kit. We will not publish private runtime context, credentials, or
+organization-specific operating knowledge as an example configuration.
+
+The IM adapter and the Claude-powered Web/voice coordinator are separate
+extension paths today. Cross-provider routing between them is roadmap, not a
+shipped gateway, and execution always follows the configured agent permission
+mode.
+
 ## Architecture and trust
 
 ```text

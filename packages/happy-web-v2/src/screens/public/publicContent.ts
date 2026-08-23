@@ -115,6 +115,24 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     ],
   },
   {
+    slug: 'integrations', label: 'Integrations & automation', summary: 'Connect IM, schedulers, and task systems without putting private policy in the core.',
+    sections: [
+      { heading: 'The composition boundary', blocks: [
+        { type: 'p', text: 'Very Happy keeps organization-specific integrations outside the core. Your adapter decides which messages are trusted, which machine and directory may run a task, and which agent to start. The product exposes generic HTTPS notifications and local authenticated CLI commands.' },
+        { type: 'note', text: 'An IM message is untrusted input, not authorization. Use explicit sender and room allowlists, fixed directory mappings, least-privilege daemon users, and confirmation for destructive actions.' },
+      ] },
+      { heading: 'A real deployment pattern', blocks: [
+        { type: 'p', text: 'Our private Tanka adapter accepts a scoped [happy] task, invokes very-happy spawn on an allowed machine, forwards completion or permission events to the originating conversation, and maps a quote-reply back through very-happy send. Tanka is one example; the contract is not tied to it.' },
+        { type: 'note', text: 'The chat adapter and the Claude-powered Web/voice coordinator are separate extension paths today. The adapter does not require or pass through the coordinator. Execution follows the configured agent permission mode.' },
+        { type: 'code', code: 'very-happy spawn --dir /allowed/project --prompt-file request.txt --json\nvery-happy send --session <id> --prompt-file reply.txt --json' },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/channels.md`, label: 'Read the webhook, spawn, send, MCP, and todo-provider contracts ↗' },
+      ] },
+      { heading: 'Personal agent systems', blocks: [
+        { type: 'p', text: 'A useful agent system separates durable operating rules from credentials and company-specific knowledge. Keep small, reviewable skills and routing policy in version control; render secrets only at runtime; connect them to Very Happy through documented adapters. We plan to publish a scrubbed reference kit, not a dump of a private operator environment.' },
+      ] },
+    ],
+  },
+  {
     slug: 'security', label: 'Security & privacy', summary: 'The real trust model, remote execution boundary, and operator responsibilities.',
     sections: [
       { heading: 'Server-trusted by design', blocks: [

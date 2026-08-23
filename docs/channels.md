@@ -304,11 +304,19 @@ implements:
 #   Server-side: set HAPPY_WEB_URL for clickable links (optional).
 
 on im_message(msg):
+    # Fail closed before treating chat text as remote-machine input.
+    if not allowed_sender(msg.sender) or not allowed_chat(msg.chat):
+        audit("rejected", msg)
+        return
+    if duplicate(msg.id) or rate_limited(msg.sender):
+        return
+
     # 1) New task from chat: "[happy] fix the flaky test"
     if msg.text.startswith("[happy] "):
         prompt = msg.text.removeprefix("[happy] ")
+        workdir = allowed_workdir(msg.chat)  # fixed map; never take a path from msg
         out = run(["very-happy", "spawn",
-                   "--dir", DEFAULT_WORKDIR,
+                   "--dir", workdir,
                    "--prompt", prompt,
                    "--json"])
         if out.exit_code in (0, 2):          # 2 = session exists, msg failed
@@ -329,10 +337,19 @@ on im_message(msg):
 
 Design notes:
 
+- Authenticate and authorize the sender **and** chat before parsing commands.
+  The `session:` trailer is a routing key, not authentication. Use allowlists,
+  deduplication, rate limits, and an audit log; reject by default when identity
+  cannot be verified.
+- Map chats to fixed, allowlisted workspace roots. Never accept an arbitrary
+  working directory or command from the message. Keep normal agent permission
+  prompts unless your threat model explicitly allows otherwise.
 - Parse the `session:` trailer from the **quoted text**, not from stored
   state — it makes the adapter stateless and restart-safe.
 - Use `--prompt-file` for long or multi-line replies to avoid shell-quoting
   issues.
 - The adapter must run on the same machine as the daemon that spawned the
   sessions (that is where the session keys live).
+- Run the adapter with the least-privileged OS user that can reach those
+  workspaces. Never expose the daemon's loopback control server to a network.
 - Webhook delivery is best-effort; treat notifications as hints, not a queue.

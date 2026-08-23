@@ -179,3 +179,4 @@
 
 | id | 标题 | 类型 | 状态 | 备注 |
 |---|---|---|---|---|
+| B-157 | 官网/README 增加真实但脱敏的 IM→session→回报闭环，公开 Integrations 文档；修复 Channels 示例缺 sender/chat 授权门，并泛化含内部环境细节的 Tanka spec | security/docs | done | 2026-08-24：明确 IM adapter 与 Claude coordinator 是两条独立 shipped path，provider gateway 仍为 roadmap；新增 fail-closed 回归测试，移动端 390px 浏览器验收通过。 |

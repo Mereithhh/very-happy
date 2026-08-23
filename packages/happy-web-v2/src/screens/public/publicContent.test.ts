@@ -7,7 +7,7 @@ describe('public documentation registry', () => {
     expect(new Set(PUBLIC_DOCS.map((doc) => doc.slug)).size).toBe(PUBLIC_DOCS.length);
     expect(PUBLIC_DOCS.map((doc) => doc.slug)).toEqual(expect.arrayContaining([
       'quickstart', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
-      'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
+      'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
     ]));
   });
 
@@ -32,6 +32,8 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Codex');
     expect(landing).toContain('ACP agents');
     expect(landing).toContain('Pi + provider gateway');
+    expect(landing).toContain('FIELD NOTE // IM TO WORKING CHANGE');
+    expect(landing).toContain('private Tanka deployment');
     expect(landing).toContain('ROADMAP');
     expect(landing).toContain('currently requires Claude Code');
     expect(landing).toContain('not end-to-end encrypted');
@@ -51,5 +53,16 @@ describe('public documentation registry', () => {
     expect(publicRoot).not.toContain('@/sync/');
     expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js']");
     expect(vite).toContain("handler: 'CacheFirst'");
+  });
+
+  it('keeps the public IM adapter example fail-closed and environment-neutral', () => {
+    const channels = readFileSync(new URL('../../../../../docs/channels.md', import.meta.url), 'utf8');
+    const spec = readFileSync(new URL('../../../../../specs/2026-08-tanka-channel.md', import.meta.url), 'utf8');
+    expect(channels).toContain('allowed_sender(msg.sender)');
+    expect(channels).toContain('allowed_chat(msg.chat)');
+    expect(channels).toContain('allowed_workdir(msg.chat)');
+    expect(channels).toContain('routing key, not authentication');
+    expect(spec).toContain('Fail closed unless both sender and chat are allowlisted');
+    expect(spec).not.toMatch(/mac-office|hw-sg|apodex-bot|happy\.mereith\.com\/session/);
   });
 });
