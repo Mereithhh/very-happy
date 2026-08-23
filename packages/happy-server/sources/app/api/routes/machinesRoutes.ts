@@ -7,7 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { buildNewMachineUpdate, buildUpdateMachineUpdate, buildDeleteMachineUpdate } from "@/app/events/eventRouter";
-import { configuredResourceLimit } from '../resourceLimits';
+import { configuredResourceLimit, lockAccountResources } from '../resourceLimits';
 
 export function machinesRoutes(app: Fastify) {
     app.post('/v1/machines', {
@@ -51,50 +51,53 @@ export function machinesRoutes(app: Fastify) {
             });
         } else {
             const maxMachines = configuredResourceLimit('MAX_MACHINES_PER_ACCOUNT', 20);
-            if (maxMachines > 0 && await db.machine.count({ where: { accountId: userId } }) >= maxMachines) {
+            const reserved = await inTx(async (tx) => {
+                await lockAccountResources(tx, userId);
+                const concurrentExisting = await tx.machine.findFirst({ where: { accountId: userId, id } });
+                if (concurrentExisting) return { newMachine: concurrentExisting, updSeq1: null, updSeq2: null };
+                if (maxMachines > 0 && await tx.machine.count({ where: { accountId: userId } }) >= maxMachines) {
+                    return null;
+                }
+                log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
+                const newMachine = await tx.machine.create({
+                    data: {
+                        id,
+                        accountId: userId,
+                        metadata,
+                        metadataVersion: 1,
+                        daemonState: daemonState || null,
+                        daemonStateVersion: daemonState ? 1 : 0,
+                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
+                        active: false,
+                    }
+                });
+                const updSeq1 = await allocateUserSeq(userId, tx);
+                const updSeq2 = await allocateUserSeq(userId, tx);
+                return { newMachine, updSeq1, updSeq2 };
+            });
+            if (!reserved) {
                 return reply.code(429).send({ error: 'limit-reached', resource: 'machines', limit: maxMachines });
             }
-            // Create new machine
-            log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
-
-            const newMachine = await db.machine.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    metadata,
-                    metadataVersion: 1,
-                    daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
-                    // lastActiveAt and activeAt defaults to now() in schema
-                }
-            });
-
-            // Emit both new-machine and update-machine events for backward compatibility
-            const updSeq1 = await allocateUserSeq(userId);
-            const updSeq2 = await allocateUserSeq(userId);
+            const { newMachine, updSeq1, updSeq2 } = reserved;
             
             // Emit new-machine event with all data including dataEncryptionKey
-            const newMachinePayload = buildNewMachineUpdate(newMachine, updSeq1, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: newMachinePayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
+            if (updSeq1 !== null && updSeq2 !== null) {
+                const newMachinePayload = buildNewMachineUpdate(newMachine, updSeq1, randomKeyNaked(12));
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: newMachinePayload,
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
 
-            // Emit update-machine event for backward compatibility (without dataEncryptionKey)
-            const machineMetadata = {
-                version: 1,
-                value: metadata
-            };
-            const updatePayload = buildUpdateMachineUpdate(newMachine.id, updSeq2, randomKeyNaked(12), machineMetadata);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'machine-scoped-only', machineId: newMachine.id }
-            });
+                // Emit update-machine for backward compatibility (without the key).
+                const machineMetadata = { version: 1, value: metadata };
+                const updatePayload = buildUpdateMachineUpdate(newMachine.id, updSeq2, randomKeyNaked(12), machineMetadata);
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: updatePayload,
+                    recipientFilter: { type: 'machine-scoped-only', machineId: newMachine.id }
+                });
+            }
 
             return reply.send({
                 machine: {

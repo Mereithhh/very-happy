@@ -15,17 +15,57 @@ import * as crypto from 'crypto';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
 import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile } from '@/storage/files';
+import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { configuredResourceLimit, lockAccountResources, withinByteQuota } from '../resourceLimits';
+import { inTx } from '@/storage/inTx';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
 
-// Per-user, per-process token bucket for request-upload. Best-effort flood
-// protection — on a multi-process deploy each instance counts independently,
-// so an attacker with N processes gets N×limit. Adequate as a backstop
-// against a single-client loop generating presigned URLs forever.
 const UPLOAD_RATE_WINDOW_MS = 60_000;
 const UPLOAD_RATE_MAX = 60;
-const uploadRateState = new Map<string, { count: number; windowStart: number }>();
+
+type AttachmentSqlClient = Pick<typeof db, '$queryRawUnsafe' | '$executeRawUnsafe'>;
+
+async function reservedAttachmentBytes(client: AttachmentSqlClient, accountId: string): Promise<number> {
+    const rows = await client.$queryRawUnsafe<Array<{ used: bigint | number | string }>>(
+        `SELECT COALESCE(SUM("size"), 0) AS "used"
+         FROM "UploadedFile" WHERE "accountId" = $1 AND "path" LIKE 'sessions/%'`,
+        accountId,
+    );
+    return Number(rows[0]?.used ?? 0);
+}
+
+async function reserveAttachment(
+    client: AttachmentSqlClient,
+    accountId: string,
+    ref: string,
+    size: number,
+): Promise<void> {
+    // Raw SQL is deliberate: hw-sg bind-mount deploys sources and migrations
+    // onto a stable image, so the generated Prisma Client may predate `size`.
+    await client.$executeRawUnsafe(
+        `INSERT INTO "UploadedFile" ("id", "accountId", "path", "size", "updatedAt")
+         VALUES ($1, $2, $3, $4, now())`,
+        crypto.randomUUID(),
+        accountId,
+        ref,
+        size,
+    );
+}
+
+async function attachmentReservationSize(
+    client: AttachmentSqlClient,
+    accountId: string,
+    ref: string,
+): Promise<number | null> {
+    const rows = await client.$queryRawUnsafe<Array<{ size: number | null }>>(
+        `SELECT "size" FROM "UploadedFile" WHERE "accountId" = $1 AND "path" = $2 LIMIT 1`,
+        accountId,
+        ref,
+    );
+    return rows[0]?.size ?? null;
+}
 
 /**
  * Build the base URL the client should use to reach our local-mode upload /
@@ -47,27 +87,6 @@ function resolveBaseUrl(request: { headers: Record<string, string | string[] | u
     return `http://localhost:${process.env.PORT || '3005'}`;
 }
 
-function checkUploadRate(userId: string): boolean {
-    const now = Date.now();
-    const entry = uploadRateState.get(userId);
-    if (!entry || now - entry.windowStart >= UPLOAD_RATE_WINDOW_MS) {
-        uploadRateState.set(userId, { count: 1, windowStart: now });
-        // Opportunistic prune so the map cannot grow forever from one-shot
-        // users churning through the system.
-        if (uploadRateState.size > 10_000) {
-            for (const [k, v] of uploadRateState) {
-                if (now - v.windowStart >= UPLOAD_RATE_WINDOW_MS) {
-                    uploadRateState.delete(k);
-                }
-            }
-        }
-        return true;
-    }
-    if (entry.count >= UPLOAD_RATE_MAX) return false;
-    entry.count++;
-    return true;
-}
-
 export function attachmentRoutes(app: Fastify) {
 
     /**
@@ -81,7 +100,7 @@ export function attachmentRoutes(app: Fastify) {
             }),
             body: z.object({
                 filename: z.string(),
-                size: z.number().max(MAX_FILE_SIZE),
+                size: z.number().int().min(1).max(MAX_FILE_SIZE),
             }),
             response: {
                 200: z.object({
@@ -101,7 +120,7 @@ export function attachmentRoutes(app: Fastify) {
         const { size } = request.body;
         const userId = request.userId;
 
-        if (!checkUploadRate(userId)) {
+        if (!(await allowAuthRequest(`attachment-upload:${userId}`, { max: UPLOAD_RATE_MAX, windowMs: UPLOAD_RATE_WINDOW_MS }))) {
             return reply.code(429).send({ error: 'Too many upload requests. Try again in a minute.' });
         }
 
@@ -122,6 +141,17 @@ export function attachmentRoutes(app: Fastify) {
         const attachmentFile = `${attachmentId}.enc`;
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
 
+        const maxAccountBytes = configuredResourceLimit('MAX_ATTACHMENT_BYTES_PER_ACCOUNT', 100 * 1024 * 1024);
+        const reserved = await inTx(async (tx) => {
+            await lockAccountResources(tx, userId);
+            const used = await reservedAttachmentBytes(tx, userId);
+            if (!withinByteQuota(used, size, maxAccountBytes)) return false;
+            await reserveAttachment(tx, userId, ref, size);
+            return true;
+        });
+        if (!reserved) return reply.code(413).send({ error: 'Account attachment storage limit reached' });
+
+        try {
         if (isLocalStorage()) {
             // Local mode: client uploads to our own PUT endpoint (the server
             // enforces the size limit by inspecting the request body before
@@ -138,7 +168,7 @@ export function attachmentRoutes(app: Fastify) {
             policy.setBucket(s3bucket);
             policy.setKey(ref);
             policy.setExpires(new Date(Date.now() + PRESIGNED_TTL_SECONDS * 1000));
-            policy.setContentLengthRange(0, MAX_FILE_SIZE);
+            policy.setContentLengthRange(1, size);
             const { postURL, formData } = await s3client.presignedPostPolicy(policy);
             return reply.send({
                 ref,
@@ -146,6 +176,10 @@ export function attachmentRoutes(app: Fastify) {
                 method: 'POST',
                 formFields: formData as Record<string, string>,
             });
+        }
+        } catch (error) {
+            await db.uploadedFile.deleteMany({ where: { accountId: userId, path: ref } });
+            throw error;
         }
     });
 
@@ -194,6 +228,10 @@ export function attachmentRoutes(app: Fastify) {
         }
 
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
+        const reservationSize = await attachmentReservationSize(db, userId, ref);
+        if (reservationSize === null || body.length > reservationSize) {
+            return reply.code(413).send({ error: 'Upload exceeds its reserved size' });
+        }
         await putLocalFile(ref, body);
 
         return reply.send({ ok: true });

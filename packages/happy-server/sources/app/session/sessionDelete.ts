@@ -74,6 +74,10 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
             deletedCount: deletedAccessKeys.count
         }, `Deleted ${deletedAccessKeys.count} access keys`);
 
+        await tx.uploadedFile.deleteMany({
+            where: { accountId: ctx.uid, path: { startsWith: `sessions/${sessionId}/attachments/` } }
+        });
+
         // 4. Delete the session itself
         await tx.session.delete({
             where: { id: sessionId }

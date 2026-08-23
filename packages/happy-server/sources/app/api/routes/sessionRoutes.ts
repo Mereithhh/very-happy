@@ -7,7 +7,8 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
-import { configuredResourceLimit } from '../resourceLimits';
+import { configuredResourceLimit, lockAccountResources } from '../resourceLimits';
+import { inTx } from '@/storage/inTx';
 
 export function sessionRoutes(app: Fastify) {
 
@@ -258,39 +259,47 @@ export function sessionRoutes(app: Fastify) {
         } else {
 
             const maxSessions = configuredResourceLimit('MAX_SESSIONS_PER_ACCOUNT', 500);
-            if (maxSessions > 0 && await db.session.count({ where: { accountId: userId } }) >= maxSessions) {
+            const reserved = await inTx(async (tx) => {
+                await lockAccountResources(tx, userId);
+                const concurrentExisting = await tx.session.findFirst({ where: { accountId: userId, tag } });
+                if (concurrentExisting) return { session: concurrentExisting, updSeq: null };
+                if (maxSessions > 0 && await tx.session.count({ where: { accountId: userId } }) >= maxSessions) {
+                    return null;
+                }
+                const updSeq = await allocateUserSeq(userId, tx);
+                log({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
+                const session = await tx.session.create({
+                    data: {
+                        accountId: userId,
+                        tag,
+                        metadata,
+                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
+                    }
+                });
+                return { session, updSeq };
+            });
+            if (!reserved) {
                 return reply.code(429).send({ error: 'limit-reached', resource: 'sessions', limit: maxSessions });
             }
-
-            // Resolve seq
-            const updSeq = await allocateUserSeq(userId);
-
-            // Create session
-            log({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
-            const session = await db.session.create({
-                data: {
-                    accountId: userId,
-                    tag: tag,
-                    metadata: metadata,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
-                }
-            });
+            const { session, updSeq } = reserved;
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
 
             // Emit new session update
-            const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
-            log({
-                module: 'session-create',
-                userId,
-                sessionId: session.id,
-                updateType: 'new-session',
-                updatePayload: JSON.stringify(updatePayload)
-            }, `Emitting new-session update to user-scoped connections`);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
+            if (updSeq !== null) {
+                const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
+                log({
+                    module: 'session-create',
+                    userId,
+                    sessionId: session.id,
+                    updateType: 'new-session',
+                    updatePayload: JSON.stringify(updatePayload)
+                }, `Emitting new-session update to user-scoped connections`);
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: updatePayload,
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
+            }
 
             return reply.send({
                 session: {

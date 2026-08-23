@@ -2,11 +2,14 @@ import { getMetricsLabelsFromSocket, sessionAliveEventsCounter, websocketEventsC
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
-import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
+import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
+import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { configuredResourceLimit, lockAccountResources, withinMessageQuota } from '../resourceLimits';
+import { inTx } from '@/storage/inTx';
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
     const labels = getMetricsLabelsFromSocket(socket);
@@ -190,6 +193,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 websocketEventsCounter.inc({ event_type: 'message', ...labels });
                 const { sid, message, localId } = data;
 
+                if (typeof sid !== 'string' || typeof message !== 'string') return;
+                const messagesPerMinute = configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE', 600);
+                if (messagesPerMinute > 0 && !(await allowAuthRequest(
+                    `session-message:${userId}`,
+                    { max: messagesPerMinute, windowMs: 60_000 },
+                ))) {
+                    log({ module: 'websocket', level: 'warn', userId }, 'Dropping message: account rate limit reached');
+                    return;
+                }
+
                 log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
 
                 // Resolve session
@@ -206,10 +219,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     t: 'encrypted',
                     c: message
                 };
-
-                // Resolve seq
-                const updSeq = await allocateUserSeq(userId);
-                const msgSeq = await allocateSessionSeq(sid);
+                const messageBytes = Buffer.byteLength(JSON.stringify(msgContent), 'utf8');
 
                 // Check if message already exists
                 if (useLocalId) {
@@ -221,15 +231,42 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     }
                 }
 
-                // Create message
-                const msg = await db.sessionMessage.create({
-                    data: {
-                        sessionId: sid,
-                        seq: msgSeq,
-                        content: msgContent,
-                        localId: useLocalId
+                const maxMessages = configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT', 100_000);
+                const maxStoredBytes = configuredResourceLimit('MAX_MESSAGE_BYTES_PER_ACCOUNT', 512 * 1024 * 1024);
+                const reserved = await inTx(async (tx) => {
+                    await lockAccountResources(tx, userId);
+                    const totals = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
+                        `SELECT COUNT(*)::bigint AS "count",
+                                COALESCE(SUM(octet_length(sm."content"::text)), 0)::bigint AS "bytes"
+                         FROM "SessionMessage" sm
+                         JOIN "Session" s ON s."id" = sm."sessionId"
+                         WHERE s."accountId" = $1`,
+                        userId,
+                    );
+                    const count = Number(totals[0]?.count ?? 0);
+                    const bytes = Number(totals[0]?.bytes ?? 0);
+                    if (!withinMessageQuota(
+                        { count, bytes },
+                        messageBytes,
+                        { messages: maxMessages, bytes: maxStoredBytes },
+                    )) return null;
+                    if (useLocalId) {
+                        const duplicate = await tx.sessionMessage.findFirst({ where: { sessionId: sid, localId: useLocalId } });
+                        if (duplicate) return { msg: duplicate, updSeq: null };
                     }
+                    const updSeq = await allocateUserSeq(userId, tx);
+                    const [msgSeq] = await allocateSessionSeqBatch(sid, 1, tx);
+                    const msg = await tx.sessionMessage.create({
+                        data: { sessionId: sid, seq: msgSeq, content: msgContent, localId: useLocalId }
+                    });
+                    return { msg, updSeq };
                 });
+                if (!reserved) {
+                    log({ module: 'websocket', level: 'warn', userId }, 'Dropping message: account storage limit reached');
+                    return;
+                }
+                if (reserved.updSeq === null) return;
+                const { msg, updSeq } = reserved;
 
                 // Emit new message update to relevant clients
                 const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));

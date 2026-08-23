@@ -7,9 +7,11 @@ describe('remote log authorization', () => {
     });
 
     it('accepts only an exact bearer token', () => {
-        expect(remoteLogTokenMatches('Bearer test-token', 'test-token')).toBe(true);
-        expect(remoteLogTokenMatches('Bearer test-tokeN', 'test-token')).toBe(false);
-        expect(remoteLogTokenMatches('Basic test-token', 'test-token')).toBe(false);
-        expect(remoteLogTokenMatches(undefined, 'test-token')).toBe(false);
+        const token = 'x'.repeat(32);
+        expect(remoteLogTokenMatches(`Bearer ${token}`, token)).toBe(true);
+        expect(remoteLogTokenMatches(`Bearer ${'y'.repeat(32)}`, token)).toBe(false);
+        expect(remoteLogTokenMatches(`Basic ${token}`, token)).toBe(false);
+        expect(remoteLogTokenMatches(undefined, token)).toBe(false);
+        expect(remoteLogTokenMatches('Bearer short', 'short')).toBe(false);
     });
 });

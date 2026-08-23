@@ -228,7 +228,7 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        rpcHandler(userId, socket, io, connection.connectionType === 'machine-scoped');
+        rpcHandler(userId, socket, io, connection.connectionType === 'machine-scoped' ? connection.machineId : undefined);
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);

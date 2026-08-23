@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import { timingSafeEqual } from 'node:crypto';
 import { Fastify } from '../types';
+import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+
+const MIN_REMOTE_LOG_TOKEN_BYTES = 32;
 
 export function remoteLogTokenMatches(authorization: unknown, expectedToken: string | undefined): boolean {
-    if (typeof authorization !== 'string' || !expectedToken) return false;
+    if (typeof authorization !== 'string' || !expectedToken || Buffer.byteLength(expectedToken) < MIN_REMOTE_LOG_TOKEN_BYTES) return false;
     const prefix = 'Bearer ';
     if (!authorization.startsWith(prefix)) return false;
     const actual = Buffer.from(authorization.slice(prefix.length));
@@ -15,21 +18,27 @@ export function devRoutes(app: Fastify) {
 
     // Combined logging endpoint (only when explicitly enabled)
     const remoteLogToken = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN;
+    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && remoteLogToken && Buffer.byteLength(remoteLogToken) < MIN_REMOTE_LOG_TOKEN_BYTES) {
+        throw new Error(`Remote debugging token must contain at least ${MIN_REMOTE_LOG_TOKEN_BYTES} bytes`);
+    }
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && remoteLogToken) {
         app.post('/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
             preHandler: async (request, reply) => {
                 if (!remoteLogTokenMatches(request.headers.authorization, remoteLogToken)) {
                     return reply.code(401).send({ error: 'Unauthorized' });
                 }
+                if (!(await allowAuthRequest(`remote-log:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+                    return reply.code(429).send({ error: 'Too many requests' });
+                }
             },
             schema: {
                 body: z.object({
-                    timestamp: z.string(),
-                    level: z.string(),
-                    message: z.string(),
+                    timestamp: z.string().max(128),
+                    level: z.string().max(32),
+                    message: z.string().max(64 * 1024),
                     messageRawObject: z.any().optional(),
                     source: z.enum(['mobile', 'cli']),
-                    platform: z.string().optional()
+                    platform: z.string().max(128).optional()
                 })
             }
         }, async (request, reply) => {

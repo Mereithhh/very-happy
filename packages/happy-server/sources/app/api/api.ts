@@ -137,9 +137,6 @@ export async function startApi(opts: StartApiOptions = {}) {
         });
         if (injectScript) {
             app.addHook('onSend', async (request, reply, payload) => {
-                const url = request.raw.url || '';
-                const isIndex = url === '/' || url === '/index.html' || url.startsWith('/?');
-                if (!isIndex) return payload;
                 const contentType = reply.getHeader('content-type');
                 if (typeof contentType !== 'string' || !contentType.includes('text/html')) return payload;
                 let html: string;

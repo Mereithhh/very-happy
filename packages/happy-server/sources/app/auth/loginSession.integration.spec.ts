@@ -61,4 +61,13 @@ describe('persistent Cloud login session', () => {
         (auth as any).tokenCache.clear();
         await expect(auth.verifyToken(issued.token)).resolves.toBeNull();
     });
+
+    it('writes a signup login session through the caller transaction and propagates failure', async () => {
+        const before = sessions.size;
+        const transactionWriter = { $executeRawUnsafe: vi.fn(async () => { throw new Error('transaction aborted'); }) };
+        await expect(auth.createLoginToken('account-rollback', transactionWriter as any, { cache: false }))
+            .rejects.toThrow('transaction aborted');
+        expect(transactionWriter.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(sessions.size).toBe(before);
+    });
 });

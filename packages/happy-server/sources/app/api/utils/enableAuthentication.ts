@@ -6,7 +6,7 @@ export function enableAuthentication(app: Fastify) {
     app.decorate('authenticate', async function (request: any, reply: any) {
         try {
             const authHeader = request.headers.authorization;
-            log({ module: 'auth-decorator' }, authCheckLog(request.url, !!authHeader));
+            log({ module: 'auth-decorator' }, authCheckLog(safeRequestPath(request.url), !!authHeader));
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
                 log({ module: 'auth-decorator' }, `Auth failed - missing or invalid header`);
                 return reply.code(401).send({ error: 'Missing authorization header' });
@@ -29,4 +29,12 @@ export function enableAuthentication(app: Fastify) {
 
 export function authCheckLog(path: string, hasAuthorization: boolean): string {
     return `Auth check - path: ${path}, has authorization: ${hasAuthorization}`;
+}
+
+export function safeRequestPath(url: string): string {
+    try {
+        return new URL(url, 'http://localhost').pathname;
+    } catch {
+        return '/invalid-url';
+    }
 }

@@ -23,7 +23,7 @@ describe('RPC socket boundaries', () => {
 
     it('rejects registration from user/session sockets', () => {
         const { socket, handlers } = fakeSocket();
-        rpcHandler('account-1', socket, {} as any, false);
+        rpcHandler('account-1', socket, {} as any);
         handlers.get('rpc-register')!({ method: 'machine:spawn' });
         expect(socket.join).not.toHaveBeenCalled();
         expect(socket.emit).toHaveBeenCalledWith('rpc-error', {
@@ -33,15 +33,25 @@ describe('RPC socket boundaries', () => {
 
     it('allows registration from machine sockets only', () => {
         const { socket, handlers } = fakeSocket();
-        rpcHandler('account-1', socket, {} as any, true);
-        handlers.get('rpc-register')!({ method: 'machine:spawn' });
-        expect(socket.join).toHaveBeenCalledWith('rpc:account-1:machine:spawn');
+        rpcHandler('account-1', socket, {} as any, 'machine-1');
+        handlers.get('rpc-register')!({ method: 'machine-1:spawn' });
+        expect(socket.join).toHaveBeenCalledWith('rpc:account-1:machine-1:spawn');
+    });
+
+    it('rejects a machine daemon registering another machine scope', () => {
+        const { socket, handlers } = fakeSocket();
+        rpcHandler('account-1', socket, {} as any, 'machine-1');
+        handlers.get('rpc-register')!({ method: 'machine-2:spawn' });
+        expect(socket.join).not.toHaveBeenCalled();
+        expect(socket.emit).toHaveBeenCalledWith('rpc-error', {
+            type: 'register', error: 'Method is outside authenticated machine scope',
+        });
     });
 
     it('rejects oversized RPC payloads before routing', async () => {
         process.env.RPC_MAX_PAYLOAD_BYTES = '64';
         const { socket, handlers } = fakeSocket();
-        rpcHandler('account-1', socket, {} as any, false);
+        rpcHandler('account-1', socket, {} as any);
         const callback = vi.fn();
         await handlers.get('rpc-call')!({ method: 'm', params: { value: 'x'.repeat(100) } }, callback);
         expect(callback).toHaveBeenCalledWith({ ok: false, error: 'RPC payload too large' });

@@ -8,6 +8,29 @@ import { githubConnect } from "@/app/github/githubConnect";
 import { githubDisconnect } from "@/app/github/githubDisconnect";
 import { Context } from "@/context";
 import { db } from "@/storage/db";
+import { safeRequestPath } from '../utils/enableAuthentication';
+
+export function resolveGithubWebappUrl(): string | null {
+    const raw = process.env.PUBLIC_WEBAPP_URL || process.env.HAPPY_WEB_URL;
+    if (!raw) return null;
+    try {
+        const url = new URL(raw);
+        const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+        if (url.protocol !== 'https:' && !localHttp) return null;
+        if (url.username || url.password || url.search || url.hash) return null;
+        url.pathname = '/';
+        return url.toString();
+    } catch {
+        return null;
+    }
+}
+
+function githubRedirect(base: string, result: { connected?: boolean; error?: string }): string {
+    const url = new URL(base);
+    if (result.connected) url.searchParams.set('github', 'connected');
+    if (result.error) url.searchParams.set('error', result.error);
+    return url.toString();
+}
 
 export function connectRoutes(app: Fastify) {
 
@@ -37,7 +60,7 @@ export function connectRoutes(app: Fastify) {
                 (req as any).rawBody = bodyStr;
                 done(null, json);
             } catch (err: any) {
-                log({ module: 'content-parser', level: 'error' }, safeJsonParseError(req.method, req.url || '', body));
+                log({ module: 'content-parser', level: 'error' }, safeJsonParseError(req.method, safeRequestPath(req.url || ''), body));
                 err.statusCode = 400;
                 done(err, undefined);
             }
@@ -64,7 +87,7 @@ export function connectRoutes(app: Fastify) {
         const clientId = process.env.GITHUB_CLIENT_ID;
         const redirectUri = process.env.GITHUB_REDIRECT_URL;
 
-        if (!clientId || !redirectUri) {
+        if (!clientId || !redirectUri || !resolveGithubWebappUrl()) {
             return reply.code(400).send({ error: 'GitHub OAuth not configured' });
         }
 
@@ -94,12 +117,14 @@ export function connectRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const { code, state } = request.query;
+        const webappUrl = resolveGithubWebappUrl();
+        if (!webappUrl) return reply.code(503).send({ error: 'GitHub OAuth not configured' });
 
         // Verify the state token to get userId
         const tokenData = await auth.verifyGithubToken(state);
         if (!tokenData) {
             log({ module: 'github-oauth' }, 'Invalid or expired state token');
-            return reply.redirect('https://app.happy.engineering?error=invalid_state');
+            return reply.redirect(githubRedirect(webappUrl, { error: 'invalid_state' }));
         }
 
         const userId = tokenData.userId;
@@ -107,7 +132,7 @@ export function connectRoutes(app: Fastify) {
         const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-            return reply.redirect('https://app.happy.engineering?error=server_config');
+            return reply.redirect(githubRedirect(webappUrl, { error: 'server_config' }));
         }
 
         try {
@@ -132,7 +157,7 @@ export function connectRoutes(app: Fastify) {
             };
 
             if (tokenResponseData.error) {
-                return reply.redirect(`https://app.happy.engineering?error=${encodeURIComponent(tokenResponseData.error)}`);
+                return reply.redirect(githubRedirect(webappUrl, { error: tokenResponseData.error }));
             }
 
             const accessToken = tokenResponseData.access_token;
@@ -148,7 +173,7 @@ export function connectRoutes(app: Fastify) {
             const userData = await userResponse.json() as GitHubProfile;
 
             if (!userResponse.ok) {
-                return reply.redirect('https://app.happy.engineering?error=github_user_fetch_failed');
+                return reply.redirect(githubRedirect(webappUrl, { error: 'github_user_fetch_failed' }));
             }
 
             // Use the new githubConnect operation
@@ -156,11 +181,11 @@ export function connectRoutes(app: Fastify) {
             await githubConnect(ctx, userData, accessToken!);
 
             // Redirect to app with success
-            return reply.redirect(`https://app.happy.engineering?github=connected&user=${encodeURIComponent(userData.login)}`);
+            return reply.redirect(githubRedirect(webappUrl, { connected: true }));
 
         } catch (error) {
             log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
-            return reply.redirect('https://app.happy.engineering?error=server_error');
+            return reply.redirect(githubRedirect(webappUrl, { error: 'server_error' }));
         }
     });
 

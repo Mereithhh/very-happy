@@ -1,6 +1,7 @@
 import { log } from "@/utils/log";
 import { Fastify } from "../types";
 import { FastifyError } from "fastify";
+import { safeRequestPath } from './enableAuthentication';
 
 export interface EnableErrorHandlersOptions {
     skipNotFoundHandler?: boolean;
@@ -10,7 +11,7 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     // Global error handler
     app.setErrorHandler(async (error: FastifyError, request, reply) => {
         const method = request.method;
-        const url = request.url;
+        const url = safeRequestPath(request.url);
         const ip = request.ip || 'unknown';
 
         // Log the error with comprehensive context
@@ -51,15 +52,16 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     // its own (e.g. SPA fallback for self-hosted webapp).
     if (!options.skipNotFoundHandler) {
         app.setNotFoundHandler((request, reply) => {
-            log({ module: '404-handler' }, notFoundLog(request.method, request.url, !!request.headers.authorization));
-            reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
+            const path = safeRequestPath(request.url);
+            log({ module: '404-handler' }, notFoundLog(request.method, path, !!request.headers.authorization));
+            reply.code(404).send({ error: 'Not found', path, method: request.method });
         });
     }
 
     // Error hook for additional logging
     app.addHook('onError', async (request, reply, error) => {
         const method = request.method;
-        const url = request.url;
+        const url = safeRequestPath(request.url);
         const duration = (Date.now() - (request.startTime || Date.now())) / 1000;
 
         log({
@@ -86,7 +88,7 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
                     module: 'fastify-serialization-error',
                     level: 'error',
                     method: request.method,
-                    url: request.url,
+                    url: safeRequestPath(request.url),
                     stack: error.stack
                 }, `Response serialization error: ${error.message}`);
                 throw error;

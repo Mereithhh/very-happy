@@ -125,7 +125,7 @@ async function waitForRoomMember(io: Server, room: string, maxMs: number, metric
     }
 }
 
-export function rpcHandler(userId: string, socket: Socket, io: Server, allowRegistration = false) {
+export function rpcHandler(userId: string, socket: Socket, io: Server, registrationScope?: string) {
 
     const parsedPayloadLimit = Number.parseInt(process.env.RPC_MAX_PAYLOAD_BYTES || '', 10);
     const parsedCallLimit = Number.parseInt(process.env.RPC_MAX_CALLS_PER_MINUTE || '', 10);
@@ -137,12 +137,16 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, allowRegi
     socket.on('rpc-register', (data: any) => {
         try {
             const { method } = data ?? {};
-            if (!allowRegistration) {
+            if (!registrationScope) {
                 socket.emit('rpc-error', { type: 'register', error: 'Machine-scoped connection required' });
                 return;
             }
             if (!method || typeof method !== 'string' || method.length > 128) {
                 socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
+                return;
+            }
+            if (!method.startsWith(`${registrationScope}:`)) {
+                socket.emit('rpc-error', { type: 'register', error: 'Method is outside authenticated machine scope' });
                 return;
             }
             socket.join(rpcRoom(userId, method));
@@ -156,12 +160,16 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, allowRegi
     socket.on('rpc-unregister', (data: any) => {
         try {
             const { method } = data ?? {};
-            if (!allowRegistration) {
+            if (!registrationScope) {
                 socket.emit('rpc-error', { type: 'unregister', error: 'Machine-scoped connection required' });
                 return;
             }
             if (!method || typeof method !== 'string' || method.length > 128) {
                 socket.emit('rpc-error', { type: 'unregister', error: 'Invalid method name' });
+                return;
+            }
+            if (!method.startsWith(`${registrationScope}:`)) {
+                socket.emit('rpc-error', { type: 'unregister', error: 'Method is outside authenticated machine scope' });
                 return;
             }
             socket.leave(rpcRoom(userId, method));

@@ -51,7 +51,10 @@ const {
         return row;
     });
 
-    const dbMock = { machine: { findFirst: machineFindFirst, create: machineCreate, count: vi.fn(async () => state.created.length) } };
+    const dbMock = {
+        $queryRawUnsafe: vi.fn(async (_sql: string, accountId: string) => [{ id: accountId }]),
+        machine: { findFirst: machineFindFirst, create: machineCreate, count: vi.fn(async () => state.created.length) },
+    };
     const allocateUserSeqMock = vi.fn(async () => ++state.seq);
 
     return { state, dbMock, resetState, allocateUserSeqMock, emitUpdateSpy, emitEphemeralSpy };
@@ -66,7 +69,7 @@ vi.mock("@/app/events/eventRouter", async (importOriginal) => {
 });
 vi.mock("@/storage/db", () => ({ db: dbMock }));
 vi.mock("@/storage/seq", () => ({ allocateUserSeq: allocateUserSeqMock }));
-vi.mock("@/storage/inTx", () => ({ inTx: async (fn: any) => fn({}), afterTx: (_tx: any, cb: () => void) => cb() }));
+vi.mock("@/storage/inTx", () => ({ inTx: async (fn: any) => fn(dbMock), afterTx: (_tx: any, cb: () => void) => cb() }));
 vi.mock("@/utils/log", () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
 import { machinesRoutes } from "./machinesRoutes";

@@ -315,6 +315,7 @@ model UploadedFile {
     height    Int?
     thumbhash String?
     reuseKey  String?
+    size      Int?
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 

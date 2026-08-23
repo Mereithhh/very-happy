@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
+import { promisify } from 'util';
 import tweetnacl from 'tweetnacl';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
@@ -20,28 +21,30 @@ import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity'
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
-function hashPassword(password: string): string {
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16);
-    const derived = scryptSync(password, salt, 64);
+    const derived = await scryptAsync(password, salt, 64) as Buffer;
     return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`;
 }
 
-function verifyPassword(password: string, stored: string): boolean {
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
     try {
         const parts = stored.split('$');
         if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
         if (!/^[a-f0-9]{32}$/i.test(parts[1]) || !/^[a-f0-9]{128}$/i.test(parts[2])) return false;
         const salt = Buffer.from(parts[1], 'hex');
         const expected = Buffer.from(parts[2], 'hex');
-        const derived = scryptSync(password, salt, expected.length);
+        const derived = await scryptAsync(password, salt, expected.length) as Buffer;
         return expected.length === derived.length && timingSafeEqual(expected, derived);
     } catch {
         return false;
     }
 }
 
-function burnMissingPasswordLookup(password: string): void {
-    scryptSync(password, Buffer.alloc(16), 64);
+async function burnMissingPasswordLookup(password: string): Promise<void> {
+    await scryptAsync(password, Buffer.alloc(16), 64);
 }
 
 const loginResponse = z.object({
@@ -60,6 +63,26 @@ export function accountPublicKeyFromSecret(secret: string): string | null {
     if (!seed) return null;
     const keyPair = tweetnacl.sign.keyPair.fromSeed(Uint8Array.from(seed));
     return Buffer.from(keyPair.publicKey).toString('hex');
+}
+
+export function passwordLoginRateBuckets(ip: string, username: string): Array<{ key: string; max: number }> {
+    const ipKey = hashPairingValue(ip).slice(0, 32);
+    const usernameKey = hashPairingValue(username).slice(0, 32);
+    return [
+        { key: `password-login:ip:${ipKey}`, max: 20 },
+        { key: `password-login:user:${usernameKey}`, max: 10 },
+        { key: 'password-login:global', max: 200 },
+    ];
+}
+
+export async function consumeRateBucketsSequentially(
+    buckets: ReadonlyArray<{ key: string; max: number }>,
+    consume: typeof allowAuthRequest = allowAuthRequest,
+): Promise<boolean> {
+    for (const bucket of buckets) {
+        if (!(await consume(bucket.key, { max: bucket.max, windowMs: 60_000 }))) return false;
+    }
+    return true;
 }
 
 export function accountAuthRoutes(app: Fastify) {
@@ -130,18 +153,18 @@ export function accountAuthRoutes(app: Fastify) {
         if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
         const ipKey = hashPairingValue(request.ip).slice(0, 32);
         const usernameKey = hashPairingValue(username).slice(0, 32);
-        const allowed = await Promise.all([
-            allowAuthRequest(`password-signup:ip:${ipKey}`, { max: 5, windowMs: 60_000 }),
-            allowAuthRequest(`password-signup:user:${usernameKey}`, { max: 3, windowMs: 60_000 }),
-            allowAuthRequest('password-signup:global', { max: 50, windowMs: 60_000 }),
+        const allowed = await consumeRateBucketsSequentially([
+            { key: `password-signup:ip:${ipKey}`, max: 5 },
+            { key: `password-signup:user:${usernameKey}`, max: 3 },
+            { key: 'password-signup:global', max: 50 },
         ]);
-        if (allowed.some((value) => !value)) {
+        if (!allowed) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
 
         try {
-            const passwordHash = hashPassword(request.body.password);
-            const result = await withSignupGate<{ accountId: string }>({
+            const passwordHash = await hashPassword(request.body.password);
+            const result = await withSignupGate<{ accountId: string; session: { token: string; expiresAt: Date } }>({
                 provider: 'password',
                 inviteCode: request.body.inviteCode,
                 findExisting: async (tx) => {
@@ -172,11 +195,12 @@ export function accountAuthRoutes(app: Fastify) {
                         account.id,
                         username,
                     );
-                    return { accountId: account.id };
+                    const session = await auth.createLoginToken(account.id, tx, { cache: false });
+                    return { accountId: account.id, session };
                 },
                 onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
             });
-            const session = await auth.createLoginToken(result.value.accountId);
+            const session = result.value.session;
             return reply.send({
                 token: session.token,
                 secret: request.body.secret,
@@ -227,7 +251,7 @@ export function accountAuthRoutes(app: Fastify) {
                 return reply.code(409).send({ error: 'username_taken' as const });
             }
 
-            const passwordHash = hashPassword(request.body.password);
+            const passwordHash = await hashPassword(request.body.password);
             await db.$transaction(async (tx) => {
                 const secretEnc = await upsertAccountSecret(tx, accountId, request.body.secret);
                 await tx.$executeRawUnsafe('DELETE FROM "AccountCredential" WHERE "accountId" = $1', accountId);
@@ -280,7 +304,8 @@ export function accountAuthRoutes(app: Fastify) {
         },
     }, async (request, reply) => {
         const username = request.body.username;
-        if (!(await allowAuthRequest(`password:${request.ip}:${username}`, { max: 10, windowMs: 60_000 }))) {
+        const allowed = await consumeRateBucketsSequentially(passwordLoginRateBuckets(request.ip, username));
+        if (!allowed) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
         const rows = await db.$queryRawUnsafe<Array<{ accountId: string; passwordHash: string; secretEnc: string }>>(
@@ -288,8 +313,10 @@ export function accountAuthRoutes(app: Fastify) {
             username,
         );
         const row = rows[0];
-        if (!row) burnMissingPasswordLookup(request.body.password);
-        if (!row || !verifyPassword(request.body.password, row.passwordHash)) {
+        const passwordMatches = row
+            ? await verifyPassword(request.body.password, row.passwordHash)
+            : (await burnMissingPasswordLookup(request.body.password), false);
+        if (!row || !passwordMatches) {
             return reply.code(401).send({ error: 'invalid_credentials' as const });
         }
 
@@ -349,7 +376,7 @@ export function accountAuthRoutes(app: Fastify) {
             return reply.code(401).send({ error: 'invalid_google_credential' as const });
         }
 
-        type GoogleAccount = { accountId: string; secret: string };
+        type GoogleAccount = { accountId: string; secret: string; session: { token: string; expiresAt: Date } };
         let result: { value: GoogleAccount; created: boolean };
         try {
             result = await withSignupGate<GoogleAccount>({
@@ -364,7 +391,8 @@ export function accountAuthRoutes(app: Fastify) {
                     if (!identities[0]) return null;
                     const secret = await loadAccountSecret(tx, identities[0].accountId);
                     if (!secret) throw new Error('google-account-secret-missing');
-                    return { accountId: identities[0].accountId, secret };
+                    const session = await auth.createLoginToken(identities[0].accountId, tx, { cache: false });
+                    return { accountId: identities[0].accountId, secret, session };
                 },
                 create: async (tx) => {
                     const secretBytes = randomBytes(32);
@@ -388,7 +416,8 @@ export function accountAuthRoutes(app: Fastify) {
                         claims.email ?? null,
                         JSON.stringify({ name: claims.name, picture: claims.picture, emailVerified: claims.emailVerified }),
                     );
-                    return { accountId: account.id, secret };
+                    const session = await auth.createLoginToken(account.id, tx, { cache: false });
+                    return { accountId: account.id, secret, session };
                 },
                 onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
             });
@@ -399,7 +428,7 @@ export function accountAuthRoutes(app: Fastify) {
             throw error;
         }
 
-        const session = await auth.createLoginToken(result.value.accountId);
+        const session = result.value.session;
         return reply.send({
             token: session.token,
             secret: result.value.secret,

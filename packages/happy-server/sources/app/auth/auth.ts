@@ -2,6 +2,7 @@ import * as privacyKit from "privacy-kit";
 import { createHash, randomUUID } from "crypto";
 import { log } from "@/utils/log";
 import { db } from "@/storage/db";
+import type { Prisma } from "@prisma/client";
 
 /** Cache entries expire after 24 hours */
 const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -67,7 +68,7 @@ class AuthModule {
         log({ module: 'auth' }, 'Auth module initialized');
     }
     
-    async createToken(userId: string, extras?: any): Promise<string> {
+    private async generateToken(userId: string, extras?: any): Promise<string> {
         if (!this.tokens) {
             throw new Error('Auth module not initialized');
         }
@@ -77,24 +78,35 @@ class AuthModule {
             payload.extras = extras;
         }
         
-        const token = await this.tokens.generator.new(payload);
-        
-        // Cache the token immediately
+        return this.tokens.generator.new(payload);
+    }
+
+    private cacheToken(token: string, userId: string, extras?: any): void {
         this.tokenCache.set(token, {
             userId,
             extras,
             cachedAt: Date.now()
         });
+    }
+
+    async createToken(userId: string, extras?: any): Promise<string> {
+        const token = await this.generateToken(userId, extras);
+        this.cacheToken(token, userId, extras);
         
         return token;
     }
 
-    async createLoginToken(userId: string): Promise<{ token: string; expiresAt: Date }> {
+    async createLoginToken(
+        userId: string,
+        client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'> = db,
+        options: { cache?: boolean } = {},
+    ): Promise<{ token: string; expiresAt: Date }> {
         const loginSessionId = randomUUID();
         const ttlDays = parseLoginSessionTtlDays(process.env.LOGIN_SESSION_TTL_DAYS);
         const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
-        const token = await this.createToken(userId, { loginSessionId });
-        await db.$executeRawUnsafe(
+        const extras = { loginSessionId };
+        const token = await this.generateToken(userId, extras);
+        await client.$executeRawUnsafe(
             `INSERT INTO "AccountLoginSession"
              ("id", "accountId", "tokenHash", "expiresAt", "lastUsedAt", "createdAt")
              VALUES ($1, $2, $3, $4, now(), now())`,
@@ -103,6 +115,7 @@ class AuthModule {
             hashLoginToken(token),
             expiresAt,
         );
+        if (options.cache !== false) this.cacheToken(token, userId, extras);
         return { token, expiresAt };
     }
     

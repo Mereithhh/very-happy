@@ -7,8 +7,8 @@ function resolveClient(tx?: SeqClient) {
     return tx ?? db;
 }
 
-export async function allocateUserSeq(accountId: string) {
-    const user = await db.account.update({
+export async function allocateUserSeq(accountId: string, tx?: SeqClient) {
+    const user = await resolveClient(tx).account.update({
         where: { id: accountId },
         select: { seq: true },
         data: { seq: { increment: 1 } }
@@ -17,8 +17,8 @@ export async function allocateUserSeq(accountId: string) {
     return seq;
 }
 
-export async function allocateSessionSeq(sessionId: string) {
-    const session = await db.session.update({
+export async function allocateSessionSeq(sessionId: string, tx?: SeqClient) {
+    const session = await resolveClient(tx).session.update({
         where: { id: sessionId },
         select: { seq: true },
         data: { seq: { increment: 1 } }

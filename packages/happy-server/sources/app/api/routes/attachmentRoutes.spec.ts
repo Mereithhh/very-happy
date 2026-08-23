@@ -14,6 +14,7 @@ const {
     const state = {
         sessions: [] as Array<{ id: string; accountId: string }>,
         uploads: new Map<string, Buffer>(),
+        reservations: new Map<string, { accountId: string; size: number }>(),
         useLocalStorage: true,
         s3PostUrl: "https://s3.test/post-url",
         s3GetUrl: "https://s3.test/get-url",
@@ -23,6 +24,7 @@ const {
     const resetState = () => {
         state.sessions = [];
         state.uploads = new Map();
+        state.reservations = new Map();
         state.useLocalStorage = true;
         state.s3PolicyMaxLength = 0;
     };
@@ -37,7 +39,31 @@ const {
         ) ?? null;
     });
 
-    const dbMock = { session: { findFirst: sessionFindFirst } };
+    const dbMock = {
+        $queryRawUnsafe: vi.fn(async (sql: string, accountId: string, filePath?: string) => {
+            if (sql.includes('SUM("size")')) {
+                const used = [...state.reservations.values()]
+                    .filter((r) => r.accountId === accountId)
+                    .reduce((n, r) => n + r.size, 0);
+                return [{ used: BigInt(used) }];
+            }
+            if (sql.includes('SELECT "size"')) {
+                const row = filePath ? state.reservations.get(filePath) : undefined;
+                return row?.accountId === accountId ? [{ size: row.size }] : [];
+            }
+            return [{ id: accountId }];
+        }),
+        $executeRawUnsafe: vi.fn(async (sql: string, _id: string, accountId: string, filePath: string, size: number) => {
+            if (sql.includes('INSERT INTO "UploadedFile"')) {
+                state.reservations.set(filePath, { accountId, size });
+            }
+            return 1;
+        }),
+        session: { findFirst: sessionFindFirst },
+        uploadedFile: {
+            deleteMany: vi.fn(async ({ where }: any) => { state.reservations.delete(where.path); return { count: 1 }; }),
+        },
+    };
 
     const filesMock = {
         s3client: {
@@ -88,6 +114,8 @@ const {
 });
 
 vi.mock("@/storage/db", () => ({ db: dbMock }));
+vi.mock("@/storage/inTx", () => ({ inTx: async (fn: any) => fn(dbMock) }));
+vi.mock("@/app/auth/authRateLimiter", () => ({ allowAuthRequest: vi.fn(async () => true) }));
 vi.mock("@/storage/files", () => filesMock);
 vi.mock("fs", async () => {
     const actual = await vi.importActual<typeof import("fs")>("fs");
@@ -165,7 +193,7 @@ describe("attachmentRoutes — request-upload", () => {
         expect(body.method).toBe("POST");
         expect(body.uploadUrl).toBe("https://s3.test/post-url");
         expect(body.formFields).toBeDefined();
-        expect(state.s3PolicyMaxLength).toBe(10 * 1024 * 1024);
+        expect(state.s3PolicyMaxLength).toBe(1024);
     });
 
     it("returns 404 when the requesting user is not the session owner", async () => {
@@ -215,6 +243,7 @@ describe("attachmentRoutes — PUT (local-mode upload)", () => {
 
     it("accepts the encrypted blob from the session owner and stores it under the session prefix", async () => {
         seedSession("s1", "u1");
+        state.reservations.set("sessions/s1/attachments/abc.enc", { accountId: "u1", size: 1024 });
         state.useLocalStorage = true;
         app = await createApp();
 
