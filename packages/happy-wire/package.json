@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "description": "Shared message wire types and Zod schemas for Happy clients and services",
   "author": "Kirill Dubovitskiy",
+  "contributors": [
+    "Mereith (very-happy fork)"
+  ],
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-wire",
-  "bugs": "https://github.com/slopus/happy/issues",
-  "repository": "slopus/happy",
+  "homepage": "https://github.com/Mereithhh/very-happy/tree/main/packages/happy-wire",
+  "bugs": "https://github.com/Mereithhh/very-happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mereithhh/very-happy.git",
+    "directory": "packages/happy-wire"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
@@ -33,7 +40,7 @@
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
-    "release": "npx --no-install release-it"
+    "release": "pnpm exec release-it"
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2.2",

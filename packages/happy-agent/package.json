@@ -3,11 +3,18 @@
   "version": "0.1.0",
   "description": "CLI client for controlling Happy Coder agents remotely",
   "author": "Kirill Dubovitskiy",
+  "contributors": [
+    "Mereith (very-happy fork)"
+  ],
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy/tree/main/packages/happy-agent",
-  "bugs": "https://github.com/slopus/happy/issues",
-  "repository": "slopus/happy",
+  "homepage": "https://github.com/Mereithhh/very-happy/tree/main/packages/happy-agent",
+  "bugs": "https://github.com/Mereithhh/very-happy/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mereithhh/very-happy.git",
+    "directory": "packages/happy-agent"
+  },
   "bin": {
     "happy-agent": "./bin/happy-agent.mjs"
   },
@@ -38,7 +45,7 @@
     "test:integration": "$npm_execpath run build && vitest run --config vitest.integration.config.ts",
     "dev": "tsx src/index.ts",
     "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
-    "release": "npx --no-install release-it"
+    "release": "pnpm exec release-it"
   },
   "dependencies": {
     "@slopus/happy-wire": "workspace:*",

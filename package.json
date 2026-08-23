@@ -1,6 +1,14 @@
 {
-    "name": "monorepo",
+    "name": "very-happy-monorepo",
     "private": true,
+    "description": "Self-hostable web console, relay server, and CLI for coding agents",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Mereithhh/very-happy.git"
+    },
+    "homepage": "https://github.com/Mereithhh/very-happy#readme",
+    "bugs": "https://github.com/Mereithhh/very-happy/issues",
     "scripts": {
         "cli": "pnpm --filter very-happy-cli cli",
         "release": "node ./scripts/release.cjs",
