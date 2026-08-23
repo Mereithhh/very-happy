@@ -22,6 +22,7 @@ import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
+import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).

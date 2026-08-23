@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { CyberMark } from '@/ui';
+import { CyberMark } from '@/ui/CyberMark';
 import './publicLegal.css';
 
 const UPDATED = 'August 24, 2026';
@@ -50,7 +50,7 @@ function LegalPage({ title, children }: { title: string; children: React.ReactNo
   return (
     <main className="legal-page">
       <article className="legal-card">
-        <Link className="legal-brand" to="/login"><CyberMark size={32} /><span>very happy</span></Link>
+        <a className="legal-brand" href={`${import.meta.env.BASE_URL}login`}><CyberMark size={32} /><span>very happy</span></a>
         <h1>{title}</h1>
         {children}
         <footer><Link to="/privacy">Privacy</Link><span>·</span><Link to="/terms">Terms</Link><span>·</span><a href="https://github.com/Mereithhh/very-happy">Source</a></footer>

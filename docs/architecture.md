@@ -9,7 +9,9 @@ Web V2 / PWA
 trusted happy-server ── database / files / optional Redis
     │ account-scoped realtime + RPC
     ▼
-very-happy CLI daemon ── PTY / Claude Agent SDK ── Claude Code
+very-happy CLI daemon ── agent runners / PTY ──┬─ Claude Code
+                                               ├─ Codex
+                                               └─ Gemini / compatible ACP agent
 ```
 
 - `packages/happy-web-v2`: production React/Vite browser client.
@@ -32,9 +34,16 @@ the browser, then the daemon establishes an account-scoped socket.
 ## Session path
 
 The browser creates or opens a session through the relay. The relay routes RPC
-to the account's machine daemon. The daemon starts Claude Code through the Agent
-SDK or attaches a local/terminal-backed path, and sends normalized updates back
-through the relay. The server persists sync state needed by other browsers.
+to the account's machine daemon. The daemon selects a provider runner: the
+Claude Agent SDK path, the Codex integration, an ACP backend such as Gemini, a
+generic ACP command, or a local terminal-backed path. Each runner maps its native
+events into the shared session protocol and sends normalized updates back through
+the relay. The server persists sync state needed by other browsers.
+
+Provider parity is not implied. Claude currently has the richest structured and
+terminal-mirroring experience; Codex and ACP providers reuse the common workspace
+but expose only the capabilities their runners normalize. See
+[session-protocol.md](session-protocol.md) for the provider envelope contract.
 
 ## Encryption boundary
 

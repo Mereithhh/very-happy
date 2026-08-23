@@ -1525,8 +1525,8 @@ export const en = {
 
     welcome: {
         // Main welcome screen for unauthenticated users
-        title: 'Claude Code, from any browser',
-        subtitle: 'Sign in with your password to pick up your coding sessions on any device — no app store, no QR code.',
+        title: 'Work anywhere. Keep the thread.',
+        subtitle: 'Sign in to reach your agents, terminals, files, and tasks from any device — no app store required.',
         createAccount: 'Create account',
         linkOrRestoreAccount: 'Link or restore account',
         loginWithMobileApp: 'Login with mobile app',

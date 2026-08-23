@@ -21,7 +21,7 @@ export default defineConfig({
       manifest: {
         name: 'Very Happy',
         short_name: 'Very Happy',
-        description: 'Claude Code, from any browser.',
+        description: 'An open agent workspace for your machines. Work anywhere and keep the thread.',
         theme_color: '#06080c',
         background_color: '#06080c',
         display: 'standalone',
@@ -35,14 +35,30 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Visible half of Web Push: generateSW emits a precache-only worker,
+        // Visible half of Web Push: generateSW emits the worker,
         // so push/notificationclick handlers live in public/push-sw.js and
         // are imported here. Without this, pushes arrive and show NOTHING.
         importScripts: ['push-sw.js'],
         // SPA: serve index.html for navigations; never precache the API/socket.
         navigateFallback: `${BASE}index.html`,
         navigateFallbackDenylist: [/^\/v1\//, /^\/health/],
-        globPatterns: ['**/*.{js,css,html,woff,woff2,png,svg}'],
+        // Keep install tiny. Pre-caching every authenticated chunk made a fresh
+        // anonymous landing silently download ~6 MB in the background. Hashed
+        // assets are cached on first use instead, so public visitors fetch only
+        // the public shell and authenticated users build an offline cache as
+        // they use the app.
+        globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/.*\.(?:js|css|woff|woff2)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'very-happy-assets-v1',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 180, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+        ],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         cleanupOutdatedCaches: true,
       },

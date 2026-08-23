@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
 
 describe('public documentation registry', () => {
@@ -21,5 +22,34 @@ describe('public documentation registry', () => {
   it('resolves known slugs and rejects unknown routes', () => {
     expect(getPublicDoc('quickstart')?.label).toBe('Quick start');
     expect(getPublicDoc('missing')).toBeUndefined();
+  });
+
+  it('keeps public positioning honest about shipped agents and roadmap', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
+    expect(landing).toContain('Work anywhere.');
+    expect(landing).toContain('Claude Code');
+    expect(landing).toContain('Codex');
+    expect(landing).toContain('ACP agents');
+    expect(landing).toContain('Pi + provider gateway');
+    expect(landing).toContain('ROADMAP');
+    expect(landing).toContain('currently requires Claude Code');
+    expect(landing).toContain('not end-to-end encrypted');
+    expect(html).toContain('Work anywhere. Keep the thread.');
+    expect(html).not.toContain('Claude Code, from any browser.');
+  });
+
+  it('keeps anonymous public routes outside the authenticated app bundle', () => {
+    const main = readFileSync(new URL('../../main.tsx', import.meta.url), 'utf8');
+    const publicRoot = readFileSync(new URL('../../app/PublicRoot.tsx', import.meta.url), 'utf8');
+    const vite = readFileSync(new URL('../../../vite.config.ts', import.meta.url), 'utf8');
+    expect(main).not.toMatch(/^import .*AppRoot/m);
+    expect(main).toContain("import('./app/PublicRoot.tsx')");
+    expect(main).toContain("import('./app/AppRoot.tsx')");
+    expect(main).toContain('auth_credentials');
+    expect(publicRoot).not.toContain('AuthProvider');
+    expect(publicRoot).not.toContain('@/sync/');
+    expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js']");
+    expect(vite).toContain("handler: 'CacheFirst'");
   });
 });

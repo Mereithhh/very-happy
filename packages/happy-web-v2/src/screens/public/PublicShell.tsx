@@ -1,5 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
-import { CyberMark } from '@/ui';
+import { CyberMark } from '@/ui/CyberMark';
 import { GITHUB_URL } from './publicContent';
 import './public.css';
 
@@ -13,8 +13,8 @@ export function PublicHeader() {
       <nav aria-label="Primary navigation">
         <NavLink to="/docs">Docs</NavLink>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-        <Link to="/login">Sign in</Link>
-        <Link className="pub-nav-cta" to="/signup">Get started</Link>
+        <a href={`${import.meta.env.BASE_URL}login`}>Sign in</a>
+        <a className="pub-nav-cta" href={`${import.meta.env.BASE_URL}signup`}>Get started</a>
       </nav>
     </header></>
   );

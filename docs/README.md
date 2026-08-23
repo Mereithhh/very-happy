@@ -24,6 +24,7 @@ Start with the path that matches what you are doing.
 
 - [Development](development.md)
 - [Contributing](CONTRIBUTING.md)
+- [Product roadmap and north star](roadmap.md)
 - [Wire protocol](protocol.md), [API](api.md), [realtime/RPC](realtime-sync-and-rpc.md),
   and [encryption formats](encryption.md)
 - [Shared wire schemas](happy-wire.md)

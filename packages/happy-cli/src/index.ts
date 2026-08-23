@@ -766,8 +766,9 @@ ${chalk.bold('Examples:')}
   very-happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
   very-happy acp gemini         Start Gemini via generic ACP runner
-  very-happy acp -- opencode --acp
-                           Start a custom ACP command
+  very-happy acp opencode   Start OpenCode through its built-in ACP adapter
+  very-happy acp -- your-agent --acp
+                           Start a custom ACP command that accepts --acp
   very-happy acp opencode --verbose
                            Print raw ACP backend/envelope events
   very-happy auth login --force Authenticate

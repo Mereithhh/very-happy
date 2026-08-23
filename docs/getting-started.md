@@ -5,8 +5,12 @@ This path uses the maintainer-operated Cloud. For your own relay, first follow
 
 ## 1. Prepare the machine
 
-Install Node.js 20+ and Claude Code. Confirm `claude --version` works in the same
-shell account that will run Very Happy.
+Install Node.js 20+ and the CLI for each agent you plan to run. Claude Code is
+the default and deepest integration; Codex is also supported, while Gemini and
+custom compatible commands run through ACP. The optional coordinating
+meta-agent currently requires Claude Code, and voice entry also requires a
+configured compatible voice service. Confirm each chosen command works in the
+same shell account that will run Very Happy.
 
 ```bash
 npm install -g very-happy-cli
@@ -44,12 +48,19 @@ very-happy auth login
 ## 4. Start the daemon and first session
 
 ```bash
-very-happy
+very-happy daemon start
+
+cd /path/to/project
+very-happy          # Claude Code
+very-happy codex    # Codex
+very-happy gemini   # Gemini through ACP
 ```
 
 Return to the Web UI. When the machine is online, choose **New session**, select
-the machine and project directory, and start. `very-happy daemon status` and
-[Troubleshooting](troubleshooting.md) cover a machine that stays offline.
+the machine, project directory, and agent, then start. A generic compatible
+command can also run with `very-happy acp -- your-agent --acp`. Use
+`very-happy daemon status` and [Troubleshooting](troubleshooting.md) if the
+machine stays offline.
 
 ## Next
 

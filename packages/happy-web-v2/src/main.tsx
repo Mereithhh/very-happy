@@ -2,17 +2,13 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import '@fontsource/ibm-plex-sans/400.css';
-import '@fontsource/ibm-plex-sans/500.css';
 import '@fontsource/ibm-plex-sans/600.css';
-import '@fontsource/ibm-plex-sans/700.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/ibm-plex-mono/600.css';
 
 import './styles/tokens.css';
 import './styles/base.css';
 
-import { AppRoot } from './app/AppRoot.tsx';
 import { installStaleBundleReload } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 
@@ -36,15 +32,31 @@ installStaleBundleReload();
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 
-createRoot(root).render(
-  <StrictMode>
-    <AppRoot />
-  </StrictMode>,
-);
+const PUBLIC_PATH = /^\/(?:$|docs(?:\/|$)|privacy\/?$|terms\/?$)/;
+const hasStoredCredentials = Boolean(localStorage.getItem('auth_credentials'));
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const routePath = basePath && window.location.pathname.startsWith(basePath)
+  ? window.location.pathname.slice(basePath.length) || '/'
+  : window.location.pathname;
+const usePublicRoot = !hasStoredCredentials && PUBLIC_PATH.test(routePath);
 
-// remove the pre-paint splash once React has mounted
-const splash = document.getElementById('vh-splash');
-if (splash) {
-  splash.style.opacity = '0';
-  setTimeout(() => splash.remove(), 300);
-}
+// This boundary is the anonymous performance contract: public visitors never
+// import account crypto, sync, realtime, or the authenticated application shell.
+const rootModule = usePublicRoot
+  ? import('./app/PublicRoot.tsx').then((m) => m.PublicRoot)
+  : import('./app/AppRoot.tsx').then((m) => m.AppRoot);
+
+void rootModule.then((RootComponent) => {
+  createRoot(root).render(
+    <StrictMode>
+      <RootComponent />
+    </StrictMode>,
+  );
+
+  // Remove the pre-paint splash once the selected React root has mounted.
+  const splash = document.getElementById('vh-splash');
+  if (splash) {
+    splash.style.opacity = '0';
+    setTimeout(() => splash.remove(), 300);
+  }
+});

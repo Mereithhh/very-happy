@@ -34,8 +34,8 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy.' },
       ] },
       { heading: '4. Start work', blocks: [
-        { type: 'code', code: 'cd /path/to/your/project\nvery-happy' },
-        { type: 'p', text: 'Running very-happy in a project folder creates a Claude Code session. You can also select the connected machine and open Terminal from Web. Run very-happy daemon status if the machine remains offline.' },
+        { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # Claude Code\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP\nvery-happy acp -- your-agent --acp' },
+        { type: 'p', text: 'Start Claude Code, Codex, or a compatible ACP agent from the CLI. You can also select the connected machine and create a session or terminal from Web. Run very-happy daemon status if the machine remains offline.' },
       ] },
     ],
   },
@@ -52,7 +52,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Operate', blocks: [
         { type: 'code', code: 'very-happy daemon status\nvery-happy daemon start\nvery-happy daemon stop' },
-        { type: 'p', text: 'The daemon must be online for new remote terminal actions. Claude Code must be installed separately and resolvable on the daemon PATH.' },
+        { type: 'p', text: 'The daemon must be online for remote actions. Install each agent CLI you intend to run and keep it resolvable on the daemon PATH. Claude Code is the default; Codex, Gemini via ACP, and custom ACP commands have explicit CLI modes.' },
       ] },
     ],
   },

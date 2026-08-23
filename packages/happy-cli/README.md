@@ -1,8 +1,8 @@
 # very-happy-cli
 
-A self-hosted remote client for **Claude Code (CLI)**. Run a Claude Code
-session on your machine and drive it remotely from a web browser through a relay
-server.
+The machine-side CLI and daemon for **Very Happy**, an open agent workspace.
+Run Claude Code, Codex, Gemini through ACP, compatible custom ACP commands, or a
+real terminal on your machine and continue from a responsive Web UI.
 
 `very-happy-cli` is a deeply modified fork of [slopus/happy](https://github.com/slopus/happy)
 (MIT). It keeps the compatible session wire model while adding the Very Happy
@@ -16,21 +16,26 @@ compatible Happy server (including your own) via `HAPPY_SERVER_URL`.
 ## ⚠️ Security notice — read this before using
 
 This is **not end-to-end encrypted against the server**. It is a
-**server-trusted relay**: the server operator can decrypt and read the contents
-of your sessions (prompts, code, tool output). The default server
+**server-trusted relay**: the server operator can decrypt and read session
+contents (prompts, code, tool output), recover account secrets, and exercise the
+remote-control capabilities exposed by an online daemon. The default server
 `happy.mereith.com` is operated by the maintainer of this fork.
 
-**Only use a server you trust with your session contents.** If you don't trust
-the operator of `happy.mereith.com`, run your own Happy server and set
-`HAPPY_SERVER_URL` to it, or don't use this tool.
+**Only use a server you trust with your session contents and connected
+machines.** If you don't trust the operator of `happy.mereith.com`, run your own
+Very Happy server and set `HAPPY_SERVER_URL` to it, or don't use this tool.
 
 ## Prerequisites
 
 1. **Node.js >= 20**.
-2. **Claude Code CLI installed and logged in.** `very-happy` drives the real
-   `claude` binary, so `claude` must be on your `PATH` and already authenticated.
-   Install it from Anthropic's instructions and run `claude` once to log in
-   before using `very-happy`.
+2. **The CLI for each agent you plan to use**, installed, authenticated, and on
+   the daemon's `PATH`. Bare `very-happy` uses Claude Code; `very-happy codex`
+   uses Codex; `very-happy gemini` uses Gemini through ACP; `very-happy acp -- …`
+   starts a compatible custom ACP command.
+
+The optional text/voice coordinating meta-agent currently requires Claude Code.
+Voice also requires the selected server or user settings to provide a compatible
+voice service.
 
 ## Install
 
@@ -47,10 +52,15 @@ darwin/linux/win32 on x64/arm64.
 ```bash
 very-happy            # start a Claude Code session and connect to the relay
 very-happy claude     # same, explicit
+very-happy codex      # start a Codex session
+very-happy gemini     # start Gemini through ACP
+very-happy acp opencode  # start OpenCode through its built-in ACP adapter
 ```
 
-This starts a Claude Code session locally and registers it with the relay so you
-can control it from the web client at your server's origin.
+Each mode starts its agent locally and registers a normalized session with the
+relay so you can continue it from the web client at your server's origin.
+Provider capabilities are not identical: Claude currently has the richest
+structured and terminal-mirroring experience.
 
 ### Pointing at a different server
 
