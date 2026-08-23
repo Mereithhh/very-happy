@@ -1,6 +1,6 @@
 # Open-source release candidate
 
-> 状态：Final
+> 状态：Shipped candidate（公开切换仍受历史净化阻塞，见 `OPEN_SOURCE_READINESS.md`）
 > 日期：2026-08-24 ｜ 关联 backlog：B-155 ｜ 出处：Owner 开源候选专项
 
 ## 背景
