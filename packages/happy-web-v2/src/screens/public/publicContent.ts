@@ -122,7 +122,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'note', text: 'An IM message is untrusted input, not authorization. Use explicit sender and room allowlists, fixed directory mappings, least-privilege daemon users, and confirmation for destructive actions.' },
       ] },
       { heading: 'A real deployment pattern', blocks: [
-        { type: 'p', text: 'Our private Tanka adapter accepts a scoped [happy] task, invokes very-happy spawn on an allowed machine, forwards completion or permission events to the originating conversation, and maps a quote-reply back through very-happy send. Tanka is one example; the contract is not tied to it.' },
+        { type: 'p', text: 'Our private Tanka adapter accepts an authorized [happy] task, invokes very-happy spawn through a local daemon in a fixed allowed workspace, forwards completion or permission events to a configured notification conversation, and maps an authorized quote-reply there back through very-happy send. Tanka is one example; the contract is not tied to it.' },
         { type: 'note', text: 'The chat adapter and the Claude-powered Web/voice coordinator are separate extension paths today. The adapter does not require or pass through the coordinator. Execution follows the configured agent permission mode.' },
         { type: 'code', code: 'very-happy spawn --dir /allowed/project --prompt-file request.txt --json\nvery-happy send --session <id> --prompt-file reply.txt --json' },
         { type: 'link', href: `${GITHUB_URL}/blob/main/docs/channels.md`, label: 'Read the webhook, spawn, send, MCP, and todo-provider contracts ↗' },

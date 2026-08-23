@@ -124,9 +124,9 @@ operational overhead as possible.** See the [roadmap](docs/roadmap.md).
 Very Happy is most useful as the execution surface inside a personal agent
 system, not as a closed system of its own. In our private Tanka integration, a
 scoped `[happy]` message starts a session on an allowed machine, completion and
-permission events return to the originating conversation, and a quote-reply is
-sent back into the same session. The adapter owns sender policy and machine /
-directory allowlists; Very Happy stays IM-agnostic through generic webhooks plus
+permission events return to a configured notification conversation, and an
+authorized quote-reply there is sent back into the same session. The adapter
+owns sender policy and fixed workspace mappings; Very Happy stays IM-agnostic through generic webhooks plus
 [`very-happy spawn` and `very-happy send`](docs/channels.md).
 
 That same boundary works for a scheduler, issue tracker, home-grown gateway, or

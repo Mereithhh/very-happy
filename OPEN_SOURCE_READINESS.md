@@ -21,8 +21,12 @@ public until the procedure below is complete.
   roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
   for the optional meta-agent.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
-  architecture/data flow, security/privacy, accounts/quotas, upgrades/rollback,
-  troubleshooting, and contributing.
+  architecture/data flow, integrations/automation, security/privacy, accounts/quotas,
+  upgrades/rollback, troubleshooting, and contributing.
+- A real but scrubbed Tanka field note demonstrates the generic IM-to-session loop without
+  publishing private infrastructure. It explicitly separates that adapter from the shipped
+  Claude coordinator and future provider gateway. The public adapter example now fails closed
+  on sender/chat authorization, fixed workspace mappings, deduplication, and rate limits.
 - Password and Google signup/login, capacity states, network/authentication errors,
   terminal approval, first-machine recovery, and CLI commands form one coherent journey.
 - Public language consistently says **server-trusted, not end-to-end encrypted**. It does
@@ -53,10 +57,10 @@ candidate source, the required gates passed:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 97 test files / 1,401 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 97 test files / 1,402 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Quality Gates run `32663412917` passed for workspace source `208dc4a5`; setup/action pins resolve to real immutable commits |
+| CI | Quality Gates run `32664272105` passed for workspace source `3a244dda`; setup/action pins resolve to real immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -78,7 +82,7 @@ runtime/version smoke without relying on workspace packages.
 
 Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
-- production landing and all 11 documentation chapters render with no horizontal overflow;
+- production landing and all 12 documentation chapters render with no horizontal overflow;
 - skip-to-content is the first focus target and navigation/regions have accessible names;
 - the landing prominently discloses “server-trusted, not end-to-end encrypted”;
 - quick start includes install, login approval, daemon start, and first-session commands;
@@ -109,6 +113,11 @@ UX/docs pass closed misleading roadmap/status, meta-agent prerequisite, hero-con
 trust, and OpenCode-command findings. The browser pass closed the anonymous 1.12 MB / poor-LCP
 finding and rechecked landing→docs/signup/login routing. Both ended at P0=0, P1=0.
 
+The IM field-note follow-up received another bounded review. It found and fixed a missing
+sender/chat authorization gate in the public adapter pseudocode, removed internal deployment
+details from the historical Tanka spec, and verified that IM dispatch and the Claude
+coordinator are described as separate shipped paths. The regression test pins those boundaries.
+
 ## Release and production state
 
 - Server then Web were deployed from release source SHA `e4ece34b7305135d19a12a1c8cf5caf8876d7e0f`
@@ -121,6 +130,10 @@ finding and rechecked landing→docs/signup/login routing. Both ended at P0=0, P
   `208dc4a5f403e0cdf8fb5898f50e568cf27bc6c1` by run `32663553280`. Production health,
   JavaScript MIME, 390px layout, trust disclosure, public transfer size, and precache scope
   were verified afterward.
+- The scrubbed agent-system field note and Integrations chapter were Web-only deployed from
+  SHA `3a244dda4d5109181c81c0817536dcda61bc112d` by run `32664386530` after exact-SHA
+  Quality Gates run `32664272105` passed. Production health, JavaScript MIME, anonymous
+  bundle isolation, 390px no-overflow layout, and both integration safety notes were verified.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was

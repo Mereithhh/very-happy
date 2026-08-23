@@ -34,6 +34,10 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('FIELD NOTE // IM TO WORKING CHANGE');
     expect(landing).toContain('private Tanka deployment');
+    expect(landing).toContain('configured notification conversation');
+    expect(landing).toContain('authorize sender · map fixed workspace');
+    expect(landing).not.toContain('choose machine · repo · agent');
+    expect(landing).not.toContain('back to the same conversation');
     expect(landing).toContain('ROADMAP');
     expect(landing).toContain('currently requires Claude Code');
     expect(landing).toContain('not end-to-end encrypted');
