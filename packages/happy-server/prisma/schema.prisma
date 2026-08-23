@@ -141,6 +141,7 @@ model TerminalAuthRequest {
     id                String   @id @default(cuid())
     publicKey         String   @unique
     supportsV2        Boolean  @default(false)
+    claimSecretHash   String?
     response          String?
     responseAccountId String?
     responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
@@ -151,6 +152,7 @@ model TerminalAuthRequest {
 model AccountAuthRequest {
     id                String   @id @default(cuid())
     publicKey         String   @unique
+    claimSecretHash   String?
     response          String?
     responseAccountId String?
     responseAccount   Account? @relation(fields: [responseAccountId], references: [id])

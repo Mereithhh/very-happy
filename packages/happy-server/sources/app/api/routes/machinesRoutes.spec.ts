@@ -51,7 +51,7 @@ const {
         return row;
     });
 
-    const dbMock = { machine: { findFirst: machineFindFirst, create: machineCreate } };
+    const dbMock = { machine: { findFirst: machineFindFirst, create: machineCreate, count: vi.fn(async () => state.created.length) } };
     const allocateUserSeqMock = vi.fn(async () => ++state.seq);
 
     return { state, dbMock, resetState, allocateUserSeqMock, emitUpdateSpy, emitEphemeralSpy };

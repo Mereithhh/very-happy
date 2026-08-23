@@ -27,27 +27,34 @@ export async function doAuth(): Promise<Credentials | null> {
     // Generating ephemeral key
     const secret = new Uint8Array(randomBytes(32));
     const keypair = tweetnacl.box.keyPair.fromSecretKey(secret);
+    const claimSecret = encodeBase64Url(randomBytes(32));
 
     // Create a new authentication request
     try {
         if (process.env.DEBUG) {
             console.log(`[AUTH DEBUG] Sending auth request to: ${configuration.serverUrl}/v1/auth/request`);
-            console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
         }
-        await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
+        const createResponse = await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
             publicKey: encodeBase64(keypair.publicKey),
-            supportsV2: true
+            supportsV2: true,
+            supportsClaimSecret: true,
+            claimSecret,
+            pairingAction: 'create',
         }, {
             headers: {
                 'X-Happy-Client': `cli/${configuration.currentCliVersion}`
             }
         });
+        if (createResponse.data?.protocolVersion !== 3 || createResponse.data?.claimSecretRequired !== true) {
+            console.log('This server does not support secure CLI pairing. Upgrade the server before signing in.');
+            return null;
+        }
         if (process.env.DEBUG) {
             console.log(`[AUTH DEBUG] Auth request sent successfully`);
         }
-    } catch (error) {
+    } catch {
         if (process.env.DEBUG) {
-            console.log(`[AUTH DEBUG] Failed to send auth request:`, error);
+            console.log('[AUTH DEBUG] Failed to send secure auth request');
         }
         console.log('Failed to create authentication request, please try again later.');
         return null;
@@ -55,9 +62,9 @@ export async function doAuth(): Promise<Credentials | null> {
 
     // Handle authentication based on selected method
     if (authMethod === 'mobile') {
-        return await doMobileAuth(keypair);
+        return await doMobileAuth(keypair, claimSecret);
     } else {
-        return await doWebAuth(keypair);
+        return await doWebAuth(keypair, claimSecret);
     }
 }
 
@@ -94,7 +101,7 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
 /**
  * Handle mobile authentication flow
  */
-async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function doMobileAuth(keypair: tweetnacl.BoxKeyPair, claimSecret: string): Promise<Credentials | null> {
     console.clear();
     console.log('\nMobile Authentication\n');
     console.log('Scan this QR code with your Happy mobile app:\n');
@@ -106,13 +113,13 @@ async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials 
     console.log(authUrl);
     console.log('');
 
-    return await waitForAuthentication(keypair);
+    return await waitForAuthentication(keypair, claimSecret);
 }
 
 /**
  * Handle web authentication flow
  */
-async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function doWebAuth(keypair: tweetnacl.BoxKeyPair, claimSecret: string): Promise<Credentials | null> {
     console.clear();
     console.log('\nWeb Authentication\n');
 
@@ -136,13 +143,13 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | n
     console.log(webUrl);
     console.log('');
 
-    return await waitForAuthentication(keypair);
+    return await waitForAuthentication(keypair, claimSecret);
 }
 
 /**
  * Wait for authentication to complete and return credentials
  */
-async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair, claimSecret: string): Promise<Credentials | null> {
     process.stdout.write('Waiting for authentication');
     let dots = 0;
     let cancelled = false;
@@ -161,12 +168,19 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
             try {
                 const response = await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
                     publicKey: encodeBase64(keypair.publicKey),
-                    supportsV2: true
+                    supportsV2: true,
+                    supportsClaimSecret: true,
+                    claimSecret,
+                    pairingAction: 'poll',
                 }, {
                     headers: {
                         'X-Happy-Client': `cli/${configuration.currentCliVersion}`
                     }
                 });
+                if (response.data?.protocolVersion !== 3 || response.data?.claimSecretRequired !== true) {
+                    console.log('\n\nThis server does not support secure CLI pairing. Upgrade the server before signing in.');
+                    return null;
+                }
                 if (response.data.state === 'authorized') {
                     let token = response.data.token as string;
                     let r = decodeBase64(response.data.response);

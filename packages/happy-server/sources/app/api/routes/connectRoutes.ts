@@ -37,7 +37,7 @@ export function connectRoutes(app: Fastify) {
                 (req as any).rawBody = bodyStr;
                 done(null, json);
             } catch (err: any) {
-                log({ module: 'content-parser', level: 'error' }, `JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`);
+                log({ module: 'content-parser', level: 'error' }, safeJsonParseError(req.method, req.url || '', body));
                 err.statusCode = 400;
                 done(err, undefined);
             }
@@ -98,7 +98,7 @@ export function connectRoutes(app: Fastify) {
         // Verify the state token to get userId
         const tokenData = await auth.verifyGithubToken(state);
         if (!tokenData) {
-            log({ module: 'github-oauth' }, `Invalid state token: ${state}`);
+            log({ module: 'github-oauth' }, 'Invalid or expired state token');
             return reply.redirect('https://app.happy.engineering?error=invalid_state');
         }
 
@@ -331,4 +331,8 @@ export function connectRoutes(app: Fastify) {
         return reply.send({ tokens: decrypted });
     });
 
+}
+
+export function safeJsonParseError(method: string, url: string, body: unknown): string {
+    return `JSON parse error on ${method} ${url}; body bytes: ${Buffer.byteLength(String(body))}`;
 }

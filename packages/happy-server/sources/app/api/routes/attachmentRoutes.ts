@@ -154,6 +154,7 @@ export function attachmentRoutes(app: Fastify) {
      * Only active when S3 is not configured.
      */
     app.put('/v1/sessions/:sessionId/attachments/:attachmentFile', {
+        bodyLimit: MAX_FILE_SIZE,
         schema: {
             params: z.object({
                 sessionId: z.string(),

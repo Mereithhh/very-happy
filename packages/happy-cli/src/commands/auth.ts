@@ -35,20 +35,19 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
 
 function showAuthHelp(): void {
   console.log(`
-${chalk.bold('happy auth')} - Authentication management
+${chalk.bold('very-happy auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
-  happy auth login [--force]    Authenticate with Happy
-  happy auth logout             Remove authentication and machine data
-  happy auth status             Show authentication status
-  happy auth help               Show this help message
+  very-happy auth login [--force]    Authenticate with Very Happy
+  very-happy auth logout             Remove authentication and machine data
+  very-happy auth status             Show authentication status
+  very-happy auth help               Show this help message
 
 ${chalk.bold('Options:')}
   --force    Clear credentials, machine ID, and stop daemon before re-auth
 
-${chalk.gray('PS: Your master secret never leaves your mobile/web device. Each CLI machine')}
-${chalk.gray('receives only a derived key for per-machine encryption, so backup codes')}
-${chalk.gray('cannot be displayed from the CLI.')}
+${chalk.gray('Security: the configured Very Happy server is a trusted relay and account service.')}
+${chalk.gray('It can access account credentials and relayed metadata; use a server you trust.')}
 `);
 }
 
@@ -93,7 +92,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.green('✓ Already authenticated'));
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
       console.log(chalk.gray(`  Host: ${os.hostname()}`));
-      console.log(chalk.gray(`  Use 'happy auth login --force' to re-authenticate`));
+      console.log(chalk.gray(`  Use 'very-happy auth login --force' to re-authenticate`));
       return;
     } else if (existingCreds && !settings?.machineId) {
       console.log(chalk.yellow('⚠️  Credentials exist but machine ID is missing'));
@@ -154,7 +153,7 @@ async function handleAuthLogout(): Promise<void> {
       }
 
       console.log(chalk.green('✓ Successfully logged out'));
-      console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
+      console.log(chalk.gray('  Run "very-happy auth login" to authenticate again'));
     } catch (error) {
       throw new Error(`Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -171,7 +170,7 @@ async function handleAuthStatus(): Promise<void> {
 
   if (!credentials) {
     console.log(chalk.red('✗ Not authenticated'));
-    console.log(chalk.gray('  Run "happy auth login" to authenticate'));
+    console.log(chalk.gray('  Run "very-happy auth login" to authenticate'));
     return;
   }
 
@@ -188,7 +187,7 @@ async function handleAuthStatus(): Promise<void> {
     console.log(chalk.gray(`  Host: ${os.hostname()}`));
   } else {
     console.log(chalk.yellow('⚠️  Machine not registered'));
-    console.log(chalk.gray('  Run "happy auth login --force" to fix this'));
+    console.log(chalk.gray('  Run "very-happy auth login --force" to fix this'));
   }
 
   // Data location

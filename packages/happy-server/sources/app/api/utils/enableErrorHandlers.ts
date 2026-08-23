@@ -11,7 +11,6 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     app.setErrorHandler(async (error: FastifyError, request, reply) => {
         const method = request.method;
         const url = request.url;
-        const userAgent = request.headers['user-agent'] || 'unknown';
         const ip = request.ip || 'unknown';
 
         // Log the error with comprehensive context
@@ -20,7 +19,8 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
             level: 'error',
             method,
             url,
-            userAgent,
+            hasAuthorization: !!request.headers.authorization,
+            contentType: request.headers['content-type'],
             ip,
             statusCode: error.statusCode || 500,
             errorCode: error.code,
@@ -51,7 +51,7 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
     // its own (e.g. SPA fallback for self-hosted webapp).
     if (!options.skipNotFoundHandler) {
         app.setNotFoundHandler((request, reply) => {
-            log({ module: '404-handler' }, `404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`);
+            log({ module: '404-handler' }, notFoundLog(request.method, request.url, !!request.headers.authorization));
             reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
         });
     }
@@ -93,4 +93,8 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
             }
         };
     });
+}
+
+export function notFoundLog(method: string, path: string, hasAuthorization: boolean): string {
+    return `404 - Method: ${method}, Path: ${path}, has authorization: ${hasAuthorization}`;
 }

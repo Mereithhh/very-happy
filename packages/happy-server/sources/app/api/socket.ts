@@ -17,8 +17,15 @@ import { clipboardHandler } from "./socket/clipboardHandler";
 import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
+
+function configuredLimit(name: string, fallback: number): number {
+    const parsed = Number.parseInt(process.env[name] || '', 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
 
 export function startSocket(app: Fastify) {
+    const socketPayloadLimit = configuredLimit('SOCKET_MAX_PAYLOAD_BYTES', 1024 * 1024);
     const io = new Server(app.server, {
         cors: {
             origin: "*",
@@ -34,6 +41,7 @@ export function startSocket(app: Fastify) {
         upgradeTimeout: 10000,
         connectTimeout: 20000,
         serveClient: false, // Don't serve the client files
+        maxHttpBufferSize: socketPayloadLimit === 0 ? Number.MAX_SAFE_INTEGER : socketPayloadLimit,
         // Brief-disconnect event replay. Currently OFF to preserve parity with
         // pre-multi-process prod behavior — clients fall through to the full
         // REST re-fetch path on every reconnect (apiSocket.ts onReconnected
@@ -84,7 +92,12 @@ export function startSocket(app: Fastify) {
     // arrive before handlers are attached — and get silently dropped.
     io.use(async (socket, next) => {
         const token = socket.handshake.auth.token as string;
-        const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
+        const parsedClientType = parseSocketClientType(socket.handshake.auth.clientType);
+        if (parsedClientType === 'invalid') {
+            next(new Error('Invalid client type'));
+            return;
+        }
+        const clientType = parsedClientType;
         const sessionId = socket.handshake.auth.sessionId as string | undefined;
         const machineId = socket.handshake.auth.machineId as string | undefined;
 
@@ -94,22 +107,16 @@ export function startSocket(app: Fastify) {
             return;
         }
 
-        if (clientType === 'session-scoped' && !sessionId) {
-            log({ module: 'websocket' }, `Session-scoped client missing sessionId`);
-            next(new Error('Session ID required for session-scoped clients'));
-            return;
-        }
-
-        if (clientType === 'machine-scoped' && !machineId) {
-            log({ module: 'websocket' }, `Machine-scoped client missing machineId`);
-            next(new Error('Machine ID required for machine-scoped clients'));
-            return;
-        }
-
         const verified = await auth.verifyToken(token);
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
             next(new Error('Invalid authentication token'));
+            return;
+        }
+
+        const ownershipError = await validateSocketOwnership({ userId: verified.userId, clientType, sessionId, machineId });
+        if (ownershipError) {
+            next(new Error(ownershipError));
             return;
         }
 
@@ -123,12 +130,22 @@ export function startSocket(app: Fastify) {
         next();
     });
 
+    const activeByUser = new Map<string, number>();
     io.on("connection", (socket) => {
         const userId = socket.data.userId as string;
         const clientType = socket.data.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.data.sessionId as string | undefined;
         const machineId = socket.data.machineId as string | undefined;
         const labels = getMetricsLabelsFromSocket(socket);
+
+        const connectionLimit = configuredLimit('SOCKET_MAX_CONNECTIONS_PER_ACCOUNT', 20);
+        const active = activeByUser.get(userId) ?? 0;
+        if (connectionLimit > 0 && active >= connectionLimit) {
+            socket.emit('limit-reached', { resource: 'connections' });
+            socket.disconnect(true);
+            return;
+        }
+        activeByUser.set(userId, active + 1);
 
         log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, client: ${labels.client}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
@@ -188,6 +205,9 @@ export function startSocket(app: Fastify) {
         });
 
         socket.on('disconnect', () => {
+            const remaining = (activeByUser.get(userId) ?? 1) - 1;
+            if (remaining > 0) activeByUser.set(userId, remaining);
+            else activeByUser.delete(userId);
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
@@ -208,7 +228,7 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        rpcHandler(userId, socket, io);
+        rpcHandler(userId, socket, io, connection.connectionType === 'machine-scoped');
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);

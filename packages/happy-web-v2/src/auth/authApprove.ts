@@ -5,7 +5,7 @@ import { getServerUrl } from "@/sync/serverConfig";
 import { getHappyClientId } from "@/sync/apiSocket";
 
 interface AuthRequestStatus {
-    status: 'not_found' | 'pending' | 'authorized';
+    status: 'not_found' | 'pending' | 'authorized' | 'expired';
     supportsV2: boolean;
 }
 
@@ -29,7 +29,7 @@ export async function authApprove(token: string, publicKey: Uint8Array, answerV1
     const { status, supportsV2 } = statusResponse.data;
     
     // Handle different status cases
-    if (status === 'not_found') {
+    if (status === 'not_found' || status === 'expired') {
         throw new Error('This terminal connection request was not found');
     }
     

@@ -8,6 +8,7 @@ import { getHappyClientId } from '@/sync/apiSocket';
 export interface QRAuthKeyPair {
     publicKey: Uint8Array;
     secretKey: Uint8Array;
+    claimSecret: string;
 }
 
 export function generateAuthKeyPair(): QRAuthKeyPair {
@@ -16,6 +17,7 @@ export function generateAuthKeyPair(): QRAuthKeyPair {
     return {
         publicKey: keypair.publicKey,
         secretKey: keypair.privateKey,
+        claimSecret: encodeBase64(getRandomBytes(32)),
     };
 }
 
@@ -24,26 +26,33 @@ export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
         const serverUrl = getServerUrl();
         if (process.env.EXPO_PUBLIC_DEBUG) {
             console.log(`[AUTH DEBUG] Sending auth request to: ${serverUrl}/v1/auth/account/request`);
-            console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
         }
 
-        await axios.post(`${serverUrl}/v1/auth/account/request`, {
+        const response = await axios.post(`${serverUrl}/v1/auth/account/request`, {
             publicKey: encodeBase64(keypair.publicKey),
+            supportsClaimSecret: true,
+            claimSecret: keypair.claimSecret,
+            pairingAction: 'create',
         }, {
             headers: {
                 'X-Happy-Client': getHappyClientId(),
             }
         });
 
+        if (response.data?.protocolVersion !== 3 || response.data?.claimSecretRequired !== true) {
+            console.log('Server upgrade required for secure account pairing.');
+            return false;
+        }
+
         if (process.env.EXPO_PUBLIC_DEBUG) {
             console.log('[AUTH DEBUG] Auth request sent successfully');
         }
         return true;
-    } catch (error) {
+    } catch {
         if (process.env.EXPO_PUBLIC_DEBUG) {
-            console.log('[AUTH DEBUG] Failed to send auth request:', error);
+            console.log('[AUTH DEBUG] Failed to send secure auth request');
         }
-        console.log('Failed to create authentication request, please try again later.');
+        console.log('Failed to create a secure authentication request. Please try again later.');
         return false;
     }
 }

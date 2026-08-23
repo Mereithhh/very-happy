@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { buildNewMachineUpdate, buildUpdateMachineUpdate, buildDeleteMachineUpdate } from "@/app/events/eventRouter";
+import { configuredResourceLimit } from '../resourceLimits';
 
 export function machinesRoutes(app: Fastify) {
     app.post('/v1/machines', {
@@ -49,6 +50,10 @@ export function machinesRoutes(app: Fastify) {
                 }
             });
         } else {
+            const maxMachines = configuredResourceLimit('MAX_MACHINES_PER_ACCOUNT', 20);
+            if (maxMachines > 0 && await db.machine.count({ where: { accountId: userId } }) >= maxMachines) {
+                return reply.code(429).send({ error: 'limit-reached', resource: 'machines', limit: maxMachines });
+            }
             // Create new machine
             log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
 

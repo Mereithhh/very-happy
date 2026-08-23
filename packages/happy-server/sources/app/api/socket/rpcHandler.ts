@@ -125,12 +125,23 @@ async function waitForRoomMember(io: Server, room: string, maxMs: number, metric
     }
 }
 
-export function rpcHandler(userId: string, socket: Socket, io: Server) {
+export function rpcHandler(userId: string, socket: Socket, io: Server, allowRegistration = false) {
+
+    const parsedPayloadLimit = Number.parseInt(process.env.RPC_MAX_PAYLOAD_BYTES || '', 10);
+    const parsedCallLimit = Number.parseInt(process.env.RPC_MAX_CALLS_PER_MINUTE || '', 10);
+    const maxPayloadBytes = Number.isFinite(parsedPayloadLimit) && parsedPayloadLimit >= 0 ? parsedPayloadLimit : 256 * 1024;
+    const maxCallsPerMinute = Number.isFinite(parsedCallLimit) && parsedCallLimit >= 0 ? parsedCallLimit : 120;
+    let callWindowStartedAt = Date.now();
+    let callCount = 0;
 
     socket.on('rpc-register', (data: any) => {
         try {
             const { method } = data ?? {};
-            if (!method || typeof method !== 'string') {
+            if (!allowRegistration) {
+                socket.emit('rpc-error', { type: 'register', error: 'Machine-scoped connection required' });
+                return;
+            }
+            if (!method || typeof method !== 'string' || method.length > 128) {
                 socket.emit('rpc-error', { type: 'register', error: 'Invalid method name' });
                 return;
             }
@@ -145,7 +156,11 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
     socket.on('rpc-unregister', (data: any) => {
         try {
             const { method } = data ?? {};
-            if (!method || typeof method !== 'string') {
+            if (!allowRegistration) {
+                socket.emit('rpc-error', { type: 'unregister', error: 'Machine-scoped connection required' });
+                return;
+            }
+            if (!method || typeof method !== 'string' || method.length > 128) {
                 socket.emit('rpc-error', { type: 'unregister', error: 'Invalid method name' });
                 return;
             }
@@ -169,7 +184,25 @@ export function rpcHandler(userId: string, socket: Socket, io: Server) {
         };
 
         try {
-            if (!method || typeof method !== 'string') {
+            const now = Date.now();
+            if (now - callWindowStartedAt >= 60_000) {
+                callWindowStartedAt = now;
+                callCount = 0;
+            }
+            callCount++;
+            if (maxCallsPerMinute > 0 && callCount > maxCallsPerMinute) {
+                finish('rate_limit');
+                callback?.({ ok: false, error: 'RPC rate limit reached' });
+                return;
+            }
+            let payloadBytes = maxPayloadBytes + 1;
+            try { payloadBytes = Buffer.byteLength(JSON.stringify(data)); } catch { /* invalid payload */ }
+            if (maxPayloadBytes > 0 && payloadBytes > maxPayloadBytes) {
+                finish('payload_limit');
+                callback?.({ ok: false, error: 'RPC payload too large' });
+                return;
+            }
+            if (!method || typeof method !== 'string' || method.length > 128) {
                 finish('invalid_params');
                 callback?.({ ok: false, error: 'Invalid parameters: method is required' });
                 return;

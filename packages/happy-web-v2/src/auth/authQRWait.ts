@@ -22,11 +22,19 @@ export async function authQRWait(keypair: QRAuthKeyPair, onProgress?: (dots: num
         try {
             const response = await axios.post(`${serverUrl}/v1/auth/account/request`, {
                 publicKey: encodeBase64(keypair.publicKey),
+                supportsClaimSecret: true,
+                claimSecret: keypair.claimSecret,
+                pairingAction: 'poll',
             }, {
                 headers: {
                     'X-Happy-Client': getHappyClientId(),
                 }
             });
+
+            if (response.data?.protocolVersion !== 3 || response.data?.claimSecretRequired !== true) {
+                console.log('\n\nServer upgrade required for secure account pairing.');
+                return null;
+            }
 
             if (response.data.state === 'authorized') {
                 const token = response.data.token as string;

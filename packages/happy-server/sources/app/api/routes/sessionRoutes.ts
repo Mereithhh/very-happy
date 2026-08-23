@@ -7,6 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import { configuredResourceLimit } from '../resourceLimits';
 
 export function sessionRoutes(app: Fastify) {
 
@@ -255,6 +256,11 @@ export function sessionRoutes(app: Fastify) {
                 }
             });
         } else {
+
+            const maxSessions = configuredResourceLimit('MAX_SESSIONS_PER_ACCOUNT', 500);
+            if (maxSessions > 0 && await db.session.count({ where: { accountId: userId } }) >= maxSessions) {
+                return reply.code(429).send({ error: 'limit-reached', resource: 'sessions', limit: maxSessions });
+            }
 
             // Resolve seq
             const updSeq = await allocateUserSeq(userId);

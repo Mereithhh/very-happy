@@ -29,6 +29,7 @@ import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
+import { configuredResourceLimit } from './resourceLimits';
 
 export interface StartApiOptions {
     port?: number;
@@ -44,9 +45,10 @@ export async function startApi(opts: StartApiOptions = {}) {
     log('Starting API...');
 
     // Start API
+    const configuredBodyLimit = configuredResourceLimit('HTTP_BODY_LIMIT_BYTES', 1024 * 1024);
     const app = fastify({
         loggerInstance: logger,
-        bodyLimit: 1024 * 1024 * 100, // 100MB
+        bodyLimit: configuredBodyLimit === 0 ? Number.MAX_SAFE_INTEGER : configuredBodyLimit,
         trustProxy: opts.trustProxy ?? resolveTrustProxy(process.env.TRUST_PROXY),
     });
     app.register(import('@fastify/cors'), {
