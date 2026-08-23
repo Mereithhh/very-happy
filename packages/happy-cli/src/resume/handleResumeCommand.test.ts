@@ -19,7 +19,7 @@ describe('parseResumeCommandArgs', () => {
 
     it('rejects missing session ids', () => {
         expect(() => parseResumeCommandArgs([])).toThrow(
-            'Happy session ID is required: happy resume <session-id>',
+            'Happy session ID is required: very-happy resume <session-id>',
         );
     });
 });
@@ -84,6 +84,6 @@ describe('buildResumeLaunch', () => {
 
 describe('formatResumeHelp', () => {
     it('mentions the session id command shape', () => {
-        expect(formatResumeHelp()).toContain('happy resume <happy-session-id>');
+        expect(formatResumeHelp()).toContain('very-happy resume <happy-session-id>');
     });
 });

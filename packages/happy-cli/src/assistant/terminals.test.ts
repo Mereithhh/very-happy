@@ -11,13 +11,13 @@ function line(fields: string[]): string {
 describe('parseVhTerminals', () => {
     it('parses vh-* sessions with stored @vh_title', () => {
         const out = parseVhTerminals(
-            line(['vh-abc12', '1755000000', '1755000100', '/Users/jojo/code', '部署检查', '1', 'node', '✳ deploy check']),
+            line(['vh-abc12', '1755000000', '1755000100', '/Users/demo/code', '部署检查', '1', 'node', '✳ deploy check']),
             'my-host',
         )
         expect(out).toEqual([{
             id: 'abc12',
             title: '部署检查',
-            cwd: '/Users/jojo/code',
+            cwd: '/Users/demo/code',
             createdAt: 1755000000000,
             activityAt: 1755000100000,
         }])

@@ -2,7 +2,7 @@
  * B-149 regression: a daemon that comes back to a machine where the tmux server
  * is GONE must archive what the previous life left behind.
  *
- * This is the exact 2026-08-23 production failure: mac-office rebooted, 22 live
+ * This is the exact 2026-08-23 production failure: dev-laptop rebooted, 22 live
  * terminals disappeared, and because closure detection only diffed an in-memory
  * cache, nothing was recorded anywhere — the terminals had to be reconstructed
  * by hand from daemon logs. The reboot is reproduced without rebooting anything:

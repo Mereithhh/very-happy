@@ -119,7 +119,7 @@ Every engineer spawn message should include:
 Use this shape when sending the initial task:
 
 ```text
-Follow /Users/kirilldubovitskiy/projects/happy/.agents/agents/engineer.md.
+Follow /Users/example/projects/happy/.agents/agents/engineer.md.
 
 Task source of truth:
 <exact roadmap item or exact scoped excerpt>

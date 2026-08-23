@@ -25,7 +25,7 @@ import { execSync } from 'child_process';
 // ── Config ──────────────────────────────────────────────────────────────────
 
 const PROMPT = process.argv[2] || 'curl google home page';
-const WORK_DIR = process.env.CWD || '/Users/kirilldubovitskiy/projects/happy/happy/packages/happy-cli/demo-project';
+const WORK_DIR = process.env.CWD || '/Users/example/projects/happy/happy/packages/happy-cli/demo-project';
 const TIMEOUT = 60_000; // 60s hard timeout for the whole run
 // 'on-request' triggers elicitation for commands; 'never' auto-approves everything
 const APPROVAL_POLICY: 'untrusted' | 'on-failure' | 'on-request' | 'never' = 'on-request';

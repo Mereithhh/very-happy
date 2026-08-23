@@ -84,10 +84,10 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
 
 function printHelp() {
     console.log(`
-${chalk.bold('happy spawn')} - Spawn a remote session via the local daemon (for automation)
+${chalk.bold('very-happy spawn')} - Spawn a remote session via the local daemon (for automation)
 
 ${chalk.bold('Usage:')}
-  happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
+  very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
 
 ${chalk.bold('Options:')}
   --dir, -d <path>       Working directory for the new session (required)
@@ -124,7 +124,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         options = parseSpawnArgs(args)
     } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
-        console.error(`Run ${chalk.cyan('happy spawn --help')} for usage.`)
+        console.error(`Run ${chalk.cyan('very-happy spawn --help')} for usage.`)
         process.exit(1)
     }
 
@@ -135,7 +135,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
 
     if (!options.dir) {
         console.error(chalk.red('Error:'), '--dir is required')
-        console.error(`Run ${chalk.cyan('happy spawn --help')} for usage.`)
+        console.error(`Run ${chalk.cyan('very-happy spawn --help')} for usage.`)
         process.exit(1)
     }
     const directory = resolve(options.dir)

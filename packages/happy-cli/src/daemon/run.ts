@@ -1184,7 +1184,7 @@ export async function startDaemon(): Promise<void> {
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
-        // `happy daemon start` reads our still-present daemon.state.json, sees
+        // `very-happy daemon start` reads our still-present daemon.state.json, sees
         // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
         // leaving nothing running once we also exit.
         apiMachine.shutdown();

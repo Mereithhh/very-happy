@@ -1,5 +1,5 @@
 /**
- * `happy install-terminal-hooks [--remove]` (B-105)
+ * `very-happy install-terminal-hooks [--remove]` (B-105)
  *
  * Explicitly (never silently) writes the global SessionStart + SessionEnd
  * hook pair into the user's ~/.claude/settings.json so hand-typed claude

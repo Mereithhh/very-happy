@@ -5,7 +5,7 @@ API Error: 500 {"type":"error","error":{"type":"api_error","message":"Overloaded
 Not showng
 Session
 213d643d-fc52-4d43-83cd-d4d1e1b45fc6
-logs  /Users/kirilldubovitskiy/.happy/logs/2025-07-20-20-48-12.log
+logs  /Users/example/.happy/logs/2025-07-20-20-48-12.log
 
 
 
@@ -111,7 +111,7 @@ We want to
   "content": {
     "type": "output",
     "data": {
-      "cwd": "/Users/kirilldubovitskiy/projects/happy/handy-cli",
+      "cwd": "/Users/example/projects/happy/handy-cli",
       "sessionId": "329df624-b37c-4849-ab83-65722d321c29",
       "version": "1.0.51",
       "uuid": "072e0a05-5480-4a83-9f63-802da615b66b",
@@ -142,7 +142,7 @@ We want to
   "content": {
     "type": "output",
     "data": {
-      "cwd": "/Users/kirilldubovitskiy/projects/happy/handy-cli",
+      "cwd": "/Users/example/projects/happy/handy-cli",
       "sessionId": "329df624-b37c-4849-ab83-65722d321c29",
       "version": "1.0.51",
       "uuid": "8b1593e4-c56e-4785-9dd0-741587021c95",

@@ -89,7 +89,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     if (isAssistantVariant) {
         // Defensive re-bootstrap: the daemon already did this before spawning,
         // but a manually-launched assistant (HAPPY_SESSION_VARIANT=assistant
-        // happy claude) should not start with a missing CLAUDE.md. Never
+        // very-happy claude) should not start with a missing CLAUDE.md. Never
         // overwrites existing files.
         try {
             await bootstrapAssistantHome();
@@ -131,7 +131,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         sandboxEnabled ||
         Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/Mereithhh/very-happy/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);

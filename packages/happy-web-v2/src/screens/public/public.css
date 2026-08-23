@@ -127,3 +127,15 @@
 @media (prefers-reduced-motion: reduce) {
   .pub-button { transition: none; }
 }
+.pub-skip {
+  position: fixed;
+  left: 1rem;
+  top: 0;
+  z-index: 100;
+  padding: .65rem .9rem;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  transform: translateY(-120%);
+}
+.pub-skip:focus { transform: translateY(.5rem); }

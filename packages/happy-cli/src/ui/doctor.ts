@@ -65,7 +65,7 @@ function getLogFiles(logDir: string): { file: string, path: string, modified: Da
 }
 
 /**
- * Slim daemon status output for `happy daemon status`
+ * Slim daemon status output for `very-happy daemon status`
  */
 export async function runDoctorDaemon(): Promise<void> {
     console.log(chalk.bold('\n🤖 Daemon Status'));
@@ -221,8 +221,8 @@ export async function runDoctorCommand(): Promise<void> {
 
     // Support and bug reports
     console.log(chalk.bold('\n🐛 Support & Bug Reports'));
-    console.log(`Report issues: ${chalk.blue('https://github.com/slopus/happy-cli/issues')}`);
-    console.log(`Documentation: ${chalk.blue('https://happy.engineering/')}`);
+    console.log(`Report issues: ${chalk.blue('https://github.com/Mereithhh/very-happy/issues')}`);
+    console.log(`Documentation: ${chalk.blue('https://github.com/Mereithhh/very-happy/tree/main/docs')}`);
 
     // ── Concise useful info last (visible without scrolling) ──
 

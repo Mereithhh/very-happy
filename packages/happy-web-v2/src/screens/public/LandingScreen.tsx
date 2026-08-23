@@ -2,7 +2,7 @@ import { ArrowRight, Braces, Github, Globe2, Server, ShieldCheck, TerminalSquare
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
 import { PublicFooter, PublicHeader } from './PublicShell';
-import { GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
+import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import './public.css';
 
 const features = [
@@ -17,7 +17,7 @@ export function LandingScreen() {
   return (
     <div className="pub-page">
       <PublicHeader />
-      <main>
+      <main id="main-content">
         <section className="pub-hero" aria-labelledby="hero-title">
           <div className="pub-hero-copy">
             <div className="eyebrow">REMOTE CODING // BROWSER NATIVE</div>
@@ -31,7 +31,7 @@ export function LandingScreen() {
           </div>
           <div className="pub-terminal" aria-label="Example Very Happy connection transcript">
             <div className="pub-terminal-bar"><span>machine / atlas</span><span className="pub-live"><i /> connected</span></div>
-            <pre><code><span className="pub-prompt">$</span> {INSTALL_COMMAND}{'\n'}<span className="pub-prompt">$</span> {LOGIN_COMMAND}{'\n\n'}Waiting for browser approval…{'\n'}Machine <strong>atlas</strong> connected.{`\n\n`}<span className="pub-dim">~/code/project</span> <span className="pub-prompt">$</span> claude{`\n`}╭──────────────────────────────╮{`\n`}│ Ready. What should we build? │{`\n`}╰──────────────────────────────╯</code></pre>
+            <pre><code><span className="pub-prompt">$</span> {INSTALL_COMMAND}{'\n'}<span className="pub-prompt">$</span> {LOGIN_COMMAND}{'\n'}<span className="pub-prompt">$</span> {DAEMON_START_COMMAND}{'\n\n'}Machine <strong>atlas</strong> connected.{`\n\n`}<span className="pub-dim">~/code/project</span> <span className="pub-prompt">$</span> very-happy{`\n`}╭──────────────────────────────╮{`\n`}│ Ready. What should we build? │{`\n`}╰──────────────────────────────╯</code></pre>
           </div>
         </section>
 
@@ -53,8 +53,8 @@ export function LandingScreen() {
           <ol>
             <li><span>01</span><div><h3>Create an account</h3><p>Use Google or username and password on your chosen relay.</p></div></li>
             <li><span>02</span><div><h3>Install the CLI</h3><code>{INSTALL_COMMAND}</code></div></li>
-            <li><span>03</span><div><h3>Approve the machine</h3><code>{LOGIN_COMMAND}</code></div></li>
-            <li><span>04</span><div><h3>Start a session</h3><p>Select the connected machine and open Terminal or Claude Code.</p></div></li>
+            <li><span>03</span><div><h3>Approve and connect</h3><code>{LOGIN_COMMAND}{'\n'}{DAEMON_START_COMMAND}</code></div></li>
+            <li><span>04</span><div><h3>Start a session</h3><p>Run <code>very-happy</code> in a project folder, or select the connected machine in Web.</p></div></li>
           </ol>
         </section>
 

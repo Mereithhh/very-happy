@@ -55,7 +55,7 @@ describe('toolFriendlyKey', () => {
 
 describe('toolParamSummary', () => {
     it('session_spawn shows the target directory basename', () => {
-        expect(toolParamSummary('session_spawn', { directory: '/Users/jojo/code/github/very-happy' })).toBe(
+        expect(toolParamSummary('session_spawn', { directory: '/Users/demo/code/github/very-happy' })).toBe(
             'very-happy',
         );
         expect(toolParamSummary('mcp__happy__session_spawn', { directory: '/tmp/x/' })).toBe('x');

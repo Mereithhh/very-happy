@@ -48,30 +48,30 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
 
 function showConnectHelp(): void {
     console.log(`
-${chalk.bold('happy connect')} - Connect AI vendor API keys to Happy cloud
+${chalk.bold('very-happy connect')} - Store AI vendor credentials on your configured relay
 
 ${chalk.bold('Usage:')}
-  happy connect codex        Store your Codex API key in Happy cloud
-  happy connect claude       Store your Anthropic API key in Happy cloud
-  happy connect gemini       Store your Gemini API key in Happy cloud
-  happy connect status       Show connection status for all vendors
-  happy connect help         Show this help message
+  very-happy connect codex        Store your Codex credential on the relay
+  very-happy connect claude       Store your Anthropic credential on the relay
+  very-happy connect gemini       Store your Gemini credential on the relay
+  very-happy connect status       Show connection status for all vendors
+  very-happy connect help         Show this help message
 
 ${chalk.bold('Description:')}
-  The connect command allows you to securely store your AI vendor API keys
-  in Happy cloud. This enables you to use these services through Happy
-  without exposing your API keys locally.
+  Credentials are encrypted at rest but recoverable by the configured relay.
+  The relay is trusted infrastructure, not an end-to-end encrypted vault.
+  Use this only when you trust that relay's operator and backups.
 
 ${chalk.bold('Examples:')}
-  happy connect codex
-  happy connect claude
-  happy connect gemini
-  happy connect status
+  very-happy connect codex
+  very-happy connect claude
+  very-happy connect gemini
+  very-happy connect status
 
 ${chalk.bold('Notes:')} 
-  • You must be authenticated with Happy first (run 'happy auth login')
-  • API keys are encrypted and stored securely in Happy cloud
-  • You can manage your stored keys at app.happy.engineering
+  • You must be authenticated with Happy first (run 'very-happy auth login')
+  • Credentials are sent to and retained by your configured relay
+  • Remove a credential with the corresponding account/settings controls
 `);
 }
 
@@ -82,7 +82,7 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
     const credentials = await readCredentials();
     if (!credentials) {
         console.log(chalk.yellow('⚠️  Not authenticated with Happy'));
-        console.log(chalk.gray('  Please run "happy auth login" first'));
+        console.log(chalk.gray('  Please run "very-happy auth login" first'));
         process.exit(1);
     }
 
@@ -127,7 +127,7 @@ async function handleConnectStatus(): Promise<void> {
     const credentials = await readCredentials();
     if (!credentials) {
         console.log(chalk.yellow('⚠️  Not authenticated with Happy'));
-        console.log(chalk.gray('  Please run "happy auth login" first'));
+        console.log(chalk.gray('  Please run "very-happy auth login" first'));
         process.exit(1);
     }
 
@@ -174,8 +174,8 @@ async function handleConnectStatus(): Promise<void> {
     }
 
     console.log('');
-    console.log(chalk.gray('To connect a vendor, run: happy connect <vendor>'));
-    console.log(chalk.gray('Example: happy connect gemini'));
+    console.log(chalk.gray('To connect a vendor, run: very-happy connect <vendor>'));
+    console.log(chalk.gray('Example: very-happy connect gemini'));
     console.log('');
 }
 

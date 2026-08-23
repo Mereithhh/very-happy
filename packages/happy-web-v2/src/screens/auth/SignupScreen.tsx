@@ -144,11 +144,11 @@ export function SignupScreen() {
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 
         {authConfig?.signup.atCapacity ? (
-          <div className="auth-policy" role="status">This server is at account capacity. Existing users can sign in; new users can try later or self-host.</div>
+          <div className="auth-policy" role="status">{t('signup.errorCapacityReached')}</div>
         ) : authConfig?.signup.mode === 'closed' ? (
-          <div className="auth-policy" role="status">Registration is currently closed. Existing accounts can still sign in.</div>
+          <div className="auth-policy" role="status">{t('signup.errorSignupClosed')}</div>
         ) : authConfig?.signup.mode === 'invite' ? (
-          <div className="auth-policy" role="status">This server requires an invite code for new accounts.</div>
+          <div className="auth-policy" role="status">{t('signup.errorInviteRequired')}</div>
         ) : null}
 
         {(authConfig?.signup.mode === 'invite' || authConfig === null) && <Input

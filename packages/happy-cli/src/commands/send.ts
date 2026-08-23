@@ -71,10 +71,10 @@ export function parseSendArgs(args: string[]): SendCommandOptions {
 
 function printHelp() {
     console.log(`
-${chalk.bold('happy send')} - Send a message into an existing session (for automation)
+${chalk.bold('very-happy send')} - Send a message into an existing session (for automation)
 
 ${chalk.bold('Usage:')}
-  happy send --session <id> (--prompt <text> | --prompt-file <file>) [--json]
+  very-happy send --session <id> (--prompt <text> | --prompt-file <file>) [--json]
 
 ${chalk.bold('Options:')}
   --session, -s <id>     Target session id (required)
@@ -114,7 +114,7 @@ export async function handleSendCommand(args: string[]): Promise<never> {
         options = parseSendArgs(args)
     } catch (error) {
         console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error))
-        console.error(`Run ${chalk.cyan('happy send --help')} for usage.`)
+        console.error(`Run ${chalk.cyan('very-happy send --help')} for usage.`)
         process.exit(1)
     }
 
@@ -125,7 +125,7 @@ export async function handleSendCommand(args: string[]): Promise<never> {
 
     if (!options.session) {
         console.error(chalk.red('Error:'), '--session is required')
-        console.error(`Run ${chalk.cyan('happy send --help')} for usage.`)
+        console.error(`Run ${chalk.cyan('very-happy send --help')} for usage.`)
         process.exit(1)
     }
     const sessionId = options.session
@@ -140,7 +140,7 @@ export async function handleSendCommand(args: string[]): Promise<never> {
     }
     if (prompt === undefined) {
         console.error(chalk.red('Error:'), 'One of --prompt / --prompt-file is required')
-        console.error(`Run ${chalk.cyan('happy send --help')} for usage.`)
+        console.error(`Run ${chalk.cyan('very-happy send --help')} for usage.`)
         process.exit(1)
     }
     if (prompt.trim().length === 0) {

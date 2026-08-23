@@ -60,19 +60,19 @@ export function FirstRunScreen() {
       <div className="fr-note">
         {t('onboarding.trustNote')}
       </div>
-      <div className="fr-recovery" aria-label="Machine connection help">
-        <h2>Machine not appearing?</h2>
+      <div className="fr-recovery" aria-label={t('onboarding.recoveryTitle')}>
+        <h2>{t('onboarding.recoveryTitle')}</h2>
         <ul>
-          <li>Confirm this browser and the CLI use the same server.</li>
-          <li>Run <code>very-happy daemon status</code> and restart the login flow if approval expired.</li>
-          <li>Keep the daemon online, then reload this page.</li>
+          <li>{t('onboarding.recoverySameServer')}</li>
+          <li>{t('onboarding.recoveryDaemon')}</li>
+          <li>{t('onboarding.recoveryApproval')}</li>
         </ul>
       </div>
       <div className="fr-actions">
         <Button variant="secondary" rightIcon={<ExternalLink size={14} />} onClick={() => navigate('/docs/quickstart')}>
           {t('onboarding.readQuickStart')}
         </Button>
-        <Button variant="secondary" onClick={() => navigate('/docs/troubleshooting')}>Troubleshoot connection</Button>
+        <Button variant="secondary" onClick={() => navigate('/docs/troubleshooting')}>{t('onboarding.troubleshooting')}</Button>
       </div>
     </main>
   );

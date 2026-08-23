@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { parseSessionFileLink, resolveSessionFilePath, splitSessionFileText } from './sessionFileLinks';
 
 describe('sessionFileLinks', () => {
-    const sessionRoot = '/Users/kirilldubovitskiy/projects/happy';
+    const sessionRoot = '/Users/example/projects/happy';
 
     it('parses absolute file refs with line numbers', () => {
-        const result = parseSessionFileLink('/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts:594', {
+        const result = parseSessionFileLink('/Users/example/projects/happy/packages/happy-cli/src/codex/runCodex.ts:594', {
             sessionRoot,
         });
 
         expect(result).toEqual({
-            path: '/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
-            absolutePath: '/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
+            path: '/Users/example/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
+            absolutePath: '/Users/example/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
             relativePath: 'packages/happy-cli/src/codex/runCodex.ts',
             withinSessionRoot: true,
             line: 594,
@@ -26,7 +26,7 @@ describe('sessionFileLinks', () => {
 
         expect(result).toEqual({
             path: 'packages/happy-cli/src/codex/runCodex.ts',
-            absolutePath: '/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
+            absolutePath: '/Users/example/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
             relativePath: 'packages/happy-cli/src/codex/runCodex.ts',
             withinSessionRoot: true,
             line: 594,
@@ -48,7 +48,7 @@ describe('sessionFileLinks', () => {
                 text: 'packages/happy-cli/src/codex/runCodex.ts:594',
                 link: {
                     path: 'packages/happy-cli/src/codex/runCodex.ts',
-                    absolutePath: '/Users/kirilldubovitskiy/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
+                    absolutePath: '/Users/example/projects/happy/packages/happy-cli/src/codex/runCodex.ts',
                     relativePath: 'packages/happy-cli/src/codex/runCodex.ts',
                     withinSessionRoot: true,
                     line: 594,
@@ -61,17 +61,17 @@ describe('sessionFileLinks', () => {
 
     it('splits absolute bare file refs with spaces into linked segments', () => {
         const result = splitSessionFileText(
-            'Image: /Users/kirilldubovitskiy/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
+            'Image: /Users/example/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
             sessionRoot,
         );
 
         expect(result).toEqual([
             { text: 'Image: ', link: null },
             {
-                text: '/Users/kirilldubovitskiy/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
+                text: '/Users/example/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
                 link: {
-                    path: '/Users/kirilldubovitskiy/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
-                    absolutePath: '/Users/kirilldubovitskiy/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
+                    path: '/Users/example/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
+                    absolutePath: '/Users/example/Library/Application Support/CleanShot/media/test/CleanShot 2026-03-19 at 00.54.37@2x.png',
                     relativePath: null,
                     withinSessionRoot: false,
                     line: null,
@@ -102,7 +102,7 @@ describe('sessionFileLinks', () => {
     it('resolves viewer input to an absolute path', () => {
         expect(resolveSessionFilePath('packages/happy-app/README.md', sessionRoot)).toEqual({
             path: 'packages/happy-app/README.md',
-            absolutePath: '/Users/kirilldubovitskiy/projects/happy/packages/happy-app/README.md',
+            absolutePath: '/Users/example/projects/happy/packages/happy-app/README.md',
             relativePath: 'packages/happy-app/README.md',
             withinSessionRoot: true,
             line: null,

@@ -27,14 +27,14 @@ describe('normalizeCwdInput', () => {
 });
 
 describe('expandHomePath', () => {
-    const HOME = '/Users/jojo';
+    const HOME = '/Users/demo';
 
     it('expands a bare tilde', () => {
         expect(expandHomePath('~', HOME)).toBe(HOME);
     });
 
     it('expands a tilde prefix', () => {
-        expect(expandHomePath('~/code/very-happy', HOME)).toBe('/Users/jojo/code/very-happy');
+        expect(expandHomePath('~/code/very-happy', HOME)).toBe('/Users/demo/code/very-happy');
     });
 
     it('leaves absolute paths alone', () => {
@@ -48,7 +48,7 @@ describe('expandHomePath', () => {
     });
 
     it('tolerates a trailing slash on the reported home dir', () => {
-        expect(expandHomePath('~/x', '/Users/jojo/')).toBe('/Users/jojo/x');
+        expect(expandHomePath('~/x', '/Users/demo/')).toBe('/Users/demo/x');
     });
 
     it('passes through untouched when the machine reports no home dir', () => {

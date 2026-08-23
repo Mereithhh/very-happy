@@ -6,7 +6,7 @@ The daemon is a persistent background process that manages Happy sessions, enabl
 
 ### Starting the Daemon
 
-Command: `happy daemon start`
+Command: `very-happy daemon start`
 
 Control Flow:
 1. `src/index.ts` receives `daemon start` command
@@ -52,7 +52,7 @@ The daemon detects when `npm upgrade happy` occurs:
 
 ### Stopping the Daemon
 
-Command: `happy daemon stop`
+Command: `very-happy daemon stop`
 
 Control Flow:
 1. `stopDaemon()` in `controlClient.ts` reads daemon.state.json
@@ -111,14 +111,14 @@ Local HTTP server (127.0.0.1 only) provides:
 
 ### Doctor Command
 
-`happy doctor` uses `ps aux | grep` to find all Happy processes:
+`very-happy doctor` uses `ps aux | grep` to find all Very Happy processes:
 - Production: matches `happy.mjs`, `happy` (or legacy `happy-coder`), `dist/index.mjs`
 - Development: matches `tsx.*src/index.ts`
 - Categorizes by command args: daemon, daemon-spawned, user-session, doctor
 
 ### Clean Runaway Processes
 
-`happy doctor clean`:
+`very-happy doctor clean`:
 1. `findRunawayHappyProcesses()` filters for likely orphans
 2. `killRunawayHappyProcesses()`:
    - Sends SIGTERM
@@ -449,7 +449,6 @@ Authorization: Bearer <token>
    - Clients only receive updates for fields that changed
 
 5. **RPC Pattern**: Machine-scoped RPC methods prefixed with machineId (like sessions)
-
 
 
 

@@ -188,12 +188,12 @@ export async function handleSandboxDisable(): Promise<void> {
 
 export function handleSandboxHelp(): void {
     console.log(`
-${chalk.bold('happy sandbox')} - Sandbox management
+${chalk.bold('very-happy sandbox')} - Sandbox management
 
 ${chalk.bold('Usage:')}
-  happy sandbox configure      Configure sandbox settings interactively
-  happy sandbox status         Show current sandbox configuration
-  happy sandbox disable        Disable sandboxing
-  happy sandbox help           Show this help
+  very-happy sandbox configure      Configure sandbox settings interactively
+  very-happy sandbox status         Show current sandbox configuration
+  very-happy sandbox disable        Disable sandboxing
+  very-happy sandbox help           Show this help
 `);
 }

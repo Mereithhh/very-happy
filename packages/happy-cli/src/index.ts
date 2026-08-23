@@ -198,7 +198,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
     
-    // Handle "happy gemini model set <model>" command
+    // Handle "very-happy gemini model set <model>" command
     if (geminiSubcommand === 'model' && args[2] === 'set' && args[3]) {
       const modelName = args[3];
       const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
@@ -248,7 +248,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
     }
     
-    // Handle "happy gemini model get" command
+    // Handle "very-happy gemini model get" command
     if (geminiSubcommand === 'model' && args[2] === 'get') {
       try {
         const { existsSync, readFileSync } = require('fs');
@@ -287,7 +287,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
     }
     
-    // Handle "happy gemini project set <project-id>" command
+    // Handle "very-happy gemini project set <project-id>" command
     if (geminiSubcommand === 'project' && args[2] === 'set' && args[3]) {
       const projectId = args[3];
       
@@ -328,7 +328,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
     }
     
-    // Handle "happy gemini project get" command
+    // Handle "very-happy gemini project get" command
     if (geminiSubcommand === 'project' && args[2] === 'get') {
       try {
         const { readGeminiLocalConfig } = await import('@/gemini/utils/config');
@@ -347,7 +347,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
           console.log('No Google Cloud Project configured.');
           console.log('');
           console.log('If you see "Authentication required" error, you may need to set a project:');
-          console.log('  happy gemini project set <your-project-id>');
+          console.log('  very-happy gemini project set <your-project-id>');
           console.log('');
           console.log('This is required for Google Workspace accounts.');
           console.log('Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca');
@@ -359,9 +359,9 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
     }
     
-    // Handle "happy gemini project" (no subcommand) - show help
+    // Handle "very-happy gemini project" (no subcommand) - show help
     if (geminiSubcommand === 'project' && !args[2]) {
-      console.log('Usage: happy gemini project <command>');
+      console.log('Usage: very-happy gemini project <command>');
       console.log('');
       console.log('Commands:');
       console.log('  set <project-id>   Set Google Cloud Project ID');
@@ -487,7 +487,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
-    console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
+    console.log(chalk.yellow('Note: "very-happy logout" is deprecated. Use "very-happy auth logout" instead.\n'));
     try {
       await handleAuthCommand(['logout']);
     } catch (error) {
@@ -501,7 +501,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'mcp' && args.length === 1) {
     // Standalone stdio MCP server for the real claude CLI (web terminal path).
     // Register once with: claude mcp add --scope user very-happy-clipboard -- very-happy mcp
-    // Only the BARE `mcp` is ours: `happy mcp add ...` etc. still falls through
+    // Only the BARE `mcp` is ours: `very-happy mcp add ...` etc. still falls through
     // to claude's own `mcp` subcommand (happy forwards unknown args to claude).
     // NOTE: never print to stdout here — it would corrupt the MCP stdio framing.
     try {
@@ -796,7 +796,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Show version
     if (showVersion) {
-      console.log(`happy version: ${packageJson.version}`)
+      console.log(`very-happy version: ${packageJson.version}`)
       // Don't exit - continue to pass --version to Claude Code
     }
 
@@ -846,7 +846,7 @@ async function handleNotifyCommand(args: string[]): Promise<void> {
 
   if (showHelp) {
     console.log(`
-${chalk.bold('happy notify')} - Send notification
+${chalk.bold('very-happy notify')} - Send notification
 
 ${chalk.bold('Usage:')}
   very-happy notify -p <message> [-t <title>]    Send notification with custom message and optional title

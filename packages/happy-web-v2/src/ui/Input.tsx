@@ -45,7 +45,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         {rightSlot && <span className="vh-input__right">{rightSlot}</span>}
       </div>
       {error ? (
-        <div id={`${inputId}-err`} className="vh-field__error">
+        <div id={`${inputId}-err`} className="vh-field__error" role="alert" aria-live="polite">
           {error}
         </div>
       ) : hint ? (

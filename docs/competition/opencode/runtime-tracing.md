@@ -23,7 +23,7 @@ OpenCode source checkout:
 
 Sample project:
 
-- `/Users/kirilldubovitskiy/projects/happy/environments/lab-rat-todo-project`
+- `/Users/example/projects/happy/environments/lab-rat-todo-project`
 
 Isolated runtime root:
 
@@ -87,18 +87,18 @@ Before touching prompts, I verified how the server scopes requests.
 The key routing input is the header:
 
 ```http
-x-opencode-directory: /Users/kirilldubovitskiy/projects/happy/environments/lab-rat-todo-project
+x-opencode-directory: /Users/example/projects/happy/environments/lab-rat-todo-project
 ```
 
 Real `GET /path` response:
 
 ```json
 {
-  "home": "/Users/kirilldubovitskiy",
+  "home": "/Users/example",
   "state": "/tmp/opencode-trace-dev.ptZAVJ/state/opencode",
   "config": "/tmp/opencode-trace-dev.ptZAVJ/config/opencode",
-  "worktree": "/Users/kirilldubovitskiy/projects/happy",
-  "directory": "/Users/kirilldubovitskiy/projects/happy/environments/lab-rat-todo-project"
+  "worktree": "/Users/example/projects/happy",
+  "directory": "/Users/example/projects/happy/environments/lab-rat-todo-project"
 }
 ```
 
@@ -424,7 +424,7 @@ The successful media path looked different because the input URL was a local
       "type": "file",
       "mime": "image/png",
       "filename": "logo.png",
-      "url": "file:///Users/kirilldubovitskiy/projects/happy/logo.png"
+      "url": "file:///Users/example/projects/happy/logo.png"
     }
   ]
 }
@@ -443,7 +443,7 @@ The successful media path looked different because the input URL was a local
     {
       "type": "text",
       "synthetic": true,
-      "text": "Called the Read tool with the following input: {\"filePath\":\"/Users/kirilldubovitskiy/projects/happy/logo.png\"}"
+      "text": "Called the Read tool with the following input: {\"filePath\":\"/Users/example/projects/happy/logo.png\"}"
     },
     {
       "type": "file",
@@ -613,7 +613,7 @@ Real `GET /session/{parentID}/children` response:
     "id": "ses_2f07a8dd6ffeRc23sIIgM4ZpMT",
     "parentID": "ses_2f07aa25affeqiZHSnBiN8pSyG",
     "title": "Find main project files (@explore subagent)",
-    "directory": "/Users/kirilldubovitskiy/projects/happy/environments/lab-rat-todo-project",
+    "directory": "/Users/example/projects/happy/environments/lab-rat-todo-project",
     "permission": [
       { "permission": "todowrite", "pattern": "*", "action": "deny" },
       { "permission": "todoread", "pattern": "*", "action": "deny" },

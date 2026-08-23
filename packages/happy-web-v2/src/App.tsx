@@ -49,7 +49,7 @@ export function App() {
         <section className="card">
           <div className="eyebrow">signature · status line</div>
           <div className="statusline mono">
-            <span>mac-office</span>
+            <span>dev-laptop</span>
             <span className="sep">·</span>
             <span>~/code/very-happy</span>
             <span className="sep">·</span>

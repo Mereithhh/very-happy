@@ -441,7 +441,7 @@ export class CodexAppServerClient {
                 'Please install Codex CLI using one of these methods:\n\n' +
                 'Option 1 - npm (recommended):\n  npm install -g @openai/codex\n\n' +
                 'Option 2 - Homebrew (macOS):\n  brew install --cask codex\n\n' +
-                'Alternatively, use Claude Code:\n  happy claude',
+                'Alternatively, use Claude Code:\n  very-happy claude',
             );
         }
 

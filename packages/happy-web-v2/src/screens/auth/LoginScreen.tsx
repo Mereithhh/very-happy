@@ -9,6 +9,7 @@ import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
 import { authReturnTarget } from '@/app/authReturnTarget';
+import { classifyPasswordLoginFailure } from './loginErrorPresentation';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -36,14 +37,15 @@ export function LoginScreen() {
       await login(creds.token, creds.secret);
       toast.success(t('common.success'));
       navigate(authReturnTarget(location.state), { replace: true });
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const msg = status === 401 || status === 403
-        ? t('errors.authenticationFailed')
-        : status >= 500
-          ? 'The server is unavailable. Check its status, then try again.'
-          : 'Could not reach the server. Check your connection and server address.';
-      setError(msg);
+    } catch (err) {
+      const failure = classifyPasswordLoginFailure(err);
+      if (failure === 'invalid-credentials') {
+        setError(t('errors.authenticationFailed'));
+      } else if (failure === 'rate-limited') {
+        setError(t('signup.errorRateLimited'));
+      } else {
+        setError('Could not reach the server. Check your connection and server address.');
+      }
     } finally {
       setBusy(false);
     }

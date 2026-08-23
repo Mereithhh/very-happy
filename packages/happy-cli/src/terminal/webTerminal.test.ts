@@ -194,9 +194,9 @@ const IDLE_INPUT_BOX = [
 ].join('\n');
 
 const SHELL_PROMPT = [
-    'jojo@mac-office ~/code/github/very-happy % ls',
+    'demo@dev-laptop ~/code/github/very-happy % ls',
     'README.md  packages  pnpm-lock.yaml',
-    'jojo@mac-office ~/code/github/very-happy %',
+    'demo@dev-laptop ~/code/github/very-happy %',
 ].join('\n');
 
 describe('classifyPane', () => {
@@ -237,7 +237,7 @@ describe('classifyPane', () => {
     it('classifies a plain shell prompt as shell', () => {
         expect(classifyPane('zsh', SHELL_PROMPT)).toBe('shell');
         expect(classifyPane('bash', SHELL_PROMPT)).toBe('shell');
-        expect(classifyPane('fish', 'jojo@host ~> ')).toBe('shell');
+        expect(classifyPane('fish', 'demo@host ~> ')).toBe('shell');
         expect(classifyPane('-zsh', SHELL_PROMPT)).toBe('shell'); // login shell
     });
 
@@ -333,7 +333,7 @@ describe('startupInjectionArgs', () => {
 });
 
 describe('deriveAutoTitle', () => {
-    const HOST = 'mac-office.local';
+    const HOST = 'dev-laptop.local';
 
     it('strips Claude Code status glyph prefixes (spinner set varies by version)', () => {
         // Real pane_title values observed on tmux 3.6b with claude running.
@@ -343,10 +343,10 @@ describe('deriveAutoTitle', () => {
     });
 
     it('drops the tmux default pane title: the hostname, full or short form', () => {
-        expect(deriveAutoTitle('mac-office.local', HOST)).toBeUndefined();
-        expect(deriveAutoTitle('mac-office', HOST)).toBeUndefined();     // short form
-        expect(deriveAutoTitle('MAC-OFFICE', HOST)).toBeUndefined();     // case-insensitive
-        expect(deriveAutoTitle('mac-office-2', HOST)).toBe('mac-office-2'); // different host: keep
+        expect(deriveAutoTitle('dev-laptop.local', HOST)).toBeUndefined();
+        expect(deriveAutoTitle('dev-laptop', HOST)).toBeUndefined();     // short form
+        expect(deriveAutoTitle('DEV-LAPTOP', HOST)).toBeUndefined();     // case-insensitive
+        expect(deriveAutoTitle('dev-laptop-2', HOST)).toBe('dev-laptop-2'); // different host: keep
     });
 
     it('drops bare process names that say nothing', () => {

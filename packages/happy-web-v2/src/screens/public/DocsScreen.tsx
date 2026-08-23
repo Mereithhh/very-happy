@@ -20,14 +20,14 @@ export function DocsScreen() {
   }, [doc, slug]);
 
   if (slug && !doc) {
-    return <div className="pub-page"><PublicHeader /><main className="docs-missing"><div className="eyebrow">404 // DOC NOT FOUND</div><h1>That chapter is not here.</h1><p>The documentation may have moved.</p><Link className="pub-button" to="/docs"><ArrowLeft size={15} /> Documentation home</Link></main><PublicFooter /></div>;
+    return <div className="pub-page"><PublicHeader /><main id="main-content" className="docs-missing"><div className="eyebrow">404 // DOC NOT FOUND</div><h1>That chapter is not here.</h1><p>The documentation may have moved.</p><Link className="pub-button" to="/docs"><ArrowLeft size={15} /> Documentation home</Link></main><PublicFooter /></div>;
   }
 
   return (
     <div className="pub-page docs-page">
       <PublicHeader />
       <div className="docs-mobile-bar"><strong>Documentation</strong><button type="button" aria-expanded={menuOpen} aria-controls="docs-navigation" onClick={() => setMenuOpen((v) => !v)}>{menuOpen ? <X /> : <Menu />}<span className="sr-only">Toggle chapters</span></button></div>
-      <main className="docs-layout">
+      <main id="main-content" className="docs-layout">
         <aside id="docs-navigation" className={menuOpen ? 'is-open' : ''}><div className="eyebrow">DOCUMENTATION</div><DocNav onNavigate={() => setMenuOpen(false)} /><div className="docs-aside-note">Very Happy uses a trusted relay. <Link to="/docs/security">Understand the boundary.</Link></div></aside>
         {doc ? <DocArticle doc={doc} /> : <DocsIndex />}
       </main>
@@ -48,6 +48,7 @@ function DocArticle({ doc }: { doc: NonNullable<ReturnType<typeof getPublicDoc>>
     if (block.type === 'p') return <p key={blockIndex}>{block.text}</p>;
     if (block.type === 'code') return <pre key={blockIndex}><code>{block.code}</code></pre>;
     if (block.type === 'list') return <ul key={blockIndex}>{block.items.map((item) => <li key={item}>{item}</li>)}</ul>;
+    if (block.type === 'link') return <p key={blockIndex}><a href={block.href} target="_blank" rel="noreferrer">{block.label}</a></p>;
     return <div className="docs-note" key={blockIndex}>{block.text}</div>;
   })}</section>)}<nav className="docs-pager" aria-label="Adjacent chapters">{previous ? <Link to={`/docs/${previous.slug}`}><ArrowLeft size={14} />{previous.label}</Link> : <span />}{next && <Link to={`/docs/${next.slug}`}>{next.label}<ArrowRight size={14} /></Link>}</nav></article>;
 }

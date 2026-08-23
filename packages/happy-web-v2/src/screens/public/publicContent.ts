@@ -1,11 +1,13 @@
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 export const LOGIN_COMMAND = 'very-happy auth login';
+export const DAEMON_START_COMMAND = 'very-happy daemon start';
 
 export type DocBlock =
   | { type: 'p'; text: string }
   | { type: 'code'; code: string }
   | { type: 'list'; items: string[] }
+  | { type: 'link'; href: string; label: string }
   | { type: 'note'; text: string };
 
 export type DocSection = { heading: string; blocks: DocBlock[] };
@@ -28,11 +30,12 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'Create an account with Google or a username and password. Registration may be closed, invite-only, or at capacity; existing accounts can still sign in when registration is paused.' },
       ] },
       { heading: '3. Connect a machine', blocks: [
-        { type: 'code', code: `${INSTALL_COMMAND}\n${LOGIN_COMMAND}` },
-        { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then keep the daemon running. The machine appears in the web app when its relay connection is healthy.' },
+        { type: 'code', code: `${INSTALL_COMMAND}\n${LOGIN_COMMAND}\n${DAEMON_START_COMMAND}` },
+        { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy.' },
       ] },
       { heading: '4. Start work', blocks: [
-        { type: 'p', text: 'Select the connected machine, open Terminal, or create a Claude Code session. Run very-happy daemon status if the machine remains offline.' },
+        { type: 'code', code: 'cd /path/to/your/project\nvery-happy' },
+        { type: 'p', text: 'Running very-happy in a project folder creates a Claude Code session. You can also select the connected machine and open Terminal from Web. Run very-happy daemon status if the machine remains offline.' },
       ] },
     ],
   },
@@ -69,8 +72,9 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'self-hosting', label: 'Self-hosting', summary: 'Run a relay you control and point the web client and CLI at it.',
     sections: [
       { heading: 'Deployment shape', blocks: [
-        { type: 'p', text: 'Deploy happy-server behind HTTPS, serve a matching happy-web-v2 build, and provide persistent database and file storage. The repository deployment guide is the source of truth for environment variables and container setup.' },
-        { type: 'code', code: 'git clone https://github.com/Mereithhh/very-happy.git\ncd very-happy\npnpm install --frozen-lockfile\npnpm -C packages/happy-wire build' },
+        { type: 'p', text: 'Deploy happy-server behind HTTPS and persist /data. Before serving, the Docker image migrates embedded PGlite by default or an explicitly configured external Postgres database. Set an explicit signup policy and account cap before exposing it.' },
+        { type: 'code', code: "git clone https://github.com/Mereithhh/very-happy.git\ncd very-happy\ndocker build -t very-happy-server -f Dockerfile.server .\ndocker volume create very-happy-data\ndocker run -d --name very-happy-server --restart unless-stopped \\\n  -p 127.0.0.1:3005:3005 \\\n  -e HANDY_MASTER_SECRET='<high-entropy-secret>' \\\n  -e SIGNUP_MODE=closed -e SIGNUP_MAX_ACCOUNTS=10 \\\n  -v very-happy-data:/data very-happy-server\ncurl -fsS http://127.0.0.1:3005/health" },
+        { type: 'link', href: `${GITHUB_URL}/blob/main/docs/deployment.md`, label: 'Open the complete deployment and environment guide ↗' },
       ] },
       { heading: 'Connect a CLI', blocks: [
         { type: 'code', code: 'HAPPY_SERVER_URL=https://relay.example.com \\\nHAPPY_WEBAPP_URL=https://relay.example.com \\\nvery-happy auth login' },
@@ -136,7 +140,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'A deployment may offer username/password, Google sign-in, or both. Google availability depends on an OAuth client configured for the exact web origin. A popup cancellation does not create an account.' },
       ] },
       { heading: 'Operator controls', blocks: [
-        { type: 'p', text: 'Capacity is a global safety limit, not a per-user usage entitlement. Operators should combine it with request rate limits, monitoring, backups, and a documented process for account support.' },
+        { type: 'p', text: 'Capacity is a global signup safety limit, not a usage entitlement. Separate machine, session, message, attachment, socket, and RPC boundaries protect the relay. When a storage cap is reached, delete unneeded sessions or ask the operator; repeatedly retrying will not bypass it.' },
       ] },
     ],
   },

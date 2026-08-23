@@ -8,7 +8,7 @@ import {
 
 describe('normalizePreviewPath', () => {
     it('keeps a normal absolute path', () => {
-        expect(normalizePreviewPath('/Users/jojo/report.md')).toBe('/Users/jojo/report.md');
+        expect(normalizePreviewPath('/Users/demo/report.md')).toBe('/Users/demo/report.md');
     });
 
     it('keeps interior spaces but trims the edges', () => {

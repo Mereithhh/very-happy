@@ -1,0 +1,3 @@
+# Captured terminal byte streams intentionally contain control characters and
+# terminal-significant trailing spaces. Treat them as binary in reviews.
+packages/happy-cli/src/terminal/__fixtures__/**/*.bin -diff

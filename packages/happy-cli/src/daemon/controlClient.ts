@@ -176,7 +176,7 @@ export async function pushClipboardViaDaemon(text: string): Promise<{
  * Not just a boolean.
  * 
  * We can destructure the response on the caller for richer output.
- * For instance when running `happy daemon status` we can show more information.
+ * For instance when running `very-happy daemon status` we can show more information.
  */
 export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
   const state = await readDaemonState();

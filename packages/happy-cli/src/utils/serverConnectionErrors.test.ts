@@ -269,7 +269,7 @@ describe('startOfflineReconnection', () => {
 
             expect(attemptCount).toBe(1);
             expect(onNotify).toHaveBeenCalledWith(
-                '❌ Authentication failed. Please re-authenticate with `happy auth`.'
+                '❌ Authentication failed. Please re-authenticate with `very-happy auth`.'
             );
             expect(onReconnected).not.toHaveBeenCalled();
 

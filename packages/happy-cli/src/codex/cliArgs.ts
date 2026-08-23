@@ -12,7 +12,7 @@ export function extractCodexResumeFlag(args: string[]): { resumeThreadId: string
 
             const nextArg = args[i + 1];
             if (!nextArg || nextArg.startsWith('-')) {
-                throw new Error('Codex resume requires a thread ID: happy codex --resume <thread-id>');
+                throw new Error('Codex resume requires a thread ID: very-happy codex --resume <thread-id>');
             }
 
             resumeThreadId = nextArg;
@@ -27,7 +27,7 @@ export function extractCodexResumeFlag(args: string[]): { resumeThreadId: string
 
             const value = arg.slice('--resume='.length).trim();
             if (!value) {
-                throw new Error('Codex resume requires a thread ID: happy codex --resume <thread-id>');
+                throw new Error('Codex resume requires a thread ID: very-happy codex --resume <thread-id>');
             }
 
             resumeThreadId = value;

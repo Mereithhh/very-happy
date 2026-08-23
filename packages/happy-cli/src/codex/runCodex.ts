@@ -84,7 +84,7 @@ export async function runCodex(opts: {
         console.error('\x1b[1mOption 2 - Homebrew (macOS):\x1b[0m');
         console.error('  \x1b[36mbrew install --cask codex\x1b[0m\n');
         console.error('Alternatively, use Claude Code:');
-        console.error('  \x1b[36mhappy claude\x1b[0m\n');
+        console.error('  \x1b[36mvery-happy claude\x1b[0m\n');
         process.exit(1);
     }
 
@@ -112,7 +112,7 @@ export async function runCodex(opts: {
     let machineId = settings?.machineId;
     const sandboxConfig = opts.noSandbox ? undefined : settings?.sandboxConfig;
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/Mereithhh/very-happy/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);

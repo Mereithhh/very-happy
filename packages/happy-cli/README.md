@@ -4,9 +4,11 @@ A self-hosted remote client for **Claude Code (CLI)**. Run a Claude Code
 session on your machine and drive it remotely from a web browser through a relay
 server.
 
-`very-happy-cli` is a rebranded fork of [slopus/happy](https://github.com/slopus/happy)
-(MIT). It changes only the default server endpoint and the command name — the
-agent runtime is unchanged.
+`very-happy-cli` is a deeply modified fork of [slopus/happy](https://github.com/slopus/happy)
+(MIT). It keeps the compatible session wire model while adding the Very Happy
+daemon, Web Terminal, Codex and Gemini modes, MCP/automation commands, account
+pairing, and a configurable relay endpoint. Review the release notes when
+mixing CLI and server versions.
 
 By default it connects to **https://happy.mereith.com**. You can point it at any
 compatible Happy server (including your own) via `HAPPY_SERVER_URL`.

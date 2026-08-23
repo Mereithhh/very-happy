@@ -7,7 +7,7 @@
 %begin 1786940500 291 1
 %end 1786940500 291 1
 %output %0 command -v claude\015\012
-%output %0 /Users/jojo/.local/bin/claude\015\012vh$ 
+%output %0 /Users/demo/.local/bin/claude\015\012vh$ 
 %begin 1786940501 292 1
 %end 1786940501 292 1
 %begin 1786940501 293 1

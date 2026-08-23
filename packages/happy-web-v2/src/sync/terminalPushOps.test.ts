@@ -218,7 +218,7 @@ describe('restoredAt (B-150)', () => {
       },
     });
     const rows = composeTerminalList(
-      { m1: { machineName: 'mac-office', terminals: snap!.terminals } },
+      { m1: { machineName: 'dev-laptop', terminals: snap!.terminals } },
       EMPTY_OVERLAY,
       2000,
     );

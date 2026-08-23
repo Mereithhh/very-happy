@@ -46,6 +46,19 @@ function getSessionLogPath(): string {
   return join(configuration.logsDir, filename)
 }
 
+export function safeRemoteLogUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined
+  try {
+    const url = new URL(raw)
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) return undefined
+    if (url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) return undefined
+    return url.origin
+  } catch {
+    return undefined
+  }
+}
+
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
   private dangerouslyUnencryptedServerLoggingToken: string | undefined
@@ -54,11 +67,11 @@ class Logger {
     public readonly logFilePath = getSessionLogPath()
   ) {
     // Remote logging enabled only when explicitly set with server URL
-    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING 
-      && process.env.HAPPY_SERVER_URL
-      && process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN) {
-      this.dangerouslyUnencryptedServerLoggingUrl = process.env.HAPPY_SERVER_URL
-      this.dangerouslyUnencryptedServerLoggingToken = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN
+    const remoteUrl = safeRemoteLogUrl(process.env.HAPPY_SERVER_URL)
+    const remoteToken = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN
+    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && remoteUrl && remoteToken && Buffer.byteLength(remoteToken) >= 32) {
+      this.dangerouslyUnencryptedServerLoggingUrl = remoteUrl
+      this.dangerouslyUnencryptedServerLoggingToken = remoteToken
       console.log(chalk.yellow('[REMOTE LOGGING] Sending logs to server for AI debugging'))
     }
   }
@@ -72,7 +85,7 @@ class Logger {
   debug(message: string, ...args: unknown[]): void {
     this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, ...args)
 
-    // NOTE: @kirill does not think its a good ideas,
+    // Console logging would disturb the interactive terminal,
     // as it will break us using claude in interactive mode.
     // Instead simply open the debug file in a new editor window.
     //
