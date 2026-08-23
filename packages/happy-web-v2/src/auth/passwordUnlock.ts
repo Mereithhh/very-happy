@@ -46,6 +46,37 @@ export async function loginWithPassword(username: string, password: string): Pro
     }
 }
 
+/** Atomically create a password account without consuming capacity via a bare key signup. */
+export async function signupWithPassword(
+    username: string,
+    password: string,
+    secret: string,
+    inviteCode?: string,
+): Promise<AuthCredentials> {
+    const serverUrl = getServerUrl();
+    try {
+        const response = await axios.post<AuthCredentials>(
+            `${serverUrl}/v1/account/signup/password`,
+            {
+                username: username.trim().toLowerCase(),
+                password,
+                secret,
+                ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}),
+            },
+            { headers: { 'X-Happy-Client': getHappyClientId() } },
+        );
+        return { token: response.data.token, secret: response.data.secret };
+    } catch (error: any) {
+        const status = error?.response?.status;
+        const reason = error?.response?.data?.error;
+        if (status === 409) throw new AccountAuthError('username-taken', 'That username is taken.');
+        if (status === 429) throw new AccountAuthError('rate-limited', 'Too many attempts. Wait a minute and try again.');
+        if (status === 403) throw error;
+        if (reason === 'invalid_secret') throw new AccountAuthError('network', 'Could not create account. Please try again.');
+        throw new AccountAuthError('network', 'Could not reach the server. Check your connection.');
+    }
+}
+
 /**
  * POST /v1/account/credentials — AUTHENTICATED. Attach username+password to the
  * *current* account and store its secret server-side (so other browsers can log

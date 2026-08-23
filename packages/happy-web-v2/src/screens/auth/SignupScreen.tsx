@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
-import { authGetToken } from '@/auth/authGetToken';
-import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
+import { signupWithPassword, AccountAuthError } from '@/auth/passwordUnlock';
 import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, CyberMark, useToast } from '@/ui';
@@ -85,9 +84,8 @@ export function SignupScreen() {
       const secret = getRandomBytes(32);
       const secretB64 = encodeBase64(secret, 'base64url');
       const inviteCode = invite.trim() || undefined;
-      const token = await authGetToken(secret, inviteCode);
-      const cloudCredentials = await setAccountCredentials(username, password, secretB64, { token, secret: secretB64 });
-      await login(cloudCredentials?.token ?? token, cloudCredentials?.secret ?? secretB64);
+      const cloudCredentials = await signupWithPassword(username, password, secretB64, inviteCode);
+      await login(cloudCredentials.token, cloudCredentials.secret);
       toast.success(t('signup.success'));
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {

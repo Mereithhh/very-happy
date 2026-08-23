@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
+import tweetnacl from 'tweetnacl';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
 import { auth } from '@/app/auth/auth';
@@ -15,6 +16,7 @@ import {
 } from '@/app/auth/googleLoginSecurity';
 import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
+import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
@@ -50,6 +52,15 @@ const loginResponse = z.object({
 const newUsernameSchema = z.string().trim().toLowerCase().min(3).max(64);
 const loginUsernameSchema = z.string().trim().toLowerCase().min(1).max(64);
 const passwordSchema = z.string().min(8).max(256);
+
+class UsernameTakenError extends Error {}
+
+export function accountPublicKeyFromSecret(secret: string): string | null {
+    const seed = decodeFixedBase64(secret, 32);
+    if (!seed) return null;
+    const keyPair = tweetnacl.sign.keyPair.fromSeed(Uint8Array.from(seed));
+    return Buffer.from(keyPair.publicKey).toString('hex');
+}
 
 export function accountAuthRoutes(app: Fastify) {
     // Fail startup on a typo that could otherwise accidentally remove the cap.
@@ -95,6 +106,94 @@ export function accountAuthRoutes(app: Fastify) {
         }
         const challenge = await issueGoogleLoginChallenge();
         return reply.send({ nonce: challenge.nonce, expiresAt: challenge.expiresAt.toISOString() });
+    });
+
+    app.post('/v1/account/signup/password', {
+        schema: {
+            body: z.object({
+                username: newUsernameSchema,
+                password: passwordSchema,
+                secret: z.string().min(40).max(48),
+                inviteCode: z.string().trim().max(256).optional(),
+            }).strict(),
+            response: {
+                200: loginResponse,
+                400: z.object({ error: z.literal('invalid_secret') }),
+                403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached']) }),
+                409: z.object({ error: z.literal('username_taken') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+            },
+        },
+    }, async (request, reply) => {
+        const username = request.body.username;
+        const publicKey = accountPublicKeyFromSecret(request.body.secret);
+        if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
+        const ipKey = hashPairingValue(request.ip).slice(0, 32);
+        const usernameKey = hashPairingValue(username).slice(0, 32);
+        const allowed = await Promise.all([
+            allowAuthRequest(`password-signup:ip:${ipKey}`, { max: 5, windowMs: 60_000 }),
+            allowAuthRequest(`password-signup:user:${usernameKey}`, { max: 3, windowMs: 60_000 }),
+            allowAuthRequest('password-signup:global', { max: 50, windowMs: 60_000 }),
+        ]);
+        if (allowed.some((value) => !value)) {
+            return reply.code(429).send({ error: 'too_many_requests' as const });
+        }
+
+        try {
+            const passwordHash = hashPassword(request.body.password);
+            const result = await withSignupGate<{ accountId: string }>({
+                provider: 'password',
+                inviteCode: request.body.inviteCode,
+                findExisting: async (tx) => {
+                    const existing = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
+                        'SELECT "accountId" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
+                        username,
+                    );
+                    if (existing[0]) throw new UsernameTakenError();
+                    return null;
+                },
+                create: async (tx) => {
+                    const account = await tx.account.create({ data: { publicKey } });
+                    const secretEnc = await upsertAccountSecret(tx, account.id, request.body.secret);
+                    await tx.$executeRawUnsafe(
+                        `INSERT INTO "AccountCredential"
+                         ("username", "accountId", "passwordHash", "secretEnc", "updatedAt")
+                         VALUES ($1, $2, $3, $4, now())`,
+                        username,
+                        account.id,
+                        passwordHash,
+                        secretEnc,
+                    );
+                    await tx.$executeRawUnsafe(
+                        `INSERT INTO "AccountIdentity"
+                         ("id", "accountId", "provider", "providerSubject", "updatedAt")
+                         VALUES ($1, $2, 'password', $3, now())`,
+                        randomUUID(),
+                        account.id,
+                        username,
+                    );
+                    return { accountId: account.id };
+                },
+                onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
+            });
+            const session = await auth.createLoginToken(result.value.accountId);
+            return reply.send({
+                token: session.token,
+                secret: request.body.secret,
+                expiresAt: session.expiresAt.toISOString(),
+            });
+        } catch (error) {
+            if (error instanceof UsernameTakenError) {
+                return reply.code(409).send({ error: 'username_taken' as const });
+            }
+            if (error instanceof SignupPolicyError) {
+                return reply.code(403).send({ error: error.reason });
+            }
+            if ((error as { code?: string }).code === 'P2002' || /unique constraint/i.test(String(error))) {
+                return reply.code(409).send({ error: 'username_taken' as const });
+            }
+            throw error;
+        }
     });
 
     app.post('/v1/account/credentials', {
