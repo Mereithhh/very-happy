@@ -1,6 +1,6 @@
 # Cloud identity + signup capacity
 
-> 状态：Final
+> 状态：Shipped（commit `1d17eff1`，生产修复 `5e1642c4`，Web onboarding `9b0757ce`）
 > 日期：2026-08-23 ｜ 关联 backlog：B-149 ｜ 出处：Owner 对开源专项的前置收敛
 
 ## 背景
