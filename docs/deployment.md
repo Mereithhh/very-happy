@@ -14,6 +14,10 @@ Both modes run Fastify + Socket.IO on port 3005 and can expose Prometheus metric
 on a separate port. The maintainer Cloud currently uses the standalone/PGlite
 shape inside Docker; Postgres/Redis/S3 are not universally required.
 
+Before exposing an instance, read [`security.md`](security.md), set an explicit
+`SIGNUP_MODE` and `SIGNUP_MAX_ACCOUNTS`, configure exact proxy trust, and keep the
+metrics port off the public Internet. The relay is server-trusted.
+
 ## Full-infrastructure services
 1. **Postgres**
    - Required only when `DATABASE_URL` is set; standalone uses PGlite.
@@ -82,6 +86,21 @@ A production Dockerfile is provided at `Dockerfile.server`.
 Key notes:
 - The server defaults to port `3005` (set `PORT` explicitly in container environments).
 - The image includes FFmpeg and Python for media processing.
+
+From the repository root:
+
+```bash
+docker build -t very-happy-server -f Dockerfile.server .
+docker run --rm -p 3005:3005 \
+  -e HANDY_MASTER_SECRET='replace-with-a-high-entropy-secret' \
+  -e SIGNUP_MODE=closed \
+  -e SIGNUP_MAX_ACCOUNTS=10 \
+  -v very-happy-data:/data \
+  very-happy-server
+```
+
+Terminate TLS at a trusted reverse proxy before accepting non-loopback clients.
+Persist `/data`, back it up together with the master secret, and test restore.
 
 ## Kubernetes manifests
 Example manifests live in `packages/happy-server/deploy`:

@@ -1,0 +1,17 @@
+Very Happy
+Copyright (c) 2026 Very Happy contributors
+
+This project is derived from slopus/happy:
+https://github.com/slopus/happy
+
+The upstream project and this fork are distributed under the MIT License. The
+root LICENSE and package-local license files must remain with redistributed
+copies. Upstream copyright notices and Git history are retained.
+
+The published CLI bundles third-party tools including ripgrep and difftastic.
+Their license texts are shipped under packages/happy-cli/tools/licenses and in
+the npm package. Other dependency licenses are governed by their respective
+packages and lockfile entries.
+
+Claude Code is a product of Anthropic. Very Happy is an independent project and
+is not affiliated with or endorsed by Anthropic.

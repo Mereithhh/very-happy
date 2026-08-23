@@ -1,5 +1,11 @@
 # Backend Architecture
 
+> Historical deep dive. The current supported overview is
+> [`architecture.md`](architecture.md). This file still describes the optional
+> full-infrastructure Postgres/Redis/S3 shape in several diagrams; standalone
+> PGlite/local-files/in-process mode is also production-supported. The current
+> identity and trust model is documented in [`security.md`](security.md).
+
 This document describes the Happy backend structure as implemented in `packages/happy-server`. It focuses on how the server is wired, how data flows through the system, and which subsystems handle which responsibilities.
 
 ## System overview
@@ -164,11 +170,12 @@ sequenceDiagram
     Server-->>Client: Response
 ```
 
-The backend does not store passwords. Instead:
-- Clients authenticate with a signed challenge (`/v1/auth`) using a public key.
-- The server upserts the account by public key and returns a Bearer token.
-- Tokens are generated and verified by privacy-kit using `HANDY_MASTER_SECRET`.
-- Tokens are cached in-memory for fast verification.
+The current backend stores salted password verifiers (not plaintext passwords)
+and verified Google identities. Password/Google Web logins create expiring,
+revocable login sessions; legacy CLI tokens remain compatible. The trusted
+server can recover the account secret, so signed/encrypted wire formats do not
+make this deployment E2E or zero-knowledge. The signed-key `/v1/auth` route is a
+legacy/CLI compatibility path, not the complete account identity model.
 
 GitHub OAuth uses short-lived "ephemeral" tokens to protect the callback and is separate from normal auth.
 
