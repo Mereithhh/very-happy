@@ -124,7 +124,7 @@ export const pt: PartialTranslationStructure = {
         developer: 'Desenvolvedor',
         developerTools: 'Ferramentas de desenvolvedor',
         about: 'Sobre',
-        aboutFooter: 'Happy Coder é um cliente móvel para Codex e Claude Code. É totalmente criptografado ponta a ponta e sua conta é armazenada apenas no seu dispositivo. Não é afiliado à Anthropic.',
+        aboutFooter: 'Very Happy é um cliente web para Codex e Claude Code. Usa um servidor confiável, não criptografia ponta a ponta; o operador pode acessar o conteúdo retransmitido. Não é afiliado à Anthropic.',
         whatsNew: 'Novidades',
         whatsNewSubtitle: 'Veja as atualizações e melhorias mais recentes',
         reportIssue: 'Relatar um problema',
@@ -375,7 +375,7 @@ export const pt: PartialTranslationStructure = {
         cliVersionOutdated: 'Atualização do CLI necessária',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
-        updateCliInstructions: 'Por favor execute npm install -g happy@latest',
+        updateCliInstructions: 'Por favor execute npm install -g very-happy-cli@latest',
         deleteSession: 'Excluir sessão',
         deleteSessionSubtitle: 'Remover permanentemente esta sessão',
         deleteSessionConfirm: 'Excluir sessão permanentemente?',
@@ -717,13 +717,13 @@ export const pt: PartialTranslationStructure = {
         connectionDetails: 'Detalhes da conexão',
         publicKey: 'Chave pública',
         encryption: 'Criptografia',
-        endToEndEncrypted: 'Criptografia ponta a ponta',
+        endToEndEncrypted: 'Relay com servidor confiável',
         acceptConnection: 'Aceitar conexão',
         connecting: 'Conectando...',
         reject: 'Rejeitar',
         security: 'Segurança',
-        securityFooter: 'Este link de conexão foi processado com segurança no seu navegador e nunca foi enviado para nenhum servidor. Seus dados privados permanecerão seguros e apenas você pode descriptografar as mensagens.',
-        securityFooterDevice: 'Esta conexão foi processada com segurança no seu dispositivo e nunca foi enviada para nenhum servidor. Seus dados privados permanecerão seguros e apenas você pode descriptografar as mensagens.',
+        securityFooter: 'Aprove apenas um link solicitado por você em uma máquina confiável. O servidor pode acessar os dados da conexão e o conteúdo retransmitido.',
+        securityFooterDevice: 'Aprove apenas uma conexão solicitada por você em uma máquina confiável. O servidor pode acessar os dados da conexão e o conteúdo retransmitido.',
         clientSideProcessing: 'Processamento do lado cliente',
         linkProcessedLocally: 'Link processado localmente no navegador',
         linkProcessedOnDevice: 'Link processado localmente no dispositivo',
@@ -766,7 +766,7 @@ export const pt: PartialTranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Cliente móvel Codex e Claude Code',
-        subtitle: 'Criptografado ponta a ponta e sua conta é armazenada apenas no seu dispositivo.',
+        subtitle: 'O servidor é um relay confiável e pode acessar o conteúdo retransmitido.',
         createAccount: 'Criar conta',
         linkOrRestoreAccount: 'Vincular ou restaurar conta',
         loginWithMobileApp: 'Fazer login com aplicativo móvel',
@@ -815,7 +815,7 @@ export const pt: PartialTranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
-        offlineHelp: '• Verifique se seu computador está online\n• Execute `happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g happy@latest`',
+        offlineHelp: '• Verifique se seu computador está online\n• Execute `very-happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g very-happy-cli@latest`',
         launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',
         stopDaemon: 'Parar daemon',
         lastKnownPid: 'Último PID conhecido',

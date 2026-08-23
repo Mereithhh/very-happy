@@ -80,4 +80,22 @@ describe('t() English fallback for partial languages', () => {
       expect(t('machine.activeSessions', { count: 3 })).toBe(en.machine.activeSessions({ count: 3 }));
     }
   });
+
+  it('never exposes the retired E2E trust claim or old CLI package in any locale', () => {
+    for (const lang of ['en', 'ru', 'pl', 'es', 'it', 'pt', 'ca', 'ja', 'zh-Hans', 'zh-Hant'] as const) {
+      setLanguage(lang);
+      const copy = [
+        t('settings.aboutFooter'),
+        t('terminal.endToEndEncrypted'),
+        t('terminal.securityFooter'),
+        t('welcome.subtitle'),
+        t('machine.offlineHelp'),
+        t('sessionInfo.updateCliInstructions'),
+      ].join('\n');
+      expect(copy, lang).not.toContain('npm install -g happy@latest');
+      expect(copy, lang).not.toContain('`happy daemon status`');
+      expect(copy, lang).not.toMatch(/only you can decrypt|only on your device|never sent to any server/i);
+      expect(copy, lang).toContain('very-happy');
+    }
+  });
 });

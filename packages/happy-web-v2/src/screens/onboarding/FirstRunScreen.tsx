@@ -1,6 +1,7 @@
 import { Check, Copy, ExternalLink, Laptop, LogIn, PackagePlus } from 'lucide-react';
 import { useState } from 'react';
 import { Button, useToast } from '@/ui';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
 import './firstRun.css';
 
@@ -32,6 +33,7 @@ function Command({ value }: { value: string }) {
 
 export function FirstRunScreen() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   return (
     <main className="fr-page">
       <section className="fr-hero">
@@ -58,13 +60,20 @@ export function FirstRunScreen() {
       <div className="fr-note">
         {t('onboarding.trustNote')}
       </div>
-      <Button
-        variant="secondary"
-        rightIcon={<ExternalLink size={14} />}
-        onClick={() => window.open('https://github.com/Mereithhh/very-happy#getting-started', '_blank', 'noopener,noreferrer')}
-      >
-        {t('onboarding.readQuickStart')}
-      </Button>
+      <div className="fr-recovery" aria-label="Machine connection help">
+        <h2>Machine not appearing?</h2>
+        <ul>
+          <li>Confirm this browser and the CLI use the same server.</li>
+          <li>Run <code>very-happy daemon status</code> and restart the login flow if approval expired.</li>
+          <li>Keep the daemon online, then reload this page.</li>
+        </ul>
+      </div>
+      <div className="fr-actions">
+        <Button variant="secondary" rightIcon={<ExternalLink size={14} />} onClick={() => navigate('/docs/quickstart')}>
+          {t('onboarding.readQuickStart')}
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/docs/troubleshooting')}>Troubleshoot connection</Button>
+      </div>
     </main>
   );
 }

@@ -37,10 +37,12 @@ export function LoginScreen() {
       toast.success(t('common.success'));
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {
-      const msg =
-        err?.response?.status === 401 || err?.response?.status === 403
-          ? t('errors.authenticationFailed')
-          : err?.message || t('errors.networkError');
+      const status = err?.response?.status;
+      const msg = status === 401 || status === 403
+        ? t('errors.authenticationFailed')
+        : status >= 500
+          ? 'The server is unavailable. Check its status, then try again.'
+          : 'Could not reach the server. Check your connection and server address.';
       setError(msg);
     } finally {
       setBusy(false);
@@ -112,7 +114,12 @@ export function LoginScreen() {
         <button type="button" className="auth-alt" onClick={() => navigate('/signup', { state: location.state })}>
           {t('settingsAccount.createAccountTitle')}
         </button>
+        <div className="auth-help">Can’t connect? <Link to="/docs/troubleshooting">Open troubleshooting</Link></div>
         <div className="auth-legal">
+          <Link to="/">Home</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/docs">Docs</Link>
+          <span aria-hidden="true">·</span>
           <Link to="/privacy">Privacy</Link>
           <span aria-hidden="true">·</span>
           <Link to="/terms">Terms</Link>

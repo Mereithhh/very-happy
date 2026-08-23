@@ -65,6 +65,17 @@
   font-size: var(--fs-12);
   line-height: 1.5;
 }
+.fr-recovery {
+  width: min(100%, 720px);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.fr-recovery h2 { margin: 0 0 var(--sp-2); font-size: var(--fs-14); }
+.fr-recovery ul { margin: 0; padding-left: var(--sp-5); color: var(--text-dim); font-size: var(--fs-12); line-height: 1.6; }
+.fr-recovery code { color: var(--text); }
+.fr-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 @media (max-width: 599px) {
   .fr-page { padding: var(--sp-6) var(--sp-4); }
   .fr-steps li { padding: var(--sp-4); }

@@ -1,10 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
 import { authGetToken } from '@/auth/authGetToken';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
-import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
+import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -30,6 +30,7 @@ export function SignupScreen() {
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [authConfig, setAuthConfig] = useState<PublicAuthConfig | null>(null);
   // Field-level validation only surfaces after a field is touched (audit S2:
   // real-time inline validation that doesn't scream at an empty pristine form).
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean; c?: boolean }>({});
@@ -56,11 +57,19 @@ export function SignupScreen() {
     return null;
   }, [touched.c, confirm, password, t]);
 
+  const registrationBlocked = authConfig?.signup.atCapacity || authConfig?.signup.mode === 'closed';
   const canSubmit =
     username.trim().length >= MIN_USERNAME &&
     password.length >= MIN_PASSWORD &&
     confirm === password &&
+    !registrationBlocked &&
     !busy;
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPublicAuthConfig().then((config) => { if (!cancelled) setAuthConfig(config); });
+    return () => { cancelled = true; };
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -136,13 +145,21 @@ export function SignupScreen() {
         </div>
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 
-        <Input
-          label={t('signup.inviteCode')}
-          autoComplete="off"
-          value={invite}
-          onChange={(e) => setInvite(e.target.value)}
-          placeholder={t('signup.inviteCodePlaceholder')}
-        />
+        {authConfig?.signup.atCapacity ? (
+          <div className="auth-policy" role="status">This server is at account capacity. Existing users can sign in; new users can try later or self-host.</div>
+        ) : authConfig?.signup.mode === 'closed' ? (
+          <div className="auth-policy" role="status">Registration is currently closed. Existing accounts can still sign in.</div>
+        ) : authConfig?.signup.mode === 'invite' ? (
+          <div className="auth-policy" role="status">This server requires an invite code for new accounts.</div>
+        ) : null}
+
+        {(authConfig?.signup.mode === 'invite' || authConfig === null) && <Input
+            label={t('signup.inviteCode')}
+            autoComplete="off"
+            value={invite}
+            onChange={(e) => setInvite(e.target.value)}
+            placeholder={t('signup.inviteCodePlaceholder')}
+          />}
 
         <GoogleLoginButton
           disabled={busy}
@@ -191,7 +208,12 @@ export function SignupScreen() {
         <button type="button" className="auth-alt" onClick={() => navigate('/login', { state: location.state })}>
           {t('signup.haveAccount')}
         </button>
+        <div className="auth-help">Registration unavailable? <Link to="/docs/accounts-and-quotas">Review account policies</Link></div>
         <div className="auth-legal">
+          <Link to="/">Home</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/docs">Docs</Link>
+          <span aria-hidden="true">·</span>
           <Link to="/privacy">Privacy</Link>
           <span aria-hidden="true">·</span>
           <Link to="/terms">Terms</Link>

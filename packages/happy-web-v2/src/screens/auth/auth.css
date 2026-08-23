@@ -55,14 +55,14 @@
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  color: var(--text-2);
+  color: var(--text-dim);
   font-size: var(--fs-12);
 }
 .auth-google-unavailable button {
   border: 0;
   padding: 0;
   background: transparent;
-  color: var(--text-1);
+  color: var(--text);
   font: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -75,7 +75,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  color: var(--text-3);
+  color: var(--text-faint);
   font-size: var(--fs-12);
 }
 .auth-divider::before,
@@ -91,6 +91,15 @@
   padding: var(--sp-2) var(--sp-3);
   font-size: var(--fs-12);
 }
+.auth-policy {
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
 .auth-alt {
   font-size: var(--fs-13);
   color: var(--accent-2);
@@ -100,6 +109,12 @@
 .auth-alt:hover {
   text-decoration: underline;
 }
+.auth-help {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+}
+.auth-help a { color: var(--text-dim); text-decoration: underline; }
 .auth-legal {
   display: flex;
   justify-content: center;

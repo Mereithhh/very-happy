@@ -141,7 +141,7 @@ export const pl: PartialTranslationStructure = {
         developer: 'Deweloper',
         developerTools: 'Narzędzia deweloperskie',
         about: 'O aplikacji',
-        aboutFooter: 'Happy Coder to mobilny klient Codex i Claude Code. Jest w pełni szyfrowany end-to-end, a Twoje konto jest przechowywane tylko na Twoim urządzeniu. Nie jest powiązany z Anthropic.',
+        aboutFooter: 'Very Happy to klient webowy Codex i Claude Code. Korzysta z zaufanego serwera, a nie szyfrowania end-to-end; operator może uzyskać dostęp do przekazywanych treści. Nie jest powiązany z Anthropic.',
         whatsNew: 'Co nowego',
         whatsNewSubtitle: 'Zobacz najnowsze aktualizacje i ulepszenia',
         reportIssue: 'Zgłoś problem',
@@ -393,7 +393,7 @@ export const pl: PartialTranslationStructure = {
         cliVersionOutdated: 'Wymagana aktualizacja CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Zainstalowana wersja ${currentVersion}. Zaktualizuj do ${requiredVersion} lub nowszej`,
-        updateCliInstructions: 'Proszę uruchomić npm install -g happy@latest',
+        updateCliInstructions: 'Proszę uruchomić npm install -g very-happy-cli@latest',
         deleteSession: 'Usuń sesję',
         deleteSessionSubtitle: 'Trwale usuń tę sesję',
         deleteSessionConfirm: 'Usunąć sesję na stałe?',
@@ -734,13 +734,13 @@ export const pl: PartialTranslationStructure = {
         connectionDetails: 'Szczegóły połączenia',
         publicKey: 'Klucz publiczny',
         encryption: 'Szyfrowanie',
-        endToEndEncrypted: 'Szyfrowanie end-to-end',
+        endToEndEncrypted: 'Przekaźnik z zaufanym serwerem',
         acceptConnection: 'Akceptuj połączenie',
         connecting: 'Łączenie...',
         reject: 'Odrzuć',
         security: 'Bezpieczeństwo',
-        securityFooter: 'Ten link połączenia został bezpiecznie przetworzony w Twojej przeglądarce i nigdy nie został wysłany na żaden serwer. Twoje prywatne dane pozostaną bezpieczne i tylko Ty możesz odszyfrować wiadomości.',
-        securityFooterDevice: 'To połączenie zostało bezpiecznie przetworzone na Twoim urządzeniu i nigdy nie zostało wysłane na żaden serwer. Twoje prywatne dane pozostaną bezpieczne i tylko Ty możesz odszyfrować wiadomości.',
+        securityFooter: 'Zatwierdzaj tylko linki wywołane przez Ciebie na zaufanej maszynie. Zaufany serwer może uzyskać dostęp do danych połączenia i przekazywanych treści.',
+        securityFooterDevice: 'Zatwierdzaj tylko połączenia wywołane przez Ciebie na zaufanej maszynie. Zaufany serwer może uzyskać dostęp do danych połączenia i przekazywanych treści.',
         clientSideProcessing: 'Przetwarzanie po stronie klienta',
         linkProcessedLocally: 'Link przetworzony lokalnie w przeglądarce',
         linkProcessedOnDevice: 'Link przetworzony lokalnie na urządzeniu',
@@ -783,7 +783,7 @@ export const pl: PartialTranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Mobilny klient Codex i Claude Code',
-        subtitle: 'Szyfrowanie end-to-end, a Twoje konto jest przechowywane tylko na Twoim urządzeniu.',
+        subtitle: 'Serwer jest zaufanym przekaźnikiem i może uzyskać dostęp do przekazywanych treści.',
         createAccount: 'Utwórz konto',
         linkOrRestoreAccount: 'Połącz lub przywróć konto',
         loginWithMobileApp: 'Zaloguj się przez aplikację mobilną',
@@ -832,7 +832,7 @@ export const pl: PartialTranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Launcher wyłączony, gdy maszyna jest offline',
-        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy@latest`',
+        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `very-happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g very-happy-cli@latest`',
         launchNewSessionInDirectory: 'Uruchom nową sesję w katalogu',
         stopDaemon: 'Zatrzymaj daemon',
         lastKnownPid: 'Ostatni znany PID',

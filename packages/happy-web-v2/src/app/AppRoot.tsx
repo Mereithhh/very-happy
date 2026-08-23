@@ -20,6 +20,8 @@ import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
+import { LandingScreen } from '@/screens/public/LandingScreen';
+import { DocsScreen } from '@/screens/public/DocsScreen';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
 // markdown renderer, terminal pulls xterm, settings is large).
@@ -59,6 +61,13 @@ function RequireAuth() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
   return <Outlet />;
+}
+
+function RootGate() {
+  const { isAuthenticated } = useAuth();
+  useGlobalBackNav();
+  if (!isAuthenticated) return <LandingScreen />;
+  return <AppLayout />;
 }
 
 /** `/` home: the classic empty-detail placeholder, or the Task Board when the
@@ -115,6 +124,13 @@ const router = createBrowserRouter(
     },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
+    { path: '/docs', element: <DocsScreen /> },
+    { path: '/docs/:slug', element: <DocsScreen /> },
+    {
+      path: '/',
+      element: <RootGate />,
+      children: [{ index: true, element: <HomeGate /> }],
+    },
     {
       element: <RequireAuth />,
       children: [
@@ -125,10 +141,8 @@ const router = createBrowserRouter(
         // logo-centered). Sits inside RequireAuth so sync is restored.
         { path: '/assistant', element: <Lazy><AssistantScreen /></Lazy> },
         {
-          path: '/',
           element: <AppLayout />,
           children: [
-            { index: true, element: <HomeGate /> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },

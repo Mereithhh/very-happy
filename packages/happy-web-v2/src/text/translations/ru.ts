@@ -112,7 +112,7 @@ export const ru: PartialTranslationStructure = {
         developer: 'Разработчик',
         developerTools: 'Инструменты разработчика',
         about: 'О программе',
-        aboutFooter: 'Happy Coder — мобильное приложение для работы с Codex и Claude Code. Использует сквозное шифрование, все данные аккаунта хранятся только на вашем устройстве. Не связано с Anthropic.',
+        aboutFooter: 'Very Happy — веб-клиент для Codex и Claude Code. Он использует доверенный сервер, а не сквозное шифрование; оператор может получить доступ к передаваемым данным. Не связано с Anthropic.',
         whatsNew: 'Что нового',
         whatsNewSubtitle: 'Посмотреть последние обновления и улучшения',
         reportIssue: 'Сообщить о проблеме',
@@ -329,7 +329,7 @@ export const ru: PartialTranslationStructure = {
         cliVersionOutdated: 'Требуется обновление CLI',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy@latest',
+        updateCliInstructions: 'Пожалуйста, выполните npm install -g very-happy-cli@latest',
         deleteSession: 'Удалить сессию',
         deleteSessionSubtitle: 'Удалить эту сессию навсегда',
         deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -733,13 +733,13 @@ export const ru: PartialTranslationStructure = {
         connectionDetails: 'Детали подключения',
         publicKey: 'Публичный ключ',
         encryption: 'Шифрование',
-        endToEndEncrypted: 'Сквозное шифрование',
+        endToEndEncrypted: 'Ретранслятор с доверенным сервером',
         acceptConnection: 'Принять подключение',
         connecting: 'Подключение...',
         reject: 'Отклонить',
         security: 'Безопасность',
-        securityFooter: 'Эта ссылка подключения была безопасно обработана в вашем браузере и никогда не отправлялась на сервер. Ваши личные данные останутся в безопасности, и только вы можете расшифровать сообщения.',
-        securityFooterDevice: 'Это подключение было безопасно обработано на вашем устройстве и никогда не отправлялось на сервер. Ваши личные данные останутся в безопасности, и только вы можете расшифровать сообщения.',
+        securityFooter: 'Подтверждайте только ссылку, которую вы запросили на доверенной машине. Доверенный сервер может получить доступ к данным подключения и ретранслируемым данным.',
+        securityFooterDevice: 'Подтверждайте только подключение, которое вы запросили на доверенной машине. Доверенный сервер может получить доступ к данным подключения и ретранслируемым данным.',
         clientSideProcessing: 'Обработка на стороне клиента',
         linkProcessedLocally: 'Ссылка обработана локально в браузере',
         linkProcessedOnDevice: 'Ссылка обработана локально на устройстве',
@@ -782,7 +782,7 @@ export const ru: PartialTranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Мобильный клиент Codex и Claude Code',
-        subtitle: 'Сквозное шифрование, аккаунт хранится только на вашем устройстве.',
+        subtitle: 'Доверенный сервер-ретранслятор может получить доступ к передаваемым данным.',
         createAccount: 'Создать аккаунт',
         linkOrRestoreAccount: 'Связать или восстановить аккаунт',
         loginWithMobileApp: 'Войти через мобильное приложение',
@@ -831,7 +831,7 @@ export const ru: PartialTranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'Запуск отключен: машина offline',
-        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy@latest`',
+        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `very-happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g very-happy-cli@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
         status: 'Статус',
         stopDaemon: 'Остановить daemon',

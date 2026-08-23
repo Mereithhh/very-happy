@@ -124,7 +124,7 @@ export const es: PartialTranslationStructure = {
         developer: 'Desarrollador',
         developerTools: 'Herramientas de desarrollador',
         about: 'Acerca de',
-        aboutFooter: 'Happy Coder es un cliente móvil para Codex y Claude Code. Todo está cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo. No está afiliado con Anthropic.',
+        aboutFooter: 'Very Happy es un cliente web para Codex y Claude Code. Usa un servidor de confianza, no cifrado de extremo a extremo; el operador puede acceder al contenido retransmitido. No está afiliado con Anthropic.',
         whatsNew: 'Novedades',
         whatsNewSubtitle: 'Ve las últimas actualizaciones y mejoras',
         reportIssue: 'Reportar un problema',
@@ -374,7 +374,7 @@ export const es: PartialTranslationStructure = {
         cliVersionOutdated: 'Actualización de CLI requerida',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
-        updateCliInstructions: 'Por favor ejecute npm install -g happy@latest',
+        updateCliInstructions: 'Por favor ejecute npm install -g very-happy-cli@latest',
         deleteSession: 'Eliminar sesión',
         deleteSessionSubtitle: 'Eliminar permanentemente esta sesión',
         deleteSessionConfirm: '¿Eliminar sesión permanentemente?',
@@ -719,13 +719,13 @@ export const es: PartialTranslationStructure = {
         connectionDetails: 'Detalles de conexión',
         publicKey: 'Clave pública',
         encryption: 'Cifrado',
-        endToEndEncrypted: 'Cifrado de extremo a extremo',
+        endToEndEncrypted: 'Relay con servidor de confianza',
         acceptConnection: 'Aceptar conexión',
         connecting: 'Conectando...',
         reject: 'Rechazar',
         security: 'Seguridad',
-        securityFooter: 'Este enlace de conexión fue procesado de forma segura en tu navegador y nunca fue enviado a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
-        securityFooterDevice: 'Esta conexión fue procesada de forma segura en tu dispositivo y nunca fue enviada a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
+        securityFooter: 'Aprueba solo un enlace solicitado por ti en una máquina de confianza. El servidor puede acceder a los datos de conexión y al contenido retransmitido.',
+        securityFooterDevice: 'Aprueba solo una conexión solicitada por ti en una máquina de confianza. El servidor puede acceder a los datos de conexión y al contenido retransmitido.',
         clientSideProcessing: 'Procesamiento del lado del cliente',
         linkProcessedLocally: 'Enlace procesado localmente en el navegador',
         linkProcessedOnDevice: 'Enlace procesado localmente en el dispositivo',
@@ -768,7 +768,7 @@ export const es: PartialTranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Cliente móvil de Codex y Claude Code',
-        subtitle: 'Cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo.',
+        subtitle: 'El servidor es un relay de confianza y puede acceder al contenido retransmitido.',
         createAccount: 'Crear cuenta',
         linkOrRestoreAccount: 'Vincular o restaurar cuenta',
         loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
@@ -817,7 +817,7 @@ export const es: PartialTranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'El lanzador está deshabilitado mientras la máquina está desconectada',
-        offlineHelp: '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `happy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g happy@latest`',
+        offlineHelp: '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `very-happy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g very-happy-cli@latest`',
         launchNewSessionInDirectory: 'Iniciar nueva sesión en directorio',
         status: 'Estado',
         stopDaemon: 'Detener daemon',

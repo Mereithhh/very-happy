@@ -124,7 +124,7 @@ export const ca: PartialTranslationStructure = {
         developer: 'Desenvolupador',
         developerTools: 'Eines de desenvolupador',
         about: 'Quant a',
-        aboutFooter: 'Happy Coder és un client mòbil de Codex i Claude Code. Tot està xifrat punt a punt i el teu compte es guarda només al teu dispositiu. No està afiliat amb Anthropic.',
+        aboutFooter: 'Very Happy és un client web de Codex i Claude Code. Utilitza un servidor de confiança, no xifrat punt a punt; l’operador pot accedir al contingut retransmès. No està afiliat amb Anthropic.',
         whatsNew: 'Novetats',
         whatsNewSubtitle: 'Mira les últimes actualitzacions i millores',
         reportIssue: 'Informa d\'un problema',
@@ -372,7 +372,7 @@ export const ca: PartialTranslationStructure = {
         cliVersionOutdated: 'Actualització del CLI requerida',
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
-        updateCliInstructions: 'Si us plau executeu npm install -g happy@latest',
+        updateCliInstructions: 'Si us plau executeu npm install -g very-happy-cli@latest',
         deleteSession: 'Elimina la sessió',
         deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
         deleteSessionConfirm: 'Eliminar la sessió permanentment?',
@@ -714,13 +714,13 @@ export const ca: PartialTranslationStructure = {
         connectionDetails: 'Detalls de la connexió',
         publicKey: 'Clau pública',
         encryption: 'Xifratge',
-        endToEndEncrypted: 'Xifrat punt a punt',
+        endToEndEncrypted: 'Relay amb servidor de confiança',
         acceptConnection: 'Accepta la connexió',
         connecting: 'Connectant...',
         reject: 'Rebutja',
         security: 'Seguretat',
-        securityFooter: 'Aquest enllaç de connexió s\'ha processat de forma segura al teu navegador i mai s\'ha enviat a cap servidor. Les teves dades privades es mantindran segures i només tu pots desxifrar els missatges.',
-        securityFooterDevice: 'Aquesta connexió s\'ha processat de forma segura al teu dispositiu i mai s\'ha enviat a cap servidor. Les teves dades privades es mantindran segures i només tu pots desxifrar els missatges.',
+        securityFooter: 'Aprova només un enllaç que hagis sol·licitat en una màquina de confiança. El servidor pot accedir a les dades de connexió i al contingut retransmès.',
+        securityFooterDevice: 'Aprova només una connexió que hagis sol·licitat en una màquina de confiança. El servidor pot accedir a les dades de connexió i al contingut retransmès.',
         clientSideProcessing: 'Processament del costat del client',
         linkProcessedLocally: 'Enllaç processat localment al navegador',
         linkProcessedOnDevice: 'Enllaç processat localment al dispositiu',
@@ -763,7 +763,7 @@ export const ca: PartialTranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Client mòbil de Codex i Claude Code',
-        subtitle: 'Xifrat punt a punt i el teu compte s\'emmagatzema només al teu dispositiu.',
+        subtitle: 'El servidor és un relay de confiança i pot accedir al contingut retransmès.',
         createAccount: 'Crea un compte',
         linkOrRestoreAccount: 'Enllaça o restaura un compte',
         loginWithMobileApp: 'Inicia sessió amb l\'aplicació mòbil',
@@ -812,7 +812,7 @@ export const ca: PartialTranslationStructure = {
 
     machine: {
         offlineUnableToSpawn: 'El llançador està desactivat mentre la màquina està fora de línia',
-        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy@latest`',
+        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `very-happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g very-happy-cli@latest`',
         launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
         daemon: 'Dimoni',
         status: 'Estat',
