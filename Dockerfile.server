@@ -1,8 +1,10 @@
 # Stage 1: install dependencies with workspace context
-FROM node:20 AS deps
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS deps
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
+RUN apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 WORKDIR /repo
@@ -11,50 +13,64 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY scripts ./scripts
 COPY patches ./patches
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli packages/happy-wire
+RUN mkdir -p packages/happy-server packages/happy-wire packages/happy-web-v2
 
-COPY packages/happy-app/package.json packages/happy-app/
 COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
 COPY packages/happy-wire/package.json packages/happy-wire/
+COPY packages/happy-web-v2/package.json packages/happy-web-v2/
 
-# Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
+# Server workspace postinstall requirements
 COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile \
+    --filter happy-server-self-host... \
+    --filter @slopus/happy-web-v2...
 
 # Stage 2: build the server
 FROM deps AS builder
 
-COPY packages/happy-wire ./packages/happy-wire
-COPY packages/happy-server ./packages/happy-server
+# Whitelist build inputs. Never copy whole package directories: self-hosters
+# commonly keep ignored .env files, PGlite clusters, logs, and session dumps
+# beside these sources, and Docker layers are recoverable even after deletion.
+COPY packages/happy-wire/tsconfig.json packages/happy-wire/
+COPY packages/happy-wire/src packages/happy-wire/src
+COPY packages/happy-server/tsconfig.json packages/happy-server/
+COPY packages/happy-server/sources packages/happy-server/sources
+COPY packages/happy-server/scripts packages/happy-server/scripts
+COPY packages/happy-web-v2/index.html packages/happy-web-v2/tsconfig.json packages/happy-web-v2/vite.config.ts packages/happy-web-v2/
+COPY packages/happy-web-v2/public packages/happy-web-v2/public
+COPY packages/happy-web-v2/src packages/happy-web-v2/src
 
 RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter happy-server build
+RUN pnpm --filter @slopus/happy-web-v2 exec vite build
+RUN rm -rf packages/happy-server/webapp && cp -a packages/happy-web-v2/dist packages/happy-server/webapp
+# The image intentionally runs the TypeScript source through the workspace tsx
+# runtime below; validate it here without invoking the optional Bun package build.
+RUN pnpm --filter happy-server-self-host exec tsc --noEmit
+RUN pnpm --filter happy-server-self-host deploy --prod --legacy /runtime \
+    && rm -rf /runtime/node_modules/.prisma/client \
+    && mkdir -p /runtime/node_modules/.prisma \
+    && cp -a /repo/node_modules/.prisma/client /runtime/node_modules/.prisma/client
 
 # Stage 3: runtime
-FROM node:20 AS runner
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS runner
 
 WORKDIR /repo
 
-# Runtime dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 # Set environment to production
 ENV NODE_ENV=production
+ENV HAPPY_STATIC_DIR=/repo/packages/happy-server/webapp
+ENV DATA_DIR=/data
 
 # Copy necessary files from the builder stage
-COPY --from=builder /repo/node_modules /repo/node_modules
-COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
+COPY --from=builder /runtime/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 
 # Expose the port the app will run on
-EXPOSE 3000
+EXPOSE 3005
 
-# Command to run the application
-COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
-CMD ["pnpm", "--filter", "happy-server", "start"]
+# Migrations are an inseparable startup precondition: the server may otherwise
+# pass /health while newer routes fail against an older schema. Keep the
+# migration command in the image itself so self-hosters do not depend on an
+# undocumented docker-compose override.
+CMD ["sh", "-c", "cd packages/happy-server && ../../node_modules/.bin/tsx sources/standalone.ts migrate && exec ../../node_modules/.bin/tsx sources/standalone.ts serve"]

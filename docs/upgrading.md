@@ -15,6 +15,21 @@ with an explicit compatibility matrix. After a server upgrade, restart/reconnect
 daemons so RPC registrations are current. After a Web swap, restart the static
 server and verify the hashed JS asset returns JavaScript, not SPA HTML.
 
+### Pairing claim-secret rollout
+
+The claim-secret protocol is fail-closed and older CLIs cannot create a new
+pairing when `AUTH_ALLOW_LEGACY_PAIRING=false`. Existing tokens, sessions and
+already-connected daemons continue to work. For a mixed-version fleet:
+
+1. Deploy the server with `AUTH_ALLOW_LEGACY_PAIRING=true` only for the rollout.
+2. Publish/install the new CLI and restart every daemon.
+3. Prove a fresh `very-happy auth login` approval succeeds with the new CLI.
+4. Remove the compatibility flag, recreate the server (a restart does not reload
+   environment files), and verify an old client receives `426 upgrade-required`.
+
+New public installs should leave the flag unset and deploy server → Web → CLI as
+one release; the Web explains the required CLI upgrade when pairing is rejected.
+
 ## Verification
 
 ```bash

@@ -19,12 +19,64 @@ crypto.subtle.importKey = function (format: any, keyData: any, algorithm: any, e
 
 import * as fs from "fs";
 import * as path from "path";
+import { spawn } from "child_process";
 import { createPGlite } from "./storage/pgliteLoader";
 
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
 
+export function resolveDatabaseProvider(env: NodeJS.ProcessEnv = process.env): "pglite" | "postgres" {
+    if (env.DB_PROVIDER === "pglite") return "pglite";
+    if (env.DB_PROVIDER === "postgres" || env.DATABASE_URL) return "postgres";
+    return "pglite";
+}
+
+export function resolveHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
+    const defaults: Record<string, unknown> = { serverUrl: env.PUBLIC_URL || "same-origin" };
+    if (!env.HAPPY_INJECT_HTML_CONFIG) return defaults;
+    try {
+        const parsed = JSON.parse(env.HAPPY_INJECT_HTML_CONFIG);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? { ...defaults, ...parsed }
+            : defaults;
+    } catch {
+        return defaults;
+    }
+}
+
+async function runPostgresMigrations(): Promise<void> {
+    const schemaCandidates = [
+        path.join(process.cwd(), "prisma", "schema.prisma"),
+        path.join(process.cwd(), "packages", "happy-server", "prisma", "schema.prisma"),
+    ];
+    const cliCandidates = [
+        path.join(process.cwd(), "node_modules", "prisma", "build", "index.js"),
+        path.join(process.cwd(), "..", "..", "node_modules", "prisma", "build", "index.js"),
+    ];
+    const schema = schemaCandidates.find(fs.existsSync);
+    const cli = cliCandidates.find(fs.existsSync);
+    if (!schema || !cli) {
+        throw new Error(`Could not locate Prisma migration runtime (schema=${schema ?? "missing"}, cli=${cli ?? "missing"})`);
+    }
+    console.log("Migrating external PostgreSQL database...");
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, [cli, "migrate", "deploy", "--schema", schema], {
+            stdio: "inherit",
+            env: process.env,
+        });
+        child.once("error", reject);
+        child.once("exit", (code, signal) => {
+            if (code === 0) resolve();
+            else reject(new Error(`Prisma migrate deploy failed (${signal ?? `exit ${code}`})`));
+        });
+    });
+}
+
 export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: string } = { pgliteDir }) {
+    if (resolveDatabaseProvider() === "postgres") {
+        await runPostgresMigrations();
+        return;
+    }
     const targetPgliteDir = opts.pgliteDir;
     console.log(`Migrating database in ${targetPgliteDir}...`);
     fs.mkdirSync(targetPgliteDir, { recursive: true });
@@ -110,7 +162,7 @@ export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: s
 
 async function serve() {
     // Ensure DB_PROVIDER is set for db.ts
-    process.env.DB_PROVIDER = process.env.DB_PROVIDER || "pglite";
+    process.env.DB_PROVIDER = resolveDatabaseProvider();
     process.env.PGLITE_DIR = process.env.PGLITE_DIR || pgliteDir;
 
     const masterSecret = process.env.HANDY_MASTER_SECRET;
@@ -121,14 +173,7 @@ async function serve() {
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
     const host = process.env.HOST || "0.0.0.0";
     const staticDir = findStaticDir();
-    let injectHtmlConfig: Record<string, unknown> | undefined;
-    if (process.env.HAPPY_INJECT_HTML_CONFIG) {
-        try {
-            injectHtmlConfig = JSON.parse(process.env.HAPPY_INJECT_HTML_CONFIG);
-        } catch {
-            // ignore malformed input
-        }
-    }
+    const injectHtmlConfig = resolveHtmlConfig();
 
     const { startServer } = await import("./index");
     await startServer({

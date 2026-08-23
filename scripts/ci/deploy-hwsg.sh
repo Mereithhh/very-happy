@@ -43,10 +43,21 @@ wait_health() {
 }
 
 deploy_server() {
+    echo "== server: verify migration-on-start contract =="
+    local container_cmd
+    container_cmd=$(ssh_x 'docker inspect happy-server --format "{{json .Config.Cmd}}"')
+    case "$container_cmd" in
+        *migrate*) ;;
+        *)
+            echo "  ERROR: happy-server startup command does not run migrations: $container_cmd" >&2
+            echo "  Refusing to sync schema-dependent source." >&2
+            exit 1
+            ;;
+    esac
     echo "== server: sync source → /opt/happy-src =="
     tar czf - -C "$SERVER" sources prisma/migrations \
         | ssh_x 'tar xzf - -C /opt/happy-src/packages/happy-server'
-    echo "== server: restart =="
+    echo "== server: restart (migrate, then serve) =="
     ssh_x 'cd /opt/happy && docker compose restart happy-server >/dev/null 2>&1'
     wait_health
 }

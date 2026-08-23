@@ -31,7 +31,7 @@ You can self-host or connect to a maintainer-operated instance. These are not eq
 The standalone Docker image runs everything in a single container with no external dependencies (no Postgres, no Redis, no S3).
 
 ```bash
-docker build -t happy-server -f Dockerfile .
+docker build -t very-happy-server -f Dockerfile.server .
 ```
 
 Run from the monorepo root:
@@ -40,7 +40,7 @@ Run from the monorepo root:
 docker run -p 3005:3005 \
   -e HANDY_MASTER_SECRET=<your-secret> \
   -v happy-data:/data \
-  happy-server
+  very-happy-server
 ```
 
 This uses:
@@ -57,8 +57,8 @@ Data persists in the `happy-data` Docker volume across container restarts.
 | `HANDY_MASTER_SECRET` | Yes | - | Master secret for auth/encryption |
 | `PUBLIC_URL` | No | `http://localhost:3005` | Public base URL for file URLs sent to clients |
 | `PORT` | No | `3005` | Server port |
-| `DATA_DIR` | No | `/data` | Base data directory |
-| `PGLITE_DIR` | No | `/data/pglite` | PGlite database directory |
+| `DATA_DIR` | No | `/data` in the Docker image; `./data` for the bare package | Base data directory |
+| `PGLITE_DIR` | No | `<DATA_DIR>/pglite` | PGlite database directory |
 | `SIGNUP_MODE` | No | `open` | Account signup mode: `open`, `invite`, or `closed` |
 | `SIGNUP_MAX_ACCOUNTS` | No | unlimited | Global Account limit; existing users can still sign in |
 | `SIGNUP_INVITE_CODES` | No | - | Comma-separated codes for invite mode |
@@ -78,6 +78,10 @@ To use external Postgres or Redis instead of the embedded defaults, set:
 | `DATABASE_URL` | PostgreSQL connection URL (bypasses PGlite) |
 | `REDIS_URL` | Redis connection URL |
 | `S3_HOST` | S3/MinIO host (bypasses local file storage) |
+
+When `DATABASE_URL` is set, the image runs `prisma migrate deploy` against that
+database before serving. Without it, the same entrypoint applies the bundled
+SQL migrations to PGlite under `/data/pglite`.
 
 ### S3 bucket configuration (when self-hosting with S3)
 

@@ -1,4 +1,5 @@
 import { MMKV } from '@/storage/mmkv-web';
+import { resolveServerUrl } from './serverUrlResolution';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });
@@ -12,12 +13,15 @@ export function getServerUrl(): string {
     // /v3, /health (incl. the socket) to the real server. Avoids cross-origin /
     // Clash / wss issues that otherwise block `pnpm dev` from connecting.
     // Dead-code-eliminated in production builds (import.meta.env.DEV === false).
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-        return window.location.origin;
-    }
-    return serverConfigStorage.getString(SERVER_KEY) ||
-           (globalThis as any).__HAPPY_CONFIG__?.serverUrl ||
-           DEFAULT_SERVER_URL;
+    const stored = serverConfigStorage.getString(SERVER_KEY);
+    const runtime = (globalThis as any).__HAPPY_CONFIG__?.serverUrl;
+    return resolveServerUrl({
+        isDev: import.meta.env.DEV,
+        stored: stored ?? undefined,
+        runtime,
+        origin: typeof window !== 'undefined' ? window.location.origin : undefined,
+        fallback: DEFAULT_SERVER_URL,
+    });
 }
 
 export function setServerUrl(url: string | null): void {

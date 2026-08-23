@@ -16,11 +16,14 @@ The policy applies only to account creation, not existing identity login.
 
 ## Operational limits
 
-Account capacity does not bound active sockets, messages, terminals, sessions,
-files, RPC calls, or CPU. Public operators should configure the runtime limits
-documented in [configuration.md](configuration.md), return stable 413/429 errors,
-and keep a closed/read-only degradation path. Limits are safety controls, not a
-promise of reserved resources or billing entitlement.
+Account capacity is separate from the default machine, session, message and
+attachment hard caps documented in [configuration.md](configuration.md). Message
+and upload ingress also uses database-backed account buckets across replicas;
+socket/RPC caps are extra best-effort backstops. A client can receive 413/429 when
+one of these boundaries is reached. Deleting a session releases its message and
+attachment reservations. Limits are safety controls, not a promise of reserved
+resources or billing entitlement; operators still need disk monitoring and a
+closed/read-only degradation path.
 
 ## Account recovery
 

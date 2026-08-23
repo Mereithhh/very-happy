@@ -64,10 +64,10 @@ metrics port off the public Internet. The relay is server-trusted.
 **Optional integrations**
 - Google account login: `GOOGLE_CLIENT_ID` (Web OAuth client ID) and `GOOGLE_ALLOWED_ORIGINS` (comma-separated exact browser origins). No client secret is needed for Google Identity Services ID-token login.
 
-Official Cloud currently uses:
+For the maintainer Cloud, the origin configuration is:
 
 ```env
-GOOGLE_CLIENT_ID=190908753734-rto8svijvvh616877aketn4pnkhauec1.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=<maintainer-owned-web-client-id>
 GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
 TRUST_PROXY=1
 ```
@@ -87,7 +87,9 @@ A production Dockerfile is provided at `Dockerfile.server`.
 
 Key notes:
 - The server defaults to port `3005` (set `PORT` explicitly in container environments).
-- The image includes FFmpeg and Python for media processing.
+- The image writes embedded database and local file state under `/data`.
+- Startup applies PGlite migrations by default, or `prisma migrate deploy` to
+  external Postgres when `DATABASE_URL`/`DB_PROVIDER=postgres` is configured.
 
 From the repository root:
 
@@ -116,11 +118,11 @@ The deployment config expects:
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
-- `pnpm --filter happy-server db` (Postgres in Docker)
-- `pnpm --filter happy-server redis`
-- `pnpm --filter happy-server s3` + `s3:init`
+- `pnpm --filter happy-server-self-host db` (Postgres in Docker)
+- `pnpm --filter happy-server-self-host redis`
+- `pnpm --filter happy-server-self-host s3` + `s3:init`
 
-Use `.env`/`.env.dev` to load local settings when running `pnpm --filter happy-server dev`.
+Use `.env`/`.env.dev` to load local settings when running `pnpm --filter happy-server-self-host dev`.
 
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`

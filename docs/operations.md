@@ -51,9 +51,11 @@ would hide image `node_modules`. Consequently:
 - migrations must stay compatible with the currently deployed image and old
   clients according to the feature spec.
 
-Server startup applies pending migrations. After a server deployment, run
-`vh-update` on mac-office until B-001 is fixed; a half-open daemon connection may
-otherwise fail to re-register RPCs.
+The image and production Compose command both apply pending migrations before
+starting the server. The deploy script verifies that contract before syncing any
+schema-dependent source and fails closed if a hand-edited deployment has removed
+it. After a server deployment, run `vh-update` on mac-office until B-001 is fixed;
+a half-open daemon connection may otherwise fail to re-register RPCs.
 
 ### Environment changes
 

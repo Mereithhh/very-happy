@@ -52,6 +52,14 @@ permissions:
   contents: read
 
 jobs:
+  server-container-smoke:
+    name: server container / migration / persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: bash scripts/ci/smoke-server-container.sh
+
   gates:
     name: quality gates (wire / server / web-v2 / cli)
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
@@ -59,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Verify public PR isolation
+      - name: Verify public PR and release contracts
         run: node scripts/ci/check-public-pr-isolation.mjs
 
       # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
