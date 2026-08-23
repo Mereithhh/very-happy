@@ -26,7 +26,7 @@ import { log } from '@/utils/log';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY ?? '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY ?? '';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:admin@happy.mereith.com';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:admin@localhost';
 
 export function webPushConfigured(): boolean {
     return VAPID_PUBLIC.length > 0 && VAPID_PRIVATE.length > 0;

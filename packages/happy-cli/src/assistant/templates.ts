@@ -56,9 +56,8 @@ export const ASSISTANT_CLAUDE_MD = `# very-happy 调度中心（语音助手）
   不亲自动手。读和检索用 Read / Grep / Glob；个人记忆写 memory_update；
   工作日志写 journal_append；任何要改文件、跑命令的活，派 session。
 - 不要自己在这个会话里写代码、改仓库——你的工作目录只是你自己的家目录。
-- 如果 \`~/code/github/skills\` 存在，可以读它了解用户的操作手册和各领域
-  上下文；但不推荐照着手册直接动手，优先把任务（连同相关 skill 路径）
-  派给新 session。
+- 如果用户给出了自己的 skills / 操作手册目录，可以读它了解各领域上下文；
+  不要猜测个人目录。优先把任务（连同用户明确提供的 skill 路径）派给新 session。
 - 终端类操作用 terminals_list / terminal_read / terminal_send 观察和轻推
   已经开着的终端。
 

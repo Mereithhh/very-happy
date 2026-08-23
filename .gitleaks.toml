@@ -1,0 +1,23 @@
+[extend]
+useDefault = true
+
+# Deterministic cryptographic test vectors and deliberately fake environment
+# tokens. Keep these path-scoped; never add a rule-wide allowlist.
+[[allowlists]]
+description = "deterministic key-derivation vectors"
+paths = [
+  '''packages/happy-app/sources/encryption/deriveKey\.appspec\.ts$''',
+  '''packages/happy-cli/src/utils/deriveKey\.appspec\.ts$''',
+  '''docs/plans/happy-agent\.md$'''
+]
+
+[[allowlists]]
+description = "fake environment expansion tokens"
+paths = ['''packages/happy-cli/src/utils/expandEnvVars\.test\.ts$''']
+
+# Google treats installed-app OAuth clients as public clients; this credential
+# is embedded in the upstream Gemini desktop flow and cannot be kept secret.
+# It is not used for Very Happy account login or the hosted server.
+[[allowlists]]
+description = "public installed-app Gemini OAuth client"
+paths = ['''packages/happy-cli/src/commands/connect/authenticateGemini\.ts$''']
