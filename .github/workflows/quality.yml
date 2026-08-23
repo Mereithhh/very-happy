@@ -2,8 +2,9 @@ name: Quality Gates
 
 # 质量门禁（docs/PROCESS.md §3 的 CI 落地）——push main + 所有 PR 必跑。
 #
-# 2026-08-14 改造：跑在 fb-us self-hosted runner 上（labels: self-hosted, linux,
-# x64, fb-us），托管分钟消耗 = 0。原来的 5 个并行 ubuntu job 合并成 1 个 job：
+# 2026-08-14 改造：受信任的 main/manual 运行在 fb-us self-hosted runner 上。
+# 公开 fork PR 固定使用一次性的 ubuntu-latest，绝不让不受信代码进入私有 runner。
+# 原来的 5 个并行 ubuntu job 合并成 1 个 job：
 #   - self-hosted 只有 1 个 worker，5 个 job 不会并行，只会排队串行 →
 #     并行结构除了把 checkout + pnpm install + wire build 重复 5 遍以外没有收益。
 #   - 合并后墙钟 ~13 分钟 → ~7 分钟（省掉 4 次装配），且只占 1 次 runner 槽位。
@@ -13,7 +14,8 @@ name: Quality Gates
 #     job 各自跑完），只有装配（install / wire build）失败才会整体跳过。
 #
 # runs-on 说明（降级路径，所有 workflow 统一）：
-#   默认 = ["self-hosted","linux","x64"]。fb-us runner 掉线时 job 会永久排队，
+#   PR = ["ubuntu-latest"]；push main/manual 默认 = ["self-hosted","linux","x64"]。
+#   fb-us runner 掉线时受信 job 会永久排队，
 #   此时不要改文件，直接翻 repo 变量把所有 Linux job 切回托管 runner：
 #     gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'   # 降级（开始计费）
 #     gh variable delete LINUX_RUNNER                           # 恢复 self-hosted
@@ -52,23 +54,26 @@ permissions:
 jobs:
   gates:
     name: quality gates (wire / server / web-v2 / cli)
-    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify public PR isolation
+        run: node scripts/ci/check-public-pr-isolation.mjs
 
       # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
       # 现成的 node/npm 装 pnpm（README: "This action does not setup Node.js for you"），
       # self-hosted 上不能假设系统有 node；setup-node 自己只用 runner 内置 node 就能跑，
       # 所以先它、后 pnpm 才是零假设的顺序。（这个顺序的代价是不能用 setup-node 的
       # `cache: pnpm`——它要先有 pnpm 才能问出 store 路径；我们本来就不要 GitHub 缓存。）
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           node-version: 20
 
       # 不写 version：pnpm/action-setup 读根 package.json 的 packageManager 字段
       # （pnpm@10.11.0），单一事实源，升级 pnpm 只改 packageManager 即可。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
           # 用户），而这个 action 默认装到固定的 `~/setup-pnpm`。并发 job（tag 时

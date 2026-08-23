@@ -9,8 +9,8 @@ name: CLI Smoke Test
 # 原来每次 push/PR 都跑 3 系统 × 2 node = 6 格，**单次就吃 102 分钟额度**
 # （ubuntu 6 + windows 18×2 + macOS 6×10），9 次就把月度免费额打穿。现在拆两档：
 #
-#   smoke-linux   每次 push/PR 都跑，只有 Linux（node 20 + 24），跑在 fb-us
-#                 self-hosted runner 上 → **0 计费分钟**。
+#   smoke-linux   每次 push/PR 都跑，只有 Linux（node 20 + 24）。公开 PR 固定
+#                 ubuntu-latest；受信 push 才跑 fb-us self-hosted。
 #   smoke-macos   打 tag / 手动勾 cross_platform 时跑，**mac-office self-hosted**
 #                 （node 20 + 24）→ 0 计费分钟。macOS 必须有覆盖：daemon 实际
 #                 就跑在这台机上，platform-specific postinstall 只有它能验。
@@ -66,7 +66,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── 常态档：Linux only，self-hosted，0 计费分钟 ──────────────────────────
+  # ── 常态档：Linux only；PR hosted，受信 push self-hosted ─────────────────
   smoke-linux:
     name: smoke (linux, node ${{ matrix.node-version }})
     strategy:
@@ -75,26 +75,26 @@ jobs:
         node-version: [20, 24]
     # 降级：runner 掉线时 `gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'`
     # 切回托管；恢复用 `gh variable delete LINUX_RUNNER`。详见 docs/PROCESS.md §4。
-    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
     timeout-minutes: 20
 
     steps:
       - name: Checkout code
         # 默认 clean=true（git clean -ffdx + reset）——self-hosted 工作目录是复用的，
         # 靠这一步保证工作树干净（node_modules/dist/*.tgz 都会被清掉）。
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # ⚠️ 顺序与下面 smoke-hosted 相反且是刻意的：pnpm/action-setup 默认需要现成的
       # node/npm，self-hosted 上不能假设系统有 → 先 setup-node（它只用 runner 内置
       # node 就能跑）。代价是用不了 setup-node 的 `cache: pnpm`，而 self-hosted 本来
       # 就靠本地持久化 pnpm store，不需要 GitHub 缓存服务。
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.11.0
           # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
@@ -178,12 +178,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # 托管 runner 上 node/npm 是预装的，所以维持 pnpm → setup-node 的顺序，
       # 好处是能开 `cache: pnpm`：macOS 1 分钟安装 = 10 计费分钟，缓存直接省钱。
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.11.0
           # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
@@ -194,7 +194,7 @@ jobs:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
@@ -314,18 +314,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # 托管 runner 上 node/npm 是预装的，所以维持 pnpm → setup-node 的顺序，
       # 好处是能开 `cache: pnpm`。
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.11.0
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'

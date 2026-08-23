@@ -35,19 +35,19 @@ jobs:
       - name: Checkout
         # clean=true（默认）：self-hosted 工作目录复用；上一次 run 改过的
         # packages/happy-cli/package.json 版本号会在这里被 reset 掉。
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # ⚠️ setup-node 先于 pnpm/action-setup：后者默认要用现成的 node/npm 装 pnpm，
       # self-hosted 上不能假设系统装了 node。不用 `cache: pnpm`（那要求反过来的顺序），
       # self-hosted 靠本地持久化 pnpm store。
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.11.0
           # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
