@@ -28,7 +28,9 @@ process.env.HAPPY_HOME_DIR = happyHome;
 process.env.TMUX_TMPDIR = tmuxDir;
 
 const GONE = 'gapgone1';
+const GONE_LIVE = 'gapkill01';
 const CLAUDE_ID = 'c0c26854-5e0c-4063-aaeb-d4428fe8ed94';
+const CLAUDE_ID_LIVE = '22222222-3333-4444-5555-666666666666';
 const SEEN_AT = Date.now() - 60_000;
 
 // B-150 auto-restore is ON by default and would legitimately bring this
@@ -50,6 +52,11 @@ writeFileSync(join(happyHome, 'sessions.json'), JSON.stringify({
             encryptionKey: 'k', encryptionVariant: 'dataKey', seq: 0,
             metadataVersion: 0, agentStateVersion: 0, savedAt: Date.now(),
             metadata: { flavor: 'terminal-mirror', terminalId: GONE, claudeSessionId: CLAUDE_ID },
+        },
+        mirror2: {
+            encryptionKey: 'k', encryptionVariant: 'dataKey', seq: 0,
+            metadataVersion: 0, agentStateVersion: 0, savedAt: Date.now(),
+            metadata: { flavor: 'terminal-mirror', terminalId: GONE_LIVE, claudeSessionId: CLAUDE_ID_LIVE },
         },
     },
 }));
@@ -93,6 +100,22 @@ describe('daemon-gap reconcile (B-149)', () => {
         // Reconcile is once-only: a later tick must not re-add or duplicate it.
         await new Promise((r) => setTimeout(r, 200));
         expect(mgr.getClosedTerminals()).toHaveLength(1);
+    });
+
+    it('a sidebar delete also records the resume id (B-150 regression)', async () => {
+        // The kill path builds its own record; it used to omit reason +
+        // claudeSessionId, so "I closed it, bring it back" lost the conversation
+        // link — observed on the 2026-08-24 real machine.
+        // primeListSignature is the real "connect snapshot" path that seeds the
+        // {title,cwd} cache killSession reads — no tmux session needed. NOT the
+        // persisted snapshot: an entry there would be a daemon-gap candidate,
+        // which is the other test's subject.
+        mgr.primeListSignature([{ id: GONE_LIVE, title: 'closed by hand', cwd: '/tmp' }]);
+        mgr.killSession(GONE_LIVE);
+        const rec = mgr.getClosedTerminals().find((r) => r.id === GONE_LIVE);
+        expect(rec?.reason).toBe('closed');
+        expect(rec?.claudeSessionId).toBe(CLAUDE_ID_LIVE);
+        expect(rec?.mirrorSessionId).toBe('mirror2');
     });
 
     it('leaves no snapshot file behind claiming dead terminals are live', () => {

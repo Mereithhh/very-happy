@@ -2468,9 +2468,17 @@ export class WebTerminalManager {
         const info = this.lastSeenInfo.get(terminalId)
             ?? this.listSessions().find((t) => t.id === terminalId);
         if (info) {
+            // B-149/B-150: the resume id matters MORE here than in the gap path —
+            // "I closed it and want it back" is the common case. Live mirror
+            // binding first, persisted metadata as the fallback (the binding is
+            // torn down by the callback a few lines below).
+            const mirror = pickMirrorForTerminal(readPersistedSessions(), terminalId);
             this.recordClosed({
                 id: terminalId, title: info.title, cwd: info.cwd,
-                mirrorSessionId: this.mirrorResolver?.(terminalId), closedAt: Date.now(),
+                mirrorSessionId: this.mirrorResolver?.(terminalId) ?? mirror?.sessionId,
+                claudeSessionId: mirror?.claudeSessionId,
+                reason: 'closed',
+                closedAt: Date.now(),
             });
             this.lastSeenInfo.delete(terminalId);
         }
