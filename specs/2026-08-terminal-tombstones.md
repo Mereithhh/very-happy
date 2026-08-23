@@ -1,6 +1,6 @@
 # 终端墓碑与会话续跑（restorable terminals）
 
-> 状态：Final（实现完成，门禁全绿；待真机验收后转 Shipped）
+> 状态：Shipped（commit `d7efdc4c`，发布 v0.2.53，2026-08-24 真机验收通过）
 > 日期：2026-08-23 ｜ 关联 backlog：B-149 ｜ 出处：Owner 2026-08-23 机器重启后 22 个终端全丢的实战
 
 ## 背景
@@ -102,5 +102,6 @@
 - [x] cli 门禁：`pnpm build` 0 + unit 1121 全绿 + tmux 集成 19 全绿 + `--version` 冒烟
 - [x] web 门禁：1372 测试 + `tsc --noEmit` 0 + `vite build` 成功
 - [x] 新纯函数模块单测 12 条（TTL、上限、容错读盘、变更判据、uuid 校验、terminalId 精确匹配）
-- [ ] **真机验收**（发版后）：重启 daemon → 归档视图出现「重启时结束」的行 → 点↻ → 新终端在原 cwd
-      且 claude 带着历史起来（token 数非零）
+- [x] **真机验收 2026-08-24**：daemon stop → `tmux kill-session` 掉 `c75d6592d623`（无人看守的死亡）
+      → 起 daemon → 日志 `daemon gap: archived 1 terminal(s) from the persisted snapshot`，
+      记录带 cwd + mirror + claudeSessionId。↻ 路径未单独手点（B-150 自动恢复直接接手，见该 spec）

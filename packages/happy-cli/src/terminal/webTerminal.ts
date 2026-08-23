@@ -1216,6 +1216,10 @@ export class WebTerminalManager {
     private autoRestoredIds = new Map<string, number>();
     /** Set once per daemon life, so a later tick can never re-run the restore. */
     private autoRestoreDone = false;
+    /** Flipped by stopListTracking: the daemon is going away, so an in-flight
+     *  auto-restore must stop between terminals instead of pushing list
+     *  refreshes and notifications into a process that is exiting. */
+    private shuttingDown = false;
     private onAutoRestoreSummaryCb: ((line: string) => void) | null = null;
 
     /** Report line for the account notification (wired by apiMachine). */
@@ -1313,6 +1317,8 @@ export class WebTerminalManager {
 
     /** Stop tracking (tests / shutdown). */
     stopListTracking(): void {
+        // Teardown has begun — see `shuttingDown` (B-150).
+        this.shuttingDown = true;
         this.listChangedCb = null;
         if (this.listTrackTimer) { clearInterval(this.listTrackTimer); this.listTrackTimer = null; }
         if (this.listKickTimer) { clearTimeout(this.listKickTimer); this.listKickTimer = null; }
@@ -1611,7 +1617,7 @@ export class WebTerminalManager {
      * summary says what was skipped: a silent cap reads as "all restored".
      */
     private async autoRestore(candidates: AutoRestoreCandidate[], liveIds: ReadonlySet<string>): Promise<void> {
-        if (this.autoRestoreDone) return;
+        if (this.autoRestoreDone || this.shuttingDown) return;
         this.autoRestoreDone = true;
         try {
             if (!isTmuxAvailable()) return;   // no tmux → nothing survives anyway
@@ -1626,6 +1632,10 @@ export class WebTerminalManager {
                 },
             });
             for (const plan of selection.plans) {
+                if (this.shuttingDown) {
+                    logger.debug('[WEB TERMINAL] auto-restore aborted: daemon shutting down');
+                    return;
+                }
                 const ok = this.restoreOneTerminal(plan);
                 if (!ok) continue;
                 this.autoRestoredIds.set(plan.terminalId, Date.now());

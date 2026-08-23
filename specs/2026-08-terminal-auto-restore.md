@@ -1,6 +1,6 @@
 # 终端自动恢复（auto-restore）
 
-> 状态：Final（实现完成，门禁全绿；待发版后真机验收转 Shipped）
+> 状态：Shipped（commit `89b8cfb0` + shutdown 守卫，发布 v0.2.53/v0.2.54，2026-08-24 真机验收通过）
 > 日期：2026-08-24 ｜ 关联 backlog：B-150 ｜ 前身：`2026-08-terminal-tombstones.md`（B-149）
 
 ## 背景
@@ -105,5 +105,19 @@ null，普通重启保持安静。
 - [x] B-149 的归档测试显式关掉自动恢复，两个行为互不遮蔽
 - [x] cli 门禁：`pnpm build` 0 + unit 1140 全绿 + `--version` 冒烟
 - [x] web 门禁：1372+1 测试 + `tsc --noEmit` 0 + `vite build`
-- [ ] **真机验收（发版后）**：mac-office 重启（或 daemon 停 → `tmux kill-session` 掉几个 → 起 daemon）→
-      打开 happy 应见终端已在跑、claude 带着历史、列表带「已恢复」、通知里有 `Restored N …` 一行
+- [x] **真机验收 2026-08-24**（mac-office，v0.2.53）：daemon stop → kill `vh-c75d6592d623` → 起 daemon →
+      终端**自动回来**：cwd `~/code/github/skills` 正确、`@vh_title`「阅读交接指引文档」带过来、
+      `VH_TERMINAL_ID` 就位、pane 里确实是 `claude --resume 88520a9e-…`、claude 带着 **859715 tokens**
+      的历史起来；日志 `auto-restored … / auto-restore: Restored 1 terminal`；账号通知已投递。
+      第二次启动 `auto-restored` 计数为 0 → 幂等成立。
+
+## 真机验收暴露的两件事（已修）
+
+1. **恢复发生在正在关闭的 daemon 里**：那次验收的 daemon 已收到 SIGTERM（升级期的版本接管），
+   仍跑完了恢复，随后 `Startup malfunctioned, forcing exit with code 1`（launchd 自动拉起下一个，
+   且第二次没重复恢复）。tmux 会话不受影响，但恢复不该在 teardown 之后还推列表/发通知
+   → 加 `shuttingDown` 守卫（`stopListTracking` 翻转），并补回归测试。
+2. **LaunchAgent 的升级路径是坏的**（属 skills repo 侧，非本 repo）：`launchctl kickstart -k`
+   只杀 job 顶层进程，**真正的 daemon 变成孤儿继续跑旧版本**，而包装脚本按「已有 daemon 就不抢」
+   礼让退出 → launchd 永久失去托管、版本也换不掉。已改成「已装版本 ≠ 在跑版本 → 接管」，
+   并用伪造版本号实测通过。

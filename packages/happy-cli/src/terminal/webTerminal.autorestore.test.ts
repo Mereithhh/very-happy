@@ -135,6 +135,20 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
         expect(row?.restoredAt).toBeGreaterThan(0);
     });
 
+    it('does not restore into a shutting-down daemon', async () => {
+        // A second manager over the SAME snapshot would normally restore again
+        // (its own once-per-life flag is fresh). Tearing it down first must make
+        // the restore a no-op: teardown means list pushes and notifications have
+        // nowhere to go. Regression for the 2026-08-24 acceptance-run finding.
+        const dying = new WebTerminalManager(() => { /* no stream */ });
+        const seen: string[] = [];
+        dying.setOnAutoRestoreSummary((line) => seen.push(line));
+        dying.stopListTracking();                 // flips the shutdown flag
+        dying.startListTracking(() => { /* noop */ }, 50);
+        await new Promise((r) => setTimeout(r, 300));
+        expect(seen).toEqual([]);
+    });
+
     it('is idempotent: a second reconcile never double-creates', async () => {
         // The reconcile is once-per-daemon-life; drive more ticks and assert the
         // session count for our ids stays at exactly one.
