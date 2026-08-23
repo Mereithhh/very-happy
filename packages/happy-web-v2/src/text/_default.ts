@@ -1892,8 +1892,8 @@ export const en = {
         errorSignupClosed: 'Signups are currently closed.',
         errorCapacityReached: 'This server has reached its account limit.',
         errorRateLimited: 'Too many attempts. Wait a minute and try again.',
-        errorGoogle: 'Google sign-in failed. Please try again.',
-        errorGeneric: 'Could not create your account. Please try again.',
+        errorGoogle: 'Google sign-in failed or was cancelled. Try again, or use username and password.',
+        errorGeneric: 'Could not reach the server or create your account. Check the server URL and connection, then try again.',
         success: 'Account created. Welcome!',
     },
 

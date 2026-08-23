@@ -97,7 +97,7 @@ ${chalk.bold('Options:')}
   -h, --help             Show this help
 
 ${chalk.bold('Behavior:')}
-  Requires the happy daemon to be running on this machine (same semantics
+  Requires the Very Happy daemon to be running on this machine (same semantics
   as spawning from the web: an offline machine cannot spawn). Without
   --prompt / --prompt-file the session is spawned idle.
 
@@ -175,7 +175,7 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     // the installed daemon on version mismatch.)
     if (!await checkIfDaemonRunningAndCleanupStaleState()) {
         console.error(chalk.red('Error:'), 'Happy daemon is not running on this machine.')
-        console.error(`Start it with ${chalk.cyan('happy daemon start')} and retry.`)
+        console.error(`Start it with ${chalk.cyan('very-happy daemon start')} and retry.`)
         process.exit(1)
     }
 

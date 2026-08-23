@@ -61,7 +61,7 @@ export async function sendUserMessage(
 ): Promise<void> {
     const credentials = await readCredentials()
     if (!credentials) {
-        throw new Error('Not authenticated. Run `happy auth login` first.')
+        throw new Error('Not authenticated. Run `very-happy auth login` first.')
     }
 
     const envelope = {

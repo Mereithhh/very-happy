@@ -94,7 +94,7 @@ export async function runDoctorDaemon(): Promise<void> {
         console.log(chalk.red('❌ Error checking daemon status'));
     }
 
-    console.log(chalk.gray('\nRun `happy doctor` for full diagnostics.\n'));
+    console.log(chalk.gray('\nRun `very-happy doctor` for full diagnostics.\n'));
 }
 
 /**
@@ -144,7 +144,7 @@ export async function runDoctorCommand(): Promise<void> {
 
             if (allProcesses.length > 1) {
                 console.log(chalk.bold('\n💡 Process Management'));
-                console.log(chalk.gray('To clean up runaway processes: happy doctor clean'));
+                console.log(chalk.gray('To clean up runaway processes: very-happy doctor clean'));
             }
         } else {
             console.log(chalk.red('❌ No happy processes found'));

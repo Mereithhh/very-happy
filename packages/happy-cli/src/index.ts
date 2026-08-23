@@ -43,7 +43,7 @@ import { isStandaloneVersionRequest } from './utils/versionArgs'
   // A bare version probe is used by release/runtime health checks and must not
   // fall through into authentication or forward to an agent CLI.
   if (isStandaloneVersionRequest(args)) {
-    console.log(`happy version: ${packageJson.version}`)
+    console.log(`very-happy version: ${packageJson.version}`)
     return
   }
 
@@ -64,10 +64,10 @@ import { isStandaloneVersionRequest } from './utils/versionArgs'
     if (args[1] === 'clean') {
       if (args.slice(2).some(a => a === '--help' || a === '-h')) {
         console.log(`
-${chalk.bold('happy doctor clean')} - Kill all happy-related processes (daemon + sessions)
+${chalk.bold('very-happy doctor clean')} - Kill all Very Happy processes (daemon + sessions)
 
 ${chalk.bold('Usage:')}
-  happy doctor clean
+  very-happy doctor clean
 
 ${chalk.bold('Warning:')} This is destructive — it terminates the daemon and every running session.
 Conversation history is preserved on the server, but in-flight tool calls are interrupted.
@@ -618,20 +618,20 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       }
     } else {
       console.log(`
-${chalk.bold('happy daemon')} - Daemon management
+${chalk.bold('very-happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
-  happy daemon start              Start the daemon (detached)
-  happy daemon stop               Stop the daemon (sessions stay alive)
-  happy daemon status             Show daemon status
-  happy daemon list               List active sessions
+  very-happy daemon start              Start the daemon (detached)
+  very-happy daemon stop               Stop the daemon (sessions stay alive)
+  very-happy daemon status             Show daemon status
+  very-happy daemon list               List active sessions
 
   If you want to kill all happy related processes run 
-  ${chalk.cyan('happy doctor clean')}
+  ${chalk.cyan('very-happy doctor clean')}
 
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
 
-${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor clean')}
+${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('very-happy doctor clean')}
 `)
     }
     return;
@@ -731,52 +731,52 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     // Show help
     if (showHelp) {
       console.log(`
-${chalk.bold('happy')} - Claude Code On the Go
+${chalk.bold('very-happy')} - Claude Code from any browser
 
 ${chalk.bold('Usage:')}
-  happy [options]         Start Claude with mobile control
-  happy auth              Manage authentication
-  happy resume            Resume a previous Happy session by Happy session ID
-  happy spawn             Spawn a remote session via the local daemon and
+  very-happy [options]         Start Claude with browser control
+  very-happy auth              Manage authentication
+  very-happy resume            Resume a previous Very Happy session by session ID
+  very-happy spawn             Spawn a remote session via the local daemon and
                             print its web URL (for automation; see spawn --help)
-  happy send              Send a message into an existing session
+  very-happy send              Send a message into an existing session
                             (for automation; see send --help)
-  happy codex             Start Codex mode
-  happy gemini            Start Gemini mode (ACP)
-  happy acp               Start a generic ACP-compatible agent
-  happy connect           Connect AI vendor API keys
-  happy sandbox           Configure and manage OS-level sandboxing
-  happy notify            Send push notification
-  happy mcp               Stdio MCP server exposing copy_to_clipboard for a
+  very-happy codex             Start Codex mode
+  very-happy gemini            Start Gemini mode (ACP)
+  very-happy acp               Start a generic ACP-compatible agent
+  very-happy connect           Connect AI vendor API keys
+  very-happy sandbox           Configure and manage OS-level sandboxing
+  very-happy notify            Send push notification
+  very-happy mcp               Stdio MCP server exposing copy_to_clipboard for a
                             plain claude CLI (register once with:
                             claude mcp add --scope user very-happy-clipboard -- very-happy mcp)
-  happy daemon            Manage background service that allows
+  very-happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
-  happy doctor            System diagnostics & troubleshooting
+  very-happy doctor            System diagnostics & troubleshooting
 
 ${chalk.bold('Examples:')}
-  happy                    Start session
-  happy resume cmmij8      Resume a previous session by Happy session ID
-  happy --yolo             Start with bypassing permissions
-                            happy sugar for --dangerously-skip-permissions
-  happy --chrome           Enable Chrome browser access for this session
-  happy --no-chrome        Disable Chrome even if default is on
-  happy --no-sandbox       Disable Happy sandbox for this session
-  happy --js-runtime bun   Use bun instead of node to spawn Claude Code
-  happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+  very-happy                    Start session
+  very-happy resume cmmij8      Resume a previous session by Very Happy session ID
+  very-happy --yolo             Start with bypassing permissions
+                            shorthand for --dangerously-skip-permissions
+  very-happy --chrome           Enable Chrome browser access for this session
+  very-happy --no-chrome        Disable Chrome even if default is on
+  very-happy --no-sandbox       Disable the Very Happy sandbox for this session
+  very-happy --js-runtime bun   Use bun instead of node to spawn Claude Code
+  very-happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
-  happy acp gemini         Start Gemini via generic ACP runner
-  happy acp -- opencode --acp
+  very-happy acp gemini         Start Gemini via generic ACP runner
+  very-happy acp -- opencode --acp
                            Start a custom ACP command
-  happy acp opencode --verbose
+  very-happy acp opencode --verbose
                            Print raw ACP backend/envelope events
-  happy auth login --force Authenticate
-  happy doctor             Run diagnostics
+  very-happy auth login --force Authenticate
+  very-happy doctor             Run diagnostics
 
-${chalk.bold('Happy supports ALL Claude options!')}
-  Use any claude flag with happy as you would with claude. Our favorite:
+${chalk.bold('Very Happy supports all Claude options.')}
+  Use any Claude flag with very-happy as you would with claude. For example:
 
-  happy --resume
+  very-happy --resume
 
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
@@ -849,31 +849,31 @@ async function handleNotifyCommand(args: string[]): Promise<void> {
 ${chalk.bold('happy notify')} - Send notification
 
 ${chalk.bold('Usage:')}
-  happy notify -p <message> [-t <title>]    Send notification with custom message and optional title
-  happy notify -h, --help                   Show this help
+  very-happy notify -p <message> [-t <title>]    Send notification with custom message and optional title
+  very-happy notify -h, --help                   Show this help
 
 ${chalk.bold('Options:')}
   -p <message>    Notification message (required)
   -t <title>      Notification title (optional, defaults to "Happy")
 
 ${chalk.bold('Examples:')}
-  happy notify -p "Deployment complete!"
-  happy notify -p "System update complete" -t "Server Status"
-  happy notify -t "Alert" -p "Database connection restored"
+  very-happy notify -p "Deployment complete!"
+  very-happy notify -p "System update complete" -t "Server Status"
+  very-happy notify -t "Alert" -p "Database connection restored"
 `)
     return
   }
 
   if (!message) {
     console.error(chalk.red('Error: Message is required. Use -p "your message" to specify the notification text.'))
-    console.log(chalk.gray('Run "happy notify --help" for usage information.'))
+    console.log(chalk.gray('Run "very-happy notify --help" for usage information.'))
     process.exit(1)
   }
 
   // Load credentials
   let credentials = await readCredentials()
   if (!credentials) {
-    console.error(chalk.red('Error: Not authenticated. Please run "happy auth login" first.'))
+    console.error(chalk.red('Error: Not authenticated. Please run "very-happy auth login" first.'))
     process.exit(1)
   }
 

@@ -89,7 +89,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     || options.apiKey;                  // 5. Explicit apiKey option (fallback)
 
   if (!apiKey) {
-    logger.warn(`[Gemini] No API key found. Run 'happy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`);
+    logger.warn(`[Gemini] No API key found. Run 'very-happy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`);
   }
 
   // Command to run gemini
@@ -184,4 +184,3 @@ export function registerGeminiAgent(): void {
   agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
   logger.debug('[Gemini] Registered with agent registry');
 }
-

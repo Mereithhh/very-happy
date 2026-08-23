@@ -55,7 +55,7 @@ describe('handleSandboxCommand', () => {
         await handleSandboxCommand(['status']);
 
         expect(mockReadSettings).toHaveBeenCalledTimes(1);
-        expect(logSpy).toHaveBeenCalledWith('Sandbox is not configured. Run `happy sandbox configure`.');
+        expect(logSpy).toHaveBeenCalledWith('Sandbox is not configured. Run `very-happy sandbox configure`.');
     });
 
     it('routes disable subcommand', async () => {
@@ -94,7 +94,7 @@ describe('handleSandboxStatus', () => {
 
         await handleSandboxStatus();
 
-        expect(logSpy).toHaveBeenCalledWith('Sandbox is not configured. Run `happy sandbox configure`.');
+        expect(logSpy).toHaveBeenCalledWith('Sandbox is not configured. Run `very-happy sandbox configure`.');
     });
 
     it('prints formatted sandbox configuration when present', async () => {

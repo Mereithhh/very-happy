@@ -159,7 +159,7 @@ export async function handleSandboxStatus(): Promise<void> {
     const config = settings.sandboxConfig;
 
     if (!config) {
-        console.log('Sandbox is not configured. Run `happy sandbox configure`.');
+        console.log('Sandbox is not configured. Run `very-happy sandbox configure`.');
         return;
     }
 

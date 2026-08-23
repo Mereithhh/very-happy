@@ -241,7 +241,7 @@ export class ApiClient {
             `   → This usually happens after re-authenticating with a different account`
           ));
           console.log(chalk.yellow(
-            `   → Run 'happy doctor clean' to reset local state and generate a new machine ID`
+            `   → Run 'very-happy doctor clean' to reset local state and generate a new machine ID`
           ));
           console.log(chalk.yellow(
             `   → Open a GitHub issue if this problem persists`
