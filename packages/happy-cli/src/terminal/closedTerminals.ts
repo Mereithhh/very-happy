@@ -30,12 +30,32 @@ export interface ClosedTerminalRecord {
      *  this terminal, if any — the archive view links "查看结构化历史" to it
      *  (the mirror is otherwise hidden everywhere, M-4). */
     mirrorSessionId?: string;
-    /** When the close was observed (ms epoch). */
+    /** B-149: the claude conversation that ran in this terminal, when known
+     *  (resolved from the mirror session's metadata, never guessed from cwd).
+     *  Present → the archive row can offer "continue": a new terminal in `cwd`
+     *  whose startup command is `claude --resume <claudeSessionId>`. */
+    claudeSessionId?: string;
+    /** B-149: how the terminal ended. `closed` = a running daemon observed it
+     *  (web kill, shell exit, machine-side kill-session). `daemon-gap` = it was
+     *  alive in the persisted snapshot but gone when the daemon came back, i.e.
+     *  the daemon or the whole machine restarted under it — the case that used
+     *  to leave no record at all. Absent on records from older daemons; readers
+     *  treat absent as `closed`. */
+    reason?: ClosedTerminalReason;
+    /** When the close was observed (ms epoch). For a `daemon-gap` record there
+     *  was nobody to observe it, so it carries the last time the terminal was
+     *  seen ALIVE instead — which is what the archive should show anyway. */
     closedAt: number;
 }
 
-/** Hard cap on retained records (bounds the daemonState payload). */
-export const CLOSED_TERMINALS_MAX = 20;
+/** See `ClosedTerminalRecord.reason`. */
+export type ClosedTerminalReason = 'closed' | 'daemon-gap';
+
+/** Hard cap on retained records (bounds the daemonState payload). Raised from
+ *  20 to 40 with B-149: one reboot can tombstone a whole working set at once
+ *  (2026-08-23: 22 terminals), and at 20 that single event would evict every
+ *  pre-existing record. */
+export const CLOSED_TERMINALS_MAX = 40;
 
 /**
  * Append one record: dedupe by id (the new record replaces any older one for
@@ -80,7 +100,7 @@ export function sanitizeClosedTerminals(
     const out: ClosedTerminalRecord[] = [];
     for (const item of raw) {
         if (!item || typeof item !== 'object') continue;
-        const { id, title, cwd, mirrorSessionId, closedAt } = item as Record<string, unknown>;
+        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt } = item as Record<string, unknown>;
         if (typeof id !== 'string' || id.length === 0 || typeof closedAt !== 'number') continue;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -89,6 +109,8 @@ export function sanitizeClosedTerminals(
             title: typeof title === 'string' ? title : undefined,
             cwd: typeof cwd === 'string' ? cwd : undefined,
             mirrorSessionId: typeof mirrorSessionId === 'string' ? mirrorSessionId : undefined,
+            claudeSessionId: typeof claudeSessionId === 'string' ? claudeSessionId : undefined,
+            reason: reason === 'daemon-gap' || reason === 'closed' ? reason : undefined,
             closedAt,
         });
     }

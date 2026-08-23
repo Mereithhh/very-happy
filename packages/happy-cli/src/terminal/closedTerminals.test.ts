@@ -107,7 +107,25 @@ describe('sanitizeClosedTerminals', () => {
     });
 
     it('caps at the max', () => {
-        const raw = Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, closedAt: i }));
+        // Always feed MORE than the cap — a hardcoded count silently stops
+        // testing the cap the moment CLOSED_TERMINALS_MAX is raised (B-149).
+        const raw = Array.from({ length: CLOSED_TERMINALS_MAX + 10 }, (_, i) => ({ id: `t${i}`, closedAt: i }));
         expect(sanitizeClosedTerminals(raw)).toHaveLength(CLOSED_TERMINALS_MAX);
+    });
+
+    it('preserves claudeSessionId and a known reason, drops junk ones (B-149)', () => {
+        const [ok] = sanitizeClosedTerminals([{
+            id: 'a', closedAt: 1,
+            claudeSessionId: 'c0c26854-5e0c-4063-aaeb-d4428fe8ed94',
+            reason: 'daemon-gap',
+        }]);
+        expect(ok.claudeSessionId).toBe('c0c26854-5e0c-4063-aaeb-d4428fe8ed94');
+        expect(ok.reason).toBe('daemon-gap');
+
+        const [junk] = sanitizeClosedTerminals([{
+            id: 'b', closedAt: 1, claudeSessionId: 42, reason: 'whatever',
+        }]);
+        expect(junk.claudeSessionId).toBeUndefined();
+        expect(junk.reason).toBeUndefined();
     });
 });

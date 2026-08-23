@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, RotateCcw } from 'lucide-react';
 import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -945,6 +945,7 @@ export function Sidebar() {
                     >
                       {r.cwd ? `${r.cwd} · ` : ''}
                       {r.machineName} · {formatLastSeen(r.closedAt)}
+                      {r.fromDaemonGap ? ` · ${t('sidebar.closedTerminalGap')}` : ''}
                     </span>
                   </span>
                 </div>
@@ -961,14 +962,17 @@ export function Sidebar() {
                     <MessagesSquare size={16} />
                   </button>
                 )}
+                {/* B-149: with a known claude session the action CONTINUES the
+                    conversation (new terminal in cwd + `claude --resume`);
+                    without one it stays the plain "same directory" open. */}
                 <button
                   className="sb-closed-reopen"
                   disabled={!r.machineOnline || !r.cwd}
-                  title={t('sidebar.closedTerminalReopen')}
-                  aria-label={t('sidebar.closedTerminalReopen')}
-                  onClick={() => createTerminalAt(navigate, r.machineId, r.cwd)}
+                  title={t(r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
+                  aria-label={t(r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
+                  onClick={() => createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId)}
                 >
-                  <Plus size={16} />
+                  {r.claudeSessionId ? <RotateCcw size={16} /> : <Plus size={16} />}
                 </button>
               </div>
             ))}

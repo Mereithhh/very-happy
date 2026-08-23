@@ -1042,6 +1042,8 @@ export const zhHans: TranslationStructure = {
         unmarkPriority: '取消优先',
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
+        closedTerminalResume: '在原目录继续这个会话',
+        closedTerminalGap: '重启时结束',
         closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
         rowUnread: '有未读',

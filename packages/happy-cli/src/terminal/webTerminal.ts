@@ -84,6 +84,15 @@ import { encodeTerminalWrite, buildPastePlan, toControlStdin } from './sendKeysE
 import { configuration } from '@/configuration';
 import { TerminalNotifyTracker, type TerminalNotification } from './terminalNotify';
 import {
+    sanitizeLiveSnapshot,
+    serializeLiveSnapshot,
+    liveSnapshotChanged,
+    pickMirrorForTerminal,
+    type LiveTerminalInfo,
+    type MirrorLookupSession,
+} from './liveTerminals';
+import { readPersistedSessions } from '@/persistence';
+import {
     appendClosedTerminal,
     pruneClosedAgainstLive,
     sanitizeClosedTerminals,
@@ -157,6 +166,31 @@ function saveClosedTerminals(list: ClosedTerminalRecord[]): void {
         writeFileSync(closedTerminalsFile(), JSON.stringify(list));
     } catch (e) {
         logger.debug(`[WEB TERMINAL] closed-terminals save failed: ${e}`);
+    }
+}
+
+// ── Live-terminal snapshot (B-149) ───────────────────────────────────────────
+// The {title,cwd} cache that closure detection diffs against, mirrored to disk
+// so a daemon restart (or a reboot, which kills the tmux server too) can still
+// tell what was running. Pure rules in liveTerminals.ts; here only file I/O.
+function liveTerminalsFile(): string {
+    return join(configuration.happyHomeDir, 'live-terminals.json');
+}
+
+function loadLiveSnapshot(): Map<string, LiveTerminalInfo> {
+    try {
+        return sanitizeLiveSnapshot(JSON.parse(readFileSync(liveTerminalsFile(), 'utf8')), Date.now());
+    } catch {
+        return new Map();
+    }
+}
+
+function saveLiveSnapshot(map: ReadonlyMap<string, LiveTerminalInfo>): void {
+    try {
+        mkdirSync(configuration.happyHomeDir, { recursive: true });
+        writeFileSync(liveTerminalsFile(), JSON.stringify(serializeLiveSnapshot(map)));
+    } catch (e) {
+        logger.debug(`[WEB TERMINAL] live-terminals save failed: ${e}`);
     }
 }
 
@@ -1153,6 +1187,12 @@ export class WebTerminalManager {
      *  exits (shell `exit`, `tmux kill-session` on the machine) get recorded,
      *  not just web-initiated kills. */
     private lastSeenInfo = new Map<string, { title?: string; cwd?: string }>();
+    /** B-149: what the PREVIOUS daemon life left on disk. Reconciled exactly
+     *  once, against the first observed list, then dropped (null = done). */
+    private restoredSnapshot: Map<string, LiveTerminalInfo> | null = loadLiveSnapshot();
+    /** Change guard for the persisted copy: a tick where membership, titles and
+     *  cwds are unchanged must not touch the disk (5s cadence otherwise = churn). */
+    private lastPersistedSnapshot: Map<string, LiveTerminalInfo> = new Map(this.restoredSnapshot ?? []);
     private emit: EmitFn;
     private reaper: ReturnType<typeof setInterval>;
 
@@ -1406,11 +1446,16 @@ export class WebTerminalManager {
      *  through once the id reappears. */
     private trackClosures(list: TerminalListItem[]): void {
         const liveIds = new Set(list.map((t) => t.id));
+        // Before diffing this life's cache: settle the previous life's leftovers.
+        this.reconcileRestoredSnapshot(liveIds);
         const next = new Map<string, { title?: string; cwd?: string }>(
             list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]),
         );
         let changed = false;
         const now = Date.now();
+        // Resolved lazily and at most once per tick: reading the persisted
+        // sessions parses a sizeable JSON, and the common tick records nothing.
+        let persisted: Record<string, MirrorLookupSession> | null = null;
         for (const [id, info] of this.lastSeenInfo) {
             if (liveIds.has(id)) continue;
             if (this.terminals.has(id)) {
@@ -1422,9 +1467,16 @@ export class WebTerminalManager {
                 next.set(id, info);
                 continue;
             }
+            persisted ??= readPersistedSessions();
+            const mirror = pickMirrorForTerminal(persisted, id);
             this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
                 id, title: info.title, cwd: info.cwd,
-                mirrorSessionId: this.mirrorResolver?.(id), closedAt: now,
+                // Live binding first (authoritative while it exists), persisted
+                // metadata as the fallback once the mirror has been torn down.
+                mirrorSessionId: this.mirrorResolver?.(id) ?? mirror?.sessionId,
+                claudeSessionId: mirror?.claudeSessionId,
+                reason: 'closed',
+                closedAt: now,
             });
             changed = true;
             logger.debug(`[WEB TERMINAL] recorded closed terminal ${id}`);
@@ -1443,6 +1495,57 @@ export class WebTerminalManager {
         }
         this.lastSeenInfo = next;
         if (changed) saveClosedTerminals(this.closedTerminals);
+        this.persistLiveSnapshot(next, now);
+    }
+
+    /** B-149: turn what the previous daemon life left behind into archive
+     *  records. Runs ONCE, on the first observed list: a snapshot entry that is
+     *  no longer a tmux session can only have died while nothing was watching
+     *  (daemon crash, `kill -9`, machine reboot) — precisely the case that used
+     *  to leave no trace in either the live list or the archive.
+     *
+     *  A transient `list-sessions` failure (which reads as an empty list) would
+     *  tombstone the whole set falsely; that is tolerable because the existing
+     *  prune-against-live deletes any record whose id shows up again, and this
+     *  reconcile never runs a second time to re-add it. */
+    private reconcileRestoredSnapshot(liveIds: ReadonlySet<string>): void {
+        const snapshot = this.restoredSnapshot;
+        this.restoredSnapshot = null;
+        if (!snapshot || snapshot.size === 0) return;
+        let persisted: Record<string, MirrorLookupSession> | null = null;
+        let recorded = 0;
+        for (const [id, info] of snapshot) {
+            if (liveIds.has(id)) continue;
+            // Already archived by the daemon that watched it die — an ordinary
+            // close record must never be downgraded to a daemon-gap one.
+            if (this.closedTerminals.some((r) => r.id === id)) continue;
+            persisted ??= readPersistedSessions();
+            const mirror = pickMirrorForTerminal(persisted, id);
+            this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
+                id,
+                title: info.title,
+                cwd: info.cwd,
+                mirrorSessionId: mirror?.sessionId,
+                claudeSessionId: mirror?.claudeSessionId,
+                reason: 'daemon-gap',
+                closedAt: info.seenAt,
+            });
+            recorded++;
+        }
+        if (recorded > 0) {
+            saveClosedTerminals(this.closedTerminals);
+            logger.debug(`[WEB TERMINAL] daemon gap: archived ${recorded} terminal(s) from the persisted snapshot`);
+        }
+    }
+
+    /** Mirror the in-memory cache to disk, but only when something a restart
+     *  would care about changed (see liveSnapshotChanged). */
+    private persistLiveSnapshot(live: ReadonlyMap<string, { title?: string; cwd?: string }>, now: number): void {
+        const candidate = new Map<string, LiveTerminalInfo>();
+        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, seenAt: now });
+        if (!liveSnapshotChanged(this.lastPersistedSnapshot, candidate)) return;
+        this.lastPersistedSnapshot = candidate;
+        saveLiveSnapshot(candidate);
     }
 
     /** Drop de-dup entries for terminals that no longer exist, so a long-lived

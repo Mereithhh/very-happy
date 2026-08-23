@@ -1056,6 +1056,8 @@ export const en = {
         // 已结束终端 (B-084): archived view's closed-terminal records
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
+        closedTerminalResume: 'Continue this conversation here',
+        closedTerminalGap: 'ended in a restart',
         // B-105: closed terminal that had a mirror — its history stays readable
         closedTerminalHistory: 'View structured history',
         // B-085 two-level row signal (aria/title on the right-edge dot)

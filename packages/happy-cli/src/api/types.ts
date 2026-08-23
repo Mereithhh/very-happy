@@ -185,6 +185,14 @@ export const ClosedTerminalRecordSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
   cwd: z.string().optional(),
+  /** B-105: shadow mirror session — structured history of the claude that ran
+   *  inside the terminal, still reachable after the terminal is gone. */
+  mirrorSessionId: z.string().optional(),
+  /** B-149: claude conversation id, for one-click resume of a dead terminal. */
+  claudeSessionId: z.string().optional(),
+  /** B-149: 'daemon-gap' = died while no daemon was watching (restart/reboot);
+   *  absent means an ordinary observed close. */
+  reason: z.enum(['closed', 'daemon-gap']).optional(),
   closedAt: z.number(),
 })
 

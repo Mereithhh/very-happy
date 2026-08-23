@@ -39,6 +39,7 @@ import { storage, useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
+import { resumeStartupCommand } from '@/sync/closedTerminals';
 import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
 import { Modal } from '@/modal';
@@ -218,12 +219,19 @@ export function WebTerminalScreen() {
   // URL can't redirect an existing terminal. Stripped together with `fresh`.
   const createCwdRef = useRef<string | undefined>(undefined);
   createCwdRef.current = params.get('cwd') || undefined;
+  // `resume` (B-149): continue the claude conversation of a terminal that died
+  // in a restart. Like `cwd` it rides the create-open only. The URL carries the
+  // session ID, never a command — the command is rebuilt here after validation,
+  // and it OVERRIDES the global startup command for this one open.
+  const createResumeCmdRef = useRef<string | undefined>(undefined);
+  createResumeCmdRef.current = resumeStartupCommand(params.get('resume') || undefined);
   const clearFreshRef = useRef(() => {});
   clearFreshRef.current = () => {
     if (params.get('fresh') !== '1') return;
     const next = new URLSearchParams(params);
     next.delete('fresh');
     next.delete('cwd');
+    next.delete('resume');
     setSearchParams(next, { replace: true });
   };
 
@@ -1310,7 +1318,9 @@ export function WebTerminalScreen() {
       const res = await machineOpenTerminal(machineId, {
         terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
         // Runs only if the daemon CREATES the session (see startupCommandRef).
-        startupCommand: startupCommandRef.current,
+        // A resume request (B-149) wins over the configured startup command:
+        // the user asked for THIS conversation, not for the usual boot script.
+        startupCommand: (isFresh && createResumeCmdRef.current) || startupCommandRef.current,
         // Starting directory for the create path only (see createCwdRef).
         cwd: isFresh ? createCwdRef.current : undefined,
         // Only the fresh-create navigation may create the tmux session; any

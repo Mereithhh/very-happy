@@ -24,6 +24,29 @@ export interface ClosedTerminal {
   /** B-105: shadow mirror session id — the terminal is gone, but its
    *  structured history stays reachable at /session/<mirrorSessionId>. */
   mirrorSessionId?: string;
+  /** B-149: the claude conversation that ran inside the terminal. Present →
+   *  the row can CONTINUE it (new terminal in cwd + `claude --resume <id>`)
+   *  instead of only opening an empty shell there. */
+  claudeSessionId?: string;
+  /** B-149: 'daemon-gap' = the terminal died while no daemon was watching
+   *  (daemon restart / machine reboot), so the row is labelled accordingly.
+   *  Absent (old daemons) reads as an ordinary observed close. */
+  reason?: 'closed' | 'daemon-gap';
+}
+
+/** Claude session ids are uuids. Validated here because the value comes off the
+ *  wire and ends up inside a shell command (`claude --resume <id>`) on the
+ *  machine — the web must never forward an unvalidated string into that. */
+const CLAUDE_SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export function isClaudeSessionId(value: unknown): value is string {
+  return typeof value === 'string' && CLAUDE_SESSION_ID_RE.test(value);
+}
+
+/** The startup command that continues one claude conversation, or undefined
+ *  when the id is missing/malformed. The ONLY place this string is built. */
+export function resumeStartupCommand(claudeSessionId: string | undefined): string | undefined {
+  return isClaudeSessionId(claudeSessionId) ? `claude --resume ${claudeSessionId}` : undefined;
 }
 
 /** Tolerant read of one machine's daemonState.closedTerminals. */
@@ -43,6 +66,8 @@ export function closedTerminalsOf(daemonState: any): ClosedTerminal[] {
         typeof item.mirrorSessionId === 'string' && item.mirrorSessionId
           ? item.mirrorSessionId
           : undefined,
+      claudeSessionId: isClaudeSessionId(item.claudeSessionId) ? item.claudeSessionId : undefined,
+      reason: item.reason === 'daemon-gap' || item.reason === 'closed' ? item.reason : undefined,
     });
   }
   return out;
@@ -64,6 +89,11 @@ export interface ClosedTerminalRow {
   machineOnline: boolean;
   /** B-105: structured history target, when the terminal had a mirror. */
   mirrorSessionId?: string;
+  /** B-149: present → the row's primary action continues this conversation. */
+  claudeSessionId?: string;
+  /** B-149: the terminal died in a daemon/machine restart, not in an observed
+   *  close — worth saying in the UI, since the user never closed it. */
+  fromDaemonGap: boolean;
 }
 
 /** The slice of a machine this module needs (kept narrow for tests). */
@@ -100,6 +130,8 @@ export function buildClosedTerminalRows(
         closedAt: r.closedAt,
         machineOnline: m.online,
         mirrorSessionId: r.mirrorSessionId,
+        claudeSessionId: r.claudeSessionId,
+        fromDaemonGap: r.reason === 'daemon-gap',
       });
     }
   }

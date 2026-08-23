@@ -5,6 +5,7 @@ import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { soleOnlineMachine, machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { isImeGuardedEvent } from '@/utils/ime';
+import { isClaudeSessionId } from '@/sync/closedTerminals';
 
 /**
  * The ONE "new terminal" entry point — every button/shortcut/palette item goes
@@ -45,12 +46,24 @@ export function createTerminalOrPick(navigate: NavigateFunction): void {
  * probe and the click), and a caller that closes its dialog afterwards MUST
  * check the result, or the user gets a dismissed dialog and no terminal.
  */
-export function createTerminalAt(navigate: NavigateFunction, machineId: string, cwd?: string): boolean {
+/**
+ * @param resumeClaudeSessionId B-149: continue this claude conversation in the
+ *   new terminal. Only the ID travels (as `resume`), never a command line — the
+ *   terminal screen rebuilds `claude --resume <id>` after re-validating it, so a
+ *   crafted URL cannot run something else in the user's shell.
+ */
+export function createTerminalAt(
+  navigate: NavigateFunction,
+  machineId: string,
+  cwd?: string,
+  resumeClaudeSessionId?: string,
+): boolean {
   const m = storage.getState().machines[machineId];
   if (!m || !isMachineOnline(m)) return false;
   const term = useTerminalSessions.getState().create(machineId, machineLabel(m));
   const q = new URLSearchParams({ tid: term.id, fresh: '1' });
   if (cwd) q.set('cwd', cwd);
+  if (isClaudeSessionId(resumeClaudeSessionId)) q.set('resume', resumeClaudeSessionId);
   navigate(`/terminal/${machineId}?${q.toString()}`);
   return true;
 }
