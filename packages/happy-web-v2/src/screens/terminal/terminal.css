@@ -446,6 +446,49 @@
   pointer-events: none;
 }
 
+.term-upload-status {
+  position: absolute;
+  z-index: 4;
+  top: var(--sp-3);
+  left: 50%;
+  width: min(420px, calc(100% - 2 * var(--sp-4)));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--term-chrome-line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--term-chrome-panel) 94%, transparent);
+  color: var(--term-chrome-fg);
+  font-size: var(--fs-11);
+  box-shadow: var(--shadow-pop);
+  transform: translateX(-50%);
+}
+
+.term-upload-status span:first-child {
+  overflow: hidden;
+  color: var(--term-accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-upload-status i {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  background: var(--term-chrome-line);
+}
+
+.term-upload-status i::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--term-upload-progress);
+  background: var(--term-accent);
+  content: '';
+  transition: width var(--dur-fast) var(--ease-out);
+}
+
 /* ── File browser (fs-list / fs-read) ────────────────────────────────────────
    Desktop (fine pointer, >860px): an inline SPLIT inside .term-mid — the
    terminal yields width instead of being covered (B-088), and the divider is

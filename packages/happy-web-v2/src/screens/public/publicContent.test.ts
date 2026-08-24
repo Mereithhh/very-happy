@@ -363,6 +363,12 @@ describe('public documentation registry', () => {
     expect(proof).toContain('OpenClaw gateway over its own protocol—not ACP');
     expect(proof).toContain('LOCAL INTERACTION · NO AUDIO CAPTURE');
     expect(proof).toContain('SANITIZED DEMO · NO CONNECTION');
+    expect(proof).toContain('CLIPBOARD → TARGET MACHINE');
+    expect(proof).toContain('8 MB LIMIT · PATH ONLY · NO AUTO-RUN');
+    expect(proof).toContain('fileTransferDemo');
+    expect(proof).toContain('trusted relay');
+    expect(proof).toContain('PRODUCTION TERMINAL UPLOAD CONTRACT');
+    expect(proof).toContain('WORKSTATION · SANITIZED LOCAL PREVIEW · NO BYTES READ');
     expect(proof).toContain("onClick={() => { if (voiceState === 'idle') finishVoicePreview(); }}");
     expect(proof).toContain('setSpeakingTurn((turn) => turn + 1)');
     expect(proof).toContain('[speakingTurn, voiceState]');
@@ -375,6 +381,23 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.cfp-voice \.as-logo \{[^}]*margin-bottom: var\(--sp-5\)/);
     expect(styles).toMatch(/\.cfp-surface-bar i \{[^}]*background: var\(--text-faint\)/);
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it('documents bounded terminal file handoff without claiming zero-knowledge transfer', () => {
+    const text = JSON.stringify(PUBLIC_DOCS);
+    const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
+    const architecture = readFileSync(new URL('../../../../../docs/architecture.md', import.meta.url), 'utf8');
+    const gettingStarted = readFileSync(new URL('../../../../../docs/getting-started.md', import.meta.url), 'utf8');
+    const security = readFileSync(new URL('../../../../../docs/security.md', import.meta.url), 'utf8');
+    for (const source of [text, readme, architecture, gettingStarted, security]) {
+      expect(source).toContain('8 MB');
+      expect(source).toContain('~/.happy/uploads/terminal/');
+      expect(source).toMatch(/trusted relay/i);
+    }
+    expect(readme).toContain('It never presses Enter for you.');
+    expect(architecture).toContain('atomically exposes');
+    expect(gettingStarted).toContain('does not press Enter or execute a command');
+    expect(security).toContain('not a private side channel');
   });
 
   it('keeps multiple product previews in separate id and focus scopes', () => {

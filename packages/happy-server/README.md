@@ -106,6 +106,9 @@ guides.
 | `MAX_UPLOADED_FILES_PER_ACCOUNT` / `ATTACHMENT_RESERVATION_TTL_MINUTES` | No | `2000` / `60` | Uploaded-file row cap and abandoned attachment reservation/object cleanup age |
 | `TERMINAL_RELAY_BYTES_PER_SECOND` / `TERMINAL_RELAY_BURST_BYTES` | No | `2097152` / `8388608` | Per-account, per-process terminal bandwidth bucket; `0` disables that dimension |
 | `TERMINAL_RELAY_EVENTS_PER_SECOND` / `TERMINAL_RELAY_BURST_EVENTS` | No | `200` / `400` | Per-account, per-process terminal event bucket; `0` disables that dimension |
+| `RPC_RELAY_BYTES_PER_SECOND` / `RPC_RELAY_BURST_BYTES` | No | `2097152` / `20971520` | Shared per-account, per-process RPC byte bucket; default burst fits one encoded 8 MiB terminal handoff |
+| `RPC_RELAY_EVENTS_PER_SECOND` / `RPC_RELAY_BURST_EVENTS` | No | `2` / `120` | Shared per-account, per-process RPC event bucket |
+| `RPC_MAX_REGISTERED_METHODS_PER_SOCKET` | No | `256` | Unique RPC method rooms per machine socket; overflow disconnects the socket |
 
 To enable Google login, create a **Web application** OAuth client in Google Cloud Console and add every deployed Web origin (for example `https://happy.example.com`) under **Authorized JavaScript origins**. Set that client ID and the same exact origin(s) in the two variables above. The popup ID-token callback does not use an Authorized redirect URI or client secret. Do not copy the maintainer Cloud client ID for a self-hosted domain; create a client owned by your deployment.
 

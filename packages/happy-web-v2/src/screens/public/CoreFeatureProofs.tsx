@@ -7,6 +7,7 @@ import {
   Server,
   Sparkles,
   TerminalSquare,
+  UploadCloud,
 } from 'lucide-react';
 import { AssistantLogo, type AssistantLogoState } from '../assistant/AssistantLogo';
 import { CyberMark } from '../../ui/CyberMark';
@@ -17,6 +18,7 @@ import { CyberMark } from '../../ui/CyberMark';
 import '../assistant/assistant.css';
 import '../sessions/newsession.css';
 import './coreFeatureProofs.css';
+import { ProductWorkspacePreview } from './ProductWorkspacePreview';
 
 type AgentKey = 'claude' | 'codex' | 'gemini' | 'openclaw';
 type VoicePreviewState = Extract<AssistantLogoState, 'idle' | 'listening' | 'speaking'>;
@@ -378,13 +380,47 @@ function NewSessionProof({ titleId }: { titleId: string }) {
   );
 }
 
+function FileTransferProof({ titleId }: { titleId: string }) {
+  return (
+    <article className="cfp-card cfp-card--transfer" aria-labelledby={titleId}>
+      <div className="cfp-copy">
+        <div className="cfp-proof-line">
+          <span>CLIPBOARD → TARGET MACHINE</span>
+          <span>8 MB LIMIT · PATH ONLY · NO AUTO-RUN</span>
+        </div>
+        <h3 id={titleId}>Move the file to the work—not the work to your laptop.</h3>
+        <p>
+          Paste a screenshot or drop a file into the browser terminal. Very Happy sends it through the trusted relay
+          to the selected machine, stages it under <code>~/.happy/uploads/terminal/</code>, and pastes its
+          default-shell-quoted path at the cursor. You still decide what command runs.
+        </p>
+      </div>
+      <div className="cfp-surface cfp-transfer" data-surface="file-transfer">
+        <div className="cfp-surface-bar" aria-hidden="true">
+          <span><i /> PRODUCTION TERMINAL UPLOAD CONTRACT</span>
+          <span>WORKSTATION · SANITIZED LOCAL PREVIEW · NO BYTES READ</span>
+        </div>
+        <div className="cfp-transfer-frame">
+          <ProductWorkspacePreview compact initialView="terminal" initialFilesOpen={false} sidebar={false} fileTransferDemo />
+        </div>
+        <div className="cfp-transfer-facts" aria-label="File handoff stages">
+          <span><UploadCloud size={14} aria-hidden="true" /> Browser file</span>
+          <span>Authenticated machine RPC</span>
+          <span>Quoted path at cursor</span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function CoreFeatureProofs() {
   const instanceId = useId();
   const sectionTitleId = `${instanceId}-core-feature-proofs-title`;
   const voiceTitleId = `${instanceId}-voice-proof-title`;
   const launchTitleId = `${instanceId}-launch-proof-title`;
+  const transferTitleId = `${instanceId}-transfer-proof-title`;
   return (
-    <section className="cfp" aria-labelledby={sectionTitleId}>
+    <section id="proofs" className="cfp" aria-labelledby={sectionTitleId}>
       <header className="cfp-heading">
         <div>
           <div className="cfp-eyebrow">CORE CAPABILITIES // SHOWN IN PRODUCT UI</div>
@@ -399,6 +435,7 @@ export function CoreFeatureProofs() {
       <div className="cfp-grid">
         <VoiceCoordinatorProof titleId={voiceTitleId} />
         <NewSessionProof titleId={launchTitleId} />
+        <FileTransferProof titleId={transferTitleId} />
       </div>
     </section>
   );

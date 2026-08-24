@@ -429,12 +429,46 @@ export async function machineUploadFile(
     machineId: string,
     name: string,
     content: string,
-): Promise<{ success: boolean; path?: string; size?: number; error?: string }> {
+): Promise<MachineUploadFileResponse> {
     try {
         return await apiSocket.machineRPC<
-            { success: boolean; path?: string; size?: number; error?: string },
+            MachineUploadFileResponse,
             { name: string; content: string; subdir?: string }
         >(machineId, 'uploadFile', { name, content, subdir: 'terminal' });
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+export type MachineUploadFileChunkRequest =
+    | { action: 'start'; uploadId: string; name: string; totalSize: number; subdir?: string }
+    | { action: 'append'; uploadId: string; offset: number; content: string }
+    | { action: 'finish'; uploadId: string }
+    | { action: 'abort'; uploadId: string };
+
+export type MachineUploadFileResponse = {
+    success: boolean;
+    path?: string;
+    pathQuoteStyle?: 'posix' | 'powershell' | 'cmd';
+    size?: number;
+    error?: string;
+};
+
+/**
+ * Chunked counterpart to machineUploadFile. Each request stays below the
+ * relay's encrypted 256 KiB RPC envelope; the daemon verifies ordering and
+ * declared size, then atomically exposes the completed file.
+ */
+export async function machineUploadFileChunk(
+    machineId: string,
+    request: MachineUploadFileChunkRequest,
+): Promise<MachineUploadFileResponse> {
+    try {
+        return await apiSocket.machineRPC<MachineUploadFileResponse, MachineUploadFileChunkRequest>(
+            machineId,
+            'uploadFileChunk',
+            request,
+        );
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }

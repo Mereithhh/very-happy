@@ -1395,6 +1395,9 @@ export const zhHans: TranslationStructure = {
         quickCommands: '快捷指令',
         quickCommandsEmpty: '还没有快捷指令。去 设置 → 快捷片段 添加。',
         uploadingFile: '上传中…',
+        uploadComplete: ({ name }: { name: string }) => `${name} 已上传，路径已放到光标处。`,
+        uploadFailed: ({ name, error }: { name: string; error: string }) => `${name} 上传失败：${error}`,
+        uploadPathNotInserted: ({ name, path }: { name: string; path: string }) => `${name} 已上传到 ${path}，但无法安全识别当前 shell，因此没有自动插入路径。请更新 daemon 或手动粘贴。`,
         dropToUpload: '松开上传到机器',
         pathWillBePasted: '路径会粘贴到终端',
         // 终端内 Claude Code 状态（侧边栏状态点 + 通知）

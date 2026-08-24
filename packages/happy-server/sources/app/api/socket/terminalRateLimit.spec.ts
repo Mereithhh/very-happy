@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AccountTerminalRateLimiter, relayPayloadBytes, resolveTerminalRelayLimit } from './terminalRateLimit';
+import { AccountTerminalRateLimiter, relayPayloadBytes, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './terminalRateLimit';
 
 describe('resolveTerminalRelayLimit', () => {
     it('has a bounded public-server default', () => {
@@ -17,6 +17,42 @@ describe('resolveTerminalRelayLimit', () => {
             TERMINAL_RELAY_BURST_BYTES: '0',
             TERMINAL_RELAY_EVENTS_PER_SECOND: '10',
             TERMINAL_RELAY_BURST_EVENTS: '20',
+        })).toEqual({ bytesPerSecond: 0, burstBytes: 0, eventsPerSecond: 10, burstEvents: 20 });
+    });
+});
+
+describe('resolveRpcRelayLimit', () => {
+    it('allows one complete 8 MiB chunked handoff inside a bounded account burst', () => {
+        const limit = resolveRpcRelayLimit({});
+        expect(limit).toEqual({
+            bytesPerSecond: 2 * 1024 * 1024,
+            burstBytes: 20 * 1024 * 1024,
+            eventsPerSecond: 2,
+            burstEvents: 120,
+        });
+        const limiter = new AccountTerminalRateLimiter(limit);
+        const representativeChunk = {
+            method: 'machine-1:uploadFileChunk',
+            params: 'x'.repeat(176 * 1024),
+        };
+        const calls = [
+            { method: representativeChunk.method, params: 'x'.repeat(512) },
+            ...Array.from({ length: 86 }, () => representativeChunk),
+            { method: representativeChunk.method, params: 'x'.repeat(256) },
+        ];
+        const charged = calls.reduce((sum, call) => sum + relayPayloadBytes(call), 0);
+        expect(calls).toHaveLength(88);
+        expect(relayPayloadBytes(representativeChunk)).toBeLessThan(256 * 1024);
+        expect(charged).toBeLessThan(limit.burstBytes);
+        expect(calls.every((call) => limiter.consume('account-a', relayPayloadBytes(call), 1_000))).toBe(true);
+    });
+
+    it('accepts explicit RPC relay limits and zero disables each dimension', () => {
+        expect(resolveRpcRelayLimit({
+            RPC_RELAY_BYTES_PER_SECOND: '0',
+            RPC_RELAY_BURST_BYTES: '0',
+            RPC_RELAY_EVENTS_PER_SECOND: '10',
+            RPC_RELAY_BURST_EVENTS: '20',
         })).toEqual({ bytesPerSecond: 0, burstBytes: 0, eventsPerSecond: 10, burstEvents: 20 });
     });
 });

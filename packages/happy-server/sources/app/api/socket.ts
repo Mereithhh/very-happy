@@ -18,7 +18,7 @@ import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
-import { AccountTerminalRateLimiter, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
+import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -58,6 +58,7 @@ export function startSocket(app: Fastify) {
         // },
     });
     const terminalRateLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit());
+    const rpcRateLimiter = new AccountTerminalRateLimiter(resolveRpcRelayLimit());
 
     // Multi-process support: attach Redis streams adapter when REDIS_URL is set
     if (process.env.REDIS_URL) {
@@ -238,7 +239,13 @@ export function startSocket(app: Fastify) {
         });
 
         // Handlers
-        rpcHandler(userId, socket, io, connection.connectionType === 'machine-scoped' ? connection.machineId : undefined);
+        rpcHandler(
+            userId,
+            socket,
+            io,
+            connection.connectionType === 'machine-scoped' ? connection.machineId : undefined,
+            rpcRateLimiter,
+        );
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);

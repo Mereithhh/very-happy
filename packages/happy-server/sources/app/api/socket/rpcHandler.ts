@@ -3,6 +3,7 @@ import { Server, Socket } from "socket.io";
 import type { RemoteSocket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
 import { Counter, Histogram, register } from 'prom-client';
+import { AccountTerminalRateLimiter, relayPayloadBytes } from './terminalRateLimit';
 
 // RPC routing uses Socket.IO rooms. A daemon registering method M for user U
 // joins room `rpc:U:M`. Callers look the daemon up cross-replica via
@@ -68,13 +69,56 @@ function rpcRoom(userId: string, method: string): string {
 }
 
 /**
- * Strip the scope prefix (machineId/sessionId) from a prefixed method name
- * to get the base method for metrics labels. Wire format: "cm9xyz123:bash" -> "bash".
- * Falls back to "unknown" if no colon separator found.
+ * Strip the scope prefix (machineId/sessionId) from a prefixed method name and
+ * map it to a finite metric-label allowlist. Unknown strings collapse to
+ * `other`; non-strings collapse to `invalid`, preventing both exceptions and
+ * attacker-controlled Prometheus cardinality.
  */
-function baseMethodName(prefixedMethod: string): string {
+const RPC_METRIC_METHODS = new Set([
+    'abort',
+    'bash',
+    'claude-duplicate-session',
+    'claude-fork-session',
+    'claude-list-rewind-points',
+    'codex-duplicate-thread',
+    'codex-fork-thread',
+    'codex-list-rewind-points',
+    'difftastic',
+    'fs-list',
+    'fs-read',
+    'getDirectoryTree',
+    'kill-terminal',
+    'killSession',
+    'list-terminals',
+    'listDirectory',
+    'mirror-terminal-send',
+    'open-terminal',
+    'openclaw-retry-pairing',
+    'permission',
+    'readFile',
+    'resume-happy-session',
+    'ripgrep',
+    'set-terminal-title',
+    'spawn-happy-session',
+    'stop-daemon',
+    'stop-session',
+    'switch',
+    'terminal-history',
+    'terminal-paste',
+    'terminal-scroll',
+    'todo-complete',
+    'todo-create',
+    'todo-list',
+    'uploadFile',
+    'uploadFileChunk',
+    'writeFile',
+]);
+
+export function rpcMetricMethod(prefixedMethod: unknown): string {
+    if (typeof prefixedMethod !== 'string') return 'invalid';
     const lastColon = prefixedMethod.lastIndexOf(':');
-    return lastColon >= 0 ? prefixedMethod.substring(lastColon + 1) : prefixedMethod;
+    const method = lastColon >= 0 ? prefixedMethod.substring(lastColon + 1) : prefixedMethod;
+    return RPC_METRIC_METHODS.has(method) ? method : 'other';
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -125,12 +169,23 @@ async function waitForRoomMember(io: Server, room: string, maxMs: number, metric
     }
 }
 
-export function rpcHandler(userId: string, socket: Socket, io: Server, registrationScope?: string) {
+export function rpcHandler(
+    userId: string,
+    socket: Socket,
+    io: Server,
+    registrationScope?: string,
+    accountRateLimiter?: AccountTerminalRateLimiter,
+) {
 
     const parsedPayloadLimit = Number.parseInt(process.env.RPC_MAX_PAYLOAD_BYTES || '', 10);
     const parsedCallLimit = Number.parseInt(process.env.RPC_MAX_CALLS_PER_MINUTE || '', 10);
+    const parsedRegistrationLimit = Number.parseInt(process.env.RPC_MAX_REGISTERED_METHODS_PER_SOCKET || '', 10);
     const maxPayloadBytes = Number.isFinite(parsedPayloadLimit) && parsedPayloadLimit >= 0 ? parsedPayloadLimit : 256 * 1024;
     const maxCallsPerMinute = Number.isFinite(parsedCallLimit) && parsedCallLimit >= 0 ? parsedCallLimit : 120;
+    const maxRegisteredMethods = Number.isFinite(parsedRegistrationLimit) && parsedRegistrationLimit >= 0
+        ? parsedRegistrationLimit
+        : 256;
+    const registeredMethods = new Set<string>();
     let callWindowStartedAt = Date.now();
     let callCount = 0;
 
@@ -149,7 +204,17 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
                 socket.emit('rpc-error', { type: 'register', error: 'Method is outside authenticated machine scope' });
                 return;
             }
+            if (registeredMethods.has(method)) {
+                socket.emit('rpc-registered', { method });
+                return;
+            }
+            if (maxRegisteredMethods > 0 && registeredMethods.size >= maxRegisteredMethods) {
+                socket.emit('rpc-error', { type: 'register', error: 'RPC registration limit reached' });
+                socket.disconnect(true);
+                return;
+            }
             socket.join(rpcRoom(userId, method));
+            registeredMethods.add(method);
             socket.emit('rpc-registered', { method });
         } catch (error) {
             log({ module: 'websocket', level: 'error', error }, 'Error in rpc-register');
@@ -173,6 +238,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
                 return;
             }
             socket.leave(rpcRoom(userId, method));
+            registeredMethods.delete(method);
             socket.emit('rpc-unregistered', { method });
         } catch (error) {
             log({ module: 'websocket', level: 'error', error }, 'Error in rpc-unregister');
@@ -186,7 +252,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
 
         const finish = (result: string) => {
             const durationSec = (Date.now() - startTime) / 1000;
-            const m = baseMethodName(method || 'unknown');
+            const m = rpcMetricMethod(method);
             rpcCallCounter.inc({ method: m, result });
             rpcCallDuration.observe({ method: m, result }, durationSec);
         };
@@ -205,6 +271,14 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
             }
             let payloadBytes = maxPayloadBytes + 1;
             try { payloadBytes = Buffer.byteLength(JSON.stringify(data)); } catch { /* invalid payload */ }
+            // Charge the complete authenticated but untrusted body before any
+            // per-call rejection. Otherwise callers can bypass the account
+            // bucket by repeatedly sending payloadLimit+1 byte requests.
+            if (accountRateLimiter && !accountRateLimiter.consume(userId, relayPayloadBytes(data))) {
+                finish('account_rate_limit');
+                callback?.({ ok: false, error: 'RPC account rate limit reached' });
+                return;
+            }
             if (maxPayloadBytes > 0 && payloadBytes > maxPayloadBytes) {
                 finish('payload_limit');
                 callback?.({ ok: false, error: 'RPC payload too large' });
@@ -223,7 +297,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
             const room = rpcRoom(userId, method);
             let targets = await fetchRoomSockets(io, room, RPC_LOOKUP_FETCH_TIMEOUTS_MS[0]);
             if (targets.length === 0) {
-                targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, baseMethodName(method));
+                targets = await waitForRoomMember(io, room, RPC_RECONNECT_GRACE_MS, rpcMetricMethod(method));
             }
 
             if (targets.length === 0) {

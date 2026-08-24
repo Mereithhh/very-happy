@@ -57,6 +57,7 @@ whose source of truth is the real agent process:
 |---|---|---|
 | SDK-backed Claude | The daemon calls the Claude Agent SDK and normalizes its events. | Structured messages, tools, diffs, permissions, usage, and resume. |
 | tmux-backed terminal | `tmux` owns the long-lived TTY/TUI on the user's machine. A daemon control-mode client carries pane output and input through the trusted relay; xterm renders it in the browser. | The actual Claude Code or other agent CLI/TUI, including reconnect, local scrollback, search, and mobile input. |
+| terminal file handoff | The browser sends an authenticated, machine-scoped upload in bounded encrypted RPC chunks through the trusted relay. The daemon validates order and size, writes a temporary file, and atomically exposes it under `~/.happy/uploads/terminal/`. | Paste a clipboard image/file or drop a file, then receive its default-shell-quoted absolute path at the terminal cursor without automatic execution. Current limit: 8 MB per file. |
 
 The terminal is not a screenshot or a browser reimplementation of the agent UI.
 The process continues in `tmux` when the browser disconnects. If `tmux` is not

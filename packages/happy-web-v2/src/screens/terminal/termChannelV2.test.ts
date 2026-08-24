@@ -148,6 +148,18 @@ describe('paste routing (§D1b 粘贴专路)', () => {
         expect(onPaste.includes('e.stopImmediatePropagation();')).toBe(true);
     });
 
+    it('file paste/drop uses bounded upload and inserts a quoted path without Enter', () => {
+        const upload = screen.slice(screen.indexOf('const uploadFilesToTerminal'));
+        expect(screen.includes("import { quoteTerminalUploadPath, terminalUploadName, uploadTerminalFile } from './terminalFileUpload';")).toBe(true);
+        expect(upload.includes('await uploadTerminalFile(machineId, f')).toBe(true);
+        expect(upload.includes('const quotedPath = quoteTerminalUploadPath(r.path, r.pathQuoteStyle ?? fallbackQuoteStyle);')).toBe(true);
+        expect(upload.includes('await pasteText(`${quotedPath} `)')).toBe(true);
+        expect(upload.includes('await pasteText(`${quotedPath} \\r`)')).toBe(false);
+        expect(upload.includes("t('terminal.uploadFailed'")).toBe(true);
+        expect(upload.includes("host.addEventListener('drop', onDrop)")).toBe(true);
+        expect(upload.includes("host.addEventListener('paste', onPaste, true)")).toBe(true);
+    });
+
     it('run-presets await the paste before sending \\r', () => {
         // Two executors let the Enter land first and run an empty line.
         expect(screen.includes("void runCommand(paste).then(() => sendInputRef.current?.('\\r'));")).toBe(true);

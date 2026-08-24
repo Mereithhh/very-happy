@@ -1412,6 +1412,9 @@ export const en = {
         quickCommands: 'Quick commands',
         quickCommandsEmpty: 'No commands yet. Add them in Settings → Snippets.',
         uploadingFile: 'Uploading…',
+        uploadComplete: ({ name }: { name: string }) => `${name} uploaded; its path is ready at the cursor.`,
+        uploadFailed: ({ name, error }: { name: string; error: string }) => `Could not upload ${name}: ${error}`,
+        uploadPathNotInserted: ({ name, path }: { name: string; path: string }) => `${name} was uploaded to ${path}, but the path was not inserted because this shell could not be identified safely. Update the daemon or paste the path manually.`,
         dropToUpload: 'Drop to upload',
         pathWillBePasted: 'path will be pasted into the terminal',
         // Claude Code status inside a web terminal (sidebar dot + notification)

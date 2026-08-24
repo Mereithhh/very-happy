@@ -9,6 +9,12 @@ import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 import { configuration } from '@/configuration';
+import {
+    createUploadFileHandlers,
+    type UploadFileChunkRequest,
+    type UploadFileRequest,
+    type UploadFileResponse,
+} from './uploadFileHandler';
 
 const execAsync = promisify(exec);
 
@@ -82,23 +88,6 @@ interface TreeNode {
 interface GetDirectoryTreeResponse {
     success: boolean;
     tree?: TreeNode;
-    error?: string;
-}
-
-interface UploadFileRequest {
-    /** original file name (path components are stripped) */
-    name: string;
-    /** file bytes, base64-encoded */
-    content: string;
-    /** optional grouping subdir (sanitized); typically the session id */
-    subdir?: string;
-}
-
-interface UploadFileResponse {
-    success: boolean;
-    /** absolute path the file was written to */
-    path?: string;
-    size?: number;
     error?: string;
 }
 
@@ -371,29 +360,15 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         }
     });
 
-    // Upload-file handler — accepts a user-supplied file and stages it OUTSIDE
+    // Upload-file handlers — accept a user-supplied file and stage it OUTSIDE
     // the session cwd, under ~/.happy/uploads/<subdir>/. Deliberately separate
     // from writeFile (which is cwd-scoped by design): this is the one sanctioned
     // way to land a user's file on the machine so the agent can read it with its
     // own tools. Filename + subdir are sanitized to prevent path traversal; the
     // target root is fixed. Returns the absolute path for referencing in chat.
-    rpcHandlerManager.registerHandler<UploadFileRequest, UploadFileResponse>('uploadFile', async (data) => {
-        try {
-            const safeName = ((data.name || 'file').split(/[/\\]/).pop() || 'file')
-                .replace(/[^\w.\-]+/g, '_').slice(0, 200) || 'file';
-            const safeSub = (data.subdir || 'misc').replace(/[^\w.\-]+/g, '_').slice(0, 80) || 'misc';
-            const dir = join(configuration.happyHomeDir, 'uploads', safeSub);
-            await mkdir(dir, { recursive: true });
-            const target = join(dir, safeName);
-            const buffer = Buffer.from(data.content, 'base64');
-            await writeFile(target, buffer);
-            logger.debug('Uploaded file to', target);
-            return { success: true, path: target, size: buffer.length };
-        } catch (error) {
-            logger.debug('Failed to upload file:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Failed to upload file' };
-        }
-    });
+    const uploadHandlers = createUploadFileHandlers(configuration.happyHomeDir);
+    rpcHandlerManager.registerHandler<UploadFileRequest, UploadFileResponse>('uploadFile', uploadHandlers.uploadFile);
+    rpcHandlerManager.registerHandler<UploadFileChunkRequest, UploadFileResponse>('uploadFileChunk', uploadHandlers.uploadFileChunk);
 
     // List directory handler
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {

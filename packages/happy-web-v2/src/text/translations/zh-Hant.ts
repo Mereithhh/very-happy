@@ -874,6 +874,9 @@ export const zhHant: PartialTranslationStructure = {
         quickCommands: '快捷指令',
         quickCommandsEmpty: '還沒有快捷指令。去 設定 → 快捷片段 新增。',
         uploadingFile: '上傳中…',
+        uploadComplete: ({ name }: { name: string }) => `${name} 已上傳，路徑已放到游標處。`,
+        uploadFailed: ({ name, error }: { name: string; error: string }) => `${name} 上傳失敗：${error}`,
+        uploadPathNotInserted: ({ name, path }: { name: string; path: string }) => `${name} 已上傳到 ${path}，但無法安全識別目前 shell，因此沒有自動插入路徑。請更新 daemon 或手動貼上。`,
         dropToUpload: '鬆開上傳到機器',
         pathWillBePasted: '路徑會貼到終端',
         // 終端內 Claude Code 狀態（側邊欄狀態點 + 通知）

@@ -87,6 +87,34 @@ Web terminals use a non-persistent direct-shell fallback.
 
 <p align="center"><sub>THE REAL PRODUCT UI · SANITIZED DATA · SIDEBAR + TERMINAL + FILE PREVIEW</sub></p>
 
+### Clipboard → target machine, without the detour
+
+Paste a screenshot or drag a file straight into a Very Happy browser terminal.
+The daemon receives it on the selected machine under
+`~/.happy/uploads/terminal/`, then Very Happy pastes a path quoted for the
+daemon's default shell at the terminal cursor. It never presses Enter for you.
+Native Windows insertion requires the current daemon so the Web client can
+distinguish cmd from PowerShell.
+
+```text
+phone / laptop clipboard  ── trusted relay ──>  selected machine
+dragged file or screenshot                     ~/.happy/uploads/terminal/…
+                                                        │
+                                                        ╰─> shell-quoted path at cursor
+```
+
+<a href="https://happy.mereith.com/welcome#proofs">
+  <img src="docs/screenshots/file-handoff.png" width="100%" alt="Very Happy terminal file handoff using the production terminal UI contract with sanitized local demo data">
+</a>
+
+<p align="center"><sub>PASTE OR DROP · BOUNDED MACHINE RPC · ATOMIC TARGET FILE · NO AUTO-RUN</sub></p>
+
+Terminal handoffs are capped at 8 MB, transferred in bounded chunks, and shown
+with progress/error feedback. Older daemons retain the previous small-file
+path; update the CLI and restart the daemon for larger files. Because the relay
+is trusted, do not transfer a file through an operator you would not trust with
+its contents.
+
 ## Why choose Very Happy?
 
 | The friction | What carries it for you |
@@ -97,6 +125,7 @@ Web terminals use a non-persistent direct-shell fallback.
 | “One model vendor should not own my whole workspace.” | Claude Code and Codex today; beta Gemini/OpenCode through Agent Client Protocol; OpenClaw through its own local gateway. |
 | “Remote control must fit my security boundary.” | Use the capacity-limited community Cloud or deploy the same server-trusted relay under your control. |
 | “Keyboard speed disappears on the Web.” | A production command palette plus shortcuts for switching work, saved prompts, notes, new terminals, and navigation—with touch equivalents. |
+| “The file I need is on the device in my hand, not the machine doing the work.” | Paste a screenshot or drop a file into the browser terminal; its shell-quoted path appears on the selected machine without auto-running a command. |
 
 The philosophy is straightforward: stay high-level when that is faster, drop to
 the raw machine when it is necessary, and make the interface carry as much
@@ -252,6 +281,9 @@ structured parity with Claude.
   archived sessions, file access, and automatic recovery.
 - A machine file browser with rich previews for text, Markdown, images, and PDFs,
   plus clickable files from agent output.
+- Clipboard and drag/drop handoff into a target-machine terminal, with an 8 MB
+  limit, bounded chunking, upload feedback, and quoted-path insertion without
+  auto-execution.
 - Task board, todo-provider commands, notes, notifications, Web Push, and HTTPS
   webhooks.
 - A Claude-powered coordinator with text entry, session awareness, and dispatch

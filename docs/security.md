@@ -20,6 +20,16 @@ metadata, encrypted message/artifact blobs, uploaded files, push subscriptions,
 webhook URLs, and operational logs/metrics. Do not put bearer tokens, raw request
 bodies, session content, email addresses, or IP addresses in metric labels.
 
+Terminal file handoff is relay traffic, not a private side channel. Pasting a
+clipboard image/file or dropping a file into a Web terminal transfers up to
+8 MB through the trusted relay and stages it on the selected machine under
+`~/.happy/uploads/terminal/`. The client inserts only a path quoted for the
+daemon's default shell at the cursor and does not press Enter, open, or execute
+the file. Native Windows needs a current daemon to declare cmd versus
+PowerShell; the Web client refuses ambiguous automatic insertion. Treat transferred
+files as untrusted input and use only a relay operator you trust with their
+contents.
+
 ## Remote execution
 
 Approving a machine links an account to a daemon that can run agents and terminal

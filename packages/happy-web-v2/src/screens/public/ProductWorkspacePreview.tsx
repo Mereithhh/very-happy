@@ -26,7 +26,7 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react';
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 
 // These are the production stylesheets, not a parallel marketing skin. The
 // preview deliberately uses the same DOM/class contracts as Sidebar,
@@ -60,11 +60,13 @@ export function ProductWorkspacePreview({
   initialView,
   initialFilesOpen = true,
   sidebar = true,
+  fileTransferDemo = false,
 }: {
   compact?: boolean;
   initialView?: ProductPreviewView;
   initialFilesOpen?: boolean;
   sidebar?: boolean;
+  fileTransferDemo?: boolean;
 }) {
   const [view, setView] = useState<ProductPreviewView>(initialView ?? (compact ? 'conversation' : 'terminal'));
   const [filesOpen, setFilesOpen] = useState(initialFilesOpen);
@@ -117,7 +119,7 @@ export function ProductWorkspacePreview({
       >
         {sidebar && <ProductSidebar active={view} onSearch={() => window.dispatchEvent(new Event(PUBLIC_COMMAND_PROOF_EVENT))} onTerminal={() => showTerminal(false)} onBoard={openBoard} onCloseNav={closeWorkspaceNav} />}
         <div className="product-detail">
-          {view === 'terminal' && <TerminalAndFiles filesId={ids.files} filesOpen={filesOpen} onBack={openWorkspaceNav} onCloseFiles={() => setFilesOpen(false)} onOpenFiles={() => setFilesOpen(true)} onStructured={openStructured} />}
+          {view === 'terminal' && <TerminalAndFiles filesId={ids.files} filesOpen={filesOpen} onBack={openWorkspaceNav} onCloseFiles={() => setFilesOpen(false)} onOpenFiles={() => setFilesOpen(true)} onStructured={openStructured} fileTransferDemo={fileTransferDemo} />}
           {view === 'conversation' && <Conversation onBack={openWorkspaceNav} onFiles={() => showTerminal(true)} onReturn={() => showTerminal(false)} />}
           {view === 'board' && <Board onBack={openWorkspaceNav} onOpenSession={(target) => target === 'terminal' ? showTerminal(false) : openStructured()} />}
         </div>
@@ -167,9 +169,35 @@ function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: {
   );
 }
 
-function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFiles, onStructured }: { filesId: string; filesOpen: boolean; onBack: () => void; onCloseFiles: () => void; onOpenFiles: () => void; onStructured: () => void }) {
+function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFiles, onStructured, fileTransferDemo }: { filesId: string; filesOpen: boolean; onBack: () => void; onCloseFiles: () => void; onOpenFiles: () => void; onStructured: () => void; fileTransferDemo: boolean }) {
   const filesButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const transferTimerRef = useRef<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [transfer, setTransfer] = useState<{ phase: 'uploading' | 'ready'; name: string; progress: number } | null>(null);
+  useEffect(() => () => {
+    if (transferTimerRef.current !== null) window.clearTimeout(transferTimerRef.current);
+  }, []);
+  const previewTransfer = (name = 'screenshot.png') => {
+    if (!fileTransferDemo) return;
+    if (transferTimerRef.current !== null) window.clearTimeout(transferTimerRef.current);
+    setDragging(false);
+    setTransfer({ phase: 'uploading', name, progress: 42 });
+    transferTimerRef.current = window.setTimeout(() => {
+      setTransfer({ phase: 'ready', name, progress: 100 });
+      transferTimerRef.current = null;
+    }, 1600);
+  };
+  const onTransferDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!fileTransferDemo) return;
+    event.preventDefault();
+    previewTransfer(event.dataTransfer.files[0]?.name || 'screenshot.png');
+  };
+  const onTransferPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!fileTransferDemo || event.clipboardData.files.length === 0) return;
+    event.preventDefault();
+    previewTransfer(event.clipboardData.files[0]?.name || 'screenshot.png');
+  };
   const openFiles = () => {
     onOpenFiles();
     window.requestAnimationFrame(() => closeButtonRef.current?.focus());
@@ -206,7 +234,16 @@ function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFile
         </div>
       </header>
       <div className="term-mid">
-        <div className="term-host">
+        <div
+          className={`term-host${dragging ? ' is-dragover' : ''}`}
+          tabIndex={fileTransferDemo ? 0 : undefined}
+          aria-label={fileTransferDemo ? 'Local file handoff preview: paste or drop a file here' : undefined}
+          onDragOver={fileTransferDemo ? (event) => { event.preventDefault(); setDragging(true); } : undefined}
+          onDragLeave={fileTransferDemo ? () => setDragging(false) : undefined}
+          onDrop={onTransferDrop}
+          onPaste={onTransferPaste}
+        >
+          {transfer?.phase === 'uploading' && <div className="term-upload-status mono" role="status" aria-live="polite"><span>Uploading… {transfer.name}</span><span>{transfer.progress}%</span><i style={{ '--term-upload-progress': `${transfer.progress}%` } as CSSProperties} /></div>}
           <div className="term-host-inner product-xterm" aria-label="Sanitized Claude terminal">
             <div><span className="product-xterm-prompt">❯</span> claude --resume release-candidate</div>
             <div className="product-xterm-gap" />
@@ -217,8 +254,9 @@ function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFile
             <div><span className="product-xterm-ok">✓</span> production bundle built</div>
             <div className="product-xterm-gap" />
             <div>• Reviewing <span className="product-xterm-file">src/screens/public/</span></div>
-            <div className="product-xterm-dim">  Opening LandingScreen.tsx<span className="product-xterm-cursor">▋</span></div>
+            {transfer?.phase === 'ready' ? <><div className="product-xterm-dim">  Uploaded to the selected machine · path pasted, not executed</div><div><span className="product-xterm-prompt">❯</span> '/Users/demo/.happy/uploads/terminal/drop-k9f-{transfer.name.replace(/[^\w.\-]+/g, '_')}' <span className="product-xterm-cursor">▋</span></div></> : <div className="product-xterm-dim">  Opening LandingScreen.tsx<span className="product-xterm-cursor">▋</span></div>}
           </div>
+          {fileTransferDemo && <button type="button" className="product-transfer-trigger mono" onClick={() => previewTransfer()}>{transfer?.phase === 'ready' ? 'Replay local preview' : 'Preview screenshot handoff'}</button>}
         </div>
         {filesOpen && <aside id={filesId} className="term-files product-term-files" onKeyDown={keepOverlayFocus}>
           <div className="term-files-head"><span className="term-files-title">Files</span><button ref={closeButtonRef} type="button" className="sb-icon-btn" aria-label="Close files and return to terminal" onClick={closeFiles}><X size={16} /></button></div>

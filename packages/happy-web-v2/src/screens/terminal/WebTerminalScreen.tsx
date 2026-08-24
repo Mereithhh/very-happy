@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
@@ -9,7 +9,6 @@ import {
   machineOpenTerminal,
   encryptTerminalData,
   decryptTerminalData,
-  machineUploadFile,
   machineSetTerminalTitle,
   machineScrollTerminal,
   machineTerminalPaste,
@@ -35,7 +34,7 @@ import { TermInputBar } from './TermInputBar';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
-import { storage, useSettings, useLocalSettingMutable } from '@/sync/storage';
+import { storage, useMachine, useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
@@ -58,6 +57,8 @@ import { resolveTerminalView, withTerminalViewOverride } from '@/sync/terminalVi
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
+import { quoteTerminalUploadPath, terminalUploadName, uploadTerminalFile } from './terminalFileUpload';
+import { useToast } from '@/ui';
 import {
   createTermAssembly,
   prefixAlternateEnter,
@@ -137,6 +138,8 @@ export function WebTerminalScreen() {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
   const { t } = useTranslation();
+  const toast = useToast();
+  const machine = useMachine(machineId || '');
   const settings = useSettings();
   const terminals = useTerminalSessions((s) => s.terminals);
   const renameTerminal = useTerminalSessions((s) => s.rename);
@@ -259,6 +262,7 @@ export function WebTerminalScreen() {
   // tmux-reflow chain every mousemove (the historical first-open judder).
   // Mounted only while open, so FsBrowser picks up the freshest pushed cwd.
   const [filesOpen, setFilesOpen] = useState(false);
+  const [fileUpload, setFileUpload] = useState<{ name: string; sent: number; total: number } | null>(null);
   // Split mode matches the CSS: fine pointer AND >860px (see terminal.css
   // .term-mid / .term-files media rules — coarse or narrow keep the overlay).
   const filesSplit = useMediaQuery('(min-width: 861px) and (pointer: fine)');
@@ -1436,12 +1440,29 @@ export function WebTerminalScreen() {
     // Bracketed paste (local or via the daemon), so nothing auto-executes. Paths
     // are single-quoted; the daemon sanitizes names to [\w.-] so no quoting edge.
     const uploadFilesToTerminal = async (files: File[]) => {
-      for (const f of files) {
-        const buf = new Uint8Array(await f.arrayBuffer());
-        let bin = ''; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        const r = await machineUploadFile(machineId, f.name || 'file', btoa(bin));
-        if (r.success && r.path && !disposed) await pasteText(`'${r.path}' `);
+      for (const source of files) {
+        const displayName = source.name || 'file';
+        const f = new File([source], terminalUploadName(displayName), { type: source.type });
+        setFileUpload({ name: displayName, sent: 0, total: f.size });
+        const r = await uploadTerminalFile(machineId, f, {
+          onProgress: (sent, total) => {
+            if (!disposed) setFileUpload({ name: displayName, sent, total });
+          },
+        });
+        if (r.success && r.path && !disposed) {
+          const fallbackQuoteStyle = machine?.metadata?.platform === 'win32' ? 'unknown' : 'posix';
+          const quotedPath = quoteTerminalUploadPath(r.path, r.pathQuoteStyle ?? fallbackQuoteStyle);
+          if (quotedPath) {
+            await pasteText(`${quotedPath} `);
+            toast.success(t('terminal.uploadComplete', { name: displayName }));
+          } else {
+            toast.error(t('terminal.uploadPathNotInserted', { name: displayName, path: r.path }));
+          }
+        } else if (!disposed) {
+          toast.error(t('terminal.uploadFailed', { name: displayName, error: r.error || t('common.error') }));
+        }
       }
+      if (!disposed) setFileUpload(null);
     };
     const onDragOver = (e: DragEvent) => { e.preventDefault(); host.classList.add('is-dragover'); };
     const onDragLeave = () => host.classList.remove('is-dragover');
@@ -1479,8 +1500,7 @@ export function WebTerminalScreen() {
       }
       e.preventDefault();
       e.stopImmediatePropagation();
-      const stamped = files.map((f) => new File([f], `paste-${Date.now().toString(36)}-${f.name || 'file'}`, { type: f.type }));
-      void uploadFilesToTerminal(stamped);
+      void uploadFilesToTerminal(files);
     };
     host.addEventListener('paste', onPaste, true);
 
@@ -2117,6 +2137,17 @@ export function WebTerminalScreen() {
           }
         >
           {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
+          {fileUpload && (
+            <div className="term-upload-status mono" role="status" aria-live="polite">
+              <span>{t('terminal.uploadingFile')} {fileUpload.name}</span>
+              <span>{fileUpload.total > 0 ? Math.round((fileUpload.sent / fileUpload.total) * 100) : 100}%</span>
+              <i
+                style={{
+                  '--term-upload-progress': `${fileUpload.total > 0 ? (fileUpload.sent / fileUpload.total) * 100 : 100}%`,
+                } as CSSProperties}
+              />
+            </div>
+          )}
           <div ref={innerRef} className="term-host-inner" />
         </div>
         {filesOpen && machineId && (

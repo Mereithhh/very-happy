@@ -30,6 +30,17 @@ const DEFAULT_LIMIT: TerminalRelayLimit = {
     burstEvents: 400,
 };
 
+// One 8 MiB terminal handoff becomes roughly 15 MiB of RPC wire data after
+// chunk base64, encryption, and the outer encoded envelope. Keep this separate
+// from the interactive terminal bucket so a valid handoff neither bypasses an
+// account-wide bound nor starves terminal input/output.
+const DEFAULT_RPC_LIMIT: TerminalRelayLimit = {
+    bytesPerSecond: 2 * 1024 * 1024,
+    burstBytes: 20 * 1024 * 1024,
+    eventsPerSecond: 2,
+    burstEvents: 120,
+};
+
 function nonNegativeInteger(value: string | undefined, fallback: number): number {
     if (value === undefined || value.trim() === '') return fallback;
     const parsed = Number.parseInt(value, 10);
@@ -49,6 +60,23 @@ export function resolveTerminalRelayLimit(env: NodeJS.ProcessEnv = process.env):
         burstEvents: nonNegativeInteger(
             env.TERMINAL_RELAY_BURST_EVENTS,
             eventsPerSecond === 0 ? 0 : Math.max(DEFAULT_LIMIT.burstEvents, eventsPerSecond),
+        ),
+    };
+}
+
+export function resolveRpcRelayLimit(env: NodeJS.ProcessEnv = process.env): TerminalRelayLimit {
+    const bytesPerSecond = nonNegativeInteger(env.RPC_RELAY_BYTES_PER_SECOND, DEFAULT_RPC_LIMIT.bytesPerSecond);
+    const eventsPerSecond = nonNegativeInteger(env.RPC_RELAY_EVENTS_PER_SECOND, DEFAULT_RPC_LIMIT.eventsPerSecond);
+    return {
+        bytesPerSecond,
+        eventsPerSecond,
+        burstBytes: nonNegativeInteger(
+            env.RPC_RELAY_BURST_BYTES,
+            bytesPerSecond === 0 ? 0 : Math.max(DEFAULT_RPC_LIMIT.burstBytes, bytesPerSecond),
+        ),
+        burstEvents: nonNegativeInteger(
+            env.RPC_RELAY_BURST_EVENTS,
+            eventsPerSecond === 0 ? 0 : Math.max(DEFAULT_RPC_LIMIT.burstEvents, eventsPerSecond),
         ),
     };
 }

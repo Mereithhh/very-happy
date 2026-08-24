@@ -59,6 +59,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'In Web, choose New session on the connected machine to start structured Claude through the bundled Agent SDK and your provider credentials. This is the clean first-session path when no standalone claude command is installed.' },
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # local Claude TUI; requires external claude\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
         { type: 'p', text: 'Local CLI modes require their matching command or gateway. The beta Agent Client Protocol backend includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio. OpenClaw uses its own local gateway protocol, not ACP. Run very-happy daemon status if the machine remains offline.' },
+        { type: 'note', text: 'In a Web terminal, paste a clipboard image/file or drop a file to hand it to the selected machine. Terminal uploads are capped at 8 MB, staged under ~/.happy/uploads/terminal/, and return a path quoted for the daemon default shell at the cursor without pressing Enter. The trusted relay can access relayed content; larger uploads and native Windows path insertion require the current daemon.' },
       ] },
       { heading: 'Optional: mirror a hand-started Claude terminal', blocks: [
         { type: 'code', code: 'very-happy install-terminal-hooks\n# rollback\nvery-happy install-terminal-hooks --remove' },
@@ -224,6 +225,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Data handling', blocks: [
         { type: 'p', text: 'Sessions, terminal traffic, account metadata, logs, attachments, notifications, and integration data may pass through or persist on the relay depending on the feature. Operators should document retention, backups, subprocessors, and incident response for their deployment.' },
+        { type: 'p', text: 'A terminal file handoff traverses the trusted relay and lands on the selected machine under ~/.happy/uploads/terminal/. The current client caps each file at 8 MB, transfers bounded chunks, and only pastes a path quoted for the daemon default shell; it does not execute the file or press Enter. Native Windows path insertion requires the current daemon to distinguish cmd from PowerShell.' },
       ] },
     ],
   },

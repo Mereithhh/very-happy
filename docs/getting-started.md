@@ -238,6 +238,27 @@ command can also run with `very-happy acp -- your-agent --agent-specific-acp-fla
 `very-happy daemon status` and [Troubleshooting](troubleshooting.md) if the
 machine stays offline.
 
+### Hand a local file to the terminal
+
+While a Web terminal is focused, paste a clipboard image/file or drag a file
+onto the terminal. Very Happy transfers at most 8 MB in bounded chunks through
+the trusted relay to the selected daemon, stages the completed file under
+`~/.happy/uploads/terminal/`, and pastes an absolute path quoted for the
+daemon's default shell at the cursor.
+It does not press Enter or execute a command. The upload UI reports progress and
+failure; files are exposed at the final path only after all chunks arrive.
+
+An older daemon keeps the legacy small-file behavior, but larger handoffs ask
+you to update the CLI and restart the daemon. The relay is part of the trust
+boundary and can access relayed content, so use this only with a relay operator
+you trust.
+
+On native Windows, install the current daemon before using automatic path
+insertion: the daemon tells the Web client whether the terminal defaults to cmd
+or PowerShell. An older Windows daemon cannot provide that fact, so the upload
+may complete but the Web client refuses to paste an ambiguously quoted path.
+WSL follows the POSIX path.
+
 ### Optional: mirror hand-started Claude terminals
 
 Very Happy supports two Claude paths. SDK-backed conversations are structured
