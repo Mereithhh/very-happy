@@ -180,7 +180,7 @@ fixed. Both passes ended with P0=0 and P1=0 for the current tree.
 ## Blocking historical findings
 
 A final current-tree `git archive HEAD` scan covered 16.29 MB and returned **0 findings**.
-A full-history scan covered 2,537 commits / about 33.85 MB and returned **45 findings** across
+A full-history scan covered 2,542 commits / about 33.85 MB and returned **45 findings** across
 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT detections.
 
 The most serious object is a deleted upstream real-session JSONL containing tokens and user
