@@ -2,8 +2,8 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `25a71f0dffa26836a543d17fa62312f28ad779a0`
-> Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
+> Released product source: `908ef0151c15cb1d61eda02aa669b27cc6e79541`
+> Production CLI: `very-happy-cli@0.2.60` (`v0.2.60`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
@@ -67,6 +67,10 @@ public until the procedure below is complete.
   on sender/chat authorization, fixed workspace mappings, deduplication, and rate limits.
 - Password and Google signup/login, capacity states, network/authentication errors,
   terminal approval, first-machine recovery, and CLI commands form one coherent journey.
+- First connection now makes the detached `very-happy daemon start` step explicit in the
+  authenticated First Run screen, landing, public docs, and READMEs. The CLI goes directly to
+  Web approval, removes the nonexistent native-mobile/QR path, and prints daemon startup as the
+  next action after both fresh and existing authentication.
 - Public language consistently says **server-trusted, not end-to-end encrypted**. It does
   not promise zero knowledge, operator blindness, durability, SLA, or undeletable data.
 - Fork PR code is confined to GitHub-hosted runners with read-only contents permission.
@@ -96,15 +100,15 @@ public until the procedure below is complete.
 A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
 wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
-`25a71f0d` dual-path positioning follow-up repeated the affected Web gates locally and in the
-exact-SHA clean Actions checkout:
+`908ef015` pairing/onboarding follow-up repeated the affected Web and CLI gates locally and in
+the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 99 test files / 1,426 tests; Vite production build; TypeScript 0 errors |
-| CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
+| Web V2 | 99 test files / 1,429 tests; Vite production build; TypeScript 0 errors |
+| CLI | 106 test files / 1,153 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.60 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32699631101` passed for exact deployed source `25a71f0d`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32702080377` passed for exact deployed/released source `908ef015`; CLI smoke `32702470738` passed on Linux and mac-office Node 20/24; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -234,6 +238,13 @@ boundary, a visually reversed path-to-phone mapping, a late Hero value propositi
 upstream wording, and a README technical wall before the product image. Both freeze rereviews
 ended at **P0=0, P1=0, P2=0**.
 
+The pairing/onboarding follow-up received independent security/CLI and first-user/docs reviews.
+They found and closed an unreachable post-daemon First Run card, headless-browser wording,
+undersized command copy targets, stale mobile/QR documentation, and a source-only authentication
+test. The final behavior test executes secure pairing create/poll, verifies the claim secret stays
+out of the approval URL, and proves the v3 gate fails closed. Both freeze rereviews ended at
+**P0=0, P1=0, P2=0**.
+
 ## Release and production state
 
 - Server then Web were deployed from release source SHA `e4ece34b7305135d19a12a1c8cf5caf8876d7e0f`
@@ -312,6 +323,14 @@ ended at **P0=0, P1=0, P2=0**.
   Landing, mobile architecture docs, first-viewport thesis, corrected path rail, real terminal ↔
   mirror controls, 16 px input, zero overflow, and clean console all passed. The atomic Web
   rollback is the preceding `65d4477c` mobile-continuity build.
+- The complete pairing/daemon onboarding shipped from SHA
+  `908ef0151c15cb1d61eda02aa669b27cc6e79541`. Exact-SHA Quality Gates run
+  `32702080377` and Web deploy run `32702298861` passed, producing
+  `/assets/index-DerkVnxJ-202608240737.js`. After the expected Service Worker update/hard
+  refresh, production `/welcome` showed all five steps and `/docs/quickstart` showed daemon as
+  step 4 and the first session as step 5; 390x844 and 1440px checks had no overflow, mobile
+  inputs remained 16 px, JavaScript MIME and health passed, and the console was clean. The Web
+  rollback is the preceding `25a71f0d` build in `/opt/happy/webapp.prev`.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
@@ -327,6 +346,11 @@ ended at **P0=0, P1=0, P2=0**.
   separate registry install into an isolated prefix/HOME passed version and non-mutating hook
   help smoke. `vh-update` completed and the running daemon reports **0.2.59** with a current
   heartbeat. Rollback remains `very-happy-cli@0.2.58`.
+- The pairing follow-up published `very-happy-cli@0.2.60` from tag `v0.2.60` (publish run
+  `32702470661`; Linux and mac-office Node 20/24 smoke run `32702470738`). The published
+  tarball and then the standard registry spec both installed into isolated prefix/HOME
+  directories and passed version/auth-help runtime smoke. `vh-update` completed on mac-office;
+  the running daemon reports **0.2.60**. Rollback is `very-happy-cli@0.2.59`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
