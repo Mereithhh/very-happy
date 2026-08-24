@@ -2,7 +2,8 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
+> Released Web source: `ba6a6a0731efa29f5261cfc5eadee54ebcff5221`
+> Released Server source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
 > Production CLI: `very-happy-cli@0.2.61` (`v0.2.61`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -27,10 +28,10 @@ public until the procedure below is complete.
   selector. Sidebar board/session controls, Back, structured mirror, Files, and board cards form a
   complete desktop/mobile loop; controls that cannot be safely simulated are visibly disabled.
 - The Hero now treats high-impact motion as product storytelling rather than background garnish:
-  title sheen, pointer-responsive 3D depth, machine/agent nodes, dual orbits, scanning planes,
-  data beams, packets, and live telemetry surround the real interactive workspace. Mobile keeps
-  the foreground machine layer without CTA collisions or overflow, while reduced-motion users
-  receive a complete static composition.
+  title sheen, pointer-responsive 3D depth, dual orbits, scanning planes, data beams, packets,
+  and live telemetry surround the real interactive workspace. Floating machine identity badges
+  were removed completely; mobile keeps the motion system without CTA collisions or overflow,
+  while reduced-motion users receive a complete static composition.
 - Landing and Docs now include an explicit mobile continuity proof built from two authentic,
   interactive phone-width product surfaces: a raw Claude terminal and its structured mirror.
   The real conversation control and `Back to terminal` path work in both directions; the animated
@@ -61,6 +62,11 @@ public until the procedure below is complete.
 - Coarse-pointer form controls and editable surfaces have a global 16 px floor across the app
   and body portals, preventing iOS focus zoom. The xterm subtree is structurally excluded so
   hidden textarea, cursor, and IME cell metrics stay unchanged.
+- Mobile browsers now receive a proactive, device-local Web App install region in both the
+  anonymous and authenticated roots. Android/Chromium invokes the browser-owned install prompt
+  only from a user gesture; iPhone/iPad and unsupported browsers receive accurate Share/menu
+  instructions. Standalone, accepted, and seven-day dismissal states suppress repeat prompts;
+  active form editing defers the non-modal panel instead of stealing focus.
 - A real but scrubbed Tanka field note demonstrates the generic IM-to-session loop without
   publishing private infrastructure. It explicitly separates that adapter from the shipped
   Claude coordinator and future provider gateway. The public adapter example now fails closed
@@ -109,11 +115,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 102 test files / 1,445 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 103 test files / 1,452 tests; Vite production build; TypeScript 0 errors |
 | CLI | 122 test files / 1,209 tests locally; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.61 |
 | Server | 53 test files / 387 tests; TypeScript 0 errors |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Quality Gates `32725836378` passed for exact deployed server source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32728718900` passed for exact deployed Web source `ba6a6a07`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -271,6 +277,12 @@ object existence and cleanup, log sanitization, local file permissions, and PR/r
 The reviewer ended at **P0=0, P1=0, P2=0** for the current tree. A separate first-user/UI/docs
 review found and closed the missing Claude credential setup and misleading OpenClaw setup copy.
 
+The mobile PWA-install follow-up received independent public-security and first-user/mobile-UX
+reviews. Security ended at **P0=0, P1=0, P2=0**. UX found one P2—non-modal behavior paired with
+dialog semantics and no focus policy—which was fixed by switching to a polite region and
+deferring while an editable control is active; the freeze rereview ended at
+**P0=0, P1=0, P2=0**.
+
 ## Release and production state
 
 - Server then Web were deployed from release source SHA `e4ece34b7305135d19a12a1c8cf5caf8876d7e0f`
@@ -395,6 +407,15 @@ review found and closed the missing Claude credential setup and misleading OpenC
   Server-only deploy `32726043403` passed. After the required daemon restart, mac-office 0.2.61
   connected without 429/retry errors, `/health` and `/v1/auth/config` returned 200, and the
   account cap remained open/100 with 94 slots available.
+- The mobile PWA install experience and Hero-node removal shipped Web-only from
+  `ba6a6a0731efa29f5261cfc5eadee54ebcff5221`. Exact-SHA Quality Gates
+  `32728718900` and deploy run `32728759820` passed, producing
+  `/assets/index-BwhDJXbc-202608241245.js`. Health, JavaScript MIME/cache, manifest icons/scope,
+  no-store Service Worker delivery, and a real 390x844 production browser passed. The first
+  browser load correctly demonstrated the expected old-SW state; after auto-update and reload,
+  the install region appeared, floating Hero nodes were zero, editable controls remained 16 px,
+  and horizontal overflow remained zero. The atomic Web rollback is the preceding
+  `86e56c8e` Web deployment in `/opt/happy/webapp.prev`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
