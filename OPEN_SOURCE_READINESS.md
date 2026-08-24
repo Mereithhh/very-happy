@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `8b1e202ac05f14d0a1c02e555a0327d4bc805257`
+> Released product source: `171575c5a9fc5f3e30ba0f2eea1254e2c079407f`
 > Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -20,6 +20,9 @@ public until the procedure below is complete.
   privacy-safe product proof uses the authenticated app's production component style contracts
   for the session sidebar, terminal, file browser, structured conversation, and board,
   with sanitized fixture data and no auth/sync/socket imports in the anonymous bundle.
+- The landing also has a canonical `/welcome` route that is independent of login state while
+  `/` preserves the existing contract (anonymous visitors see the landing; returning users enter
+  the workspace). Docs, legal pages, and the README return to that stable marketing route.
 - Core claims now have matching interactive product surfaces: a production-style Claude
   meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
   Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
@@ -73,16 +76,18 @@ public until the procedure below is complete.
 
 ### Clean checkout and package gates
 
-A no-hardlink clone and a second detached worktree at the final source SHA both completed
+A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
-wire build plus the full affected-package gates and isolated CLI runtime smoke:
+wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
+`171575c5` route follow-up repeated the affected Web gates locally and in the exact-SHA clean
+Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 98 test files / 1,411 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 99 test files / 1,423 tests; Vite production build; TypeScript 0 errors |
 | CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Quality Gates `32690257874` and Linux CLI smoke `32690257926` passed for exact source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32692043448` passed for exact deployed source `171575c5`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -136,6 +141,13 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   launcher all responded. At 390x844 every visible input/select/textarea computed to 16 px,
   the full-screen file layer took first focus and hid the underlying terminal from the AX tree,
   landing/docs stayed at `scrollWidth === innerWidth`, and no console errors were recorded.
+- after the `/welcome` release, a fresh service-worker-cleared production profile confirmed
+  anonymous and stored-credential hard reloads both render the landing at `/welcome` without
+  loading AppRoot, crypto, xterm, or terminal chunks. A second path loaded Docs through AppRoot
+  and returned to `/welcome` by client navigation. At 390x844 there was no horizontal overflow,
+  every visible input/select/textarea computed to 16 px, and both public-root console logs were
+  empty. Production GET returned `200 text/html` and the new hashed entry asset served as
+  JavaScript.
 
 ### Independent review
 
@@ -177,6 +189,12 @@ wording, and a mixed Claude-hook matcher case that could delete another tool's c
 final rereviews signed **P0=0, P1=0, P2=0**. The security pass also rebuilt the anonymous
 dependency closure and confirmed it excludes AppRoot, crypto, xterm, auth, sync, socket, RPC,
 media capture, internal hosts, and secret needles.
+
+The canonical marketing-route follow-up received an independent routing/bundle review. It found
+and closed one P2: Privacy/Terms branding still pointed to login rather than the marketing page.
+The rereview verified direct reloads, AppRoot/PublicRoot client navigation, `/v2/` basename
+handling, Docs/legal return links, scroll reset, and the anonymous dependency boundary, ending
+at **P0=0, P1=0, P2=0, P3=0** for the change.
 
 ## Release and production state
 
@@ -220,6 +238,13 @@ media capture, internal hosts, and secret needles.
   and main Linux CLI smoke run `32690257926` passed; Web-only deploy run `32690431876`
   produced `/assets/index-DzMe0JXM-202608240433.js`. Post-deploy health/MIME checks and fresh
   1440x1000 plus 390x844 browser acceptance passed.
+- The stable login-independent marketing route shipped from SHA
+  `171575c5a9fc5f3e30ba0f2eea1254e2c079407f`. Exact-SHA Quality Gates run `32692043448`
+  and Web-only deploy run `32692163926` passed, producing
+  `/assets/index-Dq-I-uet-202608240503.js`. Production health, GET `/welcome`, JavaScript MIME,
+  anonymous/stored-credential hard reloads, AppRoot client navigation, 390x844 layout, 16 px
+  controls, and public-root console checks passed. Rollback remains the atomic
+  `/opt/happy/webapp.prev` deployment from `8b1e202a`.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
@@ -308,6 +333,9 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
 - Most public-UI unit regressions are source/contract tests rather than a permanent browser CI
   suite. This release compensates with independent real-browser desktop/mobile acceptance;
   converting those checks into maintained browser CI is a P3 follow-up.
+- SPA deep links are served for browser `GET` navigation, but the existing fallback rejects bare
+  `HEAD` requests with 404. Health and hashed-asset probes support their documented methods;
+  generic link monitors should use GET until HEAD parity is implemented.
 
 ## Final decision
 
