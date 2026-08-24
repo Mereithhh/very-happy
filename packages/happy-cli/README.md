@@ -4,6 +4,7 @@ The machine-side CLI and daemon for **Very Happy**, an open agent workspace.
 Run Claude Code, Codex, or a real terminal on your machine and continue from a
 responsive Web UI. A beta Agent Client Protocol backend also supports Gemini,
 OpenCode, and custom commands that expose a compatible ACP stdio endpoint.
+OpenClaw uses a separate adapter to its local gateway protocol.
 
 `very-happy-cli` is a deeply modified fork of [slopus/happy](https://github.com/slopus/happy)
 (MIT). It keeps the compatible session wire model while adding the Very Happy
@@ -32,7 +33,8 @@ Very Happy server and set `HAPPY_SERVER_URL` to it, or don't use this tool.
 2. **The CLI for each agent you plan to use**, installed, authenticated, and on
    the daemon's `PATH`. Bare `very-happy` uses Claude Code; `very-happy codex`
    uses Codex; `very-happy gemini` uses the beta ACP backend; `very-happy acp -- …`
-   starts a custom command that must expose a compatible ACP stdio endpoint.
+   starts a custom command that must expose a compatible ACP stdio endpoint;
+   `very-happy openclaw` connects to a configured local OpenClaw gateway.
 
 The optional text/voice coordinating meta-agent currently requires Claude Code.
 Voice also requires the selected server or user settings to provide a compatible
@@ -56,12 +58,29 @@ very-happy claude     # same, explicit
 very-happy codex      # start a Codex session
 very-happy gemini     # start Gemini through the beta ACP backend
 very-happy acp opencode  # start OpenCode through its built-in ACP adapter
+very-happy openclaw   # connect through the local OpenClaw gateway
 ```
 
-Each mode starts its agent locally and registers a normalized session with the
-relay so you can continue it from the web client at your server's origin.
+Each mode starts or connects to its agent locally and registers a normalized
+session with the relay so you can continue it from the web client at your
+server's origin. OpenClaw connects to an already configured local gateway.
 Provider capabilities are not identical: Claude currently has the richest
 structured and terminal-mirroring experience.
+
+### Optional Claude terminal mirror
+
+Normal Very Happy Claude sessions do not require extra setup. To mirror a
+hand-started `claude` process inside a Very Happy Web terminal into a structured
+conversation, explicitly install the SessionStart/SessionEnd hooks:
+
+```bash
+very-happy install-terminal-hooks
+very-happy install-terminal-hooks --remove # uninstall only Very Happy's entries
+```
+
+The install command merges into `~/.claude/settings.json` (or
+`$CLAUDE_CONFIG_DIR/settings.json`) without touching foreign hooks. It applies
+only to Claude started inside a Very Happy terminal while the daemon is running.
 
 ### Pointing at a different server
 

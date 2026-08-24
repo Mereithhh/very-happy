@@ -24,10 +24,39 @@ export const HOOK_TIMEOUT_SECONDS = 10;
 type HookCommandEntry = { type: string; command: string;[k: string]: unknown };
 type HookMatcherEntry = { matcher?: string; hooks?: HookCommandEntry[];[k: string]: unknown };
 
+function isOurCommand(entry: unknown): entry is HookCommandEntry {
+    return typeof (entry as HookCommandEntry | null)?.command === 'string'
+        && (entry as HookCommandEntry).command.includes(TERMINAL_MIRROR_FORWARDER_BASENAME);
+}
+
 function isOurs(entry: unknown): boolean {
     const hooks = (entry as HookMatcherEntry)?.hooks;
-    if (!Array.isArray(hooks)) return false;
-    return hooks.some((h) => typeof h?.command === 'string' && h.command.includes(TERMINAL_MIRROR_FORWARDER_BASENAME));
+    return Array.isArray(hooks) && hooks.some(isOurCommand);
+}
+
+/**
+ * Remove only our command from matcher entries. Claude permits several commands
+ * to share one matcher, so dropping the whole matcher would also delete another
+ * tool's hook. Returned entries reuse untouched objects and clone mixed entries.
+ */
+function withoutOurCommands(entries: unknown[]): { entries: unknown[]; removed: boolean } {
+    let removed = false;
+    const kept: unknown[] = [];
+    for (const entry of entries) {
+        const matcher = entry as HookMatcherEntry | null;
+        if (!matcher || typeof matcher !== 'object' || !Array.isArray(matcher.hooks)) {
+            kept.push(entry);
+            continue;
+        }
+        const foreignCommands = matcher.hooks.filter((command) => !isOurCommand(command));
+        if (foreignCommands.length === matcher.hooks.length) {
+            kept.push(entry);
+            continue;
+        }
+        removed = true;
+        if (foreignCommands.length > 0) kept.push({ ...matcher, hooks: foreignCommands });
+    }
+    return { entries: kept, removed };
 }
 
 /**
@@ -45,13 +74,12 @@ export function applyTerminalHooks(settings: unknown, hookCommand: string): { se
     let changed = false;
     for (const event of HOOK_EVENTS) {
         const existing = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];
-        const foreign = existing.filter((e) => !isOurs(e));
+        const foreign = withoutOurCommands(existing).entries;
         const ours: HookMatcherEntry = { matcher: '*', hooks: [{ type: 'command', command: hookCommand, timeout: HOOK_TIMEOUT_SECONDS }] };
-        const alreadyExact = existing.length - foreign.length === 1
-            && existing.some((e) => isOurs(e)
-                && (e as HookMatcherEntry).hooks!.some((h) => h.command === hookCommand));
+        const next = [...foreign, ours];
+        const alreadyExact = JSON.stringify(existing) === JSON.stringify(next);
         if (!alreadyExact) changed = true;
-        hooks[event] = [...foreign, ours];
+        hooks[event] = next;
     }
     base.hooks = hooks;
     return { settings: base, changed };
@@ -74,8 +102,8 @@ export function removeTerminalHooks(settings: unknown): { settings: Record<strin
     let changed = false;
     for (const event of HOOK_EVENTS) {
         if (!Array.isArray(hooks[event])) continue;
-        const kept = (hooks[event] as unknown[]).filter((e) => !isOurs(e));
-        if (kept.length !== (hooks[event] as unknown[]).length) changed = true;
+        const { entries: kept, removed } = withoutOurCommands(hooks[event] as unknown[]);
+        if (removed) changed = true;
         if (kept.length === 0) delete hooks[event];
         else hooks[event] = kept;
     }

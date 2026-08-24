@@ -3,7 +3,7 @@
  *
  * Explicitly (never silently) writes the global SessionStart + SessionEnd
  * hook pair into the user's ~/.claude/settings.json so hand-typed claude
- * sessions inside vh web terminals get mirrored into read-only shadow
+ * sessions inside vh web terminals get mirrored into structured shadow
  * sessions. `--remove` uninstalls the pair; foreign hooks are never touched
  * (pure merge logic + tests in src/mirror/hookSettings.ts).
  */
@@ -14,6 +14,26 @@ import { homedir } from 'node:os';
 import chalk from 'chalk';
 import { projectPath } from '@/projectPath';
 import { applyTerminalHooks, removeTerminalHooks, TERMINAL_MIRROR_FORWARDER_BASENAME } from '@/mirror/hookSettings';
+
+export type TerminalHooksCommand = { action: 'install' | 'remove' | 'help' };
+
+export function parseTerminalHooksArgs(args: string[]): TerminalHooksCommand {
+    if (args.some((arg) => arg === '--help' || arg === '-h')) return { action: 'help' };
+    const unknown = args.filter((arg) => arg !== '--remove');
+    if (unknown.length > 0) throw new Error(`Unknown install-terminal-hooks option: ${unknown[0]}`);
+    return { action: args.includes('--remove') ? 'remove' : 'install' };
+}
+
+export const TERMINAL_HOOKS_HELP = `very-happy install-terminal-hooks - optional Claude terminal mirror
+
+Usage:
+  very-happy install-terminal-hooks
+  very-happy install-terminal-hooks --remove
+
+The install form merges Very Happy SessionStart + SessionEnd entries into
+~/.claude/settings.json (or $CLAUDE_CONFIG_DIR/settings.json). It only mirrors
+hand-started Claude inside a Very Happy Web terminal while the daemon is running.
+The remove form deletes only Very Happy's entries; foreign hooks are preserved.`;
 
 /** claude's user settings live in ~/.claude (or $CLAUDE_CONFIG_DIR). */
 function claudeSettingsPath(): string {
@@ -69,8 +89,8 @@ export async function installTerminalHooks(opts: { remove?: boolean } = {}): Pro
     } else {
         console.log(chalk.green(`✓ Installed SessionStart + SessionEnd mirror hooks into ${settingsPath}`));
         console.log(`  Hook command: ${terminalMirrorHookCommand()}`);
-        console.log('  Hand-typed `claude` sessions inside vh web terminals will now be mirrored');
-        console.log('  as read-only structured sessions (requires the daemon to be running).');
+        console.log('  Hand-typed `claude` sessions inside Very Happy Web terminals will now');
+        console.log('  be mirrored into structured views (requires the daemon to be running).');
     }
     console.log(chalk.yellow('  ⚠ If ~/.claude is managed by chezmoi (or any dotfile sync), fold this'));
     console.log(chalk.yellow('    change into the source of truth or the next apply will overwrite it.'));

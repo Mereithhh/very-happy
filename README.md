@@ -28,7 +28,8 @@ mean reconstructing everything in your head.
 
 Claude Code is the deepest integration today. Codex is supported. A beta Agent
 Client Protocol (ACP) backend runs Gemini and OpenCode presets, while a generic
-runner can connect commands that expose a compatible ACP stdio endpoint. The
+runner can connect commands that expose a compatible ACP stdio endpoint.
+OpenClaw connects through its own local gateway protocol rather than ACP. The
 direction is deliberately multi-agent; no single model vendor should own the
 workspace around your work.
 
@@ -39,7 +40,7 @@ workspace around your work.
 > capabilities. Use only an operator you trust. Self-host if you need to control
 > that boundary; use upstream Happy if you require its E2E design.
 
-<img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy's production session sidebar, Codex terminal, and file browser rendered with sanitized example data">
+<img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy's production session sidebar, running terminal, and file browser rendered with sanitized example data">
 
 ## Why Very Happy
 
@@ -57,9 +58,9 @@ be Very Happy.
 | Continue from anywhere | Responsive Web/PWA with touch-friendly conversation and terminal controls |
 | Stay out of terminal chrome | Structured messages, tools, diffs, permissions, usage, and context |
 | Keep full machine access | Durable tmux terminals, reconnect, history, files, preview, and resume |
-| Use more than one agent | Claude Code and Codex today; beta Gemini, OpenCode, and compatible custom commands through ACP |
+| Use more than one agent | Claude Code, Codex, and OpenClaw today; beta Gemini, OpenCode, and compatible custom commands through ACP |
 | Remember the surrounding work | Task board, notes, file context, notifications, and session organization |
-| Reduce coordination overhead | An optional Claude-powered meta-agent can understand sessions and dispatch work on connected machines |
+| Reduce coordination overhead | An optional Claude-powered meta-agent can understand sessions and dispatch Claude work on its selected machine |
 | Own the operating boundary | Use the capacity-limited community Cloud or run the same trusted relay yourself |
 
 The design principle is simple: stay high-level when that is faster, drop to the
@@ -82,7 +83,23 @@ very-happy            # Claude Code
 very-happy codex      # Codex
 very-happy gemini     # Gemini via the beta ACP backend
 very-happy acp opencode
+very-happy openclaw   # OpenClaw through its local gateway
 ```
+
+Optional: to mirror a hand-started `claude` process from a Very Happy Web
+terminal into the structured conversation view, explicitly install the
+SessionStart/SessionEnd hooks:
+
+```bash
+very-happy install-terminal-hooks
+# later, to remove only Very Happy's hook entries:
+very-happy install-terminal-hooks --remove
+```
+
+This modifies `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`),
+does not touch foreign hooks, and only binds Claude started inside a Very Happy
+terminal while the daemon is running. Normal SDK-backed Claude conversations do
+not require these hooks.
 
 `very-happy auth login` opens a short-lived approval link. Sign in or create an
 account, approve only the machine in front of you, then open
@@ -96,9 +113,11 @@ operator's trust boundary. See [Public Cloud](docs/public-server.md).
 ## What ships today
 
 - Structured Claude Code conversations with tool calls, diffs, permissions,
-  usage, attachments, resume, and a terminal-to-conversation mirror.
+  usage, attachments, and resume. An explicitly installed optional hook pair
+  mirrors hand-started Claude inside Very Happy terminals into that view.
 - Codex sessions; a beta Agent Client Protocol backend with Gemini and OpenCode
-  presets plus compatible custom commands over ACP stdio.
+  presets plus compatible custom commands over ACP stdio; and OpenClaw through
+  its own local gateway protocol.
 - Durable `tmux` browser terminals with reconnect, local scrollback, mobile input,
   search, archived sessions, and automatic recovery.
 - Machine file browser and rich previews for text, Markdown, images, and PDFs;
@@ -106,8 +125,8 @@ operator's trust boundary. See [Public Cloud](docs/public-server.md).
 - Task board, todo-provider commands, notes, notifications, Web Push, and HTTPS
   webhooks.
 - A Claude-powered coordinating assistant with text entry, session awareness,
-  and machine-side dispatch; voice entry is available when a compatible voice
-  service is configured.
+  and dispatch on its selected machine; voice entry is available when a
+  compatible voice service is configured.
 - Public account/password and Google sign-in, configurable registration and
   capacity controls, plus one-container or production-scale self-hosting.
 
@@ -140,7 +159,8 @@ browser ── HTTPS/WebSocket ──> trusted relay ── WebSocket ──> CL
                                                               │
                                                               ├─> Claude Code
                                                               ├─> Codex
-                                                              └─> Gemini / ACP agent
+                                                              ├─> Gemini / ACP agent
+                                                              └─> OpenClaw gateway
 ```
 
 The relay synchronizes conversations and workspace state, routes RPCs, and

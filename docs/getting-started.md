@@ -8,9 +8,10 @@ This path uses the maintainer-operated Cloud. For your own relay, first follow
 Install Node.js 20+ and the CLI for each agent you plan to run. Claude Code is
 the default and deepest integration; Codex is also supported, while Gemini and
 custom compatible commands run through the beta ACP backend when they expose a
-compatible Agent Client Protocol endpoint over stdio. The optional coordinating
-meta-agent currently requires Claude Code, and voice entry also requires a
-configured compatible voice service. Confirm each chosen command works in the
+compatible Agent Client Protocol endpoint over stdio. OpenClaw uses its own
+local gateway adapter, not ACP. The optional coordinating meta-agent currently
+requires Claude Code, and voice entry also requires a configured compatible
+voice service. Confirm each chosen command works in the
 same shell account that will run Very Happy.
 
 ```bash
@@ -56,6 +57,7 @@ very-happy          # Claude Code
 very-happy codex    # Codex
 very-happy gemini   # Gemini through ACP (beta)
 very-happy acp opencode
+very-happy openclaw # OpenClaw through its local gateway
 ```
 
 Return to the Web UI. When the machine is online, choose **New session**, select
@@ -63,6 +65,23 @@ the machine, project directory, and agent, then start. A generic compatible
 command can also run with `very-happy acp -- your-agent --agent-specific-acp-flag`. Use
 `very-happy daemon status` and [Troubleshooting](troubleshooting.md) if the
 machine stays offline.
+
+### Optional: mirror hand-started Claude terminals
+
+SDK-backed Claude conversations work without extra setup. If you want a
+hand-started `claude` process inside a Very Happy Web terminal to gain the
+terminal-to-structured toggle, install the optional hooks explicitly:
+
+```bash
+very-happy install-terminal-hooks
+# rollback
+very-happy install-terminal-hooks --remove
+```
+
+The command merges Very Happy's SessionStart/SessionEnd entries into
+`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) without
+removing foreign hooks. The binding exists only for Claude started inside a
+Very Happy terminal while the daemon is running.
 
 ## Next
 

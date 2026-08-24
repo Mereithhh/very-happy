@@ -35,6 +35,27 @@ describe('applyTerminalHooks', () => {
         expect(input.hooks.SessionStart).toHaveLength(1);
     });
 
+    it('preserves a foreign command that shares a matcher entry with our stale command', () => {
+        const mixed = {
+            hooks: {
+                SessionStart: [{
+                    matcher: '*',
+                    hooks: [
+                        { type: 'command', command: `node "/old/${TERMINAL_MIRROR_FORWARDER_BASENAME}"` },
+                        { type: 'command', command: 'other-tool.sh', timeout: 4 },
+                    ],
+                }],
+            },
+        };
+        const { settings, changed } = applyTerminalHooks(mixed, CMD);
+        const starts = (settings.hooks as any).SessionStart;
+        expect(changed).toBe(true);
+        expect(starts).toHaveLength(2);
+        expect(starts[0].hooks).toEqual([{ type: 'command', command: 'other-tool.sh', timeout: 4 }]);
+        expect(starts[1].hooks[0].command).toBe(CMD);
+        expect(mixed.hooks.SessionStart[0].hooks).toHaveLength(2);
+    });
+
     it('is idempotent and reports changed=false on a re-run', () => {
         const first = applyTerminalHooks({}, CMD);
         const second = applyTerminalHooks(first.settings, CMD);
@@ -70,6 +91,36 @@ describe('removeTerminalHooks', () => {
         expect((settings.hooks as any).SessionStart).toHaveLength(1);
         expect((settings.hooks as any).SessionStart[0].hooks[0].command).toBe('other.sh');
         expect((settings.hooks as any).SessionEnd).toBeUndefined();
+    });
+
+    it('removes only our command when another tool shares the matcher entry', () => {
+        const mixed = {
+            hooks: {
+                SessionStart: [{
+                    matcher: '*',
+                    hooks: [
+                        { type: 'command', command: CMD, timeout: HOOK_TIMEOUT_SECONDS },
+                        { type: 'command', command: 'other-tool.sh', timeout: 4 },
+                    ],
+                }],
+                SessionEnd: [{
+                    matcher: '*',
+                    hooks: [
+                        { type: 'command', command: 'other-end.sh' },
+                        { type: 'command', command: CMD, timeout: HOOK_TIMEOUT_SECONDS },
+                    ],
+                }],
+            },
+        };
+        const { settings, changed } = removeTerminalHooks(mixed);
+        expect(changed).toBe(true);
+        expect((settings.hooks as any).SessionStart[0].hooks).toEqual([
+            { type: 'command', command: 'other-tool.sh', timeout: 4 },
+        ]);
+        expect((settings.hooks as any).SessionEnd[0].hooks).toEqual([
+            { type: 'command', command: 'other-end.sh' },
+        ]);
+        expect(mixed.hooks.SessionStart[0].hooks).toHaveLength(2);
     });
 
     it('no-ops on settings without our hooks', () => {

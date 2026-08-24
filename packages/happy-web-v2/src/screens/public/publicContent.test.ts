@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
-import { getProductPreviewIds } from './ProductWorkspacePreview';
+import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
   it('provides every public-release topic with unique stable slugs', () => {
@@ -18,6 +18,10 @@ describe('public documentation registry', () => {
     expect(text).toContain(LOGIN_COMMAND);
     expect(text).toContain('not end-to-end encrypted');
     expect(text).toContain('server-trusted');
+    expect(text).toContain('very-happy openclaw');
+    expect(text).toContain('OpenClaw uses its own local gateway protocol, not ACP');
+    expect(text).toContain('very-happy install-terminal-hooks --remove');
+    expect(text).toContain('~/.claude/settings.json');
   });
 
   it('resolves known slugs and rejects unknown routes', () => {
@@ -28,6 +32,7 @@ describe('public documentation registry', () => {
   it('keeps public positioning honest about shipped agents and roadmap', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    const featureProofs = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
     expect(landing).toContain('Work anywhere.');
     expect(landing).toContain('Claude Code');
@@ -38,10 +43,12 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
     expect(productPreview).toContain('Terminal + files');
-    expect(productPreview).toContain('TERMINAL MIRROR');
+    expect(productPreview).toContain('Optional terminal hooks installed');
+    expect(productPreview).not.toContain('Sanitized Codex terminal');
     expect(productPreview).toContain('Task board');
-    expect(landing).toContain('A coordinator you can talk to');
-    expect(landing).toContain('Claude-powered meta-agent');
+    expect(featureProofs).toContain('The coordinator is a Claude meta-agent session on one selected machine');
+    expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
+    expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landing).toContain('You get to be Very Happy.');
     expect(landing).not.toContain('private Tanka deployment');
     expect(landing).toContain('ROADMAP');
@@ -55,12 +62,17 @@ describe('public documentation registry', () => {
     const cliPackage = readFileSync(new URL('../../../../happy-cli/package.json', import.meta.url), 'utf8');
     const cliIndex = readFileSync(new URL('../../../../happy-cli/src/index.ts', import.meta.url), 'utf8');
     const acpConfig = readFileSync(new URL('../../../../happy-cli/src/agent/acp/acpAgentConfig.ts', import.meta.url), 'utf8');
+    const openClawBackend = readFileSync(new URL('../../../../happy-cli/src/openclaw/OpenClawBackend.ts', import.meta.url), 'utf8');
     const protocolDoc = readFileSync(new URL('../../../../../docs/session-protocol.md', import.meta.url), 'utf8');
     expect(cliPackage).toContain('@agentclientprotocol/sdk');
     expect(cliIndex).toContain("subcommand === 'acp'");
     expect(cliIndex).toContain("subcommand === 'gemini'");
+    expect(cliIndex).toContain("subcommand === 'openclaw'");
+    expect(cliIndex).toContain('very-happy install-terminal-hooks');
+    expect(cliIndex).toContain('parseTerminalHooksArgs(args.slice(1))');
     expect(acpConfig).toContain("gemini: { command: 'gemini'");
     expect(acpConfig).toContain("opencode: { command: 'opencode'");
+    expect(openClawBackend).toContain('Unlike ACP-based backends, OpenClaw uses its own protocol');
     expect(landing).toContain('compatible ACP stdio endpoint');
     expect(landing).toContain('BETA · IMPLEMENTED');
     expect(protocolDoc).toContain('**not** the Agent Client');
@@ -70,12 +82,14 @@ describe('public documentation registry', () => {
   it('keeps branded public motion meaningful and fully reducible', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    const featureStyles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
     expect(landing).toContain('pub-hero-product');
     expect(landing).toContain('<ProductWorkspacePreview compact />');
     expect(landing).toContain('pub-product-frame');
     expect(landing).toContain('pub-fleet');
     expect(landing).toContain('SANITIZED DEMO · LIVE PRODUCT UI');
-    expect(landing).toContain('EXAMPLE FLEET / SANITIZED');
+    expect(landing).toContain('ACCOUNT OVERVIEW / SANITIZED');
+    expect(landing).toContain('YOU CHOOSE WHERE WORK RUNS');
     expect(landing).not.toContain('CONNECTED · 42 MS');
     expect(landing).not.toContain('FLEET / LIVE NOW');
     expect(styles).toContain('@keyframes pub-field-drift');
@@ -85,8 +99,10 @@ describe('public documentation registry', () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).toMatch(/\.pub-hero-product::before[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-page::after[^}]*animation: none/);
-    expect(styles).toMatch(/\.pub-feature-grid article[^}]*transition: none/);
+    expect(styles).toMatch(/\.pub-agent-grid article[^}]*transition: none/);
     expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
+    expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(featureStyles).toContain('animation-duration: 0.01ms !important');
   });
 
   it('renders public product proof from production UI class contracts without app state imports', () => {
@@ -95,9 +111,15 @@ describe('public documentation registry', () => {
     expect(preview).toContain("import '../terminal/terminal.css'");
     expect(preview).toContain("import '../files/fsbrowser.css'");
     expect(preview).toContain("import '../session/message.css'");
+    expect(preview).toContain("import '../session/mirror.css'");
+    expect(preview).toContain("import '../session/toolgroup.css'");
     expect(preview).toContain("import '../board/board.css'");
     expect(preview).toContain('className="term-screen"');
     expect(preview).toContain('className="fsb-viewer product-file-preview"');
+    expect(preview).toContain('className="mrb"');
+    expect(preview).toContain('className="mri"');
+    expect(preview).toContain('className="tg tg--done"');
+    expect(preview).toContain("'- font-size: var(--fs-14);");
     expect(preview).toContain('className="sd"');
     expect(preview).toContain('className="bd"');
     expect(preview).toContain('window.requestAnimationFrame');
@@ -106,6 +128,63 @@ describe('public documentation registry', () => {
     expect(preview).not.toMatch(/@\/auth\//);
     expect(preview).not.toMatch(/from ['"].*WebTerminalScreen/);
     expect(preview).not.toContain('FsBrowser machineId');
+  });
+
+  it('makes every narrow product surface usable instead of shrinking desktop mockups', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
+    const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    expect(preview).toContain('onClick={closeFiles}');
+    expect(preview).toContain('onClick={openFiles}');
+    expect(preview).toContain('onBack={closeFile}');
+    expect(preview).toContain('aria-controls={filesId}');
+    expect(preview).toContain('aria-expanded={filesOpen}');
+    expect(preview).toContain("window.getComputedStyle(event.currentTarget).position !== 'absolute'");
+    expect(preview).toContain('onKeyDown={keepOverlayFocus}');
+    expect(preview).toContain('useLayoutEffect(() =>');
+    expect(preview).toContain('fileButtonRefs.current[lastFile.current]?.focus()');
+    expect(preview).not.toMatch(/<button[^>]*className="fsb-crumb/);
+    expect(preview).toContain('LOCAL PREVIEW · NOT SENT');
+    expect(preview).not.toContain('Send to the running Claude terminal');
+    expect(preview).toContain('useImeGuard()');
+    expect(preview).toContain('ime.isGuarded(event)');
+    expect(preview).toContain('onCompositionStart={ime.onCompositionStart}');
+    expect(preview).not.toContain("'ArrowDown', 'ArrowLeft', 'ArrowUp'");
+    expect(styles).toContain('container: product-preview / inline-size');
+    expect(styles).toContain('@container product-preview (max-width: 760px)');
+    expect(styles).toMatch(/@container product-preview \(max-width: 760px\)[\s\S]*\.product-term-files \{ position: absolute; inset: 0; z-index: 2; display: flex; width: 100%; max-width: 100%; \}/);
+    expect(styles).toMatch(/\.term-screen:has\(\.product-term-files\)[^}]*\.term-header,[\s\S]*\.term-mid:has\(\.product-term-files\)[^}]*\.term-host \{ visibility: hidden; \}/);
+    expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
+    expect(styles).toContain('@container product-preview (max-width: 480px)');
+    expect(publicStyles).toMatch(/\.pub-flow code \{[^}]*white-space: pre-line/);
+    expect(landing).toContain("{'very-happy\\nvery-happy codex'}");
+    expect(landing).not.toContain('One thread. Three ways');
+  });
+
+  it('renders interactive voice and launcher proofs without public-route app state', () => {
+    const proof = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
+    expect(proof).toContain("import { AssistantLogo");
+    expect(proof).toContain("import '../assistant/assistant.css'");
+    expect(proof).toContain("import '../sessions/newsession.css'");
+    expect(proof).toContain("['claude', 'codex', 'gemini', 'openclaw']");
+    expect(proof).toContain("status: 'ACP · BETA'");
+    expect(proof).toContain('OpenClaw gateway over its own protocol—not ACP');
+    expect(proof).toContain('LOCAL INTERACTION · NO AUDIO CAPTURE');
+    expect(proof).toContain('SANITIZED DEMO · NO CONNECTION');
+    expect(proof).toContain("onClick={() => { if (voiceState === 'idle') finishVoicePreview(); }}");
+    expect(proof).toContain('setSpeakingTurn((turn) => turn + 1)');
+    expect(proof).toContain('[speakingTurn, voiceState]');
+    expect(proof).toContain("aria-pressed={voiceState === 'listening'}");
+    expect(proof).toContain('aria-labelledby={sectionTitleId}');
+    expect(proof).not.toContain('id="cfp-voice-title"');
+    expect(proof).not.toMatch(/@\/sync\//);
+    expect(proof).not.toMatch(/@\/auth\//);
+    expect(styles).toContain('font-size: var(--fs-16)');
+    expect(styles).toMatch(/\.cfp-voice \.as-logo \{[^}]*margin-bottom: var\(--sp-5\)/);
+    expect(styles).toMatch(/\.cfp-surface-bar i \{[^}]*background: var\(--text-faint\)/);
+    expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
   it('keeps multiple product previews in separate tab and focus scopes', () => {
@@ -119,6 +198,7 @@ describe('public documentation registry', () => {
       ...Object.values(showcase.tabs),
     ]).size).toBe(8);
     expect(preview).toContain('tabRefs.current[next.id]?.focus()');
+    expect(preview).toContain("if (next.id === 'terminal') setFilesOpen(true)");
     expect(preview).not.toContain('document.getElementById');
     expect(preview).not.toContain('<main className="product-detail">');
   });

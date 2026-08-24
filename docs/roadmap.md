@@ -20,7 +20,8 @@ release date. “Long-term concept” is product exploration.
 ### Work surfaces
 
 - Structured Claude Code sessions with tools, diffs, permission requests,
-  attachments, usage, resume, and a terminal-to-conversation mirror.
+  attachments, usage, and resume. An optional, explicitly installed hook pair
+  mirrors hand-started Claude inside Very Happy terminals into that view.
 - Durable remote terminals with reconnect, local scrollback, mobile input, file
   browsing, rich previews, notes, notifications, and a task board.
 - Responsive Web/PWA access across desktop, phone, tablet, and foldable layouts.
@@ -31,8 +32,10 @@ release date. “Long-term concept” is product exploration.
 - A beta Agent Client Protocol backend with Gemini and OpenCode presets plus a
   generic runner for commands that expose compatible ACP over stdio. Provider
   parity is not implied.
-- A Claude-powered text meta-agent with session awareness and machine-side
-  dispatch. Voice entry is available when a compatible voice service is
+- An OpenClaw adapter that connects through a configured local gateway using
+  OpenClaw's own protocol, not ACP.
+- A Claude-powered text meta-agent with session awareness and dispatch on its
+  selected machine. Voice entry is available when a compatible voice service is
   configured; both meta-agent modes currently require Claude Code.
 - Provider-style inbound commands and outgoing HTTPS webhooks for connecting
   external task and notification systems.

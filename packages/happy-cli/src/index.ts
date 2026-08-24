@@ -136,8 +136,13 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     // B-105: install/remove the global claude SessionStart+SessionEnd hook
     // pair that mirrors hand-typed terminal claude sessions.
     try {
-      const { installTerminalHooks } = await import('./commands/installTerminalHooks');
-      await installTerminalHooks({ remove: args.includes('--remove') });
+      const { installTerminalHooks, parseTerminalHooksArgs, TERMINAL_HOOKS_HELP } = await import('./commands/installTerminalHooks');
+      const command = parseTerminalHooksArgs(args.slice(1));
+      if (command.action === 'help') {
+        console.log(TERMINAL_HOOKS_HELP);
+        return;
+      }
+      await installTerminalHooks({ remove: command.action === 'remove' });
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -744,6 +749,10 @@ ${chalk.bold('Usage:')}
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
   very-happy acp               Start a generic ACP-compatible agent
+  very-happy openclaw          Connect through a configured OpenClaw gateway
+  very-happy install-terminal-hooks
+                            Install optional Claude terminal mirror hooks
+                            (add --remove to uninstall them)
   very-happy connect           Connect AI vendor API keys
   very-happy sandbox           Configure and manage OS-level sandboxing
   very-happy notify            Send push notification
@@ -771,6 +780,8 @@ ${chalk.bold('Examples:')}
                            Start a custom ACP command that accepts --acp
   very-happy acp opencode --verbose
                            Print raw ACP backend/envelope events
+  very-happy install-terminal-hooks
+                           Mirror hand-started Claude inside Very Happy terminals
   very-happy auth login --force Authenticate
   very-happy doctor             Run diagnostics
 
