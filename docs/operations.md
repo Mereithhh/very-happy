@@ -57,6 +57,32 @@ schema-dependent source and fails closed if a hand-edited deployment has removed
 it. After a server deployment, run `vh-update` on mac-office until B-001 is fixed;
 a half-open daemon connection may otherwise fail to re-register RPCs.
 
+### PGlite process exclusivity and incident recovery
+
+Never open a live PGlite directory from a second Node/Bun/PGlite process—not even
+for a read-only integrity query. PGlite's PostgreSQL `postmaster.pid` is not a
+host-process lock; concurrent filesystem backends can corrupt `pg_control` or WAL.
+The server holds a kernel advisory lock keyed to the canonical embedded-database
+directory for its complete lifetime and rejects another repository-owned process.
+The kernel releases it on crash, `SIGKILL`, or container exit; no PID/TTL/stale-file
+guessing is involved. Do not bypass the lock while its owner is live.
+
+For database diagnosis:
+
+1. Stop `happy-server` and confirm no PGlite/PostgreSQL process remains.
+2. Copy the complete named-volume data directory, preserving permissions and WAL.
+3. Run every inspection or recovery command against that copy only.
+4. Preserve an untouched snapshot before `pg_resetwal`, restore, or other mutation.
+5. Validate all public tables, indexes/constraints, migrations, and key aggregate
+   invariants on the recovered copy before an atomic, recoverable directory swap.
+
+Do not treat moving `postmaster.pid` as a generic repair. A startup panic such as
+`could not locate a valid checkpoint record` requires snapshot-first recovery and
+an explicit incident record. External PostgreSQL is the recommended backend when
+operators need multi-process tooling or mature point-in-time recovery.
+Keep PGlite on a local Docker volume; network/NFS storage is unsupported because
+its advisory-lock and durability semantics are outside this deployment contract.
+
 ### Environment changes
 
 `docker compose restart` keeps the old container environment. After editing

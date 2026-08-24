@@ -1,7 +1,7 @@
 import { startApi } from "@/app/api/api";
 import { log } from "@/utils/log";
 import { awaitShutdown, onShutdown } from "@/utils/shutdown";
-import { db } from './storage/db';
+import { closeDatabase, db } from './storage/db';
 import { startTimeout } from "./app/presence/timeout";
 import { startMetricsServer } from "@/app/monitoring/metrics";
 import { activityCache } from "@/app/presence/sessionCache";
@@ -12,35 +12,41 @@ import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
 
 async function main() {
+    try {
+        // Storage
+        await db.$connect();
+        onShutdown('db', closeDatabase);
+        onShutdown('activity-cache', async () => {
+            activityCache.shutdown();
+        });
+        if (process.env.REDIS_URL) {
+            const { Redis } = await import('ioredis');
+            const redis = new Redis(process.env.REDIS_URL);
+            await redis.ping();
+        }
 
-    // Storage
-    await db.$connect();
-    onShutdown('db', async () => {
-        await db.$disconnect();
-    });
-    onShutdown('activity-cache', async () => {
-        activityCache.shutdown();
-    });
-    if (process.env.REDIS_URL) {
-        const { Redis } = await import('ioredis');
-        const redis = new Redis(process.env.REDIS_URL);
-        await redis.ping();
+        // Initialize auth module
+        await initEncrypt();
+        await initGithub();
+        await loadFiles();
+        await auth.init();
+
+        //
+        // Start
+        //
+
+        await startApi();
+        await startMetricsServer();
+        startDatabaseMetricsUpdater();
+        startTimeout();
+    } catch (startupError) {
+        try {
+            await closeDatabase();
+        } catch (cleanupError) {
+            throw new AggregateError([startupError, cleanupError], 'Server startup and database cleanup both failed');
+        }
+        throw startupError;
     }
-
-    // Initialize auth module
-    await initEncrypt();
-    await initGithub();
-    await loadFiles();
-    await auth.init();
-
-    //
-    // Start
-    //
-
-    await startApi();
-    await startMetricsServer();
-    startDatabaseMetricsUpdater();
-    startTimeout();
 
     //
     // Ready

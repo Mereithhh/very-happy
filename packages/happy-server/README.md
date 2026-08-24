@@ -126,6 +126,19 @@ When `DATABASE_URL` is set, the image runs `prisma migrate deploy` against that
 database before serving. Without it, the same entrypoint applies the bundled
 SQL migrations to PGlite under `/data/pglite`.
 
+PGlite is strictly single-process. The server holds a kernel advisory lock on the
+canonical database directory for its full lifetime and refuses a second opener.
+Never attach another PGlite process to a running data directory for diagnostics;
+stop the service and inspect a complete copy instead. Use external PostgreSQL when
+multi-process administration or point-in-time recovery is required.
+
+The Docker image includes the required `flock` utility. A bare Unix development
+host needs either system `flock` or Python 3 with `fcntl`; without either kernel
+advisory-lock helper, persistent PGlite refuses to start rather than running
+without an enforceable process boundary. Keep the PGlite directory on a local
+filesystem; network/NFS volumes are unsupported. Use external PostgreSQL for
+networked or multi-host storage.
+
 ### S3 bucket configuration (when self-hosting with S3)
 
 When `S3_HOST` is set, image attachments and other blobs land in S3 under

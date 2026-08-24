@@ -92,6 +92,7 @@ export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: s
     fs.mkdirSync(targetPgliteDir, { recursive: true });
 
     const pg = createPGlite(targetPgliteDir);
+    try {
 
     // Create migrations tracking table
     await pg.exec(`
@@ -167,7 +168,9 @@ export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: s
         console.log(`Applied ${appliedCount} migration(s).`);
     }
 
-    await pg.close();
+    } finally {
+        await pg.close();
+    }
 }
 
 async function serve() {

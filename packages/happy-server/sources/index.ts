@@ -1,6 +1,6 @@
 import "reflect-metadata";
 
-import { db } from "./storage/db";
+import { closeDatabase, db } from "./storage/db";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
@@ -24,27 +24,34 @@ export async function startServer(opts: StartServerOptions): Promise<{ port: num
     process.env.PGLITE_DIR = opts.pgliteDir;
     process.env.HANDY_MASTER_SECRET = opts.masterSecret;
 
-    await db.$connect();
-    onShutdown("db", async () => {
-        await db.$disconnect();
-    });
-    onShutdown("activity-cache", async () => {
-        activityCache.shutdown();
-    });
+    try {
+        await db.$connect();
+        onShutdown("db", closeDatabase);
+        onShutdown("activity-cache", async () => {
+            activityCache.shutdown();
+        });
 
-    await initEncrypt();
-    await initGithub();
-    await loadFiles();
-    await auth.init();
+        await initEncrypt();
+        await initGithub();
+        await loadFiles();
+        await auth.init();
 
-    const { port, host } = await startApi({
-        port: opts.port,
-        host: opts.host,
-        staticDir: opts.staticDir,
-        injectHtmlConfig: opts.injectHtmlConfig,
-    });
-    startDatabaseMetricsUpdater();
-    startTimeout();
+        const { port, host } = await startApi({
+            port: opts.port,
+            host: opts.host,
+            staticDir: opts.staticDir,
+            injectHtmlConfig: opts.injectHtmlConfig,
+        });
+        startDatabaseMetricsUpdater();
+        startTimeout();
 
-    return { port, host };
+        return { port, host };
+    } catch (startupError) {
+        try {
+            await closeDatabase();
+        } catch (cleanupError) {
+            throw new AggregateError([startupError, cleanupError], "Server startup and database cleanup both failed");
+        }
+        throw startupError;
+    }
 }
