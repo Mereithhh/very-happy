@@ -35,9 +35,11 @@ const happyHome = process.env.VH_HAPPY_HOME_DIR
     || path.join(os.homedir(), '.happy');
 
 let port = null;
+let controlToken = null;
 try {
     const state = JSON.parse(fs.readFileSync(path.join(happyHome, 'daemon.state.json'), 'utf-8'));
     if (state && typeof state.httpPort === 'number') port = state.httpPort;
+    if (state && typeof state.controlToken === 'string') controlToken = state.controlToken;
 } catch {
     // no daemon → nothing to mirror to
 }
@@ -62,7 +64,11 @@ process.stdin.on('end', () => {
         method: 'POST',
         path: '/terminal-hook',
         timeout: 5000,
-        headers: { 'Content-Type': 'application/json', 'Content-Length': body.length },
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': body.length,
+            ...(controlToken ? { Authorization: `Bearer ${controlToken}` } : {}),
+        },
     }, (res) => { res.resume(); });
     req.on('timeout', () => req.destroy());
     req.on('error', () => { /* silent — never break claude */ });

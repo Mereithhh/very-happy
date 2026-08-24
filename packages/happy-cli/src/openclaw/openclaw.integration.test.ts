@@ -404,7 +404,10 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
     const port = state!.httpPort;
     const spawnResponse = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state!.controlToken}`,
+      },
       body: JSON.stringify({
         directory: integrationEnv.projectPath,
         agent: 'openclaw',
@@ -467,7 +470,10 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
 
     const spawn1 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state!.controlToken}`,
+      },
       body: JSON.stringify({
         directory: integrationEnv.projectPath,
         agent: 'openclaw',
@@ -486,7 +492,10 @@ describe.skipIf(!gatewayAvailable)('OpenClaw integration - daemon lifecycle', { 
 
     const spawn2 = await fetch(`http://127.0.0.1:${port}/spawn-session`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state!.controlToken}`,
+      },
       body: JSON.stringify({
         directory: integrationEnv.projectPath,
         agent: 'openclaw',

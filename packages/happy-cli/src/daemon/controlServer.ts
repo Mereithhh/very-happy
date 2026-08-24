@@ -12,8 +12,10 @@ import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import type { AssistantReportEvent } from './assistantReport';
+import { isAuthorizedDaemonControlRequest } from './controlAuth';
 
 export function startDaemonControlServer({
+  controlToken,
   getChildren,
   stopSession,
   spawnSession,
@@ -23,6 +25,8 @@ export function startDaemonControlServer({
   pushClipboard,
   onTerminalHook
 }: {
+  /** Fresh per-process bearer token persisted in the private daemon state. */
+  controlToken: string;
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
@@ -47,6 +51,18 @@ export function startDaemonControlServer({
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
+
+    // Loopback is not an authentication boundary: another local process (or a
+    // browser coerced into talking to localhost) can reach this port. Apply one
+    // fail-closed gate before every control route, including lifecycle hooks.
+    app.addHook('onRequest', async (request, reply) => {
+      if (!isAuthorizedDaemonControlRequest(request.headers.authorization, controlToken)) {
+        await reply
+          .code(401)
+          .header('WWW-Authenticate', 'Bearer')
+          .send({ error: 'Unauthorized' });
+      }
+    });
 
     // Session reports itself after creation
     typed.post('/session-started', {

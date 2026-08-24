@@ -73,6 +73,7 @@ describe('Daemon Integration Tests', { timeout: 180_000 }, () => {
       throw new Error('Daemon failed to start within timeout');
     }
     daemonPid = daemonState.pid;
+    expect(daemonState.controlToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     console.log(`[TEST] Daemon started for test: PID=${daemonPid}`);
     console.log(`[TEST] Daemon log file: ${daemonState?.daemonLogPath}`);

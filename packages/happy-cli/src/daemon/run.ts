@@ -39,6 +39,8 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
+import { createDaemonControlToken } from './controlAuth';
+import { withDaemonHeartbeat } from './daemonState';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -1041,7 +1043,9 @@ export async function startDaemon(): Promise<void> {
     // B-105: mirror manager is constructed after the API client below —
     // late-bind so /terminal-hook requests during startup are dropped safely.
     let mirrorManagerRef: MirrorManager | null = null;
+    const controlToken = createDaemonControlToken();
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+      controlToken,
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
@@ -1064,6 +1068,7 @@ export async function startDaemon(): Promise<void> {
     const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
+      controlToken,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
       serverUrl: configuration.serverUrl,
@@ -1228,17 +1233,9 @@ export async function startDaemon(): Promise<void> {
 
       // Heartbeat
       try {
-        const updatedState: DaemonLocallyPersistedState = {
-          pid: process.pid,
-          httpPort: controlPort,
-          startTime: fileState.startTime,
-          startedWithCliVersion: packageJson.version,
-          serverUrl: configuration.serverUrl,
-          webappUrl: configuration.webappUrl,
-          lastHeartbeat: new Date().toLocaleString(),
-          daemonLogPath: fileState.daemonLogPath,
-          claudeCredentialSource: fileState.claudeCredentialSource,
-        };
+        // Preserve the process control token (and any future state fields)
+        // instead of silently dropping them on the first heartbeat.
+        const updatedState = withDaemonHeartbeat(fileState, new Date().toLocaleString());
         writeDaemonState(updatedState);
         if (process.env.DEBUG) {
           logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);

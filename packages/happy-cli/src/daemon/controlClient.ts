@@ -8,6 +8,13 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 
+function daemonControlHeaders(controlToken?: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    ...(controlToken ? { Authorization: `Bearer ${controlToken}` } : {}),
+  };
+}
+
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
@@ -32,7 +39,9 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
     const timeout = process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000;
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // A state written by an old daemon has no token and must remain callable;
+      // a new daemon always writes one and rejects requests without it.
+      headers: daemonControlHeaders(state.controlToken),
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
       signal: AbortSignal.timeout(timeout)
@@ -199,7 +208,7 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
     try {
       const response = await fetch(`http://127.0.0.1:${state.httpPort}/list`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: daemonControlHeaders(state.controlToken),
         body: '{}',
         signal: AbortSignal.timeout(2000)
       });

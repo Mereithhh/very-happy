@@ -121,6 +121,11 @@ function migrateSettings(raw: any, fromVersion: number): any {
 export interface DaemonLocallyPersistedState {
   pid: number;
   httpPort: number;
+  /**
+   * Per-process credential for the loopback HTTP control plane. Optional only
+   * so a new CLI can still stop/query an old daemon state written before auth.
+   */
+  controlToken?: string;
   startTime: string;
   startedWithCliVersion: string;
   serverUrl?: string;
