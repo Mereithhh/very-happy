@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `9b64f5e27432f185162297d29c90815903283cf6`
+> Released product source: `65d4477cb9af7445352dbcffc89dd1a071f7de1f`
 > Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -31,6 +31,10 @@ public until the procedure below is complete.
   data beams, packets, and live telemetry surround the real interactive workspace. Mobile keeps
   the foreground machine layer without CTA collisions or overflow, while reduced-motion users
   receive a complete static composition.
+- Landing and Docs now include an explicit mobile continuity proof built from two authentic,
+  interactive phone-width product surfaces: a raw Claude terminal and its structured mirror.
+  The real conversation control and `Back to terminal` path work in both directions; the animated
+  handoff labels the optional terminal-hook boundary without claiming the sanitized demo is live.
 - Core claims now have matching interactive product surfaces: a production-style Claude
   meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
   Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
@@ -87,15 +91,15 @@ public until the procedure below is complete.
 A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
 wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
-`9b64f5e2` 3D Hero follow-up repeated the affected Web gates locally and in the
+`65d4477c` mobile-continuity follow-up repeated the affected Web gates locally and in the
 exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 99 test files / 1,424 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 99 test files / 1,425 tests; Vite production build; TypeScript 0 errors |
 | CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32696115677` passed for exact deployed source `9b64f5e2`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32697747972` passed for exact deployed source `65d4477c`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -161,6 +165,10 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   and authentic session-list interaction. The mobile pass found and closed a real 3D stacking
   regression before final deployment; the rereun showed no CTA collision or horizontal overflow,
   no marketing tablist, and every visible input/select/textarea at 16 px.
+- after the mobile-continuity release, fresh production 1440x1000 and 390x844 tabs confirmed
+  both phone-width production surfaces, the real terminal → structured mirror → terminal loop,
+  animated desktop and vertical-mobile handoff states, SOURCE/MIRROR demo labels, no horizontal
+  overflow, 16 px visible mobile inputs, and duplicate-ID-free reuse on the Docs index.
 
 ### Independent review
 
@@ -273,6 +281,13 @@ at **P0=0, P1=0, P2=0, P3=0** for the change.
   foreground node layering, no CTA collision or horizontal overflow, and 16 px mobile controls.
   The atomic Web rollback is the preceding `aaee6036` build; `3f23fce9` remains the pre-Hero
   fallback.
+- The explicit mobile terminal/conversation continuity proof shipped Web-only from SHA
+  `65d4477cb9af7445352dbcffc89dd1a071f7de1f`. Exact-SHA Quality Gates run `32697747972`
+  and deploy run `32697897214` passed, producing
+  `/assets/index-BPPpJFqz-202608240635.js`. Production health, hashed asset delivery,
+  Landing/Docs reuse, desktop/mobile layout, real bidirectional controls, 16 px input sizing,
+  and zero horizontal overflow were verified afterward. The atomic Web rollback is the prior
+  `9b64f5e2` Hero build.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
