@@ -271,10 +271,11 @@ const credentialsSchema = z.object({
     deviceId: z.string().min(1).optional(),
     cryptoEpoch: z.number().int().min(1).max(0x7fff_ffff).optional(),
     e2eeProtocol: z.literal('vh-e2ee-1').optional(),
+    capability: z.literal('e2ee:runner').optional(),
   }).nullish()
 }).superRefine((value, context) => {
   if (value.encryption?.type !== 'e2ee-v1') return;
-  for (const field of ['accountId', 'deviceId', 'cryptoEpoch', 'e2eeProtocol'] as const) {
+  for (const field of ['accountId', 'deviceId', 'cryptoEpoch', 'e2eeProtocol', 'capability'] as const) {
     if (value.encryption[field] === undefined) {
       context.addIssue({ code: 'custom', path: ['encryption', field], message: `E2EE credential requires ${field}` });
     }
@@ -297,6 +298,7 @@ export type Credentials = {
     deviceId: string,
     cryptoEpoch: number,
     e2eeProtocol: 'vh-e2ee-1',
+    capability: 'e2ee:runner',
   }
 }
 
@@ -329,6 +331,7 @@ export async function readCredentials(): Promise<Credentials | null> {
             deviceId: credentials.encryption.deviceId!,
             cryptoEpoch: credentials.encryption.cryptoEpoch!,
             e2eeProtocol: credentials.encryption.e2eeProtocol!,
+            capability: credentials.encryption.capability!,
           }
         };
       }
@@ -407,6 +410,7 @@ export async function writeCredentialsE2ee(credentials: {
       deviceId: credentials.deviceId,
       cryptoEpoch: credentials.cryptoEpoch,
       e2eeProtocol: 'vh-e2ee-1',
+      capability: 'e2ee:runner',
     },
     token: credentials.token,
     authServerUrl: configuration.serverUrl,

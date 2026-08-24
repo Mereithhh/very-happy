@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
-import { promisify } from 'util';
+import { randomBytes, randomUUID } from 'crypto';
 import tweetnacl from 'tweetnacl';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
@@ -20,34 +19,11 @@ import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity';
 import { configuredResourceLimit } from '../resourceLimits';
+import { burnMissingPasswordLookup, hashPassword, verifyPassword } from '@/app/auth/passwordAuth';
+import { e2eeAccountAuthRoutes } from './e2eeAccountAuthRoutes';
+import { resolveE2eeSignupConfig } from '@/app/auth/e2eeConfig';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
-
-const scryptAsync = promisify(scrypt);
-
-async function hashPassword(password: string): Promise<string> {
-    const salt = randomBytes(16);
-    const derived = await scryptAsync(password, salt, 64) as Buffer;
-    return `scrypt$${salt.toString('hex')}$${derived.toString('hex')}`;
-}
-
-async function verifyPassword(password: string, stored: string): Promise<boolean> {
-    try {
-        const parts = stored.split('$');
-        if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
-        if (!/^[a-f0-9]{32}$/i.test(parts[1]) || !/^[a-f0-9]{128}$/i.test(parts[2])) return false;
-        const salt = Buffer.from(parts[1], 'hex');
-        const expected = Buffer.from(parts[2], 'hex');
-        const derived = await scryptAsync(password, salt, expected.length) as Buffer;
-        return expected.length === derived.length && timingSafeEqual(expected, derived);
-    } catch {
-        return false;
-    }
-}
-
-async function burnMissingPasswordLookup(password: string): Promise<void> {
-    await scryptAsync(password, Buffer.alloc(16), 64);
-}
 
 const loginResponse = z.object({
     token: z.string(),
@@ -59,6 +35,7 @@ const loginUsernameSchema = z.string().trim().toLowerCase().min(1).max(64);
 const passwordSchema = z.string().min(8).max(256);
 
 class UsernameTakenError extends Error {}
+class E2eeClientRequiredError extends Error {}
 
 export function accountPublicKeyFromSecret(secret: string): string | null {
     const seed = decodeFixedBase64(secret, 32);
@@ -91,6 +68,8 @@ export function accountAuthRoutes(app: Fastify) {
     // Fail startup on a typo that could otherwise accidentally remove the cap.
     resolveSignupPolicy();
     const googleConfig = resolveGoogleLoginConfig();
+    const e2eeSignupConfig = resolveE2eeSignupConfig();
+    e2eeAccountAuthRoutes(app);
     app.get('/v1/auth/config', {
         schema: {
             response: {
@@ -103,13 +82,14 @@ export function accountAuthRoutes(app: Fastify) {
                         remainingAccounts: z.number().int().nullable(),
                         atCapacity: z.boolean(),
                     }),
+                    e2ee: z.object({ enabled: z.boolean(), required: z.boolean() }),
                 }),
             },
         },
     }, async (_request, reply) => {
         const status = await getSignupStatus();
         const googleClientId = googleConfig.clientId ?? undefined;
-        return reply.send({ googleClientId, signup: status });
+        return reply.send({ googleClientId, signup: status, e2ee: e2eeSignupConfig });
     });
 
     app.post('/v1/auth/google/challenge', {
@@ -154,9 +134,13 @@ export function accountAuthRoutes(app: Fastify) {
                 403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached']) }),
                 409: z.object({ error: z.literal('username_taken') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
+                426: z.object({ error: z.literal('e2ee_client_required') }),
             },
         },
     }, async (request, reply) => {
+        if (e2eeSignupConfig.required) {
+            return reply.code(426).send({ error: 'e2ee_client_required' as const });
+        }
         const username = request.body.username;
         const publicKey = accountPublicKeyFromSecret(request.body.secret);
         if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
@@ -249,6 +233,7 @@ export function accountAuthRoutes(app: Fastify) {
                 409: z.object({ error: z.literal('username_taken') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
                 500: z.object({ error: z.literal('failed') }),
+                426: z.object({ error: z.literal('e2ee_client_required') }),
             },
         },
     }, async (request, reply) => {
@@ -257,6 +242,10 @@ export function accountAuthRoutes(app: Fastify) {
         const derivedPublicKey = accountPublicKeyFromSecret(request.body.secret);
         if (!derivedPublicKey) {
             return reply.code(400).send({ error: 'invalid_secret' as const });
+        }
+        const cryptoAccount = await db.account.findUnique({ where: { id: accountId }, select: { cryptoMode: true } });
+        if (cryptoAccount?.cryptoMode === 'e2ee-v1') {
+            return reply.code(426).send({ error: 'e2ee_client_required' as const });
         }
         try {
             // Account.publicKey is the immutable identity anchor. Never accept a
@@ -388,6 +377,7 @@ export function accountAuthRoutes(app: Fastify) {
                 200: loginResponse,
                 401: z.object({ error: z.literal('invalid_credentials') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
+                426: z.object({ error: z.literal('e2ee_client_required') }),
             },
         },
     }, async (request, reply) => {
@@ -396,8 +386,10 @@ export function accountAuthRoutes(app: Fastify) {
         if (!allowed) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
-        const rows = await db.$queryRawUnsafe<Array<{ accountId: string; passwordHash: string; secretEnc: string }>>(
-            'SELECT "accountId", "passwordHash", "secretEnc" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
+        const rows = await db.$queryRawUnsafe<Array<{ accountId: string; passwordHash: string; secretEnc: string | null; cryptoMode: string }>>(
+            `SELECT c."accountId", c."passwordHash", c."secretEnc", a."cryptoMode"
+             FROM "AccountCredential" c JOIN "Account" a ON a."id" = c."accountId"
+             WHERE c."username" = $1 LIMIT 1`,
             username,
         );
         const row = rows[0];
@@ -407,9 +399,12 @@ export function accountAuthRoutes(app: Fastify) {
         if (!row || !passwordMatches) {
             return reply.code(401).send({ error: 'invalid_credentials' as const });
         }
+        if (row.cryptoMode === 'e2ee-v1') {
+            return reply.code(426).send({ error: 'e2ee_client_required' as const });
+        }
 
         const secret = await db.$transaction(async (tx) => {
-            const loaded = await loadAccountSecret(tx, row.accountId, row.secretEnc);
+            const loaded = await loadAccountSecret(tx, row.accountId, row.secretEnc ?? undefined);
             await tx.$executeRawUnsafe(
                 `INSERT INTO "AccountIdentity"
                  ("id", "accountId", "provider", "providerSubject", "updatedAt")
@@ -439,6 +434,7 @@ export function accountAuthRoutes(app: Fastify) {
                 403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached', 'origin_not_allowed']) }),
                 429: z.object({ error: z.literal('too_many_requests') }),
                 501: z.object({ error: z.literal('google_not_configured') }),
+                426: z.object({ error: z.literal('e2ee_client_required') }),
             },
         },
     }, async (request, reply) => {
@@ -471,18 +467,21 @@ export function accountAuthRoutes(app: Fastify) {
                 provider: 'google',
                 inviteCode: request.body.inviteCode,
                 findExisting: async (tx) => {
-                    const identities = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
-                        `SELECT "accountId" FROM "AccountIdentity"
-                         WHERE "provider" = 'google' AND "providerSubject" = $1 LIMIT 1`,
+                    const identities = await tx.$queryRawUnsafe<Array<{ accountId: string; cryptoMode: string }>>(
+                        `SELECT i."accountId", a."cryptoMode" FROM "AccountIdentity" i
+                         JOIN "Account" a ON a."id" = i."accountId"
+                         WHERE i."provider" = 'google' AND i."providerSubject" = $1 LIMIT 1`,
                         claims.sub,
                     );
                     if (!identities[0]) return null;
+                    if (identities[0].cryptoMode === 'e2ee-v1') throw new E2eeClientRequiredError();
                     const secret = await loadAccountSecret(tx, identities[0].accountId);
                     if (!secret) throw new Error('google-account-secret-missing');
                     const session = await auth.createLoginToken(identities[0].accountId, tx, { cache: false });
                     return { accountId: identities[0].accountId, secret, session };
                 },
                 create: async (tx) => {
+                    if (e2eeSignupConfig.required) throw new E2eeClientRequiredError();
                     const secretBytes = randomBytes(32);
                     const secret = secretBytes.toString('base64url');
                     const tweetnacl = (await import('tweetnacl')).default;
@@ -510,6 +509,9 @@ export function accountAuthRoutes(app: Fastify) {
                 onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
             });
         } catch (error) {
+            if (error instanceof E2eeClientRequiredError) {
+                return reply.code(426).send({ error: 'e2ee_client_required' as const });
+            }
             if (error instanceof SignupPolicyError) {
                 return reply.code(403).send({ error: error.reason });
             }
@@ -536,4 +538,4 @@ export function accountAuthRoutes(app: Fastify) {
     });
 }
 
-export { hashPassword, verifyPassword };
+export { hashPassword, verifyPassword } from '@/app/auth/passwordAuth';

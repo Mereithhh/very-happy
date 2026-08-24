@@ -52,6 +52,7 @@ describe('E2EE CLI credentials', () => {
         deviceId: 'daemon-1',
         cryptoEpoch: 7,
         e2eeProtocol: 'vh-e2ee-1',
+        capability: 'e2ee:runner',
         publicKey: Uint8Array.from({ length: 32 }, (_, index) => index),
         machineKey: Uint8Array.from({ length: 32 }, (_, index) => 255 - index),
       },

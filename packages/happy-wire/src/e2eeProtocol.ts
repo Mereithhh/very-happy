@@ -262,6 +262,7 @@ export const e2eeStoredDomainSchema = z.enum([
   'tasks',
   'artifact',
   'attachment',
+  'access-key',
 ]);
 export type E2eeStoredDomain = z.infer<typeof e2eeStoredDomainSchema>;
 
@@ -276,6 +277,65 @@ export const E2eeSocketIdentityV1Schema = z.strictObject({
   cryptoEpoch: e2eeEpochSchema,
 });
 export type E2eeSocketIdentityV1 = z.infer<typeof E2eeSocketIdentityV1Schema>;
+
+export const e2eeWrappedDataKeyDomainSchema = z.enum(['session', 'machine', 'artifact', 'attachment', 'access-key']);
+export type E2eeWrappedDataKeyDomain = z.infer<typeof e2eeWrappedDataKeyDomainSchema>;
+
+export const WrappedDataKeyHeaderV1Schema = z.strictObject({
+  v: z.literal(E2EE_PROTOCOL_VERSION),
+  suite: z.literal(E2EE_SUITE_V1),
+  origin: e2eeOriginSchema,
+  accountId: boundedOpaqueIdSchema,
+  epoch: e2eeEpochSchema,
+  domain: e2eeWrappedDataKeyDomainSchema,
+  objectId: boundedOpaqueIdSchema,
+  field: boundedFieldSchema,
+  ephemeralPublicKey: e2eePublicKeySchema,
+  nonce: e2eeSecretboxNonceSchema,
+});
+export type WrappedDataKeyHeaderV1 = z.infer<typeof WrappedDataKeyHeaderV1Schema>;
+
+export const WrappedDataKeyV1Schema = z.strictObject({
+  ...WrappedDataKeyHeaderV1Schema.shape,
+  ciphertext: base64UrlSchema({ minBytes: 16, maxBytes: 4 * 1024 }),
+});
+export type WrappedDataKeyV1 = z.infer<typeof WrappedDataKeyV1Schema>;
+
+/**
+ * crypto_box has no detached AAD. Implementations encrypt this exact inner
+ * object and compare every duplicated header field with the outer envelope
+ * before accepting `key`; otherwise the relay could transplant a valid DEK
+ * between sessions, machines, epochs, or accounts.
+ */
+export const WrappedDataKeyPlaintextV1Schema = z.strictObject({
+  v: z.literal(E2EE_PROTOCOL_VERSION),
+  suite: z.literal(E2EE_SUITE_V1),
+  origin: e2eeOriginSchema,
+  accountId: boundedOpaqueIdSchema,
+  epoch: e2eeEpochSchema,
+  domain: e2eeWrappedDataKeyDomainSchema,
+  objectId: boundedOpaqueIdSchema,
+  field: boundedFieldSchema,
+  key: base64UrlSchema({ exactBytes: 32 }),
+});
+export type WrappedDataKeyPlaintextV1 = z.infer<typeof WrappedDataKeyPlaintextV1Schema>;
+
+export function wrappedDataKeyInnerMatchesOuter(
+  envelope: WrappedDataKeyV1,
+  plaintext: WrappedDataKeyPlaintextV1,
+): boolean {
+  const outer = WrappedDataKeyV1Schema.safeParse(envelope);
+  const inner = WrappedDataKeyPlaintextV1Schema.safeParse(plaintext);
+  return outer.success && inner.success
+    && outer.data.v === inner.data.v
+    && outer.data.suite === inner.data.suite
+    && outer.data.origin === inner.data.origin
+    && outer.data.accountId === inner.data.accountId
+    && outer.data.epoch === inner.data.epoch
+    && outer.data.domain === inner.data.domain
+    && outer.data.objectId === inner.data.objectId
+    && outer.data.field === inner.data.field;
+}
 
 export const StoredE2eeHeaderV1Schema = z.strictObject({
   v: z.literal(E2EE_PROTOCOL_VERSION),

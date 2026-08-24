@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
-import { auth } from "@/app/auth/auth";
+import { auth, type VerifiedAuthExtras } from "@/app/auth/auth";
 import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
@@ -20,10 +20,52 @@ import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
+import { E2eeSocketIdentityV1Schema, e2eeCapabilitySchema } from '@slopus/happy-wire';
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/**
+ * E2EE sockets are control-plane connections, never password-only unlock
+ * sessions.  `auth.verifyToken` has already checked that the bound device is
+ * active; this additionally binds the handshake and capability before any
+ * RPC/terminal/clipboard handler is installed.
+ */
+export function socketAuthAllowsConnection(
+    extras: VerifiedAuthExtras | undefined,
+    handshake: {
+        cryptoMode?: unknown;
+        deviceId?: unknown;
+        e2eeProtocol?: unknown;
+        cryptoEpoch?: unknown;
+    },
+    clientType: 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined,
+): boolean {
+    if (extras?.cryptoMode !== 'e2ee-v1') {
+        // A trusted token cannot opt into the E2EE identity namespace using
+        // untrusted handshake fields.
+        return handshake.cryptoMode !== 'e2ee-v1' && handshake.e2eeProtocol === undefined;
+    }
+    const identity = E2eeSocketIdentityV1Schema.safeParse({
+        cryptoMode: handshake.cryptoMode,
+        e2eeProtocol: handshake.e2eeProtocol,
+        deviceId: handshake.deviceId,
+        cryptoEpoch: handshake.cryptoEpoch,
+    });
+    const capabilities = extras.capabilities?.map((capability) => e2eeCapabilitySchema.safeParse(capability));
+    if (!identity.success
+        || identity.data.deviceId !== extras.deviceId
+        || identity.data.e2eeProtocol !== extras.e2eeProtocol
+        || identity.data.cryptoEpoch !== extras.cryptoEpoch
+        || capabilities?.length !== 1
+        || !capabilities[0].success) {
+        return false;
+    }
+    const capability = capabilities[0].data;
+    return (capability === 'e2ee:control' && (clientType === undefined || clientType === 'user-scoped'))
+        || (capability === 'e2ee:runner' && (clientType === 'machine-scoped' || clientType === 'session-scoped'));
 }
 
 export function startSocket(app: Fastify) {
@@ -118,6 +160,12 @@ export function startSocket(app: Fastify) {
             return;
         }
 
+        if (!socketAuthAllowsConnection(verified.extras, socket.handshake.auth, clientType)) {
+            log({ module: 'websocket' }, 'E2EE socket authentication context rejected');
+            next(new Error('E2EE device activation required'));
+            return;
+        }
+
         const ownershipError = await validateSocketOwnership({ userId: verified.userId, clientType, sessionId, machineId });
         if (ownershipError) {
             next(new Error(ownershipError));
@@ -128,6 +176,14 @@ export function startSocket(app: Fastify) {
         socket.data.clientType = clientType;
         socket.data.sessionId = sessionId;
         socket.data.machineId = machineId;
+        socket.data.authExtras = verified.extras;
+        socket.data.authDeviceId = verified.extras?.deviceId;
+        socket.data.authCapabilities = verified.extras?.capabilities ?? [];
+        socket.data.authE2eeProtocol = verified.extras?.e2eeProtocol;
+        socket.data.accountCryptoMode = verified.extras?.cryptoMode;
+        socket.data.accountCryptoEpoch = verified.extras?.cryptoEpoch;
+        socket.data.accountCryptoWriteState = verified.extras?.cryptoWriteState;
+        socket.data.accountE2eeOrigin = verified.extras?.e2eeOrigin;
         socket.data.happyClient = socket.handshake.auth.happyClient as string
             || socket.handshake.headers['x-happy-client'] as string
             || undefined;

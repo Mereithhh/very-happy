@@ -105,6 +105,7 @@ type AccountCryptoMode = 'trusted-v1' | 'e2ee-migrating' | 'e2ee-v1';
 数据库把 legacy `Account.publicKey` 改为 nullable，并为 `Account` 增加
 `cryptoMode String @default("trusted-v1")`、`cryptoEpoch Int @default(0)`、
 `cryptoWriteState String @default("active")`、
+`e2eeOrigin String?`、
 `recoveryAuthorityPublicKey String? @unique`、`e2eeContentPublicKey String?`、`e2eeContentKeySignature String?`
 与 `recoveryCiphertext String?`；`AccountCredential.secretEnc` 改为 nullable（读取事实源统一到
 `AccountSecret`）。迁移只加默认值和 nullable，不删除任何现有 secret。现有 `Account.publicKey` 仅是
@@ -250,14 +251,15 @@ type AccountEnvelopeV1 = {
 
 ```ts
 type StoredE2eeEnvelopeV1 = {
-  v: 1; suite: 'vh-e2ee-1'; epoch: number;
+  v: 1; suite: 'vh-e2ee-1'; origin: string; accountId: string; epoch: number;
   domain: 'session'|'machine'|'message'|'settings'|'kv'|'notes'|'tasks'|'artifact'|'attachment';
   objectId: string; field: string; nonce: string; ciphertext: string;
 };
 ```
 
 `nonce` 解码必须 12 bytes；ciphertext至少含16-byte tag；JCS header（除 ciphertext）作为 AAD。每条
-record自身携带 epoch，同一 session可读历史不同 epoch；server只解析严格 envelope header做 mode/size/
+record自身携带 origin/accountId/epoch，同一 session可读历史不同 epoch；server把 header 的 origin/accountId
+与账号固定 `e2eeOrigin`/id 比较，只解析严格 envelope header做 mode/size/
 epoch上限验证，绝不解密 body。
 
 Task Board 与 Notes：trusted-v1 保持 legacy read；E2EE 账号只写/读 envelope。客户端在内存中 merge，

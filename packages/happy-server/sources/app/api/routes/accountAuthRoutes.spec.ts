@@ -58,6 +58,8 @@ const credentialPublicKey = accountPublicKeyFromSecret(credentialSecret)!;
 
 beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.E2EE_SIGNUP_ENABLED;
+    delete process.env.E2EE_SIGNUP_REQUIRED;
     dbMock.account.findUnique.mockResolvedValue({ publicKey: credentialPublicKey, AccountIdentity: [] });
     dbMock.accountLoginSession.findFirst.mockResolvedValue({ createdAt: new Date() });
     dbMock.$queryRawUnsafe.mockResolvedValue([]);
@@ -66,6 +68,45 @@ beforeEach(() => {
     authMock.createLoginToken.mockResolvedValue({ token: 'login-token', expiresAt: new Date('2030-01-01T00:00:00.000Z') });
     accountSecretsMock.upsertAccountSecret.mockResolvedValue('encrypted-secret');
     allowAuthRequestMock.mockResolvedValue(true);
+});
+
+describe('E2EE downgrade gates', () => {
+    it('blocks trusted-v1 password account creation when E2EE signup is required', async () => {
+        process.env.E2EE_SIGNUP_ENABLED = 'true';
+        process.env.E2EE_SIGNUP_REQUIRED = 'true';
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/signup/password',
+            payload: {
+                username: 'alice',
+                password: 'correct horse battery staple',
+                secret: credentialSecret,
+            },
+        });
+        expect(response.statusCode).toBe(426);
+        expect(response.json()).toEqual({ error: 'e2ee_client_required' });
+        expect(dbMock.$transaction).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it('cannot write a legacy escrow credential back to an E2EE account', async () => {
+        dbMock.account.findUnique.mockResolvedValueOnce({ cryptoMode: 'e2ee-v1' });
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/credentials',
+            payload: {
+                username: 'alice',
+                password: 'correct horse battery staple',
+                secret: credentialSecret,
+            },
+        });
+        expect(response.statusCode).toBe(426);
+        expect(response.json()).toEqual({ error: 'e2ee_client_required' });
+        expect(accountSecretsMock.upsertAccountSecret).not.toHaveBeenCalled();
+        await app.close();
+    });
 });
 
 describe('password credential hashing', () => {

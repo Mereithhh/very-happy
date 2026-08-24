@@ -14,6 +14,8 @@ import {
   StoredE2eeEnvelopeV1Schema,
   ControlDeviceRootEnvelopeV1Schema,
   RecoveryKeyringCapsuleV1Schema,
+  WrappedDataKeyPlaintextV1Schema,
+  WrappedDataKeyV1Schema,
   buildE2eeCounterNonce,
   canonicalizeE2eeJson,
   checkStrictExpectedNext,
@@ -28,6 +30,7 @@ import {
   isCanonicalBase64Url,
   splitE2eeConnectionKeyMaterial,
   storedE2eeEnvelopeAad,
+  wrappedDataKeyInnerMatchesOuter,
   type ControlFrameV1,
   type E2eeClientHelloV1,
   type E2eeRunnerHelloV1,
@@ -251,6 +254,46 @@ describe('socket identity', () => {
     expect(E2eeSocketIdentityV1Schema.safeParse({ ...identity, e2eeProtocol: undefined }).success).toBe(false);
     expect(E2eeSocketIdentityV1Schema.safeParse({ ...identity, cryptoEpoch: 0 }).success).toBe(false);
     expect(E2eeSocketIdentityV1Schema.safeParse({ ...identity, downgrade: true }).success).toBe(false);
+  });
+});
+
+describe('wrapped data key', () => {
+  const envelope = {
+    v: 1 as const,
+    suite: E2EE_SUITE_V1,
+    origin: 'https://happy.example',
+    accountId: 'account-1',
+    epoch: 7,
+    domain: 'session' as const,
+    objectId: 'session-1',
+    field: 'data-key',
+    ephemeralPublicKey: ZERO_32,
+    nonce: ZERO_24,
+    ciphertext: ZERO_16,
+  };
+  const plaintext = {
+    v: 1 as const,
+    suite: E2EE_SUITE_V1,
+    origin: 'https://happy.example',
+    accountId: 'account-1',
+    epoch: 7,
+    domain: 'session' as const,
+    objectId: 'session-1',
+    field: 'data-key',
+    key: ONE_32,
+  };
+
+  it('strictly validates both explicit-ephemeral wire layers', () => {
+    expect(WrappedDataKeyV1Schema.parse(envelope)).toEqual(envelope);
+    expect(WrappedDataKeyPlaintextV1Schema.parse(plaintext)).toEqual(plaintext);
+    expect(WrappedDataKeyV1Schema.safeParse({ ...envelope, bundled: true }).success).toBe(false);
+  });
+
+  it('rejects cross-object, cross-account, and cross-epoch transplants', () => {
+    expect(wrappedDataKeyInnerMatchesOuter(envelope, plaintext)).toBe(true);
+    expect(wrappedDataKeyInnerMatchesOuter(envelope, { ...plaintext, objectId: 'session-2' })).toBe(false);
+    expect(wrappedDataKeyInnerMatchesOuter(envelope, { ...plaintext, accountId: 'account-2' })).toBe(false);
+    expect(wrappedDataKeyInnerMatchesOuter(envelope, { ...plaintext, epoch: 6 })).toBe(false);
   });
 });
 
