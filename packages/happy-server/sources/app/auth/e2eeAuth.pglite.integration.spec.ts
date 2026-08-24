@@ -51,6 +51,12 @@ describe('E2EE account auth on PGlite', () => {
         enableAuthentication(typed);
         const { accountAuthRoutes } = await import('../api/routes/accountAuthRoutes');
         accountAuthRoutes(typed);
+        const { accountRoutes } = await import('../api/routes/accountRoutes');
+        const { kvRoutes } = await import('../api/routes/kvRoutes');
+        const { eventRouter } = await import('../events/eventRouter');
+        eventRouter.init({ to: () => ({ emit: () => undefined }) } as any);
+        accountRoutes(typed);
+        kvRoutes(typed);
         typed.get('/test/authenticated', { preHandler: typed.authenticate }, async () => ({ ok: true }));
         await app.ready();
     });
@@ -313,6 +319,56 @@ describe('E2EE account auth on PGlite', () => {
             method: 'GET', url: '/test/authenticated', headers: { authorization: `Bearer ${active.token}` },
         });
         expect(activeDataAccess.statusCode).toBe(200);
+
+        const settingsEnvelope = canonicalizeE2eeJson({
+            accountId: challenge.accountId,
+            ciphertext: Buffer.alloc(16, 31).toString('base64url'),
+            domain: 'settings',
+            epoch: 1,
+            field: 'settings',
+            nonce: Buffer.alloc(12, 30).toString('base64url'),
+            objectId: challenge.accountId,
+            origin,
+            suite: E2EE_SUITE_V1,
+            v: 1,
+        });
+        const settingsWrite = await app.inject({
+            method: 'POST', url: '/v1/account/settings',
+            headers: { authorization: `Bearer ${active.token}` },
+            payload: { settings: settingsEnvelope, expectedVersion: 0 },
+        });
+        expect(settingsWrite.statusCode, settingsWrite.body).toBe(200);
+        const settingsRead = await app.inject({
+            method: 'GET', url: '/v1/account/settings',
+            headers: { authorization: `Bearer ${active.token}` },
+        });
+        expect(settingsRead.json()).toEqual({ settings: settingsEnvelope, settingsVersion: 1 });
+
+        const boardKey = 'vh.board-tasks.v1';
+        const boardEnvelope = canonicalizeE2eeJson({
+            accountId: challenge.accountId,
+            ciphertext: Buffer.alloc(16, 33).toString('base64url'),
+            domain: 'tasks',
+            epoch: 1,
+            field: 'value',
+            nonce: Buffer.alloc(12, 32).toString('base64url'),
+            objectId: boardKey,
+            origin,
+            suite: E2EE_SUITE_V1,
+            v: 1,
+        });
+        const boardValue = Buffer.from(boardEnvelope, 'utf8').toString('base64');
+        const boardWrite = await app.inject({
+            method: 'POST', url: '/v1/kv',
+            headers: { authorization: `Bearer ${active.token}` },
+            payload: { mutations: [{ key: boardKey, value: boardValue, version: -1 }] },
+        });
+        expect(boardWrite.statusCode, boardWrite.body).toBe(200);
+        const boardRead = await app.inject({
+            method: 'GET', url: `/v1/kv/${boardKey}`,
+            headers: { authorization: `Bearer ${active.token}` },
+        });
+        expect(boardRead.json()).toEqual({ key: boardKey, value: boardValue, version: 0 });
 
         const rejectedDevice = {
             id: crypto.randomUUID(), type: 'web' as const,

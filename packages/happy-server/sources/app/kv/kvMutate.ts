@@ -8,10 +8,14 @@ import {
     assertAccountResourceQuota,
     configuredResourceLimit,
     enforceAccountWriteRate,
-    lockAccountResources,
 } from '@/app/api/resourceLimits';
 import { base64BytesSchema, utf8StringSchema } from '@/app/api/resourceSchemas';
 import { z } from 'zod';
+import {
+    lockAndValidateE2eeWriter,
+    validateE2eeKvValue,
+    type E2eeWriterAuth,
+} from '@/app/auth/e2eeDataGuard';
 
 export const KV_KEY_MAX_BYTES = 512;
 export const KV_VALUE_MAX_BYTES = 256 * 1024;
@@ -66,7 +70,7 @@ export interface KVMutateResult {
  * Sends a single bundled update notification for all changes.
  */
 export async function kvMutate(
-    ctx: { uid: string },
+    ctx: { uid: string; e2eeWriterAuth?: E2eeWriterAuth },
     mutations: KVMutation[]
 ): Promise<KVMutateResult> {
     const parsedMutations = kvMutationsBodySchema.parse({ mutations }).mutations;
@@ -78,7 +82,16 @@ export async function kvMutate(
         fallback: 240,
     });
     return await inTx(async (tx) => {
-        await lockAccountResources(tx, ctx.uid);
+        const account = await lockAndValidateE2eeWriter(tx, ctx.uid, ctx.e2eeWriterAuth ?? {});
+        if (account.cryptoMode === 'e2ee-v1') {
+            for (const mutation of parsedMutations) {
+                // Tombstones contain no plaintext, but authorization and epoch
+                // state were still checked under the same account lock above.
+                if (mutation.value !== null) {
+                    validateE2eeKvValue(mutation.value, mutation.key, account, KV_VALUE_MAX_BYTES);
+                }
+            }
+        }
         const errors: KVMutateResult['errors'] = [];
         const existingByKey = new Map<string, Awaited<ReturnType<typeof tx.userKVStore.findUnique>>>();
 
@@ -93,6 +106,17 @@ export async function kvMutate(
                 }
             });
             existingByKey.set(mutation.key, existing);
+
+            if (account.cryptoMode === 'e2ee-v1' && existing?.value !== null && existing?.value !== undefined) {
+                validateE2eeKvValue(
+                    privacyKit.encodeBase64(existing.value),
+                    mutation.key,
+                    account,
+                    KV_VALUE_MAX_BYTES,
+                    'e2ee_data_invalid',
+                    'read-existing',
+                );
+            }
 
             const currentVersion = existing?.version ?? -1;
 
