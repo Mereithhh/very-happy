@@ -309,5 +309,46 @@ describe('Api server error handling', () => {
 
             consoleSpy.mockRestore();
         });
+
+        it('keeps the daemon alive when idempotent machine registration is temporarily rate-limited', async () => {
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+            mockPost.mockRejectedValue({
+                response: {
+                    status: 429,
+                    data: { error: 'machine_state_rate_quota_exceeded' },
+                },
+                isAxiosError: true,
+            });
+
+            const result = await api.getOrCreateMachine({
+                machineId: 'test-machine',
+                metadata: testMachineMetadata,
+                daemonState: { status: 'running', pid: 1234 },
+            });
+
+            expect(result).toMatchObject({
+                id: 'test-machine',
+                metadata: testMachineMetadata,
+                metadataVersion: 0,
+                daemonStateVersion: 0,
+            });
+            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Machine registration failed: 429'));
+            consoleSpy.mockRestore();
+        });
+
+        it('does not hide a machine-count quota as a recoverable relay cooldown', async () => {
+            mockPost.mockRejectedValue({
+                response: {
+                    status: 429,
+                    data: { error: 'limit-reached', resource: 'machines', limit: 20 },
+                },
+                isAxiosError: true,
+            });
+
+            await expect(api.getOrCreateMachine({
+                machineId: 'new-machine',
+                metadata: testMachineMetadata,
+            })).rejects.toMatchObject({ response: { status: 429 } });
+        });
     });
 });

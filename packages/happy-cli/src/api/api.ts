@@ -250,6 +250,22 @@ export class ApiClient {
           return createMinimalMachine();
         }
 
+        // Idempotent machine registration can be rate-limited after a relay
+        // restart or several quick daemon restarts. The machine already exists
+        // in the normal case, so keep the daemon alive with its local key and
+        // let the realtime connection recover instead of treating a temporary
+        // 429 as a fatal startup error. Count-limit 429s remain fatal because a
+        // new, unregistered machine cannot recover without operator action.
+        if (status === 429 && error.response?.data?.error === 'machine_state_rate_quota_exceeded') {
+          connectionState.fail({
+            operation: 'Machine registration',
+            errorCode: '429',
+            url: `${configuration.serverUrl}/v1/machines`,
+            details: ['Relay write quota is cooling down; realtime connection will retry automatically']
+          });
+          return createMinimalMachine();
+        }
+
         // Handle 5xx - server error, use offline mode with auto-reconnect
         if (status >= 500) {
           connectionState.fail({
