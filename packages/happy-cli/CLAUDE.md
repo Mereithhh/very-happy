@@ -81,12 +81,11 @@ Core Claude Code integration layer.
 User interface components.
 
 - **`logger.ts`**: Centralized logging system with file output
-- **`qrcode.ts`**: QR code generation for mobile authentication
 - **`start.ts`**: Main application startup and orchestration
 
 **Key Features:**
 - Clean console UI with chalk styling
-- QR code display for easy mobile connection
+- Browser approval for secure machine pairing
 - Graceful mode switching between interactive and remote
 
 ### 4. Core Files
@@ -131,7 +130,7 @@ User interface components.
 - Claude: `@anthropic-ai/claude-code` SDK
 - Networking: Socket.IO client, Axios
 - Crypto: TweetNaCl
-- Terminal: node-pty, chalk, qrcode-terminal
+- Terminal: node-pty, chalk
 - Validation: Zod
 - Testing: Vitest 
 

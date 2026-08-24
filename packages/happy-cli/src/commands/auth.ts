@@ -51,6 +51,12 @@ ${chalk.gray('It can access account credentials and relayed metadata; use a serv
 `);
 }
 
+function printDaemonNextStep(): void {
+  console.log(chalk.bold('\nNext: start the machine daemon'));
+  console.log(`  ${chalk.cyan('very-happy daemon start')}`);
+  console.log(chalk.gray('  It starts in the background and keeps this machine available in Web.'));
+}
+
 async function handleAuthLogin(args: string[]): Promise<void> {
   const forceAuth = args.includes('--force') || args.includes('-f');
 
@@ -93,6 +99,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
       console.log(chalk.gray(`  Host: ${os.hostname()}`));
       console.log(chalk.gray(`  Use 'very-happy auth login --force' to re-authenticate`));
+      printDaemonNextStep();
       return;
     } else if (existingCreds && !settings?.machineId) {
       console.log(chalk.yellow('⚠️  Credentials exist but machine ID is missing'));
@@ -107,6 +114,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     const result = await authAndSetupMachineIfNeeded();
     console.log(chalk.green('\n✓ Authentication successful'));
     console.log(chalk.gray(`  Machine ID: ${result.machineId}`));
+    printDaemonNextStep();
   } catch (error) {
     console.error(chalk.red('Authentication failed:'), error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);
@@ -114,7 +122,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
 }
 
 async function handleAuthLogout(): Promise<void> {
-  // "auth logout will essentially clear the private key that originally came from the phone"
+  // Logout clears the local private key created by the Web approval flow.
   const happyDir = configuration.happyHomeDir;
 
   // Check if authenticated

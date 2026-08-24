@@ -121,7 +121,7 @@
 .pub-trust p { margin: 0; color: var(--text-dim); line-height: 1.65; }
 .pub-trust a, .pub-choice-grid a { min-height: 40px; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); font-size: var(--fs-13); }
 .pub-flow { border-bottom: 1px solid var(--line); }
-.pub-flow ol { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin: var(--sp-8) 0 0; padding: 0; list-style: none; }
+.pub-flow ol { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--sp-3); margin: var(--sp-8) 0 0; padding: 0; list-style: none; }
 .pub-flow ol::before { position: absolute; top: 0; right: 5%; left: 5%; height: 1px; background: linear-gradient(90deg, var(--line), var(--line-2) 74%, var(--accent)); content: ''; }
 .pub-flow li { position: relative; min-width: 0; padding: var(--sp-5); border-top: 1px solid transparent; }
 .pub-flow li::before { position: absolute; top: -4px; left: var(--sp-5); width: 7px; height: 7px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--bg-0); content: ''; }

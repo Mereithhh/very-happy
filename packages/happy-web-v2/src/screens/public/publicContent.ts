@@ -30,10 +30,14 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'Create an account with Google or a username and password. Registration may be closed, invite-only, or at capacity; existing accounts can still sign in when registration is paused.' },
       ] },
       { heading: '3. Connect a machine', blocks: [
-        { type: 'code', code: `${INSTALL_COMMAND}\n${LOGIN_COMMAND}\n${DAEMON_START_COMMAND}` },
-        { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy. Install tmux for durable Web terminals; tmux 3.2 or newer is required for the optional Claude terminal mirror. Without tmux, Web terminals use a non-persistent direct-shell fallback.' },
+        { type: 'code', code: `${INSTALL_COMMAND}\n${LOGIN_COMMAND}` },
+        { type: 'p', text: 'The CLI opens a one-time browser approval page. Confirm it only if you started the command on the machine in front of you. Public and non-loopback deployments should use HTTPS.' },
       ] },
-      { heading: '4. Start work', blocks: [
+      { heading: '4. Start the machine daemon', blocks: [
+        { type: 'code', code: DAEMON_START_COMMAND },
+        { type: 'p', text: 'This starts a detached background process. The machine appears in Web while its daemon is connected. Run it again after a reboot unless your service manager starts it automatically. Install tmux for durable Web terminals; tmux 3.2 or newer is required for the optional Claude terminal mirror. Without tmux, Web terminals use a non-persistent direct-shell fallback.' },
+      ] },
+      { heading: '5. Start work', blocks: [
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # Claude Code\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
         { type: 'p', text: 'Start Claude Code or Codex from the CLI, or connect through a configured local OpenClaw gateway. The beta Agent Client Protocol backend also includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio, and its flags remain agent-specific. OpenClaw uses its own local gateway protocol, not ACP. You can also select the connected machine and create a session or terminal from Web. Run very-happy daemon status if the machine remains offline.' },
       ] },

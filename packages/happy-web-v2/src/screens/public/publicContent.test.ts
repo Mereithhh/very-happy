@@ -22,6 +22,8 @@ describe('public documentation registry', () => {
     expect(text).toContain('OpenClaw uses its own local gateway protocol, not ACP');
     expect(text).toContain('very-happy install-terminal-hooks --remove');
     expect(text).toContain('~/.claude/settings.json');
+    expect(text).toContain('4. Start the machine daemon');
+    expect(text).toContain('This starts a detached background process');
     expect(text).toContain("Upstream Happy's core Claude flow");
     expect(text).toContain('tmux keeps the real TTY/TUI alive');
     expect(text).toContain('This mirror is Claude-specific');
@@ -48,6 +50,8 @@ describe('public documentation registry', () => {
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
+    expect(landing).toContain('From zero to a live agent in five steps.');
+    expect(landing).toContain('<h3>Start the daemon</h3>');
     expect(landing).toContain('STRUCTURED WHEN YOU WANT IT.');
     expect(landing).toContain('THE REAL TUI WHEN YOU NEED IT.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');

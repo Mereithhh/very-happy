@@ -93,6 +93,12 @@ requires a configured compatible voice service.
 ```bash
 npm install -g very-happy-cli
 very-happy auth login
+```
+
+After approving the machine in your browser, start its detached background
+daemon so the machine remains available in Web:
+
+```bash
 very-happy daemon start
 
 # Start from a project directory

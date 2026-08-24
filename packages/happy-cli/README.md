@@ -55,6 +55,14 @@ darwin/linux/win32 on x64/arm64.
 
 ## Usage
 
+Pair the machine, then start its detached background daemon so the Web UI can
+reach it:
+
+```bash
+very-happy auth login
+very-happy daemon start
+```
+
 ```bash
 very-happy            # start a Claude Code session and connect to the relay
 very-happy claude     # same, explicit

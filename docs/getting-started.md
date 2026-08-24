@@ -47,11 +47,20 @@ HAPPY_WEBAPP_URL=https://happy.example.com \
 very-happy auth login
 ```
 
-## 4. Start the daemon and first session
+## 4. Start the machine daemon
 
 ```bash
 very-happy daemon start
+```
 
+This starts a detached background process. The machine appears in Web while its
+daemon is connected. Run the command again after a reboot unless your service
+manager starts it automatically. Confirm it is online with
+`very-happy daemon status`.
+
+## 5. Start the first session
+
+```bash
 cd /path/to/project
 very-happy          # Claude Code
 very-happy codex    # Codex

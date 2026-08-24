@@ -3,26 +3,15 @@ import { configuration } from "@/configuration";
 import { randomBytes } from "node:crypto";
 import tweetnacl from 'tweetnacl';
 import axios from 'axios';
-import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
 import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey } from "@/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
-import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
-import { render } from 'ink';
-import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
-
-    // Show authentication method selector
-    const authMethod = await selectAuthenticationMethod();
-    if (!authMethod) {
-        console.log('\nAuthentication cancelled.\n');
-        process.exit(0);
-    }
 
     // Generating ephemeral key
     const secret = new Uint8Array(randomBytes(32));
@@ -60,60 +49,7 @@ export async function doAuth(): Promise<Credentials | null> {
         return null;
     }
 
-    // Handle authentication based on selected method
-    if (authMethod === 'mobile') {
-        return await doMobileAuth(keypair, claimSecret);
-    } else {
-        return await doWebAuth(keypair, claimSecret);
-    }
-}
-
-/**
- * Display authentication method selector and return user choice
- */
-function selectAuthenticationMethod(): Promise<AuthMethod | null> {
-    return new Promise((resolve) => {
-        let hasResolved = false;
-
-        const onSelect = (method: AuthMethod) => {
-            if (!hasResolved) {
-                hasResolved = true;
-                app.unmount();
-                resolve(method);
-            }
-        };
-
-        const onCancel = () => {
-            if (!hasResolved) {
-                hasResolved = true;
-                app.unmount();
-                resolve(null);
-            }
-        };
-
-        const app = render(React.createElement(AuthSelector, { onSelect, onCancel }), {
-            exitOnCtrlC: false,
-            patchConsole: false
-        });
-    });
-}
-
-/**
- * Handle mobile authentication flow
- */
-async function doMobileAuth(keypair: tweetnacl.BoxKeyPair, claimSecret: string): Promise<Credentials | null> {
-    console.clear();
-    console.log('\nMobile Authentication\n');
-    console.log('Scan this QR code with your Happy mobile app:\n');
-
-    const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
-    displayQRCode(authUrl);
-
-    console.log('\nOr manually enter this URL:');
-    console.log(authUrl);
-    console.log('');
-
-    return await waitForAuthentication(keypair, claimSecret);
+    return await doWebAuth(keypair, claimSecret);
 }
 
 /**

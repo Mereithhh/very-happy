@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, Laptop, LogIn, PackagePlus } from 'lucide-react';
+import { Check, Copy, ExternalLink, LogIn, PackagePlus, Power } from 'lucide-react';
 import { useState } from 'react';
 import { Button, useToast } from '@/ui';
 import { useNavigate } from 'react-router-dom';
@@ -7,6 +7,7 @@ import './firstRun.css';
 
 const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 const LOGIN_COMMAND = 'very-happy auth login';
+const DAEMON_START_COMMAND = 'very-happy daemon start';
 
 function Command({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -52,8 +53,8 @@ export function FirstRunScreen() {
           <div><h2>{t('onboarding.linkTitle')}</h2><p>{t('onboarding.linkDescription')}</p><Command value={LOGIN_COMMAND} /></div>
         </li>
         <li>
-          <div className="fr-step-icon"><Laptop size={19} /></div>
-          <div><h2>{t('onboarding.startTitle')}</h2><p>{t('onboarding.startDescription')}</p></div>
+          <div className="fr-step-icon"><Power size={19} /></div>
+          <div><h2>{t('onboarding.daemonTitle')}</h2><p>{t('onboarding.daemonDescription')}</p><Command value={DAEMON_START_COMMAND} /></div>
         </li>
       </ol>
 
