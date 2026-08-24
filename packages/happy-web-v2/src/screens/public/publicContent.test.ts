@@ -42,7 +42,8 @@ describe('public documentation registry', () => {
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
-    expect(productPreview).toContain('Terminal + files');
+    expect(productPreview).toContain('terminal and files');
+    expect(productPreview).toContain('Open task board');
     expect(productPreview).toContain('Optional terminal hooks installed');
     expect(productPreview).not.toContain('Sanitized Codex terminal');
     expect(productPreview).toContain('Task board');
@@ -123,7 +124,7 @@ describe('public documentation registry', () => {
     expect(preview).toContain('className="sd"');
     expect(preview).toContain('className="bd"');
     expect(preview).toContain('window.requestAnimationFrame');
-    expect(preview.match(/\sinert[> }]/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(preview.match(/\sinert[> }]/g)?.length).toBeGreaterThanOrEqual(2);
     expect(preview).not.toMatch(/@\/sync\//);
     expect(preview).not.toMatch(/@\/auth\//);
     expect(preview).not.toMatch(/from ['"].*WebTerminalScreen/);
@@ -162,6 +163,29 @@ describe('public documentation registry', () => {
     expect(landing).not.toContain('One thread. Three ways');
   });
 
+  it('navigates the product proof through real product controls instead of marketing scene tabs', () => {
+    const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
+    const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    expect(preview).not.toContain('pub-product-tabs');
+    expect(preview).not.toContain('role="tablist"');
+    expect(preview).not.toContain('role="tab"');
+    expect(preview).not.toContain('tabRefs');
+    expect(publicStyles).not.toContain('.pub-product-tabs');
+    expect(preview).toContain('aria-label="Open task board"');
+    expect(preview).toContain('onClick={onBoard}');
+    expect(preview).toContain('onClick={onStructured}');
+    expect(preview).toContain('onClick={onFiles}');
+    expect(preview).toContain('onClick={onBack}');
+    expect(preview).toContain('data-product-session');
+    expect(preview).toContain('product-app--nav-open');
+    expect(preview).toContain('aria-live="polite"');
+    expect(preview).toContain('event.target !== event.currentTarget');
+    expect(preview).toContain("focusInsideProduct('.product-detail .vh-back')");
+    expect(styles).toContain('.product-app--nav-open .product-sidebar');
+    expect(styles).toContain('.product-app--nav-open .product-detail { visibility: hidden; }');
+  });
+
   it('renders interactive voice and launcher proofs without public-route app state', () => {
     const proof = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
@@ -187,18 +211,18 @@ describe('public documentation registry', () => {
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
-  it('keeps multiple product previews in separate tab and focus scopes', () => {
+  it('keeps multiple product previews in separate id and focus scopes', () => {
     const hero = getProductPreviewIds('hero');
     const showcase = getProductPreviewIds('showcase');
     const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     expect(new Set([
       hero.panel,
-      ...Object.values(hero.tabs),
+      hero.files,
       showcase.panel,
-      ...Object.values(showcase.tabs),
-    ]).size).toBe(8);
-    expect(preview).toContain('tabRefs.current[next.id]?.focus()');
-    expect(preview).toContain("if (next.id === 'terminal') setFilesOpen(true)");
+      showcase.files,
+    ]).size).toBe(4);
+    expect(preview).toContain('focusInsideProduct');
+    expect(preview).toContain("window.getComputedStyle(sidebarElement).display !== 'none'");
     expect(preview).not.toContain('document.getElementById');
     expect(preview).not.toContain('<main className="product-detail">');
   });

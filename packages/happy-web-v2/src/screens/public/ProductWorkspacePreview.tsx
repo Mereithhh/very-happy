@@ -48,101 +48,82 @@ import { useImeGuard } from '../../utils/ime';
 import './productWorkspacePreview.css';
 import { getProductPreviewIds, type ProductPreviewView } from './productPreviewIds';
 
-const TABS: Array<{ id: ProductPreviewView; label: string; detail: string }> = [
-  { id: 'terminal', label: 'Terminal + files', detail: 'Claude in a managed terminal' },
-  { id: 'conversation', label: 'Conversation', detail: 'Its structured mirror' },
-  { id: 'board', label: 'Task board', detail: 'The workspace overview' },
-];
+const VIEW_LABELS: Record<ProductPreviewView, string> = {
+  terminal: 'terminal and files',
+  conversation: 'structured conversation',
+  board: 'task board',
+};
 
 export function ProductWorkspacePreview({
   compact = false,
   initialView,
-  navigation = true,
   sidebar = true,
 }: {
   compact?: boolean;
   initialView?: ProductPreviewView;
-  navigation?: boolean;
   sidebar?: boolean;
 }) {
   const [view, setView] = useState<ProductPreviewView>(initialView ?? (compact ? 'conversation' : 'terminal'));
   const [filesOpen, setFilesOpen] = useState(true);
+  const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false);
   const instanceId = useId();
   const ids = getProductPreviewIds(instanceId);
   const productRef = useRef<HTMLDivElement | null>(null);
-  const tabRefs = useRef<Record<ProductPreviewView, HTMLButtonElement | null>>({ terminal: null, conversation: null, board: null });
   const focusInsideProduct = (selector: string) => {
     window.requestAnimationFrame(() => productRef.current?.querySelector<HTMLElement>(selector)?.focus());
   };
-  const returnToTerminal = () => {
+  const showTerminal = (openFiles = false) => {
+    setWorkspaceNavOpen(false);
     setView('terminal');
-    setFilesOpen(false);
-    if (navigation) window.requestAnimationFrame(() => tabRefs.current.terminal?.focus());
-    else focusInsideProduct('[aria-label="Open structured Claude mirror"]');
+    setFilesOpen(openFiles);
+    focusInsideProduct(openFiles ? '[aria-label="Close files and return to terminal"]' : '[aria-label="Open structured Claude mirror"]');
   };
   const openStructured = () => {
+    setWorkspaceNavOpen(false);
     setView('conversation');
     focusInsideProduct('.mrb-term-btn');
   };
+  const openBoard = () => {
+    setWorkspaceNavOpen(false);
+    setView('board');
+    focusInsideProduct('.bd .vh-back');
+  };
+  const openWorkspaceNav = () => {
+    const sidebarElement = productRef.current?.querySelector<HTMLElement>('.product-sidebar');
+    if (sidebarElement && window.getComputedStyle(sidebarElement).display !== 'none') {
+      sidebarElement.querySelector<HTMLElement>('[data-product-session]')?.focus();
+      return;
+    }
+    setWorkspaceNavOpen(true);
+    focusInsideProduct('[data-product-session]');
+  };
+  const closeWorkspaceNav = () => {
+    setWorkspaceNavOpen(false);
+    focusInsideProduct('.product-detail .vh-back');
+  };
 
   return (
-    <div className={`product-preview${compact ? ' product-preview--compact' : ''}${!navigation ? ' product-preview--surface' : ''}`}>
-      {navigation && <div className="pub-product-tabs" role="tablist" aria-label="Real product views">
-        {TABS.map((tab, index) => (
-          <button
-            key={tab.id}
-            ref={(element) => { tabRefs.current[tab.id] = element; }}
-            id={ids.tabs[tab.id]}
-            type="button"
-            role="tab"
-            aria-selected={view === tab.id}
-            aria-controls={ids.panel}
-            tabIndex={view === tab.id ? 0 : -1}
-            onClick={() => {
-              setView(tab.id);
-              if (tab.id === 'terminal') setFilesOpen(true);
-            }}
-            onKeyDown={(event) => {
-              if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
-              event.preventDefault();
-              const nextIndex = event.key === 'Home'
-                ? 0
-                : event.key === 'End'
-                  ? TABS.length - 1
-                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
-              const next = TABS[nextIndex];
-              setView(next.id);
-              if (next.id === 'terminal') setFilesOpen(true);
-              tabRefs.current[next.id]?.focus();
-            }}
-          >
-            <span className="mono">0{index + 1}</span>
-            <strong>{tab.label}</strong>
-            <small>{tab.detail}</small>
-          </button>
-        ))}
-      </div>}
-
+    <div className={`product-preview${compact ? ' product-preview--compact' : ''}`}>
+      <span className="sr-only" aria-live="polite">Showing the sanitized {VIEW_LABELS[view]} preview.</span>
       <div
         ref={productRef}
         id={ids.panel}
-        className={`product-app${!sidebar ? ' product-app--no-sidebar' : ''}`}
-        role={navigation ? 'tabpanel' : 'group'}
-        aria-labelledby={navigation ? ids.tabs[view] : undefined}
-        aria-label={navigation ? undefined : TABS.find((tab) => tab.id === view)?.label}
+        className={`product-app${!sidebar ? ' product-app--no-sidebar' : ''}${workspaceNavOpen ? ' product-app--nav-open' : ''}`}
+        role="group"
+        aria-label={`Interactive sanitized ${VIEW_LABELS[view]} product preview`}
       >
-        {sidebar && <ProductSidebar active={view} />}
+        {sidebar && <ProductSidebar active={view} onTerminal={() => showTerminal(false)} onBoard={openBoard} onCloseNav={closeWorkspaceNav} />}
         <div className="product-detail">
-          {view === 'terminal' && <TerminalAndFiles filesId={ids.files} filesOpen={filesOpen} onCloseFiles={() => setFilesOpen(false)} onOpenFiles={() => setFilesOpen(true)} onStructured={openStructured} />}
-          {view === 'conversation' && <Conversation onReturn={returnToTerminal} />}
-          {view === 'board' && <Board />}
+          {view === 'terminal' && <TerminalAndFiles filesId={ids.files} filesOpen={filesOpen} onBack={openWorkspaceNav} onCloseFiles={() => setFilesOpen(false)} onOpenFiles={() => setFilesOpen(true)} onStructured={openStructured} />}
+          {view === 'conversation' && <Conversation onBack={openWorkspaceNav} onFiles={() => showTerminal(true)} onReturn={() => showTerminal(false)} />}
+          {view === 'board' && <Board onBack={openWorkspaceNav} onOpenSession={(target) => target === 'terminal' ? showTerminal(false) : openStructured()} />}
         </div>
       </div>
     </div>
   );
 }
 
-function ProductSidebar({ active }: { active: ProductPreviewView }) {
+function ProductSidebar({ active, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
   const rows = [
     { icon: TerminalSquare, title: 'Release candidate', meta: 'claude · working', selected: active === 'terminal' || active === 'conversation', live: true },
     { icon: MessageSquare, title: 'Onboarding polish', meta: 'codex · 14m', selected: false },
@@ -150,40 +131,40 @@ function ProductSidebar({ active }: { active: ProductPreviewView }) {
     { icon: TerminalSquare, title: 'Docs structure', meta: 'workstation · 1h', selected: false },
   ];
   return (
-    <aside className="product-sidebar" aria-label="Example session sidebar" inert>
+    <aside className="product-sidebar" aria-label="Example session sidebar">
       <div className="sb">
         <header className="sb-header">
           <div className="sb-brand"><strong>Very Happy</strong></div>
           <div className="sb-header-right">
-            <button className="sb-icon-btn" type="button" aria-label="Search"><Search size={16} /></button>
-            <button className="sb-icon-btn" type="button" aria-label="Voice assistant"><AudioLines size={16} /></button>
-            <button className="sb-icon-btn sb-board-btn" type="button" aria-label="Task board"><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button>
-            <button className="sb-icon-btn" type="button" aria-label="Collapse"><PanelLeftClose size={16} /></button>
-            <button className="sb-icon-btn" type="button" aria-label="New session"><Plus size={17} /></button>
+            <button className="sb-icon-btn" type="button" aria-label="Search" disabled><Search size={16} /></button>
+            <button className="sb-icon-btn" type="button" aria-label="Voice assistant" disabled><AudioLines size={16} /></button>
+            <button className="sb-icon-btn sb-board-btn" type="button" aria-label="Open task board" aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button>
+            <button className="sb-icon-btn product-nav-close" type="button" aria-label="Close session list" onClick={onCloseNav}><PanelLeftClose size={16} /></button>
+            <button className="sb-icon-btn" type="button" aria-label="New session" disabled><Plus size={17} /></button>
           </div>
         </header>
-        <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button">LIST</button><button className="sb-filter-btn" type="button">STATUS</button><button className="sb-filter-btn" type="button">ARCHIVED</button></div>
+        <div className="sb-filter" role="presentation"><button className="sb-filter-btn is-on" type="button" disabled>LIST</button><button className="sb-filter-btn" type="button" disabled>STATUS</button><button className="sb-filter-btn" type="button" disabled>ARCHIVED</button></div>
         <div className="sb-list">
           <div className="sb-section">
             {rows.map(({ icon: Icon, title, meta, selected, attention, live }) => (
               <div key={title} className={`sb-row${selected ? ' is-selected' : ''}${attention ? ' sb-row--attention' : ''}`}>
-                <button type="button" className="sb-row-main">
+                <button type="button" className="sb-row-main" data-product-session={title === 'Release candidate' ? '' : undefined} disabled={title !== 'Release candidate'} onClick={title === 'Release candidate' ? onTerminal : undefined}>
                   <span className={`sb-row-icon${Icon === TerminalSquare ? ' sb-row-icon--term' : ''}`}>{Icon === TerminalSquare && live ? <span className="sb-row-term-icon"><Icon size={16} /><span className="sb-row-agent-dot"><span className="vh-dot vh-dot--thinking vh-dot--pulse product-agent-dot" role="img" aria-label="Working" /></span></span> : <Icon size={16} />}</span>
                   <span className="sb-row-text"><span className="sb-row-title-line"><span className="sb-row-title">{title}</span></span><span className="sb-row-sub mono">{meta}</span></span>
                   {attention && <span className="sb-row-signal sb-row-signal--attention" />}
                 </button>
-                <button type="button" className="sb-row-menu" aria-label={`${title} actions`}><MoreHorizontal size={16} /></button>
+                <button type="button" className="sb-row-menu" aria-label={`${title} actions`} disabled><MoreHorizontal size={16} /></button>
               </div>
             ))}
           </div>
         </div>
-        <footer className="sb-footer"><button className="sb-footer-btn" type="button"><Settings size={15} /> Settings</button></footer>
+        <footer className="sb-footer"><button className="sb-footer-btn" type="button" disabled><Settings size={15} /> Settings</button></footer>
       </div>
     </aside>
   );
 }
 
-function TerminalAndFiles({ filesId, filesOpen, onCloseFiles, onOpenFiles, onStructured }: { filesId: string; filesOpen: boolean; onCloseFiles: () => void; onOpenFiles: () => void; onStructured: () => void }) {
+function TerminalAndFiles({ filesId, filesOpen, onBack, onCloseFiles, onOpenFiles, onStructured }: { filesId: string; filesOpen: boolean; onBack: () => void; onCloseFiles: () => void; onOpenFiles: () => void; onStructured: () => void }) {
   const filesButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const openFiles = () => {
@@ -212,7 +193,7 @@ function TerminalAndFiles({ filesId, filesOpen, onCloseFiles, onOpenFiles, onStr
   return (
     <><p className="sr-only">A running Claude process in a durable terminal beside its project file browser and source preview.</p><div className="term-screen">
       <header className="term-header">
-        <button className="vh-back" type="button" aria-label="Back" disabled><ArrowLeft size={18} /></button>
+        <button className="vh-back" type="button" aria-label="Open session list" onClick={onBack}><ArrowLeft size={18} /></button>
         <button className="term-title" type="button" disabled><span className="term-title-text">Release candidate</span><Pencil size={13} className="term-title-edit" /></button>
         <div className="term-header-right">
           <button className="sb-icon-btn" type="button" aria-label="Open structured Claude mirror" onClick={onStructured}><MessagesSquare size={18} /></button>
@@ -352,7 +333,7 @@ function FilePreview({ file, onBack, backButtonRef }: { file: PreviewFile; onBac
   return <div className="fsb-viewer product-file-preview"><div className="fsb-viewer-head"><span className="fsb-viewer-path">~/code/very-happy/src/screens/public/{file}</span><span inert><button type="button" className="fsb-iconbtn" aria-label="Copy path"><Copy size={14} /></button><button type="button" className="fsb-iconbtn" aria-label="Fullscreen"><Maximize2 size={14} /></button></span><button ref={backButtonRef} type="button" className="fsb-iconbtn" aria-label="Back to file list" onClick={onBack}><ArrowLeft size={15} /></button></div><div className="fsb-viewer-body"><div className="cv"><div className="cv-bar"><span className="cv-lang">{file.split('.').pop()}</span><span className="cv-copy mono">SANITIZED</span></div><div className="cv-body"><pre className="cv-pre"><code>{PREVIEW_FILE_CONTENT[file]}</code></pre></div></div></div></div>;
 }
 
-function Conversation({ onReturn }: { onReturn: () => void }) {
+function Conversation({ onBack, onFiles, onReturn }: { onBack: () => void; onFiles: () => void; onReturn: () => void }) {
   const demoNoteId = useId();
   const ime = useImeGuard();
   const [draft, setDraft] = useState('');
@@ -363,7 +344,7 @@ function Conversation({ onReturn }: { onReturn: () => void }) {
     setSent(next);
     setDraft('');
   };
-  return <div className="sd"><div className="sd-main"><header className="ch" inert><button className="vh-back" type="button" aria-label="Back"><ArrowLeft size={18} /></button><div className="ch-main"><button type="button" className="ch-title-btn"><span className="ch-title">Release candidate</span><Pencil size={13} className="ch-title-pencil" /></button><div className="ch-crumb"><span className="ch-crumb-host">workstation</span><span className="ch-crumb-sep">·</span><span className="ch-crumb-cwd">~/code/very-happy</span></div></div><div className="ch-status"><button className="ch-icon" type="button" aria-label="Files"><FolderOpen size={17} /></button></div></header><div className="mrb"><div className="mrb-note" role="note"><span className="mrb-note-text">Optional terminal hooks installed · demo input stays local</span><span className="mrb-meter mono">38k · 81% left</span><button type="button" className="mrb-term-btn mono" onClick={onReturn}><TerminalSquare size={13} /><span>Back to terminal</span></button></div></div><div className="sd-body product-chat"><div className="msg msg--user"><div className="msg-bubble">Can I leave the terminal while the release check keeps running?</div></div><div className="msg msg--agent"><div className="msg-agent-text">Yes. This structured view follows the active Claude terminal binding, including tool activity and results.</div></div><ToolActivityProof /><div className="msg msg--agent"><div className="msg-agent-text">The process is still live. Use “Back to terminal” when the raw TUI needs your attention.</div></div>{sent && <div className="msg msg--user"><div className="msg-bubble">{sent}</div></div>}</div><div className="mri"><span id={demoNoteId} className="sr-only">Local public-page preview. This text is not sent or stored.</span><textarea className="mri-input" rows={1} value={draft} placeholder="LOCAL PREVIEW · NOT SENT" aria-label="Add a message to the local preview; nothing is sent" aria-describedby={demoNoteId} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !ime.isGuarded(event)) { event.preventDefault(); send(); } }} onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd} /><button type="button" className="mri-send" aria-label="Add message to local preview; nothing is sent" disabled={!draft.trim()} onClick={() => { if (!ime.isComposing()) send(); }}><SendHorizontal size={16} /></button></div></div></div>;
+  return <div className="sd"><div className="sd-main"><header className="ch"><button className="vh-back" type="button" aria-label="Open session list" onClick={onBack}><ArrowLeft size={18} /></button><div className="ch-main"><button type="button" className="ch-title-btn" disabled><span className="ch-title">Release candidate</span><Pencil size={13} className="ch-title-pencil" /></button><div className="ch-crumb"><span className="ch-crumb-host">workstation</span><span className="ch-crumb-sep">·</span><span className="ch-crumb-cwd">~/code/very-happy</span></div></div><div className="ch-status"><button className="ch-icon" type="button" aria-label="Open files" onClick={onFiles}><FolderOpen size={17} /></button></div></header><div className="mrb"><div className="mrb-note" role="note"><span className="mrb-note-text">Optional terminal hooks installed · demo input stays local</span><span className="mrb-meter mono">38k · 81% left</span><button type="button" className="mrb-term-btn mono" onClick={onReturn}><TerminalSquare size={13} /><span>Back to terminal</span></button></div></div><div className="sd-body product-chat"><div className="msg msg--user"><div className="msg-bubble">Can I leave the terminal while the release check keeps running?</div></div><div className="msg msg--agent"><div className="msg-agent-text">Yes. This structured view follows the active Claude terminal binding, including tool activity and results.</div></div><ToolActivityProof /><div className="msg msg--agent"><div className="msg-agent-text">The process is still live. Use “Back to terminal” when the raw TUI needs your attention.</div></div>{sent && <div className="msg msg--user"><div className="msg-bubble">{sent}</div></div>}</div><div className="mri"><span id={demoNoteId} className="sr-only">Local public-page preview. This text is not sent or stored.</span><textarea className="mri-input" rows={1} value={draft} placeholder="LOCAL PREVIEW · NOT SENT" aria-label="Add a message to the local preview; nothing is sent" aria-describedby={demoNoteId} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !ime.isGuarded(event)) { event.preventDefault(); send(); } }} onCompositionStart={ime.onCompositionStart} onCompositionEnd={ime.onCompositionEnd} /><button type="button" className="mri-send" aria-label="Add message to local preview; nothing is sent" disabled={!draft.trim()} onClick={() => { if (!ime.isComposing()) send(); }}><SendHorizontal size={16} /></button></div></div></div>;
 }
 
 function ToolActivityProof() {
@@ -371,11 +352,13 @@ function ToolActivityProof() {
   return <div className="tg tg--done"><div className="tg-spine" aria-hidden="true" /><div className="tg-content"><div className="tg-row"><div className="tg-row-head-wrap"><button type="button" className="tg-row-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}><ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} /><span className="vh-dot vh-dot--connected" aria-hidden="true" /><span className="tg-tool-label">Edit</span></button><span className="tg-tool-detail">styles/base.css</span></div>{open && <div className="tg-body"><div className="cv product-diff"><div className="cv-bar"><span className="cv-lang">diff</span><span className="cv-copy mono">SANITIZED</span></div><div className="cv-body"><pre className="cv-pre"><code>{'- font-size: var(--fs-14);\n+ font-size: var(--fs-16);'}</code></pre></div></div></div>}</div></div></div>;
 }
 
-function Board() {
+function Board({ onBack, onOpenSession }: { onBack: () => void; onOpenSession: (target: 'terminal' | 'conversation') => void }) {
+  const [completed, setCompleted] = useState<string[]>([]);
   const columns = [
     { title: 'WORKING', cards: [['Landing product proof', 'workstation', 'Reusing product UI contracts.']] },
     { title: 'WAITING ON ME', attention: true, cards: [['Approve production release', 'human judgment', 'All quality gates passed.']] },
     { title: 'DONE', cards: [['Security boundary review', 'review-node', 'Trusted relay language verified.']] },
   ];
-  return <><p className="sr-only">A three-column task board showing work in progress, one release decision waiting for human judgment, and a completed security review.</p><div className="bd" inert><header className="bd-header"><button className="vh-back" type="button" aria-label="Back"><ArrowLeft size={18} /></button><span className="bd-title">Task board</span><span className="bd-summary-attn">1 needs you</span></header><div className="bd-cols">{columns.map((column) => <section key={column.title} className={`bd-col${column.attention ? ' bd-col--attention' : ''}`}><header className="bd-col-head"><span className="bd-col-label eyebrow">{column.title}</span><span className="bd-col-count mono">{column.cards.length}</span></header><div className="bd-col-list">{column.cards.map(([title, machine, progress]) => <div key={title} className={`bd-card bd-card--${column.attention ? 'attention' : column.title === 'WORKING' ? 'working' : 'idle'}`} role="button" tabIndex={0}><div className="bd-card-head"><span className={`product-status-dot${column.title === 'WORKING' ? ' is-live' : ''}${column.attention ? ' is-attention' : ''}`} /><span className="bd-card-title">{title}</span><button type="button" className="bd-card-done" aria-label="Mark done"><Check size={13} /></button><MessageSquare size={14} className="bd-card-kind" /></div><div className="bd-card-meta mono"><span className="bd-card-machine">{machine}</span><span className="bd-card-cwd">~/code/very-happy</span></div><div className="bd-card-progress">{progress}</div><div className="bd-card-foot mono"><span className="bd-card-time">2m ago</span></div></div>)}</div></section>)}</div></div></>;
+  const openCard = (column: string) => onOpenSession(column === 'WORKING' ? 'terminal' : 'conversation');
+  return <><p className="sr-only">A three-column task board showing work in progress, one release decision waiting for human judgment, and a completed security review.</p><div className="bd"><header className="bd-header"><button className="vh-back" type="button" aria-label="Open session list" onClick={onBack}><ArrowLeft size={18} /></button><span className="bd-title">Task board</span><span className="bd-summary-attn">1 needs you</span></header><div className="bd-cols">{columns.map((column) => <section key={column.title} className={`bd-col${column.attention ? ' bd-col--attention' : ''}`}><header className="bd-col-head"><span className="bd-col-label eyebrow">{column.title}</span><span className="bd-col-count mono">{column.cards.length}</span></header><div className="bd-col-list">{column.cards.map(([title, machine, progress]) => { const isDone = completed.includes(title); return <div key={title} className={`bd-card bd-card--${column.attention ? 'attention' : column.title === 'WORKING' ? 'working' : 'idle'}${isDone ? ' bd-card--ended' : ''}`} role="button" tabIndex={0} aria-label={`Open ${title}`} onClick={() => openCard(column.title)} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCard(column.title); } }}><div className="bd-card-head"><span className={`product-status-dot${column.title === 'WORKING' && !isDone ? ' is-live' : ''}${column.attention && !isDone ? ' is-attention' : ''}`} /><span className="bd-card-title">{title}</span><button type="button" className="bd-card-done" aria-label={isDone ? `${title} marked done` : `Mark ${title} done`} aria-pressed={isDone} onClick={(event) => { event.stopPropagation(); setCompleted((items) => items.includes(title) ? items.filter((item) => item !== title) : [...items, title]); }}><Check size={13} /></button><MessageSquare size={14} className="bd-card-kind" /></div><div className="bd-card-meta mono"><span className="bd-card-machine">{machine}</span><span className="bd-card-cwd">~/code/very-happy</span></div><div className="bd-card-progress">{isDone ? 'Marked done in this local demo.' : progress}</div><div className="bd-card-foot mono"><span className="bd-card-time">2m ago</span></div></div>; })}</div></section>)}</div></div></>;
 }
