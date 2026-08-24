@@ -53,14 +53,6 @@ export async function storeSessionMessages(options: {
     }
     const uniqueMessages = [...firstByLocalId.values(), ...messagesWithoutLocalId];
 
-    await enforceAccountWriteRate({
-        accountId: options.accountId,
-        resource: 'message',
-        units: uniqueMessages.length,
-        envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
-        fallback: 600,
-    });
-
     return inTx(async (tx) => {
         // Serialize the duplicate check, quota reservation, and inserts across
         // both transports and every server replica.
@@ -75,6 +67,18 @@ export async function storeSessionMessages(options: {
         const newMessages = uniqueMessages.filter((message) => (
             message.localId === null || !existingLocalIds.has(message.localId)
         ));
+        // Daemons replay pending localIds after reconnect/restart. Charge only
+        // rows that will actually be inserted; charging idempotent retries can
+        // turn a normal multi-session replay into a permanent 429 retry storm.
+        if (newMessages.length > 0) {
+            await enforceAccountWriteRate({
+                accountId: options.accountId,
+                resource: 'message',
+                units: newMessages.length,
+                envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
+                fallback: 600,
+            });
+        }
         const encoded = newMessages.map((message) => ({
             input: message,
             content: { t: 'encrypted' as const, c: message.content },

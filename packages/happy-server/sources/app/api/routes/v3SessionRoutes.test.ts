@@ -654,16 +654,20 @@ describe("v3SessionRoutes", () => {
         seedSession({ id: "session-1", accountId: "user-1" });
         seedMessage({ sessionId: "session-1", seq: 1, localId: "existing", content: { t: "encrypted", c: "old" } });
         process.env.MAX_MESSAGES_PER_ACCOUNT = "1";
+        process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE = "1";
         app = await createApp();
 
-        const retry = await app.inject({
-            method: "POST",
-            url: "/v3/sessions/session-1/messages",
-            headers: { "x-user-id": "user-1" },
-            payload: { messages: [{ localId: "existing", content: "ignored" }] },
-        });
-        expect(retry.statusCode).toBe(200);
+        for (let retryIndex = 0; retryIndex < 3; retryIndex += 1) {
+            const retry = await app.inject({
+                method: "POST",
+                url: "/v3/sessions/session-1/messages",
+                headers: { "x-user-id": "user-1" },
+                payload: { messages: [{ localId: "existing", content: "ignored" }] },
+            });
+            expect(retry.statusCode).toBe(200);
+        }
         expect(state.messages).toHaveLength(1);
+        expect(state.rateCountByKey.size).toBe(0);
 
         process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE = "2";
         state.rateCountByKey.clear();
