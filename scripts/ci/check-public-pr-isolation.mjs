@@ -35,6 +35,18 @@ if (!/server-container-smoke:[\s\S]*if: github\.event_name == 'pull_request'[\s\
   errors.push('quality.yml: container smoke must run only for PRs on ubuntu-latest');
 }
 
+if (!/secret-scan:[\s\S]*runs-on: ubuntu-latest[\s\S]*fetch-depth: 0[\s\S]*scan-secrets\.sh --ci/.test(
+  workflows['quality.yml'] ?? '',
+)) {
+  errors.push('quality.yml: introduced-commit secret scan must run on ubuntu-latest with full history');
+}
+const secretScanScript = readFileSync(new URL('./scan-secrets.sh', import.meta.url), 'utf8');
+if (!/GITLEAKS_VERSION="8\.30\.0"/.test(secretScanScript)
+  || !/GITLEAKS_LINUX_X64_SHA256="[a-f0-9]{64}"/.test(secretScanScript)
+  || !/--redact=100/.test(secretScanScript)) {
+  errors.push('scan-secrets.sh: scanner version, checksum, and full redaction must stay pinned');
+}
+
 for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
   if (/pull_request\s*:/.test(workflows[name] ?? '')) {
     errors.push(`${name}: privileged workflow must never accept pull_request`);

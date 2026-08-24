@@ -129,7 +129,7 @@
 | B-028 | bundle 瘦身：514KB gzip 首屏、两套 crypto 打一个 chunk、shiki 全语言进 precache（每次发版 PWA 重下 5.7MB） | debt | 工程走查#12 | todo | shiki 动态 import + globIgnores |
 | B-029 | 上游同步：加 upstream remote + UPSTREAM_SYNC.md（server/cli 仍可 cherry-pick，web 已另立） | debt | 工程走查#13 | todo | 季度扫一次 |
 | B-030 | patches/*.cjs 静默失效风险：patched===0 时应 exit 1 或迁 pnpm patchedDependencies | debt | 工程走查#14 | todo | |
-| B-031 | CI 加 gitleaks job；核 metrics 0.0.0.0:9090 是否公网可达；daemon 本地控制口无签名 | debt | 工程走查#15 | todo | |
+| B-031 | CI 加 gitleaks job；核 metrics 0.0.0.0:9090 是否公网可达；daemon 本地控制口无签名 | debt | 工程走查#15 | doing | 2026-08-25：已加 version+SHA256 pinned 的 introduced-commit Gitleaks 门禁（PR 恒定跑 hosted runner），并补全历史净化/轮换/公开切换 runbook；当前 `HEAD` archive 0 findings，但全历史真实 session dump + 旧 GCP keys 仍是 Owner 公开前硬阻塞。metrics 暴露与 daemon local-control 认证仍待本轮复核。 |
 | B-032 | 看板/侧栏卡片上直接批权限（Approve/Deny/Approve-for-session；sessionAllow/Deny 已是纯 ops） | ux | UX走查#1 | todo | 多会话并行的最高频点击链 |
 | B-033 | agent 干活时可发排队消息（iOS 与 PC 行为还不一致：PC 回车能发、手机被 Abort 按钮挡住） | ux | UX走查#2 | todo | |
 | B-034 | ExitPlanMode 计划 Markdown 渲染 + 行内批准按钮（现在是 JSON）；AskUserQuestion 选项可点选 | ux | UX走查#3#4 | done | 随 B-100 落地；批准按钮=PermissionCard 既有 Approve/Deny，卡片内容特化即达意 |

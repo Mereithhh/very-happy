@@ -52,6 +52,22 @@ permissions:
   contents: read
 
 jobs:
+  secret-scan:
+    name: secret scan (introduced commits)
+    # Always isolate this network-downloading scanner from private runners.
+    # The release archive is version- and SHA256-pinned in scan-secrets.sh.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Scan commits introduced by this event
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_BEFORE_SHA: ${{ github.event.before }}
+        run: bash scripts/ci/scan-secrets.sh --ci
+
   server-container-smoke:
     name: server container / migration / persistence
     # The private Linux runner intentionally has no Docker socket. Run this on
