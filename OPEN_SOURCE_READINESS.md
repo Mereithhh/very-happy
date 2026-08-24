@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-25 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `bb04a436848d6533f4e636ac13fbf123ccfb952b`
+> Released Web source: `a01d1c76e67a8ba4a8ad9fcf9bd98637e9300e07`
 > Released Server source: `2300f4ab335c105a92d281806c955b7e44d8854a`
 > Production CLI: `very-happy-cli@0.2.64` (`v0.2.64`)
 > Decision: **NOT READY to change repository visibility yet**
@@ -34,6 +34,13 @@ procedure below is complete.
   TTY sessions. The Hero, sanitized interactive preview, README, social metadata, and architecture
   diagrams use the same information model. Public copy states that dispatch is explicit today:
   the user chooses the machine and agent; automatic cross-machine/provider routing remains roadmap.
+- The Hero's primary proof is now an interactive scheduler topology rather than another workspace
+  screenshot. Visitors can select a personal computer, remote server, or generic runtime and then
+  Claude Code, Codex, OpenCode ACP beta, or any text TUI; only that explicit machine/agent route is
+  animated. The center shows the actual `Web/PWA ⇄ trusted relay ⇄ CLI daemon` chain. API/webhooks,
+  runner-specific MCP tools, and the optional Claude-only Meta Agent are separate inspectable
+  boundaries, not interchangeable routes. The authentic production-style fleet workspace remains
+  immediately below the Hero as evidence for the conceptual map.
 - The terminal story is agent-independent. A tmux-owned real TTY preserves ordinary
   `xterm-256color` text shells and TUIs—not only coding agents—while the Web supplies durable
   access, files, tasks, and structured Claude continuity. Public copy does not promise support
@@ -161,7 +168,7 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 108 test files / 1,474 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 109 test files / 1,477 tests; Vite production build; TypeScript 0 errors |
 | CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.64 |
 | Server | 57 test files / 408 tests; TypeScript 0 errors; production runtime build passed |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
@@ -184,6 +191,21 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 ### 2026-08-25 release-candidate freeze
 
+- The scheduler-topology Hero shipped from source `a01d1c76`. Its reducer regression tests pin
+  machine/agent selection, informational side-lane inspection, route labels, and exactly two
+  active-wire identities; rendered contracts pin the fixed trust chain, initial pressed state,
+  token-only CSS, mobile media rule, and reduced-motion fallback. The complete Web run passed
+  109 files / 1,477 tests, Vite production build, and TypeScript with zero errors. One initial
+  concurrent run timed out the unrelated translation fallback test at its five-second limit;
+  the isolated test then passed in 0.8 seconds and the complete rerun passed in 14.47 seconds.
+  Exact-SHA Quality run `32770846354` passed and Web-only deploy `32771117550` succeeded. Production
+  health returned OK; entry asset `/assets/index-u0enk5tp-202608241957.js` and public chunk
+  `/assets/PwaInstallPrompt-W4_pPTXU-202608241957.js` returned JavaScript, with the latter containing
+  the scheduler and boundary copy. Real production browser acceptance at 1280 px and 390 px found
+  zero scheduler overflow or node overlap; the mobile graphic computed to 500 px high, all node
+  targets were at least 48 px, and selecting Remote server + OpenCode then inspecting Meta Agent
+  kept exactly two pressed controls/two active wires while announcing the Claude-only boundary.
+  Independent re-review closed the initial topology and mobile-test findings at P0/P1/P2 = 0.
 - The multi-machine command-panel follow-up passed all 108 Web test files / 1,474 tests,
   Vite production build, TypeScript with zero errors, SVG validation, diff checks, and a
   current-diff gitleaks scan. Rendered-component tests pin the initial accessible fleet state;
