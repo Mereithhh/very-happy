@@ -1,18 +1,20 @@
 # Open-source readiness
 
-> Assessment date: 2026-08-24 (Asia/Singapore)
+> Assessment date: 2026-08-25 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `77fcd8ed767a0ae9d263f6964cf57e0526d7774d`
-> Released Server source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
-> Production CLI: `very-happy-cli@0.2.62` (`v0.2.62`)
+> Released Web source: `c9a8fbb69fb4a59fe8cb024ba2722fff00c4375a`
+> Released Server source: `2300f4ab335c105a92d281806c955b7e44d8854a`
+> Production CLI: `very-happy-cli@0.2.64` (`v0.2.64`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
-known code, product, documentation, or current-tree P0/P1 issues in the frozen scope.
-The sole public-release blocker is historical: the existing Git object database contains
-credentials and real session material. A normal commit cannot remove it, and the Owner
-explicitly reserved history rewriting and credential rotation. Do not make this repository
-public until the procedure below is complete.
+known code, product, documentation, or current-tree P0/P1/P2 issues in the frozen scope.
+The remaining public-release blockers are Owner-controlled release-governance actions: rewrite
+and rescan the Git history, invalidate exposed credentials/session material, configure the
+public-repository protections and prove fork-PR isolation, verify external OAuth/Cloud policy,
+and give final production acceptance. A normal commit cannot complete those actions, and the
+Owner explicitly reserved the irreversible ones. Do not make this repository public until the
+procedure below is complete.
 
 ## What is complete
 
@@ -76,9 +78,11 @@ public until the procedure below is complete.
 - Public docs now share the landing's editorial Console system and the same interactive product
   proof, group the guide set by user intent, provide desktop on-page navigation and an accessible
   mobile chapter menu.
-- Coarse-pointer form controls and editable surfaces have a global 16 px floor across the app
-  and body portals, preventing iOS focus zoom. The xterm subtree is structurally excluded so
-  hidden textarea, cursor, and IME cell metrics stay unchanged.
+- Coarse-pointer and phone-width form controls have a global 16 px floor across the app and
+  body portals, preventing iOS focus zoom. Terminal-owned fields are handled separately: the
+  current overlay derives a 16 px-safe metric without changing desktop policy, and the legacy
+  hidden xterm helper receives a narrow-screen font floor while its inline cell geometry,
+  visible composition view, cursor, rows, and columns remain unchanged.
 - Mobile browsers now receive a proactive, device-local Web App install region in both the
   anonymous and authenticated roots. Android/Chromium invokes the browser-owned install prompt
   only from a user gesture; iPhone/iPad and unsupported browsers receive accurate Share/menu
@@ -136,11 +140,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 104 test files / 1,458 tests; Vite production build; TypeScript 0 errors |
-| CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.62 |
-| Server | 53 test files / 387 tests; TypeScript 0 errors |
+| Web V2 | 106 test files / 1,469 tests; Vite production build; TypeScript 0 errors |
+| CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.64 |
+| Server | 57 test files / 408 tests; TypeScript 0 errors; production runtime build passed |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Quality Gates `32737299751` passed for exact Web/CLI source `77fcd8ed`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32737835940` passed on Linux and mac-office Node 20/24 at `v0.2.62`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32758820250` passed at exact candidate SHA `c9a8fbb6`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -156,6 +160,48 @@ same isolated-new-user run, signup, secure pairing, daemon connection, machine v
 tmux terminal/file preview (`VERY_HAPPY_SDDEV_OK`), and the no-tmux direct shell
 (`NO_TMUX_OK`) completed end to end. Only the test-owned temporary daemon/server processes were
 stopped afterward; the pre-existing global daemon was preserved.
+
+### 2026-08-25 release-candidate freeze
+
+- Browser-to-machine file handoff was exercised against the production relay and daemon with
+  two real PNG payloads: 145,259 bytes (SHA-256
+  `1904987f9699504446c5454913fc986a11e9c9583f280727b54872ce9322a6ae`) and 506,218 bytes
+  (SHA-256 `1ae348177b0e5af9fd5f6b03c19ae3512b14e625baf06fa599ab236018023b35`).
+  Both target files matched byte-for-byte; the running Claude TUI received only the
+  default-shell-quoted path and no Enter/command execution. The two test-owned files were
+  moved to the target machine's Trash after verification and remain recoverable there.
+- `very-happy-cli@0.2.64` was published from `v0.2.64` by run `32749236836`.
+  CLI smoke run `32749236740` passed Linux and real macOS on Node 20/24; an independent install
+  and HOME smoke passed. The production daemon now reports 0.2.64, the production relay/Web
+  endpoints, its existing Claude credential category, and a current heartbeat.
+- A production outage occurred during this freeze when an unsafe second diagnostic PGlite
+  process opened the live volume concurrently and left `pg_control` pointing at an invalid
+  checkpoint. The service was stopped, a complete untouched raw snapshot was retained, and
+  recovery was performed only on a copy using the matching PostgreSQL 17.6 tools. Before the
+  copy was swapped in, all 6 accounts, 3 machines, 322 sessions, 41,472 messages, 265 indexes,
+  168 constraints, 44 migrations, message counters, sequence uniqueness, and the counter
+  trigger were validated. The control/checkpoint corruption was confirmed; the recovered copy
+  showed no logical table, index, constraint, sequence, or counter inconsistency in those
+  checks. The original corrupt directory and raw incident snapshot remain private on the
+  production host pending Owner acceptance.
+- The incident mechanism is now prevented at source SHA `2300f4ab`: every repository-owned
+  PGlite opener holds a kernel advisory lock on the canonical database directory inode for the
+  entire database lifetime. Linux and macOS helpers use the same kernel protocol; missing
+  helpers, contention, startup failure, and close failure fail closed. Symlink aliases,
+  simultaneous ten-process contention, normal release, full PGlite reopen, and SIGKILL recovery
+  are covered. Full Server gates passed 57 files / 408 tests with no skips, TypeScript, runtime
+  build, and exact-SHA Quality run `32757748151`.
+- Server deploy `32757977910` and Web deploy `32758196637` succeeded at `2300f4ab`. Production
+  health returned OK, a cooperative `flock --nonblock /data/pglite` contender exited 1 while the
+  server ran, and logs contained no P2028, message-500, invalid-resource-manager, or checkpoint
+  errors. The required daemon refresh completed after each Server restart.
+- The final narrow-terminal follow-up shipped Web source `c9a8fbb6` after Quality run
+  `32758820250` and Web deploy `32759043002`. The deployed entry asset
+  `/assets/index-BVsmPPwd-202608241751.js` serves as immutable JavaScript. In a real authenticated
+  narrow Chrome window, `.xterm-helper-textarea` computed to 16 px with
+  `visualViewport.scale === 1` and no horizontal overflow. The `/welcome#proofs` file-handoff
+  control completed its interactive sanitized preview at the same narrow viewport without
+  overflow. The required post-restart daemon refresh left production on 0.2.64 (PID 93827).
 
 ### Container and database smoke
 
@@ -250,7 +296,8 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
 Three independent read-only review tracks were completed after implementation:
 
-1. Security/public-repository review: P0=0, code P1=0; history cleanup is the sole P1 blocker.
+1. Security/public-repository review: P0=0, code P1=0; remaining blockers are the
+   Owner-controlled history/credential and public-switch governance actions below.
 2. First-user/UI/browser review: P0=0, P1=0 after same-origin regression coverage.
 3. Documentation/shipping-image review: P0=0, P1=0 after runtime closure and container smoke.
 
@@ -331,6 +378,16 @@ during dry-run, unsafe endpoint/architecture assumptions, narrow-screen command 
 doctor argv/environment leakage through stdout and optional remote debug logs. Both freeze
 rereviews ended at **P0=0, P1=0, P2=0**; the animated SVG was also checked for external
 resources, scripts, internal hosts, PII, reduced-motion behavior, and narrow GitHub rendering.
+
+The file-handoff release received independent security/code and first-user/UX reviews after
+real production transfer. Findings in account-wide RPC abuse control, upload compatibility,
+mobile completed-state containment, proof wording, and interaction semantics were fixed and
+rereviewed; both tracks ended at **P0=0, P1=0, P2=0**. The final PGlite incident guard then
+received three adversarial security passes. They closed Docker PID-namespace, stale-lock TOCTOU,
+symlink/mountpoint alias, mixed-fallback split-brain, startup/close lifetime, and concurrency-test
+gaps; the third freeze ended at **P0=0, P1=0, P2=0**. A separate final mobile review confirmed
+that the xterm helper 16 px floor wins the production cascade without changing visible terminal
+geometry or IME composition behavior, also ending at **P0=0, P1=0, P2=0**.
 
 ## Release and production state
 
@@ -482,14 +539,34 @@ resources, scripts, internal hosts, PII, reduced-motion behavior, and narrow Git
   runtime version and doctor argv hiding. `vh-update` moved the mac-office daemon from 0.2.61
   to **0.2.62** (PID 56230) with the production relay, Web UI, and Claude credential source
   intact. Web rollback is `6706fc8e` via `/opt/happy/webapp.prev`; CLI rollback is `0.2.61`.
+- Terminal file handoff, account-scoped RPC burst protection, the public proof, and CLI 0.2.64
+  shipped from `f7b0dc54e06ba07151ff2dc019773646d32e5bf3`. Publish run `32749236836`
+  and tag smoke `32749236740` passed. The production file hashes and no-auto-execute evidence
+  are recorded in the final freeze above.
+- The PGlite lifetime lock and clean-shutdown guard shipped Server-only from
+  `2300f4ab335c105a92d281806c955b7e44d8854a` by deploy `32757977910` after Quality
+  `32757748151`. Web at the same source followed in deploy `32758196637`; both restarts were
+  followed by the mandatory daemon refresh. Health, cooperative lock contention, existing
+  account/machine/session visibility, JavaScript MIME, and error-log checks passed.
+- The final iOS xterm focus-zoom fix shipped Web-only from
+  `c9a8fbb69fb4a59fe8cb024ba2722fff00c4375a` by deploy `32759043002` after exact-SHA
+  Quality `32758820250`. Production browser acceptance measured 16 px on the real focused
+  xterm textarea at narrow width, scale 1, zero terminal/Landing overflow, and a completed
+  interactive file-handoff proof. The running daemon is **0.2.64** (PID 93827); Web rollback is
+  the preceding `2300f4ab` atomic deployment and CLI rollback is `0.2.63`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
 ## Blocking historical findings
 
-A final current-tree `git archive HEAD` scan processed 16.69 MB and returned **0 findings**.
-A full-history scan covered 2,572 commits / about 34.75 MB and returned **45 findings** across
-14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT detections.
+A final current-tree archive plus the readiness report processed 16.88 MB and returned **0
+findings**; every staged release increment was also scanned with no finding. An earlier all-ref
+history baseline covered 2,572 commits / about 34.75 MB and returned **45
+findings** across 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT
+detections. The repository has grown since that baseline (2,853 commits were reachable across
+all refs at this review), so the public-switch procedure must repeat an all-ref scan against the
+frozen rewritten repository. The baseline is evidence of known exposure, not a claim that the
+current object database has been completely rescanned.
 
 The most serious object is a deleted upstream real-session JSONL containing tokens and user
 content. Historical Google/Firebase configuration and old environment/deployment files also
@@ -500,7 +577,7 @@ these known paths:
 android/app/google-services.json
 expo-app/google-services.json
 google-services.json
-cli/explore-claude-cli/v1-real-sessions-by-kirill-from-handy-cli/example-sessions/*.jsonl
+<historical real-session fixture directory>/*.jsonl
 sources/sync/__testdata__/log_0.json
 packages/happy-server/.env.dev
 packages/happy-cli/.env.dev
@@ -546,6 +623,13 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.
 - PGlite migration SQL and its migration marker have a narrow crash window between operations.
+- PGlite is supported only on a local filesystem and by one cooperative Server/migration process
+  at a time. The directory-inode lock prevents a second repository-owned opener on supported
+  local Linux/macOS hosts; NFS or another filesystem without reliable advisory locks is not
+  supported. External diagnostic tools must operate only after shutdown and on a complete copy.
+- Private raw/corrupt snapshots from the 2026-08-25 recovery remain on the production host for
+  Owner acceptance and rollback. They are not in Git and should be removed under the backup
+  retention policy only after acceptance; they may contain production account/session data.
 - Abandoned upload reservations are reclaimed after their TTL; completed uploads are never
   TTL-cleaned, and completion requires the local/S3 object to exist.
 - Windows CLI postinstall is not currently exercised because private-repository hosted billing
@@ -562,7 +646,9 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
 
 ## Final decision
 
-**NOT READY for public visibility solely because the Owner-only Git history cleanup and
-credential/session response have not been executed.** The current source tree, product flow,
-documentation, self-host distribution, deployed service, and CLI release are otherwise an
-open-source release candidate with no known in-scope P0/P1/P2.
+**NOT READY for public visibility only because the Owner-controlled public-switch procedure has
+not been executed:** history rewrite and all-ref rescan, credential/session invalidation,
+repository protections and fork-PR isolation drill, external OAuth/Cloud policy checks, and
+final production acceptance. The current source tree, product flow, documentation, self-host
+distribution, deployed service, and CLI release are otherwise an open-source release candidate
+with no known in-scope P0/P1/P2.
