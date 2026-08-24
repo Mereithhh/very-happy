@@ -1,4 +1,4 @@
-import { ArrowRight, Github, Globe2, Laptop, Server, Sparkles } from 'lucide-react';
+import { ArrowRight, Cable, Github, Globe2, Laptop, MonitorSmartphone, Server, Sparkles, TerminalSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { PublicFooter, PublicHeader } from './PublicShell';
@@ -11,9 +11,38 @@ import './public.css';
 
 function ProductShowcase() {
   return <section className="pub-product" aria-labelledby="product-title">
-    <div className="pub-product-intro"><div><div className="eyebrow">THE REAL PRODUCT UI</div><h2 id="product-title">One workspace. Three levels of attention.</h2></div><p>Very Happy keeps the SDK-backed structured flow and adds the terminal stream from a real tmux-owned process. With tmux 3.2+, optional Claude hooks connect that hand-started terminal to a structured mirror; the board steps back across all your work. Every surface below reuses production visual contracts with sanitized data.</p></div>
-    <div className="pub-product-frame"><div className="pub-product-frame-head mono"><span><i /> LIVE PRODUCT SURFACE</span><span>WORKSTATION · SANITIZED SESSION</span></div><ProductWorkspacePreview /></div>
+    <div className="pub-product-intro"><div><div className="eyebrow">AUTHENTIC PRODUCT SURFACE</div><h2 id="product-title">One workspace. Three levels of attention.</h2></div><p>Very Happy keeps the SDK-backed structured flow and adds the terminal stream from a real tmux-owned process. With tmux 3.2+, optional Claude hooks connect that hand-started terminal to a structured mirror; the board steps back across all your work. Every surface below reuses production visual contracts with sanitized data.</p></div>
+    <div className="pub-product-frame"><div className="pub-product-frame-head mono"><span><i /> PRODUCTION UI CONTRACTS</span><span>WORKSTATION · SANITIZED SESSION</span></div><ProductWorkspacePreview /></div>
     <div className="pub-product-caption mono"><span>PRODUCTION VISUAL CONTRACTS · SANITIZED DATA</span><span>RESPONSIVE WEB · NO DESKTOP HANDOFF REQUIRED</span></div>
+  </section>;
+}
+
+function WebFirstSurface() {
+  return <section className="pub-web-first" aria-labelledby="web-first-title">
+    <div className="pub-web-first-copy">
+      <div className="eyebrow">WEB FIRST // TERMINAL UNIVERSAL</div>
+      <h2 id="web-first-title">Open the Web.<br /><span>Keep the real machine.</span></h2>
+      <p><strong>Web and the installable PWA are the recommended daily workspace.</strong> Install the CLI to pair and diagnose a machine; leave the daemon running in the background; then follow terminals, conversations, files, and tasks from the screen already in your hand.</p>
+      <div className="pub-web-first-stack">
+        <article><MonitorSmartphone size={18} /><div><h3>Web / PWA</h3><p>Your default control surface on desktop, tablet, and phone.</p></div></article>
+        <article><Cable size={18} /><div><h3>CLI + daemon</h3><p>The machine-side bridge for pairing, diagnostics, automation, and local escape hatches.</p></div></article>
+        <article><TerminalSquare size={18} /><div><h3>tmux + real TTY</h3><p>The compatibility layer for ordinary xterm-256color text TUIs—not only coding agents.</p></div></article>
+      </div>
+      <Link to="/docs/architecture">See the architecture <ArrowRight size={15} /></Link>
+    </div>
+    <div className="pub-web-first-proof">
+      <div className="pub-web-first-window">
+        <div className="pub-web-first-window-head mono"><span><i /> WEB / PWA · RECOMMENDED</span><span>SANITIZED PRODUCT PREVIEW</span></div>
+        <ProductWorkspacePreview compact initialView="terminal" initialFilesOpen={false} />
+      </div>
+      <div className="pub-compat-rail mono" aria-label="Examples of terminal-native tools carried by the same tmux terminal path">
+        <span>SHELL</span><span>VIM</span><span>LAZYGIT</span><span>SSH</span><span>TEXT TUI</span>
+      </div>
+      <div className="pub-mcp-rail">
+        <div><span className="mono">MCP HANDOFFS</span><strong>Managed runners can hand off titles, clipboard text, and file previews; Claude also reports progress. The optional meta-agent has a separate high-privilege local control surface.</strong></div>
+        <Link to="/docs/integrations">Exact tool matrix <ArrowRight size={14} /></Link>
+      </div>
+    </div>
   </section>;
 }
 
@@ -43,8 +72,8 @@ function HeroProductStage() {
       <span className="pub-stage-packet pub-stage-packet--two" />
       <span className="pub-stage-packet pub-stage-packet--three" />
     </div>
-    <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive preview of the real Very Happy product interface">
-      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · LIVE PRODUCT UI</span><span>WORKSPACE CONTINUITY</span></div>
+    <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive sanitized preview using Very Happy production UI contracts">
+      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · PRODUCTION UI CONTRACTS</span><span>WORKSPACE CONTINUITY</span></div>
       <ProductWorkspacePreview compact />
       <div className="pub-hero-product-foot mono"><span>PROCESS RUNS THERE</span><span>CONTEXT ARRIVES HERE</span></div>
     </aside></div>
@@ -55,11 +84,12 @@ function HeroProductStage() {
 export function LandingScreen() {
   useEffect(() => { document.title = 'Very Happy — Work anywhere. Keep the thread.'; }, []);
   return <div className="pub-page"><PublicHeader /><main id="main-content">
-    <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">OPEN AGENT WORKSPACE // YOUR MACHINES</div><h1 id="hero-title">Work anywhere.<br /><span>Keep the thread.</span></h1><p>Run coding agents on your machines. Follow the conversation, terminal, files, and tasks from any screen—without carrying the whole system in your head.</p><div className="pub-hero-thesis mono"><span>STRUCTURED WHEN YOU WANT IT.</span><strong>THE REAL TUI WHEN YOU NEED IT.</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect a machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Claude + Codex</span><span>Gemini + OpenCode via ACP · beta</span><span>self-hostable</span></div></div><HeroProductStage /></section>
+    <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">WEB-FIRST WORKSPACE // YOUR MACHINES</div><h1 id="hero-title">Work anywhere.<br /><span>Keep the thread.</span></h1><p>Use the Web or installable PWA as your daily workspace for real terminals, structured conversations, files, and tasks. Your processes stay on your machines; the context follows you to any screen.</p><div className="pub-hero-thesis mono"><span>STRUCTURED WHEN YOU WANT IT.</span><strong>THE REAL TEXT TUI WHEN YOU NEED IT.</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect a machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Web / PWA by default</span><span>Shells + text TUIs through tmux</span><span>self-hostable</span></div></div><HeroProductStage /></section>
     <ProductShowcase />
+    <WebFirstSurface />
     <KeyboardWorkflowProof />
     <MobileContinuityProof />
-    <section className="pub-agents" aria-labelledby="agents-title"><div className="pub-section-head"><div><div className="eyebrow">AGENTS, NOT A WALLED GARDEN</div><h2 id="agents-title">Bring the agent that fits the work.</h2></div><p>The workspace follows your work instead of forcing every task through one vendor.</p></div><div className="pub-agent-grid"><article><div className="pub-status mono">DEEPEST SUPPORT</div><h3>Claude Code</h3><p>Choose SDK-native structured sessions or, with tmux installed, the actual Claude Code TUI in a durable terminal. tmux 3.2+ enables optional hooks for its structured mirror.</p></article><article><div className="pub-status mono">AVAILABLE NOW</div><h3>Codex</h3><p>Start and resume Codex on a connected machine through the same CLI, trusted relay, and responsive terminal workspace.</p></article><article><div className="pub-status mono">BETA · IMPLEMENTED</div><h3>Gemini + OpenCode via ACP</h3><p>The CLI ships an Agent Client Protocol backend and generic runner. The agent command must expose a compatible ACP stdio endpoint.</p></article><article className="is-roadmap"><div className="pub-status mono">ROADMAP</div><h3>Pi + provider gateway</h3><p>Cross-provider subtask dispatch and a coordinator that routes work to the best available agent.</p></article></div></section>
+    <section className="pub-agents" aria-labelledby="agents-title"><div className="pub-section-head"><div><div className="eyebrow">AGENTS ARE AN UPGRADE, NOT A BOUNDARY</div><h2 id="agents-title">Bring the agent—or terminal tool—that fits the work.</h2></div><p>Structured adapters add richer semantics. The tmux/TTY path stays useful even when the process is not a coding agent at all.</p></div><div className="pub-agent-grid"><article><div className="pub-status mono">DEEPEST SUPPORT</div><h3>Claude Code</h3><p>Choose SDK-native structured sessions or, with tmux installed, the actual Claude Code TUI in a durable terminal. tmux 3.2+ enables optional hooks for its structured mirror.</p></article><article><div className="pub-status mono">AVAILABLE NOW</div><h3>Codex</h3><p>Start and resume Codex on a connected machine through the same CLI, trusted relay, and responsive terminal workspace.</p></article><article><div className="pub-status mono">BETA · IMPLEMENTED</div><h3>Gemini + OpenCode via ACP</h3><p>The CLI ships an Agent Client Protocol backend and generic runner. The agent command must expose a compatible ACP stdio endpoint.</p></article><article className="is-roadmap"><div className="pub-status mono">ROADMAP</div><h3>Pi + provider gateway</h3><p>Cross-provider subtask dispatch and a coordinator that routes work to the best available agent.</p></article></div></section>
     <section className="pub-flow" aria-labelledby="flow-title"><div className="eyebrow">FIRST CONNECTION</div><h2 id="flow-title">From zero to a live agent in six steps.</h2><ol><li><span>01</span><div><h3>Create an account</h3><p>Use Google or username and password on your chosen relay.</p></div></li><li><span>02</span><div><h3>Install + check</h3><code>{`${INSTALL_COMMAND}\nvery-happy doctor`}</code><p>Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required. tmux is recommended for durable terminals.</p></div></li><li><span>03</span><div><h3>Configure the agent</h3><code>{'ANTHROPIC_API_KEY or cloud provider\nvery-happy doctor'}</code><p>Use the daemon user's environment. Doctor never prints the secret.</p></div></li><li><span>04</span><div><h3>Connect the machine</h3><code>{LOGIN_COMMAND}</code></div></li><li><span>05</span><div><h3>Start the daemon</h3><code>{DAEMON_START_COMMAND}</code><p>Starts in the background and captures that environment.</p></div></li><li><span>06</span><div><h3>Choose an agent</h3><code>{'Web → New session\nchoose machine + agent'}</code><p>Bundled structured Claude starts here; local modes use their installed agent command.</p></div></li></ol></section>
     <section className="pub-trust" aria-labelledby="trust-title"><div><div className="eyebrow">TRUST MODEL</div><h2 id="trust-title">A relay you can reason about.</h2></div><p>Very Happy is <strong>server-trusted, not end-to-end encrypted</strong>. A relay operator—or anyone who compromises it—may access relayed content, account recovery material, and capabilities exposed by an online daemon. Use the community service if you trust its operator; self-host when you need to own that boundary.</p><Link to="/docs/security">Read the security model <ArrowRight size={15} /></Link></section>
     <section className="pub-choices" aria-labelledby="deploy-title"><div className="pub-section-head"><div><div className="eyebrow">DEPLOYMENT</div><h2 id="deploy-title">Choose who operates the relay.</h2></div></div><div className="pub-choice-grid"><article><Globe2 size={22} /><h3>Very Happy Cloud</h3><p>The quickest start. Community-operated, capacity-limited, and provided without an uptime SLA.</p><Link to="/docs/cloud">Cloud guide <ArrowRight size={14} /></Link></article><article><Server size={22} /><h3>Self-hosted</h3><p>Your access policy, storage, backups, and operator boundary. Still server-trusted by design.</p><Link to="/docs/self-hosting">Self-hosting guide <ArrowRight size={14} /></Link></article></div></section>

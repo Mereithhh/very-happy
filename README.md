@@ -36,6 +36,13 @@ shell. Very Happy preserves the surrounding thread: what is running, what the
 agent changed, which machine owns the work, what needs your decision, and how to
 continue after an interruption.
 
+> [!TIP]
+> **Use the Web/PWA as your daily workspace.** Install the CLI once to pair a
+> machine and start its background daemon. Return to the CLI for diagnostics,
+> automation, recovery, or an intentional local launch—not because you need to
+> live in a second interface. The daemon remains required: Web-first is a UX
+> choice, not a browser-only architecture.
+
 > [!IMPORTANT]
 > **Very Happy is server-trusted, not end-to-end encrypted.** The relay operator,
 > or an attacker controlling the relay, can recover account material, access
@@ -44,7 +51,7 @@ continue after an interruption.
 > turn the architecture into zero knowledge. Read the
 > [security model](docs/security.md) before connecting a sensitive machine.
 
-## One workspace. Two levels of abstraction.
+## One workspace. Three layers that do different jobs.
 
 <table>
   <tr>
@@ -55,15 +62,16 @@ continue after an interruption.
       integration today.
     </td>
     <td width="33%" valign="top">
-      <h3>THE REAL TUI</h3>
-      Run the actual agent CLI/TUI inside a tmux-owned TTY. Reconnect to the same
-      process, keep scrollback, search it, browse files, and use touch-first
-      terminal controls.
+      <h3>UNIVERSAL TTY</h3>
+      Run ordinary xterm-256color-compatible text processes inside a tmux-owned
+      TTY. Reconnect to the same process, keep scrollback, search it, browse
+      files, and use touch-first terminal controls. A coding agent is optional.
     </td>
     <td width="33%" valign="top">
-      <h3>CONTINUOUS</h3>
-      Start at a desk, check progress on a phone, and return without rebuilding
-      the project state in your head. An optional Claude-only mirror can move
+      <h3>WEB-FIRST</h3>
+      Use the responsive Web/PWA as the default surface. Start at a desk, check
+      progress on a phone, and return without rebuilding the project state in
+      your head. An optional Claude-only mirror can move
       between a hand-started TUI and structured conversation.
     </td>
   </tr>
@@ -72,20 +80,27 @@ continue after an interruption.
 ```text
 Claude Agent SDK ──────────────> structured conversation
 
-real agent CLI ──> tmux TTY ──> browser terminal ──> phone / laptop / PWA
-                         ╰─────> optional Claude mirror ───────╯
+shell / vim / lazygit / ssh / text TUI ─> tmux TTY ──> Web / PWA
+agent CLI ──────────────────────────────> tmux TTY ──> Web / PWA
+                                                  ╰─> optional Claude mirror
 ```
 
-The paths are deliberately different. An agent working in a terminal does not
-automatically expose Claude-style structured events. Durable terminals require
+The terminal is the compatibility layer. It forwards a real TTY and does not
+care which brand—or category—of process is on the other side. A tool working in
+a terminal does not automatically expose Claude-style structured events.
+Durable terminals require
 `tmux`; the optional Claude mirror requires `tmux` 3.2 or newer. Without tmux,
 Web terminals use a non-persistent direct-shell fallback.
+
+The browser terminal advertises `TERM=xterm-256color` and renders through
+xterm.js. Common text TUIs are the compatibility target; sixel/Kitty graphics
+and other terminal-specific extensions are not guaranteed.
 
 <a href="https://happy.mereith.com/welcome">
   <img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy production UI with a session sidebar, real running terminal, and file preview using sanitized data">
 </a>
 
-<p align="center"><sub>THE REAL PRODUCT UI · SANITIZED DATA · SIDEBAR + TERMINAL + FILE PREVIEW</sub></p>
+<p align="center"><sub>AUTHENTIC PRODUCT UI CONTRACTS · SANITIZED DATA · SIDEBAR + TERMINAL + FILE PREVIEW</sub></p>
 
 ### Clipboard → target machine, without the detour
 
@@ -123,6 +138,7 @@ its contents.
 | “Structured chat is pleasant, but sometimes I need the actual tool.” | Keep SDK-backed Claude and drop into a durable, unmodified agent TTY/TUI when necessary. |
 | “Every session is another pile of context to remember.” | Session organization, file context, task board, todos, notes, status, and an optional coordinating meta-agent. |
 | “One model vendor should not own my whole workspace.” | Claude Code and Codex today; beta Gemini/OpenCode through Agent Client Protocol; OpenClaw through its own local gateway. |
+| “My useful terminal workflow is not a coding agent.” | The tmux/TTY path also carries shells, editors, Git clients, SSH, database consoles, and ordinary xterm-compatible text TUIs; structured agent features are additive, not required. |
 | “Remote control must fit my security boundary.” | Use the capacity-limited community Cloud or deploy the same server-trusted relay under your control. |
 | “Keyboard speed disappears on the Web.” | A production command palette plus shortcuts for switching work, saved prompts, notes, new terminals, and navigation—with touch equivalents. |
 | “The file I need is on the device in my hand, not the machine doing the work.” | Paste a screenshot or drop a file into the browser terminal; its shell-quoted path appears on the selected machine without auto-running a command. |
@@ -304,6 +320,33 @@ very-happy install-terminal-hooks --remove
 This modifies `~/.claude/settings.json` (or
 `$CLAUDE_CONFIG_DIR/settings.json`) without deleting foreign hooks. Normal
 SDK-backed Claude sessions do not require it.
+
+### MCP handoffs: make local work visible where you are
+
+Very Happy injects a small MCP surface into managed sessions so an agent can do
+more than print another line: it can hand text to your browser clipboard, open
+a produced file in the Web preview, keep the session title useful, and report
+progress. The exact tools deliberately follow the runner:
+
+| Runtime path | MCP tools shipped today |
+|---|---|
+| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
+| Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
+| Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| User-scoped plain `claude`, after opt-in | `copy_to_clipboard` only |
+
+Enable the narrow plain-terminal bridge with:
+
+```bash
+claude mcp add --scope user very-happy-clipboard -- very-happy mcp
+```
+
+That registration applies to every Claude session for the same OS user, not
+only processes inside a Very Happy terminal. It needs the local daemon. The
+assistant-only additions can read and mutate sessions, terminals, memory, and
+journals; treat that variant and its prompt/tool permissions as a high-privilege
+machine control surface. This is not a universal MCP or provider-routing claim.
+See the exact [integration contracts](docs/channels.md).
 
 ## Compose it into a larger agent system
 

@@ -14,6 +14,26 @@ There are two directions:
   an optional stdio MCP server (`very-happy mcp`) that gives a plain `claude`
   a `copy_to_clipboard` tool.
 
+## MCP capability matrix
+
+MCP is a handoff surface into the Web workspace, not a claim that every runner
+has the same tool set:
+
+| Runtime path | Tool surface |
+|---|---|
+| Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
+| Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
+| Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| User-scoped plain `claude` after explicit setup | `copy_to_clipboard` only |
+
+The first two paths are injected by their managed runners. The assistant-only
+additions can read and mutate sessions, terminals, memory, and journals; treat
+that variant and its prompt/tool permissions as a high-privilege machine
+control surface. The standalone `very-happy mcp` command is deliberately
+narrower and does not expose session spawn/send, provider routing, preview,
+title, or progress tools. External automation should use the explicit CLI
+contracts below.
+
 ## Architecture
 
 ```
@@ -182,15 +202,17 @@ missing key, send failed).
 ### `very-happy mcp` — clipboard tool for a plain `claude`
 
 Remote SDK sessions get the happy MCP server injected automatically, but a
-plain `claude` running inside a Happy web terminal (tmux) only loads the
-user's normal MCP config. Register once per machine:
+plain `claude` loads only the OS user's normal MCP config. Register once for
+that OS user:
 
 ```bash
 claude mcp add --scope user very-happy-clipboard -- very-happy mcp
 ```
 
-This gives that `claude` a `copy_to_clipboard` tool: text is forwarded to the
-local daemon over its 127.0.0.1 control server (`POST /clipboard`), relayed
+Because this uses `--scope user`, it gives every Claude session for that OS user
+a `copy_to_clipboard` tool; it is not bound to a Very Happy terminal. Text is
+forwarded to the local daemon over its 127.0.0.1 control server
+(`POST /clipboard`), relayed
 over the authenticated machine socket, and fanned out to the clipboard of
 every web client the user has open. Payloads over 256KB are truncated.
 

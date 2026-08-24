@@ -12,7 +12,8 @@ trusted happy-server ── database / files / optional Redis
 very-happy CLI daemon ── agent runners / PTY ──┬─ Claude Code
                                                ├─ Codex
                                                ├─ Gemini / compatible ACP agent
-                                               └─ OpenClaw gateway
+                                               ├─ OpenClaw gateway
+                                               └─ shell / xterm-compatible text TUI
 ```
 
 - `packages/happy-web-v2`: production React/Vite browser client.
@@ -47,7 +48,7 @@ terminal-mirroring experience; Codex, ACP providers, and OpenClaw reuse the
 common workspace but expose only the capabilities their runners normalize. See
 [session-protocol.md](session-protocol.md) for the provider envelope contract.
 
-### Two Claude interaction paths
+### Structured agent path and universal terminal path
 
 Upstream Happy's core Claude flow wraps the Claude Agent SDK to provide a
 structured conversation. Very Happy retains that flow and adds a terminal path
@@ -59,10 +60,19 @@ whose source of truth is the real agent process:
 | tmux-backed terminal | `tmux` owns the long-lived TTY/TUI on the user's machine. A daemon control-mode client carries pane output and input through the trusted relay; xterm renders it in the browser. | The actual Claude Code or other agent CLI/TUI, including reconnect, local scrollback, search, and mobile input. |
 | terminal file handoff | The browser sends an authenticated, machine-scoped upload in bounded encrypted RPC chunks through the trusted relay. The daemon validates order and size, writes a temporary file, and atomically exposes it under `~/.happy/uploads/terminal/`. | Paste a clipboard image/file or drop a file, then receive its default-shell-quoted absolute path at the terminal cursor without automatic execution. Current limit: 8 MB per file. |
 
+The terminal transport is intentionally agent-neutral. It forwards a real TTY,
+not a coding-agent protocol, so the process may be a shell, editor, Git client,
+SSH session, database console, or ordinary xterm-compatible text TUI. Those
+processes receive terminal continuity, not synthetic structured agent events.
+
 The terminal is not a screenshot or a browser reimplementation of the agent UI.
 The process continues in `tmux` when the browser disconnects. If `tmux` is not
 available, the daemon can fall back to a direct shell, but durable background
 survival is then unavailable.
+
+The daemon sets `TERM=xterm-256color` and the browser renders with xterm.js.
+Common text TUIs are the compatibility target. Terminal-specific graphics and
+extensions such as sixel or Kitty graphics are not guaranteed.
 
 The terminal mirror is opt-in and requires `tmux` 3.2 or newer so the daemon can
 inject the terminal binding into a newly created session. `very-happy

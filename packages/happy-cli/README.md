@@ -1,8 +1,11 @@
 # very-happy-cli
 
 The machine-side CLI and daemon for **Very Happy**, an open agent workspace.
-Run Claude Code, Codex, or a real terminal on your machine and continue from a
-responsive Web UI. A beta Agent Client Protocol backend also supports Gemini,
+The responsive Web UI or installable PWA is the recommended daily interface;
+this package pairs the machine, runs its background bridge, provides diagnostics
+and automation, and offers intentional local launch commands. Run Claude Code,
+Codex, a shell, or an ordinary xterm-compatible text TUI on your machine and
+continue from the Web. A beta Agent Client Protocol backend also supports Gemini,
 OpenCode, and custom commands that expose a compatible ACP stdio endpoint.
 OpenClaw uses a separate adapter to its local gateway protocol.
 
@@ -154,11 +157,30 @@ The web client URL follows the same precedence (`HAPPY_WEBAPP_URL`, then
 `settings.webappUrl`, then the default). Defaults for both point at
 `https://happy.mereith.com`.
 
-### MCP bridge
+### MCP handoffs
+
+Base managed Claude sessions receive `change_title`, `copy_to_clipboard`,
+`open_preview`, and `report_progress`. The managed Codex, Gemini, and ACP bridge
+exposes the first three except progress. For a plain `claude`, the standalone
+command is intentionally clipboard-only:
 
 ```bash
-very-happy-mcp        # stdio MCP bridge (for Codex / MCP hosts)
+claude mcp add --scope user very-happy-clipboard -- very-happy mcp
 ```
+
+The assistant/meta-agent Claude variant additionally receives `sessions_list`,
+`session_read`, `session_send`, `session_spawn`, `session_kill`,
+`session_archive`, `terminals_list`, `terminal_read`, `terminal_send`,
+`memory_update`, and `journal_append`. These can read and mutate local work;
+treat that variant and its prompt/tool permissions as a high-privilege machine
+control surface.
+
+The `--scope user` registration applies to every Claude session for that OS
+user, not only a process inside a Very Happy terminal, and it needs the local
+daemon. The standalone command still exposes only `copy_to_clipboard`.
+
+The separate `very-happy-mcp` binary launches that managed stdio bridge; its
+presence does not make every listed tool available to every runner.
 
 ## Configuration precedence
 

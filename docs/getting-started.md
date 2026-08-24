@@ -3,6 +3,18 @@
 This path uses the maintainer-operated Cloud. For your own relay, first follow
 [Self-hosting](deployment.md), then substitute your server URL below.
 
+## Recommended way to work
+
+Use the responsive Web UI or installable PWA as your everyday workspace. The
+CLI is the machine-side companion: install it once, approve the pairing, start
+the daemon, and leave that daemon running. Return to the CLI for diagnostics,
+automation, explicit local launches, or recovery—not because the product asks
+you to live in a second interface.
+
+Web-first does not mean CLI-free. The connected daemon is what lets the browser
+reach processes and files on your machine; the Web/PWA is the recommended
+control surface for that capability.
+
 ## Fast path: connect in one command
 
 On macOS or Linux, the Cloud bootstrap installs one exact published CLI version,
@@ -214,6 +226,15 @@ Return to the Web UI, choose **New session**, select the connected machine and a
 directory, then choose Claude. This Web-created structured path uses the bundled
 Agent SDK and your Claude provider credentials.
 
+You can also choose **New terminal** and run a shell or ordinary
+`xterm-256color`-compatible text workflow. That path carries the real TTY stream
+and does not depend on a coding-agent protocol: shells, vim, lazygit, ssh, and
+database consoles all use the same transport. `tmux` keeps the process durable
+when the browser disconnects; without tmux, the direct-shell fallback is not
+durable. These generic terminal tools do not automatically gain structured
+messages, diffs, or agent controls. xterm.js is the browser renderer; sixel,
+Kitty graphics, and other terminal-specific extensions are not guaranteed.
+
 A fresh browser starts new sessions in **Review Changes First** mode. Keep it on
 until you are comfortable with the relay and machine boundary; change it under
 **Settings → Agents → New sessions** when you intentionally want auto-apply.
@@ -281,6 +302,33 @@ removing foreign hooks. The binding exists only for Claude started inside a
 Very Happy terminal while the daemon is running. This structured mirror is a
 Claude-specific capability; other agent terminals keep their native TUI but do
 not automatically gain the same structured view.
+
+### Optional: MCP handoffs into Web
+
+Base managed Claude sessions can use MCP tools to change the session title, copy
+text to the browser clipboard, open a file preview, and report progress. The
+managed Codex, Gemini, and ACP bridge exposes title, clipboard, and preview
+handoffs. Tool availability varies by runner.
+
+The optional assistant/meta-agent Claude variant additionally receives
+`sessions_list`, `session_read`, `session_send`, `session_spawn`,
+`session_kill`, `session_archive`, `terminals_list`, `terminal_read`,
+`terminal_send`, `memory_update`, and `journal_append`. These can read or mutate
+local work; treat the assistant and its prompt/tool permissions as a
+high-privilege machine control surface.
+
+A plain `claude` can opt into the narrower clipboard-only bridge:
+
+```bash
+claude mcp add --scope user very-happy-clipboard -- very-happy mcp
+```
+
+Because the command uses `--scope user`, that tool becomes available to every
+Claude session for the same OS user, not only a process inside a Very Happy Web
+terminal. The standalone `very-happy mcp` command currently adds only
+`copy_to_clipboard`; it does not add preview, progress, spawning, or provider
+routing, and it needs the local daemon. See
+[Channels and integrations](channels.md) for the exact contracts.
 
 ## 6. Learn the fast paths
 

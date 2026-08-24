@@ -15,7 +15,7 @@ describe('public documentation registry', () => {
   it('keeps onboarding commands and trust disclosure in the published content', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     expect(text).toContain(INSTALL_COMMAND);
-    expect(PUBLIC_DOCS[0]?.sections[0]?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
+    expect(PUBLIC_DOCS[0]?.sections.find((section) => section.heading === 'Fast path: one command')?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
     expect(text).toContain(LOGIN_COMMAND);
     expect(text).toContain('not end-to-end encrypted');
     expect(text).toContain('server-trusted');
@@ -133,14 +133,14 @@ describe('public documentation registry', () => {
     expect(landing).toContain('BETA · IMPLEMENTED');
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
-    expect(landing).toContain('THE REAL PRODUCT UI');
+    expect(landing).toContain('AUTHENTIC PRODUCT SURFACE');
     expect(landing).toContain('From zero to a live agent in six steps.');
     expect(landing).toContain('<h3>Configure the agent</h3>');
     expect(landing).toContain('<h3>Start the daemon</h3>');
     expect(landing).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
     expect(landing).toContain('tmux is recommended for durable terminals');
     expect(landing).toContain('STRUCTURED WHEN YOU WANT IT.');
-    expect(landing).toContain('THE REAL TUI WHEN YOU NEED IT.');
+    expect(landing).toContain('THE REAL TEXT TUI WHEN YOU NEED IT.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
     expect(continuityProof).toContain('REAL TUI · TMUX-BACKED');
     expect(continuityProof).toContain('CLAUDE · STRUCTURED MIRROR');
@@ -178,8 +178,70 @@ describe('public documentation registry', () => {
     expect(terminalTests).toContain('accepts tmux ≥3.2');
     expect(terminalTests).toContain('rejects older tmux and unparseable output');
     expect(mirrorManager).toContain("spawnSync('tmux', ['has-session'");
-    expect(architecture).toContain('Two Claude interaction paths');
+    expect(architecture).toContain('Structured agent path and universal terminal path');
     expect(architecture).toContain('not a screenshot or a browser reimplementation');
+  });
+
+  it('keeps Web-first, terminal-neutral, and MCP claims aligned with shipped paths', () => {
+    const text = JSON.stringify(PUBLIC_DOCS);
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
+    const gettingStarted = readFileSync(new URL('../../../../../docs/getting-started.md', import.meta.url), 'utf8');
+    const architecture = readFileSync(new URL('../../../../../docs/architecture.md', import.meta.url), 'utf8');
+    const channels = readFileSync(new URL('../../../../../docs/channels.md', import.meta.url), 'utf8');
+    const managedClaude = readFileSync(new URL('../../../../happy-cli/src/claude/utils/startHappyServer.ts', import.meta.url), 'utf8');
+    const codexBridge = readFileSync(new URL('../../../../happy-cli/src/codex/happyMcpStdioBridge.ts', import.meta.url), 'utf8');
+    const acpRunner = readFileSync(new URL('../../../../happy-cli/src/agent/acp/runAcp.ts', import.meta.url), 'utf8');
+    const geminiRunner = readFileSync(new URL('../../../../happy-cli/src/gemini/runGemini.ts', import.meta.url), 'utf8');
+    const assistantTools = readFileSync(new URL('../../../../happy-cli/src/assistant/assistantTools.ts', import.meta.url), 'utf8');
+    const webTerminal = readFileSync(new URL('../../../../happy-cli/src/terminal/webTerminal.ts', import.meta.url), 'utf8');
+    const standaloneMcp = readFileSync(new URL('../../../../happy-cli/src/commands/mcp.ts', import.meta.url), 'utf8');
+
+    for (const source of [text, landing, readme, gettingStarted]) {
+      expect(source).toMatch(/Web(?: UI)?(?: or| \/) installable PWA|Web\/PWA/);
+      expect(source).toMatch(/recommended daily|everyday workspace|daily workspace/i);
+    }
+    expect(landing).toContain('<ProductWorkspacePreview compact initialView="terminal" initialFilesOpen={false} />');
+    expect(landing).toContain('ordinary xterm-256color text TUIs—not only coding agents');
+    expect(landing).toContain('SANITIZED PRODUCT PREVIEW');
+    expect(landing).not.toContain('LIVE PRODUCT UI');
+    expect(architecture).toContain('terminal transport is intentionally agent-neutral');
+    expect(architecture).toContain('shell / xterm-compatible text TUI');
+    expect(webTerminal).toContain("env.TERM = 'xterm-256color'");
+    for (const source of [text, readme, gettingStarted, architecture]) {
+      expect(source).toContain('xterm-256color');
+      expect(source).toMatch(/sixel/i);
+    }
+    expect(readme).toContain('The terminal is the compatibility layer.');
+
+    for (const tool of ['change_title', 'copy_to_clipboard', 'open_preview', 'report_progress']) {
+      expect(channels).toContain(tool);
+    }
+    expect(managedClaude).toContain("registerTool('change_title'");
+    expect(managedClaude).toContain('registerTool(CLIPBOARD_TOOL_NAME');
+    expect(managedClaude).toContain('registerTool(PREVIEW_TOOL_NAME');
+    expect(managedClaude).toContain('registerTool(REPORT_PROGRESS_TOOL_NAME');
+    expect(codexBridge).toContain("'change_title'");
+    expect(codexBridge).toContain('PREVIEW_TOOL_NAME');
+    expect(codexBridge).toContain('CLIPBOARD_TOOL_NAME');
+    expect(codexBridge.match(/registerTool\(/g)).toHaveLength(3);
+    expect(codexBridge).not.toContain('REPORT_PROGRESS_TOOL_NAME');
+    expect(codexBridge).not.toContain("'report_progress'");
+    expect(acpRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
+    expect(geminiRunner).toContain("join(projectPath(), 'bin', 'happy-mcp.mjs')");
+    for (const tool of ['sessions_list', 'session_read', 'session_send', 'session_spawn', 'session_kill', 'session_archive', 'terminals_list', 'terminal_read', 'terminal_send', 'memory_update', 'journal_append']) {
+      expect(assistantTools).toContain(`'${tool}'`);
+      expect(text).toContain(tool);
+      expect(channels).toContain(tool);
+    }
+    expect(managedClaude).toContain('...(options?.assistant ? ASSISTANT_TOOL_NAMES : [])');
+    expect(standaloneMcp.match(/registerTool\(/g)).toHaveLength(1);
+    expect(standaloneMcp).toContain('CLIPBOARD_TOOL_NAME');
+    expect(standaloneMcp).not.toContain('VH_TERMINAL_ID');
+    expect(text).toContain('--scope user');
+    expect(text).toContain('every Claude session for that OS user');
+    expect(channels).toContain('not bound to a Very Happy terminal');
+    expect(channels).toContain('`copy_to_clipboard` only');
   });
 
   it('backs the public ACP claim with the shipped SDK, routes, and compatibility boundary', () => {
@@ -212,7 +274,7 @@ describe('public documentation registry', () => {
     expect(landing).toContain('<ProductWorkspacePreview compact />');
     expect(landing).toContain('pub-product-frame');
     expect(landing).toContain('pub-fleet');
-    expect(landing).toContain('SANITIZED DEMO · LIVE PRODUCT UI');
+    expect(landing).toContain('SANITIZED DEMO · PRODUCTION UI CONTRACTS');
     expect(landing).toContain('ACCOUNT OVERVIEW / SANITIZED');
     expect(landing).toContain('YOU CHOOSE WHERE WORK RUNS');
     expect(landing).not.toContain('CONNECTED · 42 MS');

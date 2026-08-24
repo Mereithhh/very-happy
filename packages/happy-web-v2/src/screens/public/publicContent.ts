@@ -22,8 +22,12 @@ export type PublicDoc = {
 
 export const PUBLIC_DOCS: PublicDoc[] = [
   {
-    slug: 'quickstart', label: 'Quick start', summary: 'Install the CLI, connect a machine, and open your first session.',
+    slug: 'quickstart', label: 'Quick start', summary: 'Connect one machine, then use the Web/PWA as your daily workspace.',
     sections: [
+      { heading: 'Recommended way to work', blocks: [
+        { type: 'p', text: 'Treat the Web or installable PWA as the product surface you use every day. The CLI is the machine-side companion: install it once, pair the machine, start the background daemon, and return to it for diagnostics, automation, or an intentional local launch.' },
+        { type: 'note', text: 'The Web still needs a connected daemon to reach local processes and files. “Web first” means the browser is the default interface, not that the machine-side CLI is optional.' },
+      ] },
       { heading: 'Fast path: one command', blocks: [
         { type: 'p', text: 'On macOS or Linux, the Cloud bootstrap installs one exact published CLI version, runs local diagnostics, opens the normal one-time Web approval, and starts the detached machine daemon.' },
         { type: 'code', code: BOOTSTRAP_COMMAND },
@@ -56,7 +60,8 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'This starts a detached background process. The machine appears in Web while its daemon is connected. Run it again after a reboot unless your service manager starts it automatically. Run very-happy daemon status to see the non-secret Claude credential source captured at daemon startup. Install tmux for durable Web terminals; tmux 3.2 or newer is required for the optional Claude terminal mirror. Without tmux, Web terminals use a non-persistent direct-shell fallback.' },
       ] },
       { heading: '7. Start work', blocks: [
-        { type: 'p', text: 'In Web, choose New session on the connected machine to start structured Claude through the bundled Agent SDK and your provider credentials. This is the clean first-session path when no standalone claude command is installed.' },
+        { type: 'p', text: 'Return to Web and choose New session on the connected machine. That is the recommended daily path. Start structured Claude through the bundled Agent SDK, or open a Web terminal for a real shell or ordinary xterm-256color-compatible text TUI such as vim, lazygit, ssh, or a database console. The raw terminal path is not tied to a coding agent.' },
+        { type: 'note', text: 'The Web terminal is an xterm.js surface with TERM=xterm-256color. Most common text TUIs work, but terminal-specific graphics or extensions such as sixel and Kitty graphics are not a compatibility promise.' },
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # local Claude TUI; requires external claude\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
         { type: 'p', text: 'Local CLI modes require their matching command or gateway. The beta Agent Client Protocol backend includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio. OpenClaw uses its own local gateway protocol, not ACP. Run very-happy daemon status if the machine remains offline.' },
         { type: 'note', text: 'In a Web terminal, paste a clipboard image/file or drop a file to hand it to the selected machine. Terminal uploads are capped at 8 MB, staged under ~/.happy/uploads/terminal/, and return a path quoted for the daemon default shell at the cursor without pressing Enter. The trusted relay can access relayed content; larger uploads and native Windows path insertion require the current daemon.' },
@@ -86,8 +91,11 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     ],
   },
   {
-    slug: 'cli', label: 'CLI & daemon', summary: 'Install, authenticate, operate, and diagnose the machine-side agent.',
+    slug: 'cli', label: 'CLI & daemon', summary: 'Connect and operate the machine-side companion to the Web/PWA workspace.',
     sections: [
+      { heading: 'Role in the product', blocks: [
+        { type: 'p', text: 'The Web/PWA is the recommended daily interface. The CLI pairs a machine, starts and diagnoses the background daemon, launches local agent modes when you explicitly want them, and exposes automation commands. It is not a second UI you must live in.' },
+      ] },
       { heading: 'Install', blocks: [
         { type: 'p', text: 'Very Happy requires Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm. Durable Web terminals additionally require tmux; version 3.2 or newer is required for the optional Claude mirror. Windows or another environment without tmux uses a non-persistent direct-shell fallback. Install the published CLI globally:' },
         { type: 'code', code: `${INSTALL_COMMAND}\nvery-happy doctor` },
@@ -173,15 +181,15 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
       { heading: 'Components', blocks: [
-        { type: 'code', code: 'browser  ⇄  trusted relay + storage  ⇄  daemon  ⇄  local tools\n Web V2       happy-server              CLI       shell / coding agents' },
+        { type: 'code', code: 'Web / PWA  ⇄  trusted relay + storage  ⇄  daemon  ⇄  local tools\n daily UI        happy-server              CLI       shell / text TUI / agents' },
         { type: 'p', text: 'The browser handles the user interface. The server authenticates accounts, stores synchronized state, and relays socket traffic. The daemon runs on the connected machine and exposes authorized remote capabilities.' },
       ] },
       { heading: 'Session flow', blocks: [
         { type: 'list', items: ['The user authenticates the browser to a relay.', 'A one-time approval connects a CLI identity to the same account.', 'The server routes requests and updates between browser and online daemon.', 'The daemon invokes local terminal or agent processes and streams results back.'] },
       ] },
       { heading: 'Structured and native terminal paths', blocks: [
-        { type: 'p', text: "Upstream Happy's core Claude flow is an SDK-backed structured session. Very Happy keeps that path and, when tmux is installed, also runs the actual agent CLI/TUI in a tmux-owned terminal on the user's machine. The daemon carries pane output and input through the trusted relay, and xterm renders the terminal in the browser; it is not a screenshot or a browser reimplementation of the agent interface." },
-        { type: 'list', items: ['SDK path: Claude Agent SDK events become structured messages, tools, diffs, permissions, usage, and resume state.', 'Terminal path: tmux keeps the real TTY/TUI alive across browser disconnects and supports reconnect, scrollback, search, files, and mobile input.', 'Fallback: without tmux, Web terminals are non-persistent direct shells; tmux 3.2 or newer is required for the optional Claude mirror.', 'Parity is not implied: a terminal-backed agent does not automatically expose a Claude-style structured mirror.'] },
+        { type: 'p', text: "Upstream Happy's core Claude flow is an SDK-backed structured session. Very Happy keeps that path and, when tmux is installed, also carries the actual TTY from a process on the user's machine. The terminal transport is agent-neutral: a shell, vim, lazygit, ssh, database console, ordinary xterm-256color-compatible text TUI, or agent CLI all use the same byte stream. The daemon carries pane output and input through the trusted relay, and xterm renders the terminal in the browser; it is not a screenshot or a browser reimplementation." },
+        { type: 'list', items: ['SDK path: Claude Agent SDK events become structured messages, tools, diffs, permissions, usage, and resume state.', 'Terminal path: tmux keeps the real TTY/TUI alive across browser disconnects and supports reconnect, scrollback, search, files, and mobile input.', 'Fallback: without tmux, Web terminals are non-persistent direct shells; tmux 3.2 or newer is required for the optional Claude mirror.', 'Parity is not implied: a terminal-backed process does not automatically expose Claude-style structured messages or agent controls.'] },
       ] },
       { heading: 'Agent adapters', blocks: [
         { type: 'p', text: 'Claude Code and Codex have dedicated integration paths, and OpenClaw uses its own local gateway adapter. The beta Gemini/OpenCode adapter uses Agent Client Protocol over local stdio through the official SDK; it is distinct from the older Agent Communication Protocol that shares the ACP acronym. Custom ACP commands must implement a compatible Agent Client Protocol endpoint.' },
@@ -197,6 +205,12 @@ export const PUBLIC_DOCS: PublicDoc[] = [
   {
     slug: 'integrations', label: 'Integrations & automation', summary: 'Connect IM, schedulers, and task systems without putting private policy in the core.',
     sections: [
+      { heading: 'MCP handoffs into the Web workspace', blocks: [
+        { type: 'p', text: 'Base managed Claude sessions receive change_title, copy_to_clipboard, open_preview, and report_progress. The managed Codex, Gemini, and ACP bridge exposes change_title, copy_to_clipboard, and open_preview. These handoffs let an agent turn local work into visible Web state instead of merely printing another terminal line.' },
+        { type: 'list', items: ['Assistant/meta-agent variant only: sessions_list, session_read, session_send, session_spawn, session_kill, session_archive, terminals_list, terminal_read, terminal_send, memory_update, and journal_append.', 'Those assistant-only tools can mutate local sessions, terminals, memory, and journals. Treat the assistant and its prompt/tool permissions as a high-privilege machine control surface.'] },
+        { type: 'code', code: 'claude mcp add --scope user very-happy-clipboard -- very-happy mcp' },
+        { type: 'note', text: 'This --scope user registration gives every Claude session for that OS user copy_to_clipboard; it is not bound to a Very Happy Web terminal. The standalone very-happy mcp command does not add title, preview, progress, spawning, or provider routing, and it needs the local daemon. Tool availability varies by runner and is not a universal MCP promise.' },
+      ] },
       { heading: 'The composition boundary', blocks: [
         { type: 'p', text: 'Very Happy keeps organization-specific integrations outside the core. Your adapter decides which messages are trusted, which machine and directory may run a task, and which agent to start. The product exposes generic HTTPS notifications and local authenticated CLI commands.' },
         { type: 'note', text: 'An IM message is untrusted input, not authorization. Use explicit sender and room allowlists, fixed directory mappings, least-privilege daemon users, and confirmation for destructive actions.' },
