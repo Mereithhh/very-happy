@@ -3,6 +3,45 @@
 This path uses the maintainer-operated Cloud. For your own relay, first follow
 [Self-hosting](deployment.md), then substitute your server URL below.
 
+## Fast path: connect in one command
+
+On macOS or Linux, the Cloud bootstrap installs one exact published CLI version,
+runs local diagnostics, opens the normal one-time Web approval, and starts
+the detached daemon:
+
+```bash
+(
+  set -eu
+  vh_installer=$(mktemp)
+  trap 'rm -f "$vh_installer"' \
+    EXIT HUP INT TERM
+  curl -fsSL \
+    https://happy.mereith.com/install.sh \
+    -o "$vh_installer"
+  sh "$vh_installer"
+)
+```
+
+Read the [version-controlled script](../packages/happy-web-v2/public/install.sh)
+before running remote code. Hosted bytes can change with a Web release, so the
+auditable path is to download, compare, and run the local file. Preview its
+commands offline without making local changes:
+
+```bash
+sh ./install.sh --dry-run
+```
+
+The script never invokes `sudo`, installs tmux, writes provider credentials, or
+enables optional Claude hooks. You still need to configure the agent path you
+intend to use. Continue below for the dependency boundaries, fully manual flow,
+and self-hosted endpoint setup. If you add a structured Claude credential after
+the bootstrap has started the daemon, restart it so the background process
+inherits the new environment:
+
+```bash
+very-happy daemon stop && very-happy daemon start
+```
+
 ## 1. Prepare the machine
 
 Install the required runtime and decide which optional capabilities this machine

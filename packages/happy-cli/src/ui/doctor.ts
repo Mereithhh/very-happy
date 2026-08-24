@@ -17,34 +17,13 @@ import { projectPath } from '@/projectPath'
 import packageJson from '../../package.json'
 import { collectRuntimeReadiness, daemonEndpointsMatch, daemonReadiness, resolveClaudeCredentialReadiness, shareableSettingsSummary, SUPPORTED_NODE_LABEL, toolProbeLabel } from './doctorReadiness'
 import { credentialRelayProblem } from './authRelay'
+import { shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy'
 
 /**
  * Get relevant environment information for debugging
  */
 export function getEnvironmentInfo(): Record<string, any> {
-    return {
-        PWD: process.env.PWD,
-        HAPPY_HOME_DIR: process.env.HAPPY_HOME_DIR,
-        HAPPY_VARIANT: process.env.HAPPY_VARIANT,
-        HAPPY_SERVER_URL: process.env.HAPPY_SERVER_URL,
-        HAPPY_PROJECT_ROOT: process.env.HAPPY_PROJECT_ROOT,
-        DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING: process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING,
-        NODE_ENV: process.env.NODE_ENV,
-        DEBUG: process.env.DEBUG,
-        workingDirectory: process.cwd(),
-        processArgv: process.argv,
-        happyDir: configuration?.happyHomeDir,
-        serverUrl: configuration?.serverUrl,
-        logsDir: configuration?.logsDir,
-        processPid: process.pid,
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        user: process.env.USER,
-        home: process.env.HOME,
-        shell: process.env.SHELL,
-        terminal: process.env.TERM,
-    };
+    return shareSafeEnvironmentInfo();
 }
 
 function getLogFiles(logDir: string): { file: string, path: string, modified: Date }[] {
@@ -142,11 +121,11 @@ export async function runDoctorCommand(): Promise<void> {
                 };
 
                 console.log(chalk.blue(`\n${typeLabels[type] || type}:`));
-                processes.forEach(({ pid, command }) => {
+                processes.forEach((process) => {
                     const color = type === 'current' ? chalk.green :
                         type.startsWith('dev') ? chalk.cyan :
                             type.includes('daemon') ? chalk.blue : chalk.gray;
-                    console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(command)}`);
+                    console.log(`  ${color(shareSafeProcessLine(process))}`);
                 });
             });
 
@@ -211,11 +190,11 @@ export async function runDoctorCommand(): Promise<void> {
     // Environment variables
     console.log(chalk.bold('\n🌍 Environment Variables'));
     const env = getEnvironmentInfo();
-    console.log(`HAPPY_HOME_DIR: ${env.HAPPY_HOME_DIR ? chalk.green(env.HAPPY_HOME_DIR) : chalk.gray('not set')}`);
-    console.log(`HAPPY_SERVER_URL: ${env.HAPPY_SERVER_URL ? chalk.green(env.HAPPY_SERVER_URL) : chalk.gray('not set')}`);
-    console.log(`DANGEROUSLY_LOG_TO_SERVER: ${env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING ? chalk.yellow('ENABLED') : chalk.gray('not set')}`);
-    console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
-    console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
+    console.log(`HAPPY_HOME_DIR: ${env.happyHomeDirConfigured ? chalk.green('set (path hidden here)') : chalk.gray('not set')}`);
+    console.log(`HAPPY_SERVER_URL: ${env.customServerUrlConfigured ? chalk.green('set (resolved origin shown below)') : chalk.gray('not set')}`);
+    console.log(`DANGEROUSLY_LOG_TO_SERVER: ${env.remoteDebugLoggingEnabled ? chalk.yellow('ENABLED') : chalk.gray('not set')}`);
+    console.log(`DEBUG: ${env.debugEnabled ? chalk.green('enabled (value hidden)') : chalk.gray('not set')}`);
+    console.log(`NODE_ENV: ${chalk.green(env.nodeEnvironment)}`);
 
     // Settings
     try {

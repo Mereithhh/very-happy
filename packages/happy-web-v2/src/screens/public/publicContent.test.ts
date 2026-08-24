@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
+import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
@@ -15,6 +15,7 @@ describe('public documentation registry', () => {
   it('keeps onboarding commands and trust disclosure in the published content', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     expect(text).toContain(INSTALL_COMMAND);
+    expect(PUBLIC_DOCS[0]?.sections[0]?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
     expect(text).toContain(LOGIN_COMMAND);
     expect(text).toContain('not end-to-end encrypted');
     expect(text).toContain('server-trusted');
@@ -39,6 +40,9 @@ describe('public documentation registry', () => {
     expect(text).toContain('non-persistent direct-shell fallback');
     expect(text).toContain('Home Screen');
     expect(text).toContain('native install dialog');
+    expect(text).toContain('It never invokes sudo, installs tmux, writes provider credentials');
+    expect(text).toContain('downloads the complete script to a random temporary file');
+    expect(text).toContain('restart the daemon so it inherits the new environment');
   });
 
   it('documents the exact tmux and endpoint degradation boundaries', () => {
@@ -60,6 +64,7 @@ describe('public documentation registry', () => {
     const newTerminal = readFileSync(new URL('../../app/newTerminal.ts', import.meta.url), 'utf8');
     const closeGuard = readFileSync(new URL('../../app/closeGuard.ts', import.meta.url), 'utf8');
     const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
+    const bootstrap = readFileSync(new URL('../../../public/install.sh', import.meta.url), 'utf8');
     const keyboardDoc = readFileSync(new URL('../../../../../docs/keyboard-shortcuts.md', import.meta.url), 'utf8');
     expect(text).toContain('Command K on macOS or Ctrl K on Windows and Linux');
     expect(text).toContain('Ctrl W remains browser/window behavior');
@@ -98,6 +103,10 @@ describe('public documentation registry', () => {
     expect(closeGuard).toContain('const cmdW = e.metaKey');
     expect(closeGuard).not.toContain('const cmdW = e.ctrlKey');
     expect(readme).toContain('keyboard and touch reference');
+    expect(readme).toContain('.github/readme-hero.svg');
+    expect(readme).toContain(BOOTSTRAP_COMMAND);
+    expect(bootstrap).toContain('run "$VH_BIN" auth login');
+    expect(bootstrap).toContain('run "$VH_BIN" daemon start');
     expect(keyboardDoc).toContain('Normal browser tabs reserve `Command/Ctrl+N` and `Command/Ctrl+W`');
     expect(keyboardDoc).toContain('`Ctrl+N` outside editable/terminal input');
     expect(keyboardDoc).not.toContain('All global shortcuts are guarded during IME composition');

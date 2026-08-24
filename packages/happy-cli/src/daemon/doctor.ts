@@ -86,9 +86,9 @@ export async function killRunawayHappyProcesses(): Promise<{ killed: number, err
   const errors: Array<{ pid: number, error: string }> = [];
   let killed = 0;
   
-  for (const { pid, command } of runawayProcesses) {
+  for (const { pid } of runawayProcesses) {
     try {
-      console.log(`Killing runaway process PID ${pid}: ${command}`);
+      console.log(`Killing runaway process PID ${pid} (command arguments hidden for privacy)`);
       
       if (process.platform === 'win32') {
         // Windows: use taskkill

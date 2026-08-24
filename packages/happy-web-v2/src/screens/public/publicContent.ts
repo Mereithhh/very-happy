@@ -1,5 +1,6 @@
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
+export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://happy.mereith.com/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
 export const LOGIN_COMMAND = 'very-happy auth login';
 export const DAEMON_START_COMMAND = 'very-happy daemon start';
 export const PUBLIC_COMMAND_PROOF_EVENT = 'vh:public-command-proof-open';
@@ -23,6 +24,11 @@ export const PUBLIC_DOCS: PublicDoc[] = [
   {
     slug: 'quickstart', label: 'Quick start', summary: 'Install the CLI, connect a machine, and open your first session.',
     sections: [
+      { heading: 'Fast path: one command', blocks: [
+        { type: 'p', text: 'On macOS or Linux, the Cloud bootstrap installs one exact published CLI version, runs local diagnostics, opens the normal one-time Web approval, and starts the detached machine daemon.' },
+        { type: 'code', code: BOOTSTRAP_COMMAND },
+        { type: 'note', text: 'The command downloads the complete script to a random temporary file before execution and removes it afterward. Review the version-controlled install.sh before running remote code; hosted bytes can change with a Web release. It never invokes sudo, installs tmux, writes provider credentials, or enables optional Claude hooks. Run the downloaded script with --dry-run for an offline, no-mutation command preview. If you add a structured Claude credential afterward, restart the daemon so it inherits the new environment. Windows, self-hosted endpoints, and users who prefer explicit control should follow the manual steps below.' },
+      ] },
       { heading: '1. Choose a relay', blocks: [
         { type: 'p', text: 'Use Very Happy Cloud at happy.mereith.com for the shortest path, or deploy your own relay first. A browser account and every connected CLI must use the same relay.' },
         { type: 'note', text: 'The relay is trusted infrastructure, not an end-to-end encrypted blind relay. Read Security & privacy before connecting a sensitive machine.' },
