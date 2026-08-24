@@ -81,33 +81,77 @@ export function assertAccountResourceQuota(options: {
     }
 }
 
-/** Caller must keep this reservation and the message inserts in the same transaction. */
+/**
+ * Atomically reserve stored-message quota and allocate the matching account
+ * update sequence range. The counters are backfilled by migration and avoid a
+ * full account message scan under the account row lock on every write.
+ * Caller must keep this reservation and the message inserts in one transaction.
+ */
 export async function reserveAccountMessages(
     tx: Prisma.TransactionClient,
     accountId: string,
     incoming: { count: number; bytes: number },
-): Promise<void> {
-    await lockAccountResources(tx, accountId);
-    const totals = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
-        `SELECT COUNT(*)::bigint AS "count",
-                COALESCE(SUM(octet_length(sm."content"->>'c')), 0)::bigint AS "bytes"
-         FROM "SessionMessage" sm
-         JOIN "Session" s ON s."id" = sm."sessionId"
-         WHERE s."accountId" = $1`,
+): Promise<number[]> {
+    if (incoming.count === 0) return [];
+    const countLimit = configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT', 100_000);
+    const bytesLimit = configuredResourceLimit('MAX_MESSAGE_BYTES_PER_ACCOUNT', 512 * 1024 * 1024);
+    const rows = await tx.$queryRawUnsafe<Array<{ seq: number }>>(
+        `UPDATE "Account"
+         SET "messageCount" = "messageCount" + $2::bigint,
+             "messageBytes" = "messageBytes" + $3::bigint,
+             "seq" = "seq" + $2::integer
+         WHERE "id" = $1
+           AND ($4::bigint = 0 OR "messageCount" + $2::bigint <= $4::bigint)
+           AND ($5::bigint = 0 OR "messageBytes" + $3::bigint <= $5::bigint)
+         RETURNING "seq"`,
+        accountId,
+        incoming.count,
+        BigInt(incoming.bytes),
+        BigInt(countLimit),
+        BigInt(bytesLimit),
+    );
+    if (rows[0]) {
+        const endSeq = rows[0].seq;
+        return Array.from({ length: incoming.count }, (_, index) => endSeq - incoming.count + index + 1);
+    }
+
+    const current = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
+        `SELECT "messageCount" AS "count", "messageBytes" AS "bytes"
+         FROM "Account" WHERE "id" = $1`,
         accountId,
     );
+    if (!current[0]) throw new Error('Account not found');
     assertAccountResourceQuota({
         resource: 'message',
         current: {
-            count: Number(totals[0]?.count ?? 0),
-            bytes: Number(totals[0]?.bytes ?? 0),
+            count: Number(current[0].count),
+            bytes: Number(current[0].bytes),
         },
         delta: incoming,
         limits: {
-            count: configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT', 100_000),
-            bytes: configuredResourceLimit('MAX_MESSAGE_BYTES_PER_ACCOUNT', 512 * 1024 * 1024),
+            count: countLimit,
+            bytes: bytesLimit,
         },
     });
+    throw new Error('Message quota reservation failed');
+}
+
+/** Release exact stored-message counters when a session is permanently deleted. */
+export async function releaseAccountMessages(
+    tx: Prisma.TransactionClient,
+    accountId: string,
+    removed: { count: number; bytes: number },
+): Promise<void> {
+    if (removed.count === 0 && removed.bytes === 0) return;
+    await tx.$queryRawUnsafe(
+        `UPDATE "Account"
+         SET "messageCount" = GREATEST(0, "messageCount" - $2::bigint),
+             "messageBytes" = GREATEST(0, "messageBytes" - $3::bigint)
+         WHERE "id" = $1`,
+        accountId,
+        removed.count,
+        BigInt(removed.bytes),
+    );
 }
 
 export function withinByteQuota(currentBytes: number, incomingBytes: number, limitBytes: number): boolean {

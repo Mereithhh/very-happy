@@ -31,6 +31,8 @@ const {
         sessions: [] as SessionRecord[],
         messages: [] as MessageRecord[],
         accountSeqById: new Map<string, number>(),
+        messageCountByAccount: new Map<string, number>(),
+        messageBytesByAccount: new Map<string, number>(),
         rateCountByKey: new Map<string, number>(),
         transactionTail: Promise.resolve() as Promise<void>,
         nextMessageId: 1,
@@ -41,6 +43,8 @@ const {
         state.sessions = [];
         state.messages = [];
         state.accountSeqById = new Map<string, number>();
+        state.messageCountByAccount = new Map<string, number>();
+        state.messageBytesByAccount = new Map<string, number>();
         state.rateCountByKey = new Map<string, number>();
         state.transactionTail = Promise.resolve();
         state.nextMessageId = 1;
@@ -55,6 +59,8 @@ const {
         });
         if (!state.accountSeqById.has(input.accountId)) {
             state.accountSeqById.set(input.accountId, 0);
+            state.messageCountByAccount.set(input.accountId, 0);
+            state.messageBytesByAccount.set(input.accountId, 0);
         }
     };
 
@@ -77,6 +83,11 @@ const {
         };
         state.nextMessageId += 1;
         state.messages.push(msg);
+        const accountId = state.sessions.find((session) => session.id === input.sessionId)?.accountId;
+        if (accountId) {
+            state.messageCountByAccount.set(accountId, (state.messageCountByAccount.get(accountId) ?? 0) + 1);
+            state.messageBytesByAccount.set(accountId, (state.messageBytesByAccount.get(accountId) ?? 0) + Buffer.byteLength(String((input.content as any)?.c ?? ''), 'utf8'));
+        }
     };
 
     const selectFields = <T extends Record<string, unknown>>(row: T, select?: Record<string, boolean>) => {
@@ -180,6 +191,33 @@ const {
         }
         if (sql.includes('FROM "Account"') && sql.includes('FOR UPDATE')) {
             return [{ id: String(args[0]) }];
+        }
+        if (sql.includes('SELECT "id" FROM "Session"') && sql.includes('FOR UPDATE')) {
+            const session = state.sessions.find((item) => item.id === String(args[0]) && item.accountId === String(args[1]));
+            return session ? [{ id: session.id }] : [];
+        }
+        if (sql.includes('UPDATE "Account"') && sql.includes('"messageCount" = "messageCount" +')) {
+            const accountId = String(args[0]);
+            const incomingCount = Number(args[1]);
+            const incomingBytes = Number(args[2]);
+            const countLimit = Number(args[3]);
+            const bytesLimit = Number(args[4]);
+            const nextCount = (state.messageCountByAccount.get(accountId) ?? 0) + incomingCount;
+            const nextBytes = (state.messageBytesByAccount.get(accountId) ?? 0) + incomingBytes;
+            if ((countLimit > 0 && nextCount > countLimit) || (bytesLimit > 0 && nextBytes > bytesLimit)) return [];
+            state.messageCountByAccount.set(accountId, nextCount);
+            state.messageBytesByAccount.set(accountId, nextBytes);
+            const seq = (state.accountSeqById.get(accountId) ?? 0) + incomingCount;
+            state.accountSeqById.set(accountId, seq);
+            return [{ seq }];
+        }
+        if (sql.includes('SELECT "messageCount" AS "count"')) {
+            const accountId = String(args[0]);
+            if (!state.accountSeqById.has(accountId)) return [];
+            return [{
+                count: BigInt(state.messageCountByAccount.get(accountId) ?? 0),
+                bytes: BigInt(state.messageBytesByAccount.get(accountId) ?? 0),
+            }];
         }
         if (sql.includes('FROM "SessionMessage"')) {
             const accountId = String(args[0]);

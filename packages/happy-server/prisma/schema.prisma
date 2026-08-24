@@ -28,6 +28,8 @@ model Account {
     updatedAt       DateTime    @updatedAt
     settings        String?
     settingsVersion Int         @default(0)
+    messageCount    BigInt      @default(0)
+    messageBytes    BigInt      @default(0)
     githubUserId    String?     @unique
     githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
 

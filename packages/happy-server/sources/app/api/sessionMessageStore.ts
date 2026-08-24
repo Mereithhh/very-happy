@@ -1,8 +1,8 @@
-import { enforceAccountWriteRate, lockAccountResources, reserveAccountMessages } from '@/app/api/resourceLimits';
+import { enforceAccountWriteRate, reserveAccountMessages } from '@/app/api/resourceLimits';
 import { utf8StringSchema } from '@/app/api/resourceSchemas';
 import { db } from '@/storage/db';
 import { inTx } from '@/storage/inTx';
-import { allocateSessionSeqBatch, allocateUserSeq } from '@/storage/seq';
+import { allocateSessionSeqBatch } from '@/storage/seq';
 import { z } from 'zod';
 
 // Align with the default Socket.IO transport ceiling. The envelope is also
@@ -54,9 +54,16 @@ export async function storeSessionMessages(options: {
     const uniqueMessages = [...firstByLocalId.values(), ...messagesWithoutLocalId];
 
     return inTx(async (tx) => {
-        // Serialize the duplicate check, quota reservation, and inserts across
-        // both transports and every server replica.
-        await lockAccountResources(tx, options.accountId);
+        // Serialize idempotency and sequence allocation only within this
+        // session. Cross-session writes stay concurrent; the account quota is
+        // reserved later with one conditional atomic UPDATE.
+        await tx.$queryRawUnsafe(
+            `SELECT "id" FROM "Session"
+             WHERE "id" = $1 AND "accountId" = $2
+             FOR UPDATE`,
+            options.sessionId,
+            options.accountId,
+        );
         const localIds = [...firstByLocalId.keys()];
         const existing = localIds.length > 0
             ? await tx.sessionMessage.findMany({
@@ -87,13 +94,12 @@ export async function storeSessionMessages(options: {
             (total, message) => total + Buffer.byteLength(message.input.content, 'utf8'),
             0,
         );
-        await reserveAccountMessages(tx, options.accountId, {
+        const updateSeqs = await reserveAccountMessages(tx, options.accountId, {
             count: newMessages.length,
             bytes: incomingBytes,
         });
-
         const seqs = await allocateSessionSeqBatch(options.sessionId, newMessages.length, tx);
-        const createdMessages: StoredSessionMessageWithUpdate[] = [];
+        const createdMessagesWithoutUpdates: StoredSessionMessage[] = [];
         for (let index = 0; index < encoded.length; index += 1) {
             const message = encoded[index];
             const created = await tx.sessionMessage.create({
@@ -104,9 +110,12 @@ export async function storeSessionMessages(options: {
                     localId: message.input.localId,
                 },
             });
-            const updateSeq = await allocateUserSeq(options.accountId, tx);
-            createdMessages.push({ ...created, updateSeq } as StoredSessionMessageWithUpdate);
+            createdMessagesWithoutUpdates.push(created as StoredSessionMessage);
         }
+        const createdMessages = createdMessagesWithoutUpdates.map((message, index) => ({
+            ...message,
+            updateSeq: updateSeqs[index],
+        }));
 
         return {
             messages: [...existing, ...createdMessages].sort((left, right) => left.seq - right.seq) as StoredSessionMessage[],
