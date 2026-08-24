@@ -199,7 +199,9 @@
 @keyframes pub-orbit-breathe { 0%, 100% { opacity: .48; transform: scale(.96); } 50% { opacity: .82; transform: scale(1.04); } }
 @keyframes pub-hero-tunnel { to { transform: rotate(360deg) scale(1.03); } }
 @keyframes pub-title-sheen { 0%, 12% { background-position: 120% 0; } 58%, 100% { background-position: -140% 0; } }
-@keyframes pub-stage-float { 0%, 100% { transform: translate3d(0, 0, 0); } 45% { transform: translate3d(0, -9px, 18px); } 72% { transform: translate3d(0, -3px, 8px); } }
+/* Keep the live product controls geometrically stable. The surrounding orbit,
+ * scan and packets carry the 3D motion while this layer breathes with light. */
+@keyframes pub-stage-float { 0%, 100% { filter: brightness(1); } 45% { filter: brightness(1.045); } 72% { filter: brightness(1.018); } }
 @keyframes pub-stage-orbit { to { transform: translate(-50%, -50%) rotate(360deg); } }
 @keyframes pub-stage-orbit-reverse { to { transform: translate(-50%, -50%) rotate(-360deg); } }
 @keyframes pub-stage-scan { 0%, 12% { background-position: -52% 0; opacity: .36; } 62% { background-position: 152% 0; opacity: .9; } 100% { background-position: 152% 0; opacity: .36; } }
