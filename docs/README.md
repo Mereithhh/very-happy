@@ -6,6 +6,8 @@ Start with the path that matches what you are doing.
 
 - [Getting started](getting-started.md): install, sign in, connect a machine, and
   create the first session.
+- [Keyboard and touch](keyboard-shortcuts.md): command palette, fast navigation,
+  PWA/browser shortcut boundaries, and mobile equivalents.
 - [Public Cloud](public-server.md): hosted-instance trust, registration, capacity,
   and service expectations.
 - [CLI architecture and operation](cli-architecture.md)

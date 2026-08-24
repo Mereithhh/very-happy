@@ -47,6 +47,7 @@ import '../../ui/ui.css';
 import { useImeGuard } from '../../utils/ime';
 import './productWorkspacePreview.css';
 import { getProductPreviewIds, type ProductPreviewView } from './productPreviewIds';
+import { PUBLIC_COMMAND_PROOF_EVENT } from './publicContent';
 
 const VIEW_LABELS: Record<ProductPreviewView, string> = {
   terminal: 'terminal and files',
@@ -114,7 +115,7 @@ export function ProductWorkspacePreview({
         role="group"
         aria-label={`Interactive sanitized ${VIEW_LABELS[view]} product preview`}
       >
-        {sidebar && <ProductSidebar active={view} onTerminal={() => showTerminal(false)} onBoard={openBoard} onCloseNav={closeWorkspaceNav} />}
+        {sidebar && <ProductSidebar active={view} onSearch={() => window.dispatchEvent(new Event(PUBLIC_COMMAND_PROOF_EVENT))} onTerminal={() => showTerminal(false)} onBoard={openBoard} onCloseNav={closeWorkspaceNav} />}
         <div className="product-detail">
           {view === 'terminal' && <TerminalAndFiles filesId={ids.files} filesOpen={filesOpen} onBack={openWorkspaceNav} onCloseFiles={() => setFilesOpen(false)} onOpenFiles={() => setFilesOpen(true)} onStructured={openStructured} />}
           {view === 'conversation' && <Conversation onBack={openWorkspaceNav} onFiles={() => showTerminal(true)} onReturn={() => showTerminal(false)} />}
@@ -125,7 +126,7 @@ export function ProductWorkspacePreview({
   );
 }
 
-function ProductSidebar({ active, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
+function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onSearch: () => void; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
   const rows = [
     { icon: TerminalSquare, title: 'Release candidate', meta: 'claude · working', selected: active === 'terminal' || active === 'conversation', live: true },
     { icon: MessageSquare, title: 'Onboarding polish', meta: 'codex · 14m', selected: false },
@@ -138,7 +139,7 @@ function ProductSidebar({ active, onTerminal, onBoard, onCloseNav }: { active: P
         <header className="sb-header">
           <div className="sb-brand"><strong>Very Happy</strong></div>
           <div className="sb-header-right">
-            <button className="sb-icon-btn" type="button" aria-label="Search" disabled><Search size={16} /></button>
+            <button className="sb-icon-btn" type="button" aria-label="Search actions, chats, and terminals" onClick={onSearch}><Search size={16} /></button>
             <button className="sb-icon-btn" type="button" aria-label="Voice assistant" disabled><AudioLines size={16} /></button>
             <button className="sb-icon-btn sb-board-btn" type="button" aria-label="Open task board" aria-pressed={active === 'board'} onClick={onBoard}><LayoutGrid size={16} /><span className="sb-board-badge mono">1</span></button>
             <button className="sb-icon-btn product-nav-close" type="button" aria-label="Close session list" onClick={onCloseNav}><PanelLeftClose size={16} /></button>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { isAppChord } from '@/app/appChord';
+import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
@@ -69,7 +69,7 @@ export function createTerminalAt(
 }
 
 /** Shown next to the palette's "New terminal" action (matches the ⌘-badge style). */
-export const NEW_TERMINAL_SHORTCUT_HINT = '⌘N · ⌥N';
+export const NEW_TERMINAL_SHORTCUT_HINT = IS_MAC ? '⌘N · ⌥N' : 'Ctrl+N · Alt+N';
 
 /** True for targets where plain typing must win over shortcuts (inputs,
  *  textareas — including xterm's hidden helper textarea — and contenteditable). */

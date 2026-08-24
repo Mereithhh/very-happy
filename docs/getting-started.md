@@ -222,9 +222,20 @@ Very Happy terminal while the daemon is running. This structured mirror is a
 Claude-specific capability; other agent terminals keep their native TUI but do
 not automatically gain the same structured view.
 
+## 6. Learn the fast paths
+
+Press `Command+K` on macOS or `Ctrl+K` on Windows/Linux to search actions,
+chats, and terminals. The sidebar search button opens the same palette on a
+phone. Very Happy keeps macOS `Ctrl` chords available to readline and the real
+TUI, and documents where installed-PWA shortcuts differ from browser tabs.
+
+See [Keyboard and touch navigation](keyboard-shortcuts.md) for session switching,
+saved prompts, notes, back navigation, and the browser-safe new/close fallbacks.
+
 ## Next
 
 - [CLI and daemon](cli-architecture.md)
+- [Keyboard and touch navigation](keyboard-shortcuts.md)
 - [Public Cloud](public-server.md)
 - [Configuration](configuration.md)
 - [Security and privacy](security.md)

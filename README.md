@@ -86,6 +86,21 @@ The design principle is simple: stay high-level when that is faster, drop to the
 raw machine when it is necessary, and do not lose the thread when switching
 devices or interfaces.
 
+### Move at thought speed
+
+`Command+K` on macOS or `Ctrl+K` on Windows/Linux opens one production command
+palette for actions, chats, and terminals. Jump to visible work with
+`Command/Ctrl+1…9`, open saved prompts with `Command/Ctrl+.`, or toggle notes
+with `Command/Ctrl+J`. The same palette opens from the sidebar search button on
+touch devices.
+
+Very Happy preserves the terminal instead of fighting it: on macOS,
+`Ctrl+K/J/N/R` stay with readline and the real TUI. Browser-reserved new/close
+shortcuts work in the installed PWA (`Command+N`; `Ctrl+N` outside focused
+editor/terminal input; plus `Command+W` on macOS); normal tabs use the explicit
+`Alt+N` and `Alt+W` fallbacks. See the full
+[keyboard and touch reference](docs/keyboard-shortcuts.md).
+
 ## Quick start
 
 | On the machine | Required? | Why |

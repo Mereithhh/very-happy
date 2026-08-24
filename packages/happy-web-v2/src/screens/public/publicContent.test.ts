@@ -7,7 +7,7 @@ describe('public documentation registry', () => {
   it('provides every public-release topic with unique stable slugs', () => {
     expect(new Set(PUBLIC_DOCS.map((doc) => doc.slug)).size).toBe(PUBLIC_DOCS.length);
     expect(PUBLIC_DOCS.map((doc) => doc.slug)).toEqual(expect.arrayContaining([
-      'quickstart', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
+      'quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
       'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
     ]));
   });
@@ -48,6 +48,62 @@ describe('public documentation registry', () => {
     expect(text).toContain('HAPPY_WEBAPP_URL selects the browser origin');
     expect(text).toContain('The daemon inherits its environment at startup');
     expect(text).toContain('Use a separate HAPPY_HOME_DIR for each relay');
+  });
+
+  it('anchors the public keyboard story to shipped chords and browser boundaries', () => {
+    const text = JSON.stringify(PUBLIC_DOCS);
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const docs = readFileSync(new URL('./DocsScreen.tsx', import.meta.url), 'utf8');
+    const proof = readFileSync(new URL('./KeyboardWorkflowProof.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./keyboardWorkflowProof.css', import.meta.url), 'utf8');
+    const commandPalette = readFileSync(new URL('../command/CommandPalette.tsx', import.meta.url), 'utf8');
+    const newTerminal = readFileSync(new URL('../../app/newTerminal.ts', import.meta.url), 'utf8');
+    const closeGuard = readFileSync(new URL('../../app/closeGuard.ts', import.meta.url), 'utf8');
+    const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
+    const keyboardDoc = readFileSync(new URL('../../../../../docs/keyboard-shortcuts.md', import.meta.url), 'utf8');
+    expect(text).toContain('Command K on macOS or Ctrl K on Windows and Linux');
+    expect(text).toContain('Ctrl W remains browser/window behavior');
+    expect(text).not.toContain('non-macOS installed PWAs use the platform Ctrl app chord');
+    expect(landing).toContain('<KeyboardWorkflowProof />');
+    expect(docs).toContain('<KeyboardWorkflowProof compact />');
+    expect(proof).toContain("import '../command/commandpalette.css'");
+    expect(proof).toContain('className="cp-panel"');
+    expect(proof).toContain('ime.isGuarded(event)');
+    expect(proof).toContain('PUBLIC_COMMAND_PROOF_EVENT');
+    expect(proof).not.toContain("window.addEventListener('keydown'");
+    expect(proof).toContain('role="combobox"');
+    expect(proof).toContain('aria-activedescendant={activeItemId}');
+    expect(proof).toContain('role="listbox"');
+    expect(proof).toContain('role="option"');
+    expect(proof).toContain('aria-selected={index === active}');
+    expect(proof).toContain("reducedMotion ? 'auto' : 'smooth'");
+    expect(proof).toContain('window.clearTimeout(summonTimerRef.current)');
+    expect(proof).toContain('sidebar search button opens the same command surface');
+    expect(proof).not.toMatch(/@\/sync\//);
+    expect(proof).not.toMatch(/@\/auth\//);
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(styles).toMatch(/\.kwp-palette \.cp-panel[^}]*max-height/);
+    expect(styles).toContain('container: keyboard-workflow / inline-size');
+    expect(styles).toMatch(/@container keyboard-workflow \(max-width: 880px\)[\s\S]*\.kwp-layout \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+    expect(styles).not.toMatch(/@container keyboard-workflow[^}]*\.kwp \{ grid-template-columns/);
+    expect(styles).toMatch(/@container keyboard-workflow \(max-width: 560px\)[\s\S]*\.kwp-palette \{ transform: none; \}/);
+    expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(styles).not.toContain('var(--accent-glow)');
+    expect(styles).not.toContain('var(--accent-2)');
+    expect(commandPalette).toContain('isAppChord(e)');
+    expect(commandPalette).toContain("IS_MAC ? '⌘J' : 'Ctrl+J'");
+    expect(newTerminal).toContain("IS_MAC ? '⌘N · ⌥N' : 'Ctrl+N · Alt+N'");
+    expect(newTerminal).toContain('isAppChord(e)');
+    expect(newTerminal).toContain('const altN =');
+    expect(closeGuard).toContain('const cmdW = e.metaKey');
+    expect(closeGuard).not.toContain('const cmdW = e.ctrlKey');
+    expect(readme).toContain('keyboard and touch reference');
+    expect(keyboardDoc).toContain('Normal browser tabs reserve `Command/Ctrl+N` and `Command/Ctrl+W`');
+    expect(keyboardDoc).toContain('`Ctrl+N` outside editable/terminal input');
+    expect(keyboardDoc).not.toContain('All global shortcuts are guarded during IME composition');
+    const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    expect(productPreview).toContain('window.dispatchEvent(new Event(PUBLIC_COMMAND_PROOF_EVENT))');
+    expect(productPreview).toContain('aria-label="Search actions, chats, and terminals" onClick={onSearch}');
   });
 
   it('resolves known slugs and rejects unknown routes', () => {

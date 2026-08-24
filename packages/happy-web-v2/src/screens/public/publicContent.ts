@@ -2,6 +2,7 @@ export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 export const LOGIN_COMMAND = 'very-happy auth login';
 export const DAEMON_START_COMMAND = 'very-happy daemon start';
+export const PUBLIC_COMMAND_PROOF_EVENT = 'vh:public-command-proof-open';
 
 export type DocBlock =
   | { type: 'p'; text: string }
@@ -56,6 +57,24 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       { heading: 'Optional: mirror a hand-started Claude terminal', blocks: [
         { type: 'code', code: 'very-happy install-terminal-hooks\n# rollback\nvery-happy install-terminal-hooks --remove' },
         { type: 'p', text: 'SDK-backed Claude conversations work without this. The install command merges Very Happy SessionStart/SessionEnd entries into ~/.claude/settings.json (or $CLAUDE_CONFIG_DIR/settings.json) without removing foreign hooks. It only mirrors Claude started by hand inside a Very Happy Web terminal while the daemon is running.' },
+      ] },
+    ],
+  },
+  {
+    slug: 'keyboard', label: 'Keyboard & touch', summary: 'Move between work, run commands, and keep native terminal shortcuts intact.',
+    sections: [
+      { heading: 'Command palette', blocks: [
+        { type: 'p', text: 'Press Command K on macOS or Ctrl K on Windows and Linux to search actions, active chats, and terminals. Use Arrow Up and Arrow Down to move, Enter to run, and Escape to close. Session #tag filters use the same grammar as sidebar search.' },
+        { type: 'list', items: ['Create a chat or terminal, including a terminal in a chosen directory.', 'Jump to a chat or terminal by name, machine, path, or session tag.', 'Open the voice assistant, clipboard history, notes, todo list, or settings.', 'On touch screens, tap the sidebar search button to open the same command palette without a hardware keyboard.'] },
+        { type: 'note', text: 'The palette does not send terminal input. On macOS, application-level shortcuts use Command so Ctrl K, Ctrl J, Ctrl N, and Ctrl R remain available to readline and the real agent TUI.' },
+      ] },
+      { heading: 'High-value shortcuts', blocks: [
+        { type: 'list', items: ['Command/Ctrl 1–9: switch to the corresponding visible sidebar row while the sidebar is mounted.', 'Command/Ctrl .: open saved shortcuts in the current chat or terminal; while open, 1–9 selects a preset.', 'Command/Ctrl J: toggle the notes panel from workspace routes.', 'Command/Ctrl R: rename the current chat or terminal when its visible sidebar row is mounted; otherwise the browser keeps Reload.', 'Command [ on macOS, or Alt Left Arrow outside an editable field: go back.', 'Command N in the installed macOS PWA, or Ctrl N on Windows/Linux outside editable and terminal input: create a terminal. Alt N is the browser-tab fallback outside editable fields.', 'Command W in the installed macOS PWA: close the current chat/terminal through the configured confirmation guard. Alt W is the cross-platform fallback; Ctrl W remains browser/window behavior.'] },
+        { type: 'note', text: 'Browsers reserve Command/Ctrl N and Command/Ctrl W in normal tabs, so the page cannot reliably intercept them. Very Happy does not pretend otherwise: install the PWA for those native-feeling chords, or use the documented Alt fallback. On routes without a closable session, close shortcuts remain browser behavior.' },
+      ] },
+      { heading: 'Touch and mobile', blocks: [
+        { type: 'p', text: 'Every keyboard-only workflow has a visible touch path: sidebar search for the command palette, header controls for files, notes and structured/terminal handoff, the New button for sessions, and Back controls plus edge swipe for navigation. The mobile terminal also exposes touch-first input controls rather than requiring a hardware keyboard.' },
+        { type: 'p', text: 'Installing as a PWA removes browser chrome and makes browser-reserved application chords available where the operating system delivers them. Installation is optional; the responsive Web UI remains fully usable in a normal tab.' },
       ] },
     ],
   },

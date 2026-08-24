@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isAppChord } from '@/app/appChord';
+import { IS_MAC, isAppChord } from '@/app/appChord';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
@@ -237,7 +237,7 @@ export function CommandPalette() {
       title: t('commandPalette.actionNotes'),
       icon: <StickyNote size={16} />,
       haystack: `notes ${(t('commandPalette.actionNotes') as string).toLowerCase()}`,
-      hint: '⌘J',
+      hint: IS_MAC ? '⌘J' : 'Ctrl+J',
       run: toggleNotesPanel,
     });
     out.push({
