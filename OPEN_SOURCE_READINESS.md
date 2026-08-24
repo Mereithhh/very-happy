@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `171575c5a9fc5f3e30ba0f2eea1254e2c079407f`
+> Released product source: `3f23fce99ca696ab3d119428e880120f40e15259`
 > Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -23,6 +23,9 @@ public until the procedure below is complete.
 - The landing also has a canonical `/welcome` route that is independent of login state while
   `/` preserves the existing contract (anonymous visitors see the landing; returning users enter
   the workspace). Docs, legal pages, and the README return to that stable marketing route.
+- Product proof navigation now happens inside the authentic UI instead of a tall marketing scene
+  selector. Sidebar board/session controls, Back, structured mirror, Files, and board cards form a
+  complete desktop/mobile loop; controls that cannot be safely simulated are visibly disabled.
 - Core claims now have matching interactive product surfaces: a production-style Claude
   meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
   Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
@@ -79,15 +82,15 @@ public until the procedure below is complete.
 A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
 wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
-`171575c5` route follow-up repeated the affected Web gates locally and in the exact-SHA clean
-Actions checkout:
+`3f23fce9` product-navigation follow-up repeated the affected Web gates locally and in the
+exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 99 test files / 1,423 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 99 test files / 1,424 tests; Vite production build; TypeScript 0 errors |
 | CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32692043448` passed for exact deployed source `171575c5`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32693831075` passed for exact deployed source `3f23fce9`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -111,8 +114,8 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
 - production landing and all 12 documentation chapters render with no horizontal overflow;
 - the redesigned production landing and docs were rechecked at 390x844 and 1440px in light
-  and dark themes; product tabs click and respond to arrow keys, the conversation's return
-  control restores the terminal view, and docs Escape handling returns focus to the menu;
+  and dark themes; the current UI no longer exposes marketing scene tabs, and its sidebar,
+  conversation, terminal, files, and board controls complete the preview flow;
 - skip-to-content is the first focus target and navigation/regions have accessible names;
 - the landing prominently discloses “server-trusted, not end-to-end encrypted”;
 - quick start includes install, login approval, daemon start, and first-session commands;
@@ -128,7 +131,7 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   throttling, LCP improved from 6.37 s to 1.85 s. The service worker now precaches only seven
   entry/manifest/icon resources and caches hashed app assets on demand.
 - after the final Web deploy, a new isolated production profile confirmed zero horizontal
-  overflow on landing/docs/quickstart, three product tabs, working return-to-terminal, no
+  overflow on landing/docs/quickstart, working native-view navigation, no
   AppRoot/crypto fetch, stable docs focus styling, and the mobile signup route. The existing
   authenticated production browser still resolved `/` to the app rather than the public hero.
 - the final animated hero was verified again in a service-worker-cleared production profile at
@@ -245,6 +248,13 @@ at **P0=0, P1=0, P2=0, P3=0** for the change.
   anonymous/stored-credential hard reloads, AppRoot client navigation, 390x844 layout, 16 px
   controls, and public-root console checks passed. Rollback remains the atomic
   `/opt/happy/webapp.prev` deployment from `8b1e202a`.
+- The native-control product-proof refinement shipped Web-only from SHA
+  `3f23fce99ca696ab3d119428e880120f40e15259`. Exact-SHA Quality Gates run `32693831075`
+  and deploy run `32693972468` passed, producing
+  `/assets/index-LWzg52cV-202608240534.js`. A fresh production 390x844 browser confirmed no
+  marketing tablist, sidebar → board → session → file navigation through authentic controls,
+  16 px visible form controls, no horizontal overflow, and no console errors. Rollback remains
+  the prior `171575c5` atomic Web deployment.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
