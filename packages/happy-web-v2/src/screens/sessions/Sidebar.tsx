@@ -6,7 +6,7 @@ import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storag
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
-import { getSessionName, getSessionSubtitle, formatLastSeen } from '@/utils/sessionUtils';
+import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows } from '@/sync/closedTerminals';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
@@ -83,7 +83,7 @@ function sessionRow(s: Session): Row {
     createdAt: s.createdAt,
     session: s,
     title: getSessionName(s),
-    subtitle: getSessionSubtitle(s),
+    subtitle: getSessionSidebarSubtitle(s),
     tags: s.metadata?.tags,
   };
 }
@@ -203,7 +203,7 @@ export function Sidebar() {
             terminalId: tm.id,
             machineId: tm.machineId,
             title: tm.title || tm.machineName,
-            subtitle: tm.machineName,
+            subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
           }));
     // One place applies the overlay for every ACTIVITY-ORDERED surface, so

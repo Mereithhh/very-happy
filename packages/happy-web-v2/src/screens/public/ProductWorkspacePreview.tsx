@@ -55,22 +55,29 @@ const VIEW_LABELS: Record<ProductPreviewView, string> = {
   board: 'task board',
 };
 
+function previewSurfaceLabel(view: ProductPreviewView, workspaceNavOpen: boolean): string {
+  return workspaceNavOpen ? 'multi-machine session command panel' : `${VIEW_LABELS[view]} product preview`;
+}
+
 export function ProductWorkspacePreview({
   compact = false,
   initialView,
   initialFilesOpen = true,
+  initialWorkspaceNavOpen = false,
   sidebar = true,
   fileTransferDemo = false,
 }: {
   compact?: boolean;
   initialView?: ProductPreviewView;
   initialFilesOpen?: boolean;
+  initialWorkspaceNavOpen?: boolean;
   sidebar?: boolean;
   fileTransferDemo?: boolean;
 }) {
   const [view, setView] = useState<ProductPreviewView>(initialView ?? (compact ? 'conversation' : 'terminal'));
   const [filesOpen, setFilesOpen] = useState(initialFilesOpen);
-  const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false);
+  const [workspaceNavOpen, setWorkspaceNavOpen] = useState(initialWorkspaceNavOpen);
+  const surfaceLabel = previewSurfaceLabel(view, workspaceNavOpen);
   const instanceId = useId();
   const ids = getProductPreviewIds(instanceId);
   const productRef = useRef<HTMLDivElement | null>(null);
@@ -109,13 +116,13 @@ export function ProductWorkspacePreview({
 
   return (
     <div className={`product-preview${compact ? ' product-preview--compact' : ''}`}>
-      <span className="sr-only" aria-live="polite">Showing the sanitized {VIEW_LABELS[view]} preview.</span>
+      <span className="sr-only" aria-live="polite">Showing the sanitized {surfaceLabel}.</span>
       <div
         ref={productRef}
         id={ids.panel}
         className={`product-app${!sidebar ? ' product-app--no-sidebar' : ''}${workspaceNavOpen ? ' product-app--nav-open' : ''}`}
         role="group"
-        aria-label={`Interactive sanitized ${VIEW_LABELS[view]} product preview`}
+        aria-label={`Interactive sanitized ${surfaceLabel}`}
       >
         {sidebar && <ProductSidebar active={view} onSearch={() => window.dispatchEvent(new Event(PUBLIC_COMMAND_PROOF_EVENT))} onTerminal={() => showTerminal(false)} onBoard={openBoard} onCloseNav={closeWorkspaceNav} />}
         <div className="product-detail">
@@ -130,13 +137,13 @@ export function ProductWorkspacePreview({
 
 function ProductSidebar({ active, onSearch, onTerminal, onBoard, onCloseNav }: { active: ProductPreviewView; onSearch: () => void; onTerminal: () => void; onBoard: () => void; onCloseNav: () => void }) {
   const rows = [
-    { icon: TerminalSquare, title: 'Release candidate', meta: 'claude · working', selected: active === 'terminal' || active === 'conversation', live: true },
-    { icon: MessageSquare, title: 'Onboarding polish', meta: 'codex · 14m', selected: false },
-    { icon: MessageSquare, title: 'Security review', meta: 'claude · waiting', attention: true },
-    { icon: TerminalSquare, title: 'Docs structure', meta: 'workstation · 1h', selected: false },
+    { icon: TerminalSquare, title: 'Release candidate', meta: 'build · terminal', selected: active === 'terminal' || active === 'conversation', live: true },
+    { icon: MessageSquare, title: 'Onboarding polish', meta: 'office · codex · ~/very-happy', selected: false },
+    { icon: MessageSquare, title: 'Security review', meta: 'stage · claude · ~/very-happy', attention: true },
+    { icon: TerminalSquare, title: 'Docs structure', meta: 'laptop · terminal', selected: false },
   ];
   return (
-    <aside className="product-sidebar" aria-label="Example session sidebar">
+    <aside className="product-sidebar" aria-label="Example multi-machine session command panel">
       <div className="sb">
         <header className="sb-header">
           <div className="sb-brand"><strong>Very Happy</strong></div>

@@ -181,8 +181,8 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
       { heading: 'Components', blocks: [
-        { type: 'code', code: 'Web / PWA  ⇄  trusted relay + storage  ⇄  daemon  ⇄  local tools\n daily UI        happy-server              CLI       shell / text TUI / agents' },
-        { type: 'p', text: 'The browser handles the user interface. The server authenticates accounts, stores synchronized state, and relays socket traffic. The daemon runs on the connected machine and exposes authorized remote capabilities.' },
+        { type: 'code', code: 'machine A daemon ─┐\nmachine B daemon ─┼─ trusted relay + storage ⇄ one Web / PWA account panel\nmachine C daemon ─┘                                  │\n                                             sessions / tasks / files\n                                             choose machine + agent' },
+        { type: 'p', text: 'The browser is the unified command surface for every machine connected to the account. Its sidebar and board aggregate sessions and attention state across those machines; creating work explicitly targets a machine and agent. The server authenticates accounts, stores synchronized state, and relays socket traffic. Each daemon runs on its connected machine and exposes authorized remote capabilities.' },
       ] },
       { heading: 'Session flow', blocks: [
         { type: 'list', items: ['The user authenticates the browser to a relay.', 'A one-time approval connects a CLI identity to the same account.', 'The server routes requests and updates between browser and online daemon.', 'The daemon invokes local terminal or agent processes and streams results back.'] },

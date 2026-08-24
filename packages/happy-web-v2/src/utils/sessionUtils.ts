@@ -150,6 +150,21 @@ export function getSessionSubtitle(session: Session): string {
 }
 
 /**
+ * Adds the two pieces of context needed when sessions from several computers
+ * share one sidebar: which machine owns the work, and which agent protocol the
+ * session uses. Keep getSessionSubtitle() path-only for compact consumers such
+ * as search; this formatter is the production sidebar contract.
+ */
+export function getSessionSidebarSubtitle(session: Session): string {
+    if (!session.metadata) return getSessionSubtitle(session);
+    const flavor = session.metadata.flavor?.trim();
+    const agent = !flavor || flavor === 'terminal-mirror' ? 'claude' : flavor;
+    return [session.metadata.host.trim(), agent, getSessionSubtitle(session)]
+        .filter(Boolean)
+        .join(' · ');
+}
+
+/**
  * Checks if a session is currently online based on the active flag.
  * A session is considered online if the active flag is true.
  */

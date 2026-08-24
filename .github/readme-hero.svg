@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
-  <title id="title">Very Happy — work anywhere and keep the thread</title>
-  <desc id="desc">An animated terminal-style composition showing a structured conversation, real terminal, files, command palette, and mobile continuation.</desc>
+  <title id="title">Very Happy — one panel for every machine and agent</title>
+  <desc id="desc">An animated command-panel composition aggregating multiple machines and agents with structured conversation, real terminal, files, and mobile continuation.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#06080c"/>
@@ -62,12 +62,12 @@
   <g transform="translate(58 58)">
     <g>
       <circle cx="7" cy="7" r="5" fill="#34e2c4" filter="url(#glow)" class="pulse"/>
-      <text x="23" y="11" fill="#8fa09d" font-size="12" font-weight="700" letter-spacing="2.1">OPEN AGENT WORKSPACE</text>
+      <text x="23" y="11" fill="#8fa09d" font-size="12" font-weight="700" letter-spacing="2.1">MULTI-MACHINE COMMAND PANEL</text>
     </g>
     <text x="0" y="82" fill="url(#sheen)" font-size="64" font-weight="780" letter-spacing="-3.6">VERY HAPPY</text>
-    <text x="1" y="122" fill="#dce5e3" font-size="22" font-weight="620">Work anywhere. Keep the thread.</text>
-    <text x="1" y="155" fill="#82918f" font-size="14">Your agents keep working. Your context stays intact.</text>
-    <text x="1" y="178" fill="#82918f" font-size="14">You get to be Very Happy.</text>
+    <text x="1" y="122" fill="#dce5e3" font-size="19" font-weight="620">One panel. Every machine. Every agent.</text>
+    <text x="1" y="155" fill="#82918f" font-size="14">See the fleet. Dispatch the work.</text>
+    <text x="1" y="178" fill="#82918f" font-size="14">Step in anywhere. You get to be Very Happy.</text>
 
     <g transform="translate(0 218)">
       <rect width="147" height="34" rx="17" fill="#101820" stroke="#2e3c43"/>
@@ -79,7 +79,7 @@
     </g>
 
     <g transform="translate(0 278)" class="mono">
-      <text x="0" y="0" fill="#62706f" font-size="10" letter-spacing="1.5">ONE SURFACE FOR</text>
+      <text x="0" y="0" fill="#62706f" font-size="10" letter-spacing="1.5">ONE COMMAND PANEL</text>
       <text x="0" y="29" fill="#d4dddb" font-size="13">Claude Code  ·  Codex</text>
       <text x="0" y="53" fill="#d4dddb" font-size="13">Gemini / OpenCode via ACP</text>
       <text x="0" y="77" fill="#d4dddb" font-size="13">OpenClaw gateway</text>
@@ -105,20 +105,20 @@
       <circle cx="470" cy="96" r="4" fill="#5c6870"/>
       <circle cx="484" cy="96" r="4" fill="#34e2c4"/>
       <text x="505" y="100" fill="#cbd5d3" font-size="10.5" font-weight="680">Very Happy</text>
-      <text x="1013" y="100" fill="#73817f" font-size="9" class="mono">WORKSPACE 03</text>
+      <text x="982" y="100" fill="#73817f" font-size="9" class="mono">03 MACHINES · 04 SESSIONS</text>
 
       <rect x="437" y="115" width="154" height="334" fill="#11171e"/>
       <path d="M591 115V449" stroke="#2a353d"/>
-      <text x="454" y="140" fill="#657473" font-size="8.5" class="mono" letter-spacing="1.2">ACTIVE WORK</text>
+      <text x="454" y="140" fill="#657473" font-size="8.5" class="mono" letter-spacing="1.2">FLEET / ACTIVE WORK</text>
       <rect x="445" y="151" width="138" height="52" rx="7" fill="#1a242b" stroke="#38474d"/>
       <rect x="445" y="151" width="3" height="52" rx="2" fill="#34e2c4"/>
       <text x="460" y="173" fill="#d6dfdd" font-size="10" font-weight="700">Release candidate</text>
-      <text x="460" y="190" fill="#71817e" font-size="8.5" class="mono">terminal · working</text>
+      <text x="460" y="190" fill="#71817e" font-size="8.5" class="mono">build · claude · working</text>
       <text x="460" y="227" fill="#bdc8c6" font-size="9.5">Onboarding polish</text>
-      <text x="460" y="244" fill="#667572" font-size="8.5" class="mono">claude · 14m</text>
+      <text x="460" y="244" fill="#667572" font-size="8.5" class="mono">office · codex · 14m</text>
       <text x="460" y="280" fill="#bdc8c6" font-size="9.5">Security review</text>
       <circle cx="565" cy="276" r="4" fill="#34e2c4" class="pulse"/>
-      <text x="460" y="297" fill="#667572" font-size="8.5" class="mono">agent · waiting</text>
+      <text x="460" y="297" fill="#667572" font-size="8.5" class="mono">staging · claude · waiting</text>
       <rect x="451" y="409" width="123" height="24" rx="6" fill="#151e25" stroke="#2e3b42"/>
       <text x="464" y="425" fill="#8c9a98" font-size="8" class="mono">⌘ K  SEARCH</text>
 

@@ -1,11 +1,11 @@
 <div align="center">
   <a href="https://happy.mereith.com/welcome">
-    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — work anywhere, keep the thread">
+    <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — one command panel for every connected machine and agent">
   </a>
 </div>
 
 <p align="center">
-  <strong>Your agents keep working. Your context stays intact. You get to be Very Happy.</strong>
+  <strong>One panel. Every machine. Every agent. You get to be Very Happy.</strong>
 </p>
 
 <p align="center">
@@ -26,15 +26,25 @@
   <a href="docs/deployment.md">Self-host</a>
 </p>
 
-Very Happy is an open agent workspace for computers you control. It combines
-structured agent conversations, the real terminal interface, files, tasks,
-notes, notifications, and coordination in one responsive Web UI—then keeps that
-work reachable from a laptop, phone, tablet, or installed PWA.
+Very Happy is one open command panel for the computers and agents you control.
+Its responsive Web UI gathers sessions from every connected machine, shows what
+is running or waiting, lets you choose the machine and agent for new work, and
+opens the corresponding structured conversation, real terminal, files, tasks,
+notes, or notifications from a laptop, phone, tablet, or installed PWA.
 
 It is not a browser repaint of one vendor's CLI and it is not merely a remote
 shell. Very Happy preserves the surrounding thread: what is running, what the
 agent changed, which machine owns the work, what needs your decision, and how to
 continue after an interruption.
+
+```text
+build server  ─┐
+workstation   ─┼─>  ONE WEB / PWA PANEL  ─> choose machine + agent
+field laptop  ─┘      sessions · status · tasks · files · terminals
+```
+
+Today, dispatch is explicit: you select the target machine and agent for each
+new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 
 > [!TIP]
 > **Use the Web/PWA as your daily workspace.** Install the CLI once to pair a
@@ -134,6 +144,7 @@ its contents.
 
 | The friction | What carries it for you |
 |---|---|
+| “My agents and terminals are scattered across several machines.” | One account sidebar and task board aggregate their sessions and attention state; start new work on the machine and agent you choose. |
 | “I left my desk, so the work stopped being legible.” | A responsive Web/PWA workspace with mobile conversation, terminal, files, tasks, notifications, and Home Screen installation. |
 | “Structured chat is pleasant, but sometimes I need the actual tool.” | Keep SDK-backed Claude and drop into a durable, unmodified agent TTY/TUI when necessary. |
 | “Every session is another pile of context to remember.” | Session organization, file context, task board, todos, notes, status, and an optional coordinating meta-agent. |

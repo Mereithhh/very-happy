@@ -26,6 +26,21 @@ very-happy CLI daemon ── agent runners / PTY ──┬─ Claude Code
 The legacy Expo `packages/happy-app` is retained from upstream history and is not
 a supported production client in this fork.
 
+### One account, multiple machines
+
+Every daemon connected to the same account feeds one Web/PWA workspace. The
+sidebar and task board aggregate sessions and attention state across those
+machines, so the user can monitor Claude, Codex, terminal, and other supported
+runner sessions without opening a separate control plane per host. Creating a
+session explicitly selects its target machine and agent; automatic
+provider-neutral routing remains roadmap.
+
+```text
+build machine  ─┐
+workstation    ─┼─ trusted relay ⇄ one account panel ⇄ user
+field laptop   ─┘                 sessions / tasks / files
+```
+
 ## Identity and connection
 
 Password and verified Google identities map to an `Account`. Web logins receive

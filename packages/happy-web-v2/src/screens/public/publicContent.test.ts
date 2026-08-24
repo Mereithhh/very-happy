@@ -126,21 +126,23 @@ describe('public documentation registry', () => {
     const featureProofs = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const continuityProof = readFileSync(new URL('./MobileContinuityProof.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
-    expect(landing).toContain('Work anywhere.');
+    expect(landing).toContain('One panel.');
+    expect(landing).toContain('Every machine.<br />Every agent.');
     expect(landing).toContain('Claude Code');
     expect(landing).toContain('Codex');
     expect(landing).toContain('Gemini + OpenCode via ACP');
     expect(landing).toContain('BETA · IMPLEMENTED');
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
-    expect(landing).toContain('AUTHENTIC PRODUCT SURFACE');
+    expect(landing).toContain('ONE PANEL // MANY RUNNERS');
+    expect(landing).toContain('MULTI-MACHINE COMMAND PANEL');
     expect(landing).toContain('From zero to a live agent in six steps.');
     expect(landing).toContain('<h3>Configure the agent</h3>');
     expect(landing).toContain('<h3>Start the daemon</h3>');
     expect(landing).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
     expect(landing).toContain('tmux is recommended for durable terminals');
-    expect(landing).toContain('STRUCTURED WHEN YOU WANT IT.');
-    expect(landing).toContain('THE REAL TEXT TUI WHEN YOU NEED IT.');
+    expect(landing).toContain('SEE THE FLEET.');
+    expect(landing).toContain('DISPATCH THE WORK. STEP IN ANYWHERE.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
     expect(continuityProof).toContain('REAL TUI · TMUX-BACKED');
     expect(continuityProof).toContain('CLAUDE · STRUCTURED MIRROR');
@@ -153,10 +155,14 @@ describe('public documentation registry', () => {
     expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landing).toContain('You get to be Very Happy.');
+    expect(landing).toContain('Today you explicitly choose the target machine and agent for each session');
+    expect(productPreview).toContain('Example multi-machine session command panel');
+    expect(productPreview).toContain('office · codex');
+    expect(html).toContain('One Web command panel for every connected machine');
     expect(landing).not.toContain('private Tanka deployment');
     expect(landing).toContain('ROADMAP');
     expect(landing).toContain('not end-to-end encrypted');
-    expect(html).toContain('Work anywhere. Keep the thread.');
+    expect(html).toContain('One panel. Every machine. Every agent.');
     expect(html).not.toContain('Claude Code, from any browser.');
   });
 
@@ -271,12 +277,12 @@ describe('public documentation registry', () => {
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
     const featureStyles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
     expect(landing).toContain('pub-hero-product');
-    expect(landing).toContain('<ProductWorkspacePreview compact />');
+    expect(landing).toContain('<ProductWorkspacePreview compact initialWorkspaceNavOpen />');
     expect(landing).toContain('pub-product-frame');
     expect(landing).toContain('pub-fleet');
-    expect(landing).toContain('SANITIZED DEMO · PRODUCTION UI CONTRACTS');
-    expect(landing).toContain('ACCOUNT OVERVIEW / SANITIZED');
-    expect(landing).toContain('YOU CHOOSE WHERE WORK RUNS');
+    expect(landing).toContain('SANITIZED DEMO · ONE ACCOUNT PANEL');
+    expect(landing).toContain('FLEET COMMAND / SANITIZED');
+    expect(landing).toContain('NEW SESSION → CHOOSE MACHINE + AGENT');
     expect(landing).not.toContain('CONNECTED · 42 MS');
     expect(landing).not.toContain('FLEET / LIVE NOW');
     expect(styles).toContain('@keyframes pub-field-drift');
@@ -310,6 +316,7 @@ describe('public documentation registry', () => {
 
   it('renders public product proof from production UI class contracts without app state imports', () => {
     const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    const sidebar = readFileSync(new URL('../sessions/Sidebar.tsx', import.meta.url), 'utf8');
     expect(preview).toContain("import '../sessions/sidebar.css'");
     expect(preview).toContain("import '../terminal/terminal.css'");
     expect(preview).toContain("import '../files/fsbrowser.css'");
@@ -331,6 +338,19 @@ describe('public documentation registry', () => {
     expect(preview).not.toMatch(/@\/auth\//);
     expect(preview).not.toMatch(/from ['"].*WebTerminalScreen/);
     expect(preview).not.toContain('FsBrowser machineId');
+    expect(sidebar).toContain('getSessionSidebarSubtitle(s)');
+    expect(sidebar).toContain('`${tm.machineName} · terminal`');
+  });
+
+  it('pins the fleet panel desktop/detail and mobile/overlay cascade in opposite states', () => {
+    const productStyles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
+    const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+
+    expect(productStyles).toMatch(/@container product-preview \(max-width: 760px\)[\s\S]*\.product-app--nav-open \.product-sidebar \{ position: absolute; inset: 0;[^}]*display: block;/);
+    expect(productStyles).toMatch(/@container product-preview \(max-width: 760px\)[\s\S]*\.product-app--nav-open \.product-detail \{ visibility: hidden; \}/);
+    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-sidebar \{ position: static; inset: auto; z-index: auto; display: block;/);
+    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-detail \{ visibility: visible; \}/);
+    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-nav-close \{ display: none; \}/);
   });
 
   it('makes every narrow product surface usable instead of shrinking desktop mockups', () => {

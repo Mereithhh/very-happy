@@ -11,9 +11,9 @@ import './public.css';
 
 function ProductShowcase() {
   return <section className="pub-product" aria-labelledby="product-title">
-    <div className="pub-product-intro"><div><div className="eyebrow">AUTHENTIC PRODUCT SURFACE</div><h2 id="product-title">One workspace. Three levels of attention.</h2></div><p>Very Happy keeps the SDK-backed structured flow and adds the terminal stream from a real tmux-owned process. With tmux 3.2+, optional Claude hooks connect that hand-started terminal to a structured mirror; the board steps back across all your work. Every surface below reuses production visual contracts with sanitized data.</p></div>
-    <div className="pub-product-frame"><div className="pub-product-frame-head mono"><span><i /> PRODUCTION UI CONTRACTS</span><span>WORKSTATION · SANITIZED SESSION</span></div><ProductWorkspacePreview /></div>
-    <div className="pub-product-caption mono"><span>PRODUCTION VISUAL CONTRACTS · SANITIZED DATA</span><span>RESPONSIVE WEB · NO DESKTOP HANDOFF REQUIRED</span></div>
+    <div className="pub-product-intro"><div><div className="eyebrow">ONE PANEL // MANY RUNNERS</div><h2 id="product-title">Command the fleet without babysitting every process.</h2></div><p>The account sidebar brings sessions from connected machines and different agents into one operating view. See what is running, what is waiting, and what needs you; choose a machine and agent for new work; then open its structured conversation, real terminal, files, or task board without changing control planes.</p></div>
+    <div className="pub-product-frame"><div className="pub-product-frame-head mono"><span><i /> ACCOUNT WORKSPACE · PRODUCTION UI CONTRACTS</span><span>3 MACHINES · CLAUDE + CODEX + TTY</span></div><ProductWorkspacePreview /></div>
+    <div className="pub-product-caption mono"><span>ONE SIDEBAR · MULTI-MACHINE WORK</span><span>DISPATCH · WATCH · STEP IN</span></div>
   </section>;
 }
 
@@ -21,10 +21,10 @@ function WebFirstSurface() {
   return <section className="pub-web-first" aria-labelledby="web-first-title">
     <div className="pub-web-first-copy">
       <div className="eyebrow">WEB FIRST // TERMINAL UNIVERSAL</div>
-      <h2 id="web-first-title">Open the Web.<br /><span>Keep the real machine.</span></h2>
-      <p><strong>Web and the installable PWA are the recommended daily workspace.</strong> Install the CLI to pair and diagnose a machine; leave the daemon running in the background; then follow terminals, conversations, files, and tasks from the screen already in your hand.</p>
+      <h2 id="web-first-title">Your fleet in the Web.<br /><span>The work on real machines.</span></h2>
+      <p><strong>The Web/PWA is the recommended daily command surface.</strong> Install the CLI on each machine you want to reach and leave its daemon running; the account workspace then gathers their terminals, conversations, files, tasks, and attention states into the screen already in your hand.</p>
       <div className="pub-web-first-stack">
-        <article><MonitorSmartphone size={18} /><div><h3>Web / PWA</h3><p>Your default control surface on desktop, tablet, and phone.</p></div></article>
+        <article><MonitorSmartphone size={18} /><div><h3>Web / PWA</h3><p>Your unified command panel on desktop, tablet, and phone.</p></div></article>
         <article><Cable size={18} /><div><h3>CLI + daemon</h3><p>The machine-side bridge for pairing, diagnostics, automation, and local escape hatches.</p></div></article>
         <article><TerminalSquare size={18} /><div><h3>tmux + real TTY</h3><p>The compatibility layer for ordinary xterm-256color text TUIs—not only coding agents.</p></div></article>
       </div>
@@ -73,18 +73,18 @@ function HeroProductStage() {
       <span className="pub-stage-packet pub-stage-packet--three" />
     </div>
     <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive sanitized preview using Very Happy production UI contracts">
-      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · PRODUCTION UI CONTRACTS</span><span>WORKSPACE CONTINUITY</span></div>
-      <ProductWorkspacePreview compact />
-      <div className="pub-hero-product-foot mono"><span>PROCESS RUNS THERE</span><span>CONTEXT ARRIVES HERE</span></div>
+      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · ONE ACCOUNT PANEL</span><span>3 MACHINES · 4 SESSIONS</span></div>
+      <ProductWorkspacePreview compact initialWorkspaceNavOpen />
+      <div className="pub-hero-product-foot mono"><span>CHOOSE MACHINE + AGENT</span><span>DISPATCH · WATCH · STEP IN</span></div>
     </aside></div>
     <div className="pub-stage-telemetry mono" aria-hidden="true"><span>03 MACHINES</span><span>02 AGENTS RUNNING</span><span>01 NEEDS YOU</span></div>
   </div>;
 }
 
 export function LandingScreen() {
-  useEffect(() => { document.title = 'Very Happy — Work anywhere. Keep the thread.'; }, []);
+  useEffect(() => { document.title = 'Very Happy — One panel for every machine and agent.'; }, []);
   return <div className="pub-page"><PublicHeader /><main id="main-content">
-    <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">WEB-FIRST WORKSPACE // YOUR MACHINES</div><h1 id="hero-title">Work anywhere.<br /><span>Keep the thread.</span></h1><p>Use the Web or installable PWA as your daily workspace for real terminals, structured conversations, files, and tasks. Your processes stay on your machines; the context follows you to any screen.</p><div className="pub-hero-thesis mono"><span>STRUCTURED WHEN YOU WANT IT.</span><strong>THE REAL TEXT TUI WHEN YOU NEED IT.</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect a machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Web / PWA by default</span><span>Shells + text TUIs through tmux</span><span>self-hostable</span></div></div><HeroProductStage /></section>
+    <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">MULTI-MACHINE COMMAND PANEL</div><h1 id="hero-title" className="pub-fleet-title">One panel.<br /><span>Every machine.<br />Every agent.</span></h1><p>Open the Web or PWA, choose a connected machine and agent, then dispatch the work. Step into any live terminal, conversation, file, or task without rebuilding context.</p><div className="pub-hero-thesis mono"><span>SEE THE FLEET.</span><strong>DISPATCH THE WORK. STEP IN ANYWHERE.</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect your first machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Web / PWA command surface</span><span>Choose machine + agent per session</span><span>self-hostable</span></div></div><HeroProductStage /></section>
     <ProductShowcase />
     <WebFirstSurface />
     <KeyboardWorkflowProof />
@@ -95,7 +95,7 @@ export function LandingScreen() {
     <section className="pub-choices" aria-labelledby="deploy-title"><div className="pub-section-head"><div><div className="eyebrow">DEPLOYMENT</div><h2 id="deploy-title">Choose who operates the relay.</h2></div></div><div className="pub-choice-grid"><article><Globe2 size={22} /><h3>Very Happy Cloud</h3><p>The quickest start. Community-operated, capacity-limited, and provided without an uptime SLA.</p><Link to="/docs/cloud">Cloud guide <ArrowRight size={14} /></Link></article><article><Server size={22} /><h3>Self-hosted</h3><p>Your access policy, storage, backups, and operator boundary. Still server-trusted by design.</p><Link to="/docs/self-hosting">Self-hosting guide <ArrowRight size={14} /></Link></article></div></section>
     <section className="pub-manifesto" aria-labelledby="manifesto-title"><div className="eyebrow">WHY VERY HAPPY</div><h2 id="manifesto-title">The interface carries the overhead.<br /><span>You get to be Very Happy.</span></h2><p>Fewer tabs to patrol, less context to rebuild, and more attention left for the decisions only you can make.</p><div className="pub-manifesto-line mono"><span>LESS BABYSITTING</span><span>LESS CONTEXT REBUILDING</span><span>MORE WORK IN MOTION</span></div></section>
     <CoreFeatureProofs />
-    <section className="pub-orchestration" aria-labelledby="orchestration-title"><div><div className="eyebrow">FROM TOOL TO WORK SYSTEM</div><h2 id="orchestration-title">Keep agents moving. Step in for judgment.</h2><p>Notes, tasks, voice, webhooks, and local adapters already surround the core workspace. Today you choose the machine and agent; provider-neutral routing and a visible multi-agent office are roadmap.</p><Link to="/docs/integrations">Explore integrations <ArrowRight size={15} /></Link></div><div className="pub-fleet" aria-label="Sanitized account overview with three connected machines"><div className="pub-fleet-head mono"><span>ACCOUNT OVERVIEW / SANITIZED</span><span><i /> 3 CONNECTIONS</span></div><div className="pub-fleet-row"><span><Server size={15} /> build-server</span><strong>Codex · running tests</strong><small className="mono">02:18</small></div><div className="pub-fleet-row"><span><Laptop size={15} /> workstation</span><strong>Claude · awaiting review</strong><small className="mono">00:42</small></div><div className="pub-fleet-row"><span><Server size={15} /> staging</span><strong>terminal · healthy</strong><small className="mono">DEMO</small></div><div className="pub-fleet-foot mono"><Sparkles size={14} /> ONE ACCOUNT VIEW · YOU CHOOSE WHERE WORK RUNS</div></div></section>
+    <section className="pub-orchestration" aria-labelledby="orchestration-title"><div><div className="eyebrow">ONE ACCOUNT // MANY MACHINES</div><h2 id="orchestration-title">See the fleet. Dispatch the work. Step in for judgment.</h2><p>Sessions, status, tasks, notes, voice, webhooks, and local adapters converge in one Web panel. Today you explicitly choose the target machine and agent for each session; provider-neutral automatic routing and a visible multi-agent office remain roadmap.</p><Link to="/docs/integrations">Explore integrations <ArrowRight size={15} /></Link></div><div className="pub-fleet" aria-label="Sanitized account command panel with three connected machines"><div className="pub-fleet-head mono"><span>FLEET COMMAND / SANITIZED</span><span><i /> 3 CONNECTED</span></div><div className="pub-fleet-row"><span><Server size={15} /> build-server</span><strong>Codex · running tests</strong><small className="mono">02:18</small></div><div className="pub-fleet-row"><span><Laptop size={15} /> workstation</span><strong>Claude · awaiting review</strong><small className="mono">00:42</small></div><div className="pub-fleet-row"><span><Server size={15} /> staging</span><strong>terminal · healthy</strong><small className="mono">DEMO</small></div><div className="pub-fleet-foot mono"><Sparkles size={14} /> NEW SESSION → CHOOSE MACHINE + AGENT</div></div></section>
     <section className="pub-final"><div><div className="eyebrow">WORK ANYWHERE</div><h2>Keep the machine. Lose the overhead.</h2><p>Open source, self-hostable, and built from a heavily modified slopus/happy foundation.</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Get started <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> View source</a></div></section>
   </main><PublicFooter /></div>;
 }
