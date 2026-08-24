@@ -103,7 +103,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
       { heading: 'Components', blocks: [
-        { type: 'code', code: 'browser  ⇄  trusted relay + storage  ⇄  daemon  ⇄  local tools\n Web V2       happy-server              CLI       shell / Claude' },
+        { type: 'code', code: 'browser  ⇄  trusted relay + storage  ⇄  daemon  ⇄  local tools\n Web V2       happy-server              CLI       shell / coding agents' },
         { type: 'p', text: 'The browser handles the user interface. The server authenticates accounts, stores synchronized state, and relays socket traffic. The daemon runs on the connected machine and exposes authorized remote capabilities.' },
       ] },
       { heading: 'Session flow', blocks: [

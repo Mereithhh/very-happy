@@ -180,7 +180,8 @@
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
 
-  /* type scale (compact, app density): 11 / 12 / 13 / 14 / 16 / 20 / 28 / 40 */
+  /* type scale (compact app density + public editorial display): 10 / 11 / 12 / 13 / 14 / 16 / 20 / 28 / 32 / 40 */
+  --fs-10: 10px;
   --fs-11: 11px;
   --fs-12: 12px;
   --fs-13: 13px;
@@ -188,6 +189,7 @@
   --fs-16: 16px;
   --fs-20: 20px;
   --fs-28: 28px;
+  --fs-32: 32px;
   --fs-40: 40px;
 
   /* spacing (4px base) */

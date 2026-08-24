@@ -10,7 +10,7 @@
 
 <p align="center">
   An open agent workspace for your machines: structured conversations, real
-  terminals, files, tasks, and a voice-ready meta-agent in one responsive Web UI.
+  terminals, files, tasks, and agent coordination in one responsive Web UI.
 </p>
 
 <p align="center">
@@ -38,16 +38,18 @@ workspace around your work.
 > capabilities. Use only an operator you trust. Self-host if you need to control
 > that boundary; use upstream Happy if you require its E2E design.
 
-<div align="center">
-  <img src="docs/screenshots/conversation.png" width="49%" alt="A structured coding-agent conversation with machine, working directory, and model status">
-  <img src="docs/screenshots/terminal.png" width="49%" alt="A durable browser terminal connected to a remote machine">
-</div>
+<img src="docs/screenshots/workspace.png" width="100%" alt="A privacy-safe reconstruction of Very Happy showing a Codex terminal, session list, and file browser in one workspace">
 
 ## Why Very Happy
 
 Most remote-agent products solve one piece of the problem: reach a terminal,
 enter a vendor cloud, or choose a different model. Very Happy is for the work
 around the agent.
+
+The name is a promise, not a mood pasted onto the UI: let the workspace carry
+the monitoring, context rebuilding, and handoff overhead so you have more
+attention for the decisions only you can make. The work keeps moving; you get to
+be Very Happy.
 
 | Need | What Very Happy does |
 |---|---|
@@ -119,25 +121,15 @@ roadmap concept, not a shipped feature. The non-negotiable philosophy behind it
 already guides the product: **work anywhere and make the interface carry as much
 operational overhead as possible.** See the [roadmap](docs/roadmap.md).
 
-### A concrete agent-system pattern
+### Compose it into a larger agent system
 
-Very Happy is most useful as the execution surface inside a personal agent
-system, not as a closed system of its own. In our private Tanka integration, a
-scoped `[happy]` message starts a session on an allowed machine, completion and
-permission events return to a configured notification conversation, and an
-authorized quote-reply there is sent back into the same session. The adapter
-owns sender policy and fixed workspace mappings; Very Happy stays IM-agnostic through generic webhooks plus
-[`very-happy spawn` and `very-happy send`](docs/channels.md).
-
-That same boundary works for a scheduler, issue tracker, home-grown gateway, or
-future provider-aware coordinator. We intend to publish a scrubbed reference
-agent-system kit. We will not publish private runtime context, credentials, or
-organization-specific operating knowledge as an example configuration.
-
-The IM adapter and the Claude-powered Web/voice coordinator are separate
-extension paths today. Cross-provider routing between them is roadmap, not a
-shipped gateway, and execution always follows the configured agent permission
-mode.
+Very Happy is an execution surface, not a closed automation platform. Generic
+webhooks plus [`very-happy spawn` and `very-happy send`](docs/channels.md) let a
+carefully scoped adapter connect an issue tracker, scheduler, chat system, or
+future provider-aware coordinator. The adapter must own sender authorization,
+fixed workspace policy, and least-privilege execution; incoming messages are
+never authorization by themselves. Cross-provider routing is roadmap, not a
+shipped gateway.
 
 ## Architecture and trust
 

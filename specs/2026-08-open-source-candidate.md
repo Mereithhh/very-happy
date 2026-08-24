@@ -50,8 +50,9 @@ Very Happy 已经是 Owner 日常使用的生产系统，也已经具备 passwor
 
 `/` 为 landing；`/docs` 为文档首页，并提供 `/docs/:slug` 的静态、随 Web 发布的章节。landing
 只用 Console tokens，accent 仅表示连接/live；机器/协议信息使用 mono。首屏明确产品、信任边界、
-Cloud 与 self-host 区别，并给登录、开始使用、GitHub 和 docs 入口。演示采用现有真实截图和轻量
-HTML terminal transcript，不引入追踪脚本或重媒体依赖。
+Cloud 与 self-host 区别，并给登录、开始使用、GitHub 和 docs 入口。产品演示按真实三栏结构
+（session 列表、深色 terminal、文件浏览/preview）做去敏的轻量 HTML 重建，并可切换 structured
+conversation 与 agent board；不引用私有截图、不引入追踪脚本或重媒体依赖。
 
 文档章节至少覆盖 quickstart、CLI、Cloud/self-host、configuration、architecture/data flow、
 security/privacy、accounts/quotas、upgrade/rollback、troubleshooting、contributing。仓库 Markdown

@@ -83,13 +83,25 @@ select,
   touch-action: manipulation;
 }
 
-/* iOS Safari force-zooms the page when a focused input/textarea/select has
- * font-size < 16px. Coarse-pointer floor: never below 16px on form fields.
- * Component classes with higher specificity carry their own coarse override. */
+/* iOS Safari force-zooms the page when a focused editable surface is below
+ * 16px. Keep an app-wide safety floor here instead of relying on
+ * every component to remember a local override. `:is(#root, body)` covers
+ * both the normal React tree and panels rendered into a body-level portal;
+ * the `#root` branch deliberately gives the selector enough specificity to
+ * beat component classes declared later without resorting to `!important`.
+ *
+ * The xterm pane is a structural carve-out: its hidden helper textarea and
+ * `.vh-term-input` overlay derive their font/cell metrics from xterm itself.
+ * Changing either here can desynchronise IME placement and the painted cursor.
+ * The visible `.term-inputbar-ta` lives outside `.xterm`, so it still gets the
+ * safe floor. */
 @media (pointer: coarse) {
-  input,
-  textarea,
-  select {
+  :is(#root, body) :where(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable='false' i])
+  ):not(:where(.xterm, .xterm *)) {
     font-size: var(--fs-16);
   }
 }

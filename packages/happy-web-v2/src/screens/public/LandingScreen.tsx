@@ -1,129 +1,70 @@
-import { ArrowRight, AudioLines, Braces, FileText, Github, Globe2, MessagesSquare, Server, Sparkles, TerminalSquare } from 'lucide-react';
+import { ArrowRight, AudioLines, Check, ChevronRight, FileCode2, FileText, Folder, Github, Globe2, LayoutDashboard, MessagesSquare, PanelRight, Server, Sparkles, TerminalSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { PublicFooter, PublicHeader } from './PublicShell';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import './public.css';
 
 const features = [
-  { icon: MessagesSquare, title: 'Conversation when it helps', text: 'Use a calm, structured view for messages, tools, diffs, permissions, and context—not a phone-sized terminal transcript.' },
-  { icon: TerminalSquare, title: 'A real terminal when it matters', text: 'Drop into a durable tmux terminal, then switch a mirrored Claude session back to its structured conversation.' },
-  { icon: FileText, title: 'The work around the agent', text: 'Browse and preview files, keep notes, and coordinate the task board without rebuilding context in another app.' },
-  { icon: AudioLines, title: 'A Claude-powered meta-agent', text: 'Use text—or voice when a voice service is configured—to reach a coordinating assistant. This feature currently requires Claude Code.' },
+  { icon: MessagesSquare, title: 'Conversation when it helps', text: 'Read messages, tools, diffs, and permissions in a calm structured view instead of a phone-sized transcript.' },
+  { icon: TerminalSquare, title: 'The terminal when it matters', text: 'Drop into a durable tmux terminal, then return a mirrored Claude session to structured conversation.' },
+  { icon: FileText, title: 'The work around the agent', text: 'Browse and preview files, keep notes, and move tasks without reconstructing the context somewhere else.' },
+  { icon: AudioLines, title: 'A coordinator you can talk to', text: 'Dispatch background work with a Claude-powered meta-agent; optional voice is available when a voice service is configured.' },
 ];
+
+type DemoView = 'files' | 'conversation' | 'board';
+const demoTabs: { id: DemoView; label: string; detail: string; icon: typeof TerminalSquare }[] = [
+  { id: 'files', label: 'Terminal + files', detail: 'Inspect the work without leaving the session.', icon: PanelRight },
+  { id: 'conversation', label: 'Conversation', detail: 'Switch out of terminal mode when you need clarity.', icon: MessagesSquare },
+  { id: 'board', label: 'Agent board', detail: 'See what is moving and where judgment is needed.', icon: LayoutDashboard },
+];
+
+function ProductShowcase() {
+  const [view, setView] = useState<DemoView>('files');
+  const selectAdjacentTab = (index: number, direction: -1 | 1) => {
+    const nextIndex = (index + direction + demoTabs.length) % demoTabs.length;
+    const next = demoTabs[nextIndex];
+    setView(next.id);
+    document.getElementById(`product-tab-${next.id}`)?.focus();
+  };
+  return <section className="pub-product" aria-labelledby="product-title">
+    <div className="pub-product-intro"><div><div className="eyebrow">THE ACTUAL WORKSPACE</div><h2 id="product-title">One thread. Three ways to stay in it.</h2></div><p>A faithful, privacy-safe reconstruction of the real interface—not a decorative terminal.</p></div>
+    <div className="pub-product-tabs" role="tablist" aria-label="Product views">{demoTabs.map(({ id, label, detail, icon: Icon }, index) => <button key={id} id={`product-tab-${id}`} type="button" role="tab" aria-selected={view === id} aria-controls="product-panel" tabIndex={view === id ? 0 : -1} onClick={() => setView(id)} onKeyDown={(event) => { if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); selectAdjacentTab(index, 1); } if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); selectAdjacentTab(index, -1); } }}><span className="mono">0{index + 1}</span><Icon size={17} aria-hidden="true" /><strong>{label}</strong><small>{detail}</small></button>)}</div>
+    <div className="pub-product-frame" id="product-panel" role="tabpanel" aria-labelledby={`product-tab-${view}`}>
+      <div className="pub-appbar"><span className="pub-appmark">vh</span><span>studio-mac</span><span className="pub-appbar-path mono">~/code/very-happy</span><span className="pub-connection"><i /> connected</span></div>
+      <div className="pub-product-body"><aside className="pub-session-list" aria-label="Example sessions"><div className="pub-session-heading"><span>SESSIONS</span><b>12</b></div><div className="pub-session is-active"><i /><strong>Release candidate</strong><small>codex · 2m</small></div><div className="pub-session"><i /><strong>Onboarding polish</strong><small>claude · 14m</small></div><div className="pub-session"><i /><strong>Security review</strong><small>claude · waiting</small></div><div className="pub-session"><i /><strong>Docs structure</strong><small>codex · 1h</small></div><div className="pub-session-spacer" /><div className="pub-session-utility"><FileText size={13} /> Notes</div><div className="pub-session-utility"><LayoutDashboard size={13} /> Tasks <b>3</b></div></aside>
+        <div className="pub-work-area"><div className="pub-work-header"><div><strong>Release candidate</strong><small className="mono">codex · studio-mac</small></div><div className="pub-work-actions mono"><span>NOTES</span><span className={view === 'files' ? 'is-selected' : ''}>FILES</span></div></div>{view === 'files' && <FilesDemo />}{view === 'conversation' && <ConversationDemo onReturnToTerminal={() => { setView('files'); document.getElementById('product-tab-files')?.focus(); }} />}{view === 'board' && <BoardDemo />}</div>
+      </div>
+    </div>
+    <div className="pub-product-caption mono"><span>LIVE SESSION CONTINUES ON YOUR MACHINE</span><span>RESPONSIVE WEB · NO DESKTOP HANDOFF REQUIRED</span></div>
+  </section>;
+}
+
+function FilesDemo() {
+  return <div className="pub-files-demo"><div className="pub-demo-terminal" aria-label="Example Codex terminal output"><div className="pub-terminal-status mono"><span>CODEX</span><span><i /> working</span></div><pre><span className="pub-prompt">❯</span> verify the release candidate{`\n\n`}  Auditing onboarding and mobile flows…{`\n\n`}<span className="pub-terminal-ok">  ✓</span> fixed iOS input zoom{`\n`}<span className="pub-terminal-ok">  ✓</span> full test suite passed{`\n`}<span className="pub-terminal-ok">  ✓</span> production bundle built{`\n\n`}  Reviewing <span className="pub-terminal-file">src/screens/public/</span>{`\n`}  <span className="pub-terminal-dim">Opening LandingScreen.tsx</span><span className="pub-cursor">▋</span></pre><div className="pub-terminal-command mono">Send a follow-up to this session…</div></div>
+    <aside className="pub-file-browser" aria-label="Example file browser"><div className="pub-file-toolbar"><div className="mono">~/code/very-happy</div><span>⌁</span></div><div className="pub-breadcrumb mono">src <ChevronRight size={12} /> screens <ChevronRight size={12} /> public</div><div className="pub-file-row"><Folder size={15} /><strong>components</strong><span>3 items</span></div><div className="pub-file-row is-selected"><FileCode2 size={15} /><strong>LandingScreen.tsx</strong><span>18 KB</span></div><div className="pub-file-row"><FileCode2 size={15} /><strong>DocsScreen.tsx</strong><span>7 KB</span></div><div className="pub-file-row"><FileCode2 size={15} /><strong>public.css</strong><span>24 KB</span></div><div className="pub-file-row"><FileText size={15} /><strong>README.md</strong><span>9 KB</span></div><div className="pub-file-preview"><span className="mono">LANDINGSCREEN.TSX</span><p>Real product proof belongs above the feature list.</p><small>Preview files without leaving the work.</small></div></aside></div>;
+}
+
+function ConversationDemo({ onReturnToTerminal }: { onReturnToTerminal: () => void }) {
+  return <div className="pub-conversation-demo"><div className="pub-mirror-note"><span className="mono">STRUCTURED MIRROR</span><p>Read the session clearly. Your next message goes directly back to the running terminal.</p><button type="button" onClick={onReturnToTerminal}>Return to terminal</button></div><div className="pub-message"><span>YOU · MOBILE</span><p>Is this ready to show someone who has never used Very Happy?</p></div><div className="pub-message is-agent"><span>CODEX · STUDIO-MAC</span><p>The core path is ready. I found one remaining issue: a text input zooms on iOS. I’m applying the shared mobile form rule and rerunning browser checks.</p><div className="pub-tool-card mono"><Check size={13} /> edit · styles/base.css</div></div><div className="pub-message is-agent"><span>CODEX · STUDIO-MAC</span><p>Fixed. The terminal stayed live the whole time, so you can switch back without losing the process.</p></div><div className="pub-composer">Ask the running agent… <span>⌘↵</span></div></div>;
+}
+
+function BoardDemo() {
+  return <div className="pub-board-demo">{[['IN PROGRESS', 'Landing product proof', 'codex · studio-mac'], ['NEEDS YOU', 'Approve production release', 'human judgment'], ['DONE', 'Security boundary review', 'claude · api-prod-2']].map(([column, task, meta], index) => <section key={column}><header><span className="mono">{column}</span><b>{index === 0 ? '2' : '1'}</b></header><article className={index === 0 ? 'is-live' : ''}><i /><strong>{task}</strong><small>{meta}</small><p>{index === 0 ? 'Rebuilding the public workspace demo with real product structure.' : index === 1 ? 'All gates passed. The release waits for an explicit decision.' : 'Trusted-relay language verified across product and docs.'}</p></article>{index === 0 && <article><i /><strong>Mobile browser pass</strong><small>claude · phone viewport</small></article>}</section>)}</div>;
+}
 
 export function LandingScreen() {
   useEffect(() => { document.title = 'Very Happy — Work anywhere. Keep the thread.'; }, []);
-  return (
-    <div className="pub-page">
-      <PublicHeader />
-      <main id="main-content">
-        <section className="pub-hero" aria-labelledby="hero-title">
-          <div className="pub-hero-copy">
-            <div className="eyebrow">OPEN AGENT WORKSPACE // YOUR MACHINES</div>
-            <h1 id="hero-title">Work anywhere.<br /><span>Keep the thread.</span></h1>
-            <p>Very Happy brings coding agents, terminals, files, tasks, and a voice-ready meta-agent into one mobile-friendly workspace. The work runs on your machines; the context follows you.</p>
-            <div className="pub-actions">
-              <a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect a machine <ArrowRight size={16} /></a>
-              <Link className="pub-button" to="/docs/quickstart">Read quick start</Link>
-            </div>
-            <div className="pub-meta mono"><span>Claude + Codex</span><span>ACP extensible</span><span>self-hostable</span></div>
-          </div>
-          <div className="pub-workbench" aria-label="Very Happy workspace showing an agent conversation, files, and task progress">
-            <div className="pub-workbench-bar"><span className="mono">atlas / very-happy</span><span className="pub-live"><i /> agent working</span></div>
-            <div className="pub-workbench-tabs mono"><span className="is-active">Conversation</span><span>Terminal</span><span>Files</span></div>
-            <div className="pub-workbench-body">
-              <aside aria-label="Agent sessions"><b>SESSIONS</b><span className="is-active">Launch polish</span><span>Security review</span><span>Docs pass</span></aside>
-              <div className="pub-workbench-chat">
-                <div className="pub-agent-line"><span>YOU</span><p>Make the first-run path feel effortless on mobile.</p></div>
-                <div className="pub-agent-line is-agent"><span>CLAUDE · ATLAS</span><p>I traced onboarding and found two dead ends. Fixing the empty state and adding a recovery action now.</p></div>
-                <div className="pub-tool-line mono"><Braces size={13} /> Editing src/onboarding/EmptyState.tsx</div>
-                <div className="pub-agent-line is-agent"><span>CLAUDE · ATLAS</span><p>Checks passed. Mobile focus and reduced-motion behavior both look good.</p></div>
-              </div>
-              <aside className="pub-workbench-context" aria-label="Task and file context"><b>NOW</b><span><i className="is-done" /> Map first run</span><span><i className="is-live" /> Fix empty state</span><span><i /> Browser verify</span><b>FILES</b><span>EmptyState.tsx</span><span>onboarding.css</span></aside>
-            </div>
-          </div>
-        </section>
-
-        <section className="pub-manifesto" aria-labelledby="manifesto-title">
-          <div className="eyebrow">THE DIFFERENCE</div>
-          <h2 id="manifesto-title">Not remote control.<br />A place to finish the work.</h2>
-          <p>A remote shell gets you back to a cursor. Very Happy gets you back to the decision: the conversation, the changed files, the open tasks, the waiting permission, and the next agent that can help.</p>
-          <div className="pub-manifesto-line mono"><span>LESS TAB HUNTING</span><span>LESS CONTEXT REBUILDING</span><span>LESS WORK HELD IN YOUR HEAD</span></div>
-        </section>
-
-        <section className="pub-trust" aria-labelledby="trust-title">
-          <div><div className="eyebrow">TRUST MODEL</div><h2 id="trust-title">A relay you can reason about.</h2></div>
-          <p>Very Happy is <strong>server-trusted, not end-to-end encrypted</strong>. Your relay operator—or anyone who compromises it—may access relayed content, account recovery material, and capabilities exposed by an online daemon. Use the community service if you trust its operator; self-host when you need to own that boundary.</p>
-          <Link to="/docs/security">Read the security model <ArrowRight size={15} /></Link>
-        </section>
-
-        <section className="pub-section" aria-labelledby="features-title">
-          <div className="pub-section-head"><div><div className="eyebrow">ONE WORK SURFACE</div><h2 id="features-title">Use the right interface for the moment.</h2></div><p>Stay high-level when you can. Reach the raw machine whenever you need it.</p></div>
-          <div className="pub-feature-grid">
-            {features.map(({ icon: Icon, title, text }) => <article key={title}><Icon size={20} aria-hidden="true" /><h3>{title}</h3><p>{text}</p></article>)}
-          </div>
-        </section>
-
-        <section className="pub-agents" aria-labelledby="agents-title">
-          <div className="pub-section-head"><div><div className="eyebrow">AGENTS, NOT A WALLED GARDEN</div><h2 id="agents-title">One workspace. More than one agent.</h2></div><p>The interface follows your work instead of forcing every task through one vendor.</p></div>
-          <div className="pub-agent-grid">
-            <article><div className="pub-status mono">AVAILABLE NOW</div><h3>Claude Code</h3><p>Deep structured conversation, tool and permission views, terminal mirroring, files, usage, and resume.</p></article>
-            <article><div className="pub-status mono">AVAILABLE NOW</div><h3>Codex</h3><p>Start and resume Codex sessions through the same CLI, relay, responsive workspace, and machine fleet.</p></article>
-            <article><div className="pub-status mono">EXTENSIBLE NOW</div><h3>ACP agents</h3><p>Gemini ships as an ACP mode, and a generic ACP runner can connect compatible commands such as OpenCode.</p></article>
-            <article className="is-roadmap"><div className="pub-status mono">ROADMAP</div><h3>Pi + provider gateway</h3><p>More adapters, cross-provider subtask dispatch, and a meta-agent that routes work to the best available agent.</p></article>
-          </div>
-        </section>
-
-        <section className="pub-field-note" aria-labelledby="field-note-title">
-          <div className="pub-field-note-copy">
-            <div className="eyebrow">FIELD NOTE // IM TO WORKING CHANGE</div>
-            <h2 id="field-note-title">An agent system should meet work where it arrives.</h2>
-            <p>In our private Tanka deployment, an authorized message can become a local Claude session, report progress to a configured notification conversation, and accept a quote-reply there as the next instruction. Very Happy supplies the workspace and machine control; a small external adapter owns the IM policy.</p>
-            <p className="pub-field-note-boundary"><strong>Separate path today:</strong> the Web and optional voice coordinator can inspect sessions and dispatch background Claude work. The IM adapter does not pass through it.</p>
-            <Link to="/docs/integrations">Build an adapter <ArrowRight size={15} /></Link>
-          </div>
-          <div className="pub-dispatch" aria-label="Tanka message dispatch flow">
-            <div className="pub-dispatch-row"><span className="mono">01 / INBOX</span><strong>[happy] investigate the failing build</strong><small>Tanka or another IM</small></div>
-            <div className="pub-dispatch-link mono">WEBHOOK / POLICY ADAPTER</div>
-            <div className="pub-dispatch-row"><span className="mono">02 / ROUTE</span><strong>authorize sender · map fixed workspace</strong><small>your rules, outside the core</small></div>
-            <div className="pub-dispatch-link mono">VERY-HAPPY SPAWN</div>
-            <div className="pub-dispatch-row is-live"><span className="mono">03 / WORK</span><strong>local daemon · Claude session running</strong><small>terminal, files, tasks, conversation</small></div>
-            <div className="pub-dispatch-link mono">STATUS WEBHOOK</div>
-            <div className="pub-dispatch-row"><span className="mono">04 / RETURN</span><strong>fix ready · checks passed · review?</strong><small>reply from mobile to continue</small></div>
-          </div>
-        </section>
-
-        <section className="pub-vision" aria-labelledby="vision-title">
-          <div><div className="eyebrow">NORTH STAR</div><h2 id="vision-title">The interface should carry the overhead.</h2></div>
-          <div className="pub-vision-copy"><p>Our roadmap is not “put more buttons around a terminal.” It is to make ambitious work feel lighter: persistent context, useful interruptions, agent handoffs, task memory, and presence across desktop and mobile.</p><p><strong>Long term:</strong> a multi-agent virtual office where people can see work move, talk to a coordinator, and step into the right room only when judgment is needed. The pixel office is a concept, not a shipped feature.</p></div>
-          <Sparkles aria-hidden="true" size={28} />
-        </section>
-
-        <section className="pub-flow" aria-labelledby="flow-title">
-          <div className="eyebrow">FIRST CONNECTION</div><h2 id="flow-title">Your first agent, in four steps.</h2>
-          <ol>
-            <li><span>01</span><div><h3>Create an account</h3><p>Use Google or username and password on your chosen relay.</p></div></li>
-            <li><span>02</span><div><h3>Install the CLI</h3><code>{INSTALL_COMMAND}</code></div></li>
-            <li><span>03</span><div><h3>Approve and connect</h3><code>{LOGIN_COMMAND}{'\n'}{DAEMON_START_COMMAND}</code></div></li>
-            <li><span>04</span><div><h3>Choose an agent</h3><p>Run <code>very-happy</code> for Claude, <code>very-happy codex</code>, or create a session from Web.</p></div></li>
-          </ol>
-        </section>
-
-        <section className="pub-choices" aria-labelledby="deploy-title">
-          <div className="pub-section-head"><div><div className="eyebrow">DEPLOYMENT</div><h2 id="deploy-title">Choose who operates the relay.</h2></div></div>
-          <div className="pub-choice-grid">
-            <article><Globe2 size={22} /><h3>Very Happy Cloud</h3><p>The quickest start. Community-operated, capacity-limited, and provided without an uptime SLA.</p><Link to="/docs/cloud">Cloud guide <ArrowRight size={14} /></Link></article>
-            <article><Server size={22} /><h3>Self-hosted</h3><p>Your access policy, storage, backups, and operator boundary. Still server-trusted by design.</p><Link to="/docs/self-hosting">Self-hosting guide <ArrowRight size={14} /></Link></article>
-          </div>
-        </section>
-
-        <section className="pub-final">
-          <div><div className="eyebrow">WORK ANYWHERE</div><h2>Keep the machine. Lose the overhead.</h2><p>Open source, self-hostable, and built from a heavily modified slopus/happy foundation.</p></div>
-          <div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Get started <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> View source</a></div>
-        </section>
-      </main>
-      <PublicFooter />
-    </div>
-  );
+  return <div className="pub-page"><PublicHeader /><main id="main-content">
+    <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">OPEN AGENT WORKSPACE // YOUR MACHINES</div><h1 id="hero-title">Work anywhere.<br /><span>Keep the thread.</span></h1><p>Run coding agents on your machines. Follow the conversation, terminal, files, and tasks from any screen—without carrying the whole system in your head.</p><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect a machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Claude + Codex</span><span>ACP extensible</span><span>self-hostable</span></div></div><aside className="pub-hero-thesis"><span className="mono">THE PROMISE</span><p>The agent keeps working there.</p><p>You keep moving here.</p><div><i /> one continuous thread</div></aside></section>
+    <ProductShowcase />
+    <section className="pub-agents" aria-labelledby="agents-title"><div className="pub-section-head"><div><div className="eyebrow">AGENTS, NOT A WALLED GARDEN</div><h2 id="agents-title">Bring the agent that fits the work.</h2></div><p>The workspace follows your work instead of forcing every task through one vendor.</p></div><div className="pub-agent-grid"><article><div className="pub-status mono">DEEP SUPPORT</div><h3>Claude Code</h3><p>Structured conversation, tool and permission views, terminal mirroring, files, usage, and resume.</p></article><article><div className="pub-status mono">AVAILABLE NOW</div><h3>Codex</h3><p>Start and resume Codex through the same CLI, trusted relay, responsive workspace, and machine fleet.</p></article><article><div className="pub-status mono">EXTENSIBLE NOW</div><h3>ACP agents</h3><p>Gemini ships as an ACP mode; the generic runner connects compatible commands such as OpenCode.</p></article><article className="is-roadmap"><div className="pub-status mono">ROADMAP</div><h3>Pi + provider gateway</h3><p>Cross-provider subtask dispatch and a coordinator that routes work to the best available agent.</p></article></div></section>
+    <section className="pub-flow" aria-labelledby="flow-title"><div className="eyebrow">FIRST CONNECTION</div><h2 id="flow-title">From zero to a live agent in four steps.</h2><ol><li><span>01</span><div><h3>Create an account</h3><p>Use Google or username and password on your chosen relay.</p></div></li><li><span>02</span><div><h3>Install the CLI</h3><code>{INSTALL_COMMAND}</code></div></li><li><span>03</span><div><h3>Connect the machine</h3><code>{LOGIN_COMMAND}{'\n'}{DAEMON_START_COMMAND}</code></div></li><li><span>04</span><div><h3>Choose an agent</h3><p>Run <code>very-happy</code>, <code>very-happy codex</code>, or start from Web.</p></div></li></ol></section>
+    <section className="pub-trust" aria-labelledby="trust-title"><div><div className="eyebrow">TRUST MODEL</div><h2 id="trust-title">A relay you can reason about.</h2></div><p>Very Happy is <strong>server-trusted, not end-to-end encrypted</strong>. A relay operator—or anyone who compromises it—may access relayed content, account recovery material, and capabilities exposed by an online daemon. Use the community service if you trust its operator; self-host when you need to own that boundary.</p><Link to="/docs/security">Read the security model <ArrowRight size={15} /></Link></section>
+    <section className="pub-choices" aria-labelledby="deploy-title"><div className="pub-section-head"><div><div className="eyebrow">DEPLOYMENT</div><h2 id="deploy-title">Choose who operates the relay.</h2></div></div><div className="pub-choice-grid"><article><Globe2 size={22} /><h3>Very Happy Cloud</h3><p>The quickest start. Community-operated, capacity-limited, and provided without an uptime SLA.</p><Link to="/docs/cloud">Cloud guide <ArrowRight size={14} /></Link></article><article><Server size={22} /><h3>Self-hosted</h3><p>Your access policy, storage, backups, and operator boundary. Still server-trusted by design.</p><Link to="/docs/self-hosting">Self-hosting guide <ArrowRight size={14} /></Link></article></div></section>
+    <section className="pub-manifesto" aria-labelledby="manifesto-title"><div className="eyebrow">WHY VERY HAPPY</div><h2 id="manifesto-title">The interface carries the overhead.<br /><span>You get to be Very Happy.</span></h2><p>Fewer tabs to patrol, less context to rebuild, and more attention left for the decisions only you can make.</p><div className="pub-manifesto-line mono"><span>LESS BABYSITTING</span><span>LESS CONTEXT REBUILDING</span><span>MORE WORK IN MOTION</span></div></section>
+    <section className="pub-section" aria-labelledby="features-title"><div className="pub-section-head"><div><div className="eyebrow">MORE THAN REMOTE CONTROL</div><h2 id="features-title">Use the right interface for the moment.</h2></div><p>A remote shell returns you to a cursor. Very Happy returns you to the decision.</p></div><div className="pub-feature-grid">{features.map(({ icon: Icon, title, text }) => <article key={title}><Icon size={20} aria-hidden="true" /><h3>{title}</h3><p>{text}</p></article>)}</div></section>
+    <section className="pub-orchestration" aria-labelledby="orchestration-title"><div><div className="eyebrow">FROM TOOL TO WORK SYSTEM</div><h2 id="orchestration-title">Let agents move the work. Step in for judgment.</h2><p>Notes, tasks, voice, webhooks, and local adapters already surround the core workspace. The direction is a provider-neutral gateway and a visible multi-agent office—not more buttons around a terminal.</p><Link to="/docs/integrations">Explore integrations <ArrowRight size={15} /></Link></div><div className="pub-orbit" aria-label="Agent orchestration model"><span className="pub-orbit-center"><Sparkles size={18} /> coordinator</span><span>Claude</span><span>Codex</span><span>ACP</span><span>voice</span><span>tasks</span></div></section>
+    <section className="pub-final"><div><div className="eyebrow">WORK ANYWHERE</div><h2>Keep the machine. Lose the overhead.</h2><p>Open source, self-hostable, and built from a heavily modified slopus/happy foundation.</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Get started <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> View source</a></div></section>
+  </main><PublicFooter /></div>;
 }
