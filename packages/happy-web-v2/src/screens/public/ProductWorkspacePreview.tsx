@@ -57,14 +57,16 @@ const VIEW_LABELS: Record<ProductPreviewView, string> = {
 export function ProductWorkspacePreview({
   compact = false,
   initialView,
+  initialFilesOpen = true,
   sidebar = true,
 }: {
   compact?: boolean;
   initialView?: ProductPreviewView;
+  initialFilesOpen?: boolean;
   sidebar?: boolean;
 }) {
   const [view, setView] = useState<ProductPreviewView>(initialView ?? (compact ? 'conversation' : 'terminal'));
-  const [filesOpen, setFilesOpen] = useState(true);
+  const [filesOpen, setFilesOpen] = useState(initialFilesOpen);
   const [workspaceNavOpen, setWorkspaceNavOpen] = useState(false);
   const instanceId = useId();
   const ids = getProductPreviewIds(instanceId);

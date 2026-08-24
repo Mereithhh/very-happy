@@ -161,6 +161,8 @@ describe('public documentation registry', () => {
     expect(preview).toContain('fileButtonRefs.current[lastFile.current]?.focus()');
     expect(preview).not.toMatch(/<button[^>]*className="fsb-crumb/);
     expect(preview).toContain('LOCAL PREVIEW · NOT SENT');
+    expect(preview).toContain('initialFilesOpen = true');
+    expect(preview).toContain('useState(initialFilesOpen)');
     expect(preview).not.toContain('Send to the running Claude terminal');
     expect(preview).toContain('useImeGuard()');
     expect(preview).toContain('ime.isGuarded(event)');
@@ -175,6 +177,30 @@ describe('public documentation registry', () => {
     expect(publicStyles).toMatch(/\.pub-flow code \{[^}]*white-space: pre-line/);
     expect(landing).toContain("{'very-happy\\nvery-happy codex'}");
     expect(landing).not.toContain('One thread. Three ways');
+  });
+
+  it('shows terminal-to-conversation continuity in authentic mobile product surfaces', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const docs = readFileSync(new URL('./DocsScreen.tsx', import.meta.url), 'utf8');
+    const proof = readFileSync(new URL('./MobileContinuityProof.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./mobileContinuityProof.css', import.meta.url), 'utf8');
+    expect(landing).toContain('<MobileContinuityProof />');
+    expect(docs).toContain('<MobileContinuityProof compact />');
+    expect(proof).toContain('initialView="terminal" initialFilesOpen={false} sidebar={false}');
+    expect(proof).toContain('initialView="conversation" sidebar={false}');
+    expect(proof).toContain('SAME CLAUDE PROCESS');
+    expect(proof).toContain('OPTIONAL TERMINAL HOOKS');
+    expect(proof).toContain('TERM · SOURCE');
+    expect(proof).toContain('CHAT · MIRROR');
+    expect(proof).not.toContain('TERM · LIVE');
+    expect(proof).toContain('Tap “Back to terminal”');
+    expect(proof).not.toMatch(/@\/sync\//);
+    expect(proof).not.toMatch(/@\/auth\//);
+    expect(styles).toContain('container: mobile-continuity / inline-size');
+    expect(styles).toContain('@container mobile-continuity (max-width: 620px)');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(styles).toMatch(/prefers-reduced-motion[\s\S]*\.mcp-phone:hover \.mcp-phone-shell \{ transform: none/);
+    expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
   it('navigates the product proof through real product controls instead of marketing scene tabs', () => {
