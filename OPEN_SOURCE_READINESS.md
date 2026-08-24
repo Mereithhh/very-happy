@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `3f23fce99ca696ab3d119428e880120f40e15259`
+> Released product source: `9b64f5e27432f185162297d29c90815903283cf6`
 > Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -26,6 +26,11 @@ public until the procedure below is complete.
 - Product proof navigation now happens inside the authentic UI instead of a tall marketing scene
   selector. Sidebar board/session controls, Back, structured mirror, Files, and board cards form a
   complete desktop/mobile loop; controls that cannot be safely simulated are visibly disabled.
+- The Hero now treats high-impact motion as product storytelling rather than background garnish:
+  title sheen, pointer-responsive 3D depth, machine/agent nodes, dual orbits, scanning planes,
+  data beams, packets, and live telemetry surround the real interactive workspace. Mobile keeps
+  the foreground machine layer without CTA collisions or overflow, while reduced-motion users
+  receive a complete static composition.
 - Core claims now have matching interactive product surfaces: a production-style Claude
   meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
   Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
@@ -82,7 +87,7 @@ public until the procedure below is complete.
 A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
 wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
-`3f23fce9` product-navigation follow-up repeated the affected Web gates locally and in the
+`9b64f5e2` 3D Hero follow-up repeated the affected Web gates locally and in the
 exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
@@ -90,7 +95,7 @@ exact-SHA clean Actions checkout:
 | Web V2 | 99 test files / 1,424 tests; Vite production build; TypeScript 0 errors |
 | CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32693831075` passed for exact deployed source `3f23fce9`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32696115677` passed for exact deployed source `9b64f5e2`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -151,6 +156,11 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   every visible input/select/textarea computed to 16 px, and both public-root console logs were
   empty. Production GET returned `200 text/html` and the new hashed entry asset served as
   JavaScript.
+- after the complex 3D Hero release, fresh production tabs at 1440x1000 and 390x844 confirmed
+  the title sheen, floating workspace, rotating agent orbit, visible foreground machine nodes,
+  and authentic session-list interaction. The mobile pass found and closed a real 3D stacking
+  regression before final deployment; the rereun showed no CTA collision or horizontal overflow,
+  no marketing tablist, and every visible input/select/textarea at 16 px.
 
 ### Independent review
 
@@ -255,6 +265,14 @@ at **P0=0, P1=0, P2=0, P3=0** for the change.
   marketing tablist, sidebar → board → session → file navigation through authentic controls,
   16 px visible form controls, no horizontal overflow, and no console errors. Rollback remains
   the prior `171575c5` atomic Web deployment.
+- The complex 3D agent-fabric Hero shipped Web-only from final SHA
+  `9b64f5e27432f185162297d29c90815903283cf6`. Exact-SHA Quality Gates run `32696115677`
+  and deploy run `32696263872` passed, producing
+  `/assets/index-CUQkyOg--202608240611.js`. Production health and JavaScript/CSS MIME checks
+  passed; fresh 1440x1000 and 390x844 browser runs verified motion, authentic preview controls,
+  foreground node layering, no CTA collision or horizontal overflow, and 16 px mobile controls.
+  The atomic Web rollback is the preceding `aaee6036` build; `3f23fce9` remains the pre-Hero
+  fallback.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
