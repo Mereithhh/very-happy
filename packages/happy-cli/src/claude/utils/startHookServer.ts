@@ -85,6 +85,35 @@ export interface HookServer {
     stop: () => void;
 }
 
+export function hookRequestLogMetadata(body: string, data?: SessionHookData): {
+    bodyBytes: number;
+    parsed: boolean;
+    hasSessionId: boolean;
+} {
+    return {
+        bodyBytes: Buffer.byteLength(body, 'utf8'),
+        parsed: data !== undefined,
+        hasSessionId: Boolean(data?.session_id || data?.sessionId),
+    };
+}
+
+function hookErrorLogMetadata(error: unknown): { errorType: string; code?: string | number } {
+    if (!error || typeof error !== 'object') return { errorType: typeof error };
+    const value = error as { name?: unknown; code?: unknown };
+    const errorType = typeof value.name === 'string' && /^[a-z][a-z0-9_.-]{0,63}$/i.test(value.name)
+        ? value.name
+        : 'Error';
+    const safeCode = typeof value.code === 'string' && /^[a-z0-9_.-]{1,64}$/i.test(value.code)
+        ? value.code
+        : typeof value.code === 'number'
+            ? value.code
+            : undefined;
+    return {
+        errorType,
+        ...(safeCode === undefined ? {} : { code: safeCode }),
+    };
+}
+
 /**
  * Start a dedicated HTTP server for receiving Claude session hooks
  * 
@@ -114,18 +143,18 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
                     clearTimeout(timeout);
                     
                     const body = Buffer.concat(chunks).toString('utf-8');
-                    logger.debug('[hookServer] Received session hook:', body);
 
-                    let data: SessionHookData = {};
+                    let data: SessionHookData | undefined;
                     try {
                         data = JSON.parse(body);
-                    } catch (parseError) {
-                        logger.debug('[hookServer] Failed to parse hook data as JSON:', parseError);
+                        logger.debug('[hookServer] Received session hook metadata', hookRequestLogMetadata(body, data));
+                    } catch {
+                        logger.debug('[hookServer] Failed to parse session hook', hookRequestLogMetadata(body));
                     }
 
                     // Support both snake_case (from Claude) and camelCase
-                    const sessionId = data.session_id || data.sessionId;
-                    if (sessionId) {
+                    const sessionId = data?.session_id || data?.sessionId;
+                    if (sessionId && data) {
                         logger.debug(`[hookServer] Session hook received session ID: ${sessionId}`);
                         onSessionHook(sessionId, data);
                     } else {
@@ -135,7 +164,7 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
                     res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
                 } catch (error) {
                     clearTimeout(timeout);
-                    logger.debug('[hookServer] Error handling session hook:', error);
+                    logger.debug('[hookServer] Error handling session hook', hookErrorLogMetadata(error));
                     if (!res.headersSent) {
                         res.writeHead(500).end('error');
                     }
@@ -168,9 +197,8 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
         });
 
         server.on('error', (err) => {
-            logger.debug('[hookServer] Server error:', err);
+            logger.debug('[hookServer] Server error', hookErrorLogMetadata(err));
             reject(err);
         });
     });
 }
-

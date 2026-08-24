@@ -33,6 +33,7 @@ import type {
 } from '../core';
 import { logger } from '@/ui/logger';
 import { delay } from '@/utils/time';
+import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
 import packageJson from '../../../package.json';
 
 /**
@@ -224,7 +225,7 @@ function nodeToWebStreams(
       return new Promise((resolve, reject) => {
         const ok = stdin.write(chunk, (err) => {
           if (err) {
-            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
+            logger.debug('[AcpBackend] Error writing to stdin:', errorLogMetadata(err));
             reject(err);
           }
         });
@@ -256,7 +257,7 @@ function nodeToWebStreams(
         controller.close();
       });
       stdout.on('error', (err) => {
-        logger.debug(`[AcpBackend] Stdout error:`, err);
+        logger.debug('[AcpBackend] Stdout error:', errorLogMetadata(err));
         controller.error(err);
       });
     },
@@ -298,7 +299,7 @@ async function withRetry<T>(
           options.maxDelayMs
         );
 
-        logger.debug(`[AcpBackend] ${options.operationName} failed (attempt ${attempt}/${options.maxAttempts}): ${lastError.message}. Retrying in ${delayMs}ms...`);
+        logger.debug(`[AcpBackend] ${options.operationName} failed (attempt ${attempt}/${options.maxAttempts}). Retrying in ${delayMs}ms...`, errorLogMetadata(lastError));
         options.onRetry?.(attempt, lastError);
 
         await delay(delayMs);
@@ -366,7 +367,7 @@ export class AcpBackend implements AgentBackend {
       try {
         listener(msg);
       } catch (error) {
-        logger.warn('[AcpBackend] Error in message handler:', error);
+        logger.warn('[AcpBackend] Error in message handler:', errorLogMetadata(error));
       }
     }
   }
@@ -449,11 +450,10 @@ export class AcpBackend implements AgentBackend {
         };
 
         // Log to file (not console)
-        if (hasActiveInvestigation) {
-          logger.debug(`[AcpBackend] 🔍 Agent stderr (during investigation): ${text.trim()}`);
-        } else {
-          logger.debug(`[AcpBackend] Agent stderr: ${text.trim()}`);
-        }
+        logger.debug('[AcpBackend] Agent stderr received:', {
+          investigationActive: hasActiveInvestigation,
+          ...contentLogMetadata(text),
+        });
 
         // Let transport handler process stderr and optionally emit messages
         if (this.transport.handleStderr) {
@@ -467,7 +467,7 @@ export class AcpBackend implements AgentBackend {
       this.process.on('error', (err) => {
         signalStartupFailure(err);
         // Log to file only, not console
-        logger.debug(`[AcpBackend] Process error:`, err);
+        logger.debug('[AcpBackend] Process error:', errorLogMetadata(err));
         startupStatusErrorEmitted = true;
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
@@ -548,7 +548,7 @@ export class AcpBackend implements AgentBackend {
               }
             }
           } catch (error) {
-            logger.debug(`[AcpBackend] Error filtering stdout stream:`, error);
+            logger.debug('[AcpBackend] Error filtering stdout stream:', errorLogMetadata(error));
             controller.error(error);
           } finally {
             reader.releaseLock();
@@ -591,7 +591,7 @@ export class AcpBackend implements AgentBackend {
           toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
           
           if (toolName !== (toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool')) {
-            logger.debug(`[AcpBackend] Detected tool name: ${toolName} from toolCallId: ${toolCallId}`);
+            logger.debug(`[AcpBackend] Inferred tool name for toolCallId: ${toolCallId}`);
           }
           
           // Increment tool call counter for context tracking
@@ -599,15 +599,12 @@ export class AcpBackend implements AgentBackend {
           
           const options = extendedParams.options || [];
           
-          // Log permission request for debugging (include full params to understand structure)
-          logger.debug(`[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, input=`, JSON.stringify(input));
-          logger.debug(`[AcpBackend] Permission request params structure:`, JSON.stringify({
+          logger.debug('[AcpBackend] Permission request metadata:', {
             hasToolCall: !!toolCall,
-            toolCallKind: toolCall?.kind,
-            toolCallId: toolCall?.id,
-            paramsKind: extendedParams.kind,
-            paramsKeys: Object.keys(params),
-          }, null, 2));
+            toolCallId,
+            optionCount: options.length,
+            input: contentLogMetadata(input),
+          });
           
           // Emit permission request event for UI/mobile handling
           this.emit({
@@ -689,7 +686,7 @@ export class AcpBackend implements AgentBackend {
               return { outcome: { outcome: 'selected', optionId } };
             } catch (error) {
               // Log to file only, not console
-              logger.debug('[AcpBackend] Error in permission handler:', error);
+              logger.debug('[AcpBackend] Error in permission handler:', errorLogMetadata(error));
               // Fallback to deny on error
               return { outcome: { outcome: 'selected', optionId: 'cancel' } };
             }
@@ -845,7 +842,7 @@ export class AcpBackend implements AgentBackend {
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch((error) => {
           // Log to file only, not console
-          logger.debug('[AcpBackend] Error sending initial prompt:', error);
+          logger.debug('[AcpBackend] Error sending initial prompt:', errorLogMetadata(error));
           this.emit({ type: 'status', status: 'error', detail: String(error) });
         });
       }
@@ -854,7 +851,7 @@ export class AcpBackend implements AgentBackend {
 
     } catch (error) {
       // Log to file only, not console
-      logger.debug('[AcpBackend] Error starting session:', error);
+      logger.debug('[AcpBackend] Error starting session:', errorLogMetadata(error));
       if (!startupStatusErrorEmitted) {
         this.emit({ 
           type: 'status', 
@@ -931,17 +928,18 @@ export class AcpBackend implements AgentBackend {
     const update = notification.update;
 
     if (!update) {
-      logger.debug('[AcpBackend] Received session update without update field:', params);
+      logger.debug('[AcpBackend] Received session update without update field:', contentLogMetadata(params));
       return;
     }
 
     const sessionUpdateType = update.sessionUpdate;
     const updateType = sessionUpdateType as string | undefined;
 
-    logger.debug(`[AcpBackend] sessionUpdate: ${sessionUpdateType}`, JSON.stringify(update));
+    const updateMetadata = contentLogMetadata(update);
+    logger.debug(`[AcpBackend] Received session update type: ${sessionUpdateType ?? 'unknown'}`, updateMetadata);
     if (this.options.verbose) {
       logAcpBackendMuted(
-        `Incoming raw session update from ${this.options.agentName}: ${JSON.stringify(update)}`,
+        `Incoming session update from ${this.options.agentName}: type=${sessionUpdateType ?? 'unknown'} payloadBytes=${String(updateMetadata.payloadBytes ?? 'unknown')}`,
       );
     }
 
@@ -1029,7 +1027,7 @@ export class AcpBackend implements AgentBackend {
         !update.messageChunk &&
         !update.plan &&
         !update.thinking) {
-      logger.debug(`[AcpBackend] Unhandled session update type: ${updateType}`, JSON.stringify(update, null, 2));
+      logger.debug(`[AcpBackend] Unhandled session update type: ${updateType}`, contentLogMetadata(update));
     }
   }
 
@@ -1060,8 +1058,10 @@ export class AcpBackend implements AgentBackend {
     this.waitingForResponse = true;
 
     try {
-      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
-      logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
+      logger.debug('[AcpBackend] Sending prompt:', {
+        sessionId,
+        ...contentLogMetadata(prompt),
+      });
       
       const contentBlock: ContentBlock = {
         type: 'text',
@@ -1073,7 +1073,10 @@ export class AcpBackend implements AgentBackend {
         prompt: [contentBlock],
       };
 
-      logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
+      logger.debug('[AcpBackend] Prompt request prepared:', {
+        sessionId: this.acpSessionId,
+        blockCount: promptRequest.prompt.length,
+      });
       await this.connection.prompt(promptRequest);
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
@@ -1081,7 +1084,7 @@ export class AcpBackend implements AgentBackend {
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
 
     } catch (error) {
-      logger.debug('[AcpBackend] Error sending prompt:', error);
+      logger.debug('[AcpBackend] Error sending prompt:', errorLogMetadata(error));
       this.waitingForResponse = false;
       
       // Extract error details for better error handling
@@ -1140,8 +1143,8 @@ export class AcpBackend implements AgentBackend {
     } catch (error) {
       logger.debug('[AcpBackend] Failed to set session config option:', {
         configId,
-        value,
-        error,
+        value: contentLogMetadata(value),
+        error: errorLogMetadata(error),
       });
       return false;
     }
@@ -1170,7 +1173,7 @@ export class AcpBackend implements AgentBackend {
 
       return true;
     } catch (error) {
-      logger.debug('[AcpBackend] Failed to set session mode:', { modeId, error });
+      logger.debug('[AcpBackend] Failed to set session mode:', { modeId, error: errorLogMetadata(error) });
       return false;
     }
   }
@@ -1195,7 +1198,7 @@ export class AcpBackend implements AgentBackend {
       });
       return true;
     } catch (error) {
-      logger.debug('[AcpBackend] Failed to set session model:', { modelId, error });
+      logger.debug('[AcpBackend] Failed to set session model:', { modelId, error: errorLogMetadata(error) });
       return false;
     }
   }
@@ -1247,7 +1250,7 @@ export class AcpBackend implements AgentBackend {
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
       // Log to file only, not console
-      logger.debug('[AcpBackend] Error cancelling:', error);
+      logger.debug('[AcpBackend] Error cancelling:', errorLogMetadata(error));
     }
   }
 
@@ -1286,7 +1289,7 @@ export class AcpBackend implements AgentBackend {
           new Promise((resolve) => setTimeout(resolve, 2000)), // 2s timeout for graceful shutdown
         ]);
       } catch (error) {
-        logger.debug('[AcpBackend] Error during graceful shutdown:', error);
+        logger.debug('[AcpBackend] Error during graceful shutdown:', errorLogMetadata(error));
       }
     }
 

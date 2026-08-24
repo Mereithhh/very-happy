@@ -32,6 +32,8 @@ import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { daemonEndpointsMatch, resolveClaudeCredentialReadiness } from '@/ui/doctorReadiness';
+import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
@@ -135,12 +137,19 @@ export async function startDaemon(): Promise<void> {
   // Check if already running
   // Check if running daemon version matches current CLI version
   const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
-  if (!runningDaemonVersionMatches) {
+  const runningDaemonState = await readDaemonState();
+  const runningDaemonEndpointsMatch = Boolean(runningDaemonState) && daemonEndpointsMatch(
+    runningDaemonState?.serverUrl,
+    runningDaemonState?.webappUrl,
+    configuration.serverUrl,
+    configuration.webappUrl,
+  );
+  if (!runningDaemonVersionMatches || !runningDaemonEndpointsMatch) {
     // TODO: This hand-rolled self-restart path is awkward to reason about and awkward to test.
     // We should probably migrate this daemon to native system service management
     // (launchd/systemd, similar to OpenClaw's model), so startup/start-at-login and upgrades
     // are owned by the OS instead of by the daemon trying to replace itself in-process.
-    logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
+    logger.debug('[DAEMON RUN] Daemon version or endpoint mismatch detected, restarting daemon');
     await stopDaemon();
   } else {
     logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
@@ -275,7 +284,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
+      logger.debugLargeJson('[DAEMON RUN] Spawning session', summarizeSpawnSessionForLog(options));
 
       // Client-requested permission mode (allowlist-validated; used by the
       // assistant "skip permission approvals" setting). Sanitized ONCE here so
@@ -284,7 +293,7 @@ export async function startDaemon(): Promise<void> {
       // never send the field, so behavior is unchanged for them.
       const spawnPermissionMode = sanitizeSpawnPermissionMode(options.permissionMode);
       if (options.permissionMode !== undefined && spawnPermissionMode === null) {
-        logger.warn(`[DAEMON RUN] Ignoring invalid permissionMode in spawn request: ${JSON.stringify(options.permissionMode)}`);
+        logger.warn('[DAEMON RUN] Ignoring invalid permissionMode in spawn request');
       }
 
       // ── B-051 assistant variant ────────────────────────────────────────────
@@ -1051,12 +1060,16 @@ export async function startDaemon(): Promise<void> {
     });
 
     // Write initial daemon state (no lock needed for state file)
+    const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
     const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
-      daemonLogPath: logger.logFilePath
+      serverUrl: configuration.serverUrl,
+      webappUrl: configuration.webappUrl,
+      daemonLogPath: logger.logFilePath,
+      claudeCredentialSource: daemonClaudeCredentials.source,
     };
     writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
@@ -1220,8 +1233,11 @@ export async function startDaemon(): Promise<void> {
           httpPort: controlPort,
           startTime: fileState.startTime,
           startedWithCliVersion: packageJson.version,
+          serverUrl: configuration.serverUrl,
+          webappUrl: configuration.webappUrl,
           lastHeartbeat: new Date().toLocaleString(),
-          daemonLogPath: fileState.daemonLogPath
+          daemonLogPath: fileState.daemonLogPath,
+          claudeCredentialSource: fileState.claudeCredentialSource,
         };
         writeDaemonState(updatedState);
         if (process.env.DEBUG) {

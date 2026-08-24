@@ -1,8 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { tmpdir } from 'node:os';
-import { mkdtempSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildDeviceAuthPayload, loadOrCreateDeviceIdentity, resetIdentityCache, signPayload, base64UrlDecode } from './openclawAuth';
+import {
+  base64UrlDecode,
+  buildDeviceAuthPayload,
+  loadOrCreateDeviceIdentity,
+  migrateLegacyOpenClawAuth,
+  resetIdentityCache,
+  signPayload,
+  storeDeviceAuthToken,
+} from './openclawAuth';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 
@@ -36,6 +44,48 @@ describe('openclawAuth', () => {
     resetIdentityCache();
     const identity3 = await loadOrCreateDeviceIdentity(homeDir);
     expect(identity3.deviceId).toBe(identity1.deviceId);
+  });
+
+  it.skipIf(process.platform === 'win32')('stores device private key and gateway token with private permissions', async () => {
+    const previousUmask = process.umask(0o022);
+    try {
+      await loadOrCreateDeviceIdentity(homeDir);
+      await storeDeviceAuthToken(homeDir, {
+        token: 'gateway-secret',
+        role: 'operator',
+        scopes: ['operator.admin'],
+      });
+
+      expect(statSync(join(homeDir, 'openclaw')).mode & 0o777).toBe(0o700);
+      expect(statSync(join(homeDir, 'openclaw', 'device-identity.json')).mode & 0o777).toBe(0o600);
+      expect(statSync(join(homeDir, 'openclaw', 'device-auth-token.json')).mode & 0o777).toBe(0o600);
+    } finally {
+      process.umask(previousUmask);
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('securely migrates legacy auth into an isolated happy home', () => {
+    const legacyHome = makeTempDir();
+    const nextHome = makeTempDir();
+    const legacyDir = join(legacyHome, 'openclaw');
+    mkdirSync(legacyDir, { mode: 0o755 });
+    const identityPath = join(legacyDir, 'device-identity.json');
+    const tokenPath = join(legacyDir, 'device-auth-token.json');
+    writeFileSync(identityPath, JSON.stringify({ version: 1, privateKey: 'secret' }), { mode: 0o644 });
+    writeFileSync(tokenPath, JSON.stringify({ token: 'gateway-secret' }), { mode: 0o644 });
+    // Make the intended legacy exposure deterministic even with a restrictive test umask.
+    chmodSync(legacyDir, 0o755);
+    chmodSync(identityPath, 0o644);
+    chmodSync(tokenPath, 0o644);
+
+    migrateLegacyOpenClawAuth(legacyHome, nextHome);
+
+    expect(statSync(legacyDir).mode & 0o777).toBe(0o700);
+    expect(statSync(identityPath).mode & 0o777).toBe(0o600);
+    expect(statSync(tokenPath).mode & 0o777).toBe(0o600);
+    expect(statSync(join(nextHome, 'openclaw')).mode & 0o777).toBe(0o700);
+    expect(statSync(join(nextHome, 'openclaw', 'device-identity.json')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(nextHome, 'openclaw', 'device-auth-token.json')).mode & 0o777).toBe(0o600);
   });
 
   it('should build correct v2 payload', () => {

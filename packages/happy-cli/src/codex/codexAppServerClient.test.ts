@@ -7,12 +7,14 @@ const {
     mockWrapForMcpTransport,
     mockSandboxCleanup,
     mockSpawn,
+    mockLoggerDebug,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
     mockWrapForMcpTransport: vi.fn(),
     mockSandboxCleanup: vi.fn(),
     mockSpawn: vi.fn(),
+    mockLoggerDebug: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({
@@ -31,7 +33,7 @@ vi.mock('@/sandbox/manager', () => ({
 
 vi.mock('@/ui/logger', () => ({
     logger: {
-        debug: vi.fn(),
+        debug: mockLoggerDebug,
         info: vi.fn(),
         warn: vi.fn(),
     },
@@ -1079,5 +1081,20 @@ describe('CodexAppServerClient sandbox integration', () => {
         ]));
 
         await client.disconnect();
+    });
+
+    it('does not log non-JSON or unhandled message contents', async () => {
+        const secret = 'secret-sentinel-do-not-log';
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+
+        (client as any).handleLine(`not-json ${secret}`);
+        (client as any).handleLine(JSON.stringify({ privateBody: secret }));
+
+        const serializedLogs = JSON.stringify(mockLoggerDebug.mock.calls);
+        expect(serializedLogs).not.toContain(secret);
+        expect(serializedLogs).not.toContain('privateBody');
+        expect(serializedLogs).toContain('valueBytes');
+        expect(serializedLogs).toContain('payloadBytes');
     });
 });

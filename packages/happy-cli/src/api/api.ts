@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 import { NotificationProducer } from '@/claude/notificationProducer';
+import { redactLogValue } from '@/utils/logRedaction';
 
 export class ApiClient {
 
@@ -356,7 +357,7 @@ export class ApiClient {
 
       logger.debug(`[API] Vendor token for ${vendor} registered successfully`);
     } catch (error) {
-      logger.debug(`[API] [ERROR] Failed to register vendor token:`, error);
+      logger.debug(`[API] [ERROR] Failed to register vendor token:`, redactLogValue(error));
       throw new Error(`Failed to register vendor token: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -440,7 +441,7 @@ export class ApiClient {
         logger.debug(`[API] No vendor token found for ${vendor}`);
         return null;
       }
-      logger.debug(`[API] [ERROR] Failed to get vendor token:`, error);
+      logger.debug(`[API] [ERROR] Failed to get vendor token:`, redactLogValue(error));
       return null;
     }
   }

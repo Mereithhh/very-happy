@@ -107,7 +107,7 @@ export class OpenClawBackend implements AgentBackend {
     }
 
     const sessionId = this.sessionKey;
-    this.log(`Session started: ${sessionId}`);
+    this.log('Session started');
     return { sessionId };
   }
 
@@ -126,7 +126,7 @@ export class OpenClawBackend implements AgentBackend {
     this.emit({ type: 'status', status: 'running' });
 
     const result = await this.socket.sendMessage(sessionId, prompt);
-    this.log(`Sent prompt, runId: ${result.runId}`);
+    this.log(`Sent prompt: ${JSON.stringify({ hasRunId: Boolean(result.runId) })}`);
   }
 
   async cancel(_sessionId: SessionId): Promise<void> {

@@ -6,14 +6,17 @@ import { z } from 'zod';
 
 import { decodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
+import { credentialRelayProblem } from '@/ui/authRelay';
 
 const AgentCredentialsSchema = z.object({
     token: z.string().min(1),
     secret: z.string().min(1),
+    authServerUrl: z.string().optional(),
 });
 
 export type LocalHappyAgentCredentials = {
     token: string;
+    authServerUrl?: string;
     secret: Uint8Array;
     contentKeyPair: {
         publicKey: Uint8Array;
@@ -71,6 +74,7 @@ export function getLocalHappyAgentCredentialPath(happyHomeDir: string = configur
 
 export function readLocalHappyAgentCredentials(
     happyHomeDir: string = configuration.happyHomeDir,
+    serverUrl: string = configuration.serverUrl,
 ): LocalHappyAgentCredentials | null {
     const credentialPath = getLocalHappyAgentCredentialPath(happyHomeDir);
     if (!existsSync(credentialPath)) {
@@ -79,9 +83,15 @@ export function readLocalHappyAgentCredentials(
 
     try {
         const parsed = AgentCredentialsSchema.parse(JSON.parse(readFileSync(credentialPath, 'utf8')));
+        // Unlike access.key, agent.key historically came from a different
+        // upstream default relay. Missing issuer metadata is therefore
+        // ambiguous and must never be sent to any configured server.
+        if (!parsed.authServerUrl) return null;
+        if (credentialRelayProblem(parsed.authServerUrl, serverUrl)) return null;
         const secret = decodeBase64(parsed.secret);
         return {
             token: parsed.token,
+            authServerUrl: parsed.authServerUrl,
             secret,
             contentKeyPair: deriveContentKeyPair(secret),
         };

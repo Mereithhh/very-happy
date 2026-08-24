@@ -6,11 +6,16 @@
  * using filesystem storage instead of expo-secure-store.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
+import { readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
+import {
+  ensurePrivateDirectorySync,
+  hardenPrivateFileSync,
+  writePrivateFileSync,
+} from '@/utils/secureFiles';
 
 // @noble/ed25519 v3 requires explicit SHA-512 configuration via hashes object
 ed.hashes.sha512 = (message: Uint8Array) => sha512(message);
@@ -69,13 +74,13 @@ function getOpenClawDir(homeDir: string): string {
 }
 
 function ensureDir(dir: string): void {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  // `mkdir({ mode })` alone does not repair historical 0755 directories.
+  ensurePrivateDirectorySync(dir);
 }
 
 function readJsonFile<T>(filePath: string): T | null {
   try {
+    hardenPrivateFileSync(filePath);
     return JSON.parse(readFileSync(filePath, 'utf-8')) as T;
   } catch {
     return null;
@@ -85,7 +90,37 @@ function readJsonFile<T>(filePath: string): T | null {
 function writeJsonFile(filePath: string, data: unknown): void {
   const dir = join(filePath, '..');
   ensureDir(dir);
-  writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  writePrivateFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Move the old `~/openclaw` credential location into HAPPY_HOME_DIR without
+ * breaking existing operators. Sources are retained for rollback, but are
+ * hardened in place so an older CLI cannot leave them world-readable.
+ */
+export function migrateLegacyOpenClawAuth(legacyHomeDir: string, happyHomeDir: string): void {
+  if (legacyHomeDir === happyHomeDir) return;
+  const legacyDir = getOpenClawDir(legacyHomeDir);
+  if (!existsSync(legacyDir)) return;
+  ensurePrivateDirectorySync(legacyDir);
+  ensurePrivateDirectorySync(getOpenClawDir(happyHomeDir));
+
+  for (const fileName of [DEVICE_IDENTITY_FILE, DEVICE_AUTH_TOKEN_FILE]) {
+    const legacyPath = join(legacyDir, fileName);
+    if (!existsSync(legacyPath)) continue;
+    hardenPrivateFileSync(legacyPath);
+    const nextPath = join(getOpenClawDir(happyHomeDir), fileName);
+    if (existsSync(nextPath)) {
+      hardenPrivateFileSync(nextPath);
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(legacyPath, 'utf8')) as unknown;
+      writeJsonFile(nextPath, parsed);
+    } catch {
+      // Never migrate malformed credential state; normal auth will recreate it.
+    }
+  }
 }
 
 function deleteFile(filePath: string): void {

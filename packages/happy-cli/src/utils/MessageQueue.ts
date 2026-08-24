@@ -29,7 +29,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
         
         const waiter = this.waiters.shift();
         if (waiter) {
-            logger.debug(`[MessageQueue] Found waiter! Delivering message directly: "${message}"`);
+            logger.debug(`[MessageQueue] Delivering user message directly. bytes=${Buffer.byteLength(message, 'utf8')}`);
             waiter({
                 type: 'user',
                 parent_tool_use_id: null,
@@ -39,7 +39,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                 },
             });
         } else {
-            logger.debug(`[MessageQueue] No waiter found. Adding to queue: "${message}"`);
+            logger.debug(`[MessageQueue] Queueing user message. bytes=${Buffer.byteLength(message, 'utf8')}`);
             this.queue.push({
                 type: 'user',
                 parent_tool_use_id: null,

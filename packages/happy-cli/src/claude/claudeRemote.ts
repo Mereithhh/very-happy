@@ -12,6 +12,7 @@ import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
+import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
 export async function claudeRemote(opts: {
 
@@ -178,7 +179,7 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
-            logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
+            logger.debug(`[claudeRemote] Message ${message.type}`, contentLogMetadata(message));
 
             // Handle messages. During /compact, Claude emits the generated
             // summary as a normal assistant text message before the result.

@@ -1,7 +1,8 @@
 {
   "name": "happy-agent",
   "version": "0.1.0",
-  "description": "CLI client for controlling Happy Coder agents remotely",
+  "private": true,
+  "description": "Internal monorepo control-plane prototype; not a published Very Happy package",
   "author": "Kirill Dubovitskiy",
   "contributors": [
     "Mereith (very-happy fork)"
@@ -44,8 +45,7 @@
     "test": "$npm_execpath run build && vitest run",
     "test:integration": "$npm_execpath run build && vitest run --config vitest.integration.config.ts",
     "dev": "tsx src/index.ts",
-    "prepublishOnly": "$npm_execpath run build && $npm_execpath test",
-    "release": "pnpm exec release-it"
+    "prepublishOnly": "node -e \"throw new Error('happy-agent is private and must not be published')\""
   },
   "dependencies": {
     "@slopus/happy-wire": "workspace:*",
@@ -60,13 +60,9 @@
     "@types/node": ">=20",
     "@types/qrcode-terminal": "^0.12.2",
     "pkgroll": "^2.14.2",
-    "release-it": "^19.0.6",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
-    "vitest": "^3.2.4"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org"
+    "vitest": "3.2.6"
   },
   "packageManager": "pnpm@10.11.0"
 }

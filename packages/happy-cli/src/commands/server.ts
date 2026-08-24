@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { configuration } from '@/configuration';
 import { updateSettings } from '@/persistence';
+import { resolveLocalSignupBootstrap } from './serverBootstrap';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +21,7 @@ const PRISMA_QUERY_ENGINE_FILES: Record<string, string> = {
     'x64-linux': 'libquery_engine-debian-openssl-3.0.x.so.node',
     'x64-win32': 'query_engine-windows.dll.node',
 };
-const SERVER_PACKAGE_NAME = 'happy-server-self-host';
+const SERVER_PACKAGE_NAME = 'very-happy-server';
 const SETTINGS_WRITE_CONFIRM_FLAG = '--i-understand-this-will-modify-default-happy-settings';
 
 interface ServerOptions {
@@ -69,6 +70,7 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     const dataDir = path.join(configuration.happyHomeDir, 'server-data');
     const pgliteDir = path.join(dataDir, 'pglite');
     const secretFile = path.join(dataDir, 'master-secret');
+    const bootstrapCodeFile = path.join(dataDir, 'bootstrap-invite-code');
 
     if (opts.reset && existsSync(dataDir)) {
         console.log(chalk.yellow(`Wiping ${dataDir}...`));
@@ -78,6 +80,11 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     mkdirSync(dataDir, { recursive: true });
 
     const masterSecret = opts.masterSecret ?? loadOrCreateMasterSecret(secretFile);
+    const signup = resolveLocalSignupBootstrap(
+        process.env.SIGNUP_MODE,
+        process.env.SIGNUP_INVITE_CODES,
+        loadOrCreateBootstrapInviteCode(bootstrapCodeFile),
+    );
 
     const artifacts = resolveServerArtifacts();
     if (!artifacts) {
@@ -86,7 +93,8 @@ export async function handleServerCommand(args: string[]): Promise<void> {
         console.error(chalk.gray(`    - installed ${SERVER_PACKAGE_NAME} package`));
         console.error(chalk.gray(`    - legacy bundled binary at ${path.join(__dirname, '..', '..', 'tools', 'server', currentPlatform(), bundledBinaryName())}`));
         console.error(chalk.gray('    - sibling packages/happy-server/sources/standalone.ts in the monorepo'));
-        console.error(chalk.gray(`  For npm installs, run: npm install -g ${SERVER_PACKAGE_NAME}`));
+        console.error(chalk.gray(`  The fork-owned ${SERVER_PACKAGE_NAME} artifact may not be published yet.`));
+        console.error(chalk.gray('  Use Dockerfile.server from the repository for the supported self-host path.'));
         process.exit(1);
     }
 
@@ -99,7 +107,7 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     if (staticDir) {
         console.log(chalk.gray(`  webapp:     ${staticDir}`));
     } else {
-        console.log(chalk.yellow('  webapp:     (no build) — API only. Run `pnpm bundle:webapp` to build.'));
+        console.log(chalk.yellow('  webapp:     (no production Web V2 build) — API only. Run `pnpm bundle:webapp` to build.'));
     }
     console.log();
 
@@ -111,12 +119,23 @@ export async function handleServerCommand(args: string[]): Promise<void> {
         HANDY_MASTER_SECRET: masterSecret,
         PORT: String(opts.port),
         HOST: opts.host,
+        SIGNUP_MODE: signup.signupMode,
     };
+    if (signup.signupInviteCodes) env.SIGNUP_INVITE_CODES = signup.signupInviteCodes;
     if (staticDir) env.HAPPY_STATIC_DIR = staticDir;
     env.HAPPY_INJECT_HTML_CONFIG = JSON.stringify({
         serverUrl,
         disableAnalytics: true,
     });
+
+    if (signup.generatedInviteCode) {
+        console.log(chalk.yellow.bold('  First-account bootstrap'));
+        console.log(chalk.yellow(`  Invite code: ${signup.generatedInviteCode}`));
+        console.log(chalk.gray('  Register the first operator, stop this server, then restart with:'));
+        console.log(chalk.cyan('    SIGNUP_MODE=closed very-happy server'));
+        console.log(chalk.gray('  The code remains valid until the server is restarted in closed mode.'));
+        console.log();
+    }
 
     // The bundled bun binary can't embed Prisma's native query engine. Source/dev
     // mode resolves the engine from node_modules normally, but bundled mode needs
@@ -233,9 +252,12 @@ ${chalk.bold('Options:')}
 
 ${chalk.bold('Notes:')}
   - Stores data in ${chalk.cyan('$HAPPY_HOME_DIR/server-data/')}
-  - Packaged installs require ${chalk.cyan(SERVER_PACKAGE_NAME)} for the local server binary
+  - Packaged installs require ${chalk.cyan(SERVER_PACKAGE_NAME)} once that fork-owned artifact is published
+  - Until then, use the repository's ${chalk.cyan('Dockerfile.server')} self-host path
   - By default, asks before writing ${chalk.cyan('settings.serverUrl')} and ${chalk.cyan('settings.webappUrl')}
   - Use ${chalk.cyan('--no-persist')} to run without modifying default Happy settings
+  - Fresh installs start in invite mode and print a persisted bootstrap code
+  - After the first account, restart with ${chalk.cyan('SIGNUP_MODE=closed')} to disable signup
   - Open ${chalk.cyan('http://127.0.0.1:<port>')} for the web app (if bundled)
 `);
 }
@@ -276,6 +298,15 @@ function loadOrCreateMasterSecret(file: string): string {
     const secret = randomBytes(32).toString('hex');
     writeFileSync(file, secret, { mode: 0o600 });
     return secret;
+}
+
+function loadOrCreateBootstrapInviteCode(file: string): string {
+    if (existsSync(file)) {
+        return readFileSync(file, 'utf8').trim();
+    }
+    const code = `vh-bootstrap-${randomBytes(18).toString('base64url')}`;
+    writeFileSync(file, code, { mode: 0o600 });
+    return code;
 }
 
 function currentPlatform(): string {
@@ -355,7 +386,7 @@ function serverArtifactMode(artifacts: ServerArtifacts): string {
  * Resolves the artifacts needed to spawn happy-server.
  *
  * Order:
- *   1. happy-server-self-host package (npm-installed local server artifact)
+ *   1. very-happy-server package (npm-installed local server artifact)
  *   2. Legacy bundled binary at tools/server/<platform>/happy-server
  *   3. Source-mode fallback for monorepo dev: ../happy-server/sources/standalone.ts via tsx
  */
@@ -428,9 +459,9 @@ function findWebappDir(): string | undefined {
     if (existsSync(path.join(bundled, 'index.html'))) return bundled;
 
     const candidates = [
-        path.resolve(__dirname, '../../../happy-app/dist'),
-        path.resolve(__dirname, '../../happy-app/dist'),
-        path.resolve(process.cwd(), 'packages/happy-app/dist'),
+        path.resolve(__dirname, '../../../happy-web-v2/dist'),
+        path.resolve(__dirname, '../../happy-web-v2/dist'),
+        path.resolve(process.cwd(), 'packages/happy-web-v2/dist'),
     ];
     for (const c of candidates) {
         if (existsSync(path.join(c, 'index.html'))) return c;

@@ -5,10 +5,57 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import packageJson from '../package.json'
+import { ensurePrivateDirectorySync, hardenPrivateDirectoryFilesSync, hardenPrivateFileSync } from '@/utils/secureFiles'
+
+const DEFAULT_RELAY_URL = 'https://happy.mereith.com'
+
+/**
+ * Client endpoints are origins, not arbitrary URL prefixes. Normalize the
+ * harmless trailing slash while rejecting values that would make string-built
+ * API, Socket.IO, or approval URLs target a different route (or protocol).
+ */
+export function normalizeHttpEndpoint(value: string, source: string): string {
+  const trimmed = value.trim()
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new Error(`${source} must be an absolute http(s) origin`)
+  }
+
+  const onlyOriginPath = /^\/+$/u.test(parsed.pathname)
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+    || parsed.username.length > 0
+    || parsed.password.length > 0
+    || !onlyOriginPath
+    || parsed.search.length > 0
+    || parsed.hash.length > 0
+  ) {
+    throw new Error(`${source} must be an http(s) origin without credentials, path, query, or fragment`)
+  }
+
+  return parsed.origin
+}
+
+export function resolveHttpEndpoint(
+  environmentValue: string | undefined,
+  settingsValue: string | undefined,
+  environmentName: 'HAPPY_SERVER_URL' | 'HAPPY_WEBAPP_URL',
+  settingsName: 'serverUrl' | 'webappUrl',
+): string {
+  if (environmentValue !== undefined) {
+    return normalizeHttpEndpoint(environmentValue, environmentName)
+  }
+  if (settingsValue !== undefined) {
+    return normalizeHttpEndpoint(settingsValue, `settings.${settingsName}`)
+  }
+  return DEFAULT_RELAY_URL
+}
 
 class Configuration {
   public readonly serverUrl: string
@@ -53,14 +100,24 @@ class Configuration {
     // Settings are read sync here (avoid circular import with persistence.ts).
     // webappUrl must follow the same chain as serverUrl, otherwise `very-happy server`
     // self-host points the API at localhost but auth still opens the prod webapp.
-    this.serverUrl =
-      process.env.HAPPY_SERVER_URL ||
-      readSettingsStringSync(this.settingsFile, 'serverUrl') ||
-      'https://happy.mereith.com'
-    this.webappUrl =
-      process.env.HAPPY_WEBAPP_URL ||
-      readSettingsStringSync(this.settingsFile, 'webappUrl') ||
-      'https://happy.mereith.com'
+    try {
+      this.serverUrl = resolveHttpEndpoint(
+        process.env.HAPPY_SERVER_URL,
+        readSettingsStringSync(this.settingsFile, 'serverUrl'),
+        'HAPPY_SERVER_URL',
+        'serverUrl',
+      )
+      this.webappUrl = resolveHttpEndpoint(
+        process.env.HAPPY_WEBAPP_URL,
+        readSettingsStringSync(this.settingsFile, 'webappUrl'),
+        'HAPPY_WEBAPP_URL',
+        'webappUrl',
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'invalid client endpoint'
+      process.stderr.write(`[very-happy] Configuration error: ${message}\n`)
+      process.exit(1)
+    }
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
@@ -73,13 +130,19 @@ class Configuration {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.happyHomeDir)
     }
 
-    if (!existsSync(this.happyHomeDir)) {
-      mkdirSync(this.happyHomeDir, { recursive: true })
+    // Harden existing homes too; create mode alone would preserve historical 0755.
+    ensurePrivateDirectorySync(this.happyHomeDir)
+    ensurePrivateDirectorySync(this.logsDir)
+    for (const privateFile of [
+      this.settingsFile,
+      this.privateKeyFile,
+      this.daemonStateFile,
+      this.daemonLockFile,
+      this.sessionsFile,
+    ]) {
+      if (existsSync(privateFile)) hardenPrivateFileSync(privateFile)
     }
-    // Ensure directories exist
-    if (!existsSync(this.logsDir)) {
-      mkdirSync(this.logsDir, { recursive: true })
-    }
+    hardenPrivateDirectoryFilesSync(this.logsDir)
   }
 }
 

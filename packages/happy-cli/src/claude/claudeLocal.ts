@@ -13,6 +13,7 @@ import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 import type { SandboxConfig } from "@/persistence";
 import { initializeSandbox, wrapCommand } from "@/sandbox/manager";
+import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -378,7 +379,7 @@ export async function claudeLocal(opts: {
                             }
                         } catch (e) {
                             // Not JSON, ignore (could be other output)
-                            logger.debug(`[ClaudeLocal] Non-JSON line from fd3: ${line}`);
+                            logger.debug('[ClaudeLocal] Non-JSON line from fd3:', contentLogMetadata(line));
                         }
                     });
 

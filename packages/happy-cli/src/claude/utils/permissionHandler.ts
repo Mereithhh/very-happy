@@ -10,6 +10,7 @@ import { PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
 interface PermissionResponse {
     id: string;
@@ -91,7 +92,13 @@ export class PermissionHandler {
 
         // Handle
         if (pending.toolName === 'exit_plan_mode' || pending.toolName === 'ExitPlanMode') {
-            logger.debug('Plan mode result received', response);
+            logger.debug('Plan mode result received', {
+                approved: response.approved,
+                mode: response.mode,
+                reason: contentLogMetadata(response.reason),
+                allowToolCount: response.allowTools?.length ?? 0,
+                updatedInput: contentLogMetadata(response.updatedInput),
+            });
             if (response.approved) {
                 // Switch permission mode via SDK before allowing ExitPlanMode
                 const newMode = (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode))
@@ -351,7 +358,14 @@ export class PermissionHandler {
      */
     private setupClientHandler(): void {
         this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, void>('permission', async (message) => {
-            logger.debug(`Permission response: ${JSON.stringify(message)}`);
+            logger.debug('Permission response received:', {
+                id: message.id,
+                approved: message.approved,
+                mode: message.mode,
+                reason: contentLogMetadata(message.reason),
+                allowToolCount: message.allowTools?.length ?? 0,
+                updatedInput: contentLogMetadata(message.updatedInput),
+            });
 
             const id = message.id;
             const pending = this.pendingRequests.get(id);

@@ -41,8 +41,8 @@ export async function authLogin(config: Config): Promise<void> {
         console.log(code);
     });
     console.log('## Authentication');
-    console.log('- Action: Scan this QR code with the Happy app');
-    console.log('- Path: Settings -> Account -> Link New Device');
+    console.log('- Action: Approve this account-link request from a compatible trusted account client');
+    console.log('- Availability: Very Happy Web V2 does not yet expose this prototype approval UI');
     console.log(`- Public Key: \`${publicKeyBase64}\``);
     console.log(`- URL: \`${qrData}\``);
     console.log('');

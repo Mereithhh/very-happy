@@ -30,6 +30,9 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { OpenClawBackend } from './OpenClawBackend';
 import type { OpenClawGatewayConfig } from './openclawTypes';
 import type { AgentMessage } from '@/agent/core';
+import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
+import { configuration } from '@/configuration';
+import { migrateLegacyOpenClawAuth } from './openclawAuth';
 
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -144,7 +147,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     }
   };
 
-  log(`Gateway URL: ${gatewayConfig.url}`);
+  log('Resolved configured gateway');
 
   const api = await ApiClient.create(opts.credentials);
   const settings = await readSettings();
@@ -229,15 +232,16 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     }
   };
 
+  migrateLegacyOpenClawAuth(os.homedir(), configuration.happyHomeDir);
   const backend = new OpenClawBackend({
-    homeDir: os.homedir(),
+    homeDir: configuration.happyHomeDir,
     gatewayConfig,
     log,
   });
 
   const onBackendMessage = (msg: AgentMessage) => {
     if (verbose) {
-      log(`Backend message: ${JSON.stringify(msg).slice(0, 200)}`);
+      log(`Backend message: ${JSON.stringify(contentLogMetadata(msg))}`);
     }
 
     // Still forward all messages as envelopes so frontend history matches gateway,
@@ -253,10 +257,10 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
       }
     }
     if (msg.type === 'status' && (msg.status === 'error' || msg.status === 'stopped')) {
-      log(`Backend ${msg.status}: ${msg.detail ?? ''}`);
+      log(`Backend ${msg.status}: ${JSON.stringify(contentLogMetadata(msg.detail))}`);
       shouldExit = true;
       messageQueue.close();
-      clearPendingTurn(new Error(`OpenClaw backend ${msg.status}: ${msg.detail ?? ''}`));
+      clearPendingTurn(new Error(`OpenClaw backend ${msg.status}`));
     }
 
     if (msg.type === 'event' && msg.name === 'openclaw-pairing-required') {
@@ -286,7 +290,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
         await backend.cancel(sessionKey);
       }
     } catch (error) {
-      logger.debug('[openclaw] Abort failed:', error);
+      logger.debug('[openclaw] Abort failed:', errorLogMetadata(error));
     }
     // End the turn — gateway may not send final/error after abort
     inTurn = false;
@@ -321,7 +325,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
         break;
       }
 
-      log(`Incoming prompt: ${batch.message.slice(0, 200)}`);
+      log(`Incoming prompt: ${JSON.stringify(contentLogMetadata(batch.message))}`);
       inTurn = true;
       sendEnvelopes(sessionManager.startTurn());
       const turnEnded = waitForTurnEnd();
@@ -330,8 +334,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
         await turnEnded;
         sendEnvelopes(sessionManager.endTurn('completed'));
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        log(`Turn ended: ${msg}`);
+        log(`Turn ended: ${JSON.stringify(errorLogMetadata(error))}`);
         sendEnvelopes(sessionManager.endTurn('failed'));
       }
       inTurn = false;

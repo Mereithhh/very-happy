@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * Runs `expo export -p web` in packages/happy-app and copies the output into
+ * Runs the production Vite build in packages/happy-web-v2 and copies the output into
  * a package-owned artifact directory. By default this writes to happy-cli/tools/webapp
  * for local development. Release packaging can pass --out-dir to place it elsewhere.
  *
- * happy-cli does NOT depend on happy-app — we reach into the sibling at build time only.
+ * happy-cli does NOT depend on happy-web-v2 — we reach into the sibling at build time only.
  */
 
 const fs = require('node:fs');
@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 
 const PACKAGE_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PACKAGE_DIR, '..', '..');
-const APP_DIR = path.resolve(REPO_ROOT, 'packages/happy-app');
+const APP_DIR = path.resolve(REPO_ROOT, 'packages/happy-web-v2');
 const APP_DIST = path.join(APP_DIR, 'dist');
 
 function rmrf(p) {
@@ -39,12 +39,12 @@ function main() {
         process.exit(1);
     }
 
-    console.log(`→ Building happy-app web bundle (expo export)`);
+    console.log(`→ Building production happy-web-v2 bundle (Vite)`);
     rmrf(APP_DIST);
-    run('pnpm', ['exec', 'expo', 'export', '-p', 'web', '--output-dir', 'dist'], { cwd: APP_DIR });
+    run('pnpm', ['exec', 'vite', 'build'], { cwd: APP_DIR });
 
     if (!fs.existsSync(path.join(APP_DIST, 'index.html'))) {
-        console.error(`Expected ${path.join(APP_DIST, 'index.html')} after expo export, but it's missing.`);
+        console.error(`Expected ${path.join(APP_DIST, 'index.html')} after the Vite build, but it's missing.`);
         process.exit(1);
     }
 

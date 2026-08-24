@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import axios from 'axios';
 import { openBrowser } from '@/utils/browser';
 import { doAuth } from './auth';
+import { credentialRelayProblem } from './authRelay';
 
 vi.mock('axios', () => ({
   default: { post: vi.fn() },
@@ -76,6 +77,18 @@ describe('Web-only CLI authentication flow', () => {
     expect(authCommand.match(/printDaemonNextStep\(\);/g)).toHaveLength(2);
     expect(authCommand).toContain('Next: start the machine daemon');
     expect(authCommand).toContain("chalk.cyan('very-happy daemon start')");
+    expect(authCommand).toContain('Keep the same HAPPY_SERVER_URL and HAPPY_WEBAPP_URL environment');
     expect(authCommand).toContain('It starts in the background and keeps this machine available in Web.');
+  });
+
+  it('refuses to silently reuse credentials issued by another or unknown relay', () => {
+    expect(credentialRelayProblem('https://happy.mereith.com', 'https://relay.example.com')).toContain('Credentials belong to');
+    expect(credentialRelayProblem(undefined, 'https://relay.example.com')).toContain('predate relay tracking');
+    expect(credentialRelayProblem('https://relay.example.com/', 'https://relay.example.com')).toBeUndefined();
+    expect(credentialRelayProblem(undefined, 'https://happy.mereith.com')).toBeUndefined();
+    expect(authFlow).toContain('credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl)');
+    expect(authFlow.indexOf('credentialRelayProblem(credentials.authServerUrl')).toBeLessThan(
+      authFlow.indexOf("logger.debug('[AUTH] Using existing credentials')"),
+    );
   });
 });

@@ -6,7 +6,7 @@
  * that already exposes `bash`)"）。`open_preview` 并没有扩大能力面，但它改变了
  * **发起者**：原来读任意文件需要用户在文件浏览器里主动导航，现在是**模型指定路径、
  * web 端自动拉取并渲染**。被 prompt injection 的模型可以
- * `open_preview('~/.secrets/env/tanka.env')` 把生产凭据直接渲染到屏幕上。
+ * `open_preview('~/.secrets/env/provider.env')` 把生产凭据直接渲染到屏幕上。
  *
  * 所以这道闸装在 **CLI 侧、模型请求刚落地的那一刻**，不是 web 侧——web 可以被绕过。
  *

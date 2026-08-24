@@ -10,7 +10,7 @@
 import chalk from 'chalk'
 import { runClaude, StartOptions } from '@/claude/runClaude'
 import { logger } from './ui/logger'
-import { readCredentials, readSettings } from './persistence'
+import { readCredentialsForConfiguredRelay, readSettings, readDaemonState } from './persistence'
 import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
@@ -35,6 +35,9 @@ import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
 import { isStandaloneVersionRequest } from './utils/versionArgs'
+import { configuration } from './configuration'
+import { daemonEndpointsMatch } from './ui/doctorReadiness'
+import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 
 
 (async () => {
@@ -298,13 +301,13 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       
       try {
         const { saveGoogleCloudProjectToConfig } = await import('@/gemini/utils/config');
-        const { readCredentials } = await import('@/persistence');
+        const { readCredentialsForConfiguredRelay } = await import('@/persistence');
         const { ApiClient } = await import('@/api/api');
         
         // Try to get current user email from Happy cloud token
         let userEmail: string | undefined = undefined;
         try {
-          const credentials = await readCredentials();
+          const credentials = await readCredentialsForConfiguredRelay();
           if (credentials) {
             const api = await ApiClient.create(credentials);
             const vendorToken = await api.getVendorToken('gemini');
@@ -564,6 +567,20 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       return
 
     } else if (daemonSubcommand === 'start') {
+      const currentState = await readDaemonState()
+      const running = await checkIfDaemonRunningAndCleanupStaleState()
+      const currentDaemonMatches = currentState
+        && currentState.startedWithCliVersion === configuration.currentCliVersion
+        && daemonEndpointsMatch(
+          currentState.serverUrl,
+          currentState.webappUrl,
+          configuration.serverUrl,
+          configuration.webappUrl,
+        )
+      if (running && !currentDaemonMatches) {
+        console.log('Configured relay or CLI version changed; restarting the existing daemon')
+        await stopDaemon()
+      }
       // Spawn detached daemon process
       const child = spawnHappyCLI(['daemon', 'start-sync'], {
         detached: true,
@@ -627,14 +644,14 @@ ${chalk.bold('very-happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
   very-happy daemon start              Start the daemon (detached)
-  very-happy daemon stop               Stop the daemon (sessions stay alive)
+  very-happy daemon stop               ${DAEMON_STOP_HELP}
   very-happy daemon status             Show daemon status
   very-happy daemon list               List active sessions
 
   If you want to kill all happy related processes run 
   ${chalk.cyan('very-happy doctor clean')}
 
-${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
+${chalk.bold('Note:')} The daemon runs in the background and manages agent sessions and Web terminals.
 
 ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('very-happy doctor clean')}
 `)
@@ -736,12 +753,12 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('very-happy doc
     // Show help
     if (showHelp) {
       console.log(`
-${chalk.bold('very-happy')} - Claude Code from any browser
+${chalk.bold('very-happy')} - Open agent workspace for Web and terminal
 
 ${chalk.bold('Usage:')}
-  very-happy [options]         Start Claude with browser control
+  very-happy [options]         Start the native Claude TUI with browser control
+                            (requires the external claude command)
   very-happy auth              Manage authentication
-  very-happy resume            Resume a previous Very Happy session by session ID
   very-happy spawn             Spawn a remote session via the local daemon and
                             print its web URL (for automation; see spawn --help)
   very-happy send              Send a message into an existing session
@@ -764,8 +781,7 @@ ${chalk.bold('Usage:')}
   very-happy doctor            System diagnostics & troubleshooting
 
 ${chalk.bold('Examples:')}
-  very-happy                    Start session
-  very-happy resume cmmij8      Resume a previous session by Very Happy session ID
+  very-happy                    Start the native Claude TUI (external claude required)
   very-happy --yolo             Start with bypassing permissions
                             shorthand for --dangerously-skip-permissions
   very-happy --chrome           Enable Chrome browser access for this session
@@ -785,8 +801,8 @@ ${chalk.bold('Examples:')}
   very-happy auth login --force Authenticate
   very-happy doctor             Run diagnostics
 
-${chalk.bold('Very Happy supports all Claude options.')}
-  Use any Claude flag with very-happy as you would with claude. For example:
+${chalk.bold(CLAUDE_OPTIONS_HELP)}
+  For example:
 
   very-happy --resume
 
@@ -883,7 +899,7 @@ ${chalk.bold('Examples:')}
   }
 
   // Load credentials
-  let credentials = await readCredentials()
+  let credentials = await readCredentialsForConfiguredRelay()
   if (!credentials) {
     console.error(chalk.red('Error: Not authenticated. Please run "very-happy auth login" first.'))
     process.exit(1)

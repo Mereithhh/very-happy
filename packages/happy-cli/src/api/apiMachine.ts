@@ -5,6 +5,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
+import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
@@ -152,12 +153,11 @@ export class ApiMachineClient {
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
-    // Terminals opened with end-to-end stream encryption (negotiated per
-    // open-terminal via `encStream`). For these, terminal-output is encrypted
-    // and terminal-input is decrypted with the per-machine key — so the relay
-    // can't read or inject the interactive shell, matching the E2E guarantee
-    // the control RPC already provides. (Declared before webTerminal so the
-    // emit closure can read it.)
+    // Terminals negotiated with `encStream` protect the live byte payload with
+    // the per-machine key. This keeps it opaque to passive storage/forwarding
+    // paths, but is not an operator trust boundary: the trusted relay can
+    // recover account material or impersonate a Web client. (Declared before
+    // webTerminal so the emit closure can read it.)
     private encTerminals = new Set<string>();
     private webTerminal = new WebTerminalManager((event, payload) => {
         let out: any = payload;
@@ -261,7 +261,7 @@ export class ApiMachineClient {
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
             const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode } = params || {};
-            logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
+            logger.debug('[API MACHINE] Spawning session:', summarizeSpawnSessionForLog(params));
 
             // The assistant variant supplies its own directory (assistant home)
             // daemon-side; every other spawn requires one.

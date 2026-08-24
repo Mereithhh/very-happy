@@ -9,6 +9,7 @@ import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
+import { credentialRelayProblem } from './authRelay';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
@@ -209,6 +210,16 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     // Step 1: Handle authentication
     let credentials = await readCredentials();
     let newAuth = false;
+
+    if (credentials) {
+        const relayProblem = credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl);
+        if (relayProblem) {
+            throw new Error(
+                `${relayProblem} Use a separate HAPPY_HOME_DIR for this relay, ` +
+                'or run `very-happy auth login --force` before starting an agent or daemon.'
+            );
+        }
+    }
 
     if (!credentials) {
         logger.debug('[AUTH] No credentials found, starting authentication flow...');

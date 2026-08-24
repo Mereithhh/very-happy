@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   mockIsDaemonRunningCurrentlyInstalledHappyVersion: vi.fn(),
   mockCheckIfDaemonRunningAndCleanupStaleState: vi.fn(),
   mockSpawnHappyCLI: vi.fn(),
+  mockReadDaemonState: vi.fn(),
+  mockStopDaemon: vi.fn(),
 }))
 
 vi.mock('@/ui/logger', () => ({
@@ -16,6 +18,12 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('./controlClient', () => ({
   isDaemonRunningCurrentlyInstalledHappyVersion: mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion,
   checkIfDaemonRunningAndCleanupStaleState: mocks.mockCheckIfDaemonRunningAndCleanupStaleState,
+  stopDaemon: mocks.mockStopDaemon,
+}))
+
+vi.mock('@/persistence', () => ({ readDaemonState: mocks.mockReadDaemonState }))
+vi.mock('@/configuration', () => ({
+  configuration: { serverUrl: 'https://api.example', webappUrl: 'https://web.example' },
 }))
 
 vi.mock('@/utils/spawnHappyCLI', () => ({
@@ -31,6 +39,10 @@ describe('ensureDaemonRunning', () => {
       unref: vi.fn(),
     })
     mocks.mockCheckIfDaemonRunningAndCleanupStaleState.mockResolvedValue(true)
+    mocks.mockReadDaemonState.mockResolvedValue({
+      serverUrl: 'https://api.example',
+      webappUrl: 'https://web.example',
+    })
   })
 
   it('returns without spawning when the daemon is already running', async () => {
@@ -53,6 +65,7 @@ describe('ensureDaemonRunning', () => {
     })
     mocks.mockCheckIfDaemonRunningAndCleanupStaleState
       .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true)
 
     await ensureDaemonRunning()
@@ -63,8 +76,22 @@ describe('ensureDaemonRunning', () => {
       env: process.env,
     })
     expect(mockUnref).toHaveBeenCalled()
-    expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).toHaveBeenCalledTimes(2)
+    expect(mocks.mockCheckIfDaemonRunningAndCleanupStaleState).toHaveBeenCalledTimes(3)
     expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Starting Happy background service...')
     expect(mocks.mockLoggerDebug).toHaveBeenCalledWith('Happy background service is ready')
+  })
+
+  it('stops and restarts a same-version daemon connected to another relay', async () => {
+    mocks.mockIsDaemonRunningCurrentlyInstalledHappyVersion.mockResolvedValue(true)
+    mocks.mockReadDaemonState.mockResolvedValue({
+      serverUrl: 'https://old.example',
+      webappUrl: 'https://old.example',
+    })
+    mocks.mockCheckIfDaemonRunningAndCleanupStaleState.mockResolvedValue(true)
+
+    await ensureDaemonRunning()
+
+    expect(mocks.mockStopDaemon).toHaveBeenCalledOnce()
+    expect(mocks.mockSpawnHappyCLI).toHaveBeenCalledOnce()
   })
 })

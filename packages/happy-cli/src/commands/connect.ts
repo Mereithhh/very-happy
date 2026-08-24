@@ -1,9 +1,9 @@
 import chalk from 'chalk';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { readCredentials } from '@/persistence';
+import { readCredentialsForConfiguredRelay } from '@/persistence';
 import { ApiClient } from '@/api/api';
+import { ensurePrivateDirectorySync, writePrivateFileSync } from '@/utils/secureFiles';
 import { authenticateCodex } from './connect/authenticateCodex';
 import { authenticateClaude } from './connect/authenticateClaude';
 import { authenticateGemini } from './connect/authenticateGemini';
@@ -79,7 +79,7 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
     console.log(chalk.bold(`\n🔌 Connecting ${displayName} to Happy cloud\n`));
 
     // Check if authenticated
-    const credentials = await readCredentials();
+    const credentials = await readCredentialsForConfiguredRelay();
     if (!credentials) {
         console.log(chalk.yellow('⚠️  Not authenticated with Happy'));
         console.log(chalk.gray('  Please run "very-happy auth login" first'));
@@ -124,7 +124,7 @@ async function handleConnectStatus(): Promise<void> {
     console.log(chalk.bold('\n🔌 Connection Status\n'));
 
     // Check if authenticated
-    const credentials = await readCredentials();
+    const credentials = await readCredentialsForConfiguredRelay();
     if (!credentials) {
         console.log(chalk.yellow('⚠️  Not authenticated with Happy'));
         console.log(chalk.gray('  Please run "very-happy auth login" first'));
@@ -195,10 +195,9 @@ function updateLocalGeminiCredentials(tokens: {
         const geminiDir = join(homedir(), '.gemini');
         const credentialsPath = join(geminiDir, 'oauth_creds.json');
         
-        // Create directory if it doesn't exist
-        if (!existsSync(geminiDir)) {
-            mkdirSync(geminiDir, { recursive: true });
-        }
+        // Gemini OAuth tokens are local secrets. Harden both a newly created
+        // directory and an existing directory left behind with broader modes.
+        ensurePrivateDirectorySync(geminiDir);
         
         // Write credentials in the format Gemini CLI expects
         const credentials = {
@@ -210,7 +209,7 @@ function updateLocalGeminiCredentials(tokens: {
             ...(tokens.expires_in && { expires_in: tokens.expires_in }),
         };
         
-        writeFileSync(credentialsPath, JSON.stringify(credentials, null, 2), 'utf-8');
+        writePrivateFileSync(credentialsPath, JSON.stringify(credentials, null, 2));
         console.log(chalk.gray(`  Updated local credentials: ${credentialsPath}`));
     } catch (error) {
         // Non-critical error - server tokens will still work

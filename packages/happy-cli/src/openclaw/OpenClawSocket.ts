@@ -30,6 +30,7 @@ import type {
   OpenClawClientId,
   OpenClawClientMode,
 } from './openclawTypes';
+import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
 
 const PROTOCOL_VERSION = 3;
 
@@ -244,12 +245,12 @@ export class OpenClawSocket {
     this.connectSent = false;
 
     const url = this.config.url;
-    this.options.log(`Connecting to gateway: ${url}`);
+    this.options.log('Connecting to configured gateway');
 
     try {
       this.ws = new WebSocket(url);
     } catch (err) {
-      this.options.log(`Failed to create WebSocket: ${err}`);
+      this.options.log(`Failed to create WebSocket: ${JSON.stringify(errorLogMetadata(err))}`);
       this.updateStatus('error', 'Failed to create connection');
       this.scheduleReconnect();
       return;
@@ -264,14 +265,14 @@ export class OpenClawSocket {
     });
 
     this.ws.on('error', (err) => {
-      this.options.log(`WebSocket error: ${err.message}`);
+      this.options.log(`WebSocket error: ${JSON.stringify(errorLogMetadata(err))}`);
       if (this.status === 'connecting') {
         this.updateStatus('error', 'Connection failed');
       }
     });
 
     this.ws.on('close', (code, reason) => {
-      this.options.log(`WebSocket closed: ${code} ${reason.toString()}`);
+      this.options.log(`WebSocket closed: code=${code} reasonBytes=${reason.byteLength}`);
       this.failAllPending(new Error('Connection closed'));
       if (this.config && this.status !== 'pairing_required' && !this.disposed) {
         this.scheduleReconnect();
@@ -286,7 +287,7 @@ export class OpenClawSocket {
     try {
       const identity = await loadOrCreateDeviceIdentity(this.options.homeDir);
       this.deviceId = identity.deviceId;
-      this.options.log(`Using device ID: ${identity.deviceId.slice(0, 16)}...`);
+      this.options.log('Loaded local device identity');
 
       const storedToken = await loadDeviceAuthToken(this.options.homeDir);
       const clientId = this.options.clientId;
@@ -366,10 +367,10 @@ export class OpenClawSocket {
       this.mainSessionKey = result.snapshot?.sessionDefaults?.mainSessionKey ?? null;
       this.serverHost = result.server?.host ?? null;
       this.updateStatus('connected');
-      this.options.log(`Connected! Server: ${this.serverHost}, Main session: ${this.mainSessionKey}`);
+      this.options.log(`Connected: ${JSON.stringify({ hasServerHost: Boolean(this.serverHost), hasMainSession: Boolean(this.mainSessionKey) })}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : '';
-      this.options.log(`Connect failed: ${errorMsg}`);
+      this.options.log(`Connect failed: ${JSON.stringify(errorLogMetadata(error))}`);
 
       if (errorMsg.includes('NOT_PAIRED')) {
         const match = errorMsg.match(/requestId['":\s]+([a-f0-9-]+)/i);
@@ -381,7 +382,7 @@ export class OpenClawSocket {
         return;
       }
 
-      this.updateStatus('error', error instanceof Error ? error.message : 'Connect failed');
+      this.updateStatus('error', 'Connection failed');
       this.closeSocket();
       this.scheduleReconnect();
     }
@@ -392,7 +393,7 @@ export class OpenClawSocket {
     try {
       frame = JSON.parse(data);
     } catch {
-      this.options.log(`Invalid JSON: ${data.slice(0, 100)}`);
+      this.options.log(`Invalid JSON: ${JSON.stringify(contentLogMetadata(data))}`);
       return;
     }
 
@@ -404,7 +405,10 @@ export class OpenClawSocket {
           pending.resolve(frame.payload);
         } else {
           const err = frame.error;
-          pending.reject(new Error(`${err?.code ?? 'ERROR'}: ${err?.message ?? 'Request failed'}`));
+          const code = typeof err?.code === 'string' ? err.code : 'ERROR';
+          const message = typeof err?.message === 'string' ? err.message : '';
+          const requestId = message.match(/requestId['":\s]+([a-f0-9-]+)/i)?.[1];
+          pending.reject(new Error(`${code}${requestId ? ` requestId=${requestId}` : ''}`));
         }
       }
     } else if (frame.type === 'event') {
@@ -425,7 +429,7 @@ export class OpenClawSocket {
           this.closeSocket();
           return;
         }
-        this.options.log(`Received challenge nonce: ${nonce.slice(0, 8)}...`);
+        this.options.log('Received gateway challenge');
         this.connectNonce = nonce;
         this.sendConnect();
         return;

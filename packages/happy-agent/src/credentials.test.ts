@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readCredentials, writeCredentials, clearCredentials, requireCredentials } from './credentials';
@@ -77,6 +77,28 @@ describe('credentials', () => {
         it('returns null when credential file does not exist', () => {
             const creds = readCredentials(config);
             expect(creds).toBeNull();
+        });
+    });
+
+    describe('relay binding', () => {
+        it('rejects issuer-less legacy credentials even on the fork Cloud', () => {
+            config.serverUrl = 'https://happy.mereith.com';
+            writeFileSync(config.credentialPath, JSON.stringify({
+                token: 'upstream-token',
+                secret: encodeBase64(getRandomBytes(32)),
+            }));
+
+            expect(readCredentials(config)).toBeNull();
+        });
+
+        it('rejects a credential issued by another relay', () => {
+            writeFileSync(config.credentialPath, JSON.stringify({
+                token: 'foreign-token',
+                secret: encodeBase64(getRandomBytes(32)),
+                authServerUrl: 'https://different.example',
+            }));
+
+            expect(readCredentials(config)).toBeNull();
         });
     });
 

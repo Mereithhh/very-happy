@@ -1,5 +1,6 @@
 {
   "name": "@slopus/happy-wire",
+  "private": true,
   "version": "0.1.0",
   "description": "Shared message wire types and Zod schemas for Happy clients and services",
   "author": "Kirill Dubovitskiy",
@@ -37,10 +38,9 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc --noEmit && pkgroll",
     "test": "$npm_execpath run build && vitest run",
-    "prepublishOnly": "$npm_execpath run build && $npm_execpath run test",
-    "release": "pnpm exec release-it"
+    "prepublishOnly": "node -e \"throw new Error('@slopus/happy-wire is an internal workspace package and must not be published')\""
   },
   "dependencies": {
     "@paralleldrive/cuid2": "^2.2.2",
@@ -49,10 +49,8 @@
   "devDependencies": {
     "@types/node": ">=20",
     "pkgroll": "^2.14.2",
-    "release-it": "^19.0.6",
-    "shx": "^0.3.3",
     "typescript": "5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "3.2.6"
   },
   "publishConfig": {
     "access": "public",

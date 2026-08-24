@@ -43,6 +43,8 @@ import {
     hashCodexEnhancedMode,
     type CodexEnhancedMode,
 } from './codexPrompt';
+import { codexEventLogMetadata, logValueMetadata, safeCodexErrorMetadata } from './logMetadata';
+import { DEFAULT_CODEX_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -61,7 +63,6 @@ function describeCodexFailure(msg: any): string | null {
 
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
 const DEFAULT_CODEX_EFFORT: ReasoningEffort = 'medium';
-const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 
 /**
  * Main entry point for the codex command with ink UI
@@ -212,12 +213,12 @@ export async function runCodex(opts: {
                 agentStateVersion: response.agentStateVersion,
             });
             if (result.error) {
-                logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+                logger.debug('[START] Failed to report to daemon (may not be running)', safeCodexErrorMetadata(result.error));
             } else {
                 logger.debug(`[START] Reported session ${response.id} to daemon`);
             }
         } catch (error) {
-            logger.debug('[START] Failed to report to daemon (may not be running):', error);
+            logger.debug('[START] Failed to report to daemon (may not be running)', safeCodexErrorMetadata(error));
         }
     }
 
@@ -266,12 +267,12 @@ export async function runCodex(opts: {
             if (VALID_REMOTE_PERMISSION_MODES.includes(incoming)) {
                 messagePermissionMode = incoming;
                 currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+                logger.debug('[Codex] Valid permission mode override applied');
             } else {
-                logger.debug(`[Codex] Ignoring invalid permission mode from user message: ${String(message.meta.permissionMode)}`);
+                logger.debug('[Codex] Ignoring invalid permission mode override', logValueMetadata(message.meta.permissionMode));
             }
         } else {
-            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
+            logger.debug('[Codex] User message received without a permission mode override');
         }
 
         // Resolve model; explicit null resets to default (undefined)
@@ -279,9 +280,9 @@ export async function runCodex(opts: {
         if (message.meta?.hasOwnProperty('model')) {
             messageModel = message.meta.model || undefined;
             currentModel = messageModel;
-            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
+            logger.debug('[Codex] Model override updated', logValueMetadata(message.meta.model));
         } else {
-            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
+            logger.debug('[Codex] User message received without a model override');
         }
 
         // Resolve effort — passed straight to sendTurnAndWait. Validate the
@@ -297,21 +298,21 @@ export async function runCodex(opts: {
             } else if (typeof incoming === 'string' && (VALID_REMOTE_EFFORTS as readonly string[]).includes(incoming)) {
                 messageEffort = incoming as ReasoningEffort;
                 currentEffort = messageEffort;
-                logger.debug(`[Codex] Effort updated from user message: ${messageEffort}`);
+                logger.debug('[Codex] Valid effort override applied');
             } else {
-                logger.debug(`[Codex] Ignoring invalid effort from user message: ${String(incoming)}`);
+                logger.debug('[Codex] Ignoring invalid effort override', logValueMetadata(incoming));
             }
         } else {
-            logger.debug(`[Codex] User message received with no effort override, using current: ${currentEffort ?? 'default'}`);
+            logger.debug('[Codex] User message received without an effort override');
         }
 
         let messageAppendSystemPrompt = currentAppendSystemPrompt;
         if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
             messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined;
             currentAppendSystemPrompt = messageAppendSystemPrompt;
-            logger.debug(`[Codex] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+            logger.debug('[Codex] Append system prompt override updated', logValueMetadata(message.meta.appendSystemPrompt));
         } else {
-            logger.debug(`[Codex] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+            logger.debug('[Codex] User message received without an append system prompt override');
         }
 
         const enhancedMode: EnhancedMode = {
@@ -353,7 +354,7 @@ export async function runCodex(opts: {
                 }
             });
         } catch (pushError) {
-            logger.debug('[Codex] Failed to send ready push', pushError);
+            logger.debug('[Codex] Failed to send ready push', safeCodexErrorMetadata(pushError));
         }
     };
 
@@ -429,7 +430,7 @@ export async function runCodex(opts: {
                 }
                 logger.debug('[Codex] Abort completed - session remains active');
             } catch (error) {
-                logger.debug('[Codex] Error during abort:', error);
+                logger.debug('[Codex] Error during abort', safeCodexErrorMetadata(error));
             } finally {
                 resetCurrentModeDefaults();
                 // Wake up message queue wait if idle
@@ -474,7 +475,7 @@ export async function runCodex(opts: {
             try {
                 await client.disconnect();
             } catch (e) {
-                logger.debug('[Codex] Error disconnecting Codex during termination', e);
+                logger.debug('[Codex] Error disconnecting Codex during termination', safeCodexErrorMetadata(e));
             }
 
             // Stop Happy MCP server
@@ -483,7 +484,7 @@ export async function runCodex(opts: {
             logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
         } catch (error) {
-            logger.debug('[Codex] Error during session termination:', error);
+            logger.debug('[Codex] Error during session termination', safeCodexErrorMetadata(error));
             process.exit(1);
         }
     };
@@ -565,17 +566,17 @@ export async function runCodex(opts: {
 
         try {
             const result = await permissionHandler.handleToolCall(params.callId, toolName, input);
-            logger.debug('[Codex] Permission result:', result.decision);
+            logger.debug('[Codex] Permission request resolved');
             return result.decision;
         } catch (error) {
-            logger.debug('[Codex] Error handling permission:', error);
+            logger.debug('[Codex] Error handling permission', safeCodexErrorMetadata(error));
             return 'denied';
         }
     });
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
-        logger.debug(`[Codex] Event: ${JSON.stringify(msg)}`);
+        logger.debug('[Codex] Event metadata', codexEventLogMetadata(msg));
 
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
@@ -732,7 +733,7 @@ export async function runCodex(opts: {
                 }));
                 logger.debug(`[CODEX FORK BACKFILL] Replayed ${envelopes.length} historical envelopes from thread ${forkCodexThreadId}`);
             } catch (error) {
-                logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}:`, error);
+                logger.debug(`[CODEX FORK BACKFILL] Failed to read thread ${forkCodexThreadId}`, safeCodexErrorMetadata(error));
             }
         }
 
@@ -847,7 +848,7 @@ export async function runCodex(opts: {
                 }
             } catch (error) {
                 // Only actual errors reach here (process crash, connection failure, etc.)
-                logger.warn('Error in codex session:', error);
+                logger.warn('Error in codex session', safeCodexErrorMetadata(error));
                 messageBuffer.addMessage('Process exited unexpectedly', 'status');
                 session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
@@ -888,7 +889,7 @@ export async function runCodex(opts: {
             await session.close();
             logger.debug('[codex]: session.close done');
         } catch (e) {
-            logger.debug('[codex]: Error while closing session', e);
+            logger.debug('[codex]: Error while closing session', safeCodexErrorMetadata(e));
         }
         logger.debug('[codex]: client.disconnect begin');
         await client.disconnect();

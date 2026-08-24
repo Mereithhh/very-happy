@@ -38,6 +38,8 @@ import { BoardAnalyzer, FileRateLimiter, type BoardTaskRef } from './utils/board
 import { createSelfReportState } from './utils/boardReport';
 import { bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { withAssistantDenylist } from '@/assistant/dispatcherTools';
+import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
+import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -55,7 +57,6 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
-const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
 // B-103: model/effort default to UNDEFINED — nothing is passed to the SDK, so
 // a fresh remote chat runs whatever the machine's own `claude` is configured
 // with (/model, adaptive thinking), exactly like a local invocation. The old
@@ -456,7 +457,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
-            logger.debug(`[START] Session hook received: ${sessionId}`, data);
+            logger.debug(`[START] Session hook received: ${sessionId}`, contentLogMetadata(data));
 
             // Tell the remote scanner about this sessionId so it knows
             // which JSONL to watch (and so it can fire onNewSession for
@@ -707,7 +708,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 effort: messageEffort,
             };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
-            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            logger.debug('[start] /compact command pushed to queue:', {
+                ...contentLogMetadata(message.content.text),
+                attachmentCount: attachmentsForThisMessage?.length ?? 0,
+                hasMetadata: Boolean(message.meta),
+            });
             return;
         }
 
@@ -724,7 +729,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 effort: messageEffort,
             };
             messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
-            logger.debugLargeJson('[start] /clear command pushed to queue:', message);
+            logger.debug('[start] /clear command pushed to queue:', {
+                ...contentLogMetadata(message.content.text),
+                attachmentCount: attachmentsForThisMessage?.length ?? 0,
+                hasMetadata: Boolean(message.meta),
+            });
             return;
         }
 
@@ -782,7 +791,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             effort: messageEffort,
         };
         messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
-        logger.debugLargeJson('User message pushed to queue:', message)
+        logger.debug('User message pushed to queue:', {
+            ...contentLogMetadata(message.content.text),
+            attachmentCount: attachmentsForThisMessage?.length ?? 0,
+            hasMetadata: Boolean(message.meta),
+        })
     });
 
     // Setup signal handlers for graceful shutdown

@@ -23,7 +23,7 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { logger } from '@/ui/logger'
 import { configuration } from '@/configuration'
-import { readCredentials, readPersistedSessions, type PersistedSession } from '@/persistence'
+import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { listDaemonSessions, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from '@/commands/sessionMessage'
 import { decodeBase64, decrypt } from '@/api/encryption'
@@ -75,7 +75,7 @@ function describeSession(id: string, persisted: PersistedSession | undefined, ex
 }
 
 async function bearerToken(): Promise<string> {
-    const credentials = await readCredentials()
+    const credentials = await readCredentialsForConfiguredRelay()
     if (!credentials) throw new Error('CLI is not authenticated (no ~/.happy/access.key)')
     return credentials.token
 }

@@ -11,9 +11,11 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { projectPath } from '@/projectPath';
 import { applyTerminalHooks, removeTerminalHooks, TERMINAL_MIRROR_FORWARDER_BASENAME } from '@/mirror/hookSettings';
+import { tmuxSupportsSessionEnv } from '@/ui/doctorReadiness';
 
 export type TerminalHooksCommand = { action: 'install' | 'remove' | 'help' };
 
@@ -32,8 +34,40 @@ Usage:
 
 The install form merges Very Happy SessionStart + SessionEnd entries into
 ~/.claude/settings.json (or $CLAUDE_CONFIG_DIR/settings.json). It only mirrors
-hand-started Claude inside a Very Happy Web terminal while the daemon is running.
+hand-started Claude inside a Very Happy Web terminal while the daemon is running
+and that terminal uses tmux 3.2 or newer. Installation stops before changing
+settings when tmux is missing or too old.
 The remove form deletes only Very Happy's entries; foreign hooks are preserved.`;
+
+export type TerminalHooksTmuxReadiness = {
+    ready: boolean;
+    version?: string;
+    reason?: 'missing' | 'too-old';
+};
+
+/** Pure interpretation of a `tmux -V` probe, kept separate for regression tests. */
+export function terminalHooksTmuxReadiness(
+    status: number | null,
+    stdout: string | undefined,
+): TerminalHooksTmuxReadiness {
+    const version = stdout?.trim() || undefined;
+    if (status !== 0) return { ready: false, reason: 'missing' };
+    if (!tmuxSupportsSessionEnv(version)) return { ready: false, version, reason: 'too-old' };
+    return { ready: true, version };
+}
+
+function probeTerminalHooksTmux(): TerminalHooksTmuxReadiness {
+    try {
+        const result = spawnSync('tmux', ['-V'], {
+            encoding: 'utf8',
+            timeout: 2_000,
+            windowsHide: true,
+        });
+        return terminalHooksTmuxReadiness(result.status, result.stdout || undefined);
+    } catch {
+        return { ready: false, reason: 'missing' };
+    }
+}
 
 /** claude's user settings live in ~/.claude (or $CLAUDE_CONFIG_DIR). */
 function claudeSettingsPath(): string {
@@ -58,6 +92,19 @@ export function terminalMirrorHookCommand(): string {
 
 export async function installTerminalHooks(opts: { remove?: boolean } = {}): Promise<void> {
     const settingsPath = claudeSettingsPath();
+
+    // Removal must remain available after tmux is uninstalled. Installation,
+    // however, would create hooks that can never identify a Web terminal, so
+    // fail before reading or writing the user's Claude settings.
+    if (!opts.remove) {
+        const tmux = probeTerminalHooksTmux();
+        if (!tmux.ready) {
+            if (tmux.reason === 'too-old') {
+                throw new Error(`${tmux.version ?? 'Installed tmux'} is too old; terminal mirroring requires tmux 3.2 or newer.`);
+            }
+            throw new Error('tmux 3.2 or newer is required for terminal mirroring. Install tmux, then run this command again.');
+        }
+    }
 
     let current: unknown = {};
     if (existsSync(settingsPath)) {
@@ -89,8 +136,8 @@ export async function installTerminalHooks(opts: { remove?: boolean } = {}): Pro
     } else {
         console.log(chalk.green(`✓ Installed SessionStart + SessionEnd mirror hooks into ${settingsPath}`));
         console.log(`  Hook command: ${terminalMirrorHookCommand()}`);
-        console.log('  Hand-typed `claude` sessions inside Very Happy Web terminals will now');
-        console.log('  be mirrored into structured views (requires the daemon to be running).');
+        console.log('  Hand-typed `claude` sessions inside Very Happy Web terminals can now be');
+        console.log('  mirrored when the daemon is running and the terminal uses tmux 3.2+.');
     }
     console.log(chalk.yellow('  ⚠ If ~/.claude is managed by chezmoi (or any dotfile sync), fold this'));
     console.log(chalk.yellow('    change into the source of truth or the next apply will overwrite it.'));

@@ -4,8 +4,9 @@
  * Registered on the daemon's machine-scoped RpcHandlerManager (apiMachine),
  * so the web can browse any directory / read any file on the machine — the
  * "claude said it wrote a file, let me SEE it" flow, for both terminal
- * sessions and chat sessions. Account scoping is enforced by the server (RPC
- * rooms are per-account) and the payloads ride the existing E2E RPC channel.
+ * sessions and chat sessions. Account scoping is enforced by the trusted relay
+ * (RPC rooms are per-account); these RPC payloads are not end-to-end encrypted
+ * from that relay.
  *
  * No cwd sandbox by design (single-user daemon that already exposes `bash`);
  * see fsBrowse.ts for the foolproofing that IS done. Failures are thrown as

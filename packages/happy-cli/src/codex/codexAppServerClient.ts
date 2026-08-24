@@ -17,6 +17,7 @@ import { execSync, type ChildProcess } from 'node:child_process';
 import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
+import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
 import type {
     InitializeParams,
     NewConversationParams,
@@ -517,7 +518,7 @@ export class CodexAppServerClient {
         proc.stderr?.on('data', (chunk: Buffer) => {
             if (this.process !== proc || this.processEpoch !== epoch) return;
             const text = chunk.toString().trim();
-            if (text) logger.debug(`[CodexAppServer:stderr] ${text}`);
+            if (text) logger.debug('[CodexAppServer:stderr]', contentLogMetadata(text));
         });
 
         // Parse newline-delimited JSON from stdout
@@ -1098,7 +1099,7 @@ export class CodexAppServerClient {
         try {
             msg = JSON.parse(line);
         } catch {
-            logger.debug('[CodexAppServer] Non-JSON line:', line.substring(0, 200));
+            logger.debug('[CodexAppServer] Non-JSON line received:', contentLogMetadata(line));
             return;
         }
 
@@ -1123,7 +1124,7 @@ export class CodexAppServerClient {
         // Server → client request (approvals)
         if (msg.id != null && msg.method) {
             this.handleServerRequest(msg.id, msg.method, msg.params).catch((err) => {
-                logger.debug('[CodexAppServer] Error handling server request:', err);
+                logger.debug('[CodexAppServer] Error handling server request:', errorLogMetadata(err));
             });
             return;
         }
@@ -1134,7 +1135,7 @@ export class CodexAppServerClient {
             return;
         }
 
-        logger.debug('[CodexAppServer] Unhandled message:', JSON.stringify(msg).substring(0, 300));
+        logger.debug('[CodexAppServer] Unhandled message:', contentLogMetadata(msg));
     }
 
     /**

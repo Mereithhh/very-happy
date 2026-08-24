@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import axios from 'axios'
 import { configuration } from '@/configuration'
-import { readCredentials, readPersistedSessions, type PersistedSession } from '@/persistence'
+import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { decodeBase64, encodeBase64, encrypt } from '@/api/encryption'
 import { delay } from '@/utils/time'
 
@@ -59,7 +59,7 @@ export async function sendUserMessage(
     text: string,
     client: string,
 ): Promise<void> {
-    const credentials = await readCredentials()
+    const credentials = await readCredentialsForConfiguredRelay()
     if (!credentials) {
         throw new Error('Not authenticated. Run `very-happy auth login` first.')
     }

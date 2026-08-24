@@ -16,6 +16,7 @@ import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { contentLogMetadata, errorLogMetadata } from '@/utils/contentLogMetadata';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -109,7 +110,7 @@ export async function runGemini(opts: {
             const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
             if (payload.email) {
               currentUserEmail = payload.email;
-              logger.debug(`[Gemini] Current user email: ${currentUserEmail}`);
+              logger.debug('[Gemini] Cloud identity includes an email claim');
             }
           }
         } catch {
@@ -118,7 +119,7 @@ export async function runGemini(opts: {
       }
     }
   } catch (error) {
-    logger.debug('[Gemini] Failed to fetch cloud token:', error);
+    logger.debug('[Gemini] Failed to fetch cloud token:', errorLogMetadata(error));
   }
 
   //
@@ -573,11 +574,13 @@ export async function runGemini(opts: {
         const statusDetail = msg.detail 
           ? (typeof msg.detail === 'object' ? JSON.stringify(msg.detail) : String(msg.detail))
           : '';
-        logger.debug(`[gemini] Status changed: ${msg.status}${statusDetail ? ` - ${statusDetail}` : ''}`);
+        logger.debug(`[gemini] Status changed: ${msg.status}`, {
+          detail: contentLogMetadata(statusDetail),
+        });
         
         // Log error status with details
         if (msg.status === 'error') {
-          logger.debug(`[gemini] ⚠️ Error status received: ${statusDetail || 'Unknown error'}`);
+          logger.debug('[gemini] Error status received:', contentLogMetadata(statusDetail));
           
           // Send turn_aborted event (like Codex) when error occurs
           session.sendAgentMessage('gemini', {
@@ -668,7 +671,7 @@ export async function runGemini(opts: {
         
         logger.debug(`[gemini] 🔧 Tool call received: ${msg.toolName} (${msg.callId})${isInvestigationTool ? ' [INVESTIGATION]' : ''}`);
         if (isInvestigationTool && msg.args && typeof msg.args === 'object' && 'objective' in msg.args) {
-          logger.debug(`[gemini] 🔍 Investigation objective: ${String(msg.args.objective).substring(0, 150)}...`);
+          logger.debug('[gemini] Investigation objective received:', contentLogMetadata(msg.args.objective));
         }
         
         messageBuffer.addMessage(`Executing: ${msg.toolName}${toolArgs ? ` ${toolArgs}${toolArgs.length >= 100 ? '...' : ''}` : ''}`, 'tool');
@@ -711,12 +714,12 @@ export async function runGemini(opts: {
         
         if (isError) {
           const errorMsg = (msg.result as any).error || 'Tool call failed';
-          logger.debug(`[gemini] ❌ Tool call error: ${errorMsg.substring(0, 300)}`);
+          logger.debug('[gemini] Tool call error received:', contentLogMetadata(errorMsg));
           messageBuffer.addMessage(`Error: ${errorMsg}`, 'status');
         } else {
           // Log summary for large results (like investigation tools)
           if (resultSize > 1000) {
-            logger.debug(`[gemini] ✅ Large tool result (${resultSize} bytes) - first 200 chars: ${truncatedResult}`);
+            logger.debug(`[gemini] Large tool result received (${resultSize} bytes)`);
           }
           messageBuffer.addMessage(`Result: ${truncatedResult}`, 'result');
         }
@@ -866,7 +869,7 @@ export async function runGemini(opts: {
             reasoningProcessor.processChunk(thinkingText);
             
             // Log thinking chunks (especially useful for investigation tools)
-            logger.debug(`[gemini] 💭 Thinking chunk received: ${thinkingText.length} chars - Preview: ${thinkingText.substring(0, 100)}...`);
+            logger.debug('[gemini] Thinking chunk received:', contentLogMetadata(thinkingText));
             
             // Show thinking message in UI (truncated like Codex)
             // For titled reasoning (starts with **), ReasoningProcessor will show it as tool call
@@ -935,7 +938,7 @@ export async function runGemini(opts: {
         if (conversationHistory.hasHistory()) {
           messageBuffer.addMessage(`Switching model (preserving ${conversationHistory.size()} messages of context)...`, 'status');
           injectHistoryContext = true;
-          logger.debug(`[Gemini] Will inject conversation history: ${conversationHistory.getSummary()}`);
+          logger.debug('[Gemini] Will inject conversation history');
         } else {
           messageBuffer.addMessage('Starting new Gemini session (mode changed)...', 'status');
         }
@@ -1080,8 +1083,7 @@ export async function runGemini(opts: {
           // Don't clear history - keep accumulating for future model changes
         }
         
-        logger.debug(`[gemini] Sending prompt to Gemini (length: ${promptToSend.length}): ${promptToSend.substring(0, 100)}...`);
-        logger.debug(`[gemini] Full prompt: ${promptToSend}`);
+        logger.debug('[gemini] Sending prompt to Gemini:', contentLogMetadata(promptToSend));
         
         // Retry logic for transient Gemini API errors (empty response, internal errors)
         const MAX_RETRIES = 3;
@@ -1132,7 +1134,7 @@ export async function runGemini(opts: {
             const isRetryable = isEmptyResponseError || isInternalError;
             
             if (isRetryable && attempt < MAX_RETRIES) {
-              logger.debug(`[gemini] Retryable error on attempt ${attempt}/${MAX_RETRIES}: ${errorDetails}`);
+              logger.debug(`[gemini] Retryable error on attempt ${attempt}/${MAX_RETRIES}:`, contentLogMetadata(errorDetails));
               messageBuffer.addMessage(`Gemini returned empty response, retrying (${attempt}/${MAX_RETRIES})...`, 'status');
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
               continue;
@@ -1153,7 +1155,7 @@ export async function runGemini(opts: {
           first = false;
         }
       } catch (error) {
-        logger.debug('[gemini] Error in gemini session:', error);
+        logger.debug('[gemini] Error in gemini session:', errorLogMetadata(error));
         const isAbortError = error instanceof Error && error.name === 'AbortError';
 
         if (isAbortError) {
@@ -1250,7 +1252,7 @@ export async function runGemini(opts: {
           if (options.length > 0) {
             const optionsXml = formatOptionsXml(options);
             finalMessageText = messageText + optionsXml;
-            logger.debug(`[gemini] Found ${options.length} options in response:`, options);
+            logger.debug(`[gemini] Found ${options.length} options in response`);
           } else if (hasIncompleteOptions(accumulatedResponse)) {
             logger.debug(`[gemini] Warning: Incomplete options block detected`);
           }
@@ -1262,7 +1264,7 @@ export async function runGemini(opts: {
             ...(options.length > 0 && { options }),
           };
           
-          logger.debug(`[gemini] Sending complete message to mobile (length: ${finalMessageText.length}): ${finalMessageText.substring(0, 100)}...`);
+          logger.debug('[gemini] Sending complete message to mobile:', contentLogMetadata(finalMessageText));
           session.sendAgentMessage('gemini', messagePayload);
           accumulatedResponse = '';
           isResponseInProgress = false;

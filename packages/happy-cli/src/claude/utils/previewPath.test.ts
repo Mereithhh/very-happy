@@ -10,7 +10,7 @@ const allowed = (p: string) => checkPreviewPath(p, opts).deniedReason === null;
 
 describe('checkPreviewPath — 拒绝凭据材料', () => {
     it('拒绝 ~/.secrets 整棵树（这是本闸最主要的目标）', () => {
-        expect(denied('~/.secrets/env/tanka.env')).toBeTruthy();
+        expect(denied('~/.secrets/env/provider.env')).toBeTruthy();
         expect(denied('/home/tester/.secrets')).toBeTruthy();
         expect(denied('/home/tester/.secrets/deep/nested/file.txt')).toBeTruthy();
     });

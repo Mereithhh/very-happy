@@ -3,6 +3,7 @@ import { logger } from '@/ui/logger'
 import { Expo, ExpoPushMessage } from 'expo-server-sdk'
 import type { Metadata } from './types'
 import { configuration } from '@/configuration'
+import { contentLogMetadata } from '@/utils/contentLogMetadata'
 
 export interface PushToken {
     id: string
@@ -199,7 +200,11 @@ export class PushNotificationClient {
      * @param data - Additional data to send with the notification
      */
     sendToAllDevices(title: string, body?: string, data?: Record<string, any>): void {
-        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body ?? ''}"`);
+        logger.debug('[PUSH] sendToAllDevices called:', {
+            title: contentLogMetadata(title),
+            body: contentLogMetadata(body),
+            dataKeyCount: data ? Object.keys(data).length : 0,
+        });
         
         // Execute async operations without awaiting
         (async () => {

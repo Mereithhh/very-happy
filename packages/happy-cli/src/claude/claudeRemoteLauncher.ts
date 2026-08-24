@@ -17,6 +17,7 @@ import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
 interface PermissionsField {
     date: number;
@@ -398,7 +399,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.onSessionFound(sessionId);
                     },
                     onSDKMetadata: (metadata) => {
-                        logger.debug('[remote] SDK metadata received, updating session:', metadata);
+                        logger.debug('[remote] SDK metadata received, updating session:', {
+                            toolCount: metadata.tools?.length ?? 0,
+                            slashCommandCount: metadata.slashCommands?.length ?? 0,
+                            mcpServerCount: metadata.mcpServers?.length ?? 0,
+                            skillCount: metadata.skills?.length ?? 0,
+                        });
                         session.client.updateMetadata((currentMetadata) => ({
                             ...currentMetadata,
                             tools: metadata.tools,
@@ -417,7 +423,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeArgs: session.claudeArgs,
                     onMessage,
                     onCompletionEvent: (message: string) => {
-                        logger.debug(`[remote]: Completion event: ${message}`);
+                        logger.debug('[remote]: Completion event received:', contentLogMetadata(message));
                         session.client.sendSessionEvent({ type: 'message', message });
                     },
                     onSessionReset: () => {

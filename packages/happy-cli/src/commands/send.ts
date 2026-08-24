@@ -3,7 +3,7 @@
  *
  *   very-happy send --session <id> (--prompt <text> | --prompt-file <path>) [--json]
  *
- * Companion to `very-happy spawn` for external automation (e.g. the Tanka
+ * Companion to `very-happy spawn` for external automation (for example an IM
  * quote-reply dispatcher): spawn creates a session and optionally sends the
  * first message; send follows up on a session that is already running.
  *

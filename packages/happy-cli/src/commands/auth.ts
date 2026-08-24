@@ -7,6 +7,10 @@ import { createInterface } from 'node:readline';
 import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
 import os from 'node:os';
+import { credentialRelayProblem } from '@/ui/authRelay';
+import { localMachineIdentityStatus } from '@/ui/authStatusFacts';
+
+const DEFAULT_SERVER_URL = 'https://happy.mereith.com';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -47,12 +51,16 @@ ${chalk.bold('Options:')}
   --force    Clear credentials, machine ID, and stop daemon before re-auth
 
 ${chalk.gray('Security: the configured Very Happy server is a trusted relay and account service.')}
-${chalk.gray('It can access account credentials and relayed metadata; use a server you trust.')}
+${chalk.gray('It can recover account material, access relayed content, and act through capabilities')}
+${chalk.gray('exposed by an online daemon. Use a server you trust.')}
 `);
 }
 
 function printDaemonNextStep(): void {
   console.log(chalk.bold('\nNext: start the machine daemon'));
+  if (process.env.HAPPY_SERVER_URL || process.env.HAPPY_WEBAPP_URL) {
+    console.log(chalk.yellow('  Keep the same HAPPY_SERVER_URL and HAPPY_WEBAPP_URL environment when starting it.'));
+  }
   console.log(`  ${chalk.cyan('very-happy daemon start')}`);
   console.log(chalk.gray('  It starts in the background and keeps this machine available in Web.'));
 }
@@ -95,6 +103,14 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     const settings = await readSettings();
 
     if (existingCreds && settings?.machineId) {
+      const relayProblem = credentialRelayProblem(existingCreds.authServerUrl, configuration.serverUrl);
+      if (relayProblem) {
+        console.log(chalk.red(`✗ ${relayProblem}`));
+        console.log(chalk.yellow('  Use a separate HAPPY_HOME_DIR for each relay (recommended),'));
+        console.log(chalk.yellow("  or run 'very-happy auth login --force' to replace this home's credentials."));
+        process.exitCode = 1;
+        return;
+      }
       console.log(chalk.green('✓ Already authenticated'));
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
       console.log(chalk.gray(`  Host: ${os.hostname()}`));
@@ -182,20 +198,25 @@ async function handleAuthStatus(): Promise<void> {
     return;
   }
 
-  console.log(chalk.green('✓ Authenticated'));
+  const relayProblem = credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl);
+  if (relayProblem) {
+    console.log(chalk.red(`✗ Credentials found, but not valid for the configured relay: ${relayProblem}`));
+    console.log(chalk.gray("  Use another HAPPY_HOME_DIR or run 'very-happy auth login --force'."));
+  } else {
+    console.log(chalk.green('✓ Authenticated to the configured relay'));
+    console.log(chalk.gray(`  Relay: ${credentials.authServerUrl ?? DEFAULT_SERVER_URL}`));
+  }
 
-  // Token preview (first few chars for security)
-  const tokenPreview = credentials.token.substring(0, 30) + '...';
-  console.log(chalk.gray(`  Token: ${tokenPreview}`));
-
-  // Machine status
-  if (settings?.machineId) {
-    console.log(chalk.green('✓ Machine registered'));
+  // A local machineId is not evidence that the relay currently has a matching
+  // record. Keep auth status honest without making a network call.
+  const machineIdentity = localMachineIdentityStatus(settings?.machineId);
+  if (machineIdentity.configured) {
+    console.log(chalk.green(`✓ ${machineIdentity.label}`));
     console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
     console.log(chalk.gray(`  Host: ${os.hostname()}`));
   } else {
-    console.log(chalk.yellow('⚠️  Machine not registered'));
-    console.log(chalk.gray('  Run "very-happy auth login --force" to fix this'));
+    console.log(chalk.yellow(`⚠️  ${machineIdentity.label}`));
+    console.log(chalk.gray(`  ${machineIdentity.nextStep}`));
   }
 
   // Data location

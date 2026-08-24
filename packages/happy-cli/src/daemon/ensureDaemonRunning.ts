@@ -1,6 +1,9 @@
 import { logger } from '@/ui/logger'
-import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion } from './controlClient'
+import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient'
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI'
+import { readDaemonState } from '@/persistence'
+import { configuration } from '@/configuration'
+import { daemonEndpointsMatch } from '@/ui/doctorReadiness'
 
 const DAEMON_READY_TIMEOUT_MS = 5000
 const DAEMON_READY_POLL_INTERVAL_MS = 100
@@ -8,8 +11,21 @@ const DAEMON_READY_POLL_INTERVAL_MS = 100
 export async function ensureDaemonRunning(): Promise<void> {
   logger.debug('Ensuring Happy background service is running & matches our version...')
 
-  if (await isDaemonRunningCurrentlyInstalledHappyVersion()) {
+  const versionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion()
+  const state = await readDaemonState()
+  const endpointsMatch = Boolean(state) && daemonEndpointsMatch(
+    state?.serverUrl,
+    state?.webappUrl,
+    configuration.serverUrl,
+    configuration.webappUrl,
+  )
+  if (versionMatches && endpointsMatch) {
     return
+  }
+
+  if (await checkIfDaemonRunningAndCleanupStaleState()) {
+    logger.debug('Stopping daemon whose version or configured relay no longer matches...')
+    await stopDaemon()
   }
 
   logger.debug('Starting Happy background service...')

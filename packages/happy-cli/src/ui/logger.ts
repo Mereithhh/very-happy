@@ -2,15 +2,16 @@
  * Design decisions:
  * - Logging should be done only through file for debugging, otherwise we might disturb the claude session when in interactive mode
  * - Use info for logs that are useful to the user - this is our UI
- * - File output location: ~/.handy/logs/<date time in local timezone>.log
+ * - File output location: $HAPPY_HOME_DIR/logs/<date time in local timezone>.log
  */
 
 import chalk from 'chalk'
-import { appendFileSync } from 'fs'
 import { inspect } from 'node:util'
 import { configuration } from '@/configuration'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
+import { appendPrivateFileSync } from '@/utils/secureFiles'
+import { redactLogString, redactLogValue } from '@/utils/logRedaction'
 // Note: readDaemonState is imported lazily inside listDaemonLogFiles() to avoid
 // circular dependency: logger.ts ↔ persistence.ts
 
@@ -139,9 +140,9 @@ class Logger {
       return obj
     }
 
-    const truncatedObject = truncateStrings(object)
+    const truncatedObject = truncateStrings(redactLogValue(object))
     const json = JSON.stringify(truncatedObject, null, 2)
-    this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, '\n', json)
+    this.logToFile(`[${this.localTimezoneTimestamp()}]`, redactLogString(message), '\n', json)
   }
   
   info(message: string, ...args: unknown[]): void {
@@ -169,6 +170,8 @@ class Logger {
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
+    message = redactLogString(message)
+    args = args.map((arg) => redactLogValue(arg))
     switch (level) {
       case 'debug': {
         console.log(chalk.gray(prefix), message, ...args)
@@ -211,9 +214,10 @@ class Logger {
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
-          message: `${message} ${args.map(a => 
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join(' ')}`,
+          message: `${redactLogString(message)} ${args.map((raw) => {
+            const safe = redactLogValue(raw)
+            return typeof safe === 'object' ? JSON.stringify(safe, null, 2) : String(safe)
+          }).join(' ')}`,
           source: 'cli',
           platform: process.platform
         })
@@ -224,7 +228,9 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg =>
+    const safeMessage = redactLogString(message)
+    const safeArgs = args.map((arg) => redactLogValue(arg))
+    const logLine = `${prefix} ${safeMessage} ${safeArgs.map(arg =>
       typeof arg === 'string' ? arg : inspect(arg, { depth: 5, breakLength: 120 })
     ).join(' ')}\n`
     
@@ -236,14 +242,14 @@ class Logger {
         level = 'debug'
       }
       // Fire and forget, with explicit .catch to prevent unhandled rejection
-      this.sendToRemoteServer(level, message, ...args).catch(() => {
+      this.sendToRemoteServer(level, safeMessage, ...safeArgs).catch(() => {
         // Silently ignore remote logging errors to prevent loops
       })
     }
     
     // Handle async file path
     try {
-      appendFileSync(this.logFilePath, logLine)
+      appendPrivateFileSync(this.logFilePath, logLine)
     } catch (appendError) {
       if (process.env.DEBUG) {
         console.error('[DEV MODE ONLY THROWING] Failed to append to log file:', appendError)

@@ -18,7 +18,7 @@ describe('config', () => {
     describe('defaults', () => {
         it('uses default server URL', () => {
             const config = loadConfig();
-            expect(config.serverUrl).toBe('https://api.cluster-fluster.com');
+            expect(config.serverUrl).toBe('https://happy.mereith.com');
         });
 
         it('uses default home directory', () => {

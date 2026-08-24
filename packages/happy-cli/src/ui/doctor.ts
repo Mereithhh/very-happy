@@ -15,6 +15,8 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { projectPath } from '@/projectPath'
 import packageJson from '../../package.json'
+import { collectRuntimeReadiness, daemonEndpointsMatch, daemonReadiness, resolveClaudeCredentialReadiness, shareableSettingsSummary, SUPPORTED_NODE_LABEL, toolProbeLabel } from './doctorReadiness'
+import { credentialRelayProblem } from './authRelay'
 
 /**
  * Get relevant environment information for debugging
@@ -79,6 +81,12 @@ export async function runDoctorDaemon(): Promise<void> {
             console.log(`  Port:    ${state.httpPort}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
             console.log(`  Version: ${state.startedWithCliVersion}`);
+            console.log(`  Relay:   ${state.serverUrl ?? 'unknown (started by an older CLI)'}`);
+            console.log(`  Web UI:  ${state.webappUrl ?? 'unknown (started by an older CLI)'}`);
+            console.log(`  Claude:  ${state.claudeCredentialSource ?? 'not detected at daemon start'}`);
+            if (!daemonEndpointsMatch(state.serverUrl, state.webappUrl, configuration.serverUrl, configuration.webappUrl)) {
+                console.log(chalk.red('  ✗ Running daemon endpoints differ from this shell; run `very-happy daemon start` to restart it safely.'));
+            }
         } else if (state && !isRunning) {
             console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
         } else {
@@ -192,7 +200,7 @@ export async function runDoctorCommand(): Promise<void> {
     // Daemon spawn diagnostics
     console.log(chalk.bold('\n🔧 Daemon Spawn Diagnostics'));
     const projectRoot = projectPath();
-    const wrapperPath = join(projectRoot, 'bin', 'happy.mjs');
+    const wrapperPath = join(projectRoot, 'bin', 'very-happy.mjs');
     const cliEntrypoint = join(projectRoot, 'dist', 'index.mjs');
     console.log(`Project Root: ${chalk.blue(projectRoot)}`);
     console.log(`Wrapper Script: ${chalk.blue(wrapperPath)}`);
@@ -212,8 +220,9 @@ export async function runDoctorCommand(): Promise<void> {
     // Settings
     try {
         const settings = await readSettings();
-        console.log(chalk.bold('\n📄 Settings (settings.json):'));
-        console.log(chalk.gray(JSON.stringify(settings, null, 2)));
+        console.log(chalk.bold('\n📄 Settings (share-safe summary):'));
+        console.log(chalk.gray(JSON.stringify(shareableSettingsSummary(settings), null, 2)));
+        console.log(chalk.gray('Unknown fields, commands, arguments, paths, and credential-like values are omitted.'));
     } catch (error) {
         console.log(chalk.bold('\n📄 Settings:'));
         console.log(chalk.red('❌ Failed to read settings'));
@@ -235,15 +244,63 @@ export async function runDoctorCommand(): Promise<void> {
     // Configuration
     console.log(chalk.bold('\n⚙️  Configuration'));
     console.log(`Happy Home: ${chalk.blue(configuration.happyHomeDir)}`);
-    console.log(`Server URL: ${chalk.blue(configuration.serverUrl)}`);
+    console.log(`Configured server URL: ${chalk.blue(configuration.serverUrl)}`);
+    console.log(`Configured approval UI: ${chalk.blue(configuration.webappUrl)}`);
     console.log(`Logs Dir: ${chalk.blue(configuration.logsDir)}`);
+
+    // First-use prerequisites live at the bottom so they remain visible after
+    // the verbose process/log sections above scroll away.
+    const readiness = collectRuntimeReadiness();
+    console.log(chalk.bold('\n🧭 First-use Readiness'));
+    if (readiness.node.supported) {
+        console.log(chalk.green(`✓ Node.js ${readiness.node.version} (supported: ${SUPPORTED_NODE_LABEL})`));
+    } else {
+        console.log(chalk.red(`❌ Node.js ${readiness.node.version} is unsupported; install Node.js ${SUPPORTED_NODE_LABEL}`));
+    }
+
+    if (!readiness.tmux.available) {
+        console.log(chalk.yellow('○ tmux not found — Web terminals use a non-persistent direct shell'));
+        console.log(chalk.gray('  Install tmux for reconnectable terminals; use tmux 3.2+ for the optional Claude mirror.'));
+    } else if (!readiness.tmux.supportsSessionEnv) {
+        console.log(chalk.yellow(`△ ${readiness.tmux.version ?? 'tmux found'} — durable terminals work, but 3.2+ is required for the optional Claude mirror`));
+    } else {
+        console.log(chalk.green(`✓ ${readiness.tmux.version ?? 'tmux 3.2+'} — durable Web terminals and the optional Claude mirror are available`));
+    }
+
+    const availableAgents = readiness.agents.filter(agent => agent.available);
+    console.log(chalk.green('✓ Claude structured runtime: bundled Agent SDK'));
+    const currentClaudeCredentials = resolveClaudeCredentialReadiness();
+    if (currentClaudeCredentials.configured) {
+        console.log(chalk.green(`✓ Claude credential source in this process: ${currentClaudeCredentials.source}`));
+        console.log(chalk.gray('  Restart the daemon after changing its credentials or service-manager environment.'));
+    } else {
+        console.log(chalk.yellow('○ No Claude credential source detected in this process'));
+        console.log(chalk.gray('  Set ANTHROPIC_API_KEY or a supported cloud provider for the daemon user, then restart it.'));
+        console.log(chalk.gray('  OS-keychain credentials cannot be verified here; see /docs/configuration#claude-credentials.'));
+    }
+    console.log(chalk.gray('  An external claude command is only needed for native terminal/mirror use.'));
+    if (availableAgents.length === 0) {
+        console.log(chalk.yellow('○ No external agent command found on this daemon PATH'));
+        console.log(chalk.gray('  Codex, Gemini, OpenCode, OpenClaw, and native Claude terminal paths need their local command or gateway.'));
+        console.log(chalk.gray('  Bundled structured Claude and plain Web terminals remain available.'));
+    } else {
+        console.log(chalk.green(`✓ External agent command${availableAgents.length === 1 ? '' : 's'}: ${availableAgents.map(toolProbeLabel).join(', ')}`));
+    }
 
     // Authentication
     console.log(chalk.bold('\n🔐 Authentication'));
+    let authenticated = false;
     try {
         const credentials = await readCredentials();
         if (credentials) {
-            console.log(chalk.green('✓ Authenticated (credentials found)'));
+            const relayProblem = credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl);
+            if (relayProblem) {
+                console.log(chalk.red(`✗ Not paired to the configured relay: ${relayProblem}`));
+                console.log(chalk.gray('  Use a separate HAPPY_HOME_DIR or run `very-happy auth login --force`.'));
+            } else {
+                authenticated = true;
+                console.log(chalk.green('✓ Authenticated to the configured relay'));
+            }
         } else {
             console.log(chalk.yellow('⚠️  Not authenticated (no credentials)'));
         }
@@ -257,16 +314,21 @@ export async function runDoctorCommand(): Promise<void> {
         const isRunning = await checkIfDaemonRunningAndCleanupStaleState();
         const state = await readDaemonState();
 
-        if (isRunning && state) {
-            console.log(chalk.green('✓ Daemon is running'));
+        const summary = daemonReadiness(authenticated, isRunning, Boolean(state));
+        if (summary.level === 'ready' && state) {
+            console.log(chalk.green(summary.message));
             console.log(`  PID:     ${state.pid}`);
             console.log(`  Port:    ${state.httpPort}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
             console.log(`  Version: ${state.startedWithCliVersion}`);
-        } else if (state && !isRunning) {
-            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+            console.log(`  Relay:   ${state.serverUrl ?? 'unknown (started by an older CLI)'}`);
+            console.log(`  Web UI:  ${state.webappUrl ?? 'unknown (started by an older CLI)'}`);
+            console.log(`  Claude:  ${state.claudeCredentialSource ?? 'not detected at daemon start'}`);
+            if (!daemonEndpointsMatch(state.serverUrl, state.webappUrl, configuration.serverUrl, configuration.webappUrl)) {
+                console.log(chalk.red('  ✗ Running daemon endpoints differ from the configured endpoints; run `very-happy daemon start` to restart it.'));
+            }
         } else {
-            console.log(chalk.red('❌ Daemon is not running'));
+            console.log(chalk.yellow(summary.message));
         }
 
         if (state) {
