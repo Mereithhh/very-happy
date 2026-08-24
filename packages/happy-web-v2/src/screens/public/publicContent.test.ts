@@ -113,6 +113,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.pub-stage-float[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-stage-orbit[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-stage-packet[^}]*animation: none/);
+    expect(styles).toMatch(/\.pub-stage-nodes \{[^}]*transform: translateZ\(72px\)/);
     expect(styles).toMatch(/\.pub-agent-grid article[^}]*transition: none/);
     expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
     expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');

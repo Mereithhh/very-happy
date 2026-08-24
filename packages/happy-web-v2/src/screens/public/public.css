@@ -245,7 +245,7 @@
   .pub-hero-copy h1 { font-size: clamp(50px, 16vw, 72px); }
   .pub-hero-product-head span:last-child, .pub-hero-product-foot span:first-child { display: none; }
   .pub-stage-fabric { inset: -12% 0; overflow: hidden; }
-  .pub-stage-nodes { inset: -1% 0; transform: none; }
+  .pub-stage-nodes { inset: -1% 0; transform: translateZ(72px); }
   .pub-stage-node--relay { top: 12%; right: 2%; }
   .pub-stage-node--office { bottom: 1%; left: 2%; }
   .pub-stage-node--build { display: none; }
