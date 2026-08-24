@@ -1,6 +1,6 @@
 import { ArrowRight, Github, Globe2, Laptop, Server, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, type PointerEvent as ReactPointerEvent } from 'react';
 import { PublicFooter, PublicHeader } from './PublicShell';
 import { CoreFeatureProofs } from './CoreFeatureProofs';
 import { ProductWorkspacePreview } from './ProductWorkspacePreview';
@@ -16,11 +16,43 @@ function ProductShowcase() {
 }
 
 function HeroProductStage() {
-  return <aside className="pub-hero-product" aria-label="Interactive preview of the real Very Happy product interface">
-    <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · LIVE PRODUCT UI</span><span>WORKSPACE CONTINUITY</span></div>
-    <ProductWorkspacePreview compact />
-    <div className="pub-hero-product-foot mono"><span>PROCESS RUNS THERE</span><span>CONTEXT ARRIVES HERE</span></div>
-  </aside>;
+  const tiltStage = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = (event.clientX - bounds.left) / bounds.width - 0.5;
+    const y = (event.clientY - bounds.top) / bounds.height - 0.5;
+    event.currentTarget.style.setProperty('--stage-ry', `${x * 9}deg`);
+    event.currentTarget.style.setProperty('--stage-rx', `${y * -7}deg`);
+  };
+  const resetStage = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.style.setProperty('--stage-ry', '0deg');
+    event.currentTarget.style.setProperty('--stage-rx', '0deg');
+  };
+
+  return <div className="pub-hero-stage" onPointerMove={tiltStage} onPointerLeave={resetStage}>
+    <div className="pub-stage-fabric mono" aria-hidden="true">
+      <span className="pub-stage-orbit pub-stage-orbit--outer" />
+      <span className="pub-stage-orbit pub-stage-orbit--inner" />
+      <span className="pub-stage-scan" />
+      <span className="pub-stage-link pub-stage-link--one" />
+      <span className="pub-stage-link pub-stage-link--two" />
+      <span className="pub-stage-link pub-stage-link--three" />
+      <span className="pub-stage-packet pub-stage-packet--one" />
+      <span className="pub-stage-packet pub-stage-packet--two" />
+      <span className="pub-stage-packet pub-stage-packet--three" />
+    </div>
+    <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive preview of the real Very Happy product interface">
+      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · LIVE PRODUCT UI</span><span>WORKSPACE CONTINUITY</span></div>
+      <ProductWorkspacePreview compact />
+      <div className="pub-hero-product-foot mono"><span>PROCESS RUNS THERE</span><span>CONTEXT ARRIVES HERE</span></div>
+    </aside></div>
+    <div className="pub-stage-nodes mono" aria-hidden="true">
+      <span className="pub-stage-node pub-stage-node--relay"><i /> HW-SG <small>RELAY</small></span>
+      <span className="pub-stage-node pub-stage-node--office"><i /> MAC-OFFICE <small>CLAUDE</small></span>
+      <span className="pub-stage-node pub-stage-node--build"><i /> BUILD-02 <small>CODEX</small></span>
+    </div>
+    <div className="pub-stage-telemetry mono" aria-hidden="true"><span>03 MACHINES</span><span>02 AGENTS RUNNING</span><span>01 NEEDS YOU</span></div>
+  </div>;
 }
 
 export function LandingScreen() {
