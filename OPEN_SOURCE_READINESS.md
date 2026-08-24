@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-25 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `ef74cc6700f98c74f3bd999453add80c61b7bce4`
+> Released Web source: `bb04a436848d6533f4e636ac13fbf123ccfb952b`
 > Released Server source: `2300f4ab335c105a92d281806c955b7e44d8854a`
 > Production CLI: `very-happy-cli@0.2.64` (`v0.2.64`)
 > Decision: **NOT READY to change repository visibility yet**
@@ -28,6 +28,12 @@ procedure below is complete.
   machine-side bridge for pairing, diagnostics, automation, and local recovery. The first-use
   path still installs the CLI and starts the daemon; it no longer presents the CLI as the
   primary place users should spend their day.
+- The product is now positioned and rendered as an account-level command panel for many
+  connected machines and agents. The production sidebar itself—not only the marketing fixture—
+  shows `machine · agent · path` for structured sessions and `machine · terminal` for native
+  TTY sessions. The Hero, sanitized interactive preview, README, social metadata, and architecture
+  diagrams use the same information model. Public copy states that dispatch is explicit today:
+  the user chooses the machine and agent; automatic cross-machine/provider routing remains roadmap.
 - The terminal story is agent-independent. A tmux-owned real TTY preserves ordinary
   `xterm-256color` text shells and TUIs—not only coding agents—while the Web supplies durable
   access, files, tasks, and structured Claude continuity. Public copy does not promise support
@@ -155,11 +161,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 106 test files / 1,470 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 108 test files / 1,474 tests; Vite production build; TypeScript 0 errors |
 | CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.64 |
 | Server | 57 test files / 408 tests; TypeScript 0 errors; production runtime build passed |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Web-first Quality Gates `32762994029` passed at exact release SHA `ef74cc67`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
+| CI | Final fleet-panel Quality Gates `32767214395` passed at exact release SHA `bb04a436`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -178,6 +184,12 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 ### 2026-08-25 release-candidate freeze
 
+- The multi-machine command-panel follow-up passed all 108 Web test files / 1,474 tests,
+  Vite production build, TypeScript with zero errors, SVG validation, diff checks, and a
+  current-diff gitleaks scan. Rendered-component tests pin the initial accessible fleet state;
+  formatter and breakpoint-contract tests pin the production/sidebar data shape and opposite
+  desktop/mobile navigation states. Exact-SHA Quality run `32767214395` passed the complete
+  wire/server/Web/CLI gate at `bb04a436`.
 - Browser-to-machine file handoff was exercised against the production relay and daemon with
   two real PNG payloads: 145,259 bytes (SHA-256
   `1904987f9699504446c5454913fc986a11e9c9583f280727b54872ce9322a6ae`) and 506,218 bytes
@@ -312,6 +324,15 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   exercised inside the shared product preview; `/docs/integrations` exposed Claude progress,
   Codex/Gemini/ACP scope, meta-agent privilege, and `--scope user` boundaries without overflow.
   The mobile pass reported no console errors or warnings.
+- after the multi-machine command-panel release, the deployed asset
+  `/assets/index-Dujhkol--202608241919.js` was confirmed in a service-worker-updated production
+  tab. At 1440x1000 the authentic sidebar and detail remained visible together, with static
+  sidebar positioning, production-shaped machine/agent/path rows, correct accessible naming,
+  and no overflow. At 821 px the Hero stayed on three intentional title lines. At 390x844 the
+  session list used the contained overlay, hid the underlying detail, and then opened the real
+  terminal preview with focus returned inside it; all visible inputs were 16 px and neither
+  state overflowed. The authenticated production root rendered 12 existing sidebar rows, all
+  with machine context, without exposing their contents during verification.
 
 ### Independent review
 
@@ -416,6 +437,13 @@ review narrowed Claude progress claims, documented all meta-agent additions and 
 blast radius, and bounded terminal compatibility to ordinary text TUIs. The first-user/UI review
 removed misleading “real/live product UI” labels from sanitized fixtures. All three rereviews
 ended at **P0=0, P1=0, P2=0**.
+
+The multi-machine command-panel follow-up received a separate independent product-truth,
+responsive, accessibility, and test review. It found that the first fixture combined metadata
+the production sidebar did not yet render, plus a desktop overlay/ARIA mismatch. The production
+sidebar gained the real machine/agent/path context, the sanitized fixture adopted that contract,
+desktop/mobile computed styles were corrected and pinned, rendered accessibility tests were
+added, and the final freeze rereview ended at **P0=0, P1=0, P2=0**.
 
 ## Release and production state
 
@@ -589,6 +617,13 @@ ended at **P0=0, P1=0, P2=0**.
   390x844 and 1440x1000 Landing/Docs acceptance, and the required daemon refresh passed. The
   running daemon is **0.2.64** (PID 26483); Web rollback is the preceding `c9a8fbb6` atomic
   deployment in `/opt/happy/webapp.prev`.
+- The one-panel/many-machines positioning and production sidebar context shipped Web-only from
+  `bb04a436848d6533f4e636ac13fbf123ccfb952b` by deploy `32767449867` after exact-SHA
+  Quality Gates `32767214395`. The deployed entry asset is
+  `/assets/index-Dujhkol--202608241919.js`; health, JavaScript MIME/cache, signup capacity,
+  authenticated-root compatibility, and 1440/821/390 browser acceptance passed. Server and CLI
+  were unchanged, so no daemon restart was required; the existing daemon remains healthy on
+  **0.2.64** (PID 26483). The atomic Web rollback is the preceding `ef74cc67` deployment.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
