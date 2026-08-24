@@ -19,6 +19,7 @@ import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
+import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -141,7 +142,7 @@ export function startSocket(app: Fastify) {
         const machineId = socket.data.machineId as string | undefined;
         const labels = getMetricsLabelsFromSocket(socket);
 
-        const connectionLimit = configuredLimit('SOCKET_MAX_CONNECTIONS_PER_ACCOUNT', 20);
+        const connectionLimit = resolveSocketConnectionLimit();
         const active = activeByUser.get(userId) ?? 0;
         if (connectionLimit > 0 && active >= connectionLimit) {
             socket.emit('limit-reached', { resource: 'connections' });

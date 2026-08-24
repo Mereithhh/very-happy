@@ -1721,12 +1721,6 @@ class Sync {
             parsedSettings = { ...settingsDefaults };
         }
 
-        // Log
-        console.log('settings', JSON.stringify({
-            settings: parsedSettings,
-            version: data.settingsVersion
-        }));
-
         // Apply settings to storage, re-layering any pending local changes on top
         this.applyServerSettings(parsedSettings, data.settingsVersion);
 
@@ -1758,16 +1752,6 @@ class Sync {
 
         const data = await response.json();
         const parsedProfile = profileParse(data);
-
-        // Log profile data for debugging
-        console.log('profile', JSON.stringify({
-            id: parsedProfile.id,
-            timestamp: parsedProfile.timestamp,
-            firstName: parsedProfile.firstName,
-            lastName: parsedProfile.lastName,
-            hasAvatar: !!parsedProfile.avatar,
-            hasGitHub: !!parsedProfile.github
-        }));
 
         // Apply profile to storage
         storage.getState().applyProfile(parsedProfile);
