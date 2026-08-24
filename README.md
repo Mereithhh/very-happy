@@ -38,7 +38,7 @@ workspace around your work.
 > capabilities. Use only an operator you trust. Self-host if you need to control
 > that boundary; use upstream Happy if you require its E2E design.
 
-<img src="docs/screenshots/workspace.png" width="100%" alt="A privacy-safe reconstruction of Very Happy showing a Codex terminal, session list, and file browser in one workspace">
+<img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy's production session sidebar, Codex terminal, and file browser rendered with sanitized example data">
 
 ## Why Very Happy
 

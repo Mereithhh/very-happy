@@ -16,8 +16,9 @@ public until the procedure below is complete.
 
 - A responsive public landing page explains the product, capabilities, first connection,
   Cloud versus self-hosting, upstream origin, and the real trust boundary. Its interactive,
-  privacy-safe product reconstruction now follows the real session + terminal + file-browser
-  layout and switches to structured conversation and agent-board views.
+  privacy-safe product proof uses the authenticated app's production component style contracts
+  for the session sidebar, terminal, file browser, structured conversation, and board,
+  with sanitized fixture data and no auth/sync/socket imports in the anonymous bundle.
 - Public positioning now owns a broader agent-workspace category: “Work anywhere. Keep the
   thread.” It distinguishes current Claude/Codex/ACP capabilities from Pi/provider-gateway
   roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
@@ -25,8 +26,9 @@ public until the procedure below is complete.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
   architecture/data flow, integrations/automation, security/privacy, accounts/quotas,
   upgrades/rollback, troubleshooting, and contributing.
-- Public docs now share the landing's editorial Console system, group the guide set by user
-  intent, provide desktop on-page navigation and an accessible mobile chapter menu.
+- Public docs now share the landing's editorial Console system and the same interactive product
+  proof, group the guide set by user intent, provide desktop on-page navigation and an accessible
+  mobile chapter menu.
 - Coarse-pointer form controls and editable surfaces have a global 16 px floor across the app
   and body portals, preventing iOS focus zoom. The xterm subtree is structurally excluded so
   hidden textarea, cursor, and IME cell metrics stay unchanged.
@@ -64,7 +66,7 @@ candidate source, the required gates passed:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 98 test files / 1,405 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 98 test files / 1,406 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
 | CI | Quality Gates run `32664535539` passed for workspace source `212665e6`; setup/action pins resolve to real immutable commits |

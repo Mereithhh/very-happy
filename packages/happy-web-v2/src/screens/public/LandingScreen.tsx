@@ -1,7 +1,8 @@
-import { ArrowRight, AudioLines, Check, ChevronRight, FileCode2, FileText, Folder, Github, Globe2, LayoutDashboard, MessagesSquare, PanelRight, Server, Sparkles, TerminalSquare } from 'lucide-react';
+import { ArrowRight, AudioLines, FileText, Github, Globe2, MessagesSquare, Server, Sparkles, TerminalSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { PublicFooter, PublicHeader } from './PublicShell';
+import { ProductWorkspacePreview } from './ProductWorkspacePreview';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import './public.css';
 
@@ -12,45 +13,12 @@ const features = [
   { icon: AudioLines, title: 'A coordinator you can talk to', text: 'Dispatch background work with a Claude-powered meta-agent; optional voice is available when a voice service is configured.' },
 ];
 
-type DemoView = 'files' | 'conversation' | 'board';
-const demoTabs: { id: DemoView; label: string; detail: string; icon: typeof TerminalSquare }[] = [
-  { id: 'files', label: 'Terminal + files', detail: 'Inspect the work without leaving the session.', icon: PanelRight },
-  { id: 'conversation', label: 'Conversation', detail: 'Switch out of terminal mode when you need clarity.', icon: MessagesSquare },
-  { id: 'board', label: 'Agent board', detail: 'See what is moving and where judgment is needed.', icon: LayoutDashboard },
-];
-
 function ProductShowcase() {
-  const [view, setView] = useState<DemoView>('files');
-  const selectAdjacentTab = (index: number, direction: -1 | 1) => {
-    const nextIndex = (index + direction + demoTabs.length) % demoTabs.length;
-    const next = demoTabs[nextIndex];
-    setView(next.id);
-    document.getElementById(`product-tab-${next.id}`)?.focus();
-  };
   return <section className="pub-product" aria-labelledby="product-title">
-    <div className="pub-product-intro"><div><div className="eyebrow">THE ACTUAL WORKSPACE</div><h2 id="product-title">One thread. Three ways to stay in it.</h2></div><p>A faithful, privacy-safe reconstruction of the real interface—not a decorative terminal.</p></div>
-    <div className="pub-product-tabs" role="tablist" aria-label="Product views">{demoTabs.map(({ id, label, detail, icon: Icon }, index) => <button key={id} id={`product-tab-${id}`} type="button" role="tab" aria-selected={view === id} aria-controls="product-panel" tabIndex={view === id ? 0 : -1} onClick={() => setView(id)} onKeyDown={(event) => { if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); selectAdjacentTab(index, 1); } if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); selectAdjacentTab(index, -1); } }}><span className="mono">0{index + 1}</span><Icon size={17} aria-hidden="true" /><strong>{label}</strong><small>{detail}</small></button>)}</div>
-    <div className="pub-product-frame" id="product-panel" role="tabpanel" aria-labelledby={`product-tab-${view}`}>
-      <div className="pub-appbar"><span className="pub-appmark">vh</span><span>studio-mac</span><span className="pub-appbar-path mono">~/code/very-happy</span><span className="pub-connection"><i /> connected</span></div>
-      <div className="pub-product-body"><aside className="pub-session-list" aria-label="Example sessions"><div className="pub-session-heading"><span>SESSIONS</span><b>12</b></div><div className="pub-session is-active"><i /><strong>Release candidate</strong><small>codex · 2m</small></div><div className="pub-session"><i /><strong>Onboarding polish</strong><small>claude · 14m</small></div><div className="pub-session"><i /><strong>Security review</strong><small>claude · waiting</small></div><div className="pub-session"><i /><strong>Docs structure</strong><small>codex · 1h</small></div><div className="pub-session-spacer" /><div className="pub-session-utility"><FileText size={13} /> Notes</div><div className="pub-session-utility"><LayoutDashboard size={13} /> Tasks <b>3</b></div></aside>
-        <div className="pub-work-area"><div className="pub-work-header"><div><strong>Release candidate</strong><small className="mono">codex · studio-mac</small></div><div className="pub-work-actions mono"><span>NOTES</span><span className={view === 'files' ? 'is-selected' : ''}>FILES</span></div></div>{view === 'files' && <FilesDemo />}{view === 'conversation' && <ConversationDemo onReturnToTerminal={() => { setView('files'); document.getElementById('product-tab-files')?.focus(); }} />}{view === 'board' && <BoardDemo />}</div>
-      </div>
-    </div>
-    <div className="pub-product-caption mono"><span>LIVE SESSION CONTINUES ON YOUR MACHINE</span><span>RESPONSIVE WEB · NO DESKTOP HANDOFF REQUIRED</span></div>
+    <div className="pub-product-intro"><div><div className="eyebrow">THE REAL PRODUCT UI</div><h2 id="product-title">One thread. Three ways to stay in it.</h2></div><p>Built from the authenticated app's production component styles and Console tokens, rendered with sanitized example data.</p></div>
+    <ProductWorkspacePreview />
+    <div className="pub-product-caption mono"><span>PRODUCTION VISUAL CONTRACTS · SANITIZED DATA</span><span>RESPONSIVE WEB · NO DESKTOP HANDOFF REQUIRED</span></div>
   </section>;
-}
-
-function FilesDemo() {
-  return <div className="pub-files-demo"><div className="pub-demo-terminal" aria-label="Example Codex terminal output"><div className="pub-terminal-status mono"><span>CODEX</span><span><i /> working</span></div><pre><span className="pub-prompt">❯</span> verify the release candidate{`\n\n`}  Auditing onboarding and mobile flows…{`\n\n`}<span className="pub-terminal-ok">  ✓</span> fixed iOS input zoom{`\n`}<span className="pub-terminal-ok">  ✓</span> full test suite passed{`\n`}<span className="pub-terminal-ok">  ✓</span> production bundle built{`\n\n`}  Reviewing <span className="pub-terminal-file">src/screens/public/</span>{`\n`}  <span className="pub-terminal-dim">Opening LandingScreen.tsx</span><span className="pub-cursor">▋</span></pre><div className="pub-terminal-command mono">Send a follow-up to this session…</div></div>
-    <aside className="pub-file-browser" aria-label="Example file browser"><div className="pub-file-toolbar"><div className="mono">~/code/very-happy</div><span>⌁</span></div><div className="pub-breadcrumb mono">src <ChevronRight size={12} /> screens <ChevronRight size={12} /> public</div><div className="pub-file-row"><Folder size={15} /><strong>components</strong><span>3 items</span></div><div className="pub-file-row is-selected"><FileCode2 size={15} /><strong>LandingScreen.tsx</strong><span>18 KB</span></div><div className="pub-file-row"><FileCode2 size={15} /><strong>DocsScreen.tsx</strong><span>7 KB</span></div><div className="pub-file-row"><FileCode2 size={15} /><strong>public.css</strong><span>24 KB</span></div><div className="pub-file-row"><FileText size={15} /><strong>README.md</strong><span>9 KB</span></div><div className="pub-file-preview"><span className="mono">LANDINGSCREEN.TSX</span><p>Real product proof belongs above the feature list.</p><small>Preview files without leaving the work.</small></div></aside></div>;
-}
-
-function ConversationDemo({ onReturnToTerminal }: { onReturnToTerminal: () => void }) {
-  return <div className="pub-conversation-demo"><div className="pub-mirror-note"><span className="mono">STRUCTURED MIRROR</span><p>Read the session clearly. Your next message goes directly back to the running terminal.</p><button type="button" onClick={onReturnToTerminal}>Return to terminal</button></div><div className="pub-message"><span>YOU · MOBILE</span><p>Is this ready to show someone who has never used Very Happy?</p></div><div className="pub-message is-agent"><span>CODEX · STUDIO-MAC</span><p>The core path is ready. I found one remaining issue: a text input zooms on iOS. I’m applying the shared mobile form rule and rerunning browser checks.</p><div className="pub-tool-card mono"><Check size={13} /> edit · styles/base.css</div></div><div className="pub-message is-agent"><span>CODEX · STUDIO-MAC</span><p>Fixed. The terminal stayed live the whole time, so you can switch back without losing the process.</p></div><div className="pub-composer">Ask the running agent… <span>⌘↵</span></div></div>;
-}
-
-function BoardDemo() {
-  return <div className="pub-board-demo">{[['IN PROGRESS', 'Landing product proof', 'codex · studio-mac'], ['NEEDS YOU', 'Approve production release', 'human judgment'], ['DONE', 'Security boundary review', 'claude · api-prod-2']].map(([column, task, meta], index) => <section key={column}><header><span className="mono">{column}</span><b>{index === 0 ? '2' : '1'}</b></header><article className={index === 0 ? 'is-live' : ''}><i /><strong>{task}</strong><small>{meta}</small><p>{index === 0 ? 'Rebuilding the public workspace demo with real product structure.' : index === 1 ? 'All gates passed. The release waits for an explicit decision.' : 'Trusted-relay language verified across product and docs.'}</p></article>{index === 0 && <article><i /><strong>Mobile browser pass</strong><small>claude · phone viewport</small></article>}</section>)}</div>;
 }
 
 export function LandingScreen() {

@@ -42,7 +42,7 @@ Very Happy 已经是 Owner 日常使用的生产系统，也已经具备 passwor
 | quality 与 Linux CLI PR job 默认跑 self-hosted runner | `.github/workflows/{quality,cli-smoke-test}.yml` |
 | Cloud identity/容量已发布，旧 CLI token 保持兼容 | `specs/2026-08-cloud-identity.md` |
 | 生产 Web/server 为 hw-sg，daemon 为 mac-office，server 是可信中继 | `docs/operations.md` |
-| 2026-08-24 gitleaks 完整历史扫描命中 47 项，含上游 session JSONL/JWT 和 Google 配置 | `OPEN_SOURCE_READINESS.md`（最终记录脱敏分类） |
+| 2026-08-24 gitleaks 完整历史扫描命中 45 项，含上游 session JSONL/JWT 和 Google 配置 | `OPEN_SOURCE_READINESS.md`（最终记录脱敏分类） |
 
 ## 设计
 
@@ -50,9 +50,10 @@ Very Happy 已经是 Owner 日常使用的生产系统，也已经具备 passwor
 
 `/` 为 landing；`/docs` 为文档首页，并提供 `/docs/:slug` 的静态、随 Web 发布的章节。landing
 只用 Console tokens，accent 仅表示连接/live；机器/协议信息使用 mono。首屏明确产品、信任边界、
-Cloud 与 self-host 区别，并给登录、开始使用、GitHub 和 docs 入口。产品演示按真实三栏结构
-（session 列表、深色 terminal、文件浏览/preview）做去敏的轻量 HTML 重建，并可切换 structured
-conversation 与 agent board；不引用私有截图、不引入追踪脚本或重媒体依赖。
+Cloud 与 self-host 区别，并给登录、开始使用、GitHub 和 docs 入口。产品演示复用 authenticated app
+的 production component style contracts 与原始样式（session 列表、深色 terminal、文件浏览/preview、
+structured conversation、agent board），仅由去敏 fixture 提供数据。匿名 bundle 不导入 auth、sync、
+socket、RPC 或 xterm controller；不引用私有截图、不引入追踪脚本或重媒体依赖。
 
 文档章节至少覆盖 quickstart、CLI、Cloud/self-host、configuration、architecture/data flow、
 security/privacy、accounts/quotas、upgrade/rollback、troubleshooting、contributing。仓库 Markdown

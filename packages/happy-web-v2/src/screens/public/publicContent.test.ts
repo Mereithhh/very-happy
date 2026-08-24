@@ -26,16 +26,17 @@ describe('public documentation registry', () => {
 
   it('keeps public positioning honest about shipped agents and roadmap', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
     expect(landing).toContain('Work anywhere.');
     expect(landing).toContain('Claude Code');
     expect(landing).toContain('Codex');
     expect(landing).toContain('ACP agents');
     expect(landing).toContain('Pi + provider gateway');
-    expect(landing).toContain('THE ACTUAL WORKSPACE');
-    expect(landing).toContain('Terminal + files');
-    expect(landing).toContain('STRUCTURED MIRROR');
-    expect(landing).toContain('Agent board');
+    expect(landing).toContain('THE REAL PRODUCT UI');
+    expect(productPreview).toContain('Terminal + files');
+    expect(productPreview).toContain('TERMINAL MIRROR');
+    expect(productPreview).toContain('Task board');
     expect(landing).toContain('A coordinator you can talk to');
     expect(landing).toContain('Claude-powered meta-agent');
     expect(landing).toContain('You get to be Very Happy.');
@@ -44,6 +45,25 @@ describe('public documentation registry', () => {
     expect(landing).toContain('not end-to-end encrypted');
     expect(html).toContain('Work anywhere. Keep the thread.');
     expect(html).not.toContain('Claude Code, from any browser.');
+  });
+
+  it('renders public product proof from production UI class contracts without app state imports', () => {
+    const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    expect(preview).toContain("import '../sessions/sidebar.css'");
+    expect(preview).toContain("import '../terminal/terminal.css'");
+    expect(preview).toContain("import '../files/fsbrowser.css'");
+    expect(preview).toContain("import '../session/message.css'");
+    expect(preview).toContain("import '../board/board.css'");
+    expect(preview).toContain('className="term-screen"');
+    expect(preview).toContain('className="fsb-viewer product-file-preview"');
+    expect(preview).toContain('className="sd"');
+    expect(preview).toContain('className="bd"');
+    expect(preview).toContain('window.requestAnimationFrame');
+    expect(preview.match(/\sinert[> }]/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(preview).not.toMatch(/@\/sync\//);
+    expect(preview).not.toMatch(/@\/auth\//);
+    expect(preview).not.toMatch(/from ['"].*WebTerminalScreen/);
+    expect(preview).not.toContain('FsBrowser machineId');
   });
 
   it('keeps anonymous public routes outside the authenticated app bundle', () => {
