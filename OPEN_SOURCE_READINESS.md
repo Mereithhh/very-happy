@@ -15,7 +15,9 @@ public until the procedure below is complete.
 ## What is complete
 
 - A responsive public landing page explains the product, capabilities, first connection,
-  Cloud versus self-hosting, upstream origin, and the real trust boundary.
+  Cloud versus self-hosting, upstream origin, and the real trust boundary. Its interactive,
+  privacy-safe product reconstruction now follows the real session + terminal + file-browser
+  layout and switches to structured conversation and agent-board views.
 - Public positioning now owns a broader agent-workspace category: “Work anywhere. Keep the
   thread.” It distinguishes current Claude/Codex/ACP capabilities from Pi/provider-gateway
   roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
@@ -23,6 +25,11 @@ public until the procedure below is complete.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
   architecture/data flow, integrations/automation, security/privacy, accounts/quotas,
   upgrades/rollback, troubleshooting, and contributing.
+- Public docs now share the landing's editorial Console system, group the guide set by user
+  intent, provide desktop on-page navigation and an accessible mobile chapter menu.
+- Coarse-pointer form controls and editable surfaces have a global 16 px floor across the app
+  and body portals, preventing iOS focus zoom. The xterm subtree is structurally excluded so
+  hidden textarea, cursor, and IME cell metrics stay unchanged.
 - A real but scrubbed Tanka field note demonstrates the generic IM-to-session loop without
   publishing private infrastructure. It explicitly separates that adapter from the shipped
   Claude coordinator and future provider gateway. The public adapter example now fails closed
@@ -57,7 +64,7 @@ candidate source, the required gates passed:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 97 test files / 1,402 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 98 test files / 1,405 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
 | CI | Quality Gates run `32664535539` passed for workspace source `212665e6`; setup/action pins resolve to real immutable commits |
@@ -83,6 +90,9 @@ runtime/version smoke without relying on workspace packages.
 Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
 - production landing and all 12 documentation chapters render with no horizontal overflow;
+- the redesigned production landing and docs were rechecked at 390x844 and 1440px in light
+  and dark themes; product tabs click and respond to arrow keys, the conversation's return
+  control restores the terminal view, and docs Escape handling returns focus to the menu;
 - skip-to-content is the first focus target and navigation/regions have accessible names;
 - the landing prominently discloses “server-trusted, not end-to-end encrypted”;
 - quick start includes install, login approval, daemon start, and first-session commands;
@@ -97,6 +107,10 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   about 217 KB and no `AppRoot`/crypto chunk. Under 1.6 Mbps, 150 ms RTT, 4x CPU review
   throttling, LCP improved from 6.37 s to 1.85 s. The service worker now precaches only seven
   entry/manifest/icon resources and caches hashed app assets on demand.
+- after the final Web deploy, a new isolated production profile confirmed zero horizontal
+  overflow on landing/docs/quickstart, three product tabs, working return-to-terminal, no
+  AppRoot/crypto fetch, stable docs focus styling, and the mobile signup route. The existing
+  authenticated production browser still resolved `/` to the app rather than the public hero.
 
 ### Independent review
 
@@ -118,6 +132,13 @@ sender/chat authorization gate in the public adapter pseudocode, removed interna
 details from the historical Tanka spec, and verified that IM dispatch and the Claude
 coordinator are described as separate shipped paths. The regression test pins those boundaries.
 
+The public-experience redesign received two further independent passes. The UX/first-user pass
+closed the fake-product-demo, Claude-first positioning, onboarding order, dead control, docs
+focus, target-size, and accent-discipline findings. The security/code pass found three obsolete
+screenshots containing Owner/machine identifiers; all three were removed from the current tree,
+the replacement was confirmed synthetic and metadata-free, and every ARIA/control finding was
+fixed. Both passes ended with P0=0 and P1=0 for the current tree.
+
 ## Release and production state
 
 - Server then Web were deployed from release source SHA `e4ece34b7305135d19a12a1c8cf5caf8876d7e0f`
@@ -135,6 +156,11 @@ coordinator are described as separate shipped paths. The regression test pins th
   Quality Gates run `32664535539` passed. A fresh isolated production browser verified the
   corrected configured-notification/fixed-workspace wording, JavaScript MIME, anonymous
   bundle isolation, 390px no-overflow layout, and both integration safety notes.
+- The redesigned landing/docs, privacy-safe workspace image, and mobile 16 px form floor were
+  Web-only deployed from SHA `de7f57137886e29355ace209e1111551b40d3e17` by run
+  `32681554681` after exact-SHA Quality Gates run `32681433783` passed. Health returned 200,
+  the versioned main asset served as JavaScript, anonymous 390px/1440px browser checks passed,
+  and the existing authenticated root remained in the application.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
@@ -153,7 +179,7 @@ coordinator are described as separate shipped paths. The regression test pins th
 
 ## Blocking historical findings
 
-A final current-tree `git archive HEAD` scan covered about 16.2 MB and returned **0 findings**.
+A final current-tree `git archive HEAD` scan covered 16.29 MB and returned **0 findings**.
 A full-history scan covered 2,537 commits / about 33.85 MB and returned **45 findings** across
 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT detections.
 

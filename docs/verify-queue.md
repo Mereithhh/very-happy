@@ -12,6 +12,7 @@
 
 | id | 版本/批次 | 验证项 | 怎么验 | 登记日期 |
 |---|---|---|---|---|
+| V-080 | web `de7f5713`（已部署） | **iOS 表单聚焦不再强制放大** | 真机 Safari/PWA 分别点结构化会话输入、助手文字输入、Notes 编辑/筛选、任务编辑、标签改名、登录注册表单：页面不得因聚焦自动放大，输入与中文 IME 正常；再进 terminal 确认 xterm 光标、中文候选位置和底部行输入无错位。自动回归已锁定普通控件/body portal 的 16px floor 与 `.xterm` 结构排除 | 2026-08-24 |
 | V-079 | B-149：server+web 待部署 | **账号容量与已有用户豁免** | 先确认生产 `SIGNUP_MAX_ACCOUNTS` 设置为计划值（建议首发 100）；临时把上限设为当前 Account 数并 `docker compose up -d` 重建容器 → 新密码注册和新 Google subject 都应显示「账户已满」，已有密码/Google 用户仍可登录；恢复上限后检查 Prometheus 的 `registered_accounts_total`、`active_login_sessions_total`、`signup_capacity_remaining`、`signup_rejections_total` 与 Node `process_resident_memory_bytes` | 2026-08-24 |
 | V-078 | B-149：server+web 待部署 | **真实 Google 注册/登录与浏览器观感** | 在 Google Console 把 `https://happy.mereith.com` 加入 Authorized JavaScript origins；server 配 `GOOGLE_CLIENT_ID=190908753734-rto8svijvvh616877aketn4pnkhauec1.apps.googleusercontent.com`、`GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com` 和与实际反代拓扑一致的 `TRUST_PROXY`（单层通常为 `1`；GIS popup 不需要 client secret/redirect URI）；按 migration → server → web 发布并硬刷新/SW unregister：①新 Google 账号能创建并进入首页；②logout 后旧 token 和已消费 nonce 都不可重放，再次 Google 登录回到同一 Account；③closed/满额时该已有 Google 用户仍能登录；④错误 origin 返回可恢复提示；⑤明暗主题和手机上按钮、邀请码、错误提示布局正常 | 2026-08-24 |
 | V-076 | v0.2.52（已发布） | **attention 跃迁不再被节流吞掉**（review finding 4） | 让 claude 先调 `report_progress` 报个普通进度（attention=none），**10 秒内**再让它报一次 `attention: 'blocked'` → 第二条必须被接受、看板要立刻出现 blocked 标记。修之前第二条会被静默丢弃，且看板最长 15 分钟不更新（analyzer 被自报水位压着） | 2026-08-18 |
