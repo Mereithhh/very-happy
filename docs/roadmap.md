@@ -28,8 +28,9 @@ release date. “Long-term concept” is product exploration.
 ### Agents and coordination
 
 - Claude Code as the deepest provider integration, plus Codex sessions.
-- Gemini through ACP and a generic ACP runner for compatible commands such as
-  OpenCode. Provider parity is not implied.
+- A beta Agent Client Protocol backend with Gemini and OpenCode presets plus a
+  generic runner for commands that expose compatible ACP over stdio. Provider
+  parity is not implied.
 - A Claude-powered text meta-agent with session awareness and machine-side
   dispatch. Voice entry is available when a compatible voice service is
   configured; both meta-agent modes currently require Claude Code.

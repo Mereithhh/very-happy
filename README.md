@@ -26,8 +26,9 @@ remote shell: it preserves the conversation, tool activity, files, tasks,
 permissions, and machine context around the work, so an interruption does not
 mean reconstructing everything in your head.
 
-Claude Code is the deepest integration today. Codex is supported, Gemini runs
-through ACP, and a generic ACP runner connects compatible agent commands. The
+Claude Code is the deepest integration today. Codex is supported. A beta Agent
+Client Protocol (ACP) backend runs Gemini and OpenCode presets, while a generic
+runner can connect commands that expose a compatible ACP stdio endpoint. The
 direction is deliberately multi-agent; no single model vendor should own the
 workspace around your work.
 
@@ -56,7 +57,7 @@ be Very Happy.
 | Continue from anywhere | Responsive Web/PWA with touch-friendly conversation and terminal controls |
 | Stay out of terminal chrome | Structured messages, tools, diffs, permissions, usage, and context |
 | Keep full machine access | Durable tmux terminals, reconnect, history, files, preview, and resume |
-| Use more than one agent | Claude Code and Codex today; Gemini and custom commands through ACP |
+| Use more than one agent | Claude Code and Codex today; beta Gemini, OpenCode, and compatible custom commands through ACP |
 | Remember the surrounding work | Task board, notes, file context, notifications, and session organization |
 | Reduce coordination overhead | An optional Claude-powered meta-agent can understand sessions and dispatch work on connected machines |
 | Own the operating boundary | Use the capacity-limited community Cloud or run the same trusted relay yourself |
@@ -79,7 +80,8 @@ very-happy daemon start
 # Start from a project directory
 very-happy            # Claude Code
 very-happy codex      # Codex
-very-happy gemini     # Gemini via ACP
+very-happy gemini     # Gemini via the beta ACP backend
+very-happy acp opencode
 ```
 
 `very-happy auth login` opens a short-lived approval link. Sign in or create an
@@ -95,8 +97,8 @@ operator's trust boundary. See [Public Cloud](docs/public-server.md).
 
 - Structured Claude Code conversations with tool calls, diffs, permissions,
   usage, attachments, resume, and a terminal-to-conversation mirror.
-- Codex sessions; Gemini and compatible custom commands through the Agent Client
-  Protocol (ACP).
+- Codex sessions; a beta Agent Client Protocol backend with Gemini and OpenCode
+  presets plus compatible custom commands over ACP stdio.
 - Durable `tmux` browser terminals with reconnect, local scrollback, mobile input,
   search, archived sessions, and automatic recovery.
 - Machine file browser and rich previews for text, Markdown, images, and PDFs;

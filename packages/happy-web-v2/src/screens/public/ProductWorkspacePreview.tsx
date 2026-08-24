@@ -19,7 +19,7 @@ import {
   TerminalSquare,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 // These are the production stylesheets, not a parallel marketing skin. The
 // preview deliberately uses the same DOM/class contracts as Sidebar,
@@ -45,11 +45,25 @@ const TABS: Array<{ id: ProductPreviewView; label: string; detail: string }> = [
   { id: 'board', label: 'Task board', detail: 'What needs attention' },
 ];
 
+export function getProductPreviewIds(instanceId: string) {
+  return {
+    panel: `${instanceId}-product-panel`,
+    tabs: {
+      terminal: `${instanceId}-product-tab-terminal`,
+      conversation: `${instanceId}-product-tab-conversation`,
+      board: `${instanceId}-product-tab-board`,
+    } satisfies Record<ProductPreviewView, string>,
+  };
+}
+
 export function ProductWorkspacePreview({ compact = false }: { compact?: boolean }) {
   const [view, setView] = useState<ProductPreviewView>('terminal');
+  const instanceId = useId();
+  const ids = getProductPreviewIds(instanceId);
+  const tabRefs = useRef<Record<ProductPreviewView, HTMLButtonElement | null>>({ terminal: null, conversation: null, board: null });
   const returnToTerminal = () => {
     setView('terminal');
-    window.requestAnimationFrame(() => document.getElementById('product-tab-terminal')?.focus());
+    window.requestAnimationFrame(() => tabRefs.current.terminal?.focus());
   };
 
   return (
@@ -58,11 +72,12 @@ export function ProductWorkspacePreview({ compact = false }: { compact?: boolean
         {TABS.map((tab, index) => (
           <button
             key={tab.id}
-            id={`product-tab-${tab.id}`}
+            ref={(element) => { tabRefs.current[tab.id] = element; }}
+            id={ids.tabs[tab.id]}
             type="button"
             role="tab"
             aria-selected={view === tab.id}
-            aria-controls="product-panel"
+            aria-controls={ids.panel}
             tabIndex={view === tab.id ? 0 : -1}
             onClick={() => setView(tab.id)}
             onKeyDown={(event) => {
@@ -71,7 +86,7 @@ export function ProductWorkspacePreview({ compact = false }: { compact?: boolean
               const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
               const next = TABS[(index + delta + TABS.length) % TABS.length];
               setView(next.id);
-              document.getElementById(`product-tab-${next.id}`)?.focus();
+              tabRefs.current[next.id]?.focus();
             }}
           >
             <span className="mono">0{index + 1}</span>
@@ -82,17 +97,17 @@ export function ProductWorkspacePreview({ compact = false }: { compact?: boolean
       </div>
 
       <div
-        id="product-panel"
+        id={ids.panel}
         className="product-app"
         role="tabpanel"
-        aria-labelledby={`product-tab-${view}`}
+        aria-labelledby={ids.tabs[view]}
       >
         <ProductSidebar active={view} />
-        <main className="product-detail">
+        <div className="product-detail">
           {view === 'terminal' && <TerminalAndFiles />}
           {view === 'conversation' && <Conversation onReturn={returnToTerminal} />}
           {view === 'board' && <Board />}
-        </main>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
+import { getProductPreviewIds } from './ProductWorkspacePreview';
 
 describe('public documentation registry', () => {
   it('provides every public-release topic with unique stable slugs', () => {
@@ -31,7 +32,9 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Work anywhere.');
     expect(landing).toContain('Claude Code');
     expect(landing).toContain('Codex');
-    expect(landing).toContain('ACP agents');
+    expect(landing).toContain('Gemini + OpenCode via ACP');
+    expect(landing).toContain('BETA · IMPLEMENTED');
+    expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
     expect(productPreview).toContain('Terminal + files');
@@ -45,6 +48,45 @@ describe('public documentation registry', () => {
     expect(landing).toContain('not end-to-end encrypted');
     expect(html).toContain('Work anywhere. Keep the thread.');
     expect(html).not.toContain('Claude Code, from any browser.');
+  });
+
+  it('backs the public ACP claim with the shipped SDK, routes, and compatibility boundary', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const cliPackage = readFileSync(new URL('../../../../happy-cli/package.json', import.meta.url), 'utf8');
+    const cliIndex = readFileSync(new URL('../../../../happy-cli/src/index.ts', import.meta.url), 'utf8');
+    const acpConfig = readFileSync(new URL('../../../../happy-cli/src/agent/acp/acpAgentConfig.ts', import.meta.url), 'utf8');
+    const protocolDoc = readFileSync(new URL('../../../../../docs/session-protocol.md', import.meta.url), 'utf8');
+    expect(cliPackage).toContain('@agentclientprotocol/sdk');
+    expect(cliIndex).toContain("subcommand === 'acp'");
+    expect(cliIndex).toContain("subcommand === 'gemini'");
+    expect(acpConfig).toContain("gemini: { command: 'gemini'");
+    expect(acpConfig).toContain("opencode: { command: 'opencode'");
+    expect(landing).toContain('compatible ACP stdio endpoint');
+    expect(landing).toContain('BETA · IMPLEMENTED');
+    expect(protocolDoc).toContain('**not** the Agent Client');
+    expect(protocolDoc).toContain('share the acronym “ACP.”');
+  });
+
+  it('keeps branded public motion meaningful and fully reducible', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    expect(landing).toContain('pub-hero-product');
+    expect(landing).toContain('<ProductWorkspacePreview compact />');
+    expect(landing).toContain('pub-product-frame');
+    expect(landing).toContain('pub-fleet');
+    expect(landing).toContain('SANITIZED DEMO · LIVE PRODUCT UI');
+    expect(landing).toContain('EXAMPLE FLEET / SANITIZED');
+    expect(landing).not.toContain('CONNECTED · 42 MS');
+    expect(landing).not.toContain('FLEET / LIVE NOW');
+    expect(styles).toContain('@keyframes pub-field-drift');
+    expect(styles).toContain('@keyframes pub-frame-signal');
+    expect(styles).not.toContain('@keyframes pub-stage-scan');
+    expect(styles).not.toContain('@keyframes pub-stage-float');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(styles).toMatch(/\.pub-hero-product::before[^}]*animation: none/);
+    expect(styles).toMatch(/\.pub-page::after[^}]*animation: none/);
+    expect(styles).toMatch(/\.pub-feature-grid article[^}]*transition: none/);
+    expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
   });
 
   it('renders public product proof from production UI class contracts without app state imports', () => {
@@ -64,6 +106,21 @@ describe('public documentation registry', () => {
     expect(preview).not.toMatch(/@\/auth\//);
     expect(preview).not.toMatch(/from ['"].*WebTerminalScreen/);
     expect(preview).not.toContain('FsBrowser machineId');
+  });
+
+  it('keeps multiple product previews in separate tab and focus scopes', () => {
+    const hero = getProductPreviewIds('hero');
+    const showcase = getProductPreviewIds('showcase');
+    const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    expect(new Set([
+      hero.panel,
+      ...Object.values(hero.tabs),
+      showcase.panel,
+      ...Object.values(showcase.tabs),
+    ]).size).toBe(8);
+    expect(preview).toContain('tabRefs.current[next.id]?.focus()');
+    expect(preview).not.toContain('document.getElementById');
+    expect(preview).not.toContain('<main className="product-detail">');
   });
 
   it('keeps anonymous public routes outside the authenticated app bundle', () => {

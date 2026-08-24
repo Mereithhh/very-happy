@@ -1,8 +1,9 @@
 # very-happy-cli
 
 The machine-side CLI and daemon for **Very Happy**, an open agent workspace.
-Run Claude Code, Codex, Gemini through ACP, compatible custom ACP commands, or a
-real terminal on your machine and continue from a responsive Web UI.
+Run Claude Code, Codex, or a real terminal on your machine and continue from a
+responsive Web UI. A beta Agent Client Protocol backend also supports Gemini,
+OpenCode, and custom commands that expose a compatible ACP stdio endpoint.
 
 `very-happy-cli` is a deeply modified fork of [slopus/happy](https://github.com/slopus/happy)
 (MIT). It keeps the compatible session wire model while adding the Very Happy
@@ -30,8 +31,8 @@ Very Happy server and set `HAPPY_SERVER_URL` to it, or don't use this tool.
 1. **Node.js >= 20**.
 2. **The CLI for each agent you plan to use**, installed, authenticated, and on
    the daemon's `PATH`. Bare `very-happy` uses Claude Code; `very-happy codex`
-   uses Codex; `very-happy gemini` uses Gemini through ACP; `very-happy acp -- …`
-   starts a compatible custom ACP command.
+   uses Codex; `very-happy gemini` uses the beta ACP backend; `very-happy acp -- …`
+   starts a custom command that must expose a compatible ACP stdio endpoint.
 
 The optional text/voice coordinating meta-agent currently requires Claude Code.
 Voice also requires the selected server or user settings to provide a compatible
@@ -53,7 +54,7 @@ darwin/linux/win32 on x64/arm64.
 very-happy            # start a Claude Code session and connect to the relay
 very-happy claude     # same, explicit
 very-happy codex      # start a Codex session
-very-happy gemini     # start Gemini through ACP
+very-happy gemini     # start Gemini through the beta ACP backend
 very-happy acp opencode  # start OpenCode through its built-in ACP adapter
 ```
 

@@ -34,8 +34,8 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy.' },
       ] },
       { heading: '4. Start work', blocks: [
-        { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # Claude Code\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP\nvery-happy acp -- your-agent --acp' },
-        { type: 'p', text: 'Start Claude Code, Codex, or a compatible ACP agent from the CLI. You can also select the connected machine and create a session or terminal from Web. Run very-happy daemon status if the machine remains offline.' },
+        { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # Claude Code\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
+        { type: 'p', text: 'Start Claude Code or Codex from the CLI. The beta Agent Client Protocol backend also includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio, and its flags remain agent-specific. You can also select the connected machine and create a session or terminal from Web. Run very-happy daemon status if the machine remains offline.' },
       ] },
     ],
   },
@@ -52,7 +52,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Operate', blocks: [
         { type: 'code', code: 'very-happy daemon status\nvery-happy daemon start\nvery-happy daemon stop' },
-        { type: 'p', text: 'The daemon must be online for remote actions. Install each agent CLI you intend to run and keep it resolvable on the daemon PATH. Claude Code is the default; Codex, Gemini via ACP, and custom ACP commands have explicit CLI modes.' },
+        { type: 'p', text: 'The daemon must be online for remote actions. Install each agent CLI you intend to run and keep it resolvable on the daemon PATH. Claude Code is the default and Codex has a dedicated mode. The beta ACP backend provides Gemini and OpenCode presets plus a generic command mode; compatibility depends on the agent exposing ACP over stdio.' },
       ] },
     ],
   },
@@ -108,6 +108,9 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Session flow', blocks: [
         { type: 'list', items: ['The user authenticates the browser to a relay.', 'A one-time approval connects a CLI identity to the same account.', 'The server routes requests and updates between browser and online daemon.', 'The daemon invokes local terminal or agent processes and streams results back.'] },
+      ] },
+      { heading: 'Agent adapters', blocks: [
+        { type: 'p', text: 'Claude Code and Codex have dedicated integration paths. The beta Gemini/OpenCode adapter uses Agent Client Protocol over local stdio through the official SDK; it is distinct from the older Agent Communication Protocol that shares the ACP acronym. Custom ACP commands must implement a compatible Agent Client Protocol endpoint.' },
       ] },
       { heading: 'Compatibility', blocks: [
         { type: 'p', text: 'Protocol changes are designed so older clients ignore new fields. Deploy server, web, and CLI versions according to the release notes when a change includes a compatibility matrix.' },

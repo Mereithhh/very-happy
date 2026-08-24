@@ -4,9 +4,15 @@ This document defines the unified message protocol for Happy sessions. It replac
 
 For context on the existing wire protocol (WebSocket transport, encryption, sequencing), see `protocol.md`.
 
-## Comparison with ACP
+## Comparison with Agent Communication Protocol
 
-The real [Agent Communication Protocol](https://agentcommunicationprotocol.dev) is an agent-to-agent interoperability standard over REST. Our protocol solves a different problem: rendering encrypted agent chat sessions on mobile/web clients.
+This historical comparison refers to the REST-oriented
+[Agent Communication Protocol](https://agentcommunicationprotocol.dev), an
+agent-to-agent interoperability standard. It is **not** the Agent Client
+Protocol used by Very Happy's current Gemini/OpenCode CLI adapter; the two
+standards share the acronym “ACP.” Our session protocol solves a different
+problem: rendering agent chat sessions on mobile/web clients through Very
+Happy's server-trusted relay.
 
 | Concern | ACP | This protocol |
 |---|---|---|
@@ -22,7 +28,7 @@ The real [Agent Communication Protocol](https://agentcommunicationprotocol.dev) 
 
 **Why not ACP directly?**
 
-1. **Encrypted wire envelope** — ACP assumes plaintext REST. Our payloads keep the
+1. **Encrypted wire envelope** — Agent Communication Protocol assumes REST. Our payloads keep the
    Happy encrypted envelope, while the Very Happy server remains a trusted key holder.
 2. **Tool calls are UI-visible** — ACP models tools as metadata for debugging. We render them with spinners, descriptions, and permission dialogs.
 3. **Instant image rendering** — ACP has no thumbhash or dimensions. Our `file` event can carry image metadata for instant placeholder layout.

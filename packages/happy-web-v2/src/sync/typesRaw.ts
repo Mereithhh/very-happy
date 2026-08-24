@@ -331,7 +331,8 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('session'),
     data: sessionEnvelopeSchema
 }), z.object({
-    // ACP (Agent Communication Protocol) - unified format for all agent providers
+    // Legacy Agent Communication Protocol message shape. This is distinct from
+    // the Agent Client Protocol used by the CLI's current ACP stdio backend.
     type: z.literal('acp'),
     provider: z.enum(['gemini', 'codex', 'claude', 'opencode']),
     data: z.discriminatedUnion('type', [
@@ -1062,7 +1063,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
         if (raw.content.type === 'session') {
             return normalizeSessionEnvelope(raw.content.data, localId, createdAt, raw.meta);
         }
-        // ACP (Agent Communication Protocol) - unified format for all agent providers
+        // Legacy Agent Communication Protocol message shape. This is distinct
+        // from the CLI's Agent Client Protocol transport.
         if (raw.content.type === 'acp') {
             if (raw.content.data.type === 'message') {
                 return {
