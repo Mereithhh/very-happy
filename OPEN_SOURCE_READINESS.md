@@ -163,6 +163,14 @@ fixed. Both passes ended with P0=0 and P1=0 for the current tree.
   `32681554681` after exact-SHA Quality Gates run `32681433783` passed. Health returned 200,
   the versioned main asset served as JavaScript, anonymous 390px/1440px browser checks passed,
   and the existing authenticated root remained in the application.
+- The final product proof now reuses the authenticated app's production sidebar, terminal,
+  file viewer, conversation, board, and Console-token style contracts with sanitized static
+  data; landing and docs share the same component. It was Web-only deployed from SHA
+  `891efb65863f39fd6b9c29186365e727605fa28d` by run `32683404930` after exact-SHA Quality
+  Gates run `32683266145` passed. An isolated production browser verified the versioned asset
+  `/assets/index-BeqkYBBQ-202608240233.js`, all three views and return-to-terminal behavior,
+  contained mobile file overlay, all three mobile board columns, landing/docs zero horizontal
+  overflow at 390 px and 1440 px, and the server health endpoint.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
