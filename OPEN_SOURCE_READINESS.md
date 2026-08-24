@@ -2,8 +2,8 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `908ef0151c15cb1d61eda02aa669b27cc6e79541`
-> Production CLI: `very-happy-cli@0.2.60` (`v0.2.60`)
+> Released product source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
+> Production CLI: `very-happy-cli@0.2.61` (`v0.2.61`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
@@ -71,6 +71,10 @@ public until the procedure below is complete.
   authenticated First Run screen, landing, public docs, and READMEs. The CLI goes directly to
   Web approval, removes the nonexistent native-mobile/QR path, and prints daemon startup as the
   next action after both fresh and existing authentication.
+- Installation and configuration now distinguish required Node support, Claude SDK credential
+  sources, optional external agent commands, and tmux. `doctor` and daemon state report only a
+  non-secret credential category; the docs explain service-manager environment persistence and
+  make the no-tmux direct-shell/non-durable downgrade explicit.
 - Public language consistently says **server-trusted, not end-to-end encrypted**. It does
   not promise zero knowledge, operator blindness, durability, SLA, or undeletable data.
 - Fork PR code is confined to GitHub-hosted runners with read-only contents permission.
@@ -105,15 +109,26 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 99 test files / 1,429 tests; Vite production build; TypeScript 0 errors |
-| CLI | 106 test files / 1,153 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.60 |
-| Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32702080377` passed for exact deployed/released source `908ef015`; CLI smoke `32702470738` passed on Linux and mac-office Node 20/24; setup/action pins resolve to immutable commits |
-| Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
+| Web V2 | 102 test files / 1,445 tests; Vite production build; TypeScript 0 errors |
+| CLI | 122 test files / 1,209 tests locally; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.61 |
+| Server | 53 test files / 387 tests; TypeScript 0 errors |
+| Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
+| CI | Final Quality Gates `32725836378` passed for exact deployed server source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
+| Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
 an empty PGlite database through 42 migrations. The CLI tarball executed its postinstall and
 runtime/version smoke without relying on workspace packages.
+
+A detached clean checkout at `4c259d86` downloaded all dependencies from an empty worktree and
+passed the Wire, Server, Web, CLI, and Agent gates above. The final server-only compatibility
+follow-up then passed its exact-SHA CI gate. A final CLI tarball was installed on `sd-dev` into
+an isolated prefix and HOME: Node 22.19, CLI 0.2.61, HOME mode 0700, tmux 3.2a, zero
+native/mobile-app auth mentions, and the new first-use doctor output all passed. Earlier in the
+same isolated-new-user run, signup, secure pairing, daemon connection, machine visibility,
+tmux terminal/file preview (`VERY_HAPPY_SDDEV_OK`), and the no-tmux direct shell
+(`NO_TMUX_OK`) completed end to end. Only the test-owned temporary daemon/server processes were
+stopped afterward; the pre-existing global daemon was preserved.
 
 ### Container and database smoke
 
@@ -184,6 +199,11 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   two-branch rail, real bidirectional terminal/mirror controls, 16 px mobile input, no horizontal
   overflow or console warnings. `/docs/architecture` exposed the tmux 3.2 and direct-shell fallback
   boundaries at 390 px without overflow.
+- after the final candidate deploy, a fresh isolated production profile opened `/welcome`,
+  clicked the authentic file control inside the animated Hero, and confirmed no desktop
+  overflow. At 390x844, the Claude-credential docs anchor rendered without overflow and login
+  inputs computed to 16 px. The exact deployed asset was
+  `/assets/index-DqO_Dc10-202608241151.js`; console error output was empty.
 
 ### Independent review
 
@@ -244,6 +264,12 @@ undersized command copy targets, stale mobile/QR documentation, and a source-onl
 test. The final behavior test executes secure pairing create/poll, verifies the claim secret stays
 out of the approval URL, and proves the v3 gate fails closed. Both freeze rereviews ended at
 **P0=0, P1=0, P2=0**.
+
+The final public-repository security freeze covered authentication/OAuth, pairing, socket and
+cross-account ownership, terminal/file relay limits, all persistent growth surfaces, upload
+object existence and cleanup, log sanitization, local file permissions, and PR/release isolation.
+The reviewer ended at **P0=0, P1=0, P2=0** for the current tree. A separate first-user/UI/docs
+review found and closed the missing Claude credential setup and misleading OpenClaw setup copy.
 
 ## Release and production state
 
@@ -351,13 +377,31 @@ out of the approval URL, and proves the v3 gate fails closed. Both freeze rerevi
   tarball and then the standard registry spec both installed into isolated prefix/HOME
   directories and passed version/auth-help runtime smoke. `vh-update` completed on mac-office;
   the running daemon reports **0.2.60**. Rollback is `very-happy-cli@0.2.59`.
+- The final candidate deployed Server then Web from
+  `86e56c8e3c15ad6c1d5cb2eac3824533c4b15caa` in run `32724008762`, after Quality
+  Gates `32723809686`. The first deploy attempt (`32723491921`) exposed a legacy-container
+  bind-host incompatibility; production was immediately restored to `d3d50d68`, the mechanism
+  received a regression test, and the exact-SHA redeploy then passed. Health, auth capacity,
+  hashed-JavaScript MIME/cache, desktop/mobile browser acceptance, and the required post-server
+  daemon restart passed. CLI `v0.2.61` was published by run `32724248409`; tag smoke
+  `32724248408` passed on Linux and mac-office Node 20/24. Rollback is source `d3d50d68` and
+  CLI `0.2.60`.
+- Restarting the production 0.2.61 daemon then exposed a second release-only regression: its
+  normal multi-session idempotent replay was charged before duplicate detection, exhausting the
+  new 600-message/minute account budget and producing a 429 retry storm. Server source was
+  immediately rolled back and the daemon reconnected cleanly. The fix charges only rows that
+  will actually be inserted, with three repeated localId retries pinned as zero rate cost.
+  Full Server tests (53 files / 387 tests), exact-SHA Quality Gates `32725836378`, and the
+  Server-only deploy `32726043403` passed. After the required daemon restart, mac-office 0.2.61
+  connected without 429/retry errors, `/health` and `/v1/auth/config` returned 200, and the
+  account cap remained open/100 with 94 slots available.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
 ## Blocking historical findings
 
-A final current-tree `git archive HEAD` scan processed 16.36 MB and returned **0 findings**.
-A full-history scan covered 2,551 commits / about 34.10 MB and returned **45 findings** across
+A final current-tree `git archive HEAD` scan processed 16.69 MB and returned **0 findings**.
+A full-history scan covered 2,572 commits / about 34.75 MB and returned **45 findings** across
 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT detections.
 
 The most serious object is a deleted upstream real-session JSONL containing tokens and user
@@ -415,7 +459,8 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.
 - PGlite migration SQL and its migration marker have a narrow crash window between operations.
-- Failed/abandoned attachment reservations remain charged to quota by design (fail closed).
+- Abandoned upload reservations are reclaimed after their TTL; completed uploads are never
+  TTL-cleaned, and completion requires the local/S3 object to exist.
 - Windows CLI postinstall is not currently exercised because private-repository hosted billing
   prevents that job from starting. Linux 20/24 and real macOS coverage are green; run the
   Windows matrix once hosted capacity is available or after the repository becomes public.
