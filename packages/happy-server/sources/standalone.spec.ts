@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStandaloneEntrypoint, resolveDatabaseProvider, resolveHtmlConfig } from "./standalone";
+import { isStandaloneEntrypoint, resolveBindHost, resolveDatabaseProvider, resolveHtmlConfig } from "./standalone";
 
 describe("isStandaloneEntrypoint", () => {
     it("recognizes standalone script paths on Windows and POSIX", () => {
@@ -39,5 +39,16 @@ describe("resolveHtmlConfig", () => {
             .toEqual({ serverUrl: "same-origin", buildCommitSha: "abc" });
         expect(resolveHtmlConfig({ HAPPY_INJECT_HTML_CONFIG: 'not-json' } as NodeJS.ProcessEnv))
             .toEqual({ serverUrl: "same-origin" });
+    });
+});
+
+describe("resolveBindHost", () => {
+    it("stays loopback-only for an unpackaged standalone server", () => {
+        expect(resolveBindHost({} as NodeJS.ProcessEnv)).toBe("127.0.0.1");
+    });
+
+    it("honors an explicit host and preserves the legacy production bind mount", () => {
+        expect(resolveBindHost({ HOST: " 192.0.2.10 " } as NodeJS.ProcessEnv)).toBe("192.0.2.10");
+        expect(resolveBindHost({ HAPPY_STATIC_DIR: "/webapp" } as NodeJS.ProcessEnv)).toBe("0.0.0.0");
     });
 });

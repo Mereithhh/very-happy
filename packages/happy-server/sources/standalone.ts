@@ -45,6 +45,15 @@ export function resolveHtmlConfig(env: NodeJS.ProcessEnv = process.env): Record<
     }
 }
 
+export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
+    if (env.HOST?.trim()) return env.HOST.trim();
+    // Compatibility for the production bind-mount deployment used before the
+    // container image began exporting HOST=0.0.0.0. Its static bundle is
+    // mounted at /webapp and the Docker port is published only on loopback.
+    if (env.HAPPY_STATIC_DIR === "/webapp") return "0.0.0.0";
+    return "127.0.0.1";
+}
+
 async function runPostgresMigrations(): Promise<void> {
     const schemaCandidates = [
         path.join(process.cwd(), "prisma", "schema.prisma"),
@@ -172,7 +181,7 @@ async function serve() {
     }
 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
-    const host = process.env.HOST || "127.0.0.1";
+    const host = resolveBindHost();
     // A bare public package must fail closed. Existing accounts can still sign
     // in; operators explicitly opt into invite/open registration after TLS,
     // proxy trust, quotas, and backups are configured.
