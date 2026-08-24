@@ -2,9 +2,9 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `6706fc8e78a2b043209c059aefae543701c847ef`
+> Released Web source: `77fcd8ed767a0ae9d263f6964cf57e0526d7774d`
 > Released Server source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
-> Production CLI: `very-happy-cli@0.2.61` (`v0.2.61`)
+> Production CLI: `very-happy-cli@0.2.62` (`v0.2.62`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
@@ -24,6 +24,17 @@ public until the procedure below is complete.
 - The landing also has a canonical `/welcome` route that is independent of login state while
   `/` preserves the existing contract (anonymous visitors see the landing; returning users enter
   the workspace). Docs, legal pages, and the README return to that stable marketing route.
+- GitHub now has a deliberate second landing page rather than a technical wall: a native animated
+  SVG Hero with reduced-motion support, the real sanitized workspace image, Cloud/self-host and
+  trust CTAs, structured-versus-real-TUI positioning, mobile/PWA and keyboard proof, an accurate
+  shipped/Beta/roadmap agent matrix, upstream attribution, and the “You get to be Very Happy”
+  brand promise. Every local README target and the remote GitHub bytes were verified.
+- The Cloud quick start now includes a version-controlled `/install.sh`. The copyable compound
+  command downloads the complete script into `mktemp` before execution and cleans it with a trap;
+  the script validates Node and CPU support, resolves and verifies one exact npm version, runs
+  doctor, Web approval, and `daemon start`, and fails closed on mismatched or non-HTTPS custom
+  endpoints. Offline dry-run and skipped-step endings are truthful; sudo, tmux installation,
+  provider credential writes, and optional Claude hooks remain explicit non-goals.
 - Product proof navigation now happens inside the authentic UI instead of a tall marketing scene
   selector. Sidebar board/session controls, Back, structured mirror, Files, and board cards form a
   complete desktop/mobile loop; controls that cannot be safely simulated are visibly disabled.
@@ -87,6 +98,10 @@ public until the procedure below is complete.
   sources, optional external agent commands, and tmux. `doctor` and daemon state report only a
   non-secret credential category; the docs explain service-manager environment persistence and
   make the no-tmux direct-shell/non-durable downgrade explicit.
+- Doctor process listings and cleanup no longer echo arbitrary argv. Startup environment logging
+  now carries only configured/enabled flags plus bounded runtime categories—never raw argv,
+  usernames, HOME/PWD, local paths, DEBUG values, or custom URLs—closing the local and optional
+  remote-debug disclosure path for generic ACP arguments.
 - Public language consistently says **server-trusted, not end-to-end encrypted**. It does
   not promise zero knowledge, operator blindness, durability, SLA, or undeletable data.
 - Fork PR code is confined to GitHub-hosted runners with read-only contents permission.
@@ -121,11 +136,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 103 test files / 1,453 tests; Vite production build; TypeScript 0 errors |
-| CLI | 122 test files / 1,209 tests locally; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.61 |
+| Web V2 | 104 test files / 1,458 tests; Vite production build; TypeScript 0 errors |
+| CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.62 |
 | Server | 53 test files / 387 tests; TypeScript 0 errors |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Quality Gates `32733166641` passed for exact deployed Web source `6706fc8e`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32737299751` passed for exact Web/CLI source `77fcd8ed`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32737835940` passed on Linux and mac-office Node 20/24 at `v0.2.62`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -223,6 +238,13 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   focus. At 1440x1000, the authentic Product Preview Search control summoned and focused the
   same surface. `/docs/keyboard` rendered its Windows/Linux input boundary without overflow,
   and both routes produced zero console errors or warnings.
+- after the README/bootstrap release, production `/docs/quickstart` was hard-reloaded after
+  unregistering its Service Worker at 1440x900 and 390x844. The atomic ten-line bootstrap was
+  fully visible with `pre.clientWidth === pre.scrollWidth === 356` on mobile and page
+  `scrollWidth === innerWidth`; the console was clean. `/install.sh` returned
+  `200 application/x-sh`, `Cache-Control: no-store`, SHA-256
+  `35befa57120c83587bf1ff03235ab5eee9fadb4624aea62edfe0b9f2ddfc265d`, and was byte-identical
+  to the reviewed repository source. Its offline dry-run left an isolated HOME empty.
 
 ### Independent review
 
@@ -301,6 +323,14 @@ first-user/UX/mobile reviews. They found and closed anonymous global-key interce
 screen-reader active-selection gaps, over-broad IME and Windows/Linux `Ctrl+N` claims, and
 decorative misuse of the live/focus accent token. Both freeze rereviews rebuilt or exercised
 the public surface and ended at **P0=0, P1=0, P2=0**.
+
+The GitHub README/bootstrap follow-up received separate first-user/visual/docs and
+public-security reviews. They found and closed a dead CLI-doc link, post-bootstrap credential
+restart gap, inaccurate dry-run/skip completion state, streaming `curl | sh`, registry access
+during dry-run, unsafe endpoint/architecture assumptions, narrow-screen command overflow, and
+doctor argv/environment leakage through stdout and optional remote debug logs. Both freeze
+rereviews ended at **P0=0, P1=0, P2=0**; the animated SVG was also checked for external
+resources, scripts, internal hosts, PII, reduced-motion behavior, and narrow GitHub rendering.
 
 ## Release and production state
 
@@ -442,6 +472,16 @@ the public surface and ended at **P0=0, P1=0, P2=0**.
   Preview Search, 390x844 command-palette interaction and accessibility state, Docs boundary
   copy, 16 px input sizing, zero overflow, and clean consoles passed. The atomic Web rollback
   is the preceding `ba6a6a07` deployment in `/opt/happy/webapp.prev`.
+- The GitHub second-landing-page, production Quick start bootstrap, and doctor privacy hardening
+  shipped from `77fcd8ed767a0ae9d263f6964cf57e0526d7774d`. Exact-SHA Quality Gates
+  `32737299751` and Web deploy `32737580364` passed, producing
+  `/assets/index-BY7FNJV3-202608241415.js`. Production health/MIME, source-byte equality,
+  isolated offline dry-run, and service-worker-cleared 1440x900/390x844 Docs acceptance passed.
+  `very-happy-cli@0.2.62` was published by run `32737836210`; tag smoke `32737835940`
+  passed on Linux and mac-office Node 20/24, and an independent registry install verified both
+  runtime version and doctor argv hiding. `vh-update` moved the mac-office daemon from 0.2.61
+  to **0.2.62** (PID 56230) with the production relay, Web UI, and Claude credential source
+  intact. Web rollback is `6706fc8e` via `/opt/happy/webapp.prev`; CLI rollback is `0.2.61`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
