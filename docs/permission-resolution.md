@@ -1,100 +1,77 @@
-# Permission Resolution (State-Based)
+# Permission resolution
 
-This document explains how permission mode is resolved for session messages, depending on current state in the app and CLI.
+This document describes the production Web V2 client and current CLI. The
+legacy Expo app under `packages/happy-app` is not a supported public client.
 
-## Scope
-- App-side state resolution (session defaults, persisted values, outbound message metadata)
-- Claude CLI resolution (startup mode, per-message updates, sandbox policy)
-- Final mode sent to Claude SDK
+## Safety baseline
 
-## Permission Modes
-- Shared mode type: `default | acceptEdits | bypassPermissions | plan | read-only | safe-yolo | yolo`
-- Claude SDK supports: `default | acceptEdits | bypassPermissions | plan`
-- Mapping to Claude happens in `packages/happy-cli/src/claude/utils/permissionMode.ts`:
-  - `yolo -> bypassPermissions`
-  - `safe-yolo -> default`
-  - `read-only -> default`
+A genuinely fresh Web device starts new sessions in **Review Changes First**
+mode. Claude starts in `plan`; Codex starts `read-only`; Gemini uses `plan`;
+OpenClaw keeps its adapter default. The preference is device-local and visible
+under **Settings → Agents → New sessions**.
 
-## App-Side Resolution
+Devices that already had Very Happy local settings before this safer default
+retain their historical auto-apply behavior. This protects existing workflows
+without silently granting the same authority to a new public user. Review the
+toggle on every browser/device you use.
 
-### 1) Session state load/merge
-`packages/happy-app/sources/sync/storage.ts`
+Direct CLI invocation with no explicit permission option uses `default`, never
+`yolo`/`bypassPermissions`. Full auto-apply remains an explicit choice through
+`--yolo`, `--permission-mode`, or Settings → Agents.
 
-When sessions are merged, the app resolves `session.permissionMode` using this order:
-1. Existing in-memory session mode (if non-`default`)
-2. Persisted per-session mode from local storage (if non-`default`)
-3. Mode from server session payload (if non-`default`)
-4. Sandbox fallback:
-   - If `session.metadata.sandbox.enabled === true`: `bypassPermissions`
-   - Otherwise: `default`
+## Modes
 
-### 2) New-session draft fallback
-`packages/happy-app/sources/sync/persistence.ts`
+The shared wire type is:
 
-If draft permission mode is missing:
-- Draft default: `default`
+`default | acceptEdits | bypassPermissions | plan | read-only | safe-yolo | yolo`
 
-### 3) New session UI defaults
-`packages/happy-app/sources/app/(app)/new/index.tsx`
-`packages/happy-app/sources/components/NewSessionWizard.tsx`
+Agents do not implement identical policies:
 
-Default selection:
-- `default`
+- Claude SDK: `default`, `acceptEdits`, `bypassPermissions`, `plan`. Cross-agent
+  values map in `happy-cli/src/claude/utils/permissionMode.ts`.
+- Codex: maps the selection to its approval policy and filesystem sandbox;
+  `read-only` is the strict review-first choice and `yolo` is unrestricted.
+- ACP/OpenClaw: enforce only the modes supported by their adapter/provider.
 
-If selected mode is invalid for the currently selected agent, UI resets to agent default above.
+Do not infer a stronger sandbox than the selected agent actually provides.
 
-### 4) Outbound message mode
-`packages/happy-app/sources/sync/sync.ts`
+## New Web session
 
-On send:
-- If `session.permissionMode` is non-`default`, send it.
-- Otherwise:
-  - If `session.metadata.sandbox.enabled === true`: send `bypassPermissions`
-  - Else send `default`
+The production entry points—quick create, the New Session dialog, and machine
+detail—resolve the initial mode in this order:
 
-This value is sent in:
-- encrypted message `meta.permissionMode`
-- socket envelope `permissionMode`
+1. If the device's **Review Changes First** toggle is on, use the agent-specific
+   review-first mode.
+2. Otherwise use the explicit per-agent override from **Settings → Agents**.
+3. Otherwise use the established code default (`bypassPermissions` for Claude,
+   `yolo` for Codex, adapter default for the others). This third branch is for
+   devices that explicitly kept historical auto-apply behavior.
 
-## Claude CLI Resolution
+The chosen value is sent in the authenticated `spawn-happy-session` RPC. The
+daemon allowlists it before adding `--permission-mode` to the child process.
 
-### 1) Startup resolution
-`packages/happy-cli/src/claude/runClaude.ts`
-`packages/happy-cli/src/claude/utils/permissionMode.ts`
+## During a session
 
-Initial mode comes from:
-1. `--dangerously-skip-permissions` (highest priority) -> `bypassPermissions`
-2. `--permission-mode VALUE` or `--permission-mode=VALUE`
-3. Provided `options.permissionMode`
+The session input's permission selector updates the per-session mode. Outbound
+messages prefer that per-session value, then an explicit per-agent override.
+The CLI validates incoming mode values before applying them. A crafted unknown
+mode cannot widen access.
 
-Then sandbox policy is applied:
-- If sandbox enabled: force `bypassPermissions`
-- If sandbox disabled: keep resolved mode
+## Managed sandbox exception
 
-### 2) Per-message updates in remote flow
-`packages/happy-cli/src/claude/runClaude.ts`
+When the daemon's separately configured Very Happy sandbox owns isolation, the
+Claude launcher may use bypass permissions *inside that sandbox* so Claude's own
+approval loop does not fight the outer policy. Disabling the outer sandbox
+removes that justification; it does not turn bypass into a safe mode.
 
-When a user message includes `meta.permissionMode`:
-- If sandbox enabled: forced to `bypassPermissions`
-- If sandbox disabled: use incoming mode
+## Operator/user checklist
 
-### 3) Local Claude process
-`packages/happy-cli/src/claude/claudeLocal.ts`
-
-If sandbox is enabled, launcher appends `--dangerously-skip-permissions` before spawn.
-
-## Effective Result Matrix
-
-### Sandbox enabled
-- App fallback mode is `bypassPermissions` when session mode is default/missing
-- Claude CLI sandbox policy still forces `bypassPermissions` in remote flow
-
-### Sandbox disabled
-- If app/session mode is non-`default`: that mode is used
-- If app/session mode is `default` or missing:
-  - App sends `default`
-  - CLI uses normal mode resolution (no sandbox forcing)
-
-## Why this is stable now
-- Client fallback only forces skip-permissions for sandboxed sessions.
-- CLI sandbox policy guarantees sandboxed Claude sessions cannot re-enable permission prompts via message metadata.
+- New users: leave **Review Changes First** enabled until the machine and relay
+  trust boundary are understood.
+- Existing users: inspect the toggle because legacy devices intentionally keep
+  their prior behavior.
+- Treat `yolo`, `bypassPermissions`, `--dangerously-skip-permissions`, and a
+  daemon-managed unrestricted sandbox as remote code execution under the daemon
+  OS user.
+- Machine approval authenticates the machine; it does not approve every future
+  command. Permission mode is the separate execution-policy control.

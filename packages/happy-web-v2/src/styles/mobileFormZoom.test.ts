@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const baseCss = readFileSync(fileURLToPath(new URL('./base.css', import.meta.url)), 'utf8');
 
-function coarsePointerBlock(css: string): string {
-  const start = css.indexOf('@media (pointer: coarse)');
+function mobileEditableBlock(css: string): string {
+  const start = css.indexOf('@media (pointer: coarse), (max-width: 860px)');
   expect(start).toBeGreaterThanOrEqual(0);
 
   // This first coarse-pointer block is intentionally small and contains one
@@ -17,7 +17,11 @@ function coarsePointerBlock(css: string): string {
 }
 
 describe('mobile Safari editable font floor', () => {
-  const rule = coarsePointerBlock(baseCss);
+  const rule = mobileEditableBlock(baseCss);
+
+  it('also covers phone-width viewports when pointer reporting is not coarse', () => {
+    expect(rule).toContain('@media (pointer: coarse), (max-width: 860px)');
+  });
 
   it('covers every focusable text-editing surface with a 16px token', () => {
     expect(rule).toContain(':is(#root, body) :where(');

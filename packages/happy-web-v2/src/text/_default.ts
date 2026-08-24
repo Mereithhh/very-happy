@@ -848,7 +848,7 @@ export const en = {
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionNeedsHappyAgent: 'Historical-session resume is not enabled in this public build. Start a new session from the original directory.',
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
@@ -906,7 +906,16 @@ export const en = {
         advancedTitle: 'New chat (choose options)…',
         chatSubtitle: 'Let Claude or Codex start working on a machine',
         terminalTitle: 'Web terminal',
-        terminalSubtitle: 'Open a terminal (tmux) on a connected machine',
+        terminalSubtitle: 'Open a terminal on a connected machine',
+        bundledStructured: 'bundled',
+        notInstalled: 'not installed',
+        bundledClaudeHelp: 'Structured Claude is bundled with Very Happy; the separate claude CLI is only needed for native terminal use.',
+        claudeCredentialHelp: 'Run Doctor or open credential setup before the first session.',
+        agentUnavailableTitle: ({ agent }: { agent: string }) => `${agent} is not available on this machine`,
+        agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `To use ${agent}, run \`${command}\` on the daemon machine, then restart the daemon — or choose Claude.`,
+        openClawSetupHelp: 'To use OpenClaw, configure its local gateway or OPENCLAW_GATEWAY_URL and token/password for the daemon user, then restart the daemon. See Docs → Configuration.',
+        offlineMachine: 'Offline',
+        offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
         // B-144: same terminal, but the working directory is chosen first.
         terminalAtTitle: 'Web terminal in a directory…',
     },
@@ -933,15 +942,15 @@ export const en = {
         title: 'Connect a computer to get started',
         intro: 'very happy runs the coding agent on your computer and lets this Web UI control it through your account.',
         installTitle: 'Install the CLI',
-        installDescription: 'Requires Node.js 20 or newer.',
+        installDescription: 'Requires Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+. Structured Claude uses the bundled Agent SDK plus your provider credentials; other agent and native terminal paths need their local command. tmux is recommended for reconnectable Web terminals.',
         linkTitle: 'Link this account',
-        linkDescription: 'Run the command, then open its approval link to approve this machine. The CLI also tries to open it for you.',
+        linkDescription: 'Run the command, then open its approval link to approve this machine; the CLI also tries to open it. On self-hosted pages, the copied command includes an isolated home plus this relay and approval UI.',
         daemonTitle: 'Start the machine daemon',
         daemonDescription: 'This starts in the background. When the machine connects, this page moves to the workspace; choose New session there.',
         trustNote: 'This connection uses a server-trusted model. The server operator can access relayed session data; use a relay you trust for sensitive work.',
         readQuickStart: 'Read the getting started guide',
         recoveryTitle: 'Machine not appearing?',
-        recoverySameServer: 'Confirm the browser and CLI use the same server URL, then reload this page.',
+        recoverySameServer: 'Copy the commands from this page so auth and the daemon use this exact relay, then reload.',
         recoveryDaemon: 'Run very-happy daemon status; start it with very-happy daemon start if it is offline.',
         recoveryApproval: 'If the approval link expired, run very-happy auth login again and approve the new link.',
         troubleshooting: 'Open troubleshooting',
@@ -1322,7 +1331,7 @@ export const en = {
         tapToDisconnect: 'Tap to disconnect',
         server: 'Server',
         backup: 'Backup',
-        backupDescription: 'Your secret key is the only way to recover your account. Save it in a secure place like a password manager.',
+        backupDescription: 'Back up your secret key to recover without relying on the relay. This fork is server-trusted: the relay operator can recover it, and password or linked Google sign-in can return it. Store it in a password manager.',
         secretKey: 'Secret Key',
         tapToReveal: 'Tap to reveal',
         tapToHide: 'Tap to hide',
@@ -1375,11 +1384,9 @@ export const en = {
     },
 
     terminal: {
-        // Closing a web terminal ends its tmux session on the machine.
-        // Deliberately neutral wording (B-083 archive-only): the claude
-        // conversation inside survives on the machine (`claude --resume`).
+        // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
-        closeMessage: 'This ends the tmux session on the machine. The Claude conversation inside is saved on the machine — continue it in a new terminal with claude --resume.',
+        closeMessage: 'This ends the terminal process on the machine. Unsaved terminal work is lost; whether an agent conversation can resume depends on that agent.',
         // Used by terminal connection screens
         webBrowserRequired: 'Web Browser Required',
         webBrowserRequiredDescription: 'Terminal connection links can only be opened in a web browser for security reasons. Please use the QR code scanner or open this link on a computer.',
@@ -1559,7 +1566,7 @@ export const en = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'Set a password to sign in on new devices without scanning a QR code. Your password never leaves this device — it only encrypts your account key.',
+        intro: 'Set a password to sign in on new devices. The trusted relay receives it over TLS, stores only a salted scrypt verifier, and can return your server-held account secret after a successful login.',
         passwordLabel: 'New password',
         passwordPlaceholder: 'At least 8 characters',
         confirmLabel: 'Confirm password',
@@ -1570,6 +1577,7 @@ export const en = {
         errorMismatch: 'Passwords do not match.',
         errorNotAuthenticated: 'You must be signed in to set a password.',
         errorSaveFailed: 'Could not save your password. Please try again.',
+        errorReauthRequired: 'For your security, sign out and sign in again before changing login credentials.',
     },
 
     review: {
@@ -1942,7 +1950,7 @@ export const en = {
         mcpTitle: 'Clipboard tool (MCP)',
         mcpIntro: 'Give a plain claude CLI — for example one running inside a Happy web terminal — a copy_to_clipboard tool that pushes text to the clipboard of every web client you have open. Register it once per machine:',
         imTitle: 'IM adapter pattern',
-        imIntro: 'Any chat app can become a remote control for Happy. Every webhook notification ends with a fixed, machine-parseable last line — "session: <id>" — that survives text-only relays. An adapter (our Tanka integration is the reference) forwards notifications into a group chat, listens to its own IM, and when you quote-reply to a notification it extracts the session id from that line and pipes your reply back with "very-happy send". Fresh tasks are started from chat via "very-happy spawn".',
+        imIntro: 'Any chat app can become a remote control for Happy. Every webhook notification ends with a fixed, machine-parseable last line — "session: <id>" — that survives text-only relays. Your adapter forwards notifications into a group chat, applies sender and room allowlists, and when you quote-reply to a notification it extracts the session id from that line and pipes your reply back with "very-happy send". Fresh tasks are started from chat via "very-happy spawn".',
         imDocs: 'Full documentation',
         imDocsSubtitle: 'docs/channels.md — webhook contract, CLI reference, adapter example',
     },

@@ -85,7 +85,7 @@ export interface TodoGroup {
 
 /**
  * 分组维度。两种是**正交的看法**，都要：
- *  - 'group'    —— provider 给什么就按什么分（我这边是滴答项目 / Tanka 的 digest 分桶）
+ *  - 'group'    —— provider 给什么就按什么分（例如项目或 digest 分桶）
  *  - 'priority' —— 按优先级分桶。这就是「四象限」：滴答自己的四象限本质上也**只是
  *    按优先级分桶**（dida.py 的 cmd_quad：{5,3,1,0} 四档，API 没有象限端点）。
  *    这里用通用的 high/medium/low/none 而不是艾森豪威尔那套命名——命名是滴答 app 的

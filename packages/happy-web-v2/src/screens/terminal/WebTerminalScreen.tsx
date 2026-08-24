@@ -247,6 +247,7 @@ export function WebTerminalScreen() {
   const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [hasTmuxSession, setHasTmuxSession] = useState(false);
   // File browser drawer (fs-list / fs-read RPCs). Desktop (fine pointer,
   // >860px): an inline SPLIT — the terminal yields width instead of being
   // covered (B-088; the old always-overlay is kept on touch/narrow where the
@@ -402,6 +403,8 @@ export function WebTerminalScreen() {
 
   useEffect(() => {
     if (!machineId || !hostRef.current || !innerRef.current) return;
+    setHasTmuxSession(false);
+    setShowHelp(false);
     ensureImeFix();
     const mount = innerRef.current;
 
@@ -1181,6 +1184,7 @@ export function WebTerminalScreen() {
           if (remountRequested) return;
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
+          setHasTmuxSession(tmuxAttached);
           // Restore runs INSIDE this outChain slot: live chunks that arrived
           // during the RPC queued their writes after it, and their seqs were
           // accepted after seqAtCall so the snapshot baseline keeps them.
@@ -1350,6 +1354,7 @@ export function WebTerminalScreen() {
       terminalId = res.terminalId;
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;
+      setHasTmuxSession(tmuxAttached);
       // Latch the channel for this mount (see mountStreamMode / streamRemount).
       // Absent streamMode = old daemon = the v1 attach path, fully preserved.
       mountStreamMode = res.streamMode ?? 'attach';
@@ -2084,13 +2089,13 @@ export function WebTerminalScreen() {
           >
             <FolderOpen size={18} />
           </button>
-          <button
+          {hasTmuxSession && <button
             className="sb-icon-btn"
             title={t('tmuxHelp.title')}
             onClick={() => setShowHelp(true)}
           >
             <HelpCircle size={18} />
-          </button>
+          </button>}
         </div>
       </header>
       {/* term-mid: desktop (fine pointer, wide) = flex ROW so the file browser
@@ -2220,7 +2225,7 @@ export function WebTerminalScreen() {
           )}
         </div>
       )}
-      {showHelp && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
+      {showHelp && hasTmuxSession && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

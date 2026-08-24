@@ -286,9 +286,9 @@ export async function ensureMachineEncryption(machineId: string, timeoutMs = 120
 }
 
 /**
- * Encrypt/decrypt the terminal byte stream with the per-machine key, so the
- * relay can't read keystrokes/output or inject commands (the control RPC is
- * already E2E-encrypted; this closes the same gap for the live stream).
+ * Encrypt/decrypt the terminal byte stream with the per-machine key. This makes
+ * bytes opaque to passive storage/forwarding, but does not exclude the trusted
+ * relay operator, who can recover account material or impersonate Web access.
  * `data` is a base64 string of raw bytes; the ciphertext is itself base64.
  */
 export async function encryptTerminalData(machineId: string, dataB64: string): Promise<string | null> {

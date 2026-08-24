@@ -1,103 +1,90 @@
-# Privacy Policy for Happy Coder
+# Very Happy Privacy Notice
 
-**Last Updated: January 2025**
+**Last updated: August 24, 2026**
 
-## Overview
+This notice describes the maintainer-operated service at
+`https://happy.mereith.com`. A self-hosted operator controls their own deployment
+and must provide a notice appropriate to their use.
 
-Happy Coder is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
+## Trust model
 
-## What We Collect
+Very Happy uses a **server-trusted architecture**. It is not end-to-end
+encrypted, zero-knowledge, or a blind relay. Although the product uses TLS,
+encrypted wire envelopes, password hashing, and encryption at rest for selected
+records, the server can recover account secrets, issue login tokens, access
+relayed session content and files, and send requests to capabilities exposed by
+an online daemon. A server operator—or an attacker controlling the server,
+database and master secret, deployment environment, or backups—must therefore be
+inside your trust boundary.
 
-### Encrypted Data
-- **Messages and Code**: All your Claude Code conversations and code snippets are end-to-end encrypted on your device before transmission. We store this encrypted data but have no ability to decrypt or read it.
-- **Encryption Keys**: When you pair devices, encryption keys are transmitted between your devices in encrypted form. We cannot access or decrypt these keys.
+Do not connect a machine or send content that you are unwilling to expose to the
+operator of the chosen relay. Self-hosting changes who operates this boundary;
+it does not make the design end-to-end encrypted.
 
-### Metadata (Not Encrypted)
-- **Message IDs**: Unique identifiers for message ordering and synchronization
-- **Timestamps**: When messages were created and synced
-- **Device IDs**: Anonymous identifiers for device pairing
-- **Session IDs**: Identifiers for your Claude Code terminal sessions
-- **Push Notification Tokens**: Device tokens for sending push notifications via Expo's push notification service
+## Data handled
 
-### Analytics (PostHog)
-- **Anonymous Events**: We collect basic app usage events through PostHog to improve the app experience
-- **Privacy by Design**: All analytics events use an anonymized ID derived from a secret key - we cannot match this back to any user or account
-- **No Content Tracking**: We only track basic app usage events, never any message content, code, or personal information
-- **Opt-Out Available**: You can disable analytics collection at any time in the app settings
+Depending on the features you use, the service may process or store:
 
-### Subscription Management (Revenue Cat)
-- **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
-- **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
-- **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match Revenue Cat data with PostHog analytics
+- account username, password verifier, and login-session records;
+- Google subject identifier, email address, name, and profile image when Google
+  sign-in is used;
+- machine and session identifiers, metadata, messages, terminal streams,
+  artifacts, uploaded files, task-board data, and notification state;
+- pairing requests, daemon connectivity, IP address, user agent, timestamps,
+  rate-limit state, and operational logs or metrics;
+- push subscription details, webhook destinations, OAuth configuration, or
+  connected-provider tokens when those optional features are enabled.
 
-## What We Don't Collect
-- Your actual code or conversation content (we can't decrypt it)
-- Personal information beyond what you voluntarily include in encrypted messages
-- Device information beyond anonymous IDs
-- Location data
+Provider credentials normally remain in the provider's local configuration on
+the daemon machine. Optional connection features may store provider tokens on
+the relay; consult the configuration before enabling them.
 
-## How We Use Data
+## Why data is used
 
-### Encrypted Data
-- Stored on our servers solely for synchronization between your devices
-- Transmitted to your paired devices when requested
-- Retained until you delete it through the app
+Data is used to authenticate accounts, pair machines, route browser/daemon
+traffic, synchronize sessions and files, enforce signup and abuse limits,
+deliver enabled integrations, diagnose failures, and protect the service.
+Public Cloud capacity is limited and offered without an uptime SLA.
 
-### Metadata
-- Message IDs and timestamps are used to maintain proper message ordering
-- Device IDs enable secure pairing between your devices
-- Session IDs track your Claude Code terminal sessions for synchronization
-- Push notification tokens are stored to enable notifications through Expo's service
+## Sharing and subprocessors
 
-### Push Notifications
-Push notifications are sent directly from your devices to each other, not from our backend. This means:
-- We never see the content of your notifications
-- Notification content is generated on your device
-- Only device-to-device communication occurs for notification content
-- We use Expo's push notification service solely as a delivery mechanism
+Data is sent to infrastructure and providers needed for features you choose,
+such as the hosting platform, Google sign-in, an AI provider, push delivery, or
+an explicitly configured webhook. We do not claim that notification or webhook
+content is device-to-device only. Do not configure destinations you do not
+trust. Legal process, security response, or protection of users and the service
+may also require disclosure.
 
-## Data Security
+## Retention and deletion
 
-- **End-to-End Encryption**: Using TweetNaCl (same as Signal) for all sensitive data
-- **Zero-Knowledge**: We cannot decrypt your data even if compelled
-- **Secure Key Exchange**: Encryption keys are transmitted between your devices only in encrypted form that we cannot access
-- **Open Source**: Our encryption implementation is publicly auditable
-- **No Backdoors**: The architecture makes it impossible for us to access your content
+Operational records are retained as needed to run, secure, back up, and recover
+the service. Deleting an account or record from the live database may not remove
+it immediately from logs or backups. The project does not promise a fixed
+deletion deadline unless the operator publishes one separately. Self-hosted
+operators define and implement their own retention and backup policy.
 
-## Data Retention
+## Security and your choices
 
-- Encrypted messages are retained indefinitely until you delete them
-- Metadata is retained for system functionality
-- Deleted data is permanently removed from our servers within 30 days
+- Use HTTPS and approve only pairing requests you initiated.
+- Treat relay administration, account tokens, pairing links, the server master
+  secret, and the daemon OS user as high-impact access.
+- Use a separate CLI home for each relay and remove access from machines you no
+  longer trust.
+- Prefer self-hosting for sensitive work and restrict the daemon user's local
+  permissions.
 
-## Your Rights
+You may stop using the service, delete data through available product controls,
+or contact the operator about access or deletion requests. Some requests may
+require identity verification and may be limited by legal or operational
+obligations.
 
-You have the right to:
-- Delete all your data through the app
-- Export your encrypted data
-- Audit our open-source code
-- Use the app without providing any personal information
+## Changes and contact
 
-## Data Sharing
+This notice may change as the product and deployment change. Material changes
+will be reflected by the date above. For privacy questions or security reports,
+use the repository's [issue tracker](https://github.com/Mereithhh/very-happy/issues)
+and [security](SECURITY.md) channels;
+do not include secrets or private session content in a public issue.
 
-We do not share your data with anyone. Period.
-
-## Changes to This Policy
-
-We will notify users of any material changes to this privacy policy through the app. Continued use of the service after changes constitutes acceptance.
-
-## Contact
-
-For privacy concerns or questions:
-- GitHub Issues: https://github.com/slopus/happy/issues
-
-## Compliance
-
-Happy Coder is designed with privacy by default and complies with:
-- GDPR (General Data Protection Regulation)
-- CCPA (California Consumer Privacy Act)
-- Privacy by Design principles
-
----
-
-**Remember**: Your encryption keys are only shared between your own devices in encrypted form. We cannot read your code or conversations even if we wanted to.
+The concise product-specific security model is documented in
+[`docs/security.md`](docs/security.md).

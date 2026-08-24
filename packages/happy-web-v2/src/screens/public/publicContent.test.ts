@@ -22,13 +22,30 @@ describe('public documentation registry', () => {
     expect(text).toContain('OpenClaw uses its own local gateway protocol, not ACP');
     expect(text).toContain('very-happy install-terminal-hooks --remove');
     expect(text).toContain('~/.claude/settings.json');
-    expect(text).toContain('4. Start the machine daemon');
+    expect(text).toContain('3. Configure Claude credentials');
+    expect(text).toContain('6. Start the machine daemon');
+    expect(text).toContain('ANTHROPIC_API_KEY');
+    expect(text).toContain('credential source captured at daemon startup');
     expect(text).toContain('This starts a detached background process');
+    expect(text).toContain('Required: Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm');
+    expect(text).toContain('very-happy doctor');
+    expect(text).toContain('upstream-owned happy-server-self-host');
+    expect(text).toContain('Provider credentials stay agent-local by default');
+    expect(text).toContain('very-happy connect');
     expect(text).toContain("Upstream Happy's core Claude flow");
     expect(text).toContain('tmux keeps the real TTY/TUI alive');
     expect(text).toContain('This mirror is Claude-specific');
     expect(text).toContain('tmux 3.2 or newer');
     expect(text).toContain('non-persistent direct-shell fallback');
+  });
+
+  it('documents the exact tmux and endpoint degradation boundaries', () => {
+    const text = JSON.stringify(PUBLIC_DOCS);
+    expect(text).toContain('Without it, terminals use a non-durable direct shell');
+    expect(text).toContain('HAPPY_SERVER_URL selects the API and socket relay');
+    expect(text).toContain('HAPPY_WEBAPP_URL selects the browser origin');
+    expect(text).toContain('The daemon inherits its environment at startup');
+    expect(text).toContain('Use a separate HAPPY_HOME_DIR for each relay');
   });
 
   it('resolves known slugs and rejects unknown routes', () => {
@@ -50,8 +67,11 @@ describe('public documentation registry', () => {
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
-    expect(landing).toContain('From zero to a live agent in five steps.');
+    expect(landing).toContain('From zero to a live agent in six steps.');
+    expect(landing).toContain('<h3>Configure the agent</h3>');
     expect(landing).toContain('<h3>Start the daemon</h3>');
+    expect(landing).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
+    expect(landing).toContain('tmux is recommended for durable terminals');
     expect(landing).toContain('STRUCTURED WHEN YOU WANT IT.');
     expect(landing).toContain('THE REAL TUI WHEN YOU NEED IT.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
@@ -140,9 +160,11 @@ describe('public documentation registry', () => {
     expect(styles).toContain('@keyframes pub-stage-packet');
     expect(landing).toContain('onPointerMove={tiltStage}');
     expect(landing).toContain('pub-stage-node--office');
-    expect(landing).toContain('HW-SG');
-    expect(landing).toContain('MAC-OFFICE');
-    expect(landing).toContain('BUILD-02');
+    expect(landing).toContain('EDGE-RELAY');
+    expect(landing).toContain('STUDIO-MAC');
+    expect(landing).toContain('BUILD-NODE');
+    expect(landing).not.toContain('HW-SG');
+    expect(landing).not.toContain('MAC-OFFICE');
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).toMatch(/\.pub-hero-product::before[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-page::after[^}]*animation: none/);
@@ -212,7 +234,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
     expect(styles).toContain('@container product-preview (max-width: 480px)');
     expect(publicStyles).toMatch(/\.pub-flow code \{[^}]*white-space: pre-line/);
-    expect(landing).toContain("{'very-happy\\nvery-happy codex'}");
+    expect(landing).toContain("{'Web → New session\\nchoose machine + agent'}");
     expect(landing).not.toContain('One thread. Three ways');
   });
 

@@ -670,7 +670,7 @@ export const pl: PartialTranslationStructure = {
         tapToDisconnect: 'Dotknij, aby rozłączyć',
         server: 'Serwer',
         backup: 'Kopia zapasowa',
-        backupDescription: 'Twój klucz tajny to jedyny sposób na odzyskanie konta. Zapisz go w bezpiecznym miejscu, takim jak menedżer haseł.',
+        backupDescription: 'Zapisz kopię klucza tajnego, aby odzyskać konto bez polegania na serwerze pośredniczącym. Ten fork ufa serwerowi: operator może odzyskać klucz, a logowanie hasłem lub przez połączone konto Google również może go zwrócić. Przechowuj go w menedżerze haseł.',
         secretKey: 'Klucz tajny',
         tapToReveal: 'Dotknij, aby pokazać',
         tapToHide: 'Dotknij, aby ukryć',
@@ -804,7 +804,7 @@ export const pl: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'Ustaw hasło, aby logować się na nowych urządzeniach bez skanowania kodu QR. Twoje hasło nigdy nie opuszcza tego urządzenia — służy jedynie do zaszyfrowania klucza Twojego konta.',
+        intro: 'Ustaw hasło, aby logować się na nowych urządzeniach. Zaufany serwer pośredniczący odbiera je przez TLS, przechowuje tylko solony weryfikator scrypt i po udanym logowaniu zwraca przechowywany na serwerze klucz konta.',
         passwordLabel: 'Nowe hasło',
         passwordPlaceholder: 'Co najmniej 8 znaków',
         confirmLabel: 'Potwierdź hasło',
@@ -815,6 +815,7 @@ export const pl: PartialTranslationStructure = {
         errorMismatch: 'Hasła nie są zgodne.',
         errorNotAuthenticated: 'Aby ustawić hasło, musisz być zalogowany.',
         errorSaveFailed: 'Nie można zapisać hasła. Spróbuj ponownie.',
+        errorReauthRequired: 'Dla bezpieczeństwa wyloguj się i zaloguj ponownie przed zmianą danych logowania.',
     },
 
     review: {

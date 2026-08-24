@@ -650,7 +650,7 @@ export const ca: PartialTranslationStructure = {
         tapToDisconnect: 'Toca per desconnectar',
         server: 'Servidor',
         backup: 'Còpia de seguretat',
-        backupDescription: 'La teva clau secreta és l\'única manera de recuperar el teu compte. Desa-la en un lloc segur com un gestor de contrasenyes.',
+        backupDescription: 'Fes una còpia de la clau secreta per recuperar el compte sense dependre del servidor. Aquesta versió confia en el servidor: l\'operador pot recuperar-la, i l\'inici de sessió amb contrasenya o un compte de Google enllaçat també la pot retornar. Desa-la en un gestor de contrasenyes.',
         secretKey: 'Clau secreta',
         tapToReveal: 'Toca per revelar',
         tapToHide: 'Toca per ocultar',
@@ -784,7 +784,7 @@ export const ca: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'Estableix una contrasenya per iniciar sessió en dispositius nous sense escanejar un codi QR. La teva contrasenya mai no surt d\'aquest dispositiu: només xifra la clau del teu compte.',
+        intro: 'Estableix una contrasenya per iniciar sessió en dispositius nous. El relay de confiança la rep mitjançant TLS, només desa un verificador scrypt amb sal i retorna la clau del compte guardada al servidor després d\'un accés correcte.',
         passwordLabel: 'Contrasenya nova',
         passwordPlaceholder: 'Com a mínim 8 caràcters',
         confirmLabel: 'Confirma la contrasenya',
@@ -795,6 +795,7 @@ export const ca: PartialTranslationStructure = {
         errorMismatch: 'Les contrasenyes no coincideixen.',
         errorNotAuthenticated: 'Has d\'haver iniciat sessió per establir una contrasenya.',
         errorSaveFailed: 'No s\'ha pogut desar la teva contrasenya. Torna-ho a provar.',
+        errorReauthRequired: 'Per seguretat, tanca la sessió i torna a iniciar-la abans de canviar les credencials.',
     },
 
     review: {

@@ -1,5 +1,9 @@
 # Happy Coder Content Creator Brief
 
+> **Archived upstream material — do not reuse for Very Happy.** The current
+> product is Web-first and server-trusted, not end-to-end encrypted. See the root
+> README and `docs/security.md` for accurate public claims.
+
 ## Key Features
 
 Happy Coder is an open-source mobile app that lets developers control AI coding agents (Claude Code, Codex, Gemini-CLI) from their phone.

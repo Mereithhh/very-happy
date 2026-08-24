@@ -13,7 +13,10 @@ impact first, and provide evidence proportionate to risk.
 
 ## Set up
 
-Prerequisites: Git, Node.js 20+, and pnpm 10.11.0.
+Prerequisites: Git, Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+,
+and pnpm 10.11.0.
+The optional compiled standalone-server build additionally uses Bun 1.2.21;
+normal development, tests, and the Docker self-host path do not require Bun.
 
 ```bash
 git clone https://github.com/Mereithhh/very-happy.git
@@ -47,6 +50,8 @@ HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs --version
 
 pnpm -C packages/happy-server exec tsc --noEmit
 pnpm -C packages/happy-server exec vitest run
+node scripts/ci/check-public-pr-isolation.mjs
+node scripts/ci/check-trust-model.mjs
 ```
 
 Build `happy-wire` first on a clean checkout. Repository tools run with

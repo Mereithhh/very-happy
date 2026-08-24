@@ -5,6 +5,22 @@ export function isMachineOnline(machine: Machine): boolean {
     return machine.active;
 }
 
+export type TerminalMachineState = {
+    available: boolean;
+    status: 'connected' | 'offline';
+    needsDaemonStart: boolean;
+};
+
+/** Presentation/interaction state for a machine in the terminal picker. */
+export function terminalMachineState(machine: Machine): TerminalMachineState {
+    const available = isMachineOnline(machine);
+    return {
+        available,
+        status: available ? 'connected' : 'offline',
+        needsDaemonStart: !available,
+    };
+}
+
 /** Display label for a machine, mirroring the terminal picker's rendering. */
 export function machineLabel(machine: Machine): string {
     return machine.metadata?.displayName || machine.metadata?.host || machine.id.slice(0, 8);

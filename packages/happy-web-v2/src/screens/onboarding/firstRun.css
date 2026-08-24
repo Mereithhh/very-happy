@@ -54,9 +54,11 @@
   border-radius: var(--r-sm);
   background: var(--bg-0);
 }
-.fr-command code { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-12); }
+.fr-command code { min-width: 0; white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-12); }
 .fr-command button { width: 44px; height: 44px; flex: none; display: grid; place-items: center; color: var(--text-dim); }
 .fr-command button:hover { color: var(--text); }
+.fr-command-set { display: grid; gap: var(--sp-2); }
+.fr-command-set > span { color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-10); letter-spacing: .08em; text-transform: uppercase; }
 .fr-note {
   max-width: 720px;
   padding-left: var(--sp-3);

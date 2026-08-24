@@ -1,5 +1,10 @@
 # App Store & Google Play Store Information
 
+> **Archived upstream material — do not publish.** Very Happy ships the Web V2
+> client, not this mobile app. The E2E and zero-knowledge claims below describe
+> upstream historical marketing and are false for Very Happy's server-trusted
+> deployment.
+
 ## App Name
 Happy Coder
 

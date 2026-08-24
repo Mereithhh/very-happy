@@ -83,15 +83,33 @@ devices or interfaces.
 
 ## Quick start
 
-Prerequisites: Node.js 20 or newer and the CLI for each agent you plan to run.
-Claude Code is the default mode and is also required for the coordinating
-meta-agent. Install `tmux` for durable Web terminals; version 3.2 or newer is
-required for the optional Claude terminal mirror. Windows or other environments
-without `tmux` use a non-persistent direct-shell fallback. Voice additionally
-requires a configured compatible voice service.
+| On the machine | Required? | Why |
+|---|---:|---|
+| Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm | Yes | Runs the CLI and daemon |
+| Agent provider/runtime | For that agent path | Structured Claude uses the bundled Agent SDK plus provider credentials; native Claude terminals and other adapters need their local command or gateway |
+| `tmux` | Recommended | Keeps real Web terminals alive across browser disconnects; without it, terminals are non-persistent direct shells |
+| `tmux` 3.2+ | For the optional Claude mirror | Adds create-time environment markers used by terminal → structured conversation handoff |
+
+Provider credentials stay local by default. The optional `very-happy connect`
+flow explicitly uploads the selected OpenAI, Anthropic, or Gemini OAuth
+credential to the trusted relay; it is not an end-to-end encrypted vault and is
+currently used primarily by the Gemini path.
+
+For the first structured Claude session, set `ANTHROPIC_API_KEY` or a supported
+Bedrock, Vertex AI, or Foundry configuration in the environment that starts the
+daemon. `very-happy doctor` reports only the detected source category; restart
+the daemon after changing it. The full source and service-manager guide is in
+[Configuration](docs/configuration.md#claude-credentials-for-structured-sessions).
+
+The Cloud path needs no relay configuration: the CLI defaults to
+`https://happy.mereith.com`. Claude Code is the default and deepest integration
+and is required for the coordinating meta-agent. Voice additionally requires a
+configured compatible voice service. `ripgrep` and `difftastic` are bundled for
+supported CLI platforms; they do not need a separate install.
 
 ```bash
 npm install -g very-happy-cli
+very-happy doctor
 very-happy auth login
 ```
 
@@ -100,9 +118,15 @@ daemon so the machine remains available in Web:
 
 ```bash
 very-happy daemon start
+```
 
-# Start from a project directory
-very-happy            # Claude Code
+In Web, choose **New session** on the connected machine to start the bundled
+structured Claude path. It needs Claude provider credentials but no standalone
+`claude` executable. Local agent commands are optional and require their own
+installed runtime:
+
+```bash
+very-happy            # local Claude TUI; requires external claude
 very-happy codex      # Codex
 very-happy gemini     # Gemini via the beta ACP backend
 very-happy acp opencode
@@ -132,6 +156,28 @@ The hosted Cloud has a configurable global account capacity and no uptime or
 support SLA. Existing accounts can still sign in when new registrations are
 closed or full. Do not connect a sensitive machine until you accept the hosted
 operator's trust boundary. See [Public Cloud](docs/public-server.md).
+
+For self-hosting, deploy the relay first, then set both client endpoints so the
+API/socket connection and browser approval use the same deployment:
+
+```bash
+export HAPPY_HOME_DIR="$HOME/.very-happy-happy.example.com"
+export HAPPY_SERVER_URL=https://happy.example.com
+export HAPPY_WEBAPP_URL=https://happy.example.com
+very-happy auth login
+very-happy daemon start
+```
+
+Use a separate `HAPPY_HOME_DIR` for each relay. Tokens and machine IDs belong to
+the relay that issued them; this preserves an existing Cloud setup. If you
+intentionally repoint an existing home, run `very-happy auth login --force`.
+
+Self-host using the documented Docker image, explicit signup policy, persistent
+storage, and HTTPS. Do not install the upstream-owned `happy-server-self-host`
+package. The supported public self-host path is the repository's pinned Docker
+build; `very-happy-server` remains a private workspace package until its Prisma
+runtime can be shipped without unsafe transitive production dependencies. See
+[Self-hosting](docs/deployment.md).
 
 ## What ships today
 

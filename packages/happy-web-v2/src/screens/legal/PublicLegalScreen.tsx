@@ -3,6 +3,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import './publicLegal.css';
 
 const UPDATED = 'August 24, 2026';
+const PRIVATE_CONTACT_URL = 'https://github.com/Mereithhh/very-happy/security/advisories/new';
 
 export function PrivacyScreen() {
   return (
@@ -20,9 +21,9 @@ export function PrivacyScreen() {
       <h2>Retention</h2>
       <p>Data is retained while your account or an operational need exists; security logs may be kept for a limited period. The public demo may be reset and data may be deleted without notice.</p>
       <h2>Your choices</h2>
-      <p>You may log out or request account and data deletion by emailing <a href="mailto:cs3cx4g@gmail.com">cs3cx4g@gmail.com</a>. Revoking Google access stops future Google authorization but does not itself log out existing very happy sessions or delete your data.</p>
+      <p>You may log out or request account and data deletion through the repository&apos;s <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>. If it is unavailable, open a public issue asking for a private contact channel and include no account details or session content. Revoking Google access stops future Google authorization but does not itself log out existing very happy sessions or delete your data.</p>
       <h2>Contact</h2>
-      <p>Questions or deletion requests: <a href="mailto:cs3cx4g@gmail.com">cs3cx4g@gmail.com</a>.</p>
+      <p>For privacy questions or deletion requests, use the <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>.</p>
     </LegalPage>
   );
 }
@@ -41,7 +42,7 @@ export function TermsScreen() {
       <h2>Suspension and availability</h2>
       <p>We may limit or suspend access to protect capacity, security, users, or the service. We may discontinue the hosted instance. To the extent permitted by law, the operator is not liable for lost data, interrupted work, or indirect damages arising from use of the demo.</p>
       <h2>Contact</h2>
-      <p>Questions: <a href="mailto:cs3cx4g@gmail.com">cs3cx4g@gmail.com</a>.</p>
+      <p>For questions that require private account details, use the <a href={PRIVATE_CONTACT_URL}>private reporting channel</a>; otherwise use the repository issue tracker.</p>
     </LegalPage>
   );
 }

@@ -64,6 +64,16 @@ export function getReviewFirstPermissionMode(flavor: string | null | undefined):
     return reviewFirstPermissionModes[normalizeAgentKey(flavor)];
 }
 
+export function resolveNewSessionPermissionMode(
+    overrides: AgentDefaultOverrides | null | undefined,
+    flavor: string | null | undefined,
+    reviewFirst: boolean,
+): string {
+    return reviewFirst
+        ? getReviewFirstPermissionMode(flavor)
+        : resolveAgentDefaultConfig(overrides, flavor).permissionMode;
+}
+
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,

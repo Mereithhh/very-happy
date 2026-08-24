@@ -15,7 +15,7 @@ import {
 import { Modal } from '@/modal';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useMachine, useAllSessions } from '@/sync/storage';
+import { useMachine, useAllSessions, useLocalSetting, useSetting } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { sync } from '@/sync/sync';
 import {
@@ -28,6 +28,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { useImeGuard } from '@/utils/ime';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import '@/screens/settings/settings.css';
 
 export function MachineScreen() {
@@ -37,6 +38,10 @@ export function MachineScreen() {
   const toast = useToast();
   const machine = useMachine(id ?? '');
   const allSessions = useAllSessions();
+  const defaultAgent = normalizeAgentKey(useSetting('newSessionAgent'));
+  const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+  const reviewFirst = useLocalSetting('newSessionReviewFirst');
+  const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, defaultAgent, reviewFirst);
 
   const [pathInput, setPathInput] = useState('');
   const ime = useImeGuard();
@@ -98,7 +103,7 @@ export function MachineScreen() {
     setSpawning(true);
     try {
       const directory = resolveAbsolutePath(raw, homeDir);
-      let result = await machineSpawnNewSession({ machineId: machine.id, directory });
+      let result = await machineSpawnNewSession({ machineId: machine.id, directory, agent: defaultAgent, permissionMode });
       if (result.type === 'requestToApproveDirectoryCreation') {
         const ok = await Modal.confirm(result.directory, undefined, {
           confirmText: t('common.create'),
@@ -110,6 +115,8 @@ export function MachineScreen() {
         result = await machineSpawnNewSession({
           machineId: machine.id,
           directory,
+          agent: defaultAgent,
+          permissionMode,
           approvedNewDirectoryCreation: true,
         });
       }

@@ -40,7 +40,7 @@ There are two directions:
   ~/.happy/sessions.json
 ```
 
-The reference adapter is our Tanka IM integration: webhook notifications land
+One deployment adapter pattern is an IM bridge: webhook notifications land
 in a group chat, a `[happy] <task>` message spawns a new session, and a
 quote-reply to any notification is piped straight back into that session.
 
@@ -292,9 +292,9 @@ author's own is ~40 lines wrapping two personal task tools.
 
 ---
 
-## Adapter example (IM bridge, Tanka-style)
+## Adapter example (IM bridge)
 
-Pseudocode for a quote-reply IM adapter — the pattern our Tanka integration
+Pseudocode for a quote-reply IM adapter — a pattern that
 implements:
 
 ```text

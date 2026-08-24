@@ -16,6 +16,7 @@ import type { AuthCredentials } from '@/auth/tokenStorage';
 export type AccountAuthErrorCode =
     | 'invalid-credentials' // wrong username/password (401)
     | 'username-taken'      // username already used by another account (409)
+    | 'reauth-required'     // sensitive credential change needs a fresh login
     | 'rate-limited'        // too many attempts (429)
     | 'network';            // request failed
 
@@ -107,6 +108,9 @@ export async function setAccountCredentials(
     } catch (error: any) {
         const status = error?.response?.status;
         if (status === 409) throw new AccountAuthError('username-taken', 'That username is taken.');
+        if (status === 403 && error?.response?.data?.error === 'reauth_required') {
+            throw new AccountAuthError('reauth-required', 'Sign out and sign in again before changing login credentials.');
+        }
         throw new AccountAuthError('network', 'Could not save credentials. Please try again.');
     }
 }

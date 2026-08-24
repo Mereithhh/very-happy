@@ -164,9 +164,10 @@ export const localSettingsDefaults: LocalSettings = {
     // Default the desktop files sidebar to a thin rail so it doesn't eat ~25%
     // of width when there are no diffs; one click expands it (and it persists).
     filesSidebarCollapsed: true,
-    // Default off: preserve existing per-agent default behavior. When a user
-    // opts in, new sessions start in review-first mode.
-    newSessionReviewFirst: false,
+    // Fresh devices start conservatively. localSettingsParse preserves the
+    // historical false value for any pre-existing settings blob that predates
+    // this field, so established Owner/user workflows do not silently change.
+    newSessionReviewFirst: true,
     acknowledgedCliVersions: {},
     sidebarWidth: null,
     filesPanelWidth: null,
@@ -229,7 +230,15 @@ export function localSettingsParse(settings: unknown): LocalSettings {
     if (!parsed.success) {
         return { ...localSettingsDefaults };
     }
-    return { ...localSettingsDefaults, ...parsed.data };
+    const isLegacySavedDevice = !!settings
+        && typeof settings === 'object'
+        && !Array.isArray(settings)
+        && !Object.prototype.hasOwnProperty.call(settings, 'newSessionReviewFirst');
+    return {
+        ...localSettingsDefaults,
+        ...parsed.data,
+        ...(isLegacySavedDevice ? { newSessionReviewFirst: false } : {}),
+    };
 }
 
 //

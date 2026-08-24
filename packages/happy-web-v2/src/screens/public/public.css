@@ -28,6 +28,7 @@
 .pub-meta span:last-child { border: 0; }
 .pub-hero-stage { --stage-rx: 0deg; --stage-ry: 0deg; position: relative; z-index: 2; min-width: 0; perspective: 1500px; transform-style: preserve-3d; }
 .pub-stage-float { position: relative; z-index: 3; min-width: 0; transform-style: preserve-3d; animation: pub-stage-float 7s ease-in-out infinite; }
+.pub-stage-float:hover, .pub-stage-float:focus-within { animation-play-state: paused; }
 .pub-hero-product { position: relative; min-width: 0; padding: 0 var(--sp-1) var(--sp-1); overflow: hidden; border: 1px solid var(--line-2); border-radius: calc(var(--r-lg) + var(--sp-1)); background: var(--bg-0); box-shadow: var(--shadow-modal), 0 28px 90px -56px var(--accent-glow), inset 0 1px color-mix(in srgb, var(--text) 7%, transparent); transform: rotateX(var(--stage-rx)) rotateY(calc(-3deg + var(--stage-ry))) translateZ(34px); transform-origin: center left; transform-style: preserve-3d; transition: transform 180ms cubic-bezier(.2, .8, .2, 1), box-shadow 180ms ease; }
 .pub-hero-stage:hover .pub-hero-product { box-shadow: var(--shadow-modal), 0 38px 112px -48px var(--accent-glow), inset 0 1px color-mix(in srgb, var(--text) 10%, transparent); }
 .pub-stage-fabric { position: absolute; inset: -19% -16%; z-index: 0; pointer-events: none; transform: translateZ(-80px) rotateX(61deg) rotateZ(-7deg); transform-style: preserve-3d; }

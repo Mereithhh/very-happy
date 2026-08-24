@@ -10,8 +10,10 @@ very-happy --version
 
 Confirm the CLI and browser use the same server URL and account. If the approval
 link expired or says not found, run `very-happy auth login` again. Do not reuse or
-forward an old link. Non-interactive shells/launchd must have a PATH that includes
-the `claude` binary.
+forward an old link. The daemon's OS user needs the provider credentials and PATH
+for the agent path you choose. Structured Claude uses the bundled Agent SDK and
+does not require an external `claude` command; the native Claude TUI and optional
+terminal mirror do.
 
 ## The machine appears offline
 

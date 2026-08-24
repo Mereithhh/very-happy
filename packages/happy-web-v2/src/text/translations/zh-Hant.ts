@@ -508,7 +508,16 @@ export const zhHant: PartialTranslationStructure = {
         advancedTitle: '新對話（自訂選項）…',
         chatSubtitle: '在某台機器上讓 Claude / Codex 開始工作',
         terminalTitle: '網頁終端機',
-        terminalSubtitle: '在已連線的機器上開啟一個終端機（tmux）',
+        terminalSubtitle: '在已連線的機器上開啟終端機',
+        bundledStructured: '內建',
+        notInstalled: '未安裝',
+        bundledClaudeHelp: '結構化 Claude 已內建於 Very Happy；只有原生終端模式才需要另行安裝 claude CLI。',
+        claudeCredentialHelp: '第一次會話前請執行 Doctor 或開啟憑證設定。',
+        agentUnavailableTitle: ({ agent }: { agent: string }) => `這台機器上無法使用 ${agent}`,
+        agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `要使用 ${agent}，請在 daemon 機器執行 \`${command}\` 後重新啟動 daemon；也可切換到 Claude。`,
+        openClawSetupHelp: '要使用 OpenClaw，請為 daemon 使用者設定本機 gateway，或設定 OPENCLAW_GATEWAY_URL 與 token/password，然後重新啟動 daemon。詳見「文件 → 設定」。',
+        offlineMachine: '離線',
+        offlineTerminalHelp: '終端機不可用。請在這台機器執行 `very-happy daemon start`，然後重試。',
     },
 
     emptyState: {
@@ -787,7 +796,7 @@ export const zhHant: PartialTranslationStructure = {
         tapToDisconnect: '點擊中斷連線',
         server: '伺服器',
         backup: '備份',
-        backupDescription: '您的金鑰是恢復帳戶的唯一方法。請將其保存在安全的地方，比如密碼管理器中。',
+        backupDescription: '請備份金鑰，以便在不依賴中繼伺服器的情況下恢復帳戶。此版本信任伺服器：營運者可以恢復該金鑰，密碼登入或已連結的 Google 登入也可取回它。請將其保存在密碼管理器中。',
         secretKey: '金鑰',
         tapToReveal: '點擊顯示',
         tapToHide: '點擊隱藏',
@@ -943,7 +952,7 @@ export const zhHant: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: '設定密碼後，您無需掃描 QR Code 即可在新裝置上登入。您的密碼絕不會離開此裝置——它僅用於加密您的帳戶金鑰。',
+        intro: '設定密碼後即可在新裝置上登入。可信中繼透過 TLS 接收密碼，只儲存加鹽 scrypt 驗證值，並在登入成功後傳回伺服器保管的帳戶金鑰。',
         passwordLabel: '新密碼',
         passwordPlaceholder: '至少 8 個字元',
         confirmLabel: '確認密碼',
@@ -954,6 +963,7 @@ export const zhHant: PartialTranslationStructure = {
         errorMismatch: '兩次輸入的密碼不一致。',
         errorNotAuthenticated: '您必須登入後才能設定密碼。',
         errorSaveFailed: '無法儲存您的密碼，請重試。',
+        errorReauthRequired: '為保護帳戶安全，請登出並重新登入後再修改登入憑證。',
     },
 
     review: {
@@ -1186,7 +1196,7 @@ export const zhHant: PartialTranslationStructure = {
         mcpTitle: '剪貼簿工具（MCP）',
         mcpIntro: '讓普通的 claude CLI（例如跑在 Happy 網頁終端裡的那個）擁有 copy_to_clipboard 工具，可把文字推送到你開啟的每個網頁用戶端的剪貼簿。每台機器註冊一次：',
         imTitle: 'IM 適配器模式',
-        imIntro: '任何聊天軟體都可以變成 Happy 的遙控器。每條 webhook 通知都以固定、可機器解析的最後一行結尾——「session: <id>」——純文字轉發也不會遺失。適配器（我們的 Tanka 整合是參考實作）把通知轉發進群組聊天、監聽自己的 IM；當你引用回覆某條通知時，它從該行提取會話 id，並用「very-happy send」把你的回覆送回會話。新任務則透過「very-happy spawn」從聊天中直接發起。',
+        imIntro: '任何聊天軟體都可以變成 Happy 的遙控器。每條 webhook 通知都以固定、可機器解析的最後一行結尾——「session: <id>」——純文字轉發也不會遺失。你的適配器把通知轉發進群組聊天，執行傳送者與群組允許清單；當你引用回覆某條通知時，它從該行提取會話 id，並用「very-happy send」把回覆送回會話。新任務則透過「very-happy spawn」從聊天中直接發起。',
         imDocs: '完整文件',
         imDocsSubtitle: 'docs/channels.md——webhook 契約、CLI 參考、適配器範例',
     },

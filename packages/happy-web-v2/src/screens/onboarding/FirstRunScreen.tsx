@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { Button, useToast } from '@/ui';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/i18n/useTranslation';
+import { getServerUrl } from '@/sync/serverConfig';
+import { firstMachineCommands } from './firstMachineCommands';
 import './firstRun.css';
 
 const INSTALL_COMMAND = 'npm install -g very-happy-cli';
-const LOGIN_COMMAND = 'very-happy auth login';
-const DAEMON_START_COMMAND = 'very-happy daemon start';
 
 function Command({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -32,9 +32,18 @@ function Command({ value }: { value: string }) {
   );
 }
 
+function ShellCommands({ posix, powershell }: { posix: string; powershell?: string }) {
+  if (!powershell) return <Command value={posix} />;
+  return <div className="fr-command-set">
+    <span>macOS / Linux</span><Command value={posix} />
+    <span>Windows PowerShell</span><Command value={powershell} />
+  </div>;
+}
+
 export function FirstRunScreen() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const commands = firstMachineCommands(getServerUrl(), window.location.origin);
   return (
     <main className="fr-page">
       <section className="fr-hero">
@@ -50,11 +59,11 @@ export function FirstRunScreen() {
         </li>
         <li>
           <div className="fr-step-icon"><LogIn size={19} /></div>
-          <div><h2>{t('onboarding.linkTitle')}</h2><p>{t('onboarding.linkDescription')}</p><Command value={LOGIN_COMMAND} /></div>
+          <div><h2>{t('onboarding.linkTitle')}</h2><p>{t('onboarding.linkDescription')}</p><ShellCommands posix={commands.login} powershell={commands.loginPowerShell} /></div>
         </li>
         <li>
           <div className="fr-step-icon"><Power size={19} /></div>
-          <div><h2>{t('onboarding.daemonTitle')}</h2><p>{t('onboarding.daemonDescription')}</p><Command value={DAEMON_START_COMMAND} /></div>
+          <div><h2>{t('onboarding.daemonTitle')}</h2><p>{t('onboarding.daemonDescription')}</p><ShellCommands posix={commands.daemon} powershell={commands.daemonPowerShell} /></div>
         </li>
       </ol>
 

@@ -359,6 +359,7 @@ graph TB
     end
 
     subgraph "Server-side Encryption"
+        S0[Account recovery secrets]
         S1[GitHub OAuth tokens]
         S2[OpenAI tokens]
         S3[Anthropic tokens]
@@ -366,7 +367,7 @@ graph TB
     end
 
     C1 & C2 & C3 & C4 & C5 & C6 --> |opaque blobs| DB[(Postgres)]
-    S1 & S2 & S3 & S4 --> |KeyTree from HANDY_MASTER_SECRET| DB
+    S0 & S1 & S2 & S3 & S4 --> |KeyTree from HANDY_MASTER_SECRET| DB
 
     style C1 fill:#e1f5fe
     style C2 fill:#e1f5fe
@@ -374,6 +375,7 @@ graph TB
     style C4 fill:#e1f5fe
     style C5 fill:#e1f5fe
     style C6 fill:#e1f5fe
+    style S0 fill:#fff3e0
     style S1 fill:#fff3e0
     style S2 fill:#fff3e0
     style S3 fill:#fff3e0
@@ -382,7 +384,7 @@ graph TB
 
 - Session metadata, agent state, daemon state, and message content are stored as opaque encrypted strings or blobs.
 - Artifacts and KV values are stored encrypted and encoded as base64 on the wire.
-- The server only encrypts/decrypts **service tokens** (GitHub OAuth tokens, vendor tokens) using the KeyTree derived from `HANDY_MASTER_SECRET`.
+- The server encrypts/decrypts selected **server-held secrets**—account recovery secrets, GitHub OAuth tokens, and vendor tokens—using the KeyTree derived from `HANDY_MASTER_SECRET`. This is at-rest protection under the server operator's control, not end-to-end encryption.
 
 ## Integrations
 - **GitHub**: OAuth connect + webhook verification, optional if env vars are set.
@@ -392,7 +394,8 @@ graph TB
 
 ## Observability
 - `/health` route checks DB connectivity.
-- Metrics server exposes `/metrics` for Prometheus.
+- The opt-in metrics server exposes `/metrics` for Prometheus. It is disabled by
+  default and binds to `127.0.0.1` unless `METRICS_HOST` is explicitly set.
 - HTTP request counters and duration histograms are captured via Fastify hooks.
 - WebSocket event counters and connection gauges are in `metrics2.ts`.
 

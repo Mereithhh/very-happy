@@ -95,7 +95,10 @@ select,
  * Changing either here can desynchronise IME placement and the painted cursor.
  * The visible `.term-inputbar-ta` lives outside `.xterm`, so it still gets the
  * safe floor. */
-@media (pointer: coarse) {
+/* Width is included as a second signal because desktop browser emulation and
+ * iPad pointer reporting are not consistently `coarse`. A phone-width app
+ * must never depend on the input device heuristic to avoid Safari zoom. */
+@media (pointer: coarse), (max-width: 860px) {
   :is(#root, body) :where(
     input,
     textarea,

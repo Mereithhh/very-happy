@@ -28,6 +28,15 @@ master secret, and server administrator access as high impact. Approve only
 requests you initiated, use short-lived links, and remove access when a machine
 or account is no longer trusted.
 
+Fresh Web devices start sessions in review-first modes; direct CLI sessions
+without an explicit mode use the agent's approval-oriented `default`, not YOLO.
+Devices that already saved Very Happy settings retain their previous auto-apply
+preference for compatibility. Check **Settings → Agents → New sessions** on
+every device. `yolo`, `bypassPermissions`, and
+`--dangerously-skip-permissions` allow the agent to act without normal approval
+and should be treated as full remote execution under the daemon OS user. See
+[Permission resolution](permission-resolution.md).
+
 ## Operator checklist
 
 - Use HTTPS; protect the master secret and backups; keep metrics private.

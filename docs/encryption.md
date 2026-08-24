@@ -489,11 +489,12 @@ flowchart TD
 
 For `dataKey`, clients must first decrypt or derive the per-session/per-machine data key from the stored `dataEncryptionKey` bundle.
 
-## Server-side encryption (service tokens)
+## Server-side encryption (account recovery and service secrets)
 
 ```mermaid
 graph LR
-    subgraph "Third-Party Tokens"
+    subgraph "Server-Held Secrets"
+        ACCOUNT[Account recovery secret]
         GH[GitHub OAuth]
         OAI[OpenAI]
         ANT[Anthropic]
@@ -509,19 +510,21 @@ graph LR
     DB[(Postgres)]
 
     Secret --> KeyTree --> Encrypt
-    GH & OAI & ANT & GEM --> Encrypt --> DB
+    ACCOUNT & GH & OAI & ANT & GEM --> Encrypt --> DB
 
+    style ACCOUNT fill:#fff3e0
     style GH fill:#fff3e0
     style OAI fill:#fff3e0
     style ANT fill:#fff3e0
     style GEM fill:#fff3e0
 ```
 
-The server encrypts certain third-party tokens at rest:
+The server encrypts selected secrets at rest:
+- Account recovery secrets (`AccountSecret.encryptedSecret`).
 - GitHub OAuth tokens (`GithubUser.token`).
 - Vendor service tokens (`ServiceAccountToken.token`).
 
-These are encrypted with a server-only KeyTree derived from `HANDY_MASTER_SECRET` and are not end-to-end encrypted.
+These are encrypted with a server-only KeyTree derived from `HANDY_MASTER_SECRET`. The operator can decrypt them, so this is not end-to-end encryption.
 
 ## Encoding conventions
 

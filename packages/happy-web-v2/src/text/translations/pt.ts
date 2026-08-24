@@ -653,7 +653,7 @@ export const pt: PartialTranslationStructure = {
         name: 'Nome',
         tapToDisconnect: 'Toque para desconectar',
         server: 'Servidor',
-        backupDescription: 'Sua chave secreta é a única forma de recuperar sua conta. Salve-a em um local seguro como um gerenciador de senhas.',
+        backupDescription: 'Faça backup da chave secreta para recuperar a conta sem depender do servidor. Esta versão confia no servidor: o operador pode recuperá-la, e o login com senha ou uma conta Google vinculada também pode devolvê-la. Guarde-a em um gerenciador de senhas.',
         secretKey: 'Chave secreta',
         tapToReveal: 'Toque para revelar',
         tapToHide: 'Toque para ocultar',
@@ -787,7 +787,7 @@ export const pt: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'Defina uma senha para fazer login em novos dispositivos sem escanear um código QR. Sua senha nunca sai deste dispositivo — ela apenas criptografa a chave da sua conta.',
+        intro: 'Defina uma senha para entrar em novos dispositivos. O relay confiável a recebe por TLS, armazena apenas um verificador scrypt com salt e retorna a chave da conta mantida pelo servidor após um login bem-sucedido.',
         passwordLabel: 'Nova senha',
         passwordPlaceholder: 'Pelo menos 8 caracteres',
         confirmLabel: 'Confirmar senha',
@@ -798,6 +798,7 @@ export const pt: PartialTranslationStructure = {
         errorMismatch: 'As senhas não coincidem.',
         errorNotAuthenticated: 'Você precisa estar conectado para definir uma senha.',
         errorSaveFailed: 'Não foi possível salvar sua senha. Tente novamente.',
+        errorReauthRequired: 'Por segurança, saia e entre novamente antes de alterar as credenciais.',
     },
 
     review: {

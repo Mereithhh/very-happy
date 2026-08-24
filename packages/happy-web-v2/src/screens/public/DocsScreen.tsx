@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, BookOpen, Menu, TerminalSquare, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useLocation, useParams } from 'react-router-dom';
 import { PublicFooter, PublicHeader } from './PublicShell';
 import { MobileContinuityProof } from './MobileContinuityProof';
 import { ProductWorkspacePreview } from './ProductWorkspacePreview';
@@ -24,6 +24,7 @@ function sectionId(heading: string) {
 
 export function DocsScreen() {
   const { slug } = useParams();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const doc = getPublicDoc(slug);
@@ -31,8 +32,11 @@ export function DocsScreen() {
     window.scrollTo({ top: 0 });
     setMenuOpen(false);
     document.title = doc ? `${doc.label} — Very Happy Docs` : slug ? 'Not found — Very Happy Docs' : 'Documentation — Very Happy';
-    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('.docs-article h1')?.focus({ preventScroll: true }));
-  }, [doc, slug]);
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.docs-article h1')?.focus({ preventScroll: true });
+      if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    });
+  }, [doc, location.hash, slug]);
   useEffect(() => {
     if (!menuOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {

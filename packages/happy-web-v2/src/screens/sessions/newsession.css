@@ -60,12 +60,30 @@
   flex-wrap: wrap;
 }
 .ns-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   padding: 6px 12px;
   border-radius: var(--r-pill);
   border: 1px solid var(--line-2);
   color: var(--text-dim);
+}
+.ns-agent.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  background: var(--bg-2);
+}
+.ns-agent-status {
+  color: var(--text-faint);
+  font-family: var(--font-sans);
+  font-size: var(--fs-10);
+}
+.ns-agent-help {
+  color: var(--text-faint);
+  font-size: var(--fs-11);
+  line-height: 1.45;
 }
 .ns-agent.is-on {
   border-color: var(--accent);

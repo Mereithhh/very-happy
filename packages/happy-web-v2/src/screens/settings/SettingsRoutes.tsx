@@ -696,6 +696,7 @@ function Agents() {
   // whether to always open the full options dialog instead.
   const [newSessionAgent, setNewSessionAgent] = useSettingMutable('newSessionAgent');
   const [alwaysAsk, setAlwaysAsk] = useSettingMutable('newSessionAlwaysAsk');
+  const [reviewFirst, setReviewFirst] = useLocalSettingMutable('newSessionReviewFirst');
   const quickAgent = normalizeAgentKey(newSessionAgent);
 
   const translate = useCallback((k: SimpleTranslationKey) => t(k), []);
@@ -740,6 +741,17 @@ function Agents() {
                 checked={alwaysAsk === true}
                 onChange={setAlwaysAsk}
                 label={t('settingsAgents.alwaysAsk')}
+              />
+            }
+          />
+          <Item
+            title={t('settingsFeatures.reviewChangesFirst')}
+            subtitle={reviewFirst ? t('settingsFeatures.reviewChangesFirstEnabled') : t('settingsFeatures.reviewChangesFirstDisabled')}
+            right={
+              <Toggle
+                checked={reviewFirst}
+                onChange={setReviewFirst}
+                label={t('settingsFeatures.reviewChangesFirst')}
               />
             }
           />
@@ -1242,7 +1254,7 @@ function WebhookMovedGroup() {
 // automation surfaces (CLI spawn/send, clipboard MCP, IM adapters).
 // ===================================================================
 
-const CHANNELS_DOCS_URL = 'https://github.com/Mereithhh/very-happy/blob/master/docs/channels.md';
+const CHANNELS_DOCS_URL = 'https://github.com/Mereithhh/very-happy/blob/main/docs/channels.md';
 // Commands are NOT translated — they are copy-paste material.
 const SPAWN_CMD = 'very-happy spawn --dir <directory> --prompt <text> --json';
 const SEND_CMD = 'very-happy send --session <session-id> --prompt <text>';
@@ -1966,7 +1978,7 @@ function Diagnostics() {
 function Password() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { credentials } = useAuth();
+  const { credentials, login } = useAuth();
   const toast = useToast();
 
   const [username, setUsername] = useState('');
@@ -1994,7 +2006,8 @@ function Password() {
     setBusy(true);
     setServerError(null);
     try {
-      await setAccountCredentials(username, password, credentials.secret, credentials);
+      const replacement = await setAccountCredentials(username, password, credentials.secret, credentials);
+      if (replacement) await login(replacement.token, replacement.secret);
       toast.success(t('setPassword.success'));
       setPassword('');
       setConfirm('');
@@ -2002,6 +2015,8 @@ function Password() {
     } catch (err: any) {
       if (err instanceof AccountAuthError && err.code === 'username-taken') {
         setServerError(t('signup.errorUsernameTaken'));
+      } else if (err instanceof AccountAuthError && err.code === 'reauth-required') {
+        setServerError(t('setPassword.errorReauthRequired'));
       } else {
         setServerError(t('setPassword.errorSaveFailed'));
       }

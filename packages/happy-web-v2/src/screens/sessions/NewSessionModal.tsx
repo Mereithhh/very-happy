@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
-import { useAllMachines, useSetting, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
-import { normalizeAgentKey } from '@/sync/agentDefaults';
+import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { sync } from '@/sync/sync';
@@ -11,9 +11,13 @@ import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
+import {
+  agentSetupInstruction,
+  resolveAgentAvailability,
+  SESSION_AGENTS,
+  type SessionAgent,
+} from '@/utils/agentAvailability';
 import './newsession.css';
-
-const AGENTS = ['claude', 'codex', 'gemini', 'openclaw'] as const;
 
 interface PathPreset {
   id: string;
@@ -51,11 +55,13 @@ export function NewSessionModal({
   const list = (presets as PathPreset[] | undefined) ?? [];
 
   const defaultAgent = useSetting('newSessionAgent');
+  const agentDefaultOverrides = useSetting('agentDefaultOverrides');
+  const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
   const [machineId, setMachineId] = useState('');
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
-  const [agent, setAgent] = useState<(typeof AGENTS)[number]>(() => normalizeAgentKey(defaultAgent));
+  const [agent, setAgent] = useState<SessionAgent>(() => normalizeAgentKey(defaultAgent));
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
@@ -101,13 +107,25 @@ export function NewSessionModal({
     setAgent(normalizeAgentKey(defaultAgent));
   }, [defaultAgent]);
 
-  const canCreate = !!machineId && directory.trim().length > 0 && !busy;
   const trimmed = directory.trim();
 
   // The daemon's spawn doesn't expand a leading ~, so resolve it here using the
   // selected machine's reported home dir. Avoids a bogus "create directory ~/…"
   // prompt for paths that actually exist.
-  const homeDir = (online.find((m) => m.id === machineId) as any)?.metadata?.homeDir as string | undefined;
+  const selectedMachine = online.find((m) => m.id === machineId);
+  const homeDir = (selectedMachine as any)?.metadata?.homeDir as string | undefined;
+  const selectedAgentAvailability = resolveAgentAvailability(selectedMachine?.metadata, agent);
+  const canCreate = !!machineId
+    && trimmed.length > 0
+    && selectedAgentAvailability.available
+    && !busy;
+
+  // Availability can change when a machine is selected or a daemon refreshes
+  // its metadata. Never leave the modal pointing at a known-missing external
+  // binary; the bundled structured Claude path is the safe fallback.
+  useEffect(() => {
+    if (!selectedAgentAvailability.available && agent !== 'claude') setAgent('claude');
+  }, [agent, selectedAgentAvailability.available]);
   function resolveDir(p: string): string {
     if (!homeDir) return p;
     if (p === '~') return homeDir;
@@ -141,6 +159,7 @@ export function NewSessionModal({
       machineId,
       directory: resolveDir(trimmed),
       agent,
+      permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
       approvedNewDirectoryCreation: approve,
     });
     if (res.type === 'requestToApproveDirectoryCreation') {
@@ -255,16 +274,55 @@ export function NewSessionModal({
 
             <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
-              {AGENTS.map((a) => (
+              {SESSION_AGENTS.map((a) => {
+                const availability = resolveAgentAvailability(selectedMachine?.metadata, a);
+                const unavailable = !availability.available;
+                const suffix = a === 'claude'
+                  ? t('newSessionModal.bundledStructured')
+                  : unavailable
+                    ? t('newSessionModal.notInstalled')
+                    : null;
+                return (
                 <button
                   key={a}
-                  className={`ns-agent${agent === a ? ' is-on' : ''}`}
+                  type="button"
+                  className={`ns-agent${agent === a ? ' is-on' : ''}${unavailable ? ' is-disabled' : ''}`}
+                  disabled={unavailable}
+                  aria-disabled={unavailable}
+                  title={unavailable
+                    ? t('newSessionModal.agentUnavailableTitle', { agent: a })
+                    : undefined}
                   onClick={() => setAgent(a)}
                 >
-                  {a}
+                  <span>{a}</span>
+                  {suffix && <span className="ns-agent-status">{suffix}</span>}
                 </button>
-              ))}
+                );
+              })}
             </div>
+            {agent === 'claude' && (
+              <div className="ns-agent-help">
+                {t('newSessionModal.bundledClaudeHelp')}{' '}
+                <Link to="/docs/configuration#section-claude-credentials">
+                  {t('newSessionModal.claudeCredentialHelp')}
+                </Link>
+              </div>
+            )}
+            {selectedMachine?.metadata?.cliAvailability && (
+              <div className="ns-agent-help">
+                {[
+                  ...SESSION_AGENTS
+                      .filter((candidate): candidate is Exclude<SessionAgent, 'claude'> => candidate !== 'claude')
+                      .filter((candidate) => !resolveAgentAvailability(selectedMachine.metadata, candidate).available)
+                      .map((candidate) => {
+                        const setup = agentSetupInstruction(candidate);
+                        return setup.kind === 'command'
+                          ? t('newSessionModal.agentInstallHelp', { agent: candidate, command: setup.command })
+                          : t('newSessionModal.openClawSetupHelp');
+                      }),
+                ].filter(Boolean).join(' · ')}
+              </div>
+            )}
 
             <label className="ns-label">{t('newSession.initialCommand')}</label>
             <textarea

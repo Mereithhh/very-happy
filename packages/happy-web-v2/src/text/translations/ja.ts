@@ -661,7 +661,7 @@ export const ja: PartialTranslationStructure = {
         tapToDisconnect: 'タップして切断',
         server: 'サーバー',
         backup: 'バックアップ',
-        backupDescription: 'シークレットキーはアカウントを復元する唯一の方法です。パスワードマネージャーなどの安全な場所に保存してください。',
+        backupDescription: 'リレーに依存せず復元できるよう、シークレットキーをバックアップしてください。このフォークはサーバーを信頼する設計で、運営者はキーを復元でき、パスワードまたは連携済み Google ログインでも取得できます。パスワードマネージャーに保存してください。',
         secretKey: 'シークレットキー',
         tapToReveal: 'タップして表示',
         tapToHide: 'タップして非表示',
@@ -795,7 +795,7 @@ export const ja: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'パスワードを設定すると、QRコードをスキャンせずに新しい端末でログインできます。パスワードがこの端末の外に出ることはなく、アカウントキーの暗号化にのみ使用されます。',
+        intro: 'パスワードを設定すると新しい端末でログインできます。信頼されたリレーは TLS 経由でパスワードを受け取り、salt 付き scrypt 検証値のみを保存し、ログイン成功後にサーバー保管のアカウントキーを返します。',
         passwordLabel: '新しいパスワード',
         passwordPlaceholder: '8文字以上',
         confirmLabel: 'パスワードの確認',
@@ -806,6 +806,7 @@ export const ja: PartialTranslationStructure = {
         errorMismatch: 'パスワードが一致しません。',
         errorNotAuthenticated: 'パスワードを設定するにはログインが必要です。',
         errorSaveFailed: 'パスワードを保存できませんでした。もう一度お試しください。',
+        errorReauthRequired: '安全のため、ログアウトして再度ログインしてから認証情報を変更してください。',
     },
 
     review: {

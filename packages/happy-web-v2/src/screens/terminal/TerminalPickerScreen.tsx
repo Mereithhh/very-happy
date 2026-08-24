@@ -3,8 +3,8 @@ import { TerminalSquare, Plus } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useAllMachines } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
+import { terminalMachineState } from '@/utils/machineUtils';
+import { Badge, ItemList, ItemGroup, Item, EmptyState, StatusDot } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 
 function machineLabel(m: any): string {
@@ -42,18 +42,26 @@ export function TerminalPickerScreen() {
           />
         ) : (
           <ItemList>
-            <ItemGroup title={t('newSessionModal.terminalSubtitle')}>
+            <ItemGroup
+              title={t('newSessionModal.terminalSubtitle')}
+              footer={machines.some((machine) => !machine.active)
+                ? t('newSessionModal.offlineTerminalHelp')
+                : undefined}
+            >
               {machines.map((m) => {
-                const online = isMachineOnline(m);
+                const state = terminalMachineState(m);
                 const name = machineLabel(m);
                 return (
                   <Item
                     key={m.id}
                     title={name}
                     detail={m.metadata?.host}
-                    left={<StatusDot status={online ? 'connected' : 'offline'} size={9} />}
-                    right={online ? <Plus size={16} /> : undefined}
-                    onClick={online ? () => openNew(m.id, name) : undefined}
+                    subtitle={state.needsDaemonStart ? t('newSessionModal.offlineTerminalHelp') : undefined}
+                    left={<StatusDot status={state.status} size={9} />}
+                    right={state.available
+                      ? <Plus size={16} />
+                      : <Badge tone="muted">{t('newSessionModal.offlineMachine')}</Badge>}
+                    onClick={state.available ? () => openNew(m.id, name) : undefined}
                   />
                 );
               })}

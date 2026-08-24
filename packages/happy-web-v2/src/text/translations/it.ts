@@ -652,7 +652,7 @@ export const it: PartialTranslationStructure = {
         profile: 'Profilo',
         name: 'Nome',
         tapToDisconnect: 'Tocca per disconnettere',
-        backupDescription: 'La tua chiave segreta è l\'unico modo per recuperare l\'account. Salvala in un posto sicuro come un gestore di password.',
+        backupDescription: 'Salva una copia della chiave segreta per recuperare l\'account senza dipendere dal relay. Questo fork considera attendibile il server: l\'operatore può recuperarla e anche l\'accesso con password o Google collegato può restituirla. Conservala in un gestore di password.',
         secretKey: 'Chiave segreta',
         tapToReveal: 'Tocca per mostrare',
         tapToHide: 'Tocca per nascondere',
@@ -783,7 +783,7 @@ export const it: PartialTranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: 'Imposta una password per accedere su nuovi dispositivi senza scansionare un codice QR. La tua password non lascia mai questo dispositivo: serve solo a cifrare la chiave del tuo account.',
+        intro: 'Imposta una password per accedere su nuovi dispositivi. Il relay attendibile la riceve tramite TLS, conserva solo un verificatore scrypt con salt e restituisce la chiave dell\'account conservata dal server dopo un accesso riuscito.',
         passwordLabel: 'Nuova password',
         passwordPlaceholder: 'Almeno 8 caratteri',
         confirmLabel: 'Conferma password',
@@ -794,6 +794,7 @@ export const it: PartialTranslationStructure = {
         errorMismatch: 'Le password non corrispondono.',
         errorNotAuthenticated: 'Devi aver effettuato l\'accesso per impostare una password.',
         errorSaveFailed: 'Impossibile salvare la password. Riprova.',
+        errorReauthRequired: 'Per sicurezza, esci e accedi di nuovo prima di modificare le credenziali.',
     },
 
     review: {

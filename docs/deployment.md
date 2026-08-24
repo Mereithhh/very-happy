@@ -18,6 +18,14 @@ Before exposing an instance, read [`security.md`](security.md), set an explicit
 `SIGNUP_MODE` and `SIGNUP_MAX_ACCOUNTS`, configure exact proxy trust, and keep the
 metrics port off the public Internet. The relay is server-trusted.
 
+## Local evaluation
+
+Use the Docker example below with `-p 127.0.0.1:3005:3005`, invite-only bootstrap,
+and persistent `/data`. `very-happy-server` is intentionally a private workspace
+package: its Prisma build tooling is not an approved public production
+dependency surface. Do not install the upstream-owned
+`happy-server-self-host`, which serves a different product build.
+
 ## Full-infrastructure services
 1. **Postgres**
    - Required only when `DATABASE_URL` is set; standalone uses PGlite.
@@ -51,15 +59,42 @@ metrics port off the public Internet. The relay is server-trusted.
 
 **Common**
 - `PORT`: API server port (default `3005`).
-- `METRICS_ENABLED`: set to `false` to disable metrics server.
+- `METRICS_ENABLED`: metrics are disabled by default; set exactly `true` to enable them.
+- `METRICS_HOST`: metrics bind address (default `127.0.0.1`). Set a non-loopback
+  address only behind a private network or authenticated proxy; never publish it
+  directly to the Internet.
 - `METRICS_PORT`: metrics server port (default `9090`).
 - `S3_PORT`: optional S3 port.
 - `S3_USE_SSL`: `true`/`false` (default `true`).
-- `SIGNUP_MODE`: `open`, `invite`, or `closed` (default keeps legacy behavior: closed when `SIGNUP_CLOSED` is set, invite when invite codes exist, otherwise open).
+- `SIGNUP_MODE`: `open`, `invite`, or `closed`. The standalone entrypoint defaults
+  to `closed`; full-infrastructure deployments retain legacy resolution when it
+  is unset (closed for `SIGNUP_CLOSED`, invite when codes exist, otherwise open).
 - `SIGNUP_MAX_ACCOUNTS`: positive global Account limit; unset or `0` means unlimited. Existing accounts can always log in when the limit is reached.
 - `SIGNUP_INVITE_CODES`: comma-separated invite codes used when `SIGNUP_MODE=invite`.
 - `LOGIN_SESSION_TTL_DAYS`: Web password/Google session lifetime, from 1 to 365 days (default `30`).
 - `TRUST_PROXY`: trusted reverse-proxy hop count (for example `1`) or comma-separated proxy IP/CIDR allowlist. Never set it to an unrestricted boolean; correct client IPs are required for auth rate limiting.
+- Access-key storage guards: `MAX_ACCESS_KEY_WRITES_PER_ACCOUNT_PER_MINUTE`
+  (default `120`), `MAX_ACCESS_KEYS_PER_ACCOUNT` (default `2000`), and
+  `MAX_ACCESS_KEY_BYTES_PER_ACCOUNT` (default `8388608`). Keep finite values on
+  public relays; accepted envelopes are canonical base64 with a 4096-byte decoded
+  ceiling, while the account byte quota measures encoded bytes stored.
+- Persistent state guards: `MAX_SESSION_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE`
+  (`600`), `MAX_SESSION_STATE_BYTES_PER_ACCOUNT` (`268435456`),
+  `MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` (`240`), and
+  `MAX_MACHINE_STATE_BYTES_PER_ACCOUNT` (`16777216`). A write costs at least one
+  unit plus one unit per started 64 KiB; keep finite values on public relays.
+- Account-settings guard: `MAX_ACCOUNT_SETTINGS_WRITES_PER_ACCOUNT_PER_MINUTE`
+  (`60`). Each synchronized value is capped at 256 KiB UTF-8 before storage.
+- Feed guards: `MAX_FEED_WRITES_PER_ACCOUNT_PER_MINUTE` (`120`),
+  `MAX_FEED_ITEMS_PER_ACCOUNT` (`10000`), and `MAX_FEED_BYTES_PER_ACCOUNT`
+  (`67108864`).
+- Social graph guards: `MAX_RELATIONSHIP_WRITES_PER_ACCOUNT_PER_MINUTE` (`60`)
+  and `MAX_RELATIONSHIPS_PER_ACCOUNT` (`2000`). Two-sided mutations lock both
+  accounts in stable order; existing relationships remain updatable at capacity.
+- Upload row/lifecycle guards: `MAX_UPLOADED_FILES_PER_ACCOUNT` (`2000`) and
+  `ATTACHMENT_RESERVATION_TTL_MINUTES` (`60`). Cleanup is bounded and removes
+  both abandoned rows and their local/S3 objects; `0` disables cleanup and is
+  intended only for a monitored trusted relay.
 
 **Optional integrations**
 - Google account login: `GOOGLE_CLIENT_ID` (Web OAuth client ID) and `GOOGLE_ALLOWED_ORIGINS` (comma-separated exact browser origins). No client secret is needed for Google Identity Services ID-token login.
@@ -78,6 +113,9 @@ The same origin must be listed under **Authorized JavaScript origins** in Google
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
 - Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production).
 - Subscriptions: `REVENUECAT_API_KEY` (server-side RevenueCat key, required for voice subscription checks).
+- Legacy voice credits: `VOICE_EXTRA_LIMIT_ACCOUNT_IDS` is an optional,
+  comma-separated operator migration list. It is empty by default; never commit
+  real account IDs, and prefer uniform public quotas.
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` enables local file logging. The remote dev log endpoint is registered only when
   `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING_TOKEN` is also set; the CLI
   must receive the same token. Keep both unset outside a short debugging window.
@@ -95,13 +133,28 @@ From the repository root:
 
 ```bash
 docker build -t very-happy-server -f Dockerfile.server .
-docker run --rm -p 3005:3005 \
+docker run -d --name very-happy-server --restart unless-stopped \
+  -p 127.0.0.1:3005:3005 \
   -e HANDY_MASTER_SECRET='replace-with-a-high-entropy-secret' \
-  -e SIGNUP_MODE=closed \
+  -e SIGNUP_MODE=invite \
+  -e SIGNUP_INVITE_CODES='replace-with-one-time-bootstrap-code' \
   -e SIGNUP_MAX_ACCOUNTS=10 \
   -v very-happy-data:/data \
   very-happy-server
 ```
+
+Create the first operator account with that bootstrap code. Then replace the
+container while retaining the same volume:
+
+```bash
+docker rm -f very-happy-server
+# Repeat the docker run command above with the same very-happy-data volume,
+# remove SIGNUP_INVITE_CODES, and use: -e SIGNUP_MODE=closed
+```
+
+A plain `docker restart` retains the old environment and does **not** close
+signup. Invite codes are policy values, not automatically one-time secrets;
+closing registration after bootstrap is required.
 
 Terminate TLS at a trusted reverse proxy before accepting non-loopback clients.
 Persist `/data`, back it up together with the master secret, and test restore.
@@ -112,17 +165,19 @@ Example manifests live in `packages/happy-server/deploy`:
 - `happy-redis.yaml`: Redis StatefulSet + Service + ConfigMap.
 
 The deployment config expects:
-- Prometheus scraping annotations on port `9090`.
+- Prometheus scraping annotations on port `9090`. The example explicitly sets
+  `METRICS_ENABLED=true` and `METRICS_HOST=0.0.0.0` for pod-network scraping;
+  keep that port behind cluster NetworkPolicy. The Service does not publish it.
 - A secret named `handy-secrets` populated by ExternalSecrets.
 - A service mapping port `3000` to container port `3005`.
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
-- `pnpm --filter happy-server-self-host db` (Postgres in Docker)
-- `pnpm --filter happy-server-self-host redis`
-- `pnpm --filter happy-server-self-host s3` + `s3:init`
+- `pnpm --filter very-happy-server db` (Postgres in Docker)
+- `pnpm --filter very-happy-server redis`
+- `pnpm --filter very-happy-server s3` + `s3:init`
 
-Use `.env`/`.env.dev` to load local settings when running `pnpm --filter happy-server-self-host dev`.
+Use `.env`/`.env.dev` to load local settings when running `pnpm --filter very-happy-server dev`.
 
 ## Implementation references
 - Entrypoint: `packages/happy-server/sources/main.ts`

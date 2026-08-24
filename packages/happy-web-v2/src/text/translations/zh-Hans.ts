@@ -846,7 +846,7 @@ export const zhHans: TranslationStructure = {
         resumeSessionSubtitle: 'Resume this session on the same machine',
         resumeSessionSameMachineOnly: 'This session can only be resumed on the same machine it started on.',
         resumeSessionMachineOffline: 'This machine is offline. Resume is only available while it is online.',
-        resumeSessionNeedsHappyAgent: 'Resume is unavailable on this machine. Run `happy-agent auth login` to enable it.',
+        resumeSessionNeedsHappyAgent: '此公开版本尚未启用历史会话恢复。请从原目录创建新会话。',
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
@@ -902,7 +902,16 @@ export const zhHans: TranslationStructure = {
         advancedTitle: '新会话（自定义选项）…',
         chatSubtitle: '在某台机器上让 Claude / Codex 开始干活',
         terminalTitle: '网页终端',
-        terminalSubtitle: '在已连接的机器上打开一个终端（tmux）',
+        terminalSubtitle: '在已连接的机器上打开终端',
+        bundledStructured: '内置',
+        notInstalled: '未安装',
+        bundledClaudeHelp: '结构化 Claude 已内置于 Very Happy；只有原生终端模式才需要单独安装 claude CLI。',
+        claudeCredentialHelp: '首次会话前请运行 Doctor 或打开凭据配置。',
+        agentUnavailableTitle: ({ agent }: { agent: string }) => `这台机器上无法使用 ${agent}`,
+        agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `要使用 ${agent}，请在 daemon 机器运行 \`${command}\` 后重启 daemon；也可切换到 Claude。`,
+        openClawSetupHelp: '要使用 OpenClaw，请为 daemon 用户配置本地网关，或设置 OPENCLAW_GATEWAY_URL 与 token/password，然后重启 daemon。详见“文档 → 配置”。',
+        offlineMachine: '离线',
+        offlineTerminalHelp: '终端不可用。请在这台机器运行 `very-happy daemon start`，然后重试。',
         terminalAtTitle: '在指定目录新建终端…',
     },
 
@@ -927,15 +936,15 @@ export const zhHans: TranslationStructure = {
         title: '连接一台电脑，开始使用',
         intro: 'very happy 在你的电脑上运行 coding agent，再通过当前账号让这个 Web 界面控制它。',
         installTitle: '安装 CLI',
-        installDescription: '需要 Node.js 20 或更高版本。',
+        installDescription: '需要 Node.js 20.x（20.19+）、22.x（22.13+）或 24+。结构化 Claude 使用内置 Agent SDK 和你的 provider 凭据；其他 agent 与原生终端路径需要对应本地命令。建议安装 tmux 以便网页终端持久重连。',
         linkTitle: '绑定当前账号',
-        linkDescription: '运行命令，然后打开终端输出的批准链接确认这台机器；CLI 也会尝试自动打开。',
+        linkDescription: '运行命令，然后打开批准链接确认这台机器；CLI 也会尝试自动打开。自托管页面复制的命令会自动带上隔离目录、当前中继与批准页面地址。',
         daemonTitle: '启动机器 daemon',
         daemonDescription: 'daemon 会在后台启动。机器连接后，本页会进入工作区；接着点击“新建会话”。',
         trustNote: '此连接采用服务端可信模型，服务器运营者能够访问中继的会话数据；敏感工作请使用你信任的自托管中继。',
         readQuickStart: '查看入门指南',
         recoveryTitle: '机器没有出现？',
-        recoverySameServer: '确认浏览器与 CLI 使用同一个服务器地址，然后重新加载此页面。',
+        recoverySameServer: '从本页复制命令，确保认证与 daemon 使用当前中继，然后重新加载此页面。',
         recoveryDaemon: '运行 very-happy daemon status；若 daemon 离线，请运行 very-happy daemon start。',
         recoveryApproval: '如果批准链接已过期，请重新运行 very-happy auth login 并批准新链接。',
         troubleshooting: '打开故障排查',
@@ -1305,7 +1314,7 @@ export const zhHans: TranslationStructure = {
         tapToDisconnect: '点击断开连接',
         server: '服务器',
         backup: '备份',
-        backupDescription: '您的密钥是恢复账户的唯一方法。请将其保存在安全的地方，比如密码管理器中。',
+        backupDescription: '请备份密钥，以便在不依赖中继服务器的情况下恢复账户。此版本信任服务器：运营者可以恢复该密钥，密码登录或已关联的 Google 登录也可取回它。请将其保存在密码管理器中。',
         secretKey: '密钥',
         tapToReveal: '点击显示',
         tapToHide: '点击隐藏',
@@ -1358,10 +1367,9 @@ export const zhHans: TranslationStructure = {
     },
 
     terminal: {
-        // 关闭网页终端 = 结束机器上的 tmux 会话；文案刻意中性（B-083 只归档）：
-        // 其中的 claude 对话保存在机器上，可用 claude --resume 继续
+        // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
-        closeMessage: '结束机器上的 tmux 会话。其中的 claude 对话已保存在机器上，可在新终端里用 claude --resume 继续。',
+        closeMessage: '这会结束机器上的终端进程。未保存的终端工作会丢失；agent 对话能否恢复取决于对应 agent。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',
@@ -1478,7 +1486,7 @@ export const zhHans: TranslationStructure = {
 
     setPassword: {
         // Set / change account password (from Settings, while logged in)
-        intro: '设置密码后，您无需扫描二维码即可在新设备上登录。您的密码绝不会离开此设备——它仅用于加密您的账户密钥。',
+        intro: '设置密码后即可在新设备上登录。可信中继通过 TLS 接收密码，仅保存加盐 scrypt 校验值，并在登录成功后返回服务器保管的账户密钥。',
         passwordLabel: '新密码',
         passwordPlaceholder: '至少 8 个字符',
         confirmLabel: '确认密码',
@@ -1489,6 +1497,7 @@ export const zhHans: TranslationStructure = {
         errorMismatch: '两次输入的密码不一致。',
         errorNotAuthenticated: '您必须登录后才能设置密码。',
         errorSaveFailed: '无法保存您的密码，请重试。',
+        errorReauthRequired: '为保护账户安全，请退出并重新登录后再修改登录凭据。',
     },
 
     review: {
@@ -1856,7 +1865,7 @@ export const zhHans: TranslationStructure = {
         mcpTitle: '剪贴板工具（MCP）',
         mcpIntro: '让普通的 claude CLI（例如跑在 Happy 网页终端里的那个）拥有 copy_to_clipboard 工具，可把文本推送到你打开的每个网页客户端的剪贴板。每台机器注册一次：',
         imTitle: 'IM 适配器模式',
-        imIntro: '任何聊天软件都可以变成 Happy 的遥控器。每条 webhook 通知都以固定、可机器解析的最后一行结尾——"session: <id>"——纯文本转发也不会丢失。适配器（我们的 Tanka 集成是参考实现）把通知转发进群聊、监听自己的 IM；当你引用回复某条通知时，它从该行提取会话 id，并用 "very-happy send" 把你的回复送回会话。新任务则通过 "very-happy spawn" 从聊天中直接发起。',
+        imIntro: '任何聊天软件都可以变成 Happy 的遥控器。每条 webhook 通知都以固定、可机器解析的最后一行结尾——"session: <id>"——纯文本转发也不会丢失。你的适配器把通知转发进群聊，执行发送者与群组白名单；当你引用回复某条通知时，它从该行提取会话 id，并用 "very-happy send" 把回复送回会话。新任务则通过 "very-happy spawn" 从聊天中直接发起。',
         imDocs: '完整文档',
         imDocsSubtitle: 'docs/channels.md——webhook 契约、CLI 参考、适配器示例',
     },

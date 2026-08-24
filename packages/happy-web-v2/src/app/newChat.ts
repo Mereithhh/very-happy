@@ -2,7 +2,7 @@ import type { NavigateFunction } from 'react-router-dom';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { machineSpawnNewSession } from '@/sync/ops';
-import { normalizeAgentKey } from '@/sync/agentDefaults';
+import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { decideQuickChat, pushRecentMachinePath } from '@/utils/quickChat';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -49,10 +49,16 @@ export async function createChatOrConfigure(
     }
     inFlight = true;
     try {
+        const agent = normalizeAgentKey(state.settings.newSessionAgent);
         const res = await machineSpawnNewSession({
             machineId: decision.machineId,
             directory: decision.directory,
-            agent: normalizeAgentKey(state.settings.newSessionAgent),
+            agent,
+            permissionMode: resolveNewSessionPermissionMode(
+                state.settings.agentDefaultOverrides,
+                agent,
+                state.localSettings.newSessionReviewFirst,
+            ),
         });
         if (res.type === 'requestToApproveDirectoryCreation') {
             // The remembered directory vanished — never silently mkdir from the

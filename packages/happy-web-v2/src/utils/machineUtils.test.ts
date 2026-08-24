@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Machine } from '@/sync/storageTypes';
-import { soleOnlineMachine, machineLabel, pickDefaultMachineId } from './machineUtils';
+import { soleOnlineMachine, machineLabel, pickDefaultMachineId, terminalMachineState } from './machineUtils';
 
 const M = (id: string, active: boolean, metadata: Machine['metadata'] = null): Machine => ({
     id,
@@ -39,6 +39,24 @@ describe('machineLabel', () => {
         expect(machineLabel(M('m1', true, { displayName: 'Dev Box', host: 'devbox.local' } as any))).toBe('Dev Box');
         expect(machineLabel(M('m1', true, { host: 'devbox.local' } as any))).toBe('devbox.local');
         expect(machineLabel(M('0123456789abcdef', true))).toBe('01234567');
+    });
+});
+
+describe('terminalMachineState', () => {
+    it('marks an offline machine unavailable and points recovery at its daemon', () => {
+        expect(terminalMachineState(M('offline', false))).toEqual({
+            available: false,
+            status: 'offline',
+            needsDaemonStart: true,
+        });
+    });
+
+    it('allows terminal creation only on a connected machine', () => {
+        expect(terminalMachineState(M('online', true))).toEqual({
+            available: true,
+            status: 'connected',
+            needsDaemonStart: false,
+        });
     });
 });
 
