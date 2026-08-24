@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-25 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `c9a8fbb69fb4a59fe8cb024ba2722fff00c4375a`
+> Released Web source: `ef74cc6700f98c74f3bd999453add80c61b7bce4`
 > Released Server source: `2300f4ab335c105a92d281806c955b7e44d8854a`
 > Production CLI: `very-happy-cli@0.2.64` (`v0.2.64`)
 > Decision: **NOT READY to change repository visibility yet**
@@ -23,6 +23,21 @@ procedure below is complete.
   privacy-safe product proof uses the authenticated app's production component style contracts
   for the session sidebar, terminal, file browser, structured conversation, and board,
   with sanitized fixture data and no auth/sync/socket imports in the anonymous bundle.
+- The public product hierarchy is now explicitly Web-first: the browser or installable PWA is
+  the recommended daily workspace, while the CLI and background daemon are the required
+  machine-side bridge for pairing, diagnostics, automation, and local recovery. The first-use
+  path still installs the CLI and starts the daemon; it no longer presents the CLI as the
+  primary place users should spend their day.
+- The terminal story is agent-independent. A tmux-owned real TTY preserves ordinary
+  `xterm-256color` text shells and TUIs—not only coding agents—while the Web supplies durable
+  access, files, tasks, and structured Claude continuity. Public copy does not promise support
+  for terminal graphics protocols such as sixel or Kitty graphics.
+- MCP positioning now follows the shipped implementation exactly: managed Claude runners can
+  change titles, copy text, open file previews, and report progress; Codex, Gemini, and the ACP
+  bridge expose the common title/clipboard/preview subset; the optional meta-agent adds a
+  separate high-privilege local control surface. The docs disclose that user-scoped Claude MCP
+  registration affects every Claude session for that operating-system user and requires the
+  local daemon.
 - The landing also has a canonical `/welcome` route that is independent of login state while
   `/` preserves the existing contract (anonymous visitors see the landing; returning users enter
   the workspace). Docs, legal pages, and the README return to that stable marketing route.
@@ -140,11 +155,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 106 test files / 1,469 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 106 test files / 1,470 tests; Vite production build; TypeScript 0 errors |
 | CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.64 |
 | Server | 57 test files / 408 tests; TypeScript 0 errors; production runtime build passed |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Quality Gates `32758820250` passed at exact candidate SHA `c9a8fbb6`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
+| CI | Final Web-first Quality Gates `32762994029` passed at exact release SHA `ef74cc67`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -291,6 +306,12 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   `200 application/x-sh`, `Cache-Control: no-store`, SHA-256
   `35befa57120c83587bf1ff03235ab5eee9fadb4624aea62edfe0b9f2ddfc265d`, and was byte-identical
   to the reviewed repository source. Its offline dry-run left an isolated HOME empty.
+- after the Web-first release, fresh production checks at 390x844 and 1440x1000 confirmed the
+  Web/PWA-first thesis, agent-independent text-TUI boundary, sanitized production UI surfaces,
+  and MCP handoff positioning with zero horizontal overflow. The real Files control was
+  exercised inside the shared product preview; `/docs/integrations` exposed Claude progress,
+  Codex/Gemini/ACP scope, meta-agent privilege, and `--scope user` boundaries without overflow.
+  The mobile pass reported no console errors or warnings.
 
 ### Independent review
 
@@ -388,6 +409,13 @@ symlink/mountpoint alias, mixed-fallback split-brain, startup/close lifetime, an
 gaps; the third freeze ended at **P0=0, P1=0, P2=0**. A separate final mobile review confirmed
 that the xterm helper 16 px floor wins the production cascade without changing visible terminal
 geometry or IME composition behavior, also ending at **P0=0, P1=0, P2=0**.
+
+The Web-first positioning follow-up received three independent freeze reviews. The code/test
+review fixed missing Gemini/ACP bridge coverage and a vacuous negative test. The public-security
+review narrowed Claude progress claims, documented all meta-agent additions and user-scoped MCP
+blast radius, and bounded terminal compatibility to ordinary text TUIs. The first-user/UI review
+removed misleading “real/live product UI” labels from sanitized fixtures. All three rereviews
+ended at **P0=0, P1=0, P2=0**.
 
 ## Release and production state
 
@@ -554,6 +582,13 @@ geometry or IME composition behavior, also ending at **P0=0, P1=0, P2=0**.
   xterm textarea at narrow width, scale 1, zero terminal/Landing overflow, and a completed
   interactive file-handoff proof. The running daemon is **0.2.64** (PID 93827); Web rollback is
   the preceding `2300f4ab` atomic deployment and CLI rollback is `0.2.63`.
+- The Web-first workspace positioning, universal text-TUI explanation, and exact MCP capability
+  matrix shipped Web-only from `ef74cc6700f98c74f3bd999453add80c61b7bce4` by deploy
+  `32763241942` after exact-SHA Quality Gates `32762994029`. The deployed entry asset is
+  `/assets/index-yZVySC_9-202608241835.js`; health, JavaScript MIME/cache, signup capacity,
+  390x844 and 1440x1000 Landing/Docs acceptance, and the required daemon refresh passed. The
+  running daemon is **0.2.64** (PID 26483); Web rollback is the preceding `c9a8fbb6` atomic
+  deployment in `/opt/happy/webapp.prev`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
