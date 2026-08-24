@@ -11,19 +11,22 @@ let nextCleanupAt = 0;
  */
 export async function allowAuthRequest(
     key: string,
-    options: { max: number; windowMs: number },
+    options: { max: number; windowMs: number; cost?: number },
     client: SqlClient = db,
     nowMs = Date.now(),
 ): Promise<boolean> {
+    const cost = Number.isSafeInteger(options.cost) && (options.cost ?? 0) > 0
+        ? options.cost!
+        : 1;
     const now = new Date(nowMs);
     const nextReset = new Date(nowMs + options.windowMs);
     const rows = await client.$queryRawUnsafe<Array<{ count: number }>>(
         `INSERT INTO "AuthRateLimitBucket" ("key", "count", "resetAt", "updatedAt")
-         VALUES ($1, 1, $2, $3)
+         VALUES ($1, $4, $2, $3)
          ON CONFLICT ("key") DO UPDATE SET
            "count" = CASE
-             WHEN "AuthRateLimitBucket"."resetAt" <= $3 THEN 1
-             ELSE "AuthRateLimitBucket"."count" + 1
+             WHEN "AuthRateLimitBucket"."resetAt" <= $3 THEN $4
+             ELSE "AuthRateLimitBucket"."count" + $4
            END,
            "resetAt" = CASE
              WHEN "AuthRateLimitBucket"."resetAt" <= $3 THEN $2
@@ -34,6 +37,7 @@ export async function allowAuthRequest(
         key,
         nextReset,
         now,
+        cost,
     );
 
     // Opportunistic bounded cleanup; correctness never depends on it.

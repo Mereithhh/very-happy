@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashLoginToken, parseLoginSessionTtlDays } from './auth';
+import { hashLoginToken, parseLoginSessionTtlDays, parseMaxLoginSessionsPerAccount } from './auth';
 
 describe('login session primitives', () => {
     it('uses a bounded configurable TTL', () => {
@@ -14,5 +14,14 @@ describe('login session primitives', () => {
         expect(hashLoginToken('secret-token')).toMatch(/^[a-f0-9]{64}$/);
         expect(hashLoginToken('secret-token')).toBe(hashLoginToken('secret-token'));
         expect(hashLoginToken('secret-token')).not.toContain('secret-token');
+    });
+
+    it('uses a bounded configurable per-account session cap', () => {
+        expect(parseMaxLoginSessionsPerAccount(undefined)).toBe(20);
+        expect(parseMaxLoginSessionsPerAccount('1')).toBe(1);
+        expect(parseMaxLoginSessionsPerAccount('1000')).toBe(1000);
+        expect(parseMaxLoginSessionsPerAccount('0')).toBe(20);
+        expect(parseMaxLoginSessionsPerAccount('1001')).toBe(20);
+        expect(parseMaxLoginSessionsPerAccount('nope')).toBe(20);
     });
 });

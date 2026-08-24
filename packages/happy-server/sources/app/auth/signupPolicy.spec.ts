@@ -8,7 +8,7 @@ describe('signup policy', () => {
             mode: 'invite',
             inviteCodes: ['a', 'b'],
         });
-        expect(resolveSignupPolicy({} as NodeJS.ProcessEnv).mode).toBe('open');
+        expect(resolveSignupPolicy({} as NodeJS.ProcessEnv).mode).toBe('closed');
     });
 
     it('lets explicit mode win and fails closed on invalid capacity configuration', () => {

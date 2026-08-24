@@ -4,6 +4,7 @@ import {
     hashGoogleLoginNonce,
     isGoogleOriginAllowed,
     issueGoogleLoginChallenge,
+    maxPendingGoogleLoginChallenges,
     resolveGoogleLoginConfig,
 } from './googleLoginSecurity';
 
@@ -30,15 +31,33 @@ describe('Google login security', () => {
 
     it('stores only a nonce hash with a five-minute expiry', async () => {
         const execute = vi.fn().mockResolvedValue(1);
+        const query = vi.fn()
+            .mockResolvedValueOnce([{ key: 'google-login-challenge-create-cap' }])
+            .mockResolvedValueOnce([{ count: 0n }]);
         const nowMs = Date.UTC(2026, 7, 24, 0, 0, 0);
         const challenge = await issueGoogleLoginChallenge({
             $executeRawUnsafe: execute,
-            $queryRawUnsafe: vi.fn(),
+            $queryRawUnsafe: query,
         } as any, nowMs);
         expect(challenge.nonce).toMatch(/^[A-Za-z0-9_-]{43}$/);
         expect(challenge.expiresAt.getTime()).toBe(nowMs + 5 * 60 * 1000);
-        expect(execute.mock.calls[1][1]).toBe(hashGoogleLoginNonce(challenge.nonce));
-        expect(execute.mock.calls[1].join(' ')).not.toContain(challenge.nonce);
+        expect(execute.mock.calls[2][1]).toBe(hashGoogleLoginNonce(challenge.nonce));
+        expect(execute.mock.calls[2].join(' ')).not.toContain(challenge.nonce);
+    });
+
+    it('serializes creation and fails closed at the global outstanding cap', async () => {
+        process.env.MAX_PENDING_GOOGLE_LOGIN_CHALLENGES = '1';
+        const execute = vi.fn().mockResolvedValue(1);
+        const query = vi.fn()
+            .mockResolvedValueOnce([{ key: 'google-login-challenge-create-cap' }])
+            .mockResolvedValueOnce([{ count: 1n }]);
+        await expect(issueGoogleLoginChallenge({
+            $executeRawUnsafe: execute,
+            $queryRawUnsafe: query,
+        } as any)).rejects.toThrow('google-login-challenge-capacity');
+        expect(execute).toHaveBeenCalledTimes(2);
+        delete process.env.MAX_PENDING_GOOGLE_LOGIN_CHALLENGES;
+        expect(maxPendingGoogleLoginChallenges()).toBe(10_000);
     });
 
     it('accepts only the single successful atomic consume', async () => {

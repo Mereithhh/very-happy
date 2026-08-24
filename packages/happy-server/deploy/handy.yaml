@@ -31,6 +31,12 @@ spec:
           value: production
         - name: PORT
           value: "3005"
+        # This example opts in for pod-network Prometheus scraping. Keep the
+        # metrics port private with cluster NetworkPolicy; it is not in Service.
+        - name: METRICS_ENABLED
+          value: "true"
+        - name: METRICS_HOST
+          value: "0.0.0.0"
         - name: REDIS_URL
           value: redis://happy-redis:6379
         - name: S3_PUBLIC_URL

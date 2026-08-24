@@ -1,10 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { claimSecretHash, claimSecretMatches, decodeFixedBase64, legacyPairingAllowed, pairingExpired } from './pairingSecurity';
+import {
+    claimSecretHash,
+    claimSecretMatches,
+    decodeFixedBase64,
+    legacyPairingAllowed,
+    maxPendingAuthPairings,
+    pairingExpired,
+    pairingExpiryCutoff,
+} from './pairingSecurity';
 
 describe('pairing claim security', () => {
     afterEach(() => {
         delete process.env.AUTH_PAIRING_TTL_MINUTES;
         delete process.env.AUTH_ALLOW_LEGACY_PAIRING;
+        delete process.env.MAX_PENDING_AUTH_PAIRINGS;
     });
 
     it('accepts exactly 32 byte base64url claims and rejects malformed lengths', () => {
@@ -32,5 +41,16 @@ describe('pairing claim security', () => {
         expect(legacyPairingAllowed()).toBe(false);
         process.env.AUTH_ALLOW_LEGACY_PAIRING = 'true';
         expect(legacyPairingAllowed()).toBe(true);
+    });
+
+    it('uses the same bounded TTL cutoff and a safe configurable global cap', () => {
+        process.env.AUTH_PAIRING_TTL_MINUTES = '10';
+        const now = new Date('2026-08-24T00:10:00Z');
+        expect(pairingExpiryCutoff(now)).toEqual(new Date('2026-08-24T00:00:00Z'));
+        expect(maxPendingAuthPairings()).toBe(1000);
+        process.env.MAX_PENDING_AUTH_PAIRINGS = '25';
+        expect(maxPendingAuthPairings()).toBe(25);
+        process.env.MAX_PENDING_AUTH_PAIRINGS = '0';
+        expect(maxPendingAuthPairings()).toBe(1000);
     });
 });

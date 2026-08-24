@@ -7,6 +7,10 @@ import { Context } from "@/context";
 import { friendRemove } from "@/app/social/friendRemove";
 import { friendList } from "@/app/social/friendList";
 import { buildUserProfile } from "@/app/social/type";
+import { enforceRelationshipWriteRate } from '@/app/social/relationshipLimits';
+import { isAccountResourceLimitError } from '../resourceLimits';
+
+const userIdSchema = z.string().min(1).max(256);
 
 export async function userRoutes(app: Fastify) {
 
@@ -14,8 +18,8 @@ export async function userRoutes(app: Fastify) {
     app.get('/v1/user/:id', {
         schema: {
             params: z.object({
-                id: z.string()
-            }),
+                id: userIdSchema
+            }).strict(),
             response: {
                 200: z.object({
                     user: UserProfileSchema
@@ -62,8 +66,8 @@ export async function userRoutes(app: Fastify) {
     app.get('/v1/user/search', {
         schema: {
             querystring: z.object({
-                query: z.string()
-            }),
+                query: z.string().min(1).max(100)
+            }).strict(),
             response: {
                 200: z.object({
                     users: z.array(UserProfileSchema)
@@ -112,41 +116,59 @@ export async function userRoutes(app: Fastify) {
     app.post('/v1/friends/add', {
         schema: {
             body: z.object({
-                uid: z.string()
-            }),
+                uid: userIdSchema
+            }).strict(),
             response: {
                 200: z.object({
                     user: UserProfileSchema.nullable()
                 }),
                 404: z.object({
                     error: z.literal('User not found')
-                })
+                }),
+                429: z.object({ error: z.enum(['relationship_count_quota_exceeded', 'relationship_rate_quota_exceeded']) }),
             }
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const user = await friendAdd(Context.create(request.userId), request.body.uid);
-        return reply.send({ user });
+        try {
+            await enforceRelationshipWriteRate(request.userId);
+            const user = await friendAdd(Context.create(request.userId), request.body.uid);
+            return reply.send({ user });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(429).send({ error: error.code as any });
+            }
+            throw error;
+        }
     });
 
     app.post('/v1/friends/remove', {
         schema: {
             body: z.object({
-                uid: z.string()
-            }),
+                uid: userIdSchema
+            }).strict(),
             response: {
                 200: z.object({
                     user: UserProfileSchema.nullable()
                 }),
                 404: z.object({
                     error: z.literal('User not found')
-                })
+                }),
+                429: z.object({ error: z.literal('relationship_rate_quota_exceeded') }),
             }
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const user = await friendRemove(Context.create(request.userId), request.body.uid);
-        return reply.send({ user });
+        try {
+            await enforceRelationshipWriteRate(request.userId);
+            const user = await friendRemove(Context.create(request.userId), request.body.uid);
+            return reply.send({ user });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(429).send({ error: error.code as any });
+            }
+            throw error;
+        }
     });
 
     app.get('/v1/friends', {

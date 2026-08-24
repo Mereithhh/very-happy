@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
 import { createPGlite } from "./storage/pgliteLoader";
+import { safeErrorMetadata } from './utils/logSafety';
 
 const dataDir = process.env.DATA_DIR || "./data";
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, "pglite");
@@ -78,7 +79,7 @@ export async function runMigrations(opts: { pgliteDir: string; migrationsDir?: s
         return;
     }
     const targetPgliteDir = opts.pgliteDir;
-    console.log(`Migrating database in ${targetPgliteDir}...`);
+    console.log('Migrating embedded database...');
     fs.mkdirSync(targetPgliteDir, { recursive: true });
 
     const pg = createPGlite(targetPgliteDir);
@@ -171,7 +172,11 @@ async function serve() {
     }
 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
-    const host = process.env.HOST || "0.0.0.0";
+    const host = process.env.HOST || "127.0.0.1";
+    // A bare public package must fail closed. Existing accounts can still sign
+    // in; operators explicitly opt into invite/open registration after TLS,
+    // proxy trust, quotas, and backups are configured.
+    process.env.SIGNUP_MODE ||= "closed";
     const staticDir = findStaticDir();
     const injectHtmlConfig = resolveHtmlConfig();
 
@@ -234,13 +239,13 @@ if (isDirectInvocation) {
     switch (command) {
         case "migrate":
             runMigrations({ pgliteDir }).catch(e => {
-                console.error(e);
+                console.error('Database migration failed', safeErrorMetadata(e));
                 process.exit(1);
             });
             break;
         case "serve":
             serve().catch(e => {
-                console.error(e);
+                console.error('Server failed to start', safeErrorMetadata(e));
                 process.exit(1);
             });
             break;
@@ -258,7 +263,8 @@ Environment variables:
   REDIS_URL         Redis URL (optional, not required for standalone)
   PORT              Server port (default: 3005)
   HANDY_MASTER_SECRET  Required: master secret for auth/encryption
-  SIGNUP_MODE       open, invite, or closed (default: open/legacy behavior)
+  HOST              Listen address (default: 127.0.0.1; Docker sets 0.0.0.0)
+  SIGNUP_MODE       open, invite, or closed (standalone default: closed)
   SIGNUP_MAX_ACCOUNTS  Global Account limit; unset or 0 means unlimited
   SIGNUP_INVITE_CODES  Comma-separated codes used in invite mode
   LOGIN_SESSION_TTL_DAYS  Password/Google session lifetime (default: 30)

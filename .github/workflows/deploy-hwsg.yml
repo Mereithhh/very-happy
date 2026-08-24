@@ -79,12 +79,6 @@ jobs:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install dependencies
-        # Deploy never runs electron (packages/codium is a desktop spike);
-        # its postinstall downloads a ~100MB binary from GitHub releases and
-        # has been the #1 cause of flaky deploys (socket hang up, twice on
-        # 2026-08-13 alone). Skip the binary, keep the package resolvable.
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: pnpm install --frozen-lockfile
 
       - name: Set up SSH

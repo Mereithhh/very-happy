@@ -11,6 +11,7 @@ import { getSignupStatus, resolveSignupPolicy, SignupPolicyError, withSignupGate
 import { verifyGoogleIdToken } from '@/app/auth/googleOidc';
 import {
     consumeGoogleLoginChallenge,
+    GoogleLoginChallengeCapacityError,
     isGoogleOriginAllowed,
     issueGoogleLoginChallenge,
     resolveGoogleLoginConfig,
@@ -18,6 +19,7 @@ import {
 import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity';
+import { configuredResourceLimit } from '../resourceLimits';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
@@ -127,8 +129,15 @@ export function accountAuthRoutes(app: Fastify) {
         if (!(await allowAuthRequest(`google-challenge:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
-        const challenge = await issueGoogleLoginChallenge();
-        return reply.send({ nonce: challenge.nonce, expiresAt: challenge.expiresAt.toISOString() });
+        try {
+            const challenge = await issueGoogleLoginChallenge();
+            return reply.send({ nonce: challenge.nonce, expiresAt: challenge.expiresAt.toISOString() });
+        } catch (error) {
+            if (error instanceof GoogleLoginChallengeCapacityError) {
+                return reply.code(429).send({ error: 'too_many_requests' as const });
+            }
+            throw error;
+        }
     });
 
     app.post('/v1/account/signup/password', {
@@ -235,24 +244,86 @@ export function accountAuthRoutes(app: Fastify) {
                     secret: z.string().optional(),
                     expiresAt: z.string().optional(),
                 }),
+                400: z.object({ error: z.literal('invalid_secret') }),
+                403: z.object({ error: z.literal('reauth_required') }),
                 409: z.object({ error: z.literal('username_taken') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
                 500: z.object({ error: z.literal('failed') }),
             },
         },
     }, async (request, reply) => {
         const accountId = request.userId;
         const username = request.body.username;
+        const derivedPublicKey = accountPublicKeyFromSecret(request.body.secret);
+        if (!derivedPublicKey) {
+            return reply.code(400).send({ error: 'invalid_secret' as const });
+        }
         try {
-            const existing = await db.$queryRawUnsafe<{ accountId: string }[]>(
-                'SELECT "accountId" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
-                username,
+            // Account.publicKey is the immutable identity anchor. Never accept a
+            // recoverable credential seed for some other account: doing so would
+            // make the next password login return a secret that cannot decrypt
+            // this account and could bind the wrong cryptographic identity.
+            const account = await db.account.findUnique({
+                where: { id: accountId },
+                select: {
+                    publicKey: true,
+                    AccountIdentity: { select: { provider: true } },
+                },
+            });
+            if (!account || account.publicKey !== derivedPublicKey) {
+                return reply.code(400).send({ error: 'invalid_secret' as const });
+            }
+
+            // A legacy key-only account needs one bootstrap path to attach its
+            // first recoverable login. Once password or Google identity exists,
+            // this sensitive operation requires a login session created in the
+            // last 10 minutes. A stolen 30-day bearer cannot silently become a
+            // permanent attacker-selected password.
+            const hasRecoverableIdentity = account.AccountIdentity.some(
+                (identity) => identity.provider === 'password' || identity.provider === 'google',
             );
-            if (existing[0] && existing[0].accountId !== accountId) {
-                return reply.code(409).send({ error: 'username_taken' as const });
+            if (hasRecoverableIdentity) {
+                const loginSessionId = request.authLoginSessionId;
+                const recentSession = loginSessionId
+                    ? await db.accountLoginSession.findFirst({
+                        where: { id: loginSessionId, accountId, revokedAt: null },
+                        select: { createdAt: true },
+                    })
+                    : null;
+                const recentCutoff = Date.now() - 10 * 60 * 1000;
+                if (!recentSession || recentSession.createdAt.getTime() < recentCutoff) {
+                    return reply.code(403).send({ error: 'reauth_required' as const });
+                }
+            }
+
+            const credentialChangeRate = configuredResourceLimit(
+                'MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE',
+                5,
+            );
+            if (credentialChangeRate > 0 && !(await allowAuthRequest(
+                `credential-change:${accountId}`,
+                { max: credentialChangeRate, windowMs: 60_000 },
+            ))) {
+                return reply.code(429).send({ error: 'too_many_requests' as const });
             }
 
             const passwordHash = await hashPassword(request.body.password);
-            await db.$transaction(async (tx) => {
+            const session = await db.$transaction(async (tx) => {
+                // One account has exactly one current password identity. The row
+                // lock makes two concurrent credential changes deterministic;
+                // Google and future non-password identities remain untouched.
+                await tx.$queryRawUnsafe(
+                    'SELECT "id" FROM "Account" WHERE "id" = $1 FOR UPDATE',
+                    accountId,
+                );
+                const existing = await tx.$queryRawUnsafe<{ accountId: string }[]>(
+                    'SELECT "accountId" FROM "AccountCredential" WHERE "username" = $1 LIMIT 1',
+                    username,
+                );
+                if (existing[0] && existing[0].accountId !== accountId) {
+                    throw new UsernameTakenError();
+                }
+
                 const secretEnc = await upsertAccountSecret(tx, accountId, request.body.secret);
                 await tx.$executeRawUnsafe('DELETE FROM "AccountCredential" WHERE "accountId" = $1', accountId);
                 await tx.$executeRawUnsafe(
@@ -265,17 +336,29 @@ export function accountAuthRoutes(app: Fastify) {
                     secretEnc,
                 );
                 await tx.$executeRawUnsafe(
+                    `DELETE FROM "AccountIdentity"
+                     WHERE "provider" = 'password'
+                       AND ("accountId" = $1 OR "providerSubject" = $2)`,
+                    accountId,
+                    username,
+                );
+                await tx.$executeRawUnsafe(
                     `INSERT INTO "AccountIdentity"
                      ("id", "accountId", "provider", "providerSubject", "updatedAt")
-                     VALUES ($1, $2, 'password', $3, now())
-                     ON CONFLICT ("provider", "providerSubject") DO NOTHING`,
+                     VALUES ($1, $2, 'password', $3, now())`,
                     randomUUID(),
                     accountId,
                     username,
                 );
+                await tx.$executeRawUnsafe(
+                    `UPDATE "AccountLoginSession"
+                     SET "revokedAt" = COALESCE("revokedAt", now())
+                     WHERE "accountId" = $1 AND "revokedAt" IS NULL`,
+                    accountId,
+                );
+                return auth.createLoginToken(accountId, tx, { cache: false });
             });
-
-            const session = await auth.createLoginToken(accountId);
+            auth.invalidateUserTokens(accountId);
             return reply.send({
                 success: true as const,
                 token: session.token,
@@ -283,7 +366,12 @@ export function accountAuthRoutes(app: Fastify) {
                 expiresAt: session.expiresAt.toISOString(),
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `account credentials upsert failed: ${error}`);
+            if (error instanceof UsernameTakenError ||
+                (error as { code?: string }).code === 'P2002' ||
+                /unique constraint/i.test(String(error))) {
+                return reply.code(409).send({ error: 'username_taken' as const });
+            }
+            log({ module: 'api', level: 'error', error }, 'Account credentials upsert failed');
             return reply.code(500).send({ error: 'failed' as const });
         }
     });
@@ -369,7 +457,7 @@ export function accountAuthRoutes(app: Fastify) {
                 expectedNonce: request.body.nonce,
             });
         } catch (error) {
-            log({ module: 'google-auth', level: 'warn' }, `Google credential rejected: ${(error as Error).message}`);
+            log({ module: 'google-auth', level: 'warn', error }, 'Google credential rejected');
             return reply.code(401).send({ error: 'invalid_google_credential' as const });
         }
         if (!(await consumeGoogleLoginChallenge(db, request.body.nonce))) {

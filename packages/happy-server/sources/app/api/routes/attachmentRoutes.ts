@@ -5,8 +5,8 @@
  * - S3: Returns presigned PUT/GET URLs. Server never touches file bytes.
  * - Local: Server accepts/serves encrypted blobs directly.
  *
- * No database records — attachments are identified by their ref path.
- * Cleanup happens when sessions are deleted (Phase 8).
+ * Upload reservations are database-backed for account byte/count quotas.
+ * Completed rows live with the session; abandoned reservations are reclaimed.
  */
 import { z } from 'zod';
 import * as fs from 'fs';
@@ -14,9 +14,9 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
-import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile } from '@/storage/files';
+import { s3client, s3bucket, isLocalStorage, getLocalFilesDir, putLocalFile, deleteStoredFile } from '@/storage/files';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
-import { configuredResourceLimit, lockAccountResources, withinByteQuota } from '../resourceLimits';
+import { assertAccountResourceQuota, configuredResourceLimit, isAccountResourceLimitError, lockAccountResources } from '../resourceLimits';
 import { inTx } from '@/storage/inTx';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -24,16 +24,24 @@ const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
 
 const UPLOAD_RATE_WINDOW_MS = 60_000;
 const UPLOAD_RATE_MAX = 60;
+const ATTACHMENT_ID_MAX_BYTES = 256;
+const ATTACHMENT_RESERVATION_DEFAULT_TTL_MINUTES = 60;
+const ATTACHMENT_CLEANUP_BATCH = 100;
+const RESERVATION_STATUS = 'attachment-reserved';
+const UPLOADING_STATUS = 'attachment-uploading';
+const COMPLETE_STATUS = 'attachment-complete';
+const CLEANING_STATUS = 'attachment-cleaning';
 
 type AttachmentSqlClient = Pick<typeof db, '$queryRawUnsafe' | '$executeRawUnsafe'>;
 
-async function reservedAttachmentBytes(client: AttachmentSqlClient, accountId: string): Promise<number> {
-    const rows = await client.$queryRawUnsafe<Array<{ used: bigint | number | string }>>(
-        `SELECT COALESCE(SUM("size"), 0) AS "used"
-         FROM "UploadedFile" WHERE "accountId" = $1 AND "path" LIKE 'sessions/%'`,
+async function uploadedFileUsage(client: AttachmentSqlClient, accountId: string): Promise<{ count: number; bytes: number }> {
+    const rows = await client.$queryRawUnsafe<Array<{ count: bigint | number | string; bytes: bigint | number | string }>>(
+        `SELECT COUNT(*) AS "count",
+                COALESCE(SUM(CASE WHEN "path" LIKE 'sessions/%' THEN "size" ELSE 0 END), 0) AS "bytes"
+         FROM "UploadedFile" WHERE "accountId" = $1`,
         accountId,
     );
-    return Number(rows[0]?.used ?? 0);
+    return { count: Number(rows[0]?.count ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
 }
 
 async function reserveAttachment(
@@ -45,12 +53,13 @@ async function reserveAttachment(
     // Raw SQL is deliberate: hw-sg bind-mount deploys sources and migrations
     // onto a stable image, so the generated Prisma Client may predate `size`.
     await client.$executeRawUnsafe(
-        `INSERT INTO "UploadedFile" ("id", "accountId", "path", "size", "updatedAt")
-         VALUES ($1, $2, $3, $4, now())`,
+        `INSERT INTO "UploadedFile" ("id", "accountId", "path", "size", "reuseKey", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, now())`,
         crypto.randomUUID(),
         accountId,
         ref,
         size,
+        RESERVATION_STATUS,
     );
 }
 
@@ -58,13 +67,94 @@ async function attachmentReservationSize(
     client: AttachmentSqlClient,
     accountId: string,
     ref: string,
-): Promise<number | null> {
-    const rows = await client.$queryRawUnsafe<Array<{ size: number | null }>>(
-        `SELECT "size" FROM "UploadedFile" WHERE "accountId" = $1 AND "path" = $2 LIMIT 1`,
+): Promise<{ size: number | null; reuseKey: string | null } | null> {
+    const rows = await client.$queryRawUnsafe<Array<{ size: number | null; reuseKey: string | null }>>(
+        `SELECT "size", "reuseKey" FROM "UploadedFile" WHERE "accountId" = $1 AND "path" = $2 LIMIT 1`,
         accountId,
         ref,
     );
-    return rows[0]?.size ?? null;
+    return rows[0] ?? null;
+}
+
+async function claimExpiredReservations(accountId: string): Promise<Array<{ id: string; path: string }>> {
+    const ttlMinutes = configuredResourceLimit(
+        'ATTACHMENT_RESERVATION_TTL_MINUTES',
+        ATTACHMENT_RESERVATION_DEFAULT_TTL_MINUTES,
+    );
+    if (ttlMinutes === 0) return [];
+    const cutoff = new Date(Date.now() - ttlMinutes * 60_000);
+    return inTx(async (tx) => {
+        await lockAccountResources(tx, accountId);
+        return tx.$queryRawUnsafe<Array<{ id: string; path: string }>>(
+            `UPDATE "UploadedFile" SET "reuseKey" = $3, "updatedAt" = now()
+             WHERE "id" IN (
+                 SELECT "id" FROM "UploadedFile"
+                 WHERE "accountId" = $1
+                   AND "reuseKey" IN ($4, $5)
+                   AND "updatedAt" < $2
+                 ORDER BY "updatedAt" ASC
+                 LIMIT $6
+             )
+             RETURNING "id", "path"`,
+            accountId,
+            cutoff,
+            CLEANING_STATUS,
+            RESERVATION_STATUS,
+            UPLOADING_STATUS,
+            ATTACHMENT_CLEANUP_BATCH,
+        );
+    });
+}
+
+async function pruneAbandonedReservations(accountId: string): Promise<void> {
+    const claimed = await claimExpiredReservations(accountId);
+    for (const row of claimed) {
+        try {
+            await deleteStoredFile(row.path);
+            await db.uploadedFile.deleteMany({
+                where: { id: row.id, accountId, reuseKey: CLEANING_STATUS },
+            });
+        } catch {
+            await db.uploadedFile.updateMany({
+                where: { id: row.id, accountId, reuseKey: CLEANING_STATUS },
+                data: { reuseKey: RESERVATION_STATUS, updatedAt: new Date(0) },
+            });
+        }
+    }
+}
+
+async function markAttachmentStatus(accountId: string, ref: string, from: string[], to: string): Promise<boolean> {
+    return inTx(async (tx) => {
+        await lockAccountResources(tx, accountId);
+        const result = await tx.uploadedFile.updateMany({
+            where: { accountId, path: ref, reuseKey: { in: from } },
+            data: { reuseKey: to, updatedAt: new Date() },
+        });
+        if (result.count > 0) return true;
+        // Legacy rows predate reservation status. Preserve their availability.
+        return await tx.uploadedFile.count({ where: { accountId, path: ref, reuseKey: null } }) > 0;
+    });
+}
+
+async function storedAttachmentExists(ref: string): Promise<boolean> {
+    if (isLocalStorage()) {
+        return fs.existsSync(path.join(getLocalFilesDir(), ref));
+    }
+    try {
+        await s3client.statObject(s3bucket, ref);
+        return true;
+    } catch (error) {
+        const code = typeof error === 'object' && error !== null && 'code' in error
+            ? String(error.code)
+            : '';
+        const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+            ? Number(error.statusCode)
+            : 0;
+        if (statusCode === 404 || ['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code)) {
+            return false;
+        }
+        throw error;
+    }
 }
 
 /**
@@ -96,12 +186,12 @@ export function attachmentRoutes(app: Fastify) {
     app.post('/v1/sessions/:sessionId/attachments/request-upload', {
         schema: {
             params: z.object({
-                sessionId: z.string(),
-            }),
+                sessionId: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+            }).strict(),
             body: z.object({
-                filename: z.string(),
+                filename: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
                 size: z.number().int().min(1).max(MAX_FILE_SIZE),
-            }),
+            }).strict(),
             response: {
                 200: z.object({
                     ref: z.string(),
@@ -131,6 +221,7 @@ export function attachmentRoutes(app: Fastify) {
         if (!session) {
             return reply.code(404).send({ error: 'Session not found' });
         }
+        await pruneAbandonedReservations(userId);
 
         if (size > MAX_FILE_SIZE) {
             return reply.code(413).send({ error: 'File too large (max 10MB)' });
@@ -141,15 +232,27 @@ export function attachmentRoutes(app: Fastify) {
         const attachmentFile = `${attachmentId}.enc`;
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
 
-        const maxAccountBytes = configuredResourceLimit('MAX_ATTACHMENT_BYTES_PER_ACCOUNT', 100 * 1024 * 1024);
-        const reserved = await inTx(async (tx) => {
-            await lockAccountResources(tx, userId);
-            const used = await reservedAttachmentBytes(tx, userId);
-            if (!withinByteQuota(used, size, maxAccountBytes)) return false;
-            await reserveAttachment(tx, userId, ref, size);
-            return true;
-        });
-        if (!reserved) return reply.code(413).send({ error: 'Account attachment storage limit reached' });
+        try {
+            await inTx(async (tx) => {
+                await lockAccountResources(tx, userId);
+                const usage = await uploadedFileUsage(tx, userId);
+                assertAccountResourceQuota({
+                    resource: 'attachment',
+                    current: usage,
+                    delta: { count: 1, bytes: size },
+                    limits: {
+                        count: configuredResourceLimit('MAX_UPLOADED_FILES_PER_ACCOUNT', 2_000),
+                        bytes: configuredResourceLimit('MAX_ATTACHMENT_BYTES_PER_ACCOUNT', 100 * 1024 * 1024),
+                    },
+                });
+                await reserveAttachment(tx, userId, ref, size);
+            });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code });
+            }
+            throw error;
+        }
 
         try {
         if (isLocalStorage()) {
@@ -191,9 +294,9 @@ export function attachmentRoutes(app: Fastify) {
         bodyLimit: MAX_FILE_SIZE,
         schema: {
             params: z.object({
-                sessionId: z.string(),
-                attachmentFile: z.string(),
-            }),
+                sessionId: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+                attachmentFile: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+            }).strict(),
             response: {
                 200: z.object({ ok: z.boolean() }),
                 404: z.object({ error: z.string() }),
@@ -228,11 +331,23 @@ export function attachmentRoutes(app: Fastify) {
         }
 
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
-        const reservationSize = await attachmentReservationSize(db, userId, ref);
-        if (reservationSize === null || body.length > reservationSize) {
+        const reservation = await attachmentReservationSize(db, userId, ref);
+        if (!reservation || reservation.reuseKey === CLEANING_STATUS || body.length > (reservation.size ?? MAX_FILE_SIZE)) {
             return reply.code(413).send({ error: 'Upload exceeds its reserved size' });
         }
-        await putLocalFile(ref, body);
+        if (!await markAttachmentStatus(
+            userId,
+            ref,
+            [RESERVATION_STATUS, UPLOADING_STATUS, COMPLETE_STATUS],
+            UPLOADING_STATUS,
+        )) return reply.code(413).send({ error: 'Upload exceeds its reserved size' });
+        try {
+            await putLocalFile(ref, body);
+            await markAttachmentStatus(userId, ref, [UPLOADING_STATUS], COMPLETE_STATUS);
+        } catch (error) {
+            await markAttachmentStatus(userId, ref, [UPLOADING_STATUS], RESERVATION_STATUS);
+            throw error;
+        }
 
         return reply.send({ ok: true });
     });
@@ -246,11 +361,11 @@ export function attachmentRoutes(app: Fastify) {
     app.post('/v1/sessions/:sessionId/attachments/request-download', {
         schema: {
             params: z.object({
-                sessionId: z.string(),
-            }),
+                sessionId: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+            }).strict(),
             body: z.object({
-                ref: z.string(),
-            }),
+                ref: z.string().min(1).max(1024),
+            }).strict(),
             response: {
                 200: z.object({
                     downloadUrl: z.string(),
@@ -283,6 +398,20 @@ export function attachmentRoutes(app: Fastify) {
         if (!attachmentFile || attachmentFile.includes('/') || attachmentFile.includes('..')) {
             return reply.code(400).send({ error: 'Invalid attachment ref' });
         }
+        // Do not let an empty S3/local reservation become permanent merely by
+        // requesting a download URL. Completion requires the object to exist.
+        if (!await storedAttachmentExists(ref)) {
+            return reply.code(404).send({ error: 'Attachment not found' });
+        }
+        // Mark modern reservations complete. A missing row is allowed here for
+        // read compatibility with attachments created before reservations were
+        // introduced; upload endpoints still require a live reservation.
+        await markAttachmentStatus(
+            userId,
+            ref,
+            [RESERVATION_STATUS, UPLOADING_STATUS, COMPLETE_STATUS],
+            COMPLETE_STATUS,
+        );
 
         if (isLocalStorage()) {
             const baseUrl = resolveBaseUrl(request);
@@ -301,9 +430,9 @@ export function attachmentRoutes(app: Fastify) {
     app.get('/v1/sessions/:sessionId/attachments/:attachmentFile', {
         schema: {
             params: z.object({
-                sessionId: z.string(),
-                attachmentFile: z.string(),
-            }),
+                sessionId: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+                attachmentFile: z.string().min(1).max(ATTACHMENT_ID_MAX_BYTES),
+            }).strict(),
         },
         preHandler: app.authenticate,
     }, async (request, reply) => {
@@ -324,12 +453,18 @@ export function attachmentRoutes(app: Fastify) {
         }
 
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;
+        if (!await storedAttachmentExists(ref)) {
+            return reply.code(404).send({ error: 'Attachment not found' });
+        }
+        await markAttachmentStatus(
+            userId,
+            ref,
+            [RESERVATION_STATUS, UPLOADING_STATUS, COMPLETE_STATUS],
+            COMPLETE_STATUS,
+        );
 
         if (isLocalStorage()) {
             const fullPath = path.join(getLocalFilesDir(), ref);
-            if (!fs.existsSync(fullPath)) {
-                return reply.code(404).send({ error: 'Attachment not found' });
-            }
             reply.header('Content-Type', 'application/octet-stream');
             return reply.type('application/octet-stream').send(fs.readFileSync(fullPath));
         } else {

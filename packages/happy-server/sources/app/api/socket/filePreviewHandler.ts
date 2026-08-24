@@ -22,6 +22,7 @@
  *     keys ride along.
  */
 import { Server, Socket } from "socket.io";
+import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
 
 type Conn = { connectionType: string; machineId?: string; sessionId?: string };
 
@@ -46,7 +47,13 @@ function normalizeMode(mode: unknown): FilePreviewMode {
     return mode === 'diff' ? 'diff' : 'file';
 }
 
-export function filePreviewHandler(userId: string, socket: Socket, io: Server, connection: Conn) {
+export function filePreviewHandler(
+    userId: string,
+    socket: Socket,
+    io: Server,
+    connection: Conn,
+    rateLimiter?: AccountTerminalRateLimiter,
+) {
     // Only session processes and machine daemons may push; a plain web client
     // (user-scoped) has no business asking other clients to open previews.
     const source =
@@ -60,9 +67,17 @@ export function filePreviewHandler(userId: string, socket: Socket, io: Server, c
     const userRoom = `user:${userId}:user-scoped`;
 
     socket.on('file-preview-push', (data: FilePreviewPushEvent) => {
+        if (!allowAccountRelay({
+            limiter: rateLimiter,
+            accountId: userId,
+            socket,
+            resource: 'file-preview-relay',
+            payload: data,
+        })) return;
         if (!data || typeof data.payload !== 'string') return;
         if (data.payload.length === 0) return;
-        if (data.payload.length > MAX_PATH_PAYLOAD_CHARS) return;
+        if (Buffer.byteLength(data.payload, 'utf8') > MAX_PATH_PAYLOAD_CHARS) return;
+        if (data.enc !== undefined && typeof data.enc !== 'boolean') return;
         io.to(userRoom).emit('file-preview-push', {
             ...source,
             payload: data.payload,

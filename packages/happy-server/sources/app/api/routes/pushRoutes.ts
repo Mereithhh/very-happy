@@ -16,6 +16,39 @@ import {
     validateWebhookUrl,
 } from "@/app/push/webhookNotify";
 import { buildSessionEventEphemeral, eventRouter } from "@/app/events/eventRouter";
+import {
+    assertAccountResourceQuota,
+    configuredResourceLimit,
+    enforceAccountWriteRate,
+    isAccountResourceLimitError,
+    lockAccountResources,
+} from '../resourceLimits';
+import { utf8StringSchema } from '../resourceSchemas';
+import { inTx } from '@/storage/inTx';
+
+export const PUSH_TOKEN_MAX_BYTES = 8 * 1024;
+export const pushTokenSchema = utf8StringSchema({ minBytes: 1, maxBytes: PUSH_TOKEN_MAX_BYTES });
+
+async function enforcePushTokenRate(accountId: string) {
+    await enforceAccountWriteRate({
+        accountId,
+        resource: 'push_token',
+        envName: 'MAX_PUSH_TOKEN_WRITES_PER_ACCOUNT_PER_MINUTE',
+        fallback: 60,
+    });
+}
+
+function assertPushTokenCount(current: number, delta: number) {
+    assertAccountResourceQuota({
+        resource: 'push_token',
+        current: { count: current, bytes: 0 },
+        delta: { count: delta, bytes: 0 },
+        limits: {
+            count: configuredResourceLimit('MAX_PUSH_TOKENS_PER_ACCOUNT', 25),
+            bytes: 0,
+        },
+    });
+}
 
 export function pushRoutes(app: Fastify) {
 
@@ -32,7 +65,7 @@ export function pushRoutes(app: Fastify) {
     app.post('/v1/push-tokens', {
         schema: {
             body: z.object({
-                token: z.string()
+                token: pushTokenSchema
             }),
             response: {
                 200: z.object({
@@ -41,6 +74,7 @@ export function pushRoutes(app: Fastify) {
                 400: z.object({
                     error: z.string()
                 }),
+                429: z.object({ error: z.enum(['push_token_count_quota_exceeded', 'push_token_rate_quota_exceeded']) }),
                 500: z.object({
                     error: z.literal('Failed to register push token')
                 })
@@ -58,24 +92,26 @@ export function pushRoutes(app: Fastify) {
         }
 
         try {
-            await db.accountPushToken.upsert({
-                where: {
-                    accountId_token: {
-                        accountId: userId,
-                        token: token
-                    }
-                },
-                update: {
-                    updatedAt: new Date()
-                },
-                create: {
-                    accountId: userId,
-                    token: token
+            await enforcePushTokenRate(userId);
+            await inTx(async (tx) => {
+                await lockAccountResources(tx, userId);
+                const existing = await tx.accountPushToken.findUnique({
+                    where: { accountId_token: { accountId: userId, token } },
+                });
+                if (existing) {
+                    await tx.accountPushToken.update({ where: { id: existing.id }, data: { updatedAt: new Date() } });
+                    return;
                 }
+                const count = await tx.accountPushToken.count({ where: { accountId: userId } });
+                assertPushTokenCount(count, 1);
+                await tx.accountPushToken.create({ data: { accountId: userId, token } });
             });
 
             return reply.send({ success: true });
         } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(429).send({ error: error.code as any });
+            }
             return reply.code(500).send({ error: 'Failed to register push token' });
         }
     });
@@ -84,7 +120,7 @@ export function pushRoutes(app: Fastify) {
     app.delete('/v1/push-tokens/:token', {
         schema: {
             params: z.object({
-                token: z.string()
+                token: pushTokenSchema
             }),
             response: {
                 200: z.object({
@@ -213,6 +249,9 @@ export function pushRoutes(app: Fastify) {
                 }),
                 400: z.object({
                     error: z.string()
+                }),
+                429: z.object({
+                    error: z.enum(['push_token_count_quota_exceeded', 'push_token_rate_quota_exceeded'])
                 })
             }
         },
@@ -226,15 +265,27 @@ export function pushRoutes(app: Fastify) {
         }
         const events = [...new Set(request.body.events ?? [...WEBHOOK_EVENTS])];
         const token = buildWebhookToken({ url, events });
-        await db.$transaction([
-            db.accountPushToken.deleteMany({
-                where: { accountId: userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } }
-            }),
-            db.accountPushToken.create({
-                data: { accountId: userId, token }
-            })
-        ]);
-        return reply.send({ success: true });
+        try {
+            await enforcePushTokenRate(userId);
+            await inTx(async (tx) => {
+                await lockAccountResources(tx, userId);
+                const existingWebhookCount = await tx.accountPushToken.count({
+                    where: { accountId: userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } },
+                });
+                const totalCount = await tx.accountPushToken.count({ where: { accountId: userId } });
+                assertPushTokenCount(totalCount, existingWebhookCount > 0 ? 0 : 1);
+                await tx.accountPushToken.deleteMany({
+                    where: { accountId: userId, token: { startsWith: WEBHOOK_TOKEN_PREFIX } },
+                });
+                await tx.accountPushToken.create({ data: { accountId: userId, token } });
+            });
+            return reply.send({ success: true });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(429).send({ error: error.code as any });
+            }
+            throw error;
+        }
     });
 
     // Manual + automatic webhook notification.

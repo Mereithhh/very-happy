@@ -23,7 +23,7 @@ COPY packages/happy-web-v2/package.json packages/happy-web-v2/
 COPY packages/happy-server/prisma packages/happy-server/prisma
 
 RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile \
-    --filter happy-server-self-host... \
+    --filter very-happy-server... \
     --filter @slopus/happy-web-v2...
 
 # Stage 2: build the server
@@ -46,8 +46,8 @@ RUN pnpm --filter @slopus/happy-web-v2 exec vite build
 RUN rm -rf packages/happy-server/webapp && cp -a packages/happy-web-v2/dist packages/happy-server/webapp
 # The image intentionally runs the TypeScript source through the workspace tsx
 # runtime below; validate it here without invoking the optional Bun package build.
-RUN pnpm --filter happy-server-self-host exec tsc --noEmit
-RUN pnpm --filter happy-server-self-host deploy --prod --legacy /runtime \
+RUN pnpm --filter very-happy-server exec tsc --noEmit
+RUN pnpm --filter very-happy-server deploy --prod --legacy /runtime \
     && rm -rf /runtime/node_modules/.prisma/client \
     && mkdir -p /runtime/node_modules/.prisma \
     && cp -a /repo/node_modules/.prisma/client /runtime/node_modules/.prisma/client
@@ -61,10 +61,12 @@ WORKDIR /repo
 ENV NODE_ENV=production
 ENV HAPPY_STATIC_DIR=/repo/packages/happy-server/webapp
 ENV DATA_DIR=/data
+ENV HOST=0.0.0.0
 
 # Copy necessary files from the builder stage
 COPY --from=builder /runtime/node_modules /repo/node_modules
 COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+COPY LICENSE NOTICE /repo/
 
 # Expose the port the app will run on
 EXPOSE 3005

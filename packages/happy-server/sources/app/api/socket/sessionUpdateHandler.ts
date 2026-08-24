@@ -2,142 +2,107 @@ import { getMetricsLabelsFromSocket, sessionAliveEventsCounter, websocketEventsC
 import { activityCache } from "@/app/presence/sessionCache";
 import { buildNewMessageUpdate, buildSessionActivityEphemeral, buildUpdateSessionUpdate, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
-import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { AsyncLock } from "@/utils/lock";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
-import { allowAuthRequest } from '@/app/auth/authRateLimiter';
-import { configuredResourceLimit, lockAccountResources, withinMessageQuota } from '../resourceLimits';
-import { inTx } from '@/storage/inTx';
+import { isAccountResourceLimitError } from '../resourceLimits';
+import {
+    SESSION_MESSAGE_CONTENT_MAX_BYTES,
+    SESSION_MESSAGE_LOCAL_ID_MAX_BYTES,
+    storeSessionMessages,
+} from '../sessionMessageStore';
+import { updateSessionStateWithQuota } from '@/app/state/accountStateStore';
 
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
     const labels = getMetricsLabelsFromSocket(socket);
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
         try {
-            const { sid, metadata, expectedVersion } = data;
-
-            // Validate input
-            if (!sid || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
-                if (callback) {
-                    callback({ result: 'error' });
-                }
+            const result = await updateSessionStateWithQuota({
+                accountId: userId,
+                sessionId: data?.sid,
+                field: 'metadata',
+                value: data?.metadata,
+                expectedVersion: data?.expectedVersion,
+            });
+            if (result.kind === 'not-found') {
+                callback?.({ result: 'error' });
                 return;
             }
-
-            // Resolve session
-            const session = await db.session.findUnique({
-                where: { id: sid, accountId: userId }
-            });
-            if (!session) {
+            if (result.kind === 'version-mismatch') {
+                callback?.({
+                    result: 'version-mismatch',
+                    version: result.session.metadataVersion,
+                    metadata: result.session.metadata,
+                });
                 return;
-            }
-
-            // Check version
-            if (session.metadataVersion !== expectedVersion) {
-                callback({ result: 'version-mismatch', version: session.metadataVersion, metadata: session.metadata });
-                return null;
-            }
-
-            // Update metadata
-            const { count } = await db.session.updateMany({
-                where: { id: sid, metadataVersion: expectedVersion },
-                data: {
-                    metadata: metadata,
-                    metadataVersion: expectedVersion + 1
-                }
-            });
-            if (count === 0) {
-                callback({ result: 'version-mismatch', version: session.metadataVersion, metadata: session.metadata });
-                return null;
             }
 
             // Generate session metadata update
-            const updSeq = await allocateUserSeq(userId);
             const metadataUpdate = {
-                value: metadata,
-                version: expectedVersion + 1
+                value: result.session.metadata,
+                version: result.session.metadataVersion,
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), metadataUpdate);
+            const updatePayload = buildUpdateSessionUpdate(result.session.id, result.updateSeq, randomKeyNaked(12), metadataUpdate);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+                recipientFilter: { type: 'all-interested-in-session', sessionId: result.session.id }
             });
 
-            // Send success response with new version via callback
-            callback({ result: 'success', version: expectedVersion + 1, metadata: metadata });
+            callback?.({ result: 'success', version: result.session.metadataVersion, metadata: result.session.metadata });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in update-metadata: ${error}`);
-            if (callback) {
-                callback({ result: 'error' });
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', error: error.code });
+                return;
             }
+            log({ module: 'websocket', level: 'error', error }, 'Error in update-metadata');
+            callback?.({ result: 'error' });
         }
     });
 
     socket.on('update-state', async (data: any, callback: (response: any) => void) => {
         try {
-            const { sid, agentState, expectedVersion } = data;
-
-            // Validate input
-            if (!sid || (typeof agentState !== 'string' && agentState !== null) || typeof expectedVersion !== 'number') {
-                if (callback) {
-                    callback({ result: 'error' });
-                }
+            const result = await updateSessionStateWithQuota({
+                accountId: userId,
+                sessionId: data?.sid,
+                field: 'agentState',
+                value: data?.agentState,
+                expectedVersion: data?.expectedVersion,
+            });
+            if (result.kind === 'not-found') {
+                callback?.({ result: 'error' });
+                return;
+            }
+            if (result.kind === 'version-mismatch') {
+                callback?.({
+                    result: 'version-mismatch',
+                    version: result.session.agentStateVersion,
+                    agentState: result.session.agentState,
+                });
                 return;
             }
 
-            // Resolve session
-            const session = await db.session.findUnique({
-                where: {
-                    id: sid,
-                    accountId: userId
-                }
-            });
-            if (!session) {
-                callback({ result: 'error' });
-                return null;
-            }
-
-            // Check version
-            if (session.agentStateVersion !== expectedVersion) {
-                callback({ result: 'version-mismatch', version: session.agentStateVersion, agentState: session.agentState });
-                return null;
-            }
-
-            // Update agent state
-            const { count } = await db.session.updateMany({
-                where: { id: sid, agentStateVersion: expectedVersion },
-                data: {
-                    agentState: agentState,
-                    agentStateVersion: expectedVersion + 1
-                }
-            });
-            if (count === 0) {
-                callback({ result: 'version-mismatch', version: session.agentStateVersion, agentState: session.agentState });
-                return null;
-            }
-
             // Generate session agent state update
-            const updSeq = await allocateUserSeq(userId);
             const agentStateUpdate = {
-                value: agentState,
-                version: expectedVersion + 1
+                value: result.session.agentState,
+                version: result.session.agentStateVersion,
             };
-            const updatePayload = buildUpdateSessionUpdate(sid, updSeq, randomKeyNaked(12), undefined, agentStateUpdate);
+            const updatePayload = buildUpdateSessionUpdate(result.session.id, result.updateSeq, randomKeyNaked(12), undefined, agentStateUpdate);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-interested-in-session', sessionId: sid }
+                recipientFilter: { type: 'all-interested-in-session', sessionId: result.session.id }
             });
 
-            // Send success response with new version via callback
-            callback({ result: 'success', version: expectedVersion + 1, agentState: agentState });
+            callback?.({ result: 'success', version: result.session.agentStateVersion, agentState: result.session.agentState });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in update-state: ${error}`);
-            if (callback) {
-                callback({ result: 'error' });
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', error: error.code });
+                return;
             }
+            log({ module: 'websocket', level: 'error', error }, 'Error in update-state');
+            callback?.({ result: 'error' });
         }
     });
     socket.on('session-alive', async (data: {
@@ -182,7 +147,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 recipientFilter: { type: 'user-scoped-only' }
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in session-alive');
         }
     });
 
@@ -194,16 +159,17 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 const { sid, message, localId } = data;
 
                 if (typeof sid !== 'string' || typeof message !== 'string') return;
-                const messagesPerMinute = configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE', 600);
-                if (messagesPerMinute > 0 && !(await allowAuthRequest(
-                    `session-message:${userId}`,
-                    { max: messagesPerMinute, windowMs: 60_000 },
-                ))) {
-                    log({ module: 'websocket', level: 'warn', userId }, 'Dropping message: account rate limit reached');
-                    return;
-                }
+                if (Buffer.byteLength(message, 'utf8') > SESSION_MESSAGE_CONTENT_MAX_BYTES) return;
+                if (typeof localId === 'string' && Buffer.byteLength(localId, 'utf8') > SESSION_MESSAGE_LOCAL_ID_MAX_BYTES) return;
 
-                log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
+                log({
+                    module: 'websocket',
+                    socketId: socket.id,
+                    sessionId: sid,
+                    contentBytes: Buffer.byteLength(message, 'utf8'),
+                    connectionType: connection.connectionType,
+                    connectionSessionId: connection.connectionType === 'session-scoped' ? connection.sessionId : undefined,
+                }, 'Received session message');
 
                 // Resolve session
                 const session = await db.session.findUnique({
@@ -212,61 +178,23 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 if (!session) {
                     return;
                 }
-                let useLocalId = typeof localId === 'string' ? localId : null;
-
-                // Create encrypted message
-                const msgContent: PrismaJson.SessionMessageContent = {
-                    t: 'encrypted',
-                    c: message
-                };
-                const messageBytes = Buffer.byteLength(JSON.stringify(msgContent), 'utf8');
-
-                // Check if message already exists
-                if (useLocalId) {
-                    const existing = await db.sessionMessage.findFirst({
-                        where: { sessionId: sid, localId: useLocalId }
+                let stored;
+                try {
+                    stored = await storeSessionMessages({
+                        accountId: userId,
+                        sessionId: sid,
+                        messages: [{ content: message, localId: typeof localId === 'string' ? localId : null }],
                     });
-                    if (existing) {
-                        return { msg: existing, update: null };
+                } catch (error) {
+                    if (isAccountResourceLimitError(error)) {
+                        log({ module: 'websocket', level: 'warn', userId, code: error.code }, 'Dropping session message');
+                        return;
                     }
+                    throw error;
                 }
-
-                const maxMessages = configuredResourceLimit('MAX_MESSAGES_PER_ACCOUNT', 100_000);
-                const maxStoredBytes = configuredResourceLimit('MAX_MESSAGE_BYTES_PER_ACCOUNT', 512 * 1024 * 1024);
-                const reserved = await inTx(async (tx) => {
-                    await lockAccountResources(tx, userId);
-                    const totals = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
-                        `SELECT COUNT(*)::bigint AS "count",
-                                COALESCE(SUM(octet_length(sm."content"::text)), 0)::bigint AS "bytes"
-                         FROM "SessionMessage" sm
-                         JOIN "Session" s ON s."id" = sm."sessionId"
-                         WHERE s."accountId" = $1`,
-                        userId,
-                    );
-                    const count = Number(totals[0]?.count ?? 0);
-                    const bytes = Number(totals[0]?.bytes ?? 0);
-                    if (!withinMessageQuota(
-                        { count, bytes },
-                        messageBytes,
-                        { messages: maxMessages, bytes: maxStoredBytes },
-                    )) return null;
-                    if (useLocalId) {
-                        const duplicate = await tx.sessionMessage.findFirst({ where: { sessionId: sid, localId: useLocalId } });
-                        if (duplicate) return { msg: duplicate, updSeq: null };
-                    }
-                    const updSeq = await allocateUserSeq(userId, tx);
-                    const [msgSeq] = await allocateSessionSeqBatch(sid, 1, tx);
-                    const msg = await tx.sessionMessage.create({
-                        data: { sessionId: sid, seq: msgSeq, content: msgContent, localId: useLocalId }
-                    });
-                    return { msg, updSeq };
-                });
-                if (!reserved) {
-                    log({ module: 'websocket', level: 'warn', userId }, 'Dropping message: account storage limit reached');
-                    return;
-                }
-                if (reserved.updSeq === null) return;
-                const { msg, updSeq } = reserved;
+                const created = stored.createdMessages[0];
+                if (!created) return;
+                const { updateSeq: updSeq, ...msg } = created;
 
                 // Emit new message update to relevant clients
                 const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));
@@ -277,7 +205,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                     skipSenderConnection: connection
                 });
             } catch (error) {
-                log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);
+                log({ module: 'websocket', level: 'error', error }, 'Error in message handler');
             }
         });
     });
@@ -321,7 +249,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 recipientFilter: { type: 'user-scoped-only' }
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in session-end: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in session-end');
         }
     });
 

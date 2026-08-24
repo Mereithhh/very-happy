@@ -30,6 +30,8 @@ if [[ "${VH_SERVER_SKIP_BUILD:-0}" != "1" ]]; then
     "! grep -R '$ENV_SENTINEL' /repo >/dev/null 2>&1"
   docker run --rm --entrypoint sh "$IMAGE" -c \
     'test ! -e /repo/node_modules/electron && test ! -e /repo/node_modules/node-pty'
+  docker run --rm --entrypoint sh "$IMAGE" -c \
+    'test -s /repo/LICENSE && test -s /repo/NOTICE && grep -q "slopus/happy" /repo/NOTICE'
   IMAGE_SIZE="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
   if (( IMAGE_SIZE > 2000000000 )); then
     echo "Server image is unexpectedly large: ${IMAGE_SIZE} bytes" >&2
@@ -102,6 +104,7 @@ done
 docker exec "$PG" pg_isready -U postgres -d happy >/dev/null
 docker run -d --name "$PG_APP" --network "$NET" -p 127.0.0.1::3005 \
   -e HANDY_MASTER_SECRET='container-smoke-master-secret-not-production' \
+  -e SIGNUP_MODE=open -e SIGNUP_MAX_ACCOUNTS=2 \
   -e DB_PROVIDER=postgres \
   -e DATABASE_URL="postgresql://postgres:postgres@${PG}:5432/happy?schema=public" \
   "$IMAGE" >/dev/null

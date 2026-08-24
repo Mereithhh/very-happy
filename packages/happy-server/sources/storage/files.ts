@@ -61,6 +61,18 @@ export async function putLocalFile(filePath: string, data: Buffer) {
     fs.writeFileSync(fullPath, data);
 }
 
+/** Delete one server-generated storage key in either backend. */
+export async function deleteStoredFile(filePath: string): Promise<void> {
+    if (useLocalStorage) {
+        const fullPath = path.resolve(localFilesDir, filePath);
+        const root = path.resolve(localFilesDir) + path.sep;
+        if (!fullPath.startsWith(root)) throw new Error('Invalid storage path');
+        fs.rmSync(fullPath, { force: true });
+        return;
+    }
+    await s3client.removeObject(s3bucket, filePath);
+}
+
 /**
  * Delete all attachments for a session.
  * Local: removes the session attachments directory.

@@ -71,9 +71,16 @@ async function sendExpo(
     }
 
     if (errors.length === 0) {
-        log({ module: 'push' }, `Expo push sent for user ${params.userId} session ${params.sessionId}: ${okCount} token(s)`);
+        log({ module: 'push', userId: params.userId, sessionId: params.sessionId, okCount }, 'Expo push sent');
     } else {
-        log({ module: 'push', level: 'warn' }, `Expo push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
+        log({
+            module: 'push',
+            level: 'warn',
+            userId: params.userId,
+            sessionId: params.sessionId,
+            okCount,
+            failedCount: errors.length,
+        }, 'Expo push partially failed');
     }
 }
 
@@ -104,7 +111,14 @@ async function sendWeb(
         }
     }));
 
-    log({ module: 'push' }, `Web push for user ${params.userId} session ${params.sessionId}: ok=${okCount} pruned=${gone} of ${tokens.length}`);
+    log({
+        module: 'push',
+        userId: params.userId,
+        sessionId: params.sessionId,
+        okCount,
+        prunedCount: gone,
+        tokenCount: tokens.length,
+    }, 'Web push completed');
 }
 
 /**
@@ -132,7 +146,7 @@ async function sendWebhooks(
             return;
         }
         if (!event || !payload) {
-            log({ module: 'push' }, `Webhook skipped for user ${params.userId} session ${params.sessionId}: unmapped kind ${String(params.data.kind)}`);
+            log({ module: 'push', userId: params.userId, sessionId: params.sessionId }, 'Webhook skipped for unmapped event kind');
             return;
         }
         if (!config.events.includes(event)) {
@@ -165,11 +179,11 @@ export async function dispatchDeviceEventPush(params: {
     try {
         try {
             if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed device event push for user ${userId} (${label}): user active`);
+                log({ module: 'push', userId, sessionId: label }, 'Suppressed device event push for active account');
                 return;
             }
         } catch (presenceError) {
-            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
+            log({ module: 'push', level: 'error', error: presenceError }, 'Presence check failed; sending push anyway');
         }
         const tokens = await db.accountPushToken.findMany({ where: { accountId: userId } });
         const expoTokens = tokens.filter(t => !t.token.startsWith(WEBHOOK_TOKEN_PREFIX) && !t.token.startsWith('webpush:'));
@@ -180,7 +194,7 @@ export async function dispatchDeviceEventPush(params: {
             sendWeb({ userId, sessionId: label, title, body, data }, webTokens),
         ]);
     } catch (error) {
-        log({ module: 'push', level: 'error' }, `Device event push dispatch failed: ${error}`);
+        log({ module: 'push', level: 'error', error }, 'Device event push dispatch failed');
     }
 }
 
@@ -214,20 +228,20 @@ export async function dispatchSessionEventPush(params: {
         // must not delay device pushes below.
         void sendWebhooks({ userId, sessionId, body, data }, webhookTokens)
             .catch((error) => {
-                log({ module: 'push', level: 'error' }, `Account webhook dispatch failed: ${error}`);
+                log({ module: 'push', level: 'error', error }, 'Account webhook dispatch failed');
             });
 
         try {
             if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active (device pushes only; webhooks already sent)`);
+                log({ module: 'push', userId, sessionId }, 'Suppressed device push for active account; webhooks already sent');
                 return;
             }
         } catch (presenceError) {
-            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
+            log({ module: 'push', level: 'error', error: presenceError }, 'Presence check failed; sending push anyway');
         }
 
         if (expoTokens.length === 0 && webTokens.length === 0) {
-            log({ module: 'push' }, `No push tokens for user ${userId} session ${sessionId} — skipped`);
+            log({ module: 'push', userId, sessionId }, 'No device push tokens; skipped');
             return;
         }
 
@@ -236,6 +250,6 @@ export async function dispatchSessionEventPush(params: {
             sendWeb({ userId, sessionId, title, body, data }, webTokens),
         ]);
     } catch (error) {
-        log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
+        log({ module: 'push', level: 'error', error }, 'Session-event push dispatch failed');
     }
 }

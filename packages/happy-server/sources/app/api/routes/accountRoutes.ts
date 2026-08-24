@@ -7,6 +7,11 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import { AccountProfile } from "@/types";
+import {
+    accountSettingsUpdateSchema,
+    enforceAccountSettingsWriteRate,
+} from '@/app/account/accountSettingsLimits';
+import { isAccountResourceLimitError } from '@/app/api/resourceLimits';
 
 export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
@@ -73,10 +78,7 @@ export function accountRoutes(app: Fastify) {
     // Update Account Settings API
     app.post('/v1/account/settings', {
         schema: {
-            body: z.object({
-                settings: z.string().nullable(),
-                expectedVersion: z.number().int().min(0)
-            }),
+            body: accountSettingsUpdateSchema,
             response: {
                 200: z.union([z.object({
                     success: z.literal(true),
@@ -90,6 +92,10 @@ export function accountRoutes(app: Fastify) {
                 500: z.object({
                     success: z.literal(false),
                     error: z.literal('Failed to update account settings')
+                }),
+                429: z.object({
+                    success: z.literal(false),
+                    error: z.literal('account_settings_rate_quota_exceeded')
                 })
             }
         },
@@ -99,6 +105,7 @@ export function accountRoutes(app: Fastify) {
         const { settings, expectedVersion } = request.body;
 
         try {
+            await enforceAccountSettingsWriteRate(userId);
             // Get current user data for version check
             const currentUser = await db.account.findUnique({
                 where: { id: userId },
@@ -168,7 +175,10 @@ export function accountRoutes(app: Fastify) {
                 version: expectedVersion + 1
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to update account settings: ${error}`);
+            if (isAccountResourceLimitError(error) && error.code === 'account_settings_rate_quota_exceeded') {
+                return reply.code(429).send({ success: false, error: 'account_settings_rate_quota_exceeded' });
+            }
+            log({ module: 'api', level: 'error', error }, 'Failed to update account settings');
             return reply.code(500).send({
                 success: false,
                 error: 'Failed to update account settings'
@@ -305,7 +315,7 @@ export function accountRoutes(app: Fastify) {
                 totalReports: reports.length
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to query usage reports: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to query usage reports');
             return reply.code(500).send({ error: 'Failed to query usage reports' });
         }
     });

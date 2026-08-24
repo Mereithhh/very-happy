@@ -36,7 +36,7 @@ COPY packages/happy-wire ./packages/happy-wire
 COPY packages/happy-server ./packages/happy-server
 
 RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter happy-server build
+RUN pnpm --filter very-happy-server --fail-if-no-match exec tsc --noEmit
 
 # Stage 3: runtime
 FROM node:20-slim AS runner

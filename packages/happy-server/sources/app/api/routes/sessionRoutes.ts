@@ -5,10 +5,9 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
-import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
-import { configuredResourceLimit, lockAccountResources } from '../resourceLimits';
-import { inTx } from '@/storage/inTx';
+import { isAccountResourceLimitError } from '../resourceLimits';
+import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/accountStateStore';
 
 export function sessionRoutes(app: Fastify) {
 
@@ -220,79 +219,52 @@ export function sessionRoutes(app: Fastify) {
     // Create or load session by tag
     app.post('/v1/sessions', {
         schema: {
-            body: z.object({
-                tag: z.string(),
-                metadata: z.string(),
-                agentState: z.string().nullish(),
-                dataEncryptionKey: z.string().nullish()
-            })
+            body: sessionCreateSchema,
+            response: {
+                200: z.object({
+                    session: z.object({
+                        id: z.string(),
+                        seq: z.number(),
+                        metadata: z.string(),
+                        metadataVersion: z.number(),
+                        agentState: z.string().nullable(),
+                        agentStateVersion: z.number(),
+                        dataEncryptionKey: z.string().nullable(),
+                        active: z.boolean(),
+                        activeAt: z.number(),
+                        createdAt: z.number(),
+                        updatedAt: z.number(),
+                        lastMessage: z.null(),
+                    }),
+                }),
+                413: z.object({ error: z.literal('session_state_bytes_quota_exceeded') }),
+                429: z.union([
+                    z.object({ error: z.literal('session_state_rate_quota_exceeded') }),
+                    z.object({ error: z.literal('limit-reached'), resource: z.literal('sessions'), limit: z.number() }),
+                ]),
+            },
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
-        const { tag, metadata, dataEncryptionKey } = request.body;
+        const { tag, metadata, agentState, dataEncryptionKey } = request.body;
 
-        const session = await db.session.findFirst({
-            where: {
-                accountId: userId,
-                tag: tag
+        try {
+            const result = await createSessionWithQuota({ accountId: userId, tag, metadata, agentState, dataEncryptionKey });
+            if (result.kind === 'count-limit') {
+                return reply.code(429).send({ error: 'limit-reached', resource: 'sessions', limit: result.limit });
             }
-        });
-        if (session) {
-            log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
-            return reply.send({
-                session: {
-                    id: session.id,
-                    seq: session.seq,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
-                    lastMessage: null
-                }
-            });
-        } else {
-
-            const maxSessions = configuredResourceLimit('MAX_SESSIONS_PER_ACCOUNT', 500);
-            const reserved = await inTx(async (tx) => {
-                await lockAccountResources(tx, userId);
-                const concurrentExisting = await tx.session.findFirst({ where: { accountId: userId, tag } });
-                if (concurrentExisting) return { session: concurrentExisting, updSeq: null };
-                if (maxSessions > 0 && await tx.session.count({ where: { accountId: userId } }) >= maxSessions) {
-                    return null;
-                }
-                const updSeq = await allocateUserSeq(userId, tx);
-                log({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
-                const session = await tx.session.create({
-                    data: {
-                        accountId: userId,
-                        tag,
-                        metadata,
-                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
-                    }
-                });
-                return { session, updSeq };
-            });
-            if (!reserved) {
-                return reply.code(429).send({ error: 'limit-reached', resource: 'sessions', limit: maxSessions });
-            }
-            const { session, updSeq } = reserved;
-            log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
+            const { session, updateSeq } = result;
+            log({ module: 'session-create', sessionId: session.id, userId, tag, created: result.created }, 'Session create completed');
 
             // Emit new session update
-            if (updSeq !== null) {
-                const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
+            if (updateSeq !== null) {
+                const updatePayload = buildNewSessionUpdate(session, updateSeq, randomKeyNaked(12));
                 log({
                     module: 'session-create',
                     userId,
                     sessionId: session.id,
-                    updateType: 'new-session',
-                    updatePayload: JSON.stringify(updatePayload)
+                    updateType: 'new-session'
                 }, `Emitting new-session update to user-scoped connections`);
                 eventRouter.emitUpdate({
                     userId,
@@ -317,6 +289,11 @@ export function sessionRoutes(app: Fastify) {
                     lastMessage: null
                 }
             });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code as any });
+            }
+            throw error;
         }
     });
 

@@ -65,7 +65,8 @@ SHA-256 hash（可复用现有 request 行的兼容存储字段时优先；否�
 
 请求 TTL 默认 10 分钟，可配置 1–60 分钟。create/poll/status/approve 采用 DB rate limiter：IP、public key
 摘要和 account 三个低基数 bucket；schema 对 base64 解码后长度、response 长度、claimSecret 长度设硬界。
-日志仅记录 request id 的短不可逆 hash。
+create 在跨副本数据库锁内先物理清理两张 pairing 表的过期行，再对两类 outstanding request 施加
+全局安全上限；达到上限稳定返回 `429 pairing-capacity`。日志仅记录 request id 的短不可逆 hash。
 
 legacy 客户端没有 claimSecret 时：已有授权 token/在线连接不受影响；新配对只有
 `AUTH_ALLOW_LEGACY_PAIRING=true` 才允许领取，默认 false。发布采用 server 兼容接收新字段 → CLI →

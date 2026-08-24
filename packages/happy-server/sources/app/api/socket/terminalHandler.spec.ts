@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { terminalHandler, sanitizeTerminalActivity } from './terminalHandler';
+import { AccountTerminalRateLimiter } from './terminalRateLimit';
 
 /** Minimal socket.io stand-ins: capture the handlers and the room emits. */
 function makeFakes() {
@@ -9,6 +10,8 @@ function makeFakes() {
         on: (event: string, handler: (data: any) => void) => {
             handlers.set(event, handler);
         },
+        emit: (event: string, data: any) => emitted.push({ room: 'sender', event, data }),
+        disconnect: () => emitted.push({ room: 'sender', event: 'disconnect', data: true }),
     } as any;
     const io = {
         to: (room: string) => ({
@@ -73,6 +76,10 @@ describe('sanitizeTerminalActivity', () => {
     it('bounds the batch length (one frame must not fan out unbounded)', () => {
         const raw = Array.from({ length: 500 }, (_, i) => ({ id: `t${i}`, activityAt: 1 }));
         expect(sanitizeTerminalActivity(raw)).toHaveLength(200);
+    });
+
+    it('drops activity identifiers beyond the relay id bound', () => {
+        expect(sanitizeTerminalActivity([{ id: 'x'.repeat(257), activityAt: 1 }])).toEqual([]);
     });
 });
 
@@ -139,5 +146,51 @@ describe('terminalHandler — terminal-activity relay', () => {
             event: 'terminal-output',
             data: { terminalId: 't1', machineId: 'm1', data: 'b64', seq: 7, enc: true },
         }]);
+    });
+
+    it('disconnects an account socket before relaying traffic over its shared allowance', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 1,
+            burstBytes: 64,
+            eventsPerSecond: 1,
+            burstEvents: 1,
+        });
+        terminalHandler('user1', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' }, limiter);
+
+        handlers.get('terminal-output')!({ terminalId: 't1', data: 'too large' });
+
+        expect(emitted).toEqual([
+            { room: 'sender', event: 'limit-reached', data: { resource: 'terminal-relay' } },
+            { room: 'sender', event: 'disconnect', data: true },
+        ]);
+    });
+
+    it('charges the complete payload so a huge terminal id cannot bypass the byte limit', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 1,
+            burstBytes: 512,
+            eventsPerSecond: 10,
+            burstEvents: 10,
+        });
+        terminalHandler('user1', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' }, limiter);
+
+        handlers.get('terminal-output')!({ terminalId: 'x'.repeat(1024), data: '' });
+
+        expect(emitted).toEqual([
+            { room: 'sender', event: 'limit-reached', data: { resource: 'terminal-relay' } },
+            { room: 'sender', event: 'disconnect', data: true },
+        ]);
+    });
+
+    it('drops non-finite or out-of-range terminal control fields', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        terminalHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' });
+
+        handlers.get('terminal-output')!({ terminalId: 't1', data: 42 });
+        handlers.get('terminal-exit')!({ terminalId: 't1', exitCode: Number.NaN });
+
+        expect(emitted).toEqual([]);
     });
 });

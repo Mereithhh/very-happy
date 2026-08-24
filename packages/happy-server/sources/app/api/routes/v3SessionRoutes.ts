@@ -1,6 +1,12 @@
 import { buildNewMessageUpdate, eventRouter } from "@/app/events/eventRouter";
+import { isAccountResourceLimitError } from "@/app/api/resourceLimits";
+import { utf8StringSchema } from "@/app/api/resourceSchemas";
+import {
+    SESSION_MESSAGE_CONTENT_MAX_BYTES,
+    SESSION_MESSAGE_LOCAL_ID_MAX_BYTES,
+    storeSessionMessages,
+} from "@/app/api/sessionMessageStore";
 import { db } from "@/storage/db";
-import { allocateSessionSeqBatch, allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { z } from "zod";
 import { type Fastify } from "../types";
@@ -26,8 +32,8 @@ const getMessagesQuerySchema = z.object({
 
 const sendMessagesBodySchema = z.object({
     messages: z.array(z.object({
-        content: z.string(),
-        localId: z.string().min(1)
+        content: utf8StringSchema({ maxBytes: SESSION_MESSAGE_CONTENT_MAX_BYTES }),
+        localId: utf8StringSchema({ minBytes: 1, maxBytes: SESSION_MESSAGE_LOCAL_ID_MAX_BYTES })
     })).min(1).max(100)
 });
 
@@ -153,80 +159,28 @@ export function v3SessionRoutes(app: Fastify) {
         }
 
         const uniqueMessages = Array.from(firstMessageByLocalId.values());
-        const contentByLocalId = new Map(uniqueMessages.map((message) => [message.localId, message.content]));
-
-        const txResult = await db.$transaction(async (tx) => {
-            const localIds = uniqueMessages.map((message) => message.localId);
-            const existing = await tx.sessionMessage.findMany({
-                where: {
-                    sessionId,
-                    localId: { in: localIds }
-                },
-                select: {
-                    id: true,
-                    seq: true,
-                    localId: true,
-                    createdAt: true,
-                    updatedAt: true
-                }
+        let stored;
+        try {
+            stored = await storeSessionMessages({
+                accountId: userId,
+                sessionId,
+                messages: uniqueMessages,
             });
-
-            const existingByLocalId = new Map<string, Omit<SelectedMessage, 'content'>>();
-            for (const message of existing) {
-                if (message.localId) {
-                    existingByLocalId.set(message.localId, message);
-                }
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code });
             }
+            throw error;
+        }
 
-            const newMessages = uniqueMessages.filter((message) => !existingByLocalId.has(message.localId));
-            const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
-
-            const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
-            for (let i = 0; i < newMessages.length; i += 1) {
-                const message = newMessages[i];
-                const createdMessage = await tx.sessionMessage.create({
-                    data: {
-                        sessionId,
-                        seq: seqs[i],
-                        content: {
-                            t: 'encrypted',
-                            c: message.content
-                        },
-                        localId: message.localId
-                    },
-                    select: {
-                        id: true,
-                        seq: true,
-                        content: true,
-                        localId: true,
-                        createdAt: true,
-                        updatedAt: true
-                    }
-                });
-                createdMessages.push(createdMessage);
-            }
-
-            const responseMessages = [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq);
-
-            return {
-                responseMessages,
-                createdMessages
-            };
-        });
-
-        for (const message of txResult.createdMessages) {
-            const content = message.localId ? contentByLocalId.get(message.localId) : null;
-            if (!content) {
-                continue;
-            }
-            const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildNewMessageUpdate({
-                ...message,
-                content: {
-                    t: 'encrypted',
-                    c: content
-                }
-            }, sessionId, updSeq, randomKeyNaked(12));
+        for (const message of stored.createdMessages) {
+            const { updateSeq, ...storedMessage } = message;
+            const updatePayload = buildNewMessageUpdate(
+                storedMessage,
+                sessionId,
+                updateSeq,
+                randomKeyNaked(12),
+            );
 
             eventRouter.emitUpdate({
                 userId,
@@ -236,7 +190,7 @@ export function v3SessionRoutes(app: Fastify) {
         }
 
         return reply.send({
-            messages: txResult.responseMessages.map(toSendResponseMessage)
+            messages: stored.messages.map(toSendResponseMessage)
         });
     });
 }

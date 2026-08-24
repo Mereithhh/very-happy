@@ -97,8 +97,16 @@ function findEmit(t: string) {
 
 describe("machinesRoutes — POST /v1/machines creation emits", () => {
     let app: Fastify;
-    beforeEach(() => { resetState(); emitUpdateSpy.mockClear(); emitEphemeralSpy.mockClear(); });
-    afterEach(async () => { if (app) await app.close(); });
+    beforeEach(() => {
+        resetState();
+        emitUpdateSpy.mockClear();
+        emitEphemeralSpy.mockClear();
+        process.env.MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE = '0';
+    });
+    afterEach(async () => {
+        if (app) await app.close();
+        delete process.env.MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE;
+    });
 
     it("emits new-machine to the user's app AND a key-less update-machine companion", async () => {
         app = await createApp();

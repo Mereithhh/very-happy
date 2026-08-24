@@ -25,13 +25,30 @@ const VOICE_FREE_LIMIT_SECONDS = 1200;  // 20 minutes free tier per 30 days (~$0
 const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days (even with subscription)
 const VOICE_MAX_CONVERSATIONS = 100;    // Max conversations trackable per 30 days (ElevenLabs page_size limit)
 const VOICE_EXTRA_LIMIT_SECONDS = 5 * 60 * 60;
-const VOICE_EXTRA_LIMIT_PUBLIC_IDS = new Set([
-    "cmp66x5u018d9wz0unf56tp07",
-]);
+const MAX_VOICE_EXTRA_LIMIT_ACCOUNTS = 100;
+const MAX_VOICE_EXTRA_LIMIT_ENV_BYTES = 16_384;
 const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
 
+/**
+ * Optional operator-owned compatibility credits. Public builds contain no
+ * account identifiers and grant no extra quota unless explicitly configured.
+ * Any malformed or oversized list fails closed to an empty set.
+ */
+export function resolveVoiceExtraLimitAccountIds(env: NodeJS.ProcessEnv = process.env): Set<string> {
+    const raw = env.VOICE_EXTRA_LIMIT_ACCOUNT_IDS?.trim();
+    if (!raw || Buffer.byteLength(raw, 'utf8') > MAX_VOICE_EXTRA_LIMIT_ENV_BYTES) return new Set();
+    const values = raw.split(',').map((value) => value.trim()).filter(Boolean);
+    if (values.length > MAX_VOICE_EXTRA_LIMIT_ACCOUNTS ||
+        values.some((value) => !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value))) {
+        return new Set();
+    }
+    return new Set(values);
+}
+
+const VOICE_EXTRA_LIMIT_ACCOUNT_IDS = resolveVoiceExtraLimitAccountIds();
+
 function getVoiceHardLimitSeconds(userId: string): number {
-    if (VOICE_EXTRA_LIMIT_PUBLIC_IDS.has(userId)) {
+    if (VOICE_EXTRA_LIMIT_ACCOUNT_IDS.has(userId)) {
         return VOICE_HARD_LIMIT_SECONDS + VOICE_EXTRA_LIMIT_SECONDS;
     }
     return VOICE_HARD_LIMIT_SECONDS;
@@ -69,7 +86,7 @@ async function getVoiceUsage(
     );
 
     if (!res.ok) {
-        log({ module: 'voice' }, `ElevenLabs conversations query failed: ${res.status}`);
+        log({ module: 'voice', status: res.status }, 'ElevenLabs conversations query failed');
         return { usedSeconds: 0, conversationCount: 0 };
     }
 
@@ -100,7 +117,7 @@ async function hasActiveSubscription(userId: string): Promise<boolean> {
             }
         );
         if (!response.ok) {
-            log({ module: 'voice' }, `RevenueCat check failed for ${userId}: ${response.status}`);
+            log({ module: 'voice', userId, status: response.status }, 'RevenueCat entitlement check failed');
             return false;
         }
         const data = (await response.json()) as { items?: Array<{ entitlement_id: string }> };
@@ -126,7 +143,7 @@ export function voiceRoutes(app: Fastify) {
         const userId = request.userId;
         const { agentId } = request.body;
 
-        log({ module: 'voice' }, `Voice token request from user ${userId}`);
+        log({ module: 'voice', userId }, 'Voice conversation token requested');
 
         const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
         if (!elevenLabsApiKey) {
@@ -141,7 +158,14 @@ export function voiceRoutes(app: Fastify) {
 
         // Check usage from ElevenLabs directly
         const { usedSeconds, conversationCount } = await getVoiceUsage(elevenLabsApiKey, elevenUserId);
-        log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (free=${VOICE_FREE_LIMIT_SECONDS}s, hard=${hardLimitSeconds}s)`);
+        log({
+            module: 'voice',
+            userId,
+            usedSeconds,
+            conversationCount,
+            freeLimitSeconds: VOICE_FREE_LIMIT_SECONDS,
+            hardLimitSeconds,
+        }, 'Voice usage checked');
 
         // Conversation count cap — we can only track 100 per query (ElevenLabs page_size limit)
         if (conversationCount >= VOICE_MAX_CONVERSATIONS) {
@@ -168,7 +192,7 @@ export function voiceRoutes(app: Fastify) {
         // Free tier — 1 hour, then need subscription
         if (usedSeconds >= VOICE_FREE_LIMIT_SECONDS) {
             const subscribed = await hasActiveSubscription(userId);
-            log({ module: 'voice' }, `User ${userId}: subscription check = ${subscribed}`);
+            log({ module: 'voice', userId, subscribed }, 'Voice subscription checked');
             if (!subscribed) {
                 return reply.send({
                     allowed: false as const,
@@ -188,7 +212,7 @@ export function voiceRoutes(app: Fastify) {
             );
 
             if (!tokenRes.ok) {
-                log({ module: 'voice' }, `Failed to get conversation token for user ${userId}: ${tokenRes.status}`);
+                log({ module: 'voice', userId, status: tokenRes.status }, 'Failed to get conversation token');
                 return reply.code(500).send({ error: 'Failed to get voice credentials' });
             }
 
@@ -199,11 +223,11 @@ export function voiceRoutes(app: Fastify) {
             const conversationId = (jwtPayload.video?.room || '').match(/(conv_[a-zA-Z0-9]+)/)?.[0];
 
             if (!conversationId) {
-                log({ module: 'voice' }, `No conversation_id in JWT for user ${userId}`);
+                log({ module: 'voice', userId }, 'Conversation token did not contain a conversation id');
                 return reply.code(500).send({ error: 'Failed to get conversation ID' });
             }
 
-            log({ module: 'voice' }, `Voice token issued for user ${userId}, conv=${conversationId}`);
+            log({ module: 'voice', userId, conversationId }, 'Voice conversation token issued');
             return reply.send({
                 allowed: true as const,
                 conversationToken,
@@ -214,7 +238,7 @@ export function voiceRoutes(app: Fastify) {
                 limitSeconds: usedSeconds >= VOICE_FREE_LIMIT_SECONDS ? hardLimitSeconds : VOICE_FREE_LIMIT_SECONDS,
             });
         } catch (error) {
-            log({ module: 'voice' }, `ElevenLabs request error for user ${userId}: ${error}`);
+            log({ module: 'voice', level: 'error', userId, error }, 'ElevenLabs conversation token request failed');
             return reply.code(500).send({ error: 'Failed to get voice credentials' });
         }
     });
@@ -255,7 +279,7 @@ export function voiceRoutes(app: Fastify) {
                 elevenUserId,
             });
         } catch (error) {
-            log({ module: 'voice' }, `Failed to get voice usage for user ${userId}: ${error}`);
+            log({ module: 'voice', level: 'error', userId, error }, 'Failed to get voice usage');
             return reply.code(500).send({ error: 'Failed to get voice usage' });
         }
     });
@@ -315,14 +339,13 @@ export function voiceRoutes(app: Fastify) {
                 body: form as any,
             });
             if (!res.ok) {
-                const detail = await res.text().catch(() => '');
-                log({ module: 'voice' }, `STT failed for user ${userId}: ${res.status} ${detail.slice(0, 200)}`);
+                log({ module: 'voice', level: 'warn', userId, status: res.status }, 'STT upstream failed');
                 return reply.code(500).send({ error: 'Transcription failed' });
             }
             const data = (await res.json()) as { text?: string };
             return reply.send({ text: (data.text ?? '').trim() });
         } catch (error) {
-            log({ module: 'voice' }, `STT error for user ${userId}: ${error}`);
+            log({ module: 'voice', level: 'error', userId, error }, 'STT request failed');
             return reply.code(500).send({ error: 'Transcription failed' });
         }
     });
@@ -396,14 +419,14 @@ export function voiceRoutes(app: Fastify) {
                 fetchImpl: fetch as unknown as FetchLike,
             });
             if (result.kind === 'upstream_error') {
-                log({ module: 'voice' }, `TTS upstream failed for user ${userId}: ${result.status} ${result.detail.slice(0, 200)}`);
+                log({ module: 'voice', level: 'warn', userId, status: result.status }, 'TTS upstream failed');
                 // Never pass the upstream status through — the client
                 // feature-detects this route by status (404 → "server not
                 // upgraded" → permanent degrade). 429 stays 429, rest is 502.
                 return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'TTS failed' });
             }
             if (!result.body) {
-                log({ module: 'voice' }, `TTS upstream returned no body for user ${userId}`);
+                log({ module: 'voice', level: 'warn', userId }, 'TTS upstream returned no body');
                 return reply.code(502).send({ error: 'TTS failed' });
             }
             reply.header('Content-Type', 'audio/mpeg');
@@ -413,7 +436,7 @@ export function voiceRoutes(app: Fastify) {
                 // Client disconnected; nothing left to answer.
                 return;
             }
-            log({ module: 'voice' }, `TTS error for user ${userId}: ${error}`);
+            log({ module: 'voice', level: 'error', userId, error }, 'TTS request failed');
             return reply.code(502).send({ error: 'TTS failed' });
         }
     });
@@ -468,16 +491,16 @@ export function voiceRoutes(app: Fastify) {
                 fetchImpl: fetch as unknown as FetchLike,
             });
             if (result.kind === 'upstream_error') {
-                log({ module: 'voice' }, `Voice token mint failed for user ${userId} (${type}): ${result.status} ${result.detail.slice(0, 200)}`);
+                log({ module: 'voice', level: 'warn', userId, type, status: result.status }, 'Voice token mint failed');
                 return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Token mint failed' });
             }
             if (result.kind === 'bad_payload') {
-                log({ module: 'voice' }, `Voice token mint returned unexpected payload for user ${userId} (${type})`);
+                log({ module: 'voice', level: 'warn', userId, type }, 'Voice token mint returned unexpected payload');
                 return reply.code(502).send({ error: 'Token mint failed' });
             }
             return reply.send({ token: result.token });
         } catch (error) {
-            log({ module: 'voice' }, `Voice token mint error for user ${userId} (${type}): ${error}`);
+            log({ module: 'voice', level: 'error', userId, type, error }, 'Voice token mint request failed');
             return reply.code(502).send({ error: 'Token mint failed' });
         }
     });
@@ -508,7 +531,7 @@ export function voiceRoutes(app: Fastify) {
                 fetchImpl: fetch as unknown as FetchLike,
             });
             if (!result.ok) {
-                log({ module: 'voice' }, `Voices list failed: ${result.status}`);
+                log({ module: 'voice', level: 'warn', status: result.status }, 'Voices list failed');
                 // Same status discipline as /v1/voice/tts: upstream codes are
                 // never passed through (429 stays, everything else → 502).
                 return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to list voices' });
@@ -516,7 +539,7 @@ export function voiceRoutes(app: Fastify) {
             voicesCache.set(result.voices);
             return reply.send({ voices: result.voices });
         } catch (error) {
-            log({ module: 'voice' }, `Voices list error: ${error}`);
+            log({ module: 'voice', level: 'error', error }, 'Voices list request failed');
             return reply.code(502).send({ error: 'Failed to list voices' });
         }
     });
@@ -563,13 +586,13 @@ export function voiceRoutes(app: Fastify) {
                 fetchImpl: fetch as unknown as FetchLike,
             });
             if (!result.ok) {
-                log({ module: 'voice' }, `Shared voices list failed (${lang}): ${result.status}`);
+                log({ module: 'voice', level: 'warn', lang, status: result.status }, 'Shared voices list failed');
                 return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to list shared voices' });
             }
             sharedVoicesCache.set(lang, result.voices);
             return reply.send({ voices: result.voices });
         } catch (error) {
-            log({ module: 'voice' }, `Shared voices list error (${lang}): ${error}`);
+            log({ module: 'voice', level: 'error', lang, error }, 'Shared voices list request failed');
             return reply.code(502).send({ error: 'Failed to list shared voices' });
         }
     });
@@ -615,14 +638,14 @@ export function voiceRoutes(app: Fastify) {
                 fetchImpl: fetch as unknown as FetchLike,
             });
             if (!result.ok) {
-                log({ module: 'voice' }, `Add shared voice failed for user ${userId}: ${result.status} ${result.detail.slice(0, 200)}`);
+                log({ module: 'voice', level: 'warn', userId, status: result.status }, 'Add shared voice failed');
                 return reply.code(upstreamErrorReplyStatus(result.status)).send({ error: 'Failed to add voice' });
             }
             voicesCache.clear();
-            log({ module: 'voice' }, `User ${userId} added shared voice ${result.voiceId}`);
+            log({ module: 'voice', userId, voiceId: result.voiceId }, 'Shared voice added');
             return reply.send({ ok: true, voiceId: result.voiceId });
         } catch (error) {
-            log({ module: 'voice' }, `Add shared voice error for user ${userId}: ${error}`);
+            log({ module: 'voice', level: 'error', userId, error }, 'Add shared voice request failed');
             return reply.code(502).send({ error: 'Failed to add voice' });
         }
     });

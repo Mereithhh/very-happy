@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configuredResourceLimit, lockAccountResources, withinByteQuota, withinMessageQuota } from './resourceLimits';
+import {
+    AccountResourceLimitError,
+    assertAccountResourceQuota,
+    configuredResourceLimit,
+    lockAccountResources,
+    withinByteQuota,
+} from './resourceLimits';
 
 describe('configurable resource limits', () => {
     afterEach(() => delete process.env.TEST_RESOURCE_LIMIT);
@@ -26,15 +32,39 @@ describe('configurable resource limits', () => {
     });
 
     it('accepts the exact storage boundary and rejects the next byte or message', () => {
-        expect(withinMessageQuota({ count: 9, bytes: 90 }, 10, { messages: 10, bytes: 100 })).toBe(true);
-        expect(withinMessageQuota({ count: 10, bytes: 90 }, 1, { messages: 10, bytes: 100 })).toBe(false);
-        expect(withinMessageQuota({ count: 9, bytes: 100 }, 1, { messages: 10, bytes: 100 })).toBe(false);
         expect(withinByteQuota(90, 10, 100)).toBe(true);
         expect(withinByteQuota(90, 11, 100)).toBe(false);
     });
 
     it('uses zero only as an explicit unlimited operator setting', () => {
-        expect(withinMessageQuota({ count: 1_000_000, bytes: 1_000_000 }, 1, { messages: 0, bytes: 0 })).toBe(true);
         expect(withinByteQuota(1_000_000, 1, 0)).toBe(true);
+    });
+
+    it('accepts exact count/byte boundaries, charges deltas, and exposes stable errors', () => {
+        expect(() => assertAccountResourceQuota({
+            resource: 'artifact',
+            current: { count: 9, bytes: 90 },
+            delta: { count: 1, bytes: 10 },
+            limits: { count: 10, bytes: 100 },
+        })).not.toThrow();
+        expect(() => assertAccountResourceQuota({
+            resource: 'artifact',
+            current: { count: 10, bytes: 90 },
+            delta: { count: 1, bytes: 0 },
+            limits: { count: 10, bytes: 100 },
+        })).toThrow(expect.objectContaining({ code: 'artifact_count_quota_exceeded', statusCode: 429 }));
+        expect(() => assertAccountResourceQuota({
+            resource: 'kv',
+            current: { count: 2, bytes: 90 },
+            delta: { count: 0, bytes: 11 },
+            limits: { count: 10, bytes: 100 },
+        })).toThrow(expect.objectContaining({ code: 'kv_bytes_quota_exceeded', statusCode: 413 }));
+        expect(() => assertAccountResourceQuota({
+            resource: 'kv',
+            current: { count: 10, bytes: 110 },
+            delta: { count: 0, bytes: -20 },
+            limits: { count: 10, bytes: 100 },
+        })).not.toThrow();
+        expect(new AccountResourceLimitError('usage_report', 'rate').code).toBe('usage_report_rate_quota_exceeded');
     });
 });

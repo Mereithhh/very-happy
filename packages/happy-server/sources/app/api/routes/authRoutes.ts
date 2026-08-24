@@ -8,11 +8,22 @@ import { SignupPolicyError, withSignupGate } from '@/app/auth/signupPolicy';
 import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { allowPairingRate, claimSecretHash, claimSecretMatches, decodeFixedBase64, decodePairingPublicKey, hashPairingValue, legacyPairingAllowed, pairingExpired } from '@/app/auth/pairingSecurity';
-import { approvePairingRow, createPairing, deletePairing, findPairing, type PairingKind } from '@/app/auth/pairingStore';
+import {
+    PAIRING_RESPONSE_MAX_BYTES,
+    PairingCapacityError,
+    approvePairingRow,
+    createPairing,
+    deletePairing,
+    findPairing,
+    type PairingKind,
+} from '@/app/auth/pairingStore';
 
 const publicKeySchema = z.string().min(40).max(48);
 const claimSecretSchema = z.string().min(43).max(48);
-const responseSchema = z.string().min(1).max(4096);
+const responseSchema = z.string().min(1).max(PAIRING_RESPONSE_MAX_BYTES).refine(
+    (value) => Buffer.byteLength(value, 'utf8') <= PAIRING_RESPONSE_MAX_BYTES,
+    `Response must contain at most ${PAIRING_RESPONSE_MAX_BYTES} bytes`,
+);
 const pairingRequestSchema = z.object({
     publicKey: publicKeySchema,
     claimSecret: claimSecretSchema.optional(),
@@ -82,7 +93,7 @@ export function authRoutes(app: Fastify) {
                 user = result.value;
             } catch (error) {
                 if (error instanceof SignupPolicyError) {
-                    log({ module: 'auth' }, `Legacy key signup blocked (${error.reason})`);
+                    log({ module: 'auth', code: error.reason }, 'Legacy key signup blocked');
                     return reply.code(403).send({ error: error.reason });
                 }
                 throw error;
@@ -143,7 +154,12 @@ async function handlePairingRequest(kind: PairingKind, request: any, reply: any)
     if (existing?.claimSecretHash && (!request.body.claimSecret || !claimSecretMatches(request.body.claimSecret, existing.claimSecretHash))) return pairingError(reply, 403, 'invalid-claim');
     if (existing && !existing.claimSecretHash && !legacyPairingAllowed()) return pairingError(reply, 426, 'upgrade-required');
     if (!existing) {
-        await createPairing(kind, { publicKey: publicKeyHex, claimSecretHash: secretHash, supportsV2: request.body.supportsV2 });
+        try {
+            await createPairing(kind, { publicKey: publicKeyHex, claimSecretHash: secretHash, supportsV2: request.body.supportsV2 });
+        } catch (error) {
+            if (error instanceof PairingCapacityError) return pairingError(reply, 429, error.message);
+            throw error;
+        }
         return reply.send({ state: 'requested', protocolVersion: 3, claimSecretRequired: true });
     }
     if (existing.response && existing.responseAccountId) {

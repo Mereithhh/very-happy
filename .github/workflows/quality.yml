@@ -72,7 +72,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Verify public PR and release contracts
-        run: node scripts/ci/check-public-pr-isolation.mjs
+        run: |
+          node scripts/ci/check-public-pr-isolation.mjs
+          node scripts/ci/check-trust-model.mjs
 
       # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
       # 现成的 node/npm 装 pnpm（README: "This action does not setup Node.js for you"），
@@ -96,11 +98,6 @@ jobs:
 
       # ── 装配（失败则后面全部 gate 跳过）───────────────────────────────
       - name: Install dependencies
-        # packages/codium（electron 桌面 spike）的 postinstall 要从 GitHub releases
-        # 下 ~100MB 二进制，是 CI 抖动第一名（deploy 上 2026-08-13 一天挂两次），
-        # 且没有任何门禁依赖它 → 只跳二进制，包本身仍可解析。
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: pnpm install --frozen-lockfile
 
       # 后续所有包都 import @slopus/happy-wire 的 dist（gitignored），必须先建。
@@ -116,11 +113,11 @@ jobs:
       - name: 'Gate: happy-server typecheck (tsc --noEmit)'
         # postinstall 已跑过 prisma generate（tsc/vitest 需要生成的 client 类型）。
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: pnpm --filter happy-server-self-host typecheck
+        run: pnpm --filter very-happy-server --fail-if-no-match typecheck
 
       - name: 'Gate: happy-server tests'
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: pnpm --filter happy-server-self-host exec vitest run
+        run: pnpm --filter very-happy-server --fail-if-no-match exec vitest run
 
       # 硬门：存量 tsc 债 2026-08-13 清零（492→0），0 错误是红线。
       - name: 'Gate: happy-web-v2 typecheck (tsc --noEmit)'

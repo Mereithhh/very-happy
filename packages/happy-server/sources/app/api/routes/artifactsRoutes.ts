@@ -1,4 +1,5 @@
 import { eventRouter, buildNewArtifactUpdate, buildUpdateArtifactUpdate, buildDeleteArtifactUpdate } from "@/app/events/eventRouter";
+import type { Artifact } from '@prisma/client';
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { z } from "zod";
@@ -6,6 +7,28 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import * as privacyKit from "privacy-kit";
+import {
+    artifactCreateSchema,
+    artifactIdSchema,
+    artifactUpdateSchema,
+    createArtifactWithQuota,
+    updateArtifactWithQuota,
+} from '@/app/artifacts/artifactStore';
+import { isAccountResourceLimitError } from '../resourceLimits';
+
+function toArtifactResponse(artifact: Artifact) {
+    return {
+        id: artifact.id,
+        header: privacyKit.encodeBase64(artifact.header),
+        headerVersion: artifact.headerVersion,
+        body: privacyKit.encodeBase64(artifact.body),
+        bodyVersion: artifact.bodyVersion,
+        dataEncryptionKey: privacyKit.encodeBase64(artifact.dataEncryptionKey),
+        seq: artifact.seq,
+        createdAt: artifact.createdAt.getTime(),
+        updatedAt: artifact.updatedAt.getTime(),
+    };
+}
 
 export function artifactsRoutes(app: Fastify) {
     // GET /v1/artifacts - List all artifacts for the account
@@ -56,7 +79,7 @@ export function artifactsRoutes(app: Fastify) {
                 updatedAt: a.updatedAt.getTime()
             })));
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to get artifacts: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to get artifacts');
             return reply.code(500).send({ error: 'Failed to get artifacts' });
         }
     });
@@ -66,7 +89,7 @@ export function artifactsRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                id: z.string()
+                id: artifactIdSchema
             }),
             response: {
                 200: z.object({
@@ -116,7 +139,7 @@ export function artifactsRoutes(app: Fastify) {
                 updatedAt: artifact.updatedAt.getTime()
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to get artifact: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to get artifact');
             return reply.code(500).send({ error: 'Failed to get artifact' });
         }
     });
@@ -125,12 +148,7 @@ export function artifactsRoutes(app: Fastify) {
     app.post('/v1/artifacts', {
         preHandler: app.authenticate,
         schema: {
-            body: z.object({
-                id: z.string().uuid(),
-                header: z.string(),
-                body: z.string(),
-                dataEncryptionKey: z.string()
-            }),
+            body: artifactCreateSchema,
             response: {
                 200: z.object({
                     id: z.string(),
@@ -146,6 +164,8 @@ export function artifactsRoutes(app: Fastify) {
                 409: z.object({
                     error: z.literal('Artifact with this ID already exists for another account')
                 }),
+                413: z.object({ error: z.literal('artifact_bytes_quota_exceeded') }),
+                429: z.object({ error: z.enum(['artifact_count_quota_exceeded', 'artifact_rate_quota_exceeded']) }),
                 500: z.object({
                     error: z.literal('Failed to create artifact')
                 })
@@ -156,71 +176,29 @@ export function artifactsRoutes(app: Fastify) {
         const { id, header, body, dataEncryptionKey } = request.body;
 
         try {
-            // Check if artifact exists
-            const existingArtifact = await db.artifact.findUnique({
-                where: { id }
-            });
+            const result = await createArtifactWithQuota(userId, { id, header, body, dataEncryptionKey });
+            if (result.kind === 'foreign-id-conflict') {
+                return reply.code(409).send({ error: 'Artifact with this ID already exists for another account' });
+            }
+            const { artifact } = result;
 
-            if (existingArtifact) {
-                // If exists for another account, return conflict
-                if (existingArtifact.accountId !== userId) {
-                    return reply.code(409).send({ 
-                        error: 'Artifact with this ID already exists for another account' 
-                    });
-                }
-                
-                // If exists for same account, return existing (idempotent)
-                log({ module: 'api', artifactId: id, userId }, 'Found existing artifact');
-                return reply.send({
-                    id: existingArtifact.id,
-                    header: privacyKit.encodeBase64(existingArtifact.header),
-                    headerVersion: existingArtifact.headerVersion,
-                    body: privacyKit.encodeBase64(existingArtifact.body),
-                    bodyVersion: existingArtifact.bodyVersion,
-                    dataEncryptionKey: privacyKit.encodeBase64(existingArtifact.dataEncryptionKey),
-                    seq: existingArtifact.seq,
-                    createdAt: existingArtifact.createdAt.getTime(),
-                    updatedAt: existingArtifact.updatedAt.getTime()
+            // Emit new-artifact event
+            if (result.created) {
+                const updSeq = await allocateUserSeq(userId);
+                const newArtifactPayload = buildNewArtifactUpdate(artifact, updSeq, randomKeyNaked(12));
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: newArtifactPayload,
+                    recipientFilter: { type: 'user-scoped-only' }
                 });
             }
 
-            // Create new artifact
-            log({ module: 'api', artifactId: id, userId }, 'Creating new artifact');
-            const artifact = await db.artifact.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    header: privacyKit.decodeBase64(header),
-                    headerVersion: 1,
-                    body: privacyKit.decodeBase64(body),
-                    bodyVersion: 1,
-                    dataEncryptionKey: privacyKit.decodeBase64(dataEncryptionKey),
-                    seq: 0
-                }
-            });
-
-            // Emit new-artifact event
-            const updSeq = await allocateUserSeq(userId);
-            const newArtifactPayload = buildNewArtifactUpdate(artifact, updSeq, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: newArtifactPayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
-
-            return reply.send({
-                id: artifact.id,
-                header: privacyKit.encodeBase64(artifact.header),
-                headerVersion: artifact.headerVersion,
-                body: privacyKit.encodeBase64(artifact.body),
-                bodyVersion: artifact.bodyVersion,
-                dataEncryptionKey: privacyKit.encodeBase64(artifact.dataEncryptionKey),
-                seq: artifact.seq,
-                createdAt: artifact.createdAt.getTime(),
-                updatedAt: artifact.updatedAt.getTime()
-            });
+            return reply.send(toArtifactResponse(artifact));
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to create artifact: ${error}`);
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code as any });
+            }
+            log({ module: 'api', level: 'error', error }, 'Failed to create artifact');
             return reply.code(500).send({ error: 'Failed to create artifact' });
         }
     });
@@ -230,14 +208,9 @@ export function artifactsRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                id: z.string()
+                id: artifactIdSchema
             }),
-            body: z.object({
-                header: z.string().optional(),
-                expectedHeaderVersion: z.number().int().min(0).optional(),
-                body: z.string().optional(),
-                expectedBodyVersion: z.number().int().min(0).optional()
-            }),
+            body: artifactUpdateSchema,
             response: {
                 200: z.union([
                     z.object({
@@ -257,6 +230,8 @@ export function artifactsRoutes(app: Fastify) {
                 404: z.object({
                     error: z.literal('Artifact not found')
                 }),
+                413: z.object({ error: z.literal('artifact_bytes_quota_exceeded') }),
+                429: z.object({ error: z.literal('artifact_rate_quota_exceeded') }),
                 500: z.object({
                     error: z.literal('Failed to update artifact')
                 })
@@ -265,76 +240,26 @@ export function artifactsRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { id } = request.params;
-        const { header, expectedHeaderVersion, body, expectedBodyVersion } = request.body;
-
         try {
-            // Get current artifact for version check
-            const currentArtifact = await db.artifact.findFirst({
-                where: {
-                    id,
-                    accountId: userId
-                }
-            });
-
-            if (!currentArtifact) {
+            const result = await updateArtifactWithQuota(userId, id, request.body);
+            if (result.kind === 'not-found') {
                 return reply.code(404).send({ error: 'Artifact not found' });
             }
-
-            // Check version mismatches
-            const headerMismatch = header !== undefined && expectedHeaderVersion !== undefined && 
-                                   currentArtifact.headerVersion !== expectedHeaderVersion;
-            const bodyMismatch = body !== undefined && expectedBodyVersion !== undefined && 
-                                 currentArtifact.bodyVersion !== expectedBodyVersion;
-
-            if (headerMismatch || bodyMismatch) {
+            if (result.kind === 'version-mismatch') {
                 return reply.send({
                     success: false,
                     error: 'version-mismatch',
-                    ...(headerMismatch && {
-                        currentHeaderVersion: currentArtifact.headerVersion,
-                        currentHeader: privacyKit.encodeBase64(currentArtifact.header)
+                    ...(result.headerMismatch && {
+                        currentHeaderVersion: result.artifact.headerVersion,
+                        currentHeader: privacyKit.encodeBase64(result.artifact.header)
                     }),
-                    ...(bodyMismatch && {
-                        currentBodyVersion: currentArtifact.bodyVersion,
-                        currentBody: privacyKit.encodeBase64(currentArtifact.body)
+                    ...(result.bodyMismatch && {
+                        currentBodyVersion: result.artifact.bodyVersion,
+                        currentBody: privacyKit.encodeBase64(result.artifact.body)
                     })
                 });
             }
-
-            // Build update data
-            const updateData: any = {
-                updatedAt: new Date()
-            };
-            
-            let headerUpdate: { value: string; version: number } | undefined;
-            let bodyUpdate: { value: string; version: number } | undefined;
-
-            if (header !== undefined && expectedHeaderVersion !== undefined) {
-                updateData.header = privacyKit.decodeBase64(header);
-                updateData.headerVersion = expectedHeaderVersion + 1;
-                headerUpdate = {
-                    value: header,
-                    version: expectedHeaderVersion + 1
-                };
-            }
-
-            if (body !== undefined && expectedBodyVersion !== undefined) {
-                updateData.body = privacyKit.decodeBase64(body);
-                updateData.bodyVersion = expectedBodyVersion + 1;
-                bodyUpdate = {
-                    value: body,
-                    version: expectedBodyVersion + 1
-                };
-            }
-
-            // Increment seq
-            updateData.seq = currentArtifact.seq + 1;
-
-            // Update artifact
-            await db.artifact.update({
-                where: { id },
-                data: updateData
-            });
+            const { headerUpdate, bodyUpdate } = result;
 
             // Emit update-artifact event
             const updSeq = await allocateUserSeq(userId);
@@ -351,7 +276,10 @@ export function artifactsRoutes(app: Fastify) {
                 ...(bodyUpdate && { bodyVersion: bodyUpdate.version })
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to update artifact: ${error}`);
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code as any });
+            }
+            log({ module: 'api', level: 'error', error }, 'Failed to update artifact');
             return reply.code(500).send({ error: 'Failed to update artifact' });
         }
     });
@@ -361,7 +289,7 @@ export function artifactsRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                id: z.string()
+                id: artifactIdSchema
             }),
             response: {
                 200: z.object({
@@ -408,7 +336,7 @@ export function artifactsRoutes(app: Fastify) {
 
             return reply.send({ success: true });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to delete artifact: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to delete artifact');
             return reply.code(500).send({ error: 'Failed to delete artifact' });
         }
     });

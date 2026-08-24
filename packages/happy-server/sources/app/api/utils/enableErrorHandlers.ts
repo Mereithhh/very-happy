@@ -25,8 +25,8 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
             ip,
             statusCode: error.statusCode || 500,
             errorCode: error.code,
-            stack: error.stack
-        }, `Unhandled error: ${error.message}`);
+            error,
+        }, 'Unhandled request error');
 
         // Return appropriate error response
         const statusCode = error.statusCode || 500;
@@ -72,8 +72,9 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
             duration,
             statusCode: reply.statusCode || error.statusCode || 500,
             errorName: error.name,
-            errorCode: error.code
-        }, `Request error: ${error.message}`);
+            errorCode: error.code,
+            error,
+        }, 'Request error');
     });
 
     // Handle uncaught exceptions in routes
@@ -89,8 +90,8 @@ export function enableErrorHandlers(app: Fastify, options: EnableErrorHandlersOp
                     level: 'error',
                     method: request.method,
                     url: safeRequestPath(request.url),
-                    stack: error.stack
-                }, `Response serialization error: ${error.message}`);
+                    error,
+                }, 'Response serialization error');
                 throw error;
             }
         };

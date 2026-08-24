@@ -18,6 +18,7 @@ import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
+import { AccountTerminalRateLimiter, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
@@ -56,6 +57,7 @@ export function startSocket(app: Fastify) {
         //     maxDisconnectionDuration: 2 * 60 * 1000,
         // },
     });
+    const terminalRateLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit());
 
     // Multi-process support: attach Redis streams adapter when REDIS_URL is set
     if (process.env.REDIS_URL) {
@@ -147,7 +149,15 @@ export function startSocket(app: Fastify) {
         }
         activeByUser.set(userId, active + 1);
 
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, client: ${labels.client}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
+        log({
+            module: 'websocket',
+            userId,
+            clientType: clientType || 'user-scoped',
+            client: labels.client,
+            sessionId,
+            machineId,
+            socketId: socket.id,
+        }, 'Socket token verified');
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
@@ -214,7 +224,7 @@ export function startSocket(app: Fastify) {
             eventRouter.removeConnection(userId, connection);
             websocketConnectionsGauge.dec({ type: connection.connectionType, ...labels });
 
-            log({ module: 'websocket' }, `User disconnected: ${userId}`);
+            log({ module: 'websocket', userId, clientType: connection.connectionType }, 'Socket disconnected');
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {
@@ -234,13 +244,13 @@ export function startSocket(app: Fastify) {
         pingHandler(socket);
         machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);
-        accessKeyHandler(userId, socket);
-        terminalHandler(userId, socket, io, connection);
-        clipboardHandler(userId, socket, io, connection);
-        filePreviewHandler(userId, socket, io, connection);
+        accessKeyHandler(userId, socket, terminalRateLimiter);
+        terminalHandler(userId, socket, io, connection, terminalRateLimiter);
+        clipboardHandler(userId, socket, io, connection, terminalRateLimiter);
+        filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
 
         // Ready
-        log({ module: 'websocket' }, `User connected: ${userId}`);
+        log({ module: 'websocket', userId, clientType: connection.connectionType }, 'Socket connected');
     });
 
     onShutdown('api', async () => {

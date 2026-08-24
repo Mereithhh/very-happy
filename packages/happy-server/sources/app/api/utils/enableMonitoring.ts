@@ -34,7 +34,7 @@ export function enableMonitoring(app: Fastify) {
                 service: 'happy-server'
             });
         } catch (error) {
-            log({ module: 'health', level: 'error' }, `Health check failed: ${error}`);
+            log({ module: 'health', level: 'error', error }, 'Health check failed');
             reply.code(503).send({
                 status: 'error',
                 timestamp: new Date().toISOString(),

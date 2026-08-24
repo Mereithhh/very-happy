@@ -26,12 +26,12 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
 
     // Early exit if no GitHub connection
     if (!user?.githubUserId) {
-        log({ module: 'github-disconnect' }, `User ${userId} has no GitHub account connected`);
+        log({ module: 'github-disconnect', userId }, 'Account has no GitHub identity connected');
         return;
     }
 
     const githubUserId = user.githubUserId;
-    log({ module: 'github-disconnect' }, `Disconnecting GitHub account ${githubUserId} from user ${userId}`);
+    log({ module: 'github-disconnect', userId, githubUserId }, 'Disconnecting GitHub identity');
 
     // Step 2: Transaction for atomic database operations
     await db.$transaction(async (tx) => {
@@ -63,5 +63,5 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
         recipientFilter: { type: 'user-scoped-only' }
     });
 
-    log({ module: 'github-disconnect' }, `GitHub account ${githubUserId} disconnected successfully from user ${userId}`);
+    log({ module: 'github-disconnect', userId, githubUserId }, 'GitHub identity disconnected');
 }

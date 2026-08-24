@@ -6,6 +6,14 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { Socket } from "socket.io";
 import * as privacyKit from "privacy-kit";
+import {
+    artifactCreateSchema,
+    artifactIdSchema,
+    artifactUpdateSchema,
+    createArtifactWithQuota,
+    updateArtifactWithQuota,
+} from '@/app/artifacts/artifactStore';
+import { isAccountResourceLimitError } from '../resourceLimits';
 
 export function artifactUpdateHandler(userId: string, socket: Socket) {
     const labels = getMetricsLabelsFromSocket(socket);
@@ -16,15 +24,14 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         try {
             websocketEventsCounter.inc({ event_type: 'artifact-read', ...labels });
 
-            const { artifactId } = data;
-
-            // Validate input
-            if (!artifactId) {
+            const idResult = artifactIdSchema.safeParse(data?.artifactId);
+            if (!idResult.success) {
                 if (callback) {
                     callback({ result: 'error', message: 'Invalid parameters' });
                 }
                 return;
             }
+            const artifactId = idResult.data;
 
             // Fetch artifact
             const artifact = await db.artifact.findFirst({
@@ -56,7 +63,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
                 }
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in artifact-read: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in artifact-read');
             if (callback) {
                 callback({ result: 'error', message: 'Internal error' });
             }
@@ -78,146 +85,42 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         try {
             websocketEventsCounter.inc({ event_type: 'artifact-update', ...labels });
 
-            const { artifactId, header, body } = data;
-
-            // Validate input
-            if (!artifactId) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid parameters' });
-                }
-                return;
-            }
-
-            // At least one update must be provided
-            if (!header && !body) {
-                if (callback) {
-                    callback({ result: 'error', message: 'No updates provided' });
-                }
-                return;
-            }
-
-            // Validate header structure if provided
-            if (header && (typeof header.data !== 'string' || typeof header.expectedVersion !== 'number')) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid header parameters' });
-                }
-                return;
-            }
-
-            // Validate body structure if provided
-            if (body && (typeof body.data !== 'string' || typeof body.expectedVersion !== 'number')) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid body parameters' });
-                }
-                return;
-            }
-
-            // Get current artifact
-            const currentArtifact = await db.artifact.findFirst({
-                where: {
-                    id: artifactId,
-                    accountId: userId
-                }
+            const { artifactId, header, body } = data ?? {};
+            const idResult = artifactIdSchema.safeParse(artifactId);
+            const updateResult = artifactUpdateSchema.safeParse({
+                header: header?.data,
+                expectedHeaderVersion: header?.expectedVersion,
+                body: body?.data,
+                expectedBodyVersion: body?.expectedVersion,
             });
-
-            if (!currentArtifact) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Artifact not found' });
-                }
+            if (!idResult.success || !updateResult.success) {
+                callback?.({ result: 'error', message: 'Invalid parameters' });
                 return;
             }
 
-            // Check for version mismatches
-            const headerMismatch = header && currentArtifact.headerVersion !== header.expectedVersion;
-            const bodyMismatch = body && currentArtifact.bodyVersion !== body.expectedVersion;
-
-            if (headerMismatch || bodyMismatch) {
+            const result = await updateArtifactWithQuota(userId, idResult.data, updateResult.data);
+            if (result.kind === 'not-found') {
+                callback?.({ result: 'error', message: 'Artifact not found' });
+                return;
+            }
+            if (result.kind === 'version-mismatch') {
                 const response: any = { result: 'version-mismatch' };
-                
-                if (headerMismatch) {
+                if (result.headerMismatch) {
                     response.header = {
-                        currentVersion: currentArtifact.headerVersion,
-                        currentData: privacyKit.encodeBase64(currentArtifact.header)
+                        currentVersion: result.artifact.headerVersion,
+                        currentData: privacyKit.encodeBase64(result.artifact.header),
                     };
                 }
-                
-                if (bodyMismatch) {
+                if (result.bodyMismatch) {
                     response.body = {
-                        currentVersion: currentArtifact.bodyVersion,
-                        currentData: privacyKit.encodeBase64(currentArtifact.body)
+                        currentVersion: result.artifact.bodyVersion,
+                        currentData: privacyKit.encodeBase64(result.artifact.body),
                     };
                 }
-                
                 callback(response);
                 return;
             }
-
-            // Build update data
-            const updateData: any = {
-                updatedAt: new Date(),
-                seq: currentArtifact.seq + 1
-            };
-
-            let headerUpdate: { value: string; version: number } | undefined;
-            let bodyUpdate: { value: string; version: number } | undefined;
-
-            if (header) {
-                updateData.header = privacyKit.decodeBase64(header.data);
-                updateData.headerVersion = header.expectedVersion + 1;
-                headerUpdate = {
-                    value: header.data,
-                    version: header.expectedVersion + 1
-                };
-            }
-
-            if (body) {
-                updateData.body = privacyKit.decodeBase64(body.data);
-                updateData.bodyVersion = body.expectedVersion + 1;
-                bodyUpdate = {
-                    value: body.data,
-                    version: body.expectedVersion + 1
-                };
-            }
-
-            // Perform atomic update with version check
-            const { count } = await db.artifact.updateMany({
-                where: {
-                    id: artifactId,
-                    accountId: userId,
-                    ...(header && { headerVersion: header.expectedVersion }),
-                    ...(body && { bodyVersion: body.expectedVersion })
-                },
-                data: updateData
-            });
-
-            if (count === 0) {
-                // Re-fetch current version
-                const current = await db.artifact.findFirst({
-                    where: {
-                        id: artifactId,
-                        accountId: userId
-                    }
-                });
-
-                const response: any = { result: 'version-mismatch' };
-                
-                if (header && current) {
-                    response.header = {
-                        currentVersion: current.headerVersion,
-                        currentData: privacyKit.encodeBase64(current.header)
-                    };
-                }
-                
-                if (body && current) {
-                    response.body = {
-                        currentVersion: current.bodyVersion,
-                        currentData: privacyKit.encodeBase64(current.body)
-                    };
-                }
-                
-                callback(response);
-                return;
-            }
+            const { headerUpdate, bodyUpdate } = result;
 
             // Emit update event
             const updSeq = await allocateUserSeq(userId);
@@ -247,7 +150,11 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
             
             callback(response);
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in artifact-update: ${error}`);
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', message: error.code });
+                return;
+            }
+            log({ module: 'websocket', level: 'error', error }, 'Error in artifact-update');
             if (callback) {
                 callback({ result: 'error', message: 'Internal error' });
             }
@@ -264,69 +171,28 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         try {
             websocketEventsCounter.inc({ event_type: 'artifact-create', ...labels });
 
-            const { id, header, body, dataEncryptionKey } = data;
-
-            // Validate input
-            if (!id || typeof header !== 'string' || typeof body !== 'string' || typeof dataEncryptionKey !== 'string') {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid parameters' });
-                }
+            const parsed = artifactCreateSchema.safeParse(data);
+            if (!parsed.success) {
+                callback?.({ result: 'error', message: 'Invalid parameters' });
                 return;
             }
-
-            // Check if artifact already exists
-            const existingArtifact = await db.artifact.findUnique({
-                where: { id }
-            });
-
-            if (existingArtifact) {
-                // If exists for another account, return error
-                if (existingArtifact.accountId !== userId) {
-                    if (callback) {
-                        callback({ result: 'error', message: 'Artifact with this ID already exists for another account' });
-                    }
-                    return;
-                }
-
-                // If exists for same account, return existing (idempotent)
-                callback({
-                    result: 'success',
-                    artifact: {
-                        id: existingArtifact.id,
-                        header: privacyKit.encodeBase64(existingArtifact.header),
-                        headerVersion: existingArtifact.headerVersion,
-                        body: privacyKit.encodeBase64(existingArtifact.body),
-                        bodyVersion: existingArtifact.bodyVersion,
-                        seq: existingArtifact.seq,
-                        createdAt: existingArtifact.createdAt.getTime(),
-                        updatedAt: existingArtifact.updatedAt.getTime()
-                    }
-                });
+            const result = await createArtifactWithQuota(userId, parsed.data);
+            if (result.kind === 'foreign-id-conflict') {
+                callback?.({ result: 'error', message: 'Artifact with this ID already exists for another account' });
                 return;
             }
-
-            // Create new artifact
-            const artifact = await db.artifact.create({
-                data: {
-                    id,
-                    accountId: userId,
-                    header: privacyKit.decodeBase64(header),
-                    headerVersion: 1,
-                    body: privacyKit.decodeBase64(body),
-                    bodyVersion: 1,
-                    dataEncryptionKey: privacyKit.decodeBase64(dataEncryptionKey),
-                    seq: 0
-                }
-            });
+            const { artifact } = result;
 
             // Emit new-artifact event
-            const updSeq = await allocateUserSeq(userId);
-            const newArtifactPayload = buildNewArtifactUpdate(artifact, updSeq, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: newArtifactPayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
+            if (result.created) {
+                const updSeq = await allocateUserSeq(userId);
+                const newArtifactPayload = buildNewArtifactUpdate(artifact, updSeq, randomKeyNaked(12));
+                eventRouter.emitUpdate({
+                    userId,
+                    payload: newArtifactPayload,
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
+            }
 
             // Return created artifact
             callback({
@@ -343,7 +209,11 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
                 }
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in artifact-create: ${error}`);
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', message: error.code });
+                return;
+            }
+            log({ module: 'websocket', level: 'error', error }, 'Error in artifact-create');
             if (callback) {
                 callback({ result: 'error', message: 'Internal error' });
             }
@@ -357,15 +227,14 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         try {
             websocketEventsCounter.inc({ event_type: 'artifact-delete', ...labels });
 
-            const { artifactId } = data;
-
-            // Validate input
-            if (!artifactId) {
+            const idResult = artifactIdSchema.safeParse(data?.artifactId);
+            if (!idResult.success) {
                 if (callback) {
                     callback({ result: 'error', message: 'Invalid parameters' });
                 }
                 return;
             }
+            const artifactId = idResult.data;
 
             // Check if artifact exists and belongs to user
             const artifact = await db.artifact.findFirst({
@@ -399,7 +268,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
             // Send success response
             callback({ result: 'success' });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in artifact-delete: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in artifact-delete');
             if (callback) {
                 callback({ result: 'error', message: 'Internal error' });
             }

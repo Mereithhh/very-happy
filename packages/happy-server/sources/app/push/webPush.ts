@@ -163,11 +163,11 @@ export async function sendWebPush(
         });
         const gone = res.status === 404 || res.status === 410;
         if (!res.ok && !gone) {
-            log({ module: 'push', level: 'warn' }, `Web push non-OK ${res.status} for ${sub.endpoint}`);
+            log({ module: 'push', level: 'warn', status: res.status }, 'Web push returned non-OK status');
         }
         return { ok: res.ok, statusCode: res.status, gone };
     } catch (error) {
-        log({ module: 'push', level: 'error' }, `Web push send failed: ${error}`);
+        log({ module: 'push', level: 'error', error }, 'Web push send failed');
         return { ok: false, statusCode: 0, gone: false };
     }
 }

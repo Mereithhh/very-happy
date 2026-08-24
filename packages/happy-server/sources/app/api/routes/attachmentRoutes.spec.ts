@@ -14,7 +14,7 @@ const {
     const state = {
         sessions: [] as Array<{ id: string; accountId: string }>,
         uploads: new Map<string, Buffer>(),
-        reservations: new Map<string, { accountId: string; size: number }>(),
+        reservations: new Map<string, { id?: string; accountId: string; size: number; reuseKey?: string | null; updatedAt?: Date }>(),
         useLocalStorage: true,
         s3PostUrl: "https://s3.test/post-url",
         s3GetUrl: "https://s3.test/get-url",
@@ -40,28 +40,78 @@ const {
     });
 
     const dbMock = {
-        $queryRawUnsafe: vi.fn(async (sql: string, accountId: string, filePath?: string) => {
-            if (sql.includes('SUM("size")')) {
-                const used = [...state.reservations.values()]
+        $queryRawUnsafe: vi.fn(async (sql: string, accountId: string, ...args: any[]) => {
+            if (sql.includes('UPDATE "UploadedFile" SET "reuseKey"')) {
+                const [cutoff, cleaningStatus, reservedStatus, uploadingStatus, limit] = args;
+                const claimed: Array<{ id: string; path: string }> = [];
+                for (const [ref, row] of state.reservations) {
+                    if (claimed.length >= limit) break;
+                    if (row.accountId === accountId &&
+                        [reservedStatus, uploadingStatus].includes(row.reuseKey) &&
+                        (row.updatedAt ?? new Date()) < cutoff) {
+                        row.reuseKey = cleaningStatus;
+                        row.updatedAt = new Date();
+                        claimed.push({ id: row.id!, path: ref });
+                    }
+                }
+                return claimed;
+            }
+            if (sql.includes('COUNT(*) AS "count"')) {
+                const rows = [...state.reservations.values()].filter((r) => r.accountId === accountId);
+                const used = rows
                     .filter((r) => r.accountId === accountId)
                     .reduce((n, r) => n + r.size, 0);
-                return [{ used: BigInt(used) }];
+                return [{ count: BigInt(rows.length), bytes: BigInt(used) }];
             }
             if (sql.includes('SELECT "size"')) {
+                const filePath = args[0];
                 const row = filePath ? state.reservations.get(filePath) : undefined;
-                return row?.accountId === accountId ? [{ size: row.size }] : [];
+                return row?.accountId === accountId ? [{ size: row.size, reuseKey: row.reuseKey ?? null }] : [];
             }
             return [{ id: accountId }];
         }),
-        $executeRawUnsafe: vi.fn(async (sql: string, _id: string, accountId: string, filePath: string, size: number) => {
+        $executeRawUnsafe: vi.fn(async (sql: string, id: string, accountId: string, filePath: string, size: number, reuseKey: string) => {
             if (sql.includes('INSERT INTO "UploadedFile"')) {
-                state.reservations.set(filePath, { accountId, size });
+                state.reservations.set(filePath, { id, accountId, size, reuseKey, updatedAt: new Date() });
             }
             return 1;
         }),
         session: { findFirst: sessionFindFirst },
         uploadedFile: {
-            deleteMany: vi.fn(async ({ where }: any) => { state.reservations.delete(where.path); return { count: 1 }; }),
+            deleteMany: vi.fn(async ({ where }: any) => {
+                let count = 0;
+                for (const [ref, row] of [...state.reservations]) {
+                    if ((where.path === undefined || where.path === ref) &&
+                        (where.id === undefined || where.id === row.id) &&
+                        (where.accountId === undefined || where.accountId === row.accountId) &&
+                        (where.reuseKey === undefined || where.reuseKey === row.reuseKey)) {
+                        state.reservations.delete(ref);
+                        count++;
+                    }
+                }
+                return { count };
+            }),
+            updateMany: vi.fn(async ({ where, data }: any) => {
+                let count = 0;
+                for (const [ref, row] of state.reservations) {
+                    const reuseMatches = where.reuseKey === undefined || where.reuseKey === null
+                        ? where.reuseKey === undefined || (row.reuseKey ?? null) === null
+                        : typeof where.reuseKey === 'object'
+                            ? where.reuseKey.in.includes(row.reuseKey)
+                            : row.reuseKey === where.reuseKey;
+                    if ((where.path === undefined || where.path === ref) &&
+                        (where.accountId === undefined || where.accountId === row.accountId) && reuseMatches) {
+                        Object.assign(row, data);
+                        count++;
+                    }
+                }
+                return { count };
+            }),
+            count: vi.fn(async ({ where }: any) => [...state.reservations.entries()].filter(([ref, row]) =>
+                (where.path === undefined || where.path === ref) &&
+                (where.accountId === undefined || where.accountId === row.accountId) &&
+                (where.reuseKey === undefined || (row.reuseKey ?? null) === where.reuseKey),
+            ).length),
         },
     };
 
@@ -90,12 +140,21 @@ const {
                 formData: { key: _policy.key, policy: "stub-policy" },
             })),
             presignedGetObject: vi.fn(async (_bucket: string, _key: string, _ttl: number) => state.s3GetUrl),
+            statObject: vi.fn(async (_bucket: string, key: string) => {
+                if (!state.uploads.has(key)) {
+                    throw Object.assign(new Error('missing'), { code: 'NoSuchKey', statusCode: 404 });
+                }
+                return { size: state.uploads.get(key)!.length };
+            }),
         },
         s3bucket: "test-bucket",
         isLocalStorage: vi.fn(() => state.useLocalStorage),
         getLocalFilesDir: vi.fn(() => "/tmp/test-files"),
         putLocalFile: vi.fn(async (filePath: string, data: Buffer) => {
             state.uploads.set(filePath, data);
+        }),
+        deleteStoredFile: vi.fn(async (filePath: string) => {
+            state.uploads.delete(filePath);
         }),
     };
 
@@ -153,8 +212,16 @@ async function createApp() {
 
 describe("attachmentRoutes — request-upload", () => {
     let app: Fastify;
-    beforeEach(() => { resetState(); });
-    afterEach(async () => { if (app) await app.close(); });
+    beforeEach(() => {
+        resetState();
+        delete process.env.MAX_UPLOADED_FILES_PER_ACCOUNT;
+        delete process.env.ATTACHMENT_RESERVATION_TTL_MINUTES;
+    });
+    afterEach(async () => {
+        if (app) await app.close();
+        delete process.env.MAX_UPLOADED_FILES_PER_ACCOUNT;
+        delete process.env.ATTACHMENT_RESERVATION_TTL_MINUTES;
+    });
 
     it("returns 200 with .enc ref + method=PUT in local mode for the session owner", async () => {
         seedSession("s1", "u1");
@@ -234,6 +301,61 @@ describe("attachmentRoutes — request-upload", () => {
         // Zod schema rejects size > 10MB at validation stage with 400.
         expect([400, 413]).toContain(res.statusCode);
     });
+
+    it("serializes attachment row capacity independently from the byte quota", async () => {
+        seedSession("s1", "u1");
+        process.env.MAX_UPLOADED_FILES_PER_ACCOUNT = "1";
+        app = await createApp();
+
+        expect((await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-upload",
+            headers: { "x-user-id": "u1" },
+            payload: { filename: "one", size: 1 },
+        })).statusCode).toBe(200);
+        const full = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-upload",
+            headers: { "x-user-id": "u1" },
+            payload: { filename: "two", size: 1 },
+        });
+        expect(full.statusCode).toBe(429);
+        expect(full.json()).toEqual({ error: "attachment_count_quota_exceeded" });
+    });
+
+    it("reclaims expired uncompleted reservations and their stored objects before reserving", async () => {
+        seedSession("s1", "u1");
+        process.env.ATTACHMENT_RESERVATION_TTL_MINUTES = "1";
+        state.reservations.set("sessions/s1/attachments/old.enc", {
+            id: "old-row",
+            accountId: "u1",
+            size: 1,
+            reuseKey: "attachment-reserved",
+            updatedAt: new Date(Date.now() - 120_000),
+        });
+        state.uploads.set("sessions/s1/attachments/old.enc", Buffer.from("orphan"));
+        state.reservations.set("sessions/s1/attachments/complete.enc", {
+            id: "complete-row",
+            accountId: "u1",
+            size: 1,
+            reuseKey: "attachment-complete",
+            updatedAt: new Date(Date.now() - 120_000),
+        });
+        state.uploads.set("sessions/s1/attachments/complete.enc", Buffer.from("kept"));
+        app = await createApp();
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-upload",
+            headers: { "x-user-id": "u1" },
+            payload: { filename: "replacement", size: 1 },
+        });
+        expect(response.statusCode).toBe(200);
+        expect(state.reservations.has("sessions/s1/attachments/old.enc")).toBe(false);
+        expect(state.uploads.has("sessions/s1/attachments/old.enc")).toBe(false);
+        expect(state.reservations.has("sessions/s1/attachments/complete.enc")).toBe(true);
+        expect(state.uploads.get("sessions/s1/attachments/complete.enc")).toEqual(Buffer.from("kept"));
+    });
 });
 
 describe("attachmentRoutes — PUT (local-mode upload)", () => {
@@ -310,6 +432,7 @@ describe("attachmentRoutes — POST request-download", () => {
     it("returns a server-relative downloadUrl for the session owner in local mode", async () => {
         seedSession("s1", "u1");
         state.useLocalStorage = true;
+        state.uploads.set("sessions/s1/attachments/abc.enc", Buffer.from("payload"));
         app = await createApp();
 
         const res = await app.inject({
@@ -327,6 +450,7 @@ describe("attachmentRoutes — POST request-download", () => {
     it("returns a presigned S3 GET URL in S3 mode", async () => {
         seedSession("s1", "u1");
         state.useLocalStorage = false;
+        state.uploads.set("sessions/s1/attachments/abc.enc", Buffer.from("payload"));
         app = await createApp();
 
         const res = await app.inject({
@@ -338,6 +462,30 @@ describe("attachmentRoutes — POST request-download", () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.json().downloadUrl).toBe("https://s3.test/get-url");
+    });
+
+    it.each([true, false])("does not complete a missing reserved object (local=%s)", async (local) => {
+        seedSession("s1", "u1");
+        state.useLocalStorage = local;
+        const ref = "sessions/s1/attachments/missing.enc";
+        state.reservations.set(ref, {
+            id: "reservation-1",
+            accountId: "u1",
+            size: 1024,
+            reuseKey: "attachment-reserved",
+            updatedAt: new Date("2026-08-24T00:00:00Z"),
+        });
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-download",
+            headers: { "x-user-id": "u1" },
+            payload: { ref },
+        });
+
+        expect(res.statusCode).toBe(404);
+        expect(state.reservations.get(ref)?.reuseKey).toBe("attachment-reserved");
     });
 
     it("rejects a ref that does not belong to the requested session (cross-session attack)", async () => {
@@ -422,6 +570,7 @@ describe("attachmentRoutes — GET (download)", () => {
     it("redirects to a presigned GET URL in S3 mode for the session owner", async () => {
         seedSession("s1", "u1");
         state.useLocalStorage = false;
+        state.uploads.set("sessions/s1/attachments/abc.enc", Buffer.from("payload"));
         app = await createApp();
 
         const res = await app.inject({

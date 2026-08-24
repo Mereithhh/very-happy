@@ -5,7 +5,15 @@ import type { Fastify } from '../types';
 
 const { state, storeMock, dbMock, authMock } = vi.hoisted(() => {
     const state = { row: null as any };
+    class PairingCapacityError extends Error {
+        constructor() {
+            super('pairing-capacity');
+            this.name = 'PairingCapacityError';
+        }
+    }
     const storeMock = {
+        PAIRING_RESPONSE_MAX_BYTES: 4096,
+        PairingCapacityError,
         findPairing: vi.fn(async () => state.row),
         createPairing: vi.fn(async (_kind: string, input: any) => {
             state.row = {
@@ -114,6 +122,34 @@ describe('claim-secret pairing routes', () => {
         const response = await app.inject({ method: 'POST', url: '/v1/auth/request', payload: { publicKey, pairingAction: 'create', supportsV2: true } });
         expect(response.statusCode).toBe(426);
         expect(response.json()).toEqual({ error: 'upgrade-required' });
+        await app.close();
+    });
+
+    it('returns a stable retryable error when the global pairing cap is full', async () => {
+        storeMock.createPairing.mockRejectedValueOnce(new storeMock.PairingCapacityError());
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/auth/request', payload: {
+            publicKey, claimSecret: claim, supportsClaimSecret: true, pairingAction: 'create', supportsV2: true,
+        } });
+
+        expect(response.statusCode).toBe(429);
+        expect(response.json()).toEqual({ error: 'pairing-capacity' });
+        await app.close();
+    });
+
+    it('rejects a multibyte approval response above the stored byte cap', async () => {
+        state.row = {
+            id: 'pending', publicKey, supportsV2: true, claimSecretHash: claimSecretHash(claim),
+            response: null, responseAccountId: null, createdAt: new Date(), updatedAt: new Date(),
+        };
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/auth/response', payload: {
+            publicKey,
+            response: '界'.repeat(2000),
+        } });
+
+        expect(response.statusCode).toBe(400);
+        expect(storeMock.approvePairingRow).not.toHaveBeenCalled();
         await app.close();
     });
 });

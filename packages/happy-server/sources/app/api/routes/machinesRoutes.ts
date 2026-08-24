@@ -7,78 +7,48 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { buildNewMachineUpdate, buildUpdateMachineUpdate, buildDeleteMachineUpdate } from "@/app/events/eventRouter";
-import { configuredResourceLimit, lockAccountResources } from '../resourceLimits';
+import { isAccountResourceLimitError } from '../resourceLimits';
+import { createMachineWithQuota, machineCreateSchema } from '@/app/state/accountStateStore';
 
 export function machinesRoutes(app: Fastify) {
     app.post('/v1/machines', {
         preHandler: app.authenticate,
         schema: {
-            body: z.object({
-                id: z.string(),
-                metadata: z.string(), // Encrypted metadata
-                daemonState: z.string().optional(), // Encrypted daemon state
-                dataEncryptionKey: z.string().nullish()
-            })
+            body: machineCreateSchema,
+            response: {
+                200: z.object({
+                    machine: z.object({
+                        id: z.string(),
+                        metadata: z.string(),
+                        metadataVersion: z.number(),
+                        daemonState: z.string().nullable(),
+                        daemonStateVersion: z.number(),
+                        dataEncryptionKey: z.string().nullable(),
+                        active: z.boolean(),
+                        activeAt: z.number(),
+                        createdAt: z.number(),
+                        updatedAt: z.number(),
+                    }),
+                }),
+                413: z.object({ error: z.literal('machine_state_bytes_quota_exceeded') }),
+                429: z.union([
+                    z.object({ error: z.literal('machine_state_rate_quota_exceeded') }),
+                    z.object({ error: z.literal('limit-reached'), resource: z.literal('machines'), limit: z.number() }),
+                ]),
+            },
         }
     }, async (request, reply) => {
         const userId = request.userId;
         const { id, metadata, daemonState, dataEncryptionKey } = request.body;
 
-        // Check if machine exists (like sessions do)
-        const machine = await db.machine.findFirst({
-            where: {
-                accountId: userId,
-                id: id
+        try {
+            const result = await createMachineWithQuota({ accountId: userId, id, metadata, daemonState, dataEncryptionKey });
+            if (result.kind === 'count-limit') {
+                return reply.code(429).send({ error: 'limit-reached', resource: 'machines', limit: result.limit });
             }
-        });
-
-        if (machine) {
-            // Machine exists - just return it
-            log({ module: 'machines', machineId: id, userId }, 'Found existing machine');
-            return reply.send({
-                machine: {
-                    id: machine.id,
-                    metadata: machine.metadata,
-                    metadataVersion: machine.metadataVersion,
-                    daemonState: machine.daemonState,
-                    daemonStateVersion: machine.daemonStateVersion,
-                    dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
-                    active: machine.active,
-                    activeAt: machine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
-                    createdAt: machine.createdAt.getTime(),
-                    updatedAt: machine.updatedAt.getTime()
-                }
-            });
-        } else {
-            const maxMachines = configuredResourceLimit('MAX_MACHINES_PER_ACCOUNT', 20);
-            const reserved = await inTx(async (tx) => {
-                await lockAccountResources(tx, userId);
-                const concurrentExisting = await tx.machine.findFirst({ where: { accountId: userId, id } });
-                if (concurrentExisting) return { newMachine: concurrentExisting, updSeq1: null, updSeq2: null };
-                if (maxMachines > 0 && await tx.machine.count({ where: { accountId: userId } }) >= maxMachines) {
-                    return null;
-                }
-                log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
-                const newMachine = await tx.machine.create({
-                    data: {
-                        id,
-                        accountId: userId,
-                        metadata,
-                        metadataVersion: 1,
-                        daemonState: daemonState || null,
-                        daemonStateVersion: daemonState ? 1 : 0,
-                        dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                        active: false,
-                    }
-                });
-                const updSeq1 = await allocateUserSeq(userId, tx);
-                const updSeq2 = await allocateUserSeq(userId, tx);
-                return { newMachine, updSeq1, updSeq2 };
-            });
-            if (!reserved) {
-                return reply.code(429).send({ error: 'limit-reached', resource: 'machines', limit: maxMachines });
-            }
-            const { newMachine, updSeq1, updSeq2 } = reserved;
+            const newMachine = result.machine;
+            const [updSeq1, updSeq2] = result.updateSeqs ?? [null, null];
+            log({ module: 'machines', machineId: id, userId, created: result.created }, 'Machine create completed');
             
             // Emit new-machine event with all data including dataEncryptionKey
             if (updSeq1 !== null && updSeq2 !== null) {
@@ -113,6 +83,11 @@ export function machinesRoutes(app: Fastify) {
                     updatedAt: newMachine.updatedAt.getTime()
                 }
             });
+        } catch (error) {
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code as any });
+            }
+            throw error;
         }
     });
 

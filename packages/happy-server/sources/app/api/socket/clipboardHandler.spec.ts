@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { clipboardHandler } from './clipboardHandler';
+import { filePreviewHandler } from './filePreviewHandler';
+import { AccountTerminalRateLimiter } from './terminalRateLimit';
 
 /** Minimal socket.io stand-ins: capture the handler and room emits. */
 function makeFakes() {
@@ -9,6 +11,8 @@ function makeFakes() {
         on: (event: string, handler: (data: any) => void) => {
             handlers.set(event, handler);
         },
+        emit: (event: string, data: any) => emitted.push({ room: 'sender', event, data }),
+        disconnect: () => emitted.push({ room: 'sender', event: 'disconnect', data: true }),
     } as any;
     const io = {
         to: (room: string) => ({
@@ -105,5 +109,48 @@ describe('clipboardHandler', () => {
         const { handlers, socket, io } = makeFakes();
         clipboardHandler('u', socket, io, { connectionType: 'machine-scoped' });
         expect(handlers.has('clipboard-push')).toBe(false);
+    });
+
+    it('disconnects repeated 1MiB clipboard pushes at the shared event allowance', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 1,
+            burstBytes: 2 * 1024 * 1024,
+            eventsPerSecond: 1,
+            burstEvents: 1,
+        });
+        clipboardHandler('u', socket, io, { connectionType: 'machine-scoped', machineId: 'm1' }, limiter);
+        const payload = { payload: 'x'.repeat(1024 * 1024) };
+
+        handlers.get('clipboard-push')!(payload);
+        handlers.get('clipboard-push')!(payload);
+
+        expect(emitted[0]).toMatchObject({ room: 'user:u:user-scoped', event: 'clipboard-push' });
+        expect(emitted.slice(1)).toEqual([
+            { room: 'sender', event: 'limit-reached', data: { resource: 'clipboard-relay' } },
+            { room: 'sender', event: 'disconnect', data: true },
+        ]);
+    });
+
+    it('shares one account allowance across clipboard and file-preview event names', () => {
+        const clipboard = makeFakes();
+        const preview = makeFakes();
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 1024 * 1024,
+            burstBytes: 1024 * 1024,
+            eventsPerSecond: 1,
+            burstEvents: 1,
+        });
+        clipboardHandler('u', clipboard.socket, clipboard.io, { connectionType: 'session-scoped', sessionId: 's1' }, limiter);
+        filePreviewHandler('u', preview.socket, preview.io, { connectionType: 'session-scoped', sessionId: 's1' }, limiter);
+
+        clipboard.handlers.get('clipboard-push')!({ payload: 'first' });
+        preview.handlers.get('file-preview-push')!({ payload: 'second' });
+
+        expect(clipboard.emitted).toHaveLength(1);
+        expect(preview.emitted).toEqual([
+            { room: 'sender', event: 'limit-reached', data: { resource: 'file-preview-relay' } },
+            { room: 'sender', event: 'disconnect', data: true },
+        ]);
     });
 });

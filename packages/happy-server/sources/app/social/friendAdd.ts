@@ -3,8 +3,8 @@ import { buildUserProfile, UserProfile } from "./type";
 import { inTx } from "@/storage/inTx";
 import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
-import { relationshipGet } from "./relationshipGet";
 import { sendFriendRequestNotification, sendFriendshipEstablishedNotification } from "./friendNotification";
+import { assertRelationshipCapacity, lockRelationshipAccounts } from './relationshipLimits';
 
 /**
  * Add a friend or accept a friend request.
@@ -35,9 +35,15 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
             return null;
         }
 
+        await lockRelationshipAccounts(tx, currentUser.id, targetUser.id);
+
         // Read relationship status
-        const currentUserRelationship = await relationshipGet(tx, currentUser.id, targetUser.id);
-        const targetUserRelationship = await relationshipGet(tx, targetUser.id, currentUser.id);
+        const [currentRow, targetRow] = await Promise.all([
+            tx.userRelationship.findFirst({ where: { fromUserId: currentUser.id, toUserId: targetUser.id } }),
+            tx.userRelationship.findFirst({ where: { fromUserId: targetUser.id, toUserId: currentUser.id } }),
+        ]);
+        const currentUserRelationship = currentRow?.status ?? RelationshipStatus.none;
+        const targetUserRelationship = targetRow?.status ?? RelationshipStatus.none;
 
         // Handle cases
 
@@ -58,6 +64,8 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
         // Case 2: If status is none or rejected, create a new request (since other side is not in requested state)
         if (currentUserRelationship === RelationshipStatus.none
             || currentUserRelationship === RelationshipStatus.rejected) {
+            await assertRelationshipCapacity(tx, currentUser.id, !currentRow);
+            await assertRelationshipCapacity(tx, targetUser.id, targetUserRelationship === RelationshipStatus.none && !targetRow);
             await relationshipSet(tx, currentUser.id, targetUser.id, RelationshipStatus.requested);
 
             // If other side is in none state, set it to pending, ignore for other states

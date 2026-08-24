@@ -53,6 +53,7 @@ export type Fastify = FastifyInstance<
 declare module 'fastify' {
     interface FastifyRequest {
         userId: string;
+        authLoginSessionId?: string;
         startTime?: number;
     }
     interface FastifyInstance {

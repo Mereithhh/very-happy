@@ -25,8 +25,8 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
             for (let callback of result.callbacks) {
                 try {
                     callback();
-                } catch (e) { // Ignore errors in callbacks because they are used mostly for notifications
-                    console.error(e);
+                } catch { // Ignore errors in callbacks because they are used mostly for notifications
+                    console.error('Post-transaction callback failed');
                 }
             }
             return result.result;

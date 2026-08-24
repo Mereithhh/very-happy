@@ -4,9 +4,9 @@ import { db } from "@/storage/db";
 import { log } from "@/utils/log";
 
 /**
- * Shape of the encrypted password-unlock blob.
- * The server stores/returns it opaquely; only clients that know the password
- * can derive the account secret key from it.
+ * Shape of the legacy password-unlock blob. A client can decrypt this blob with
+ * the password, but this fork also stores server-recoverable account credentials:
+ * the blob is neither an end-to-end trust boundary nor the only recovery path.
  */
 const PasswordBlobSchema = z.object({
     v: z.number(),
@@ -46,7 +46,7 @@ export function unlockRoutes(app: Fastify) {
             );
             return reply.send({ success: true as const });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to upsert account unlock blob: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to upsert account unlock blob');
             return reply.code(500).send({ error: 'Failed to store unlock blob' as const });
         }
     });

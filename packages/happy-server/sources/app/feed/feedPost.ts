@@ -4,6 +4,46 @@ import { afterTx, Tx } from "@/storage/inTx";
 import { allocateUserSeq } from "@/storage/seq";
 import { eventRouter, buildNewFeedPostUpdate } from "@/app/events/eventRouter";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+import {
+    assertAccountResourceQuota,
+    configuredResourceLimit,
+    enforceAccountWriteRate,
+    lockAccountResources,
+} from '@/app/api/resourceLimits';
+import { FeedBodySchema, feedRepeatKeySchema } from './types';
+
+type FeedUsage = { count: bigint; bytes: bigint; incoming_bytes: bigint; existing_bytes: bigint };
+
+async function feedUsage(tx: Tx, accountId: string, body: FeedBody, repeatKey: string | null) {
+    const rows = await tx.$queryRawUnsafe<FeedUsage[]>(
+        `SELECT
+            (SELECT COUNT(*)::bigint FROM "UserFeedItem" WHERE "userId" = $1) AS "count",
+            (SELECT COALESCE(SUM(octet_length("body"::text) + COALESCE(octet_length("repeatKey"), 0)), 0)::bigint
+             FROM "UserFeedItem" WHERE "userId" = $1) AS "bytes",
+            (octet_length($2::jsonb::text) + octet_length(COALESCE($3, '')))::bigint AS "incoming_bytes",
+            COALESCE((SELECT octet_length("body"::text) + COALESCE(octet_length("repeatKey"), 0)
+                      FROM "UserFeedItem" WHERE "userId" = $1 AND "repeatKey" = $3), 0)::bigint AS "existing_bytes"`,
+        accountId,
+        JSON.stringify(body),
+        repeatKey,
+    );
+    const row = rows[0];
+    return {
+        count: Number(row?.count ?? 0),
+        bytes: Number(row?.bytes ?? 0),
+        incomingBytes: Number(row?.incoming_bytes ?? 0),
+        existingBytes: Number(row?.existing_bytes ?? 0),
+    };
+}
+
+export async function enforceFeedWriteRate(accountId: string) {
+    await enforceAccountWriteRate({
+        accountId,
+        resource: 'feed',
+        envName: 'MAX_FEED_WRITES_PER_ACCOUNT_PER_MINUTE',
+        fallback: 120,
+    });
+}
 
 /**
  * Add a post to user's feed.
@@ -16,17 +56,27 @@ export async function feedPost(
     body: FeedBody,
     repeatKey?: string | null
 ): Promise<UserFeedItem> {
-
-
-    // Delete existing items with the same repeatKey
-    if (repeatKey) {
-        await tx.userFeedItem.deleteMany({
-            where: {
-                userId: ctx.uid,
-                repeatKey: repeatKey
-            }
-        });
-    }
+    const parsedBody = FeedBodySchema.parse(body);
+    const parsedRepeatKey = feedRepeatKeySchema.parse(repeatKey ?? null);
+    await lockAccountResources(tx, ctx.uid);
+    const existing = parsedRepeatKey
+        ? await tx.userFeedItem.findUnique({
+            where: { userId_repeatKey: { userId: ctx.uid, repeatKey: parsedRepeatKey } },
+        })
+        : null;
+    const usage = await feedUsage(tx, ctx.uid, parsedBody, parsedRepeatKey);
+    assertAccountResourceQuota({
+        resource: 'feed',
+        current: { count: usage.count, bytes: usage.bytes },
+        delta: {
+            count: existing ? 0 : 1,
+            bytes: usage.incomingBytes - usage.existingBytes,
+        },
+        limits: {
+            count: configuredResourceLimit('MAX_FEED_ITEMS_PER_ACCOUNT', 10_000),
+            bytes: configuredResourceLimit('MAX_FEED_BYTES_PER_ACCOUNT', 64 * 1024 * 1024),
+        },
+    });
 
     // Allocate new counter
     const user = await tx.account.update({
@@ -35,15 +85,23 @@ export async function feedPost(
         data: { feedSeq: { increment: 1 } }
     });
 
-    // Create new item
-    const item = await tx.userFeedItem.create({
-        data: {
-            counter: user.feedSeq,
-            userId: ctx.uid,
-            repeatKey: repeatKey,
-            body: body
-        }
-    });
+    const item = existing
+        ? await tx.userFeedItem.update({
+            where: { id: existing.id },
+            data: {
+                counter: user.feedSeq,
+                body: parsedBody,
+                createdAt: new Date(),
+            },
+        })
+        : await tx.userFeedItem.create({
+            data: {
+                counter: user.feedSeq,
+                userId: ctx.uid,
+                repeatKey: parsedRepeatKey,
+                body: parsedBody,
+            },
+        });
 
     const result = {
         ...item,

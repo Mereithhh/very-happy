@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { filePreviewHandler } from './filePreviewHandler';
+import { AccountTerminalRateLimiter } from './terminalRateLimit';
 
 /** Minimal socket.io stand-ins: capture the handler and room emits. */
 function makeFakes() {
@@ -9,6 +10,8 @@ function makeFakes() {
         on: (event: string, handler: (data: any) => void) => {
             handlers.set(event, handler);
         },
+        emit: (event: string, data: any) => emitted.push({ room: 'sender', event, data }),
+        disconnect: () => emitted.push({ room: 'sender', event: 'disconnect', data: true }),
     } as any;
     const io = {
         to: (room: string) => ({
@@ -171,5 +174,25 @@ describe('filePreviewHandler', () => {
             push('a raw string event');
         }).not.toThrow();
         expect(emitted).toHaveLength(0);
+    });
+
+    it('disconnects a file-preview event burst instead of fanning it out indefinitely', () => {
+        const { handlers, emitted, socket, io } = makeFakes();
+        const limiter = new AccountTerminalRateLimiter({
+            bytesPerSecond: 1024,
+            burstBytes: 1024,
+            eventsPerSecond: 1,
+            burstEvents: 1,
+        });
+        filePreviewHandler('u', socket, io, { connectionType: 'session-scoped', sessionId: 's1' }, limiter);
+
+        handlers.get('file-preview-push')!({ payload: 'first' });
+        handlers.get('file-preview-push')!({ payload: 'second' });
+
+        expect(emitted[0]).toMatchObject({ room: 'user:u:user-scoped', event: 'file-preview-push' });
+        expect(emitted.slice(1)).toEqual([
+            { room: 'sender', event: 'limit-reached', data: { resource: 'file-preview-relay' } },
+            { room: 'sender', event: 'disconnect', data: true },
+        ]);
     });
 });

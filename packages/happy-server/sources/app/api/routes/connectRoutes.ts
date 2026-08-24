@@ -32,6 +32,18 @@ function githubRedirect(base: string, result: { connected?: boolean; error?: str
     return url.toString();
 }
 
+export function buildGithubAuthorizeUrl(clientId: string, redirectUri: string, state: string): string {
+    const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        // The callback only fetches GET /user. Do not request org, email, repo,
+        // or Codespaces authority for a profile connection.
+        scope: 'read:user',
+        state,
+    });
+    return `https://github.com/login/oauth/authorize?${params.toString()}`;
+}
+
 export function connectRoutes(app: Fastify) {
 
     // Add content type parser for webhook endpoints to preserve raw body
@@ -94,17 +106,7 @@ export function connectRoutes(app: Fastify) {
         // Generate ephemeral state token (5 minutes TTL)
         const state = await auth.createGithubToken(request.userId);
 
-        // Build complete OAuth URL
-        const params = new URLSearchParams({
-            client_id: clientId,
-            redirect_uri: redirectUri,
-            scope: 'read:user,user:email,read:org,codespace',
-            state: state
-        });
-
-        const url = `https://github.com/login/oauth/authorize?${params.toString()}`;
-
-        return reply.send({ url });
+        return reply.send({ url: buildGithubAuthorizeUrl(clientId, redirectUri, state) });
     });
 
     // GitHub OAuth callback (GET for redirect from GitHub)
@@ -184,7 +186,7 @@ export function connectRoutes(app: Fastify) {
             return reply.redirect(githubRedirect(webappUrl, { connected: true }));
 
         } catch (error) {
-            log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
+            log({ module: 'github-oauth', level: 'error', error }, 'GitHub OAuth callback failed');
             return reply.redirect(githubRedirect(webappUrl, { error: 'server_error' }));
         }
     });

@@ -23,7 +23,25 @@ import { type Fastify } from "../types";
 
 vi.mock("@/utils/log", () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
-import { voiceRoutes } from "./voiceRoutes";
+import { resolveVoiceExtraLimitAccountIds, voiceRoutes } from "./voiceRoutes";
+
+describe('voice extra-limit configuration', () => {
+    it('defaults to no privileged account ids', () => {
+        expect([...resolveVoiceExtraLimitAccountIds({})]).toEqual([]);
+    });
+
+    it('accepts only an explicit bounded comma-separated account list', () => {
+        expect([...resolveVoiceExtraLimitAccountIds({
+            VOICE_EXTRA_LIMIT_ACCOUNT_IDS: 'account_a, account-b,account_a',
+        })]).toEqual(['account_a', 'account-b']);
+    });
+
+    it('fails closed for malformed, overlong, or oversized account lists', () => {
+        expect([...resolveVoiceExtraLimitAccountIds({ VOICE_EXTRA_LIMIT_ACCOUNT_IDS: 'ok,not allowed' })]).toEqual([]);
+        expect([...resolveVoiceExtraLimitAccountIds({ VOICE_EXTRA_LIMIT_ACCOUNT_IDS: 'x'.repeat(129) })]).toEqual([]);
+        expect([...resolveVoiceExtraLimitAccountIds({ VOICE_EXTRA_LIMIT_ACCOUNT_IDS: 'x,'.repeat(101) })]).toEqual([]);
+    });
+});
 
 // Real fetch for talking to the listening server — the GLOBAL fetch is
 // stubbed per test to play the ElevenLabs upstream. Typed loosely because

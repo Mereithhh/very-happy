@@ -1,7 +1,8 @@
 import pino from 'pino';
 import pretty from 'pino-pretty';
-import { mkdirSync } from 'fs';
 import { join } from 'path';
+import { preparePrivateDebugLogFile } from './privateDebugLog';
+import { sanitizeLogText, sanitizeLogValue } from './logSafety';
 
 // Single log file name created once at startup
 let consolidatedLogFile: string | undefined;
@@ -9,7 +10,6 @@ let consolidatedLogFile: string | undefined;
 if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
     const logsDir = join(process.cwd(), '.logs');
     try {
-        mkdirSync(logsDir, { recursive: true });
         // Create filename once at startup
         const now = new Date();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -17,10 +17,10 @@ if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
         const hour = String(now.getHours()).padStart(2, '0');
         const min = String(now.getMinutes()).padStart(2, '0');
         const sec = String(now.getSeconds()).padStart(2, '0');
-        consolidatedLogFile = join(logsDir, `${month}-${day}-${hour}-${min}-${sec}.log`);
-        console.log(`[PINO] Remote debugging logs enabled - writing to ${consolidatedLogFile}`);
-    } catch (error) {
-        console.error('Failed to create logs directory:', error);
+        consolidatedLogFile = preparePrivateDebugLogFile(logsDir, `${month}-${day}-${hour}-${min}-${sec}.log`);
+        console.log('[PINO] Remote debugging logs enabled');
+    } catch {
+        console.error('Failed to create private remote-debug log sink');
     }
 }
 
@@ -85,18 +85,22 @@ export const logger = pino(baseOptions, pino.multistream(loggerStreams));
 export const fileConsolidatedLogger = process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING && consolidatedLogFile ?
     pino(baseOptions, pino.destination({ dest: consolidatedLogFile, mkdir: true })) : undefined;
 
+function sanitizeLogArgument(value: unknown): any {
+    return typeof value === 'string' ? sanitizeLogText(value) : sanitizeLogValue(value);
+}
+
 export function log(src: any, ...args: any[]) {
-    logger.info(src, ...args);
+    logger.info(sanitizeLogArgument(src), ...args.map(sanitizeLogArgument));
 }
 
 export function warn(src: any, ...args: any[]) {
-    logger.warn(src, ...args);
+    logger.warn(sanitizeLogArgument(src), ...args.map(sanitizeLogArgument));
 }
 
 export function error(src: any, ...args: any[]) {
-    logger.error(src, ...args);
+    logger.error(sanitizeLogArgument(src), ...args.map(sanitizeLogArgument));
 }
 
 export function debug(src: any, ...args: any[]) {
-    logger.debug(src, ...args);
+    logger.debug(sanitizeLogArgument(src), ...args.map(sanitizeLogArgument));
 }

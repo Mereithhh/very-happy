@@ -1,5 +1,10 @@
 # Very Happy Server
 
+> **Distribution:** the supported public self-host path is `Dockerfile.server`
+> from a reviewed repository checkout. This workspace package is private and
+> guarded against npm publication; do not install the unrelated upstream
+> `happy-server-self-host` package.
+
 Self-hosted synchronization relay and Web backend for Very Happy.
 
 ## What is Happy?
@@ -37,8 +42,12 @@ docker build -t very-happy-server -f Dockerfile.server .
 Run from the monorepo root:
 
 ```bash
-docker run -p 3005:3005 \
-  -e HANDY_MASTER_SECRET=<your-secret> \
+docker run -d --name very-happy-server --restart unless-stopped \
+  -p 127.0.0.1:3005:3005 \
+  -e HANDY_MASTER_SECRET='replace-with-a-high-entropy-secret' \
+  -e SIGNUP_MODE=invite \
+  -e SIGNUP_INVITE_CODES='replace-with-one-time-bootstrap-code' \
+  -e SIGNUP_MAX_ACCOUNTS=10 \
   -v happy-data:/data \
   very-happy-server
 ```
@@ -48,7 +57,24 @@ This uses:
 - **Local filesystem** - for file uploads (stored in `/data/files`)
 - **In-memory event bus** - no Redis needed
 
-Data persists in the `happy-data` Docker volume across container restarts.
+Data persists in the `happy-data` Docker volume across container replacement.
+Register the first operator with the bootstrap code, then replace the container
+while retaining that volume:
+
+```bash
+docker rm -f very-happy-server
+# Repeat the docker run command above with the same happy-data volume,
+# remove SIGNUP_INVITE_CODES, and use: -e SIGNUP_MODE=closed
+```
+
+A plain `docker restart` retains the old environment and does **not** close
+signup. Invite codes are not consumed automatically, so leaving the bootstrap
+policy enabled is unsafe.
+Keep this loopback-only while evaluating. Before exposing it, terminate TLS at
+a trusted reverse proxy, configure `TRUST_PROXY`, backups, quotas, and an
+explicit `closed`/`invite`/`open` registration policy. See the repository
+[deployment](../../docs/deployment.md) and [security](../../docs/security.md)
+guides.
 
 ### Environment Variables
 
@@ -59,13 +85,27 @@ Data persists in the `happy-data` Docker volume across container restarts.
 | `PORT` | No | `3005` | Server port |
 | `DATA_DIR` | No | `/data` in the Docker image; `./data` for the bare package | Base data directory |
 | `PGLITE_DIR` | No | `<DATA_DIR>/pglite` | PGlite database directory |
-| `SIGNUP_MODE` | No | `open` | Account signup mode: `open`, `invite`, or `closed` |
+| `SIGNUP_MODE` | No | `closed` | Account signup mode: `open`, `invite`, or `closed`; opening registration must be explicit |
 | `SIGNUP_MAX_ACCOUNTS` | No | unlimited | Global Account limit; existing users can still sign in |
 | `SIGNUP_INVITE_CODES` | No | - | Comma-separated codes for invite mode |
 | `LOGIN_SESSION_TTL_DAYS` | No | `30` | Password/Google Web session lifetime (1–365 days) |
+| `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | No | `20` | Active Web login sessions retained per account; a new login evicts the oldest at the cap |
+| `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | No | `5` | Database-backed per-account password/username change rate |
+| `AUTH_PAIRING_TTL_MINUTES` | No | `10` | Terminal/account pairing lifetime (1–60 minutes) |
+| `MAX_PENDING_AUTH_PAIRINGS` | No | `1000` | Global outstanding pairing cap across both pairing tables |
 | `GOOGLE_CLIENT_ID` | No | - | Enables Google Identity Services account login |
 | `GOOGLE_ALLOWED_ORIGINS` | With Google | - | Comma-separated exact Web origins allowed to request/consume Google login challenges |
 | `TRUST_PROXY` | Behind proxy | - | Positive trusted hop count or comma-separated proxy IP/CIDR allowlist used to recover real client IPs safely |
+| `MAX_SESSION_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_SESSION_STATE_BYTES_PER_ACCOUNT` | No | `600` / `268435456` | Session metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
+| `MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_MACHINE_STATE_BYTES_PER_ACCOUNT` | No | `240` / `16777216` | Machine metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
+| `MAX_ACCESS_KEY_WRITES_PER_ACCOUNT_PER_MINUTE` | No | `120` | Shared database-backed access-key create/update rate |
+| `MAX_ACCESS_KEYS_PER_ACCOUNT` | No | `2000` | Stored access-key rows per account |
+| `MAX_ACCESS_KEY_BYTES_PER_ACCOUNT` | No | `8388608` | Encoded access-key envelope bytes stored per account; individual envelopes decode to at most 4096 bytes |
+| `MAX_FEED_WRITES_PER_ACCOUNT_PER_MINUTE` / `MAX_FEED_ITEMS_PER_ACCOUNT` / `MAX_FEED_BYTES_PER_ACCOUNT` | No | `120` / `10000` / `67108864` | Database-backed feed rate, row, and stored-byte guards |
+| `MAX_RELATIONSHIP_WRITES_PER_ACCOUNT_PER_MINUTE` / `MAX_RELATIONSHIPS_PER_ACCOUNT` | No | `60` / `2000` | Friend mutation rate and outbound relationship-row cap |
+| `MAX_UPLOADED_FILES_PER_ACCOUNT` / `ATTACHMENT_RESERVATION_TTL_MINUTES` | No | `2000` / `60` | Uploaded-file row cap and abandoned attachment reservation/object cleanup age |
+| `TERMINAL_RELAY_BYTES_PER_SECOND` / `TERMINAL_RELAY_BURST_BYTES` | No | `2097152` / `8388608` | Per-account, per-process terminal bandwidth bucket; `0` disables that dimension |
+| `TERMINAL_RELAY_EVENTS_PER_SECOND` / `TERMINAL_RELAY_BURST_EVENTS` | No | `200` / `400` | Per-account, per-process terminal event bucket; `0` disables that dimension |
 
 To enable Google login, create a **Web application** OAuth client in Google Cloud Console and add every deployed Web origin (for example `https://happy.example.com`) under **Authorized JavaScript origins**. Set that client ID and the same exact origin(s) in the two variables above. The popup ID-token callback does not use an Authorized redirect URI or client secret. Do not copy the maintainer Cloud client ID for a self-hosted domain; create a client owned by your deployment.
 
@@ -139,6 +179,9 @@ Local-storage mode (no `S3_HOST`) writes blobs under
 lifecycle equivalent — clean up old session directories on a cron if
 you want a TTL story.
 
-## License
+## License and attribution
 
-MIT - Use it, modify it, deploy it anywhere.
+MIT. Very Happy is a deeply modified fork of
+[slopus/happy](https://github.com/slopus/happy) by Kirill Dubovitskiy and Happy
+Coder Contributors. The preserved copyright and permission notice is included
+in [LICENSE](./LICENSE).

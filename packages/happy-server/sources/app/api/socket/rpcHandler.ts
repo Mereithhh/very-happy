@@ -95,7 +95,7 @@ async function fetchRoomSockets(io: Server, room: string, timeoutMs: number, con
             .fetchSockets();
     } catch (error) {
         rpcFetchSocketsTimeouts.inc({ context });
-        log({ module: 'websocket' }, `fetchSockets failed for ${room} (timeout=${timeoutMs}ms): ${error}`);
+        log({ module: 'websocket', roomId: room, timeoutMs, error }, 'RPC socket lookup failed');
         return [];
     }
 }
@@ -152,7 +152,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
             socket.join(rpcRoom(userId, method));
             socket.emit('rpc-registered', { method });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in rpc-register');
             socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
         }
     });
@@ -175,7 +175,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
             socket.leave(rpcRoom(userId, method));
             socket.emit('rpc-unregistered', { method });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-unregister: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in rpc-unregister');
             socket.emit('rpc-error', { type: 'unregister', error: 'Internal error' });
         }
     });
@@ -232,8 +232,8 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
                 return;
             }
             if (targets.length > 1) {
-                log({ module: 'websocket', level: 'warn' },
-                    `Multiple sockets in ${room} (${targets.length}); using first`);
+                log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length },
+                    'Multiple RPC sockets found; using first');
             }
 
             const target = targets[0];
@@ -291,7 +291,7 @@ export function rpcHandler(userId: string, socket: Socket, io: Server, registrat
             }
         } catch (error) {
             finish('internal_error');
-            log({ module: 'websocket', level: 'error' }, `Error in rpc-call: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in rpc-call');
             callback?.({ ok: false, error: 'Internal error' });
         }
     });

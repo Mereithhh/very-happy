@@ -58,10 +58,6 @@ jobs:
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install dependencies
-        # electron（packages/codium 桌面 spike）的 postinstall 下 ~100MB 二进制，
-        # 发 cli 用不到，是已知抖动源 → 跳二进制。
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: pnpm install --frozen-lockfile
 
       # The git tag is the single source of truth for the published version:

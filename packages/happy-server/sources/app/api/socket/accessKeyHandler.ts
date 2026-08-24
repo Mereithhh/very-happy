@@ -1,23 +1,31 @@
 import { Socket } from "socket.io";
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
-import { eventRouter } from "@/app/events/eventRouter";
+import { accessKeyIdSchema } from '@/app/accessKeys/accessKeyStore';
+import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
 
-export function accessKeyHandler(userId: string, socket: Socket) {
+export function accessKeyHandler(userId: string, socket: Socket, rateLimiter?: AccountTerminalRateLimiter) {
     // Get access key via socket
     socket.on('access-key-get', async (data: { sessionId: string; machineId: string }, callback: (response: any) => void) => {
+        if (!allowAccountRelay({
+            limiter: rateLimiter,
+            accountId: userId,
+            socket,
+            resource: 'access-key-read',
+            payload: data,
+        })) return;
         try {
-            const { sessionId, machineId } = data;
-
-            if (!sessionId || !machineId) {
-                if (callback) {
-                    callback({
-                        ok: false,
-                        error: 'Invalid parameters: sessionId and machineId are required'
-                    });
-                }
+            const parsed = accessKeyIdSchema.safeParse(data?.sessionId);
+            const parsedMachine = accessKeyIdSchema.safeParse(data?.machineId);
+            if (!parsed.success || !parsedMachine.success) {
+                callback?.({
+                    ok: false,
+                    error: 'Invalid parameters: sessionId and machineId are required'
+                });
                 return;
             }
+            const sessionId = parsed.data;
+            const machineId = parsedMachine.data;
 
             // Verify session and machine belong to user
             const [session, machine] = await Promise.all([
@@ -69,9 +77,9 @@ export function accessKeyHandler(userId: string, socket: Socket) {
                 }
             }
 
-            log({ module: 'websocket-access-key' }, `Access key retrieved for session ${sessionId}, machine ${machineId}`);
+            log({ module: 'websocket-access-key', sessionId, machineId }, 'Access key retrieved');
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in access-key-get: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in access-key-get');
             if (callback) {
                 callback({
                     ok: false,

@@ -18,6 +18,7 @@
  * paste ciphertext as if it were the text.
  */
 import { Server, Socket } from "socket.io";
+import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
 
 type Conn = { connectionType: string; machineId?: string; sessionId?: string };
 
@@ -34,7 +35,13 @@ export interface ClipboardPushEvent {
     totalBytes?: number;
 }
 
-export function clipboardHandler(userId: string, socket: Socket, io: Server, connection: Conn) {
+export function clipboardHandler(
+    userId: string,
+    socket: Socket,
+    io: Server,
+    connection: Conn,
+    rateLimiter?: AccountTerminalRateLimiter,
+) {
     // Only daemon (machine-scoped) and session processes may push; a plain
     // web client has no business fanning out clipboard events.
     const source =
@@ -48,8 +55,18 @@ export function clipboardHandler(userId: string, socket: Socket, io: Server, con
     const userRoom = `user:${userId}:user-scoped`;
 
     socket.on('clipboard-push', (data: ClipboardPushEvent) => {
+        if (!allowAccountRelay({
+            limiter: rateLimiter,
+            accountId: userId,
+            socket,
+            resource: 'clipboard-relay',
+            payload: data,
+        })) return;
         if (!data || typeof data.payload !== 'string') return;
-        if (data.payload.length > MAX_RELAY_PAYLOAD_CHARS) return;
+        if (Buffer.byteLength(data.payload, 'utf8') > MAX_RELAY_PAYLOAD_CHARS) return;
+        if (!optionalBoolean(data.enc) || !optionalBoolean(data.truncated)) return;
+        if (data.totalBytes !== undefined &&
+            (!Number.isSafeInteger(data.totalBytes) || data.totalBytes < 0 || data.totalBytes > Number.MAX_SAFE_INTEGER)) return;
         io.to(userRoom).emit('clipboard-push', {
             ...source,
             payload: data.payload,
@@ -58,4 +75,8 @@ export function clipboardHandler(userId: string, socket: Socket, io: Server, con
             totalBytes: typeof data.totalBytes === 'number' ? data.totalBytes : undefined,
         });
     });
+}
+
+function optionalBoolean(value: unknown): value is boolean | undefined {
+    return value === undefined || typeof value === 'boolean';
 }

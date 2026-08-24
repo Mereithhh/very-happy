@@ -3,8 +3,10 @@ import { Fastify } from "../types";
 import { kvGet } from "@/app/kv/kvGet";
 import { kvList } from "@/app/kv/kvList";
 import { kvBulkGet } from "@/app/kv/kvBulkGet";
-import { kvMutate } from "@/app/kv/kvMutate";
+import { kvKeySchema, kvMutate, kvMutationsBodySchema, KV_KEY_MAX_BYTES } from "@/app/kv/kvMutate";
 import { log } from "@/utils/log";
+import { isAccountResourceLimitError } from '../resourceLimits';
+import { utf8StringSchema } from '../resourceSchemas';
 
 export function kvRoutes(app: Fastify) {
     // GET /v1/kv/:key - Get single value
@@ -12,7 +14,7 @@ export function kvRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
-                key: z.string()
+                key: kvKeySchema
             }),
             response: {
                 200: z.object({
@@ -41,7 +43,7 @@ export function kvRoutes(app: Fastify) {
 
             return reply.send(result);
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to get KV value: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to get KV value');
             return reply.code(500).send({ error: 'Failed to get value' });
         }
     });
@@ -51,7 +53,7 @@ export function kvRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             querystring: z.object({
-                prefix: z.string().optional(),
+                prefix: utf8StringSchema({ maxBytes: KV_KEY_MAX_BYTES }).optional(),
                 limit: z.coerce.number().int().min(1).max(1000).default(100)
             }),
             response: {
@@ -75,7 +77,7 @@ export function kvRoutes(app: Fastify) {
             const result = await kvList({ uid: userId }, { prefix, limit });
             return reply.send(result);
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to list KV items: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to list KV items');
             return reply.code(500).send({ error: 'Failed to list items' });
         }
     });
@@ -85,7 +87,7 @@ export function kvRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             body: z.object({
-                keys: z.array(z.string()).min(1).max(100)
+                keys: z.array(kvKeySchema).min(1).max(100)
             }),
             response: {
                 200: z.object({
@@ -108,7 +110,7 @@ export function kvRoutes(app: Fastify) {
             const result = await kvBulkGet({ uid: userId }, keys);
             return reply.send(result);
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to bulk get KV values: ${error}`);
+            log({ module: 'api', level: 'error', error }, 'Failed to bulk get KV values');
             return reply.code(500).send({ error: 'Failed to get values' });
         }
     });
@@ -117,13 +119,7 @@ export function kvRoutes(app: Fastify) {
     app.post('/v1/kv', {
         preHandler: app.authenticate,
         schema: {
-            body: z.object({
-                mutations: z.array(z.object({
-                    key: z.string(),
-                    value: z.string().nullable(),
-                    version: z.number()  // Always required, use -1 for new keys
-                })).min(1).max(100)
-            }),
+            body: kvMutationsBodySchema,
             response: {
                 200: z.object({
                     success: z.literal(true),
@@ -141,6 +137,8 @@ export function kvRoutes(app: Fastify) {
                         value: z.string().nullable()
                     }))
                 }),
+                413: z.object({ error: z.literal('kv_bytes_quota_exceeded') }),
+                429: z.object({ error: z.enum(['kv_count_quota_exceeded', 'kv_rate_quota_exceeded']) }),
                 500: z.object({
                     error: z.literal('Failed to mutate values')
                 })
@@ -165,7 +163,10 @@ export function kvRoutes(app: Fastify) {
                 results: result.results!
             });
         } catch (error) {
-            log({ module: 'api', level: 'error' }, `Failed to mutate KV values: ${error}`);
+            if (isAccountResourceLimitError(error)) {
+                return reply.code(error.statusCode).send({ error: error.code as any });
+            }
+            log({ module: 'api', level: 'error', error }, 'Failed to mutate KV values');
             return reply.code(500).send({ error: 'Failed to mutate values' });
         }
     });

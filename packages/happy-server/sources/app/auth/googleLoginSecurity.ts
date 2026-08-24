@@ -3,8 +3,26 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/storage/db';
 
 const GOOGLE_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const GOOGLE_CHALLENGE_CREATE_LOCK_KEY = 'google-login-challenge-create-cap';
+const DEFAULT_MAX_PENDING_GOOGLE_LOGIN_CHALLENGES = 10_000;
 
 type SqlClient = Pick<Prisma.TransactionClient, '$queryRawUnsafe' | '$executeRawUnsafe'>;
+
+export class GoogleLoginChallengeCapacityError extends Error {
+    constructor() {
+        super('google-login-challenge-capacity');
+        this.name = 'GoogleLoginChallengeCapacityError';
+    }
+}
+
+export function maxPendingGoogleLoginChallenges(): number {
+    const raw = process.env.MAX_PENDING_GOOGLE_LOGIN_CHALLENGES;
+    if (!raw) return DEFAULT_MAX_PENDING_GOOGLE_LOGIN_CHALLENGES;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 1_000_000
+        ? parsed
+        : DEFAULT_MAX_PENDING_GOOGLE_LOGIN_CHALLENGES;
+}
 
 export interface GoogleLoginConfig {
     clientId: string | null;
@@ -60,14 +78,35 @@ export function hashGoogleLoginNonce(nonce: string): string {
 }
 
 export async function issueGoogleLoginChallenge(
-    client: SqlClient = db,
+    client?: SqlClient,
     nowMs = Date.now(),
 ): Promise<{ nonce: string; expiresAt: Date }> {
+    if (!client) {
+        return db.$transaction((tx) => issueGoogleLoginChallenge(tx, nowMs));
+    }
     const nonce = randomBytes(32).toString('base64url');
     const expiresAt = new Date(nowMs + GOOGLE_CHALLENGE_TTL_MS);
     await client.$executeRawUnsafe(
+        `INSERT INTO "GlobalLock" ("key", "value", "updatedAt", "expiresAt")
+         VALUES ($1, $1, $2, $3)
+         ON CONFLICT ("key") DO NOTHING`,
+        GOOGLE_CHALLENGE_CREATE_LOCK_KEY,
+        new Date(nowMs),
+        new Date('9999-12-31T23:59:59.999Z'),
+    );
+    await client.$queryRawUnsafe(
+        'SELECT "key" FROM "GlobalLock" WHERE "key" = $1 FOR UPDATE',
+        GOOGLE_CHALLENGE_CREATE_LOCK_KEY,
+    );
+    await client.$executeRawUnsafe(
         'DELETE FROM "GoogleLoginChallenge" WHERE "expiresAt" <= now() OR "consumedAt" IS NOT NULL',
     );
+    const counts = await client.$queryRawUnsafe<Array<{ count: bigint | number | string }>>(
+        'SELECT COUNT(*) AS "count" FROM "GoogleLoginChallenge"',
+    );
+    if (Number(counts[0]?.count ?? 0) >= maxPendingGoogleLoginChallenges()) {
+        throw new GoogleLoginChallengeCapacityError();
+    }
     await client.$executeRawUnsafe(
         `INSERT INTO "GoogleLoginChallenge" ("nonceHash", "expiresAt", "createdAt")
          VALUES ($1, $2, now())`,

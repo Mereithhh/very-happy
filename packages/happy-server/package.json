@@ -1,6 +1,7 @@
 {
-  "name": "happy-server-self-host",
-  "version": "1.1.11",
+  "name": "very-happy-server",
+  "version": "1.1.12",
+  "private": true,
   "description": "Trusted relay and account server for Very Happy, with a bundled web app",
   "repository": {
     "type": "git",
@@ -14,6 +15,9 @@
     "Mereith (very-happy fork)"
   ],
   "license": "MIT",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
+  },
   "type": "module",
   "bin": {
     "happy-server": "./bin/happy-server.cjs"
@@ -31,7 +35,8 @@
     "prisma",
     "webapp",
     "package.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -45,7 +50,7 @@
     "dev": "lsof -ti tcp:3005 | xargs kill -9 && tsx --env-file=.env --env-file=.env.dev ./sources/main.ts",
     "test": "vitest run",
     "prepack": "pnpm run build && pnpm run bundle:webapp",
-    "prepublishOnly": "pnpm test",
+    "prepublishOnly": "node -e \"throw new Error('very-happy-server is Docker/source-only and must not be published')\"",
     "migrate": "dotenv -e .env.dev -- prisma migrate dev",
     "migrate:reset": "dotenv -e .env.dev -- prisma migrate reset",
     "generate": "prisma generate --schema=prisma/schema.prisma",
@@ -69,7 +74,7 @@
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.0",
-    "yaml": "^2.4.2"
+    "yaml": "2.8.3"
   },
   "dependencies": {
     "@date-fns/tz": "^1.2.0",
@@ -91,7 +96,7 @@
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.7",
     "octokit": "^5.0.3",
-    "pglite-prisma-adapter": "^0.7.2",
+    "pglite-prisma-adapter": "^0.6.1",
     "pino": "^10.3.0",
     "pino-pretty": "^13.0.0",
     "prisma": "6.19.2",
@@ -104,14 +109,16 @@
     "socket.io": "^4.8.3",
     "socket.io-adapter": "^2.5.5",
     "tmp": "^0.2.7",
-    "tweetnacl": "^1.0.3",
     "tsx": "^4.20.6",
-    "uuid": "^9.0.1",
+    "tweetnacl": "^1.0.3",
+    "uuid": "11.1.1",
     "zod": "^4.0.0",
     "zod-to-json-schema": "^3.24.3"
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0",
+      "effect": "3.20.0"
+    }
   }
 }

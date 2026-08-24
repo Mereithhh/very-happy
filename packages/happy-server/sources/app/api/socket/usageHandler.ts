@@ -1,93 +1,32 @@
 import { Socket } from "socket.io";
 import { AsyncLock } from "@/utils/lock";
-import { db } from "@/storage/db";
 import { buildUsageEphemeral, eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
+import { isAccountResourceLimitError } from '../resourceLimits';
+import { saveUsageReport, usageReportSchema } from '@/app/usage/usageStore';
 
 export function usageHandler(userId: string, socket: Socket) {
     const receiveUsageLock = new AsyncLock();
     socket.on('usage-report', async (data: any, callback?: (response: any) => void) => {
         await receiveUsageLock.inLock(async () => {
             try {
-                const { key, sessionId, tokens, cost } = data;
-
-                // Validate required fields
-                if (!key || typeof key !== 'string') {
-                    if (callback) {
-                        callback({ success: false, error: 'Invalid key' });
-                    }
+                const parsed = usageReportSchema.safeParse(data);
+                if (!parsed.success) {
+                    callback?.({ success: false, error: 'invalid_usage_report' });
                     return;
                 }
-
-                // Validate tokens and cost objects
-                if (!tokens || typeof tokens !== 'object' || typeof tokens.total !== 'number') {
-                    if (callback) {
-                        callback({ success: false, error: 'Invalid tokens object - must include total' });
-                    }
-                    return;
-                }
-
-                if (!cost || typeof cost !== 'object' || typeof cost.total !== 'number') {
-                    if (callback) {
-                        callback({ success: false, error: 'Invalid cost object - must include total' });
-                    }
-                    return;
-                }
-
-                // Validate sessionId if provided
-                if (sessionId && typeof sessionId !== 'string') {
-                    if (callback) {
-                        callback({ success: false, error: 'Invalid sessionId' });
-                    }
-                    return;
-                }
+                const { key, sessionId, tokens, cost } = parsed.data;
 
                 try {
-                    // If sessionId provided, verify it belongs to the user
-                    if (sessionId) {
-                        const session = await db.session.findFirst({
-                            where: {
-                                id: sessionId,
-                                accountId: userId
-                            }
-                        });
-
-                        if (!session) {
-                            if (callback) {
-                                callback({ success: false, error: 'Session not found' });
-                            }
-                            return;
-                        }
+                    const result = await saveUsageReport(userId, parsed.data);
+                    if (result.kind === 'session-not-found') {
+                        callback?.({ success: false, error: 'Session not found' });
+                        return;
                     }
+                    const { report } = result;
+                    const usageData: PrismaJson.UsageReportData = { tokens, cost };
 
-                    // Prepare usage data
-                    const usageData: PrismaJson.UsageReportData = {
-                        tokens,
-                        cost
-                    };
-
-                    // Upsert the usage report
-                    const report = await db.usageReport.upsert({
-                        where: {
-                            accountId_sessionId_key: {
-                                accountId: userId,
-                                sessionId: sessionId || null,
-                                key
-                            }
-                        },
-                        update: {
-                            data: usageData,
-                            updatedAt: new Date()
-                        },
-                        create: {
-                            accountId: userId,
-                            sessionId: sessionId || null,
-                            key,
-                            data: usageData
-                        }
-                    });
-
-                    log({ module: 'websocket' }, `Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`);
+                    log({ module: 'websocket', userId, sessionId, key }, 'Usage report saved');
 
                     // Emit usage ephemeral update if sessionId is provided
                     if (sessionId) {
@@ -108,13 +47,17 @@ export function usageHandler(userId: string, socket: Socket) {
                         });
                     }
                 } catch (error) {
-                    log({ module: 'websocket', level: 'error' }, `Failed to save usage report: ${error}`);
+                    if (isAccountResourceLimitError(error)) {
+                        callback?.({ success: false, error: error.code });
+                        return;
+                    }
+                    log({ module: 'websocket', level: 'error', error }, 'Failed to save usage report');
                     if (callback) {
                         callback({ success: false, error: 'Failed to save usage report' });
                     }
                 }
             } catch (error) {
-                log({ module: 'websocket', level: 'error' }, `Error in usage-report handler: ${error}`);
+                log({ module: 'websocket', level: 'error', error }, 'Error in usage-report handler');
                 if (callback) {
                     callback({ success: false, error: 'Internal error' });
                 }

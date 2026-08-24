@@ -76,6 +76,9 @@ GoogleLoginChallenge
 `AccountCredential` 继续承载 password identity 的 scrypt hash，避免一次性破坏旧用户；它与
 `AccountIdentity(provider=password, providerSubject=<normalized username>)` 在成功注册/登录时懒迁移。
 Google 只写 `AccountIdentity(provider=google, providerSubject=<verified sub>)`。
+已认证的用户名/密码变更以当前 username 替换该 Account 旧的 password identity，而不是追加历史
+username；Google identity 保留。变更入口使用跨副本数据库限流和 Account 行锁，避免循环或并发变更
+把 identity/session 表变成无界写入面。
 
 `AccountCredential.secretEnc` 保持 TEXT schema 以降低迁移风险，值改为带版本前缀的 server-side
 密文。读取旧无前缀值时视为 legacy plaintext：本次登录成功后立即重写成密文。新 Google Account
@@ -113,6 +116,9 @@ SIGNUP_INVITE_CODES=a,b,c
 - Web `POST /v1/account/logout` revoke 当前 session；旧 server 不支持该 route 时 Web 仍完成本地 logout。
 
 本批保留 token wire 格式，避免 Socket/HTTP/CLI 全面改协议。
+签发前在 Account 行锁事务内物理删除已过期/已撤销行，并在达到每账号 active session 上限时先淘汰
+最旧 active session、最后插入新行；因此成功响应刚返回的 token 不会被同一轮清理误删。默认保留 20
+个 active Web session，可用 `MAX_LOGIN_SESSIONS_PER_ACCOUNT` 在 1–1000 内调整。
 
 ### D. Google OIDC
 
@@ -139,7 +145,8 @@ GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
 TRUST_PROXY=1
 ```
 
-Official Cloud uses client ID `190908753734-rto8svijvvh616877aketn4pnkhauec1.apps.googleusercontent.com`.
+Official Cloud supplies its Web OAuth client ID through `GOOGLE_CLIENT_ID`; the
+production value is intentionally not recorded in the repository.
 The ID is public configuration, not a secret. Self-hosters must create their own Web OAuth client and origin allowlist.
 
 server 通过 `/v1/auth/config` 暴露 public auth config（只含 client id、signup mode、capacity 状态）；

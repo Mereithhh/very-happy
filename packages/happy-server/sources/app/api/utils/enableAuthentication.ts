@@ -19,8 +19,11 @@ export function enableAuthentication(app: Fastify) {
                 return reply.code(401).send({ error: 'Invalid token' });
             }
 
-            log({ module: 'auth-decorator' }, `Auth success - user: ${verified.userId}`);
+            log({ module: 'auth-decorator', userId: verified.userId }, 'Authentication succeeded');
             request.userId = verified.userId;
+            request.authLoginSessionId = typeof verified.extras?.loginSessionId === 'string'
+                ? verified.extras.loginSessionId
+                : undefined;
         } catch (error) {
             return reply.code(401).send({ error: 'Authentication failed' });
         }

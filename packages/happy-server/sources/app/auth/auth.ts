@@ -11,6 +11,7 @@ const MAX_CACHE_SIZE = 10_000;
 /** Run cleanup every 10 minutes */
 const CLEANUP_INTERVAL = 10 * 60 * 1000;
 const DEFAULT_LOGIN_SESSION_TTL_DAYS = 30;
+const DEFAULT_MAX_LOGIN_SESSIONS_PER_ACCOUNT = 20;
 
 interface TokenCacheEntry {
     userId: string;
@@ -98,14 +99,44 @@ class AuthModule {
 
     async createLoginToken(
         userId: string,
-        client: Pick<Prisma.TransactionClient, '$executeRawUnsafe'> = db,
+        client?: Pick<Prisma.TransactionClient, '$executeRawUnsafe' | '$queryRawUnsafe'>,
         options: { cache?: boolean } = {},
     ): Promise<{ token: string; expiresAt: Date }> {
+        if (!client) {
+            return db.$transaction((tx) => this.createLoginToken(userId, tx, options));
+        }
+
         const loginSessionId = randomUUID();
         const ttlDays = parseLoginSessionTtlDays(process.env.LOGIN_SESSION_TTL_DAYS);
+        const maxSessions = parseMaxLoginSessionsPerAccount(process.env.MAX_LOGIN_SESSIONS_PER_ACCOUNT);
         const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
         const extras = { loginSessionId };
         const token = await this.generateToken(userId, extras);
+
+        // Serialize cleanup, eviction, and insertion for this account across all
+        // login paths and server replicas. Cleanup runs before insertion so the
+        // token returned below can never be selected as an eviction victim.
+        await client.$queryRawUnsafe(
+            'SELECT "id" FROM "Account" WHERE "id" = $1 FOR UPDATE',
+            userId,
+        );
+        await client.$executeRawUnsafe(
+            `DELETE FROM "AccountLoginSession"
+             WHERE "accountId" = $1
+               AND ("revokedAt" IS NOT NULL OR "expiresAt" <= now())`,
+            userId,
+        );
+        await client.$executeRawUnsafe(
+            `DELETE FROM "AccountLoginSession"
+             WHERE "id" IN (
+               SELECT "id" FROM "AccountLoginSession"
+               WHERE "accountId" = $1 AND "revokedAt" IS NULL AND "expiresAt" > now()
+               ORDER BY "createdAt" DESC, "id" DESC
+               OFFSET $2
+             )`,
+            userId,
+            Math.max(0, maxSessions - 1),
+        );
         await client.$executeRawUnsafe(
             `INSERT INTO "AccountLoginSession"
              ("id", "accountId", "tokenHash", "expiresAt", "lastUsedAt", "createdAt")
@@ -173,7 +204,7 @@ class AuthModule {
             return { userId, extras };
             
         } catch (error) {
-            log({ module: 'auth', level: 'error' }, `Token verification failed: ${error}`);
+            log({ module: 'auth', level: 'error', error }, 'Token verification failed');
             return null;
         }
     }
@@ -187,7 +218,7 @@ class AuthModule {
             }
         }
         
-        log({ module: 'auth' }, `Invalidated tokens for user: ${userId}`);
+        log({ module: 'auth', userId }, 'Invalidated tokens for account');
     }
     
     invalidateToken(token: string): void {
@@ -248,7 +279,7 @@ class AuthModule {
             
             return { userId: verified.user as string };
         } catch (error) {
-            log({ module: 'auth', level: 'error' }, `GitHub token verification failed: ${error}`);
+            log({ module: 'auth', level: 'error', error }, 'GitHub token verification failed');
             return null;
         }
     }
@@ -296,6 +327,14 @@ export function parseLoginSessionTtlDays(value: string | undefined): number {
     return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 365
         ? parsed
         : DEFAULT_LOGIN_SESSION_TTL_DAYS;
+}
+
+export function parseMaxLoginSessionsPerAccount(value: string | undefined): number {
+    if (!value) return DEFAULT_MAX_LOGIN_SESSIONS_PER_ACCOUNT;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 1_000
+        ? parsed
+        : DEFAULT_MAX_LOGIN_SESSIONS_PER_ACCOUNT;
 }
 
 export function hashLoginToken(token: string): string {

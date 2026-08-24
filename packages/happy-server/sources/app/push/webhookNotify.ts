@@ -543,8 +543,8 @@ export async function sendWebhook(url: string, payload: WebhookPayload): Promise
 /** Log helper kept here so pushDispatch stays terse. */
 export function logWebhookResult(userId: string, sessionId: string, res: WebhookSendResult): void {
     if (res.ok) {
-        log({ module: 'push' }, `Webhook sent for user ${userId} session ${sessionId}: status=${res.status}`);
+        log({ module: 'push', userId, sessionId, status: res.status }, 'Webhook sent');
     } else {
-        log({ module: 'push', level: 'warn' }, `Webhook failed for user ${userId} session ${sessionId}: status=${res.status ?? '-'} error=${res.error ?? '-'}`);
+        log({ module: 'push', level: 'warn', userId, sessionId, status: res.status, failed: true }, 'Webhook failed');
     }
 }

@@ -31,6 +31,8 @@ const {
         sessions: [] as SessionRecord[],
         messages: [] as MessageRecord[],
         accountSeqById: new Map<string, number>(),
+        rateCountByKey: new Map<string, number>(),
+        transactionTail: Promise.resolve() as Promise<void>,
         nextMessageId: 1,
         nowMs: 1700000000000
     };
@@ -39,6 +41,8 @@ const {
         state.sessions = [];
         state.messages = [];
         state.accountSeqById = new Map<string, number>();
+        state.rateCountByKey = new Map<string, number>();
+        state.transactionTail = Promise.resolve();
         state.nextMessageId = 1;
         state.nowMs = 1700000000000;
     };
@@ -167,6 +171,30 @@ const {
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
+    const rawQuery = vi.fn(async (sql: string, ...args: any[]) => {
+        if (sql.includes('INSERT INTO "AuthRateLimitBucket"')) {
+            const key = String(args[0]);
+            const count = (state.rateCountByKey.get(key) ?? 0) + Number(args[3] ?? 1);
+            state.rateCountByKey.set(key, count);
+            return [{ count }];
+        }
+        if (sql.includes('FROM "Account"') && sql.includes('FOR UPDATE')) {
+            return [{ id: String(args[0]) }];
+        }
+        if (sql.includes('FROM "SessionMessage"')) {
+            const accountId = String(args[0]);
+            const sessionIds = new Set(state.sessions.filter((session) => session.accountId === accountId).map((session) => session.id));
+            const rows = state.messages.filter((message) => sessionIds.has(message.sessionId));
+            return [{
+                count: BigInt(rows.length),
+                bytes: BigInt(rows.reduce((total, message) => (
+                    total + Buffer.byteLength(String((message.content as any)?.c ?? ''), 'utf8')
+                ), 0)),
+            }];
+        }
+        throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+
     const txClient = {
         session: {
             update: sessionUpdate
@@ -177,12 +205,15 @@ const {
         },
         account: {
             update: accountUpdate
-        }
+        },
+        $queryRawUnsafe: rawQuery,
+        $executeRawUnsafe: vi.fn(async () => 0),
     };
 
     const dbMock = {
         session: {
             findFirst: sessionFindFirst,
+            findUnique: sessionFindFirst,
             update: sessionUpdate
         },
         account: {
@@ -192,7 +223,19 @@ const {
             findMany: sessionMessageFindMany,
             create: sessionMessageCreate
         },
-        $transaction: vi.fn(async (fn: any) => fn(txClient))
+        $queryRawUnsafe: rawQuery,
+        $executeRawUnsafe: vi.fn(async () => 0),
+        $transaction: vi.fn(async (fn: any) => {
+            const previous = state.transactionTail;
+            let release!: () => void;
+            state.transactionTail = new Promise<void>((resolve) => { release = resolve; });
+            await previous;
+            try {
+                return await fn(txClient);
+            } finally {
+                release();
+            }
+        })
     };
 
     const emitUpdateMock = vi.fn();
@@ -228,10 +271,33 @@ vi.mock("@/app/events/eventRouter", () => ({
             message
         },
         createdAt: Date.now()
-    }))
+    })),
+    buildSessionActivityEphemeral: vi.fn(() => ({})),
+    buildUpdateSessionUpdate: vi.fn(() => ({})),
 }));
 
+vi.mock("@/app/monitoring/metrics2", () => ({
+    getMetricsLabelsFromSocket: () => ({}),
+    sessionAliveEventsCounter: { inc: vi.fn() },
+    websocketEventsCounter: { inc: vi.fn() },
+}));
+vi.mock("@/app/presence/sessionCache", () => ({
+    activityCache: { isSessionValid: vi.fn(async () => true), queueSessionUpdate: vi.fn() },
+}));
+vi.mock("@/utils/log", () => ({ log: vi.fn() }));
+
 import { v3SessionRoutes } from "./v3SessionRoutes";
+import { sessionUpdateHandler } from "../socket/sessionUpdateHandler";
+
+function createMessageSocket(userId: string) {
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const socket = {
+        id: `socket-${userId}`,
+        on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
+    } as any;
+    sessionUpdateHandler(userId, socket, { connectionType: 'user-scoped', socket, userId });
+    return (data: unknown) => handlers.get('message')!(data);
+}
 
 async function createApp() {
     const app = fastify();
@@ -258,12 +324,18 @@ describe("v3SessionRoutes", () => {
     beforeEach(() => {
         resetState();
         emitUpdateMock.mockClear();
+        delete process.env.MAX_MESSAGES_PER_ACCOUNT;
+        delete process.env.MAX_MESSAGE_BYTES_PER_ACCOUNT;
+        delete process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE;
     });
 
     afterEach(async () => {
         if (app) {
             await app.close();
         }
+        delete process.env.MAX_MESSAGES_PER_ACCOUNT;
+        delete process.env.MAX_MESSAGE_BYTES_PER_ACCOUNT;
+        delete process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE;
     });
 
     it("reads messages in seq order from the beginning", async () => {
@@ -540,5 +612,99 @@ describe("v3SessionRoutes", () => {
             }
         });
         expect(wrongOwner.statusCode).toBe(404);
+    });
+
+    it("returns stable 429 and 413 errors at account count and byte boundaries", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "existing", content: { t: "encrypted", c: "old" } });
+        process.env.MAX_MESSAGES_PER_ACCOUNT = "1";
+        app = await createApp();
+
+        const countLimited = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: { messages: [{ localId: "new", content: "new" }] },
+        });
+        expect(countLimited.statusCode).toBe(429);
+        expect(countLimited.json()).toEqual({ error: "message_count_quota_exceeded" });
+
+        resetState();
+        seedSession({ id: "session-2", accountId: "user-2" });
+        process.env.MAX_MESSAGES_PER_ACCOUNT = "10";
+        process.env.MAX_MESSAGE_BYTES_PER_ACCOUNT = String(Buffer.byteLength("x", "utf8"));
+        const exact = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-2/messages",
+            headers: { "x-user-id": "user-2" },
+            payload: { messages: [{ localId: "exact", content: "x" }] },
+        });
+        expect(exact.statusCode).toBe(200);
+        const nextByte = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-2/messages",
+            headers: { "x-user-id": "user-2" },
+            payload: { messages: [{ localId: "overflow", content: "y" }] },
+        });
+        expect(nextByte.statusCode).toBe(413);
+        expect(nextByte.json()).toEqual({ error: "message_bytes_quota_exceeded" });
+    });
+
+    it("charges v3 batches by message and does not charge storage for an idempotent localId", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        seedMessage({ sessionId: "session-1", seq: 1, localId: "existing", content: { t: "encrypted", c: "old" } });
+        process.env.MAX_MESSAGES_PER_ACCOUNT = "1";
+        app = await createApp();
+
+        const retry = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: { messages: [{ localId: "existing", content: "ignored" }] },
+        });
+        expect(retry.statusCode).toBe(200);
+        expect(state.messages).toHaveLength(1);
+
+        process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE = "2";
+        state.rateCountByKey.clear();
+        const weighted = await app.inject({
+            method: "POST",
+            url: "/v3/sessions/session-1/messages",
+            headers: { "x-user-id": "user-1" },
+            payload: { messages: [
+                { localId: "a", content: "a" },
+                { localId: "b", content: "b" },
+                { localId: "c", content: "c" },
+            ] },
+        });
+        expect(weighted.statusCode).toBe(429);
+        expect(weighted.json()).toEqual({ error: "message_rate_quota_exceeded" });
+    });
+
+    it("serializes concurrent v3 and shared Socket writer reservations", async () => {
+        seedSession({ id: "session-1", accountId: "user-1" });
+        process.env.MAX_MESSAGES_PER_ACCOUNT = "1";
+        process.env.MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE = "10";
+        app = await createApp();
+
+        const sendSocketMessage = createMessageSocket('user-1');
+        const [httpResult] = await Promise.all([
+            app.inject({
+                method: "POST",
+                url: "/v3/sessions/session-1/messages",
+                headers: { "x-user-id": "user-1" },
+                payload: { messages: [{ localId: "from-http", content: "h" }] },
+            }),
+            sendSocketMessage({ sid: 'session-1', localId: 'from-socket', message: 's' }),
+        ]);
+
+        expect(state.messages).toHaveLength(1);
+        expect([200, 429]).toContain(httpResult.statusCode);
+        if (httpResult.statusCode === 200) {
+            expect(state.messages[0].localId).toBe('from-http');
+        } else {
+            expect(httpResult.json()).toEqual({ error: "message_count_quota_exceeded" });
+            expect(state.messages[0].localId).toBe('from-socket');
+        }
     });
 });

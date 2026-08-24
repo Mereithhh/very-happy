@@ -4,8 +4,9 @@ import { buildMachineActivityEphemeral, buildUpdateMachineUpdate, eventRouter } 
 import { log } from "@/utils/log";
 import { db } from "@/storage/db";
 import { Socket } from "socket.io";
-import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
+import { isAccountResourceLimitError } from '../resourceLimits';
+import { updateMachineStateWithQuota } from '@/app/state/accountStateStore';
 
 export function machineUpdateHandler(userId: string, socket: Socket) {
     const labels = getMetricsLabelsFromSocket(socket);
@@ -48,196 +49,107 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in machine-alive: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in machine-alive');
         }
     });
 
     // Machine metadata update with optimistic concurrency control
     socket.on('machine-update-metadata', async (data: any, callback: (response: any) => void) => {
         try {
-            const { machineId, metadata, expectedVersion } = data;
-
-            // Validate input
-            if (!machineId || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid parameters' });
-                }
-                return;
-            }
-
-            // Resolve machine
-            const machine = await db.machine.findFirst({
-                where: {
-                    accountId: userId,
-                    id: machineId
-                }
+            const result = await updateMachineStateWithQuota({
+                accountId: userId,
+                machineId: data?.machineId,
+                field: 'metadata',
+                value: data?.metadata,
+                expectedVersion: data?.expectedVersion,
             });
-            if (!machine) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Machine not found' });
-                }
+            if (result.kind === 'not-found') {
+                callback?.({ result: 'error', message: 'Machine not found' });
                 return;
             }
-
-            // Check version
-            if (machine.metadataVersion !== expectedVersion) {
-                callback({
+            if (result.kind === 'version-mismatch') {
+                callback?.({
                     result: 'version-mismatch',
-                    version: machine.metadataVersion,
-                    metadata: machine.metadata
-                });
-                return;
-            }
-
-            // Update metadata with atomic version check
-            const { count } = await db.machine.updateMany({
-                where: {
-                    accountId: userId,
-                    id: machineId,
-                    metadataVersion: expectedVersion  // Atomic CAS
-                },
-                data: {
-                    metadata: metadata,
-                    metadataVersion: expectedVersion + 1
-                    // NOT updating active or lastActiveAt here
-                }
-            });
-
-            if (count === 0) {
-                // Re-fetch current version
-                const current = await db.machine.findFirst({
-                    where: {
-                        accountId: userId,
-                        id: machineId
-                    }
-                });
-                callback({
-                    result: 'version-mismatch',
-                    version: current?.metadataVersion || 0,
-                    metadata: current?.metadata
+                    version: result.machine.metadataVersion,
+                    metadata: result.machine.metadata,
                 });
                 return;
             }
 
             // Generate machine metadata update
-            const updSeq = await allocateUserSeq(userId);
             const metadataUpdate = {
-                value: metadata,
-                version: expectedVersion + 1
+                value: result.machine.metadata,
+                version: result.machine.metadataVersion,
             };
-            const updatePayload = buildUpdateMachineUpdate(machineId, updSeq, randomKeyNaked(12), metadataUpdate);
+            const updatePayload = buildUpdateMachineUpdate(result.machine.id, result.updateSeq, randomKeyNaked(12), metadataUpdate);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'machine-scoped-only', machineId }
+                recipientFilter: { type: 'machine-scoped-only', machineId: result.machine.id }
             });
 
-            // Send success response with new version
-            callback({
+            callback?.({
                 result: 'success',
-                version: expectedVersion + 1,
-                metadata: metadata
+                version: result.machine.metadataVersion,
+                metadata: result.machine.metadata,
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in machine-update-metadata: ${error}`);
-            if (callback) {
-                callback({ result: 'error', message: 'Internal error' });
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', error: error.code, message: error.code });
+                return;
             }
+            log({ module: 'websocket', level: 'error', error }, 'Error in machine-update-metadata');
+            callback?.({ result: 'error', message: 'Internal error' });
         }
     });
 
     // Machine daemon state update with optimistic concurrency control
     socket.on('machine-update-state', async (data: any, callback: (response: any) => void) => {
         try {
-            const { machineId, daemonState, expectedVersion } = data;
-
-            // Validate input
-            if (!machineId || typeof daemonState !== 'string' || typeof expectedVersion !== 'number') {
-                if (callback) {
-                    callback({ result: 'error', message: 'Invalid parameters' });
-                }
-                return;
-            }
-
-            // Resolve machine
-            const machine = await db.machine.findFirst({
-                where: {
-                    accountId: userId,
-                    id: machineId
-                }
+            const result = await updateMachineStateWithQuota({
+                accountId: userId,
+                machineId: data?.machineId,
+                field: 'daemonState',
+                value: data?.daemonState,
+                expectedVersion: data?.expectedVersion,
             });
-            if (!machine) {
-                if (callback) {
-                    callback({ result: 'error', message: 'Machine not found' });
-                }
+            if (result.kind === 'not-found') {
+                callback?.({ result: 'error', message: 'Machine not found' });
                 return;
             }
-
-            // Check version
-            if (machine.daemonStateVersion !== expectedVersion) {
-                callback({
+            if (result.kind === 'version-mismatch') {
+                callback?.({
                     result: 'version-mismatch',
-                    version: machine.daemonStateVersion,
-                    daemonState: machine.daemonState
-                });
-                return;
-            }
-
-            // Update daemon state with atomic version check
-            const { count } = await db.machine.updateMany({
-                where: {
-                    accountId: userId,
-                    id: machineId,
-                    daemonStateVersion: expectedVersion  // Atomic CAS
-                },
-                data: {
-                    daemonState: daemonState,
-                    daemonStateVersion: expectedVersion + 1,
-                    active: true,
-                    lastActiveAt: new Date()
-                }
-            });
-
-            if (count === 0) {
-                // Re-fetch current version
-                const current = await db.machine.findFirst({
-                    where: {
-                        accountId: userId,
-                        id: machineId
-                    }
-                });
-                callback({
-                    result: 'version-mismatch',
-                    version: current?.daemonStateVersion || 0,
-                    daemonState: current?.daemonState
+                    version: result.machine.daemonStateVersion,
+                    daemonState: result.machine.daemonState,
                 });
                 return;
             }
 
             // Generate machine daemon state update
-            const updSeq = await allocateUserSeq(userId);
             const daemonStateUpdate = {
-                value: daemonState,
-                version: expectedVersion + 1
+                value: result.machine.daemonState!,
+                version: result.machine.daemonStateVersion,
             };
-            const updatePayload = buildUpdateMachineUpdate(machineId, updSeq, randomKeyNaked(12), undefined, daemonStateUpdate);
+            const updatePayload = buildUpdateMachineUpdate(result.machine.id, result.updateSeq, randomKeyNaked(12), undefined, daemonStateUpdate);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'machine-scoped-only', machineId }
+                recipientFilter: { type: 'machine-scoped-only', machineId: result.machine.id }
             });
 
-            // Send success response with new version
-            callback({
+            callback?.({
                 result: 'success',
-                version: expectedVersion + 1,
-                daemonState: daemonState
+                version: result.machine.daemonStateVersion,
+                daemonState: result.machine.daemonState,
             });
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in machine-update-state: ${error}`);
-            if (callback) {
-                callback({ result: 'error', message: 'Internal error' });
+            if (isAccountResourceLimitError(error)) {
+                callback?.({ result: 'error', error: error.code, message: error.code });
+                return;
             }
+            log({ module: 'websocket', level: 'error', error }, 'Error in machine-update-state');
+            callback?.({ result: 'error', message: 'Internal error' });
         }
     });
 }

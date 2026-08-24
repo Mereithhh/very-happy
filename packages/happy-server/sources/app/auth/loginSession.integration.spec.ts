@@ -1,20 +1,39 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sessions, dbMock } = vi.hoisted(() => {
+    let createdCounter = 0;
     const sessions = new Map<string, {
         accountId: string;
         tokenHash: string;
         expiresAt: Date;
         revokedAt: Date | null;
+        createdAt: Date;
     }>();
     const dbMock = {
         $executeRawUnsafe: vi.fn(async (sql: string, ...values: unknown[]) => {
+            if (sql.includes('DELETE FROM "AccountLoginSession"') && sql.includes('"revokedAt" IS NOT NULL')) {
+                const accountId = values[0] as string;
+                for (const [id, row] of sessions) {
+                    if (row.accountId === accountId && (row.revokedAt !== null || row.expiresAt.getTime() <= Date.now())) sessions.delete(id);
+                }
+                return 1;
+            }
+            if (sql.includes('DELETE FROM "AccountLoginSession"') && sql.includes('OFFSET')) {
+                const accountId = values[0] as string;
+                const keep = values[1] as number;
+                const rows = [...sessions.entries()]
+                    .filter(([, row]) => row.accountId === accountId && row.revokedAt === null && row.expiresAt.getTime() > Date.now())
+                    .sort((left, right) => right[1].createdAt.getTime() - left[1].createdAt.getTime());
+                for (const [id] of rows.slice(keep)) sessions.delete(id);
+                return 1;
+            }
             if (sql.includes('INSERT INTO "AccountLoginSession"')) {
                 sessions.set(values[0] as string, {
                     accountId: values[1] as string,
                     tokenHash: values[2] as string,
                     expiresAt: values[3] as Date,
                     revokedAt: null,
+                    createdAt: new Date(++createdCounter),
                 });
                 return 1;
             }
@@ -30,11 +49,13 @@ const { sessions, dbMock } = vi.hoisted(() => {
             }
             return 0;
         }),
-        $queryRawUnsafe: vi.fn(async (_sql: string, id: string) => {
+        $queryRawUnsafe: vi.fn(async (sql: string, id: string) => {
+            if (sql.includes('FROM "Account"')) return [{ id }];
             const row = sessions.get(id);
             return row ? [row] : [];
         }),
     };
+    (dbMock as any).$transaction = vi.fn(async (fn: (tx: typeof dbMock) => unknown) => fn(dbMock));
     return { sessions, dbMock };
 });
 
@@ -46,6 +67,15 @@ describe('persistent Cloud login session', () => {
     beforeAll(async () => {
         process.env.HANDY_MASTER_SECRET = 'login-session-integration-master';
         await auth.init();
+    });
+
+    beforeEach(() => {
+        sessions.clear();
+        (auth as any).tokenCache.clear();
+    });
+
+    afterEach(() => {
+        delete process.env.MAX_LOGIN_SESSIONS_PER_ACCOUNT;
     });
 
     it('survives a token-cache miss and becomes invalid after revoke', async () => {
@@ -64,10 +94,26 @@ describe('persistent Cloud login session', () => {
 
     it('writes a signup login session through the caller transaction and propagates failure', async () => {
         const before = sessions.size;
-        const transactionWriter = { $executeRawUnsafe: vi.fn(async () => { throw new Error('transaction aborted'); }) };
+        const transactionWriter = {
+            $queryRawUnsafe: vi.fn(async () => [{ id: 'account-rollback' }]),
+            $executeRawUnsafe: vi.fn(async () => { throw new Error('transaction aborted'); }),
+        };
         await expect(auth.createLoginToken('account-rollback', transactionWriter as any, { cache: false }))
             .rejects.toThrow('transaction aborted');
         expect(transactionWriter.$executeRawUnsafe).toHaveBeenCalledTimes(1);
         expect(sessions.size).toBe(before);
+    });
+
+    it('prunes old sessions before insert and keeps the newly returned token valid', async () => {
+        process.env.MAX_LOGIN_SESSIONS_PER_ACCOUNT = '2';
+        const first = await auth.createLoginToken('account-capped');
+        const second = await auth.createLoginToken('account-capped');
+        const newest = await auth.createLoginToken('account-capped');
+
+        expect(sessions.size).toBe(2);
+        (auth as any).tokenCache.clear();
+        await expect(auth.verifyToken(first.token)).resolves.toBeNull();
+        await expect(auth.verifyToken(second.token)).resolves.toMatchObject({ userId: 'account-capped' });
+        await expect(auth.verifyToken(newest.token)).resolves.toMatchObject({ userId: 'account-capped' });
     });
 });

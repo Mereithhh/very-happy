@@ -3,6 +3,7 @@ import { allowAuthRequest } from './authRateLimiter';
 
 const CLAIM_SECRET_BYTES = 32;
 const PUBLIC_KEY_BYTES = 32;
+const DEFAULT_MAX_PENDING_AUTH_PAIRINGS = 1_000;
 
 function positiveInt(name: string, fallback: number, min = 1, max = Number.MAX_SAFE_INTEGER): number {
     const raw = process.env[name];
@@ -43,6 +44,20 @@ export function claimSecretMatches(value: string, expectedHash: string): boolean
 export function pairingExpiresAt(createdAt: Date): Date {
     const ttlMinutes = positiveInt('AUTH_PAIRING_TTL_MINUTES', 10, 1, 60);
     return new Date(createdAt.getTime() + ttlMinutes * 60_000);
+}
+
+export function pairingExpiryCutoff(now = new Date()): Date {
+    const ttlMinutes = positiveInt('AUTH_PAIRING_TTL_MINUTES', 10, 1, 60);
+    return new Date(now.getTime() - ttlMinutes * 60_000);
+}
+
+export function maxPendingAuthPairings(): number {
+    return positiveInt(
+        'MAX_PENDING_AUTH_PAIRINGS',
+        DEFAULT_MAX_PENDING_AUTH_PAIRINGS,
+        1,
+        100_000,
+    );
 }
 
 export function pairingExpired(createdAt: Date, now = new Date()): boolean {

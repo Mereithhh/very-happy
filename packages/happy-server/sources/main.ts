@@ -56,26 +56,17 @@ process.on('uncaughtException', (error) => {
     log({
         module: 'process-error',
         level: 'error',
-        stack: error.stack,
-        name: error.name
-    }, `Uncaught Exception: ${error.message}`);
-
-    console.error('Uncaught Exception:', error);
+        error,
+    }, 'Uncaught exception');
     process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    const errorMsg = reason instanceof Error ? reason.message : String(reason);
-    const errorStack = reason instanceof Error ? reason.stack : undefined;
-
+process.on('unhandledRejection', (reason) => {
     log({
         module: 'process-error',
         level: 'error',
-        stack: errorStack,
-        reason: String(reason)
-    }, `Unhandled Rejection: ${errorMsg}`);
-
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+        error: reason,
+    }, 'Unhandled rejection');
     process.exit(1);
 });
 
@@ -83,9 +74,8 @@ process.on('warning', (warning) => {
     log({
         module: 'process-warning',
         level: 'warn',
-        name: warning.name,
-        stack: warning.stack
-    }, `Process Warning: ${warning.message}`);
+        error: warning,
+    }, 'Process warning');
 });
 
 // Log when the process is about to exit
@@ -106,7 +96,7 @@ process.on('exit', (code) => {
 });
 
 main().catch((e) => {
-    console.error(e);
+    log({ module: 'startup', level: 'error', error: e }, 'Server startup failed');
     process.exit(1);
 }).then(() => {
     process.exit(0);

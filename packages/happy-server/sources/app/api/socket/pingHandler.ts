@@ -6,7 +6,7 @@ export function pingHandler(socket: Socket) {
         try {
             callback({});
         } catch (error) {
-            log({ module: 'websocket', level: 'error' }, `Error in ping: ${error}`);
+            log({ module: 'websocket', level: 'error', error }, 'Error in ping');
         }
     });
 }

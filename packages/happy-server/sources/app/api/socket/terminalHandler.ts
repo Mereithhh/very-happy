@@ -16,6 +16,7 @@
  */
 import { Server, Socket } from "socket.io";
 import { activityCache } from "@/app/presence/sessionCache";
+import { AccountTerminalRateLimiter, allowAccountRelay } from './terminalRateLimit';
 
 type Conn = { connectionType: string; machineId?: string };
 
@@ -28,6 +29,28 @@ type Conn = { connectionType: string; machineId?: string };
  * already bounded by socket.io's `maxHttpBufferSize`.)
  */
 const MAX_ACTIVITY_ITEMS = 200;
+const MAX_RELAY_ID_BYTES = 256;
+const MAX_TERMINAL_DIMENSION = 10_000;
+const MIN_EXIT_CODE = -1;
+const MAX_EXIT_CODE = 65_535;
+
+function boundedRelayId(value: unknown): value is string {
+    return typeof value === 'string' &&
+        value.length > 0 &&
+        Buffer.byteLength(value, 'utf8') <= MAX_RELAY_ID_BYTES;
+}
+
+function optionalBoolean(value: unknown): value is boolean | undefined {
+    return value === undefined || typeof value === 'boolean';
+}
+
+function optionalSequence(value: unknown): value is number | undefined {
+    return value === undefined || (Number.isSafeInteger(value) && (value as number) >= 0);
+}
+
+function terminalDimension(value: unknown): value is number {
+    return Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= MAX_TERMINAL_DIMENSION;
+}
 
 /**
  * How far into the future a daemon-reported activity time may be. These come
@@ -54,7 +77,7 @@ export function sanitizeTerminalActivity(raw: unknown, now: number = Date.now())
         if (out.length >= MAX_ACTIVITY_ITEMS) break;
         if (!item || typeof item !== 'object') continue;
         const { id, activityAt } = item as { id?: unknown; activityAt?: unknown };
-        if (typeof id !== 'string' || id.length === 0) continue;
+        if (!boundedRelayId(id)) continue;
         if (typeof activityAt !== 'number' || !Number.isFinite(activityAt) || activityAt <= 0) continue;
         if (activityAt > now + MAX_ACTIVITY_SKEW_MS) continue;
         out.push({ id, activityAt });
@@ -62,24 +85,49 @@ export function sanitizeTerminalActivity(raw: unknown, now: number = Date.now())
     return out;
 }
 
-export function terminalHandler(userId: string, socket: Socket, io: Server, connection: Conn) {
+export function terminalHandler(
+    userId: string,
+    socket: Socket,
+    io: Server,
+    connection: Conn,
+    rateLimiter?: AccountTerminalRateLimiter,
+) {
+    const relayAllowed = (payload: unknown): boolean => allowAccountRelay({
+        limiter: rateLimiter,
+        accountId: userId,
+        socket,
+        resource: 'terminal-relay',
+        payload,
+    });
+
     if (connection.connectionType === 'machine-scoped' && connection.machineId) {
         const machineId = connection.machineId;
         const userRoom = `user:${userId}:user-scoped`;
 
         socket.on('terminal-output', (data: { terminalId: string; data: string; seq?: number; enc?: boolean }) => {
-            if (!data?.terminalId) return;
+            if (!relayAllowed(data)) return;
+            if (!data || !boundedRelayId(data.terminalId) || typeof data.data !== 'string' ||
+                !optionalSequence(data.seq) || !optionalBoolean(data.enc)) return;
             // Forward `enc` so the client knows the byte stream is encrypted with
-            // the per-machine key (the relay can't read it). Must pass through —
+            // the per-machine key. It is opaque to this passive forwarding path,
+            // not to the trusted server operator. Must pass through —
             // dropping it makes the client render ciphertext as plaintext.
             // `seq` is the daemon's monotonic output counter the client tracks for
             // gap-based reconnect; it must pass through too. (open-terminal's
             // snapshot/replay travels over the RPC channel, which is opaque, so
             // only this live-output event needs field passthrough here.)
-            io.to(userRoom).emit('terminal-output', { terminalId: data.terminalId, machineId, data: data.data, seq: data.seq, enc: data.enc });
+            io.to(userRoom).emit('terminal-output', {
+                terminalId: data.terminalId,
+                machineId,
+                data: data.data,
+                seq: data.seq,
+                enc: data.enc,
+            });
         });
         socket.on('terminal-exit', (data: { terminalId: string; exitCode: number }) => {
-            if (!data?.terminalId) return;
+            if (!relayAllowed(data)) return;
+            if (!data || !boundedRelayId(data.terminalId) || !Number.isSafeInteger(data.exitCode) ||
+                data.exitCode < MIN_EXIT_CODE || data.exitCode > MAX_EXIT_CODE) return;
             io.to(userRoom).emit('terminal-exit', { terminalId: data.terminalId, machineId, exitCode: data.exitCode });
         });
         // ── Realtime sidebar ordering ────────────────────────────────────────
@@ -110,6 +158,7 @@ export function terminalHandler(userId: string, socket: Socket, io: Server, conn
         // really moved, so an idle machine produces no traffic here at all.
         // `machineId` comes from the AUTHENTICATED connection, never the body.
         socket.on('terminal-activity', (data: { terminals?: unknown }) => {
+            if (!relayAllowed(data)) return;
             const terminals = sanitizeTerminalActivity(data?.terminals);
             if (terminals.length === 0) return;
             io.to(userRoom).emit('terminal-activity', { machineId, terminals });
@@ -128,14 +177,22 @@ export function terminalHandler(userId: string, socket: Socket, io: Server, conn
     };
 
     socket.on('terminal-input', (data: { machineId: string; terminalId: string; data: string; enc?: boolean }) => {
+        if (!relayAllowed(data)) return;
+        if (!data || !boundedRelayId(data.machineId) || !boundedRelayId(data.terminalId) ||
+            typeof data.data !== 'string' || !optionalBoolean(data.enc)) return;
         void toMachine(data?.machineId, (room) =>
             io.to(room).emit('terminal-input', { terminalId: data.terminalId, data: data.data, enc: data.enc }));
     });
     socket.on('terminal-resize', (data: { machineId: string; terminalId: string; cols: number; rows: number }) => {
+        if (!relayAllowed(data)) return;
+        if (!data || !boundedRelayId(data.machineId) || !boundedRelayId(data.terminalId) ||
+            !terminalDimension(data.cols) || !terminalDimension(data.rows)) return;
         void toMachine(data?.machineId, (room) =>
             io.to(room).emit('terminal-resize', { terminalId: data.terminalId, cols: data.cols, rows: data.rows }));
     });
     socket.on('terminal-close', (data: { machineId: string; terminalId: string }) => {
+        if (!relayAllowed(data)) return;
+        if (!data || !boundedRelayId(data.machineId) || !boundedRelayId(data.terminalId)) return;
         void toMachine(data?.machineId, (room) =>
             io.to(room).emit('terminal-close', { terminalId: data.terminalId }));
     });

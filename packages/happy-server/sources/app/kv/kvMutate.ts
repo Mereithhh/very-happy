@@ -1,9 +1,42 @@
-import { db } from "@/storage/db";
 import { inTx, afterTx } from "@/storage/inTx";
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { eventRouter, buildKVBatchUpdateUpdate } from "@/app/events/eventRouter";
 import * as privacyKit from "privacy-kit";
+import { decodePrismaBytes } from '@/storage/prismaBytes';
+import {
+    assertAccountResourceQuota,
+    configuredResourceLimit,
+    enforceAccountWriteRate,
+    lockAccountResources,
+} from '@/app/api/resourceLimits';
+import { base64BytesSchema, utf8StringSchema } from '@/app/api/resourceSchemas';
+import { z } from 'zod';
+
+export const KV_KEY_MAX_BYTES = 512;
+export const KV_VALUE_MAX_BYTES = 256 * 1024;
+export const kvKeySchema = utf8StringSchema({ minBytes: 1, maxBytes: KV_KEY_MAX_BYTES });
+export const kvValueSchema = base64BytesSchema(KV_VALUE_MAX_BYTES);
+export const kvMutationSchema = z.object({
+    key: kvKeySchema,
+    value: kvValueSchema.nullable(),
+    version: z.number().int().min(-1),
+});
+export const kvMutationsBodySchema = z.object({
+    mutations: z.array(kvMutationSchema).min(1).max(100),
+}).superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.mutations.forEach((mutation, index) => {
+        if (seen.has(mutation.key)) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['mutations', index, 'key'],
+                message: 'Duplicate keys are not allowed in one mutation batch',
+            });
+        }
+        seen.add(mutation.key);
+    });
+});
 
 export interface KVMutation {
     key: string;
@@ -36,11 +69,21 @@ export async function kvMutate(
     ctx: { uid: string },
     mutations: KVMutation[]
 ): Promise<KVMutateResult> {
+    const parsedMutations = kvMutationsBodySchema.parse({ mutations }).mutations;
+    await enforceAccountWriteRate({
+        accountId: ctx.uid,
+        resource: 'kv',
+        units: parsedMutations.length,
+        envName: 'MAX_KV_WRITES_PER_ACCOUNT_PER_MINUTE',
+        fallback: 240,
+    });
     return await inTx(async (tx) => {
+        await lockAccountResources(tx, ctx.uid);
         const errors: KVMutateResult['errors'] = [];
+        const existingByKey = new Map<string, Awaited<ReturnType<typeof tx.userKVStore.findUnique>>>();
 
         // Pre-validate all mutations
-        for (const mutation of mutations) {
+        for (const mutation of parsedMutations) {
             const existing = await tx.userKVStore.findUnique({
                 where: {
                     accountId_key: {
@@ -49,6 +92,7 @@ export async function kvMutate(
                     }
                 }
             });
+            existingByKey.set(mutation.key, existing);
 
             const currentVersion = existing?.version ?? -1;
 
@@ -68,18 +112,53 @@ export async function kvMutate(
             return { success: false, errors };
         }
 
+        const planned = parsedMutations.map((mutation) => ({
+            mutation,
+            existing: existingByKey.get(mutation.key) ?? null,
+            value: mutation.value === null ? null : decodePrismaBytes(mutation.value),
+        }));
+        const totals = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
+            `SELECT COUNT(*)::bigint AS "count",
+                    COALESCE(SUM(octet_length("key") + COALESCE(octet_length("value"), 0)), 0)::bigint AS "bytes"
+             FROM "UserKVStore"
+             WHERE "accountId" = $1`,
+            ctx.uid,
+        );
+        const delta = planned.reduce((sum, item) => {
+            const nextValueBytes = item.value?.byteLength ?? 0;
+            if (!item.existing) {
+                sum.count += 1;
+                sum.bytes += Buffer.byteLength(item.mutation.key, 'utf8') + nextValueBytes;
+            } else {
+                sum.bytes += nextValueBytes - (item.existing.value?.byteLength ?? 0);
+            }
+            return sum;
+        }, { count: 0, bytes: 0 });
+        assertAccountResourceQuota({
+            resource: 'kv',
+            current: {
+                count: Number(totals[0]?.count ?? 0),
+                bytes: Number(totals[0]?.bytes ?? 0),
+            },
+            delta,
+            limits: {
+                count: configuredResourceLimit('MAX_KV_ENTRIES_PER_ACCOUNT', 5_000),
+                bytes: configuredResourceLimit('MAX_KV_BYTES_PER_ACCOUNT', 32 * 1024 * 1024),
+            },
+        });
+
         // Apply all mutations and collect results
         const results: Array<{ key: string; version: number }> = [];
         const changes: Array<{ key: string; value: string | null; version: number }> = [];
 
-        for (const mutation of mutations) {
+        for (const { mutation, value } of planned) {
             if (mutation.version === -1) {
                 // Create new entry (must not exist)
                 const result = await tx.userKVStore.create({
                     data: {
                         accountId: ctx.uid,
                         key: mutation.key,
-                        value: mutation.value ? new Uint8Array(Buffer.from(mutation.value, 'base64')) : null,
+                        value,
                         version: 0
                     }
                 });
@@ -106,7 +185,7 @@ export async function kvMutate(
                         }
                     },
                     data: {
-                        value: mutation.value ? privacyKit.decodeBase64(mutation.value) : null,
+                        value,
                         version: newVersion
                     }
                 });

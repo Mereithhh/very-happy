@@ -55,7 +55,9 @@ export function resolveSignupPolicy(env: NodeJS.ProcessEnv = process.env): Signu
     } else if (inviteCodes.length > 0) {
         mode = 'invite';
     } else {
-        mode = 'open';
+        // A missing production environment variable must never silently turn
+        // a new relay into an unlimited public registration endpoint.
+        mode = 'closed';
     }
 
     return {
