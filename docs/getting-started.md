@@ -68,8 +68,12 @@ machine stays offline.
 
 ### Optional: mirror hand-started Claude terminals
 
-SDK-backed Claude conversations work without extra setup. If you want a
-hand-started `claude` process inside a Very Happy Web terminal to gain the
+Very Happy supports two Claude paths. SDK-backed conversations are structured
+by default. When `tmux` is installed, the terminal path keeps the real Claude
+Code TUI running inside a durable session and relays that terminal stream to the
+browser. Without `tmux`, Web terminals use a non-persistent direct-shell
+fallback. If you have `tmux` 3.2 or newer and want a hand-started `claude`
+process inside a Very Happy Web terminal to also gain the
 terminal-to-structured toggle, install the optional hooks explicitly:
 
 ```bash
@@ -81,7 +85,9 @@ very-happy install-terminal-hooks --remove
 The command merges Very Happy's SessionStart/SessionEnd entries into
 `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) without
 removing foreign hooks. The binding exists only for Claude started inside a
-Very Happy terminal while the daemon is running.
+Very Happy terminal while the daemon is running. This structured mirror is a
+Claude-specific capability; other agent terminals keep their native TUI but do
+not automatically gain the same structured view.
 
 ## Next
 

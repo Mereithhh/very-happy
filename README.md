@@ -26,6 +26,12 @@ remote shell: it preserves the conversation, tool activity, files, tasks,
 permissions, and machine context around the work, so an interruption does not
 mean reconstructing everything in your head.
 
+**Structured when you want it. The real TUI when you need it.** Very Happy
+keeps SDK-backed Claude sessions and adds a tmux-backed path for the actual
+agent terminal interface.
+
+<img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy's production session sidebar, running terminal, and file browser rendered with sanitized example data">
+
 Claude Code is the deepest integration today. Codex is supported. A beta Agent
 Client Protocol (ACP) backend runs Gemini and OpenCode presets, while a generic
 runner can connect commands that expose a compatible ACP stdio endpoint.
@@ -40,8 +46,6 @@ workspace around your work.
 > capabilities. Use only an operator you trust. Self-host if you need to control
 > that boundary; use upstream Happy if you require its E2E design.
 
-<img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy's production session sidebar, running terminal, and file browser rendered with sanitized example data">
-
 ## Why Very Happy
 
 Most remote-agent products solve one piece of the problem: reach a terminal,
@@ -53,11 +57,21 @@ the monitoring, context rebuilding, and handoff overhead so you have more
 attention for the decisions only you can make. The work keeps moving; you get to
 be Very Happy.
 
+Upstream Happy's core Claude experience is an SDK-backed structured session.
+Very Happy keeps that path and adds a second one: when `tmux` is available, the
+actual agent CLI/TUI runs inside a durable session on your machine, and xterm
+renders its terminal stream rather than recreating agent-specific UI. With
+`tmux` 3.2 or newer, optional hooks can add a structured mirror to Claude
+started by hand inside that Web terminal and let you move back to the same TUI.
+That mirror is Claude-specific; terminal support for another agent does not
+imply equivalent structured events. Without `tmux`, Web terminals fall back to
+a non-persistent direct shell.
+
 | Need | What Very Happy does |
 |---|---|
 | Continue from anywhere | Responsive Web/PWA with touch-friendly conversation and terminal controls |
 | Stay out of terminal chrome | Structured messages, tools, diffs, permissions, usage, and context |
-| Keep full machine access | Durable tmux terminals, reconnect, history, files, preview, and resume |
+| Keep the real agent interface | Durable tmux-backed TTY/TUI transport, reconnect, history, files, preview, and resume |
 | Use more than one agent | Claude Code, Codex, and OpenClaw today; beta Gemini, OpenCode, and compatible custom commands through ACP |
 | Remember the surrounding work | Task board, notes, file context, notifications, and session organization |
 | Reduce coordination overhead | An optional Claude-powered meta-agent can understand sessions and dispatch Claude work on its selected machine |
@@ -71,7 +85,10 @@ devices or interfaces.
 
 Prerequisites: Node.js 20 or newer and the CLI for each agent you plan to run.
 Claude Code is the default mode and is also required for the coordinating
-meta-agent. Voice additionally requires a configured compatible voice service.
+meta-agent. Install `tmux` for durable Web terminals; version 3.2 or newer is
+required for the optional Claude terminal mirror. Windows or other environments
+without `tmux` use a non-persistent direct-shell fallback. Voice additionally
+requires a configured compatible voice service.
 
 ```bash
 npm install -g very-happy-cli

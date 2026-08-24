@@ -31,7 +31,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: '3. Connect a machine', blocks: [
         { type: 'code', code: `${INSTALL_COMMAND}\n${LOGIN_COMMAND}\n${DAEMON_START_COMMAND}` },
-        { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy.' },
+        { type: 'p', text: 'Open the one-time browser link printed by the CLI, confirm the machine, then start and keep the daemon running. The machine appears in the web app when its relay connection is healthy. Install tmux for durable Web terminals; tmux 3.2 or newer is required for the optional Claude terminal mirror. Without tmux, Web terminals use a non-persistent direct-shell fallback.' },
       ] },
       { heading: '4. Start work', blocks: [
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # Claude Code\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
@@ -47,7 +47,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'cli', label: 'CLI & daemon', summary: 'Install, authenticate, operate, and diagnose the machine-side agent.',
     sections: [
       { heading: 'Install', blocks: [
-        { type: 'p', text: 'Very Happy requires a current Node.js LTS release and npm. Install the published CLI globally:' },
+        { type: 'p', text: 'Very Happy requires a current Node.js LTS release and npm. Durable Web terminals additionally require tmux; version 3.2 or newer is required for the optional Claude mirror. Windows or another environment without tmux uses a non-persistent direct-shell fallback. Install the published CLI globally:' },
         { type: 'code', code: INSTALL_COMMAND },
       ] },
       { heading: 'Authenticate', blocks: [
@@ -117,11 +117,15 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       { heading: 'Session flow', blocks: [
         { type: 'list', items: ['The user authenticates the browser to a relay.', 'A one-time approval connects a CLI identity to the same account.', 'The server routes requests and updates between browser and online daemon.', 'The daemon invokes local terminal or agent processes and streams results back.'] },
       ] },
+      { heading: 'Structured and native terminal paths', blocks: [
+        { type: 'p', text: "Upstream Happy's core Claude flow is an SDK-backed structured session. Very Happy keeps that path and, when tmux is installed, also runs the actual agent CLI/TUI in a tmux-owned terminal on the user's machine. The daemon carries pane output and input through the trusted relay, and xterm renders the terminal in the browser; it is not a screenshot or a browser reimplementation of the agent interface." },
+        { type: 'list', items: ['SDK path: Claude Agent SDK events become structured messages, tools, diffs, permissions, usage, and resume state.', 'Terminal path: tmux keeps the real TTY/TUI alive across browser disconnects and supports reconnect, scrollback, search, files, and mobile input.', 'Fallback: without tmux, Web terminals are non-persistent direct shells; tmux 3.2 or newer is required for the optional Claude mirror.', 'Parity is not implied: a terminal-backed agent does not automatically expose a Claude-style structured mirror.'] },
+      ] },
       { heading: 'Agent adapters', blocks: [
         { type: 'p', text: 'Claude Code and Codex have dedicated integration paths, and OpenClaw uses its own local gateway adapter. The beta Gemini/OpenCode adapter uses Agent Client Protocol over local stdio through the official SDK; it is distinct from the older Agent Communication Protocol that shares the ACP acronym. Custom ACP commands must implement a compatible Agent Client Protocol endpoint.' },
       ] },
       { heading: 'Optional terminal mirror', blocks: [
-        { type: 'p', text: 'SDK-backed Claude sessions stream structured events directly. A hand-started Claude process inside a Very Happy Web terminal is different: the optional very-happy install-terminal-hooks command adds scoped SessionStart/SessionEnd entries so the daemon can bind that process to a structured shadow session. The --remove form rolls back only those entries.' },
+        { type: 'p', text: 'SDK-backed Claude sessions stream structured events directly. A hand-started Claude process inside a Very Happy Web terminal is different: the optional very-happy install-terminal-hooks command adds scoped SessionStart/SessionEnd entries so the daemon can bind that process to a structured shadow session and return to the same TUI. The --remove form rolls back only those entries. This mirror is Claude-specific.' },
       ] },
       { heading: 'Compatibility', blocks: [
         { type: 'p', text: 'Protocol changes are designed so older clients ignore new fields. Deploy server, web, and CLI versions according to the release notes when a change includes a compatibility matrix.' },

@@ -22,6 +22,11 @@ describe('public documentation registry', () => {
     expect(text).toContain('OpenClaw uses its own local gateway protocol, not ACP');
     expect(text).toContain('very-happy install-terminal-hooks --remove');
     expect(text).toContain('~/.claude/settings.json');
+    expect(text).toContain("Upstream Happy's core Claude flow");
+    expect(text).toContain('tmux keeps the real TTY/TUI alive');
+    expect(text).toContain('This mirror is Claude-specific');
+    expect(text).toContain('tmux 3.2 or newer');
+    expect(text).toContain('non-persistent direct-shell fallback');
   });
 
   it('resolves known slugs and rejects unknown routes', () => {
@@ -33,6 +38,7 @@ describe('public documentation registry', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const featureProofs = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
+    const continuityProof = readFileSync(new URL('./MobileContinuityProof.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
     expect(landing).toContain('Work anywhere.');
     expect(landing).toContain('Claude Code');
@@ -42,6 +48,11 @@ describe('public documentation registry', () => {
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('THE REAL PRODUCT UI');
+    expect(landing).toContain('STRUCTURED WHEN YOU WANT IT.');
+    expect(landing).toContain('THE REAL TUI WHEN YOU NEED IT.');
+    expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
+    expect(continuityProof).toContain('REAL TUI · TMUX-BACKED');
+    expect(continuityProof).toContain('CLAUDE · STRUCTURED MIRROR');
     expect(productPreview).toContain('terminal and files');
     expect(productPreview).toContain('Open task board');
     expect(productPreview).toContain('Optional terminal hooks installed');
@@ -56,6 +67,28 @@ describe('public documentation registry', () => {
     expect(landing).toContain('not end-to-end encrypted');
     expect(html).toContain('Work anywhere. Keep the thread.');
     expect(html).not.toContain('Claude Code, from any browser.');
+  });
+
+  it('keeps the SDK and tmux dual-path copy aligned with shipped transport boundaries', () => {
+    const cliPackage = readFileSync(new URL('../../../../happy-cli/package.json', import.meta.url), 'utf8');
+    const sdkQuery = readFileSync(new URL('../../../../happy-cli/src/claude/sdk/query.ts', import.meta.url), 'utf8');
+    const terminalControl = readFileSync(new URL('../../../../happy-cli/src/terminal/controlClient.ts', import.meta.url), 'utf8');
+    const terminalManager = readFileSync(new URL('../../../../happy-cli/src/terminal/webTerminal.ts', import.meta.url), 'utf8');
+    const terminalTests = readFileSync(new URL('../../../../happy-cli/src/terminal/webTerminal.test.ts', import.meta.url), 'utf8');
+    const mirrorManager = readFileSync(new URL('../../../../happy-cli/src/mirror/mirrorManager.ts', import.meta.url), 'utf8');
+    const architecture = readFileSync(new URL('../../../../../docs/architecture.md', import.meta.url), 'utf8');
+    expect(cliPackage).toContain('@anthropic-ai/claude-agent-sdk');
+    expect(sdkQuery).toContain('query as sdkQuery');
+    expect(terminalControl).toContain('tmux -C attach-session -t vh-<id>');
+    expect(terminalControl).toContain("['-C', 'attach-session', '-t'");
+    expect(terminalManager).toContain("import { ControlClient } from './controlClient'");
+    expect(terminalManager).toContain('No-tmux fallback');
+    expect(terminalManager).toContain('tmux ≥3.2');
+    expect(terminalTests).toContain('accepts tmux ≥3.2');
+    expect(terminalTests).toContain('rejects older tmux and unparseable output');
+    expect(mirrorManager).toContain("spawnSync('tmux', ['has-session'");
+    expect(architecture).toContain('Two Claude interaction paths');
+    expect(architecture).toContain('not a screenshot or a browser reimplementation');
   });
 
   it('backs the public ACP claim with the shipped SDK, routes, and compatibility boundary', () => {
@@ -189,7 +222,7 @@ describe('public documentation registry', () => {
     expect(proof).toContain('initialView="terminal" initialFilesOpen={false} sidebar={false}');
     expect(proof).toContain('initialView="conversation" sidebar={false}');
     expect(proof).toContain('SAME CLAUDE PROCESS');
-    expect(proof).toContain('OPTIONAL TERMINAL HOOKS');
+    expect(proof).toContain('OPTIONAL CLAUDE HOOKS');
     expect(proof).toContain('TERM · SOURCE');
     expect(proof).toContain('CHAT · MIRROR');
     expect(proof).not.toContain('TERM · LIVE');

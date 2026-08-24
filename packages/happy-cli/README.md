@@ -35,6 +35,9 @@ Very Happy server and set `HAPPY_SERVER_URL` to it, or don't use this tool.
    uses Codex; `very-happy gemini` uses the beta ACP backend; `very-happy acp -- …`
    starts a custom command that must expose a compatible ACP stdio endpoint;
    `very-happy openclaw` connects to a configured local OpenClaw gateway.
+3. **`tmux` for durable Web terminals.** Version 3.2 or newer is required for
+   the optional hand-started Claude mirror. On Windows or another environment
+   without `tmux`, Web terminals use a non-persistent direct-shell fallback.
 
 The optional text/voice coordinating meta-agent currently requires Claude Code.
 Voice also requires the selected server or user settings to provide a compatible
@@ -66,6 +69,14 @@ session with the relay so you can continue it from the web client at your
 server's origin. OpenClaw connects to an already configured local gateway.
 Provider capabilities are not identical: Claude currently has the richest
 structured and terminal-mirroring experience.
+
+For Claude, Very Happy deliberately supports two paths. SDK-backed sessions
+produce structured messages and tool events directly. When `tmux` is available,
+Web terminals instead keep the actual agent CLI/TUI inside it on this machine
+and relay its terminal stream; they do not imitate the agent interface in the
+browser. With `tmux` 3.2 or newer, the optional mirror below connects those
+paths for hand-started Claude terminals. It does not make structured parity a
+promise for every terminal-backed agent.
 
 ### Optional Claude terminal mirror
 
