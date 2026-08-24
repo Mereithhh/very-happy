@@ -6,6 +6,7 @@ import { CoreFeatureProofs } from './CoreFeatureProofs';
 import { KeyboardWorkflowProof } from './KeyboardWorkflowProof';
 import { MobileContinuityProof } from './MobileContinuityProof';
 import { ProductWorkspacePreview } from './ProductWorkspacePreview';
+import { SchedulerTopologyProof } from './SchedulerTopologyProof';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import './public.css';
 
@@ -72,12 +73,12 @@ function HeroProductStage() {
       <span className="pub-stage-packet pub-stage-packet--two" />
       <span className="pub-stage-packet pub-stage-packet--three" />
     </div>
-    <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive sanitized preview using Very Happy production UI contracts">
-      <div className="pub-hero-product-head mono"><span><i /> SANITIZED DEMO · ONE ACCOUNT PANEL</span><span>3 MACHINES · 4 SESSIONS</span></div>
-      <ProductWorkspacePreview compact initialWorkspaceNavOpen />
-      <div className="pub-hero-product-foot mono"><span>CHOOSE MACHINE + AGENT</span><span>DISPATCH · WATCH · STEP IN</span></div>
+    <div className="pub-stage-float"><aside className="pub-hero-product" aria-label="Interactive sanitized Very Happy scheduler system map">
+      <div className="pub-hero-product-head mono"><span><i /> INTERACTIVE SYSTEM MAP · CURRENT PATHS</span><span>MACHINES × AGENTS</span></div>
+      <SchedulerTopologyProof />
+      <div className="pub-hero-product-foot mono"><span>PHONE / WEB CONTROL PLANE</span><span>SELECT · DISPATCH · STEP IN</span></div>
     </aside></div>
-    <div className="pub-stage-telemetry mono" aria-hidden="true"><span>03 MACHINES</span><span>02 AGENTS RUNNING</span><span>01 NEEDS YOU</span></div>
+    <div className="pub-stage-telemetry mono" aria-hidden="true"><span>ONE ACCOUNT</span><span>MANY RUNTIMES</span><span>HUMAN IN CONTROL</span></div>
   </div>;
 }
 

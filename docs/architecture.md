@@ -3,18 +3,23 @@
 ## Components
 
 ```text
-Web V2 / PWA
-    │ HTTPS + Socket.IO
-    ▼
-trusted happy-server ── database / files / optional Redis
-    │ account-scoped realtime + RPC
-    ▼
-very-happy CLI daemon ── agent runners / PTY ──┬─ Claude Code
-                                               ├─ Codex
-                                               ├─ Gemini / compatible ACP agent
-                                               ├─ OpenClaw gateway
-                                               └─ shell / xterm-compatible text TUI
+ personal computer ─┐                                   ┌─ Claude Code
+ remote server ─────┼─ very-happy CLI + daemon ─────────┼─ Codex
+ VM / container ────┘        ▲       ▲                   ├─ Gemini / OpenCode / compatible ACP
+                             │       │ runner-specific   ├─ OpenClaw gateway
+                    MCP tools┘       │                   └─ shell / xterm-compatible text TUI
+                                     │ account RPC
+                                     ▼
+                         trusted happy-server ── database / files / optional Redis
+                               ▲         ▲
+                               │         └─ API / webhooks
+                               │ HTTPS + Socket.IO
+                         Web V2 / installed PWA
+                         desktop · tablet · phone
 ```
+
+The optional voice Meta Agent is currently a Claude coordinator on a selected machine, not a
+provider-neutral automatic router. Cross-provider delegation remains roadmap work.
 
 - `packages/happy-web-v2`: production React/Vite browser client.
 - `packages/happy-server`: identity, persistence, realtime routing, files,

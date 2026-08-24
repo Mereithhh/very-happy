@@ -276,11 +276,14 @@ describe('public documentation registry', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
     const featureStyles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
+    const scheduler = readFileSync(new URL('./SchedulerTopologyProof.tsx', import.meta.url), 'utf8');
+    const schedulerStyles = readFileSync(new URL('./schedulerTopologyProof.css', import.meta.url), 'utf8');
     expect(landing).toContain('pub-hero-product');
-    expect(landing).toContain('<ProductWorkspacePreview compact initialWorkspaceNavOpen />');
+    expect(landing).toContain('<SchedulerTopologyProof />');
     expect(landing).toContain('pub-product-frame');
     expect(landing).toContain('pub-fleet');
-    expect(landing).toContain('SANITIZED DEMO · ONE ACCOUNT PANEL');
+    expect(landing).toContain('INTERACTIVE SYSTEM MAP · CURRENT PATHS');
+    expect(landing).toContain('PHONE / WEB CONTROL PLANE');
     expect(landing).toContain('FLEET COMMAND / SANITIZED');
     expect(landing).toContain('NEW SESSION → CHOOSE MACHINE + AGENT');
     expect(landing).not.toContain('CONNECTED · 42 MS');
@@ -312,6 +315,34 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
     expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(featureStyles).toContain('animation-duration: 0.01ms !important');
+    expect(scheduler).toContain('Interactive sanitized Very Happy scheduler architecture');
+    expect(scheduler).toContain('YOU CHOOSE THE ROUTE');
+    expect(scheduler).toContain('Your computer');
+    expect(scheduler).toContain('Remote server');
+    expect(scheduler).toContain('Any runtime');
+    expect(scheduler).toContain('Claude Code');
+    expect(scheduler).toContain('Codex');
+    expect(scheduler).toContain('OpenCode');
+    expect(scheduler).toContain('Any text TUI');
+    expect(scheduler).toContain('CLI + daemon');
+    expect(scheduler).toContain('API + webhooks');
+    expect(scheduler).toContain('MCP tools');
+    expect(scheduler).toContain('Meta Agent');
+    expect(scheduler).toContain('TRUSTED RELAY');
+    expect(scheduler).toContain('CLI + DAEMON');
+    expect(scheduler).toContain('Claude only');
+    expect(scheduler).toContain('runner-specific');
+    expect(schedulerStyles).toContain('@keyframes scheduler-route-flow');
+    expect(schedulerStyles).toContain('@keyframes scheduler-orbit');
+    expect(schedulerStyles).toContain('@container scheduler-proof (max-width: 520px)');
+    expect(schedulerStyles).toMatch(/@media \(max-width: 680px\)[\s\S]*\.scheduler-proof \{ height: 500px; \}/);
+    const schedulerContainerBlock = schedulerStyles.slice(
+      schedulerStyles.indexOf('@container scheduler-proof'),
+      schedulerStyles.indexOf('@media (max-width: 680px)'),
+    );
+    expect(schedulerContainerBlock).not.toContain('.scheduler-proof { height:');
+    expect(schedulerStyles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(schedulerStyles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
   it('renders public product proof from production UI class contracts without app state imports', () => {
@@ -340,17 +371,6 @@ describe('public documentation registry', () => {
     expect(preview).not.toContain('FsBrowser machineId');
     expect(sidebar).toContain('getSessionSidebarSubtitle(s)');
     expect(sidebar).toContain('`${tm.machineName} · terminal`');
-  });
-
-  it('pins the fleet panel desktop/detail and mobile/overlay cascade in opposite states', () => {
-    const productStyles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
-    const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
-
-    expect(productStyles).toMatch(/@container product-preview \(max-width: 760px\)[\s\S]*\.product-app--nav-open \.product-sidebar \{ position: absolute; inset: 0;[^}]*display: block;/);
-    expect(productStyles).toMatch(/@container product-preview \(max-width: 760px\)[\s\S]*\.product-app--nav-open \.product-detail \{ visibility: hidden; \}/);
-    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-sidebar \{ position: static; inset: auto; z-index: auto; display: block;/);
-    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-detail \{ visibility: visible; \}/);
-    expect(publicStyles).toMatch(/@media \(min-width: 821px\)[\s\S]*\.product-app--nav-open \.product-nav-close \{ display: none; \}/);
   });
 
   it('makes every narrow product surface usable instead of shrinking desktop mockups', () => {

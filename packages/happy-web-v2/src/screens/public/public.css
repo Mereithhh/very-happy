@@ -61,13 +61,6 @@
 .pub-hero-product-foot { height: 32px; border-top: 1px solid var(--line); }
 .pub-hero-product-head span:first-child { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
 .pub-hero-product-head i, .pub-product-frame-head i, .pub-fleet-head i { width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); animation: pub-live-pulse 2.4s ease-out infinite; }
-.pub-hero-product .product-app { border-radius: var(--r-md); }
-@media (min-width: 821px) {
-  .pub-hero-product .product-preview .product-app { display: grid; grid-template-columns: minmax(195px, 34%) minmax(0, 1fr); }
-  .pub-hero-product .product-preview .product-app--nav-open .product-sidebar { position: static; inset: auto; z-index: auto; display: block; border-right: 1px solid var(--line); }
-  .pub-hero-product .product-preview .product-app--nav-open .product-detail { visibility: visible; }
-  .pub-hero-product .product-preview .product-app--nav-open .product-nav-close { display: none; }
-}
 @media (min-width: 821px) and (max-width: 900px) {
   .pub-hero { grid-template-columns: 1fr; min-height: auto; gap: var(--sp-6); }
   .pub-hero-stage { width: min(100%, 700px); justify-self: center; }
