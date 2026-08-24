@@ -122,6 +122,8 @@ const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, M
 // gated on this so desktop is untouched.
 const IS_COARSE_POINTER =
   typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
+const NEEDS_ZOOM_SAFE_INPUT = IS_COARSE_POINTER
+  || (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 860px)').matches === true);
 
 // Platform, for the key routing table only (mac's ⌥ is a third-level shift
 // that PRODUCES characters — `∑` — while elsewhere Alt is a Meta prefix that
@@ -724,6 +726,11 @@ export function WebTerminalScreen() {
         // Presentation/geometry fork only (font size vs iOS zoom, preedit
         // bubble); routing table and model are identical on both devices.
         coarsePointer: IS_COARSE_POINTER,
+        // Width is a second safety signal: iPad/desktop emulation can report
+        // a fine pointer while Safari still zooms focused fields below 16px.
+        // This raises only the overlay typography; field policy stays tied to
+        // the real pointer class.
+        zoomSafeInput: NEEDS_ZOOM_SAFE_INPUT,
         // ⚠️ CONSTANT FALSE ON PURPOSE — the overlay is ALWAYS a per-key
         // surface. Line-input mode's typing surface is TermInputBar's own
         // <textarea>, which lives in .term-bottombars, OUTSIDE term.element:

@@ -245,6 +245,8 @@ export function pickOverlayWidth(input: {
  */
 export interface OverlayMetricsInput {
     coarsePointer: boolean;
+    /** Phone-width/touch Safari safety even when pointer media reports fine. */
+    zoomSafeInput?: boolean;
     /** 终端字号（`term.options.fontSize`）。 */
     cellFontSize: number;
     /** 光标单元格高度（抄自 xterm helper textarea 的 inline `height`）。 */
@@ -268,7 +270,7 @@ export function pickOverlayMetrics(i: OverlayMetricsInput): OverlayMetrics {
         cellWidth: i.cellWidth,
         maxCells: i.coarsePointer ? OVERLAY_MAX_CELLS_COARSE : OVERLAY_MAX_CELLS,
     });
-    if (!i.coarsePointer) {
+    if (!i.coarsePointer && !i.zoomSafeInput) {
         return { fontSize: i.cellFontSize, height: i.cellHeight, width };
     }
     const fontSize = Math.max(IOS_ZOOM_SAFE_FONT_PX, i.cellFontSize);
@@ -399,6 +401,13 @@ export interface TermInputHostOptions {
      */
     coarsePointer?: boolean;
     /**
+     * Force the iOS-safe 16px font floor without changing the desktop field
+     * policy or coarse-pointer width cap. Narrow browser viewports need this:
+     * iPad/desktop emulation can report a fine pointer while Safari still
+     * applies focus zoom to the real textarea.
+     */
+    zoomSafeInput?: boolean;
+    /**
      * 输入行模式（`send-line` 路由的开关）。
      *
      * ⚠️ Step 2 的结论：**两端都恒 false，overlay 永远是逐键面**。
@@ -472,6 +481,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
     el.setAttribute('inputmode', 'text');
     el.setAttribute('enterkeyhint', 'send');
     const coarse = opts.coarsePointer === true;
+    const zoomSafeInput = coarse || opts.zoomSafeInput === true;
     // 粗指针的呈现分叉（见 `shouldShowPreedit`）：默认不透明度 0，合成期才露出。
     if (coarse) el.classList.add(COARSE_CLASS);
     helpers.appendChild(el);
@@ -654,6 +664,7 @@ export function installTermInput(opts: TermInputHostOptions): TermInputHostHandl
         const cellWidth = term.cols > 0 ? screenWidth / term.cols : 0;
         const m = pickOverlayMetrics({
             coarsePointer: coarse,
+            zoomSafeInput,
             cellFontSize: Number(term.options.fontSize ?? 0) || 0,
             cellHeight: parseFloat(s.height || '0') || 0,
             cursorLeft: parseFloat(s.left || '0') || 0,

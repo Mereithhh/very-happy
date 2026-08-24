@@ -251,6 +251,13 @@ describe('pickOverlayMetrics —— 粗指针的几何分叉（spec §风险 R5�
         expect(m.fontSize).toBeGreaterThanOrEqual(16);
     });
 
+    it('窄视口即使报告 fine pointer 也使用 16px，但保留桌面宽度策略', () => {
+        const m = pickOverlayMetrics({ ...base, coarsePointer: false, zoomSafeInput: true });
+        expect(m.fontSize).toBe(IOS_ZOOM_SAFE_FONT_PX);
+        expect(m.height).toBeGreaterThanOrEqual(m.fontSize);
+        expect(m.width).toBe(OVERLAY_MAX_CELLS * 8);
+    });
+
     it('粗指针：盒高跟着字号抬 —— 否则 preedit 被 overflow:hidden 削掉一半', () => {
         const m = pickOverlayMetrics({ ...base, coarsePointer: true });
         expect(m.height).toBeGreaterThanOrEqual(16);
