@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released product source: `65d4477cb9af7445352dbcffc89dd1a071f7de1f`
+> Released product source: `25a71f0dffa26836a543d17fa62312f28ad779a0`
 > Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
@@ -34,7 +34,12 @@ public until the procedure below is complete.
 - Landing and Docs now include an explicit mobile continuity proof built from two authentic,
   interactive phone-width product surfaces: a raw Claude terminal and its structured mirror.
   The real conversation control and `Back to terminal` path work in both directions; the animated
-  handoff labels the optional terminal-hook boundary without claiming the sanitized demo is live.
+  handoff labels the optional Claude-hook boundary without claiming the sanitized demo is live.
+- The fork's central interaction difference is now visible in the first Hero viewport and then
+  explained as two unambiguous branches: SDK-backed Claude produces a structured session, while
+  a tmux-owned process preserves the real agent TTY/TUI and can optionally expose a Claude mirror.
+  Public copy also states the real downgrade boundary: durable terminals require tmux, the mirror
+  requires tmux 3.2 or newer, and no-tmux/Windows uses a non-persistent direct-shell fallback.
 - Core claims now have matching interactive product surfaces: a production-style Claude
   meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
   Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
@@ -91,15 +96,15 @@ public until the procedure below is complete.
 A no-hardlink clone and a second detached worktree at product base `8b1e202a` both completed
 `pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
 wire build plus the full affected-package gates and isolated CLI runtime smoke. The final
-`65d4477c` mobile-continuity follow-up repeated the affected Web gates locally and in the
+`25a71f0d` dual-path positioning follow-up repeated the affected Web gates locally and in the
 exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 99 test files / 1,425 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 99 test files / 1,426 tests; Vite production build; TypeScript 0 errors |
 | CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Final Quality Gates `32697747972` passed for exact deployed source `65d4477c`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32699631101` passed for exact deployed source `25a71f0d`; Linux CLI smoke `32690257926` passed for released CLI source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -169,6 +174,12 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   both phone-width production surfaces, the real terminal → structured mirror → terminal loop,
   animated desktop and vertical-mobile handoff states, SOURCE/MIRROR demo labels, no horizontal
   overflow, 16 px visible mobile inputs, and duplicate-ID-free reuse on the Docs index.
+- after the dual-path release, an initially stale service-worker load was rejected as mixed-version
+  evidence; two hard reloads then confirmed the deployed `index-DncsBc_n-202608240703.js`. Fresh
+  390x844 and 1440x1000 checks found the Hero thesis in the first mobile viewport, the corrected
+  two-branch rail, real bidirectional terminal/mirror controls, 16 px mobile input, no horizontal
+  overflow or console warnings. `/docs/architecture` exposed the tmux 3.2 and direct-shell fallback
+  boundaries at 390 px without overflow.
 
 ### Independent review
 
@@ -216,6 +227,12 @@ and closed one P2: Privacy/Terms branding still pointed to login rather than the
 The rereview verified direct reloads, AppRoot/PublicRoot client navigation, `/v2/` basename
 handling, Docs/legal return links, scroll reset, and the anonymous dependency boundary, ending
 at **P0=0, P1=0, P2=0, P3=0** for the change.
+
+The SDK/tmux dual-path follow-up received separate public-security and first-user/UX reviews.
+They found and closed unconditional tmux/mirror claims, the missing tmux 3.2 and no-tmux fallback
+boundary, a visually reversed path-to-phone mapping, a late Hero value proposition, adversarial
+upstream wording, and a README technical wall before the product image. Both freeze rereviews
+ended at **P0=0, P1=0, P2=0**.
 
 ## Release and production state
 
@@ -288,6 +305,13 @@ at **P0=0, P1=0, P2=0, P3=0** for the change.
   Landing/Docs reuse, desktop/mobile layout, real bidirectional controls, 16 px input sizing,
   and zero horizontal overflow were verified afterward. The atomic Web rollback is the prior
   `9b64f5e2` Hero build.
+- The structured/native-terminal positioning shipped Web-only from SHA
+  `25a71f0dffa26836a543d17fa62312f28ad779a0`. Exact-SHA Quality Gates run `32699631101`
+  and deploy run `32699821060` passed, producing
+  `/assets/index-DncsBc_n-202608240703.js`. Production health/MIME, 390x844 and 1440x1000
+  Landing, mobile architecture docs, first-viewport thesis, corrected path rail, real terminal ↔
+  mirror controls, 16 px input, zero overflow, and clean console all passed. The atomic Web
+  rollback is the preceding `65d4477c` mobile-continuity build.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
