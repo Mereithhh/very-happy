@@ -37,6 +37,8 @@ describe('public documentation registry', () => {
     expect(text).toContain('This mirror is Claude-specific');
     expect(text).toContain('tmux 3.2 or newer');
     expect(text).toContain('non-persistent direct-shell fallback');
+    expect(text).toContain('Home Screen');
+    expect(text).toContain('native install dialog');
   });
 
   it('documents the exact tmux and endpoint degradation boundaries', () => {
@@ -159,10 +161,10 @@ describe('public documentation registry', () => {
     expect(styles).toContain('@keyframes pub-stage-orbit');
     expect(styles).toContain('@keyframes pub-stage-packet');
     expect(landing).toContain('onPointerMove={tiltStage}');
-    expect(landing).toContain('pub-stage-node--office');
-    expect(landing).toContain('EDGE-RELAY');
-    expect(landing).toContain('STUDIO-MAC');
-    expect(landing).toContain('BUILD-NODE');
+    expect(landing).not.toContain('pub-stage-node');
+    expect(landing).not.toContain('EDGE-RELAY');
+    expect(landing).not.toContain('STUDIO-MAC');
+    expect(landing).not.toContain('BUILD-NODE');
     expect(landing).not.toContain('HW-SG');
     expect(landing).not.toContain('MAC-OFFICE');
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
@@ -172,7 +174,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.pub-stage-float[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-stage-orbit[^}]*animation: none/);
     expect(styles).toMatch(/\.pub-stage-packet[^}]*animation: none/);
-    expect(styles).toMatch(/\.pub-stage-nodes \{[^}]*transform: translateZ\(72px\)/);
+    expect(styles).not.toContain('.pub-stage-node');
     expect(styles).toMatch(/\.pub-agent-grid article[^}]*transition: none/);
     expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
     expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');
@@ -346,8 +348,11 @@ describe('public documentation registry', () => {
     expect(readme).toContain('href="https://happy.mereith.com/welcome"');
     expect(publicRoot).not.toContain('AuthProvider');
     expect(publicRoot).not.toContain('@/sync/');
+    expect(publicRoot).toContain('<PwaInstallPrompt />');
+    expect(appRoot).toContain('<PwaInstallPrompt />');
     expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js']");
     expect(vite).toContain("handler: 'CacheFirst'");
+    expect(vite).not.toContain("orientation: 'portrait'");
   });
 
   it('keeps the public IM adapter example fail-closed and environment-neutral', () => {

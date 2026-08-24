@@ -47,11 +47,6 @@ function HeroProductStage() {
       <ProductWorkspacePreview compact />
       <div className="pub-hero-product-foot mono"><span>PROCESS RUNS THERE</span><span>CONTEXT ARRIVES HERE</span></div>
     </aside></div>
-    <div className="pub-stage-nodes mono" aria-hidden="true">
-      <span className="pub-stage-node pub-stage-node--relay"><i /> EDGE-RELAY <small>RELAY</small></span>
-      <span className="pub-stage-node pub-stage-node--office"><i /> STUDIO-MAC <small>CLAUDE</small></span>
-      <span className="pub-stage-node pub-stage-node--build"><i /> BUILD-NODE <small>CODEX</small></span>
-    </div>
     <div className="pub-stage-telemetry mono" aria-hidden="true"><span>03 MACHINES</span><span>02 AGENTS RUNNING</span><span>01 NEEDS YOU</span></div>
   </div>;
 }

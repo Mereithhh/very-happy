@@ -11,6 +11,7 @@ import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { ThemeProvider } from '@/ui/theme';
+import { PwaInstallPrompt } from './PwaInstallPrompt';
 
 const publicRouter = createBrowserRouter(
   [
@@ -28,6 +29,7 @@ export function PublicRoot() {
   return (
     <ThemeProvider>
       <RouterProvider router={publicRouter} />
+      <PwaInstallPrompt />
     </ThemeProvider>
   );
 }

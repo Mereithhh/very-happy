@@ -1,0 +1,109 @@
+.pwa-install {
+  position: fixed;
+  right: max(var(--sp-4), env(safe-area-inset-right));
+  bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  z-index: 1000;
+  width: min(430px, calc(100vw - 2 * var(--sp-4)));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--bg-1) 94%, transparent);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  backdrop-filter: blur(20px) saturate(125%);
+  animation: pwa-install-enter 240ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.pwa-install::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--text-faint), transparent);
+  content: '';
+}
+
+.pwa-install-close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+}
+
+.pwa-install-close:hover { color: var(--text); background: var(--bg-2); }
+
+.pwa-install-mark {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: linear-gradient(145deg, var(--bg-3), var(--bg-0));
+  box-shadow: inset 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.pwa-install-mark::before {
+  position: absolute;
+  inset: -45% 35% -45% -20%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 12%, transparent), transparent);
+  transform: rotate(24deg);
+  content: '';
+}
+
+.pwa-install-mark svg { position: relative; }
+.pwa-install-copy { min-width: 0; padding-right: var(--sp-6); }
+.pwa-install-eyebrow { color: var(--text-faint); font-size: var(--fs-10); letter-spacing: .09em; }
+.pwa-install h2 { margin: var(--sp-2) 0; font-size: var(--fs-20); letter-spacing: -.025em; }
+.pwa-install p { margin: 0; color: var(--text-dim); font-size: var(--fs-13); line-height: 1.55; }
+.pwa-install-steps { display: grid; gap: var(--sp-2); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
+.pwa-install-steps li { min-height: 34px; display: flex; align-items: center; gap: var(--sp-3); color: var(--text-dim); font-size: var(--fs-13); }
+.pwa-install-steps svg { flex: 0 0 auto; color: var(--text-faint); }
+.pwa-install-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
+.pwa-install-primary, .pwa-install-later { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 0 var(--sp-4); border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: var(--fs-13); }
+.pwa-install-primary { background: var(--text); color: var(--bg-0); font-weight: 600; }
+.pwa-install-primary:hover { opacity: .88; }
+.pwa-install-primary:disabled { cursor: wait; opacity: .58; }
+.pwa-install-later { color: var(--text-dim); }
+.pwa-install-later:hover { color: var(--text); background: var(--bg-2); }
+
+@keyframes pwa-install-enter {
+  from { opacity: 0; transform: translate3d(0, 24px, 0) scale(.97); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@media (min-width: 861px) and (pointer: fine) {
+  .pwa-install { display: none; }
+}
+
+@media (max-width: 520px) {
+  .pwa-install {
+    right: max(var(--sp-3), env(safe-area-inset-right));
+    bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+    left: max(var(--sp-3), env(safe-area-inset-left));
+    width: auto;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border-radius: var(--r-md);
+  }
+  .pwa-install-mark { width: 44px; height: 44px; border-radius: var(--r-sm); }
+  .pwa-install-copy { padding-right: var(--sp-5); }
+  .pwa-install h2 { font-size: clamp(var(--fs-16), 5vw, var(--fs-20)); }
+  .pwa-install-actions { align-items: stretch; flex-direction: column; }
+  .pwa-install-primary, .pwa-install-later { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-install { animation: none; }
+}

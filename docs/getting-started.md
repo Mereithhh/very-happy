@@ -104,6 +104,14 @@ Open [happy.mereith.com](https://happy.mereith.com). Choose Google or a username
 and password. New registration can be open, invite-only, closed, or temporarily
 full; an existing account can still sign in in every mode.
 
+On a phone or tablet, Very Happy proactively offers a Home Screen install after
+the page loads. Android/Chromium can open the browser-owned install dialog from
+that panel. On iPhone/iPad or another browser without the install event, follow
+the panel's **Share/browser menu → Add to Home Screen / Install app** steps.
+Installed Web Apps and prompts dismissed within the last seven days are not
+shown again. Installation is optional; the same responsive UI works in a normal
+browser tab.
+
 The hosted relay is [server-trusted](security.md). Do not continue with a machine
 whose contents or remote-control capability you are unwilling to expose to the
 server operator.

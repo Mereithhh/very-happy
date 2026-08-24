@@ -26,6 +26,11 @@ remote shell: it preserves the conversation, tool activity, files, tasks,
 permissions, and machine context around the work, so an interruption does not
 mean reconstructing everything in your head.
 
+On mobile, the Web client offers a Home Screen install without requiring an app
+store. Android/Chromium uses the browser's install dialog; iPhone/iPad and other
+browsers receive the matching Share/browser-menu instructions. Installing is
+optional—the same responsive product works in a normal browser tab.
+
 **Structured when you want it. The real TUI when you need it.** Very Happy
 keeps SDK-backed Claude sessions and adds a tmux-backed path for the actual
 agent terminal interface.

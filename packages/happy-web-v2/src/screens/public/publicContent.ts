@@ -38,6 +38,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: '4. Create an account', blocks: [
         { type: 'p', text: 'Create an account with Google or a username and password. Registration may be closed, invite-only, or at capacity; existing accounts can still sign in when registration is paused.' },
+        { type: 'p', text: 'On a phone or tablet, the site proactively offers to install Very Happy on your Home Screen. Android/Chromium opens its native install dialog after you tap Install; iPhone/iPad and browsers without that event show Share/browser-menu instructions. The same responsive UI remains available without installing.' },
       ] },
       { heading: '5. Connect a machine', blocks: [
         { type: 'code', code: `${INSTALL_COMMAND}\nvery-happy doctor\n${LOGIN_COMMAND}` },

@@ -22,6 +22,7 @@ import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
+import { PwaInstallPrompt } from './PwaInstallPrompt';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -206,6 +207,7 @@ export function AppRoot() {
               <RouterProvider router={router} />
             </AuthProvider>
           )}
+          <PwaInstallPrompt />
         </ModalProvider>
       </ToastProvider>
     </ThemeProvider>
