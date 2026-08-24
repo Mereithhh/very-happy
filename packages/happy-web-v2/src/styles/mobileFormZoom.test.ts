@@ -39,7 +39,14 @@ describe('mobile Safari editable font floor', () => {
     expect(rule).not.toContain('!important');
   });
 
-  it('does not alter xterm helper or overlay font metrics', () => {
+  it('carves terminal-owned inputs out of the generic form rule', () => {
     expect(rule).toContain(':not(:where(.xterm, .xterm *))');
+  });
+
+  it('gives the focused xterm helper its own iOS-safe floor', () => {
+    expect(rule).toContain(':is(#root, body) .xterm .xterm-helper-textarea {');
+    const helperRule = rule.slice(rule.indexOf(':is(#root, body) .xterm .xterm-helper-textarea {'));
+    expect(helperRule).toContain('font-size: var(--fs-16);');
+    expect(helperRule).not.toContain('!important');
   });
 });

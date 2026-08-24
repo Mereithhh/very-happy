@@ -90,11 +90,13 @@ select,
  * the `#root` branch deliberately gives the selector enough specificity to
  * beat component classes declared later without resorting to `!important`.
  *
- * The xterm pane is a structural carve-out: its hidden helper textarea and
- * `.vh-term-input` overlay derive their font/cell metrics from xterm itself.
- * Changing either here can desynchronise IME placement and the painted cursor.
- * The visible `.term-inputbar-ta` lives outside `.xterm`, so it still gets the
- * safe floor. */
+ * The xterm pane is a structural carve-out from the generic rule because its
+ * editable machinery has terminal-owned geometry. The legacy helper textarea
+ * still needs an explicit 16px floor, however: it is the element Safari
+ * focuses, while its width/height and composition bubble remain owned by
+ * xterm. The newer `.vh-term-input` overlay gets the same floor from
+ * `pickOverlayMetrics`. The visible `.term-inputbar-ta` lives outside `.xterm`,
+ * so it is covered by the generic rule. */
 /* Width is included as a second signal because desktop browser emulation and
  * iPad pointer reporting are not consistently `coarse`. A phone-width app
  * must never depend on the input device heuristic to avoid Safari zoom. */
@@ -105,6 +107,14 @@ select,
     select,
     [contenteditable]:not([contenteditable='false' i])
   ):not(:where(.xterm, .xterm *)) {
+    font-size: var(--fs-16);
+  }
+
+  /* xterm paints this textarea invisibly and positions it with inline cell
+     geometry. Raising only its font floor prevents iOS focus zoom without
+     changing terminal rows, columns, cursor placement, or the visible IME
+     composition view. Root specificity beats xterm's inherited font size. */
+  :is(#root, body) .xterm .xterm-helper-textarea {
     font-size: var(--fs-16);
   }
 }
