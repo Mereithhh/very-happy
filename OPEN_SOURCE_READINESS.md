@@ -2,7 +2,7 @@
 
 > Assessment date: 2026-08-24 (Asia/Singapore)
 > Candidate branch: `main`
-> Released Web source: `ba6a6a0731efa29f5261cfc5eadee54ebcff5221`
+> Released Web source: `6706fc8e78a2b043209c059aefae543701c847ef`
 > Released Server source: `5cf786e6bbbaaa76428c7480fba2789bbc2f23c7`
 > Production CLI: `very-happy-cli@0.2.61` (`v0.2.61`)
 > Decision: **NOT READY to change repository visibility yet**
@@ -55,7 +55,13 @@ public until the procedure below is complete.
   shares the acronym, and do not imply provider parity.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
   architecture/data flow, integrations/automation, security/privacy, accounts/quotas,
-  upgrades/rollback, troubleshooting, and contributing.
+  upgrades/rollback, troubleshooting, contributing, and a platform-accurate keyboard/touch
+  reference.
+- Landing and Docs now demonstrate the production command-palette surface rather than a
+  marketing facsimile. The real Product Preview Search control and an explicit touch CTA open
+  a sanitized local palette for actions, chats, and terminals; Arrow navigation exposes a
+  complete combobox/listbox active-selection chain. Public pages deliberately do not hijack
+  the browser's global `Command/Ctrl+K`.
 - Public docs now share the landing's editorial Console system and the same interactive product
   proof, group the guide set by user intent, provide desktop on-page navigation and an accessible
   mobile chapter menu.
@@ -115,11 +121,11 @@ the exact-SHA clean Actions checkout:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 103 test files / 1,452 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 103 test files / 1,453 tests; Vite production build; TypeScript 0 errors |
 | CLI | 122 test files / 1,209 tests locally; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.61 |
 | Server | 53 test files / 387 tests; TypeScript 0 errors |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final Quality Gates `32728718900` passed for exact deployed Web source `ba6a6a07`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
+| CI | Final Quality Gates `32733166641` passed for exact deployed Web source `6706fc8e`; Server Quality Gates `32725836378` passed for source `5cf786e6`; tag CLI smoke `32724248408` passed on Linux and mac-office Node 20/24 at CLI tag source `86e56c8e`; setup/action pins resolve to immutable commits |
 | Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -151,7 +157,7 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
-- production landing and all 12 documentation chapters render with no horizontal overflow;
+- production landing and all 13 documentation chapters render with no horizontal overflow;
 - the redesigned production landing and docs were rechecked at 390x844 and 1440px in light
   and dark themes; the current UI no longer exposes marketing scene tabs, and its sidebar,
   conversation, terminal, files, and board controls complete the preview flow;
@@ -210,6 +216,13 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   overflow. At 390x844, the Claude-credential docs anchor rendered without overflow and login
   inputs computed to 16 px. The exact deployed asset was
   `/assets/index-DqO_Dc10-202608241151.js`; console error output was empty.
+- after the keyboard-first workflow release, production `/welcome` at 390x844 exposed the
+  production-style palette as a 16 px combobox with zero page overflow. The explicit Try CTA
+  focused it; ArrowDown moved `aria-activedescendant` and the sole `aria-selected` option from
+  New terminal to New chat; an anonymous `Command+K` remained unprevented and did not steal
+  focus. At 1440x1000, the authentic Product Preview Search control summoned and focused the
+  same surface. `/docs/keyboard` rendered its Windows/Linux input boundary without overflow,
+  and both routes produced zero console errors or warnings.
 
 ### Independent review
 
@@ -282,6 +295,12 @@ reviews. Security ended at **P0=0, P1=0, P2=0**. UX found one P2—non-modal beh
 dialog semantics and no focus policy—which was fixed by switching to a polite region and
 deferring while an editable control is active; the freeze rereview ended at
 **P0=0, P1=0, P2=0**.
+
+The keyboard-first workflow follow-up received independent public-security/code and
+first-user/UX/mobile reviews. They found and closed anonymous global-key interception,
+screen-reader active-selection gaps, over-broad IME and Windows/Linux `Ctrl+N` claims, and
+decorative misuse of the live/focus accent token. Both freeze rereviews rebuilt or exercised
+the public surface and ended at **P0=0, P1=0, P2=0**.
 
 ## Release and production state
 
@@ -416,6 +435,13 @@ deferring while an editable control is active; the freeze rereview ended at
   the install region appeared, floating Hero nodes were zero, editable controls remained 16 px,
   and horizontal overflow remained zero. The atomic Web rollback is the preceding
   `86e56c8e` Web deployment in `/opt/happy/webapp.prev`.
+- The keyboard-first workflow and formal keyboard/touch guide shipped Web-only from
+  `6706fc8e78a2b043209c059aefae543701c847ef`. Exact-SHA Quality Gates run
+  `32733166641` and deploy run `32733390947` passed, producing
+  `/assets/index-DOk__bqF-202608241333.js`. Health, JavaScript/CSS MIME, desktop Product
+  Preview Search, 390x844 command-palette interaction and accessibility state, Docs boundary
+  copy, 16 px input sizing, zero overflow, and clean consoles passed. The atomic Web rollback
+  is the preceding `ba6a6a07` deployment in `/opt/happy/webapp.prev`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
