@@ -51,17 +51,18 @@ export async function enforceAccountWriteRate(options: {
     units?: number;
     envName: string;
     fallback: number;
-}): Promise<void> {
+}, client?: Pick<Prisma.TransactionClient, '$queryRawUnsafe' | '$executeRawUnsafe'>): Promise<void> {
     const units = options.units ?? 1;
     if (!Number.isSafeInteger(units) || units < 1) {
         throw new Error('Write-rate units must be a positive safe integer');
     }
     const max = configuredResourceLimit(options.envName, options.fallback);
     if (max === 0) return;
-    const allowed = await allowAuthRequest(
-        `resource-write:${options.resource}:${options.accountId}`,
-        { max, windowMs: 60_000, cost: units },
-    );
+    const key = `resource-write:${options.resource}:${options.accountId}`;
+    const limit = { max, windowMs: 60_000, cost: units };
+    const allowed = client
+        ? await allowAuthRequest(key, limit, client)
+        : await allowAuthRequest(key, limit);
     if (!allowed) throw new AccountResourceLimitError(options.resource, 'rate');
 }
 
@@ -82,10 +83,9 @@ export function assertAccountResourceQuota(options: {
 }
 
 /**
- * Atomically reserve stored-message quota and allocate the matching account
- * update sequence range. The counters are backfilled by migration and avoid a
- * full account message scan under the account row lock on every write.
- * Caller must keep this reservation and the message inserts in one transaction.
+ * Check stored-message quota and allocate the matching account update sequence
+ * range. A database trigger maintains the counters for both current and older
+ * server binaries; caller holds the Account row lock for this transaction.
  */
 export async function reserveAccountMessages(
     tx: Prisma.TransactionClient,
@@ -97,9 +97,7 @@ export async function reserveAccountMessages(
     const bytesLimit = configuredResourceLimit('MAX_MESSAGE_BYTES_PER_ACCOUNT', 512 * 1024 * 1024);
     const rows = await tx.$queryRawUnsafe<Array<{ seq: number }>>(
         `UPDATE "Account"
-         SET "messageCount" = "messageCount" + $2::bigint,
-             "messageBytes" = "messageBytes" + $3::bigint,
-             "seq" = "seq" + $2::integer
+         SET "seq" = "seq" + $2::integer
          WHERE "id" = $1
            AND ($4::bigint = 0 OR "messageCount" + $2::bigint <= $4::bigint)
            AND ($5::bigint = 0 OR "messageBytes" + $3::bigint <= $5::bigint)
@@ -134,24 +132,6 @@ export async function reserveAccountMessages(
         },
     });
     throw new Error('Message quota reservation failed');
-}
-
-/** Release exact stored-message counters when a session is permanently deleted. */
-export async function releaseAccountMessages(
-    tx: Prisma.TransactionClient,
-    accountId: string,
-    removed: { count: number; bytes: number },
-): Promise<void> {
-    if (removed.count === 0 && removed.bytes === 0) return;
-    await tx.$queryRawUnsafe(
-        `UPDATE "Account"
-         SET "messageCount" = GREATEST(0, "messageCount" - $2::bigint),
-             "messageBytes" = GREATEST(0, "messageBytes" - $3::bigint)
-         WHERE "id" = $1`,
-        accountId,
-        removed.count,
-        BigInt(removed.bytes),
-    );
 }
 
 export function withinByteQuota(currentBytes: number, incomingBytes: number, limitBytes: number): boolean {

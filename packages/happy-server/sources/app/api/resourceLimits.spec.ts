@@ -4,7 +4,6 @@ import {
     assertAccountResourceQuota,
     configuredResourceLimit,
     lockAccountResources,
-    releaseAccountMessages,
     reserveAccountMessages,
     withinByteQuota,
 } from './resourceLimits';
@@ -38,19 +37,9 @@ describe('configurable resource limits', () => {
         expect(seqs).toEqual([40, 41, 42]);
         const sql = query.mock.calls[0][0] as string;
         expect(sql).toContain('UPDATE "Account"');
-        expect(sql).toContain('"messageCount" = "messageCount" +');
+        expect(sql).toContain('SET "seq" = "seq" +');
         expect(sql).toContain('RETURNING "seq"');
         expect(sql).not.toContain('FROM "SessionMessage"');
-    });
-
-    it('releases exact message counters without allowing negative drift', async () => {
-        const query = vi.fn(async (..._args: any[]) => []);
-        await releaseAccountMessages({ $queryRawUnsafe: query } as any, 'account-1', {
-            count: 2,
-            bytes: 512,
-        });
-        expect(query.mock.calls[0][0]).toContain('GREATEST(0, "messageCount" -');
-        expect(query.mock.calls[0][0]).toContain('GREATEST(0, "messageBytes" -');
     });
 
     it('fails closed when the account row does not exist', async () => {

@@ -41,7 +41,9 @@ export async function allowAuthRequest(
     );
 
     // Opportunistic bounded cleanup; correctness never depends on it.
-    if (nowMs >= nextCleanupAt) {
+    // Interactive transaction clients (notably PGlite's single connection)
+    // must not start an unawaited second query on the same transaction.
+    if (client === db && nowMs >= nextCleanupAt) {
         nextCleanupAt = nowMs + 60_000;
         void client.$executeRawUnsafe(
             'DELETE FROM "AuthRateLimitBucket" WHERE "resetAt" <= $1',

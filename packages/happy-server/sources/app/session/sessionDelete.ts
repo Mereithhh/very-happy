@@ -5,7 +5,6 @@ import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { log } from "@/utils/log";
 import { deleteSessionAttachments } from "@/storage/files";
-import { releaseAccountMessages } from "@/app/api/resourceLimits";
 
 /**
  * Delete a session and all its related data.
@@ -42,19 +41,10 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
         // Delete all related data
         // Note: Order matters to avoid foreign key constraint violations
         
-        // 1. Delete session messages and release their exact account counters.
-        const messageTotals = await tx.$queryRawUnsafe<Array<{ count: bigint; bytes: bigint }>>(
-            `SELECT COUNT(*)::bigint AS "count",
-                    COALESCE(SUM(octet_length("content"->>'c')), 0)::bigint AS "bytes"
-             FROM "SessionMessage" WHERE "sessionId" = $1`,
-            sessionId,
-        );
+        // 1. Delete session messages. The database trigger releases the exact
+        // account counters, including when an older server binary is running.
         const deletedMessages = await tx.sessionMessage.deleteMany({
             where: { sessionId }
-        });
-        await releaseAccountMessages(tx, ctx.uid, {
-            count: Number(messageTotals[0]?.count ?? 0),
-            bytes: Number(messageTotals[0]?.bytes ?? 0),
         });
         log({ 
             module: 'session-delete', 

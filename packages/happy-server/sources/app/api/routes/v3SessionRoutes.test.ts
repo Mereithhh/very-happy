@@ -179,6 +179,11 @@ const {
         };
         state.nextMessageId += 1;
         state.messages.push(row);
+        const accountId = state.sessions.find((session) => session.id === row.sessionId)?.accountId;
+        if (accountId) {
+            state.messageCountByAccount.set(accountId, (state.messageCountByAccount.get(accountId) ?? 0) + 1);
+            state.messageBytesByAccount.set(accountId, (state.messageBytesByAccount.get(accountId) ?? 0) + Buffer.byteLength(String((row.content as any)?.c ?? ''), 'utf8'));
+        }
         return selectFields(row as unknown as Record<string, unknown>, args?.select);
     });
 
@@ -196,7 +201,7 @@ const {
             const session = state.sessions.find((item) => item.id === String(args[0]) && item.accountId === String(args[1]));
             return session ? [{ id: session.id }] : [];
         }
-        if (sql.includes('UPDATE "Account"') && sql.includes('"messageCount" = "messageCount" +')) {
+        if (sql.includes('UPDATE "Account"') && sql.includes('SET "seq" = "seq" +')) {
             const accountId = String(args[0]);
             const incomingCount = Number(args[1]);
             const incomingBytes = Number(args[2]);
@@ -205,8 +210,6 @@ const {
             const nextCount = (state.messageCountByAccount.get(accountId) ?? 0) + incomingCount;
             const nextBytes = (state.messageBytesByAccount.get(accountId) ?? 0) + incomingBytes;
             if ((countLimit > 0 && nextCount > countLimit) || (bytesLimit > 0 && nextBytes > bytesLimit)) return [];
-            state.messageCountByAccount.set(accountId, nextCount);
-            state.messageBytesByAccount.set(accountId, nextBytes);
             const seq = (state.accountSeqById.get(accountId) ?? 0) + incomingCount;
             state.accountSeqById.set(accountId, seq);
             return [{ seq }];

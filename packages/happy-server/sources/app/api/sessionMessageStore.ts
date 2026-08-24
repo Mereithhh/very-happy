@@ -1,4 +1,4 @@
-import { enforceAccountWriteRate, reserveAccountMessages } from '@/app/api/resourceLimits';
+import { enforceAccountWriteRate, lockAccountResources, reserveAccountMessages } from '@/app/api/resourceLimits';
 import { utf8StringSchema } from '@/app/api/resourceSchemas';
 import { db } from '@/storage/db';
 import { inTx } from '@/storage/inTx';
@@ -54,9 +54,10 @@ export async function storeSessionMessages(options: {
     const uniqueMessages = [...firstByLocalId.values(), ...messagesWithoutLocalId];
 
     return inTx(async (tx) => {
-        // Serialize idempotency and sequence allocation only within this
-        // session. Cross-session writes stay concurrent; the account quota is
-        // reserved later with one conditional atomic UPDATE.
+        // Use the repository-wide Account → child-row lock order. The Account
+        // lock is O(1): quota reads counters maintained by a database trigger,
+        // never an aggregate scan of the account's message history.
+        await lockAccountResources(tx, options.accountId);
         await tx.$queryRawUnsafe(
             `SELECT "id" FROM "Session"
              WHERE "id" = $1 AND "accountId" = $2
@@ -84,7 +85,7 @@ export async function storeSessionMessages(options: {
                 units: newMessages.length,
                 envName: 'MAX_MESSAGES_PER_ACCOUNT_PER_MINUTE',
                 fallback: 600,
-            });
+            }, tx);
         }
         const encoded = newMessages.map((message) => ({
             input: message,
