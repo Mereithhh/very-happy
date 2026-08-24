@@ -1,8 +1,9 @@
 # Open-source readiness
 
-> Assessment date: 2026-08-24 (Asia/Singapore)  
-> Candidate branch: `main`  
-> Production CLI: `very-happy-cli@0.2.58` (`v0.2.58`)
+> Assessment date: 2026-08-24 (Asia/Singapore)
+> Candidate branch: `main`
+> Released product source: `8b1e202ac05f14d0a1c02e555a0327d4bc805257`
+> Production CLI: `very-happy-cli@0.2.59` (`v0.2.59`)
 > Decision: **NOT READY to change repository visibility yet**
 
 The application and deployment candidate are ready for Owner acceptance. There are no
@@ -19,6 +20,10 @@ public until the procedure below is complete.
   privacy-safe product proof uses the authenticated app's production component style contracts
   for the session sidebar, terminal, file browser, structured conversation, and board,
   with sanitized fixture data and no auth/sync/socket imports in the anonymous bundle.
+- Core claims now have matching interactive product surfaces: a production-style Claude
+  meta-agent/optional-voice view and the current machine/path/agent launcher for Claude, Codex,
+  Gemini (ACP beta), and OpenClaw. The demos are explicitly local and disconnected; Pi,
+  automatic cross-provider routing, and the virtual office remain labelled roadmap.
 - Public positioning now owns a broader agent-workspace category: “Work anywhere. Keep the
   thread.” It distinguishes current Claude/Codex/ACP capabilities from Pi/provider-gateway
   roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
@@ -60,20 +65,24 @@ public until the procedure below is complete.
   from the current tree.
 - The production updater now resolves an exact registry version, allowlists only the
   reviewed CLI/node-pty install hooks, verifies the installed version, then restarts.
+- Optional terminal-mirror installation is documented consistently across landing, docs,
+  README, and CLI help. Installation/removal preserves foreign Claude hooks even when another
+  tool shares the same matcher entry; mixed-entry install/remove regressions are covered.
 
 ## Verification evidence
 
 ### Clean checkout and package gates
 
-A no-hardlink clone with `pnpm install --frozen-lockfile` completed successfully. On the
-candidate source, the required gates passed:
+A no-hardlink clone and a second detached worktree at the final source SHA both completed
+`pnpm install --frozen-lockfile`. The latter started without workspace build outputs and ran
+wire build plus the full affected-package gates and isolated CLI runtime smoke:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 98 test files / 1,409 tests; Vite production build; TypeScript 0 errors |
-| CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
+| Web V2 | 98 test files / 1,411 tests; Vite production build; TypeScript 0 errors |
+| CLI | 106 test files / 1,150 tests; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.59 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
-| CI | Quality Gates run `32664535539` passed for workspace source `212665e6`; setup/action pins resolve to real immutable commits |
+| CI | Quality Gates `32690257874` and Linux CLI smoke `32690257926` passed for exact source `8b1e202a`; setup/action pins resolve to immutable commits |
 | Dependencies | production audit: 0 critical/high; 28 moderate and 9 low advisories remain |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
@@ -121,6 +130,12 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   1440x1000 and 390x844: the real shared terminal/file product surface starts inside the first
   viewport, its two preview instances have unique ARIA IDs and local keyboard focus, mobile file
   overlay stays contained, landing/docs have zero horizontal overflow, and the console is clean.
+- after the `8b1e202a` deploy, a fresh service-worker-cleared production profile re-ran the
+  complete public proof in light and dark themes: terminal + real file preview, structured
+  Claude mirror and local-only input, three-column task board, voice meta-agent, and agent
+  launcher all responded. At 390x844 every visible input/select/textarea computed to 16 px,
+  the full-screen file layer took first focus and hid the underlying terminal from the AX tree,
+  landing/docs stayed at `scrollWidth === innerWidth`, and no console errors were recorded.
 
 ### Independent review
 
@@ -154,6 +169,14 @@ first-user/UI passes. They closed misleading static-live labels, excessive decor
 incomplete reduced-motion hover handling, late product evidence, duplicate preview IDs/focus
 scope, and nested landmarks. Both rereviews ended at P0=0, P1=0, P2=0; anonymous routes still
 exclude auth/sync/crypto/xterm runtime code and the ACP beta claims match the shipped SDK/routes.
+
+The final core-feature proof received another independent UX/browser/accessibility pass and a
+separate public-change/security pass. They found and closed the mobile cold-overlay focus leak,
+IME re-entry gap, voice/PTT timing and semantics issues, duplicate IDs, inaccurate OpenClaw/ACP
+wording, and a mixed Claude-hook matcher case that could delete another tool's command. Both
+final rereviews signed **P0=0, P1=0, P2=0**. The security pass also rebuilt the anonymous
+dependency closure and confirmed it excludes AppRoot, crypto, xterm, auth, sync, socket, RPC,
+media capture, internal hosts, and secret needles.
 
 ## Release and production state
 
@@ -191,6 +214,12 @@ exclude auth/sync/crypto/xterm runtime code and the ACP beta claims match the sh
   Gates run `32685426507` passed. Post-deploy health returned OK and the new entry asset
   `/assets/index-D8V1cLwX-202608240312.js` served as JavaScript; isolated desktop/mobile browser
   acceptance and the real preview interactions passed without console errors.
+- The final authentic core-feature surfaces, mobile overlay/focus fixes, terminal-mirror truth,
+  and foreign-hook preservation shipped from SHA
+  `8b1e202ac05f14d0a1c02e555a0327d4bc805257`. Exact-SHA Quality Gates run `32690257874`
+  and main Linux CLI smoke run `32690257926` passed; Web-only deploy run `32690431876`
+  produced `/assets/index-DzMe0JXM-202608240433.js`. Post-deploy health/MIME checks and fresh
+  1440x1000 plus 390x844 browser acceptance passed.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
@@ -201,16 +230,18 @@ exclude auth/sync/crypto/xterm runtime code and the ACP beta claims match the sh
 - The corrected main workflow subsequently passed its normal Linux CLI smoke in run
   `32661785753`; the Windows hosted matrix remains the explicitly listed external limitation.
 - mac-office was restarted immediately after the server deploy, then upgraded again. The
-  later public-positioning release published `very-happy-cli@0.2.58` from tag `v0.2.58`
-  (publish run `32663659805`; Linux Node 20/24 and mac-office Node 20/24 smoke run
-  `32663659807`). The running daemon reports **0.2.58**.
+  final release published `very-happy-cli@0.2.59` from tag `v0.2.59` (publish run
+  `32690525269`; Linux Node 20/24 and mac-office Node 20/24 smoke run `32690525236`). A
+  separate registry install into an isolated prefix/HOME passed version and non-mutating hook
+  help smoke. `vh-update` completed and the running daemon reports **0.2.59** with a current
+  heartbeat. Rollback remains `very-happy-cli@0.2.58`.
 - Production auth capacity at verification time: open signup, maximum 100 accounts,
   6 registered, 94 remaining.
 
 ## Blocking historical findings
 
-A final current-tree `git archive HEAD` scan covered 16.29 MB and returned **0 findings**.
-A full-history scan covered 2,542 commits / about 33.85 MB and returned **45 findings** across
+A final current-tree `git archive HEAD` scan processed 16.36 MB and returned **0 findings**.
+A full-history scan covered 2,551 commits / about 34.10 MB and returned **45 findings** across
 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT detections.
 
 The most serious object is a deleted upstream real-session JSONL containing tokens and user
@@ -274,10 +305,13 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   Windows matrix once hosted capacity is available or after the repository becomes public.
 - GitHub emits Node 20 action-runtime deprecation warnings; pinned actions currently run under
   the runner's Node 24 compatibility mode and complete successfully.
+- Most public-UI unit regressions are source/contract tests rather than a permanent browser CI
+  suite. This release compensates with independent real-browser desktop/mobile acceptance;
+  converting those checks into maintained browser CI is a P3 follow-up.
 
 ## Final decision
 
 **NOT READY for public visibility solely because the Owner-only Git history cleanup and
 credential/session response have not been executed.** The current source tree, product flow,
 documentation, self-host distribution, deployed service, and CLI release are otherwise an
-open-source release candidate with no known in-scope P0/P1.
+open-source release candidate with no known in-scope P0/P1/P2.
