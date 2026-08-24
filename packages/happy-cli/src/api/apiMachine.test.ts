@@ -145,4 +145,27 @@ describe('ApiMachineClient socket reconnection', () => {
 
         client.shutdown();
     });
+
+    it('binds E2EE daemon sockets to the persisted device identity', () => {
+        const client = new ApiMachineClient('device-token', makeMachine(), {
+            cryptoMode: 'e2ee-v1',
+            e2eeProtocol: 'vh-e2ee-1',
+            deviceId: 'daemon-device-1',
+            cryptoEpoch: 7,
+        });
+        client.connect();
+
+        expect(mockIo).toHaveBeenCalledWith('ws://127.0.0.1:3005', expect.objectContaining({
+            auth: expect.objectContaining({
+                token: 'device-token',
+                clientType: 'machine-scoped',
+                machineId: 'test-machine-id',
+                cryptoMode: 'e2ee-v1',
+                e2eeProtocol: 'vh-e2ee-1',
+                deviceId: 'daemon-device-1',
+                cryptoEpoch: 7,
+            }),
+        }));
+        client.shutdown();
+    });
 });

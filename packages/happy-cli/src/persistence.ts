@@ -265,8 +265,20 @@ const credentialsSchema = z.object({
   secret: z.string().base64().nullish(), // Legacy
   encryption: z.object({
     publicKey: z.string().base64(),
-    machineKey: z.string().base64()
+    machineKey: z.string().base64(),
+    type: z.literal('e2ee-v1').optional(),
+    accountId: z.string().min(1).optional(),
+    deviceId: z.string().min(1).optional(),
+    cryptoEpoch: z.number().int().min(1).max(0x7fff_ffff).optional(),
+    e2eeProtocol: z.literal('vh-e2ee-1').optional(),
   }).nullish()
+}).superRefine((value, context) => {
+  if (value.encryption?.type !== 'e2ee-v1') return;
+  for (const field of ['accountId', 'deviceId', 'cryptoEpoch', 'e2eeProtocol'] as const) {
+    if (value.encryption[field] === undefined) {
+      context.addIssue({ code: 'custom', path: ['encryption', field], message: `E2EE credential requires ${field}` });
+    }
+  }
 })
 
 export type Credentials = {
@@ -277,6 +289,14 @@ export type Credentials = {
     type: 'legacy', secret: Uint8Array
   } | {
     type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array
+  } | {
+    type: 'e2ee-v1',
+    publicKey: Uint8Array,
+    machineKey: Uint8Array,
+    accountId: string,
+    deviceId: string,
+    cryptoEpoch: number,
+    e2eeProtocol: 'vh-e2ee-1',
   }
 }
 
@@ -297,6 +317,21 @@ export async function readCredentials(): Promise<Credentials | null> {
         }
       };
     } else if (credentials.encryption) {
+      if (credentials.encryption.type === 'e2ee-v1') {
+        return {
+          token: credentials.token,
+          authServerUrl: credentials.authServerUrl,
+          encryption: {
+            type: 'e2ee-v1',
+            publicKey: new Uint8Array(Buffer.from(credentials.encryption.publicKey, 'base64')),
+            machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64')),
+            accountId: credentials.encryption.accountId!,
+            deviceId: credentials.encryption.deviceId!,
+            cryptoEpoch: credentials.encryption.cryptoEpoch!,
+            e2eeProtocol: credentials.encryption.e2eeProtocol!,
+          }
+        };
+      }
       return {
         token: credentials.token,
         authServerUrl: credentials.authServerUrl,
@@ -342,6 +377,39 @@ export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Arr
     encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
     token: credentials.token,
     authServerUrl: configuration.serverUrl
+  }, null, 2));
+}
+
+export async function writeCredentialsE2ee(credentials: {
+  publicKey: Uint8Array;
+  machineKey: Uint8Array;
+  token: string;
+  accountId: string;
+  deviceId: string;
+  cryptoEpoch: number;
+}): Promise<void> {
+  if (credentials.publicKey.byteLength !== 32 || credentials.machineKey.byteLength !== 32) {
+    throw new Error('E2EE publicKey and machineKey must be exactly 32 bytes');
+  }
+  if (!credentials.accountId || !credentials.deviceId
+    || !Number.isInteger(credentials.cryptoEpoch)
+    || credentials.cryptoEpoch < 1
+    || credentials.cryptoEpoch > 0x7fff_ffff) {
+    throw new Error('Invalid E2EE credential context');
+  }
+  await ensurePrivateDirectory(configuration.happyHomeDir)
+  await writePrivateFile(configuration.privateKeyFile, JSON.stringify({
+    encryption: {
+      type: 'e2ee-v1',
+      publicKey: encodeBase64(credentials.publicKey),
+      machineKey: encodeBase64(credentials.machineKey),
+      accountId: credentials.accountId,
+      deviceId: credentials.deviceId,
+      cryptoEpoch: credentials.cryptoEpoch,
+      e2eeProtocol: 'vh-e2ee-1',
+    },
+    token: credentials.token,
+    authServerUrl: configuration.serverUrl,
   }, null, 2));
 }
 
