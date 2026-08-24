@@ -206,11 +206,21 @@ describe('public documentation registry', () => {
   it('keeps anonymous public routes outside the authenticated app bundle', () => {
     const main = readFileSync(new URL('../../main.tsx', import.meta.url), 'utf8');
     const publicRoot = readFileSync(new URL('../../app/PublicRoot.tsx', import.meta.url), 'utf8');
+    const appRoot = readFileSync(new URL('../../app/AppRoot.tsx', import.meta.url), 'utf8');
+    const publicShell = readFileSync(new URL('./PublicShell.tsx', import.meta.url), 'utf8');
+    const publicLegal = readFileSync(new URL('../legal/PublicLegalScreen.tsx', import.meta.url), 'utf8');
+    const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
     const vite = readFileSync(new URL('../../../vite.config.ts', import.meta.url), 'utf8');
     expect(main).not.toMatch(/^import .*AppRoot/m);
     expect(main).toContain("import('./app/PublicRoot.tsx')");
     expect(main).toContain("import('./app/AppRoot.tsx')");
     expect(main).toContain('auth_credentials');
+    expect(main).toContain('shouldUsePublicRoot(routePath, hasStoredCredentials)');
+    expect(publicRoot).toContain("path: '/welcome'");
+    expect(appRoot).toContain("path: '/welcome'");
+    expect(publicShell).toContain('to="/welcome"');
+    expect(publicLegal).toContain('className="legal-brand" to="/welcome"');
+    expect(readme).toContain('href="https://happy.mereith.com/welcome"');
     expect(publicRoot).not.toContain('AuthProvider');
     expect(publicRoot).not.toContain('@/sync/');
     expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js']");

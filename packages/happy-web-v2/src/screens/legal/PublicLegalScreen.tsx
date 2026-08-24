@@ -50,7 +50,7 @@ function LegalPage({ title, children }: { title: string; children: React.ReactNo
   return (
     <main className="legal-page">
       <article className="legal-card">
-        <a className="legal-brand" href={`${import.meta.env.BASE_URL}login`}><CyberMark size={32} /><span>very happy</span></a>
+        <Link className="legal-brand" to="/welcome"><CyberMark size={32} /><span>very happy</span></Link>
         <h1>{title}</h1>
         {children}
         <footer><Link to="/privacy">Privacy</Link><span>·</span><Link to="/terms">Terms</Link><span>·</span><a href="https://github.com/Mereithhh/very-happy">Source</a></footer>

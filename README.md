@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://happy.mereith.com">Try Very Happy Cloud</a> ·
+  <a href="https://happy.mereith.com/welcome">Explore Very Happy</a> ·
   <a href="docs/getting-started.md">Quick start</a> ·
   <a href="docs/README.md">Documentation</a> ·
   <a href="docs/deployment.md">Self-host</a>

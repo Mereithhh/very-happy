@@ -11,6 +11,7 @@ import './styles/base.css';
 
 import { installStaleBundleReload } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
+import { shouldUsePublicRoot } from './app/rootSelection.ts';
 
 // Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
 // so a client still running the previous shell hits "Failed to fetch
@@ -32,13 +33,12 @@ installStaleBundleReload();
 const root = document.getElementById('root');
 if (!root) throw new Error('#root not found');
 
-const PUBLIC_PATH = /^\/(?:$|docs(?:\/|$)|privacy\/?$|terms\/?$)/;
 const hasStoredCredentials = Boolean(localStorage.getItem('auth_credentials'));
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const routePath = basePath && window.location.pathname.startsWith(basePath)
   ? window.location.pathname.slice(basePath.length) || '/'
   : window.location.pathname;
-const usePublicRoot = !hasStoredCredentials && PUBLIC_PATH.test(routePath);
+const usePublicRoot = shouldUsePublicRoot(routePath, hasStoredCredentials);
 
 // This boundary is the anonymous performance contract: public visitors never
 // import account crypto, sync, realtime, or the authenticated application shell.

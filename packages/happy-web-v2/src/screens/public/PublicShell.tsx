@@ -6,7 +6,7 @@ import './public.css';
 export function PublicHeader() {
   return (
     <><a className="pub-skip" href="#main-content">Skip to content</a><header className="pub-header">
-      <Link className="pub-brand" to="/" aria-label="Very Happy home">
+      <Link className="pub-brand" to="/welcome" aria-label="Very Happy home">
         <CyberMark size={28} />
         <span>very happy</span>
       </Link>

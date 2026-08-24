@@ -1,10 +1,10 @@
 /**
  * Lightweight anonymous shell.
  *
- * Fresh visitors to `/`, docs, and legal pages must not pay for account crypto,
- * sync, realtime, or the authenticated application. main.tsx chooses this root
- * only when no stored credentials exist and the pathname is public. Auth links
- * intentionally use normal navigation so the next load selects AppRoot.
+ * Visitors to `/welcome` — including returning users with stored credentials —
+ * and fresh visitors to `/`, docs, and legal pages must not pay for account
+ * crypto, sync, realtime, or the authenticated application. Auth links use
+ * normal navigation so the next load selects AppRoot.
  */
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { LandingScreen } from '@/screens/public/LandingScreen';
@@ -15,6 +15,7 @@ import { ThemeProvider } from '@/ui/theme';
 const publicRouter = createBrowserRouter(
   [
     { path: '/', element: <LandingScreen /> },
+    { path: '/welcome', element: <LandingScreen /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },
     { path: '/privacy', element: <PrivacyScreen /> },

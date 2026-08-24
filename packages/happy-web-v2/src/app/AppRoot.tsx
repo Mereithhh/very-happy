@@ -125,6 +125,7 @@ const router = createBrowserRouter(
     },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
+    { path: '/welcome', element: <LandingScreen /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },
     {
