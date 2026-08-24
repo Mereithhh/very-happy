@@ -23,6 +23,10 @@ public until the procedure below is complete.
   thread.” It distinguishes current Claude/Codex/ACP capabilities from Pi/provider-gateway
   roadmap and the long-term virtual-office concept, and states the Claude/voice prerequisites
   for the optional meta-agent.
+- ACP is now described at its implemented boundary: a beta Agent Client Protocol backend using
+  the official SDK, Gemini/OpenCode presets, and a generic compatible stdio runner. Public docs
+  explicitly distinguish it from the unrelated historical Agent Communication Protocol that
+  shares the acronym, and do not imply provider parity.
 - Public Web docs cover quick start, CLI/daemon, Cloud, self-hosting, configuration,
   architecture/data flow, integrations/automation, security/privacy, accounts/quotas,
   upgrades/rollback, troubleshooting, and contributing.
@@ -66,7 +70,7 @@ candidate source, the required gates passed:
 
 | Surface | Evidence |
 |---|---|
-| Web V2 | 98 test files / 1,406 tests; Vite production build; TypeScript 0 errors |
+| Web V2 | 98 test files / 1,409 tests; Vite production build; TypeScript 0 errors |
 | CLI | 105 test files / 1,145 tests; build; isolated `HAPPY_HOME_DIR`; runtime reports 0.2.57 |
 | Server | 34 test files / 281 tests; TypeScript 0 errors |
 | CI | Quality Gates run `32664535539` passed for workspace source `212665e6`; setup/action pins resolve to real immutable commits |
@@ -113,6 +117,10 @@ Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
   overflow on landing/docs/quickstart, three product tabs, working return-to-terminal, no
   AppRoot/crypto fetch, stable docs focus styling, and the mobile signup route. The existing
   authenticated production browser still resolved `/` to the app rather than the public hero.
+- the final animated hero was verified again in a service-worker-cleared production profile at
+  1440x1000 and 390x844: the real shared terminal/file product surface starts inside the first
+  viewport, its two preview instances have unique ARIA IDs and local keyboard focus, mobile file
+  overlay stays contained, landing/docs have zero horizontal overflow, and the console is clean.
 
 ### Independent review
 
@@ -140,6 +148,12 @@ focus, target-size, and accent-discipline findings. The security/code pass found
 screenshots containing Owner/machine identifiers; all three were removed from the current tree,
 the replacement was confirmed synthetic and metadata-free, and every ARIA/control finding was
 fixed. Both passes ended with P0=0 and P1=0 for the current tree.
+
+The high-motion real-product hero and ACP calibration received final independent security and
+first-user/UI passes. They closed misleading static-live labels, excessive decorative loops,
+incomplete reduced-motion hover handling, late product evidence, duplicate preview IDs/focus
+scope, and nested landmarks. Both rereviews ended at P0=0, P1=0, P2=0; anonymous routes still
+exclude auth/sync/crypto/xterm runtime code and the ACP beta claims match the shipped SDK/routes.
 
 ## Release and production state
 
@@ -171,6 +185,12 @@ fixed. Both passes ended with P0=0 and P1=0 for the current tree.
   `/assets/index-BeqkYBBQ-202608240233.js`, all three views and return-to-terminal behavior,
   contained mobile file overlay, all three mobile board columns, landing/docs zero horizontal
   overflow at 390 px and 1440 px, and the server health endpoint.
+- The direct real-product Hero, branded background motion, polished docs surfaces, and ACP
+  wording correction were Web-only deployed from SHA
+  `8cf00c1c9abdefd0f6be9ce7a8fcc43af57657b0` by run `32685602020` after exact-SHA Quality
+  Gates run `32685426507` passed. Post-deploy health returned OK and the new entry asset
+  `/assets/index-D8V1cLwX-202608240312.js` served as JavaScript; isolated desktop/mobile browser
+  acceptance and the real preview interactions passed without console errors.
 - The deploy verified migration-before-serve, returned health 200 after both restarts, and
   served the versioned main asset as `application/javascript`.
 - The initial candidate CLI `v0.2.57` pointed at the server release source SHA and was
