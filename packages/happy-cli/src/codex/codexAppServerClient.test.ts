@@ -332,7 +332,11 @@ describe('CodexAppServerClient sandbox integration', () => {
         });
 
         const pendingTurn = client.sendTurnAndWait('hang forever', { turnTimeoutMs: 5000 });
-        await waitFor(() => firstProcessRequests.some((msg) => msg.method === 'turn/start'));
+        // The request reaching stdin is not enough: the mock answers on a
+        // timer. Under CI load, a 1ms forced restart can otherwise disconnect
+        // the still-pending turn/start RPC before task_started is processed,
+        // testing setup timing rather than the active-turn restart path.
+        await waitFor(() => client.turnId === 'turn-1');
 
         const abortResult = await client.abortTurnWithFallback({
             gracePeriodMs: 1,
