@@ -410,8 +410,9 @@ human has to hold.** See the [roadmap](docs/roadmap.md).
 - [Security policy](SECURITY.md)
 
 The production frontend is `packages/happy-web-v2`. The upstream Expo
-`packages/happy-app` remains only for history; it is excluded from the pnpm
-workspace and the supported Very Happy client/security scope.
+`packages/happy-app` source snapshot remains only for protocol archaeology; its
+package/Cargo manifests are retired, and it is excluded from the pnpm workspace
+and the supported Very Happy client/security scope.
 
 ## Attribution and license
 

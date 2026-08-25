@@ -31,10 +31,11 @@ Start with the path that matches what you are doing.
   and [encryption formats](encryption.md)
 - [Shared wire schemas](happy-wire.md)
 
-The production frontend is `packages/happy-web-v2`; `packages/happy-app` is an
-unsupported upstream Expo artifact and is intentionally excluded from the pnpm
-workspace and security support scope. Where old architecture notes disagree with
-current source, the package code and current specs win.
+The production frontend is `packages/happy-web-v2`; `packages/happy-app` is a
+non-installable upstream Expo source snapshot whose manifests are retired. It is
+intentionally excluded from the pnpm workspace and security support scope. Where
+old architecture notes disagree with current source, current package code and
+specs win.
 
 ## Maintainer internals
 

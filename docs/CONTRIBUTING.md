@@ -35,8 +35,9 @@ pnpm -C packages/happy-server standalone:dev
 VH_SERVER_URL=http://127.0.0.1:3005 pnpm -C packages/happy-web-v2 dev
 ```
 
-Do not use the legacy Expo `happy-app` as proof of the product Web path. See
-[development.md](development.md) for isolated CLI homes and package details.
+Do not restore or use the non-installable legacy Expo `happy-app` snapshot as
+proof of the product Web path. See [development.md](development.md) for isolated
+CLI homes and supported package details.
 
 ## Required gates
 
