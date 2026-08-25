@@ -36,7 +36,7 @@ import './appFonts';
 const SignupScreen = lazy(() => import('@/screens/auth/SignupScreen').then((m) => ({ default: m.SignupScreen })));
 const SessionDetailScreen = lazy(() => import('@/screens/session/SessionDetailScreen').then((m) => ({ default: m.SessionDetailScreen })));
 const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').then((m) => ({ default: m.SettingsRoutes })));
-const WebTerminalScreen = lazy(() => import('@/screens/terminal/WebTerminalScreen').then((m) => ({ default: m.WebTerminalScreen })));
+const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
@@ -136,6 +136,9 @@ const SidebarHarness = import.meta.env.DEV
 const OrbitLoaderHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/OrbitLoaderHarness').then((m) => ({ default: m.OrbitLoaderHarness })))
   : null;
+const MobileChatHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/MobileChatHarness').then((m) => ({ default: m.MobileChatHarness })))
+  : null;
 
 const router = createBrowserRouter(
   [
@@ -149,6 +152,9 @@ const router = createBrowserRouter(
       : []),
     ...(OrbitLoaderHarness
       ? [{ path: '/dev/orbit-loader', element: <Lazy><OrbitLoaderHarness /></Lazy> }]
+      : []),
+    ...(MobileChatHarness
+      ? [{ path: '/dev/mobile-chat', element: <Lazy><MobileChatHarness /></Lazy> }]
       : []),
     {
       path: '/login',
@@ -196,7 +202,7 @@ const router = createBrowserRouter(
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
-            { path: 'terminal/:machineId', element: <Lazy><WebTerminalScreen /></Lazy> },
+            { path: 'terminal/:machineId', element: <Lazy><WebTerminalRoute /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
             { path: 'settings/*', element: <Lazy><SettingsRoutes /></Lazy> },
           ],

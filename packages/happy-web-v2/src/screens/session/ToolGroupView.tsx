@@ -15,6 +15,8 @@ import { toolFilePathOf } from './toolFilePath';
 import { FilePathLink } from './FilePathLink';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
+import { useMediaQuery } from '@/app/useMediaQuery';
+import { toolRunSummary } from './toolRunSummary';
 import './toolgroup.css';
 
 type GroupState = 'running' | 'error' | 'mixed' | 'done';
@@ -28,9 +30,9 @@ function groupState(tools: ToolCallMessage[]): GroupState {
     return 'done';
 }
 
-function ToolRow({ message, single }: { message: ToolCallMessage; single: boolean }) {
+function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOpen: boolean }) {
     const tool = message.tool;
-    const [open, setOpen] = useState(single);
+    const [open, setOpen] = useState(defaultOpen);
     // 与 ToolView 同一手法（它也是 useParams），避免为了一个 id 改整条 props 链
     const { id: sessionId } = useParams();
     // B-145: 带文件路径的工具，头部的 detail 变成可点——点开预览而不是折叠这一行
@@ -39,6 +41,12 @@ function ToolRow({ message, single }: { message: ToolCallMessage; single: boolea
         tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
     const label = toolLabel(tool);
     const detail = toolDetail(tool);
+    // A live or failed operation must surface itself even when the mobile
+    // overview initially collapsed this row. Completed rows never auto-close:
+    // content the user was watching must not disappear under their finger.
+    useEffect(() => {
+        if (tool.state === 'running' || tool.state === 'error') setOpen(true);
+    }, [tool.state]);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
@@ -64,6 +72,7 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
     const { t } = useTranslation();
     const state = groupState(tools);
     const running = state === 'running';
+    const compact = useMediaQuery('(max-width: 860px)');
     // collapsed by default once done; open while running.
     const [expanded, setExpanded] = useState(running || tools.length === 1);
 
@@ -83,7 +92,10 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
             <div className={`tg tg--${state}`}>
                 <div className="tg-spine" aria-hidden />
                 <div className="tg-content">
-                    <ToolRow message={tools[0]} single />
+                    <ToolRow
+                        message={tools[0]}
+                        defaultOpen={!compact || running || state === 'error'}
+                    />
                 </div>
             </div>
         );
@@ -101,6 +113,9 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                 >
                     <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
                     <span className="tg-summary">{t('session.chat.usedTools', { count: tools.length })}</span>
+                    <span className="tg-run-summary" title={toolRunSummary(tools.map((m) => m.tool))}>
+                        {toolRunSummary(tools.map((m) => m.tool))}
+                    </span>
                     {running ? (
                         <span className="tg-elapsed tg-elapsed--live">
                             <StatusDot status="thinking" size={7} pulse />
@@ -116,7 +131,11 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                 {expanded && (
                     <div className="tg-rows">
                         {tools.map((m) => (
-                            <ToolRow key={m.id} message={m} single={false} />
+                            <ToolRow
+                                key={m.id}
+                                message={m}
+                                defaultOpen={m.tool.state === 'running' || m.tool.state === 'error'}
+                            />
                         ))}
                     </div>
                 )}

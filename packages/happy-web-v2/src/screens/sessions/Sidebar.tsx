@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, RotateCcw } from 'lucide-react';
-import { useSessions, useSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
+import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
@@ -45,10 +45,11 @@ import {
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
+import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import './sidebar.css';
 
 function rowHref(r: Row): string {
-  return r.kind === 'terminal' ? `/terminal/${r.machineId}?tid=${r.terminalId}` : `/session/${r.session!.id}`;
+  return r.href;
 }
 
 /** 列表 (manual order) / 状态 (lifecycle groups) / 归档 — see the filter row. */
@@ -57,6 +58,8 @@ type View = 'list' | 'status' | 'archived';
 interface Row {
   key: string;
   kind: 'terminal' | 'session';
+  /** Resolved before click so a mirrored terminal never paints xterm first. */
+  href: string;
   /** last-active time — the recent sort's key (both the 列表 view's recent
    *  mode and the 状态 view's in-group order). Definition per row kind lives
    *  in sidebarRecentSort.ts's header; in short: chat = updatedAt||activeAt||
@@ -79,6 +82,7 @@ function sessionRow(s: Session): Row {
   return {
     key: s.id,
     kind: 'session',
+    href: `/session/${encodeURIComponent(s.id)}`,
     ts: s.updatedAt || s.activeAt || s.createdAt,
     createdAt: s.createdAt,
     session: s,
@@ -112,6 +116,8 @@ export function Sidebar() {
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
+  const terminalViewDefault = useLocalSetting('terminalViewDefault');
+  const terminalViewOverrides = useLocalSetting('terminalViewOverrides');
   const toggleCollapsed = useSidebarPrefs((s) => s.toggleCollapsed);
   const isDesktop = useIsDesktop();
 
@@ -195,6 +201,13 @@ export function Sidebar() {
         : terminals.map((tm) => ({
             key: `t:${tm.id}`,
             kind: 'terminal',
+            href: resolveTerminalOpenPath({
+              machineId: tm.machineId,
+              terminalId: tm.id,
+              mirrorSessionId: tm.mirrorSessionId,
+              defaultView: terminalViewDefault,
+              overrides: terminalViewOverrides,
+            }),
             // tmux last activity (daemon push: MachineTerminal.activityAt,
             // already mapped onto updatedAt by terminalPushOps with a
             // createdAt fallback for daemons too old to send it).
@@ -214,7 +227,7 @@ export function Sidebar() {
       const ts = resolveActivityTs(r.ts, r.key, localActivity, remoteActivity);
       return ts === r.ts ? r : { ...r, ts };
     });
-  }, [sessions, terminals, view, localActivity, remoteActivity]);
+  }, [sessions, terminals, view, localActivity, remoteActivity, terminalViewDefault, terminalViewOverrides]);
 
   // ----- reorder hold (mis-click guard) -----
   // An auto-sorted list must never yank a row out from under the pointer: the
@@ -1130,17 +1143,19 @@ function SidebarRow({
   onRenameRequest: () => void;
 }) {
   const navigate = useNavigate();
-  const { id } = useParams();
   const location = useLocation();
   const { t } = useTranslation();
 
   const isTerminal = row.kind === 'terminal';
   // Terminal rows are focused when the terminal route + tid match (they were
   // hardcoded unselected before, so the open terminal had no indicator).
-  const selected = isTerminal
-    ? location.pathname === `/terminal/${row.machineId}`
-      && new URLSearchParams(location.search).get('tid') === row.terminalId
-    : id === row.session!.id;
+  // A terminal can have two valid faces. Keep the row highlighted when the
+  // user deliberately remains in raw xterm after the no-yank window, even if
+  // a mirror appears later and future opens now prefer its structured href.
+  const rawTerminalSelected = isTerminal
+    && location.pathname === `/terminal/${encodeURIComponent(row.machineId!)}`
+    && new URLSearchParams(location.search).get('tid') === row.terminalId;
+  const selected = rawTerminalSelected || location.pathname === row.href;
   const s = row.session;
 
   // Claude agent state inside a web terminal (undefined = old daemon / no data
@@ -1169,10 +1184,7 @@ function SidebarRow({
             ? 'connected'
             : 'offline';
 
-  const open = () =>
-    isTerminal
-      ? navigate(`/terminal/${row.machineId}?tid=${row.terminalId}`)
-      : navigate(`/session/${row.session!.id}`);
+  const open = () => navigate(row.href);
 
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
@@ -1224,7 +1236,12 @@ function SidebarRow({
     >
       {/* aria-current="page": the row IS a nav link to the open route, so SRs
           announce the selected row the same way the rail highlight shows it. */}
-      <button className="sb-row-main" onClick={open} aria-current={selected ? 'page' : undefined}>
+      <button
+        className="sb-row-main"
+        data-href={row.href}
+        onClick={open}
+        aria-current={selected ? 'page' : undefined}
+      >
         <span className={`sb-row-icon${isTerminal ? ' sb-row-icon--term' : ''}`}>
           {isTerminal ? (
             <span className="sb-row-term-icon" title={agentDot ? agentDotTitle : undefined}>

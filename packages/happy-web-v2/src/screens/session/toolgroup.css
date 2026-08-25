@@ -40,8 +40,16 @@
   text-align: left;
 }
 .tg-summary {
+  flex: none;
   font-weight: 600;
   color: var(--text);
+}
+.tg-run-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tg-elapsed {
   display: inline-flex;
@@ -49,6 +57,23 @@
   gap: 4px;
   margin-left: auto;
   font-size: var(--fs-11);
+}
+
+@media (max-width: 860px) {
+  /* The overview is the primary scan target on a phone; the generic count is
+     redundant there and costs a full line on narrow screens. */
+  .tg-head .tg-summary {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tg-run-summary {
+    color: var(--text-dim);
+    font-weight: 600;
+  }
 }
 .tg-elapsed--live {
   color: var(--accent-2);
