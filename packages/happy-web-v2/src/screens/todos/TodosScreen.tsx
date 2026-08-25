@@ -27,7 +27,7 @@ import { LayoutList, SignalHigh } from 'lucide-react';
 import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
 import { machineTodoComplete, machineTodoCreate, machineTodoList, type TodoFailure, type TodoItem } from '@/sync/todoOps';
 import { isMachineOnline, machineLabel } from '@/utils/machineUtils';
-import { EmptyState, Spinner, StatusDot, toast } from '@/ui';
+import { EmptyState, OrbitLoader, Spinner, StatusDot, toast } from '@/ui';
 import { isSetupNeeded, todoFailureText } from './todoFailureText';
 import {
     completionReducer,
@@ -195,8 +195,7 @@ export function TodosScreen() {
 
                 {state.kind === 'loading' && (
                     <div className="td-loading">
-                        <Spinner size={16} />
-                        <span>{t('todos.loading')}</span>
+                        <OrbitLoader size="compact" label={t('todos.loading')} />
                     </div>
                 )}
 

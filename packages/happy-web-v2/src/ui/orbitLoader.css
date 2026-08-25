@@ -1,0 +1,202 @@
+.vh-orbit-widget {
+  --vh-orbit-scale: 0.62;
+  --vh-orbit-viewport: 202px;
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.vh-orbit-widget--medium {
+  --vh-orbit-scale: 0.72;
+  --vh-orbit-viewport: 234px;
+}
+.vh-orbit-widget--large {
+  --vh-orbit-scale: 1;
+  --vh-orbit-viewport: 324px;
+}
+.vh-orbit-widget__viewport {
+  position: relative;
+  width: var(--vh-orbit-viewport);
+  height: var(--vh-orbit-viewport);
+}
+.vh-orbit-widget__stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 324px;
+  height: 324px;
+  transform: translate(-50%, -50%) scale(var(--vh-orbit-scale));
+}
+.vh-orbit-widget__stage::before,
+.vh-orbit-widget__stage::after {
+  content: '';
+  position: absolute;
+  inset: 80px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.vh-orbit-widget__stage::after {
+  inset: 112px;
+  border-style: dashed;
+  opacity: 0.72;
+}
+.vh-orbit-widget__agent-track {
+  position: absolute;
+  inset: 80px;
+  border-radius: 50%;
+  animation: vh-orbit-widget-agent-orbit 8.4s linear infinite;
+}
+.vh-orbit-widget__agent-track::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(from 225deg, transparent 0 76%, var(--accent) 86%, transparent 92%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 1px));
+  opacity: 0.8;
+}
+.vh-orbit-widget__model-track {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  animation: vh-orbit-widget-model-orbit 19s linear infinite;
+}
+.vh-orbit-widget__model-track::before,
+.vh-orbit-widget__model-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.vh-orbit-widget__model-track::before {
+  border: 1px dashed var(--line);
+  opacity: 0.5;
+}
+.vh-orbit-widget__model-track::after {
+  inset: -1px;
+  background: conic-gradient(from 40deg, transparent 0 86%, var(--accent) 93%, transparent 98%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 1px));
+  opacity: 0.62;
+}
+.vh-orbit-widget__model {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+}
+.vh-orbit-widget__model--anthropic { left: 50%; top: 0; transform: translate(-50%, -50%); --vh-model-color: var(--brand-anthropic); }
+.vh-orbit-widget__model--llama { left: 97.55%; top: 34.55%; transform: translate(-50%, -50%); --vh-model-color: var(--brand-meta); }
+.vh-orbit-widget__model--deepseek { left: 79.39%; top: 90.45%; transform: translate(-50%, -50%); --vh-model-color: var(--brand-deepseek); }
+.vh-orbit-widget__model--qwen { left: 20.61%; top: 90.45%; transform: translate(-50%, -50%); --vh-model-color: var(--brand-qwen); }
+.vh-orbit-widget__model--mistral { left: 2.45%; top: 34.55%; transform: translate(-50%, -50%); --vh-model-color: var(--brand-mistral); }
+.vh-orbit-widget__model-glyph {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--vh-model-color);
+  background: var(--bg-1);
+  opacity: 0.88;
+  animation: vh-orbit-widget-model-counter 19s linear infinite;
+}
+.vh-orbit-widget__model-glyph svg { width: 18px; height: 18px; }
+.vh-orbit-widget__agent {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+}
+.vh-orbit-widget__agent--claude { left: 50%; top: 0; transform: translate(-50%, -50%); }
+.vh-orbit-widget__agent--codex { left: 93.3%; top: 75%; transform: translate(-50%, -50%); }
+.vh-orbit-widget__agent--gemini { left: 6.7%; top: 75%; transform: translate(-50%, -50%); }
+.vh-orbit-widget__agent-face {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  animation: vh-orbit-widget-agent-counter 8.4s linear infinite;
+}
+.vh-orbit-widget__agent-face svg { width: 22px; height: 22px; color: var(--text); }
+.vh-orbit-widget__agent-face span {
+  color: var(--text-dim);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.vh-orbit-widget__core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  color: var(--text);
+  background: var(--bg-2);
+}
+.vh-orbit-widget__core::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 20px;
+  padding: 1px;
+  background: conic-gradient(transparent 0 78%, var(--accent));
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: vh-orbit-widget-scan 2.6s linear infinite;
+}
+.vh-orbit-widget__core svg { width: 34px; height: 34px; }
+.vh-orbit-widget__live-dot {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px var(--accent-glow);
+  animation: vh-orbit-widget-live 1.3s ease-in-out infinite;
+}
+.vh-orbit-widget__wordmark {
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  line-height: 1;
+}
+.vh-orbit-widget__caption {
+  color: var(--text-faint);
+  font-size: var(--fs-10);
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  text-align: center;
+  text-transform: uppercase;
+}
+@keyframes vh-orbit-widget-agent-orbit { to { transform: rotate(360deg); } }
+@keyframes vh-orbit-widget-agent-counter { to { transform: rotate(-360deg); } }
+@keyframes vh-orbit-widget-model-orbit { to { transform: rotate(-360deg); } }
+@keyframes vh-orbit-widget-model-counter { to { transform: rotate(360deg); } }
+@keyframes vh-orbit-widget-scan { to { transform: rotate(360deg); } }
+@keyframes vh-orbit-widget-live {
+  0%, 100% { opacity: 0.55; transform: scale(0.82); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-orbit-widget__agent-track,
+  .vh-orbit-widget__agent-face,
+  .vh-orbit-widget__model-track,
+  .vh-orbit-widget__model-glyph,
+  .vh-orbit-widget__core::before,
+  .vh-orbit-widget__live-dot { animation: none; }
+}

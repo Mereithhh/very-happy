@@ -55,8 +55,9 @@ void rootModule.then((RootComponent) => {
 
   // Remove the pre-paint splash once the selected React root has mounted.
   const splash = document.getElementById('vh-splash');
-  if (splash) {
+  const keepSplashForPreview = new URLSearchParams(window.location.search).has('vh-loader-preview');
+  if (splash && !keepSplashForPreview) {
     splash.style.opacity = '0';
-    setTimeout(() => splash.remove(), 300);
+    setTimeout(() => splash.remove(), 340);
   }
 });
