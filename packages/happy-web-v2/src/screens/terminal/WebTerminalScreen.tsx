@@ -74,6 +74,7 @@ import {
   type TermTypography,
 } from './termKbViewport';
 import { createTouchFling, stopSyntheticScrollForBufferChange } from './termTouchFling';
+import { formatRelayRegion } from './relayRegionLabel';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -2137,13 +2138,13 @@ export function WebTerminalScreen() {
         <span
           className={`term-relay mono is-${relayStatus.state}`}
           title={relayStatus.transport === 'regional'
-            ? `${relayStatus.relayId} · ${relayStatus.region} · browser RTT ${relayLatency}`
+            ? `${formatRelayRegion(relayStatus.region)} · browser RTT ${relayLatency}`
             : 'Control relay fallback'}
         >
           {relayStatus.state === 'connecting'
             ? 'RELAY…'
             : relayStatus.transport === 'regional'
-              ? `${relayStatus.relayId} · ${relayLatency}`
+              ? `${formatRelayRegion(relayStatus.region)} · ${relayLatency}`
               : 'CONTROL'}
         </span>
         <div className="term-header-right">
