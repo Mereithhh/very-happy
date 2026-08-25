@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
-import { commitSessionArchive } from './sessionArchiveFlow';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ARCHIVE_KILL_DEADLINE_MS, commitSessionArchive } from './sessionArchiveFlow';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('commitSessionArchive', () => {
   it('commits the server archive even when kill acknowledges success', async () => {
@@ -19,6 +23,24 @@ describe('commitSessionArchive', () => {
       vi.fn().mockRejectedValue(new Error('RPC unavailable')),
       archive,
     )).resolves.toBeUndefined();
+    expect(archive).toHaveBeenCalledOnce();
+  });
+
+  it('does not let a missing kill acknowledgement block the relay archive', async () => {
+    vi.useFakeTimers();
+    const archive = vi.fn().mockResolvedValue({ success: true });
+    const pendingKill = new Promise<{ success: boolean }>(() => {});
+
+    const committed = commitSessionArchive(
+      vi.fn(() => pendingKill),
+      archive,
+    );
+
+    await vi.advanceTimersByTimeAsync(ARCHIVE_KILL_DEADLINE_MS - 1);
+    expect(archive).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(committed).resolves.toBeUndefined();
     expect(archive).toHaveBeenCalledOnce();
   });
 
