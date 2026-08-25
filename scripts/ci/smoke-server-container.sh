@@ -13,11 +13,22 @@ DATA_SENTINEL_DIR="packages/happy-server/.docker-smoke/data"
 ENV_SENTINEL='VH_DOCKER_CONTEXT_SECRET_SENTINEL_20260824'
 
 cleanup() {
+  local status=$?
+  # Cleanup must never turn a successful smoke into a failure. The server runs
+  # as root in the container and can leave root-owned PGlite files in the bind
+  # mount, so delete those contents through the already-built image first.
+  set +e
   docker rm -f "$APP" "$PG_APP" "$PG" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
+  if docker image inspect "$IMAGE" >/dev/null 2>&1 && [[ -d "$DATA_DIR" ]]; then
+    docker run --rm --entrypoint sh -v "$DATA_DIR:/cleanup" "$IMAGE" -c \
+      'find /cleanup -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+      >/dev/null 2>&1 || true
+  fi
   rm -f "$ENV_SENTINEL_FILE"
   rm -rf "packages/happy-server/.docker-smoke"
-  rm -rf "$DATA_DIR"
+  rm -rf "$DATA_DIR" || true
+  exit "$status"
 }
 trap cleanup EXIT
 
