@@ -304,6 +304,42 @@ The guide also points to the everyday tools that are easy to miss:
   and clipboard history keeps received items available for manual copy. The
   standalone MCP bridge for plain Claude exposes only this clipboard tool.
 
+### Optional: configure integrations
+
+**Todo provider.** Add a machine-local command to `~/.happy/settings.json`,
+then open **Todo** and select that machine:
+
+```jsonc
+{
+  "todoProvider": {
+    "command": "/absolute/path/to/your-provider",
+    "args": ["--source", "work"],
+    "timeoutMs": 20000
+  }
+}
+```
+
+The command is deliberately not editable from Web because it executes local
+code. Copy the zero-dependency example at
+`packages/happy-cli/examples/todo-provider-jsonfile.mjs`, and see
+[Channels: Todo provider](channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui)
+for the `list / complete / create` contract.
+
+**Account webhook.** Open **Settings → Channels**, enter one HTTPS endpoint,
+choose completion and/or permission events, then save. An account has one
+webhook configuration; saving replaces it. Private, loopback, link-local, and
+redirect targets are rejected. Delivery is best-effort, so do not build a
+workflow that depends on guaranteed notification delivery.
+
+**Dispatch through Assistant.** In **Settings → Voice & Assistant**, select a
+machine that can run Claude, review the skip-approval setting, then open
+**Assistant** (`/assistant`). Ask it to spawn work in an absolute path, for
+example `Dispatch a Claude session in /srv/project to fix the login tests`.
+This is a high-privilege machine-control surface: it can read, send, spawn,
+stop, and archive sessions. It currently dispatches Claude on the selected
+machine; automatic cross-provider/cross-machine routing is not implied. See
+[Channels: Web Assistant](channels.md#inbound-web-assistant--meta-agent).
+
 ### Hand a local file to the terminal
 
 While a Web terminal is focused, paste a clipboard image/file or drag a file

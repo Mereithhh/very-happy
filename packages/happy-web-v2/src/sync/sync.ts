@@ -329,6 +329,9 @@ class Sync {
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
         if (session) {
+            if (session.metadata?.machineId) {
+                apiSocket.prepareMachineRelay(session.metadata.machineId);
+            }
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
         }
     }
@@ -1885,24 +1888,33 @@ class Sync {
         const controller = new AbortController();
         this.sendAbortControllers.set(sessionId, controller);
         try {
-            const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    messages: batch.map((message) => ({
-                        localId: message.localId,
-                        content: message.content
-                    }))
-                }),
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                signal: controller.signal
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
+            const session = storage.getState().sessions[sessionId];
+            const machineId = session?.metadata?.machineId;
+            const relayResult = machineId
+                ? await apiSocket.deliverSessionMessages(machineId, sessionId, batch)
+                : null;
+            let data: V3PostSessionMessagesResponse;
+            if (relayResult?.messages) {
+                data = { messages: relayResult.messages };
+            } else {
+                const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        messages: batch.map((message) => ({
+                            localId: message.localId,
+                            content: message.content
+                        }))
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    signal: controller.signal
+                });
+                if (!response.ok) {
+                    throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
+                }
+                data = await response.json() as V3PostSessionMessagesResponse;
             }
-
-            const data = await response.json() as V3PostSessionMessagesResponse;
             pending.splice(0, batch.length);
             if (Array.isArray(data.messages) && data.messages.length > 0) {
                 const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
@@ -2204,6 +2216,9 @@ class Sync {
         apiSocket.onMessage('file-preview-push', (data) => {
             void handleFilePreviewPush(this.encryption, data);
         });
+        apiSocket.onMessage('session-message-committed', (data) => {
+            void this.handleRelayCommittedMessages(data);
+        });
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
@@ -2228,6 +2243,44 @@ class Sync {
                 sync.invalidate();
             }
         });
+    }
+
+    private handleRelayCommittedMessages = async (data: unknown) => {
+        const payload = data as {
+            machineId?: unknown;
+            sessionId?: unknown;
+            messages?: Array<{
+                id?: unknown;
+                seq?: unknown;
+                localId?: unknown;
+                content?: unknown;
+                createdAt?: unknown;
+                updatedAt?: unknown;
+            }>;
+        };
+        if (typeof payload?.sessionId !== 'string' || !Array.isArray(payload.messages) || payload.messages.length === 0) return;
+        const session = storage.getState().sessions[payload.sessionId];
+        if (!session || typeof payload.machineId !== 'string' || session.metadata?.machineId !== payload.machineId) return;
+        const encryption = this.encryption.getSessionEncryption(payload.sessionId);
+        if (!encryption) return;
+        const messages: ApiMessage[] = [];
+        for (const item of payload.messages) {
+            if (typeof item.id !== 'string' || typeof item.seq !== 'number' ||
+                (item.localId !== null && typeof item.localId !== 'string') ||
+                typeof item.content !== 'string' || typeof item.createdAt !== 'number' || typeof item.updatedAt !== 'number') continue;
+            messages.push({
+                id: item.id,
+                seq: item.seq,
+                localId: item.localId,
+                content: { t: 'encrypted', c: item.content },
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+            });
+        }
+        if (messages.length === 0) return;
+        await this.applyFetchedMessages(payload.sessionId, encryption, messages);
+        const current = this.sessionLastSeq.get(payload.sessionId) ?? 0;
+        this.sessionLastSeq.set(payload.sessionId, messages.reduce((max, message) => Math.max(max, message.seq), current));
     }
 
     private handleUpdate = async (update: unknown) => {
@@ -2335,6 +2388,11 @@ class Sync {
                         if (hasMutableTool) {
                             gitStatusSync.invalidate(updateData.body.sid);
                         }
+                    } else if (currentLastSeq !== undefined && incomingSeq <= currentLastSeq) {
+                        // The regional session relay can deliver this same
+                        // authoritative id/seq before the central update
+                        // socket. It is already reduced; do not turn the echo
+                        // into a redundant history fetch.
                     } else {
                         this.getMessagesSync(updateData.body.sid).invalidate();
                     }

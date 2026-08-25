@@ -55,6 +55,11 @@ describe('public documentation registry', () => {
     expect(text).toContain('It never invokes sudo, installs tmux, writes provider credentials');
     expect(text).toContain('downloads the complete script to a random temporary file');
     expect(text).toContain('restart the daemon so it inherits the new environment');
+    expect(text).toContain('todoProvider');
+    expect(text).toContain('~/.happy/settings.json');
+    expect(text).toContain('Settings → Channels');
+    expect(text).toContain('Assistant (/assistant)');
+    expect(text).toContain('Automatic cross-machine or cross-provider routing is not shipped');
     expect(getPublicDoc('quickstart')?.sections.find((section) => section.heading === '3. Configure Claude credentials')?.blocks[1])
       .toEqual({ type: 'code', code: PROVIDER_KEY_COMMAND });
     expect(PROVIDER_KEY_COMMAND).toContain('ZSH_VERSION');
@@ -78,7 +83,8 @@ describe('public documentation registry', () => {
     const i18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
     expect(text).toContain('lowest measured healthy RTT');
-    expect(text).toContain('short-lived, machine-scoped relay tokens');
+    expect(text).toContain('runner token additionally binds one session');
+    expect(text).toContain('Structured messages remain centrally durable');
     expect(landing).toContain('{c.relayEyebrow}');
     expect(landing).toContain('{c.relayFactRtt}');
     expect(landing).toContain('{c.relayFactVisible}');

@@ -151,6 +151,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockAxiosGet.mockResolvedValue({ data: { messages: [], hasMore: false } });
         mockShouldReconnect.mockReturnValue(true);
         socketHandlers = {};
         session = makeSession();
@@ -178,6 +179,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it('registers core socket handlers and connects', () => {
@@ -911,5 +913,126 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.close).toHaveBeenCalledTimes(1);
         expect(mockAxiosGet).not.toHaveBeenCalled();
         expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('persists a relayed user message before routing it and ignores the central echo', async () => {
+        (session.metadata as any).machineId = 'machine-1';
+        const relayHandlers: SocketHandlers = {};
+        const relaySocket = {
+            connected: true,
+            on: vi.fn((event: string, handler: SocketHandler) => {
+                (relayHandlers[event] ||= []).push(handler);
+            }),
+            emit: vi.fn(),
+            close: vi.fn(),
+        };
+        mockIo.mockReturnValueOnce(mockSocket).mockReturnValueOnce(relaySocket);
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                assignment: {
+                    relayId: 'sin',
+                    url: 'https://relay.test',
+                    region: 'Singapore',
+                    token: 'relay-token',
+                    expiresAt: Date.now() + 60_000,
+                },
+            }),
+        })));
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        await (client as any).connectSessionRelay();
+
+        const encrypted = encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 'relay first' },
+        });
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-1', seq: 1, localId: 'local-relay', createdAt: 1, updatedAt: 1 }] },
+        });
+        const ack = vi.fn();
+        await relayHandlers['session-message-deliver'][0]({
+            sessionId: session.id,
+            messages: [{ localId: 'local-relay', content: encrypted }],
+        }, ack);
+
+        expect(mockAxiosPost).toHaveBeenCalledBefore(onUserMessage);
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+
+        emitSocketEvent('update', {
+            ...createNewMessageUpdate(1, encrypted),
+            body: {
+                ...createNewMessageUpdate(1, encrypted).body,
+                message: {
+                    ...(createNewMessageUpdate(1, encrypted).body as any).message,
+                    localId: 'local-relay',
+                },
+            },
+        });
+        expect(onUserMessage).toHaveBeenCalledTimes(1);
+
+        const centralFirst = encryptContent(session, {
+            role: 'user',
+            content: { type: 'text', text: 'central fallback won the race' },
+        });
+        const centralUpdate = createNewMessageUpdate(2, centralFirst);
+        (centralUpdate.body as any).message.localId = 'local-central-first';
+        emitSocketEvent('update', centralUpdate);
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+
+        mockAxiosPost.mockResolvedValueOnce({
+            data: { messages: [{ id: 'stored-2', seq: 2, localId: 'local-central-first', createdAt: 2, updatedAt: 2 }] },
+        });
+        await relayHandlers['session-message-deliver'][0]({
+            sessionId: session.id,
+            messages: [{ localId: 'local-central-first', content: centralFirst }],
+        }, vi.fn());
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('pushes centrally committed output to the session relay with authoritative id and seq', async () => {
+        (session.metadata as any).machineId = 'machine-1';
+        const relaySocket = {
+            connected: true,
+            on: vi.fn(),
+            emit: vi.fn(),
+            close: vi.fn(),
+        };
+        mockIo.mockReturnValueOnce(mockSocket).mockReturnValueOnce(relaySocket);
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                assignment: {
+                    relayId: 'sin',
+                    url: 'https://relay.test',
+                    region: 'Singapore',
+                    token: 'relay-token',
+                    expiresAt: Date.now() + 60_000,
+                },
+            }),
+        })));
+        const client = new ApiSessionClient('fake-token', session);
+        await (client as any).connectSessionRelay();
+        mockAxiosPost.mockImplementationOnce(async (_url, body) => ({
+            data: {
+                messages: [{
+                    id: 'stored-output',
+                    seq: 7,
+                    localId: body.messages[0].localId,
+                    createdAt: 7,
+                    updatedAt: 7,
+                }],
+            },
+        }));
+
+        client.sendCodexMessage({ type: 'delta', text: 'fast output' });
+        await waitForCheck(() => {
+            expect(relaySocket.emit).toHaveBeenCalledWith('session-message-committed', expect.objectContaining({
+                sessionId: session.id,
+                messages: [expect.objectContaining({ id: 'stored-output', seq: 7, content: expect.any(String) })],
+            }));
+        });
     });
 });

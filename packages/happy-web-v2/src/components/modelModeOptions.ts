@@ -79,9 +79,11 @@ export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
         { key: 'fable', name: 'fable 5', description: null },
-        { key: 'opus', name: 'opus 4.8', description: null },
-        { key: 'sonnet', name: 'sonnet 4.6', description: null },
+        { key: 'best', name: 'best available', description: 'Claude Code chooses the strongest available model' },
+        { key: 'opus', name: 'opus 5 (latest)', description: 'Uses the Claude Code opus alias; provider resolution can vary' },
+        { key: 'sonnet', name: 'sonnet 5 (latest)', description: 'Uses the Claude Code sonnet alias; provider resolution can vary' },
         { key: 'haiku', name: 'haiku 4.5', description: null },
+        { key: 'opusplan', name: 'opus plan', description: 'opus for planning, sonnet for execution' },
     ];
 }
 

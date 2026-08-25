@@ -10,6 +10,10 @@ async function ownsMachine(accountId: string, machineId: string): Promise<boolea
     return !!await db.machine.findFirst({ where: { id: machineId, accountId }, select: { id: true } });
 }
 
+async function ownsSession(accountId: string, sessionId: string): Promise<boolean> {
+    return !!await db.session.findFirst({ where: { id: sessionId, accountId }, select: { id: true } });
+}
+
 export function relayRoutes(app: Fastify) {
     app.get('/v1/relays', { preHandler: app.authenticate }, async (_request, reply) => {
         const config = relayFeatureConfig();
@@ -77,6 +81,48 @@ export function relayRoutes(app: Fastify) {
             relayId: candidate.id,
             machineId,
             clientType: 'web',
+        });
+        return reply.send({
+            assignment: {
+                relayId: candidate.id,
+                url: candidate.url,
+                region: candidate.region,
+                ...signed,
+            },
+        });
+    });
+
+    app.get('/v1/relays/sessions/:sessionId/machines/:machineId', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                sessionId: z.string().min(1).max(256),
+                machineId: z.string().min(1).max(256),
+            }),
+        },
+    }, async (request, reply) => {
+        const config = relayFeatureConfig();
+        if (!config.enabled || !config.tokenSecret) return reply.send({ assignment: null });
+        const { sessionId, machineId } = request.params as { sessionId: string; machineId: string };
+        const [hasSession, hasMachine] = await Promise.all([
+            ownsSession(request.userId, sessionId),
+            ownsMachine(request.userId, machineId),
+        ]);
+        if (!hasSession || !hasMachine) return reply.code(404).send({ error: 'session_or_machine_not_found' });
+        const lease = relayRegistry.get(request.userId, machineId);
+        if (!lease) return reply.send({ assignment: null });
+        const candidate = config.candidates.find((item) => item.id === lease.relayId);
+        if (!candidate) {
+            relayRegistry.remove(machineId);
+            return reply.send({ assignment: null });
+        }
+        const signed = signRelayToken({
+            secret: config.tokenSecret,
+            accountId: request.userId,
+            relayId: candidate.id,
+            machineId,
+            sessionId,
+            clientType: 'session',
         });
         return reply.send({
             assignment: {

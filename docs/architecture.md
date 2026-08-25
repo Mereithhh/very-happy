@@ -16,8 +16,9 @@ provider-neutral automatic router. Cross-provider delegation remains roadmap wor
 
 ### Regional realtime relay plane
 
-Latency-sensitive terminal bytes and machine RPC can leave the central
-control/data path without moving account state or PostgreSQL:
+Latency-sensitive terminal bytes, machine/session RPC, and committed structured
+message delivery can leave the central control/data path without moving account
+state or PostgreSQL:
 
 ![Regional realtime relay plane: durable sync stays on the control and data server while scoped machine RPC and terminal traffic use the daemon-selected regional relay](../packages/happy-web-v2/public/architecture/regional-realtime-plane.svg)
 
@@ -26,7 +27,16 @@ healthy candidate in parallel and anchors to the lowest measured RTT; region is
 only an operator-facing label, not a GeoIP routing decision. The browser asks
 the control plane for that machine's current assignment and connects to the same
 relay. Relay tokens are short-lived and scoped to one account, machine, relay,
-and client role. A relay validates them locally and needs no database credential.
+and client role; session runner tokens additionally bind one session id. A relay
+validates them locally and needs no database credential.
+
+Structured messages remain durable-before-execute. Web input reaches the session
+runner through the regional relay; that runner writes the same encrypted batch
+to the central v3 message API before handing it to the agent. Runner output is
+also persisted centrally, then its authoritative encrypted id/seq envelope is
+sent directly through the relay to Web. Central updates remain the recovery path
+and converge by message id/localId. Session metadata, agent state, usage, history
+reads, and attachment objects stay on the control/data plane.
 
 The first version keeps assignments in the single control process with a short
 TTL refreshed by daemon heartbeat. Multi-control HA requires moving that registry

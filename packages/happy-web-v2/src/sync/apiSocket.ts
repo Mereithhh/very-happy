@@ -59,6 +59,18 @@ export type MachineRelayStatus = {
     rttMs?: number;
 };
 
+export type SessionDeliveryResult = {
+    ok: boolean;
+    messages?: Array<{
+        id: string;
+        seq: number;
+        localId: string | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+    error?: string;
+};
+
 //
 // Main Class
 //
@@ -78,6 +90,7 @@ class ApiSocket {
     private relayRetryAfter = new Map<string, number>();
     private relayStatuses = new Map<string, MachineRelayStatus>();
     private relayStatusListeners = new Set<(machineId: string, status: MachineRelayStatus) => void>();
+    private sessionRelayRetryAfter = new Map<string, number>();
 
     //
     // Initialization
@@ -131,6 +144,7 @@ class ApiSocket {
         this.relaySockets.clear();
         this.relayConnecting.clear();
         this.relayRetryAfter.clear();
+        this.sessionRelayRetryAfter.clear();
         this.updateStatus('disconnected');
     }
 
@@ -193,17 +207,84 @@ class ApiSocket {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!
+        const encryptedParams = await sessionEncryption.encryptRaw(params);
+        const machineId = storage.getState().sessions[sessionId]?.metadata?.machineId;
+        const relayAllowed = typeof machineId === 'string' && (this.sessionRelayRetryAfter.get(sessionId) ?? 0) <= Date.now();
+        const relaySocket = relayAllowed ? await this.ensureMachineRelay(machineId) : null;
+        const callCentral = () => this.socket!
             .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
             .emitWithAck('rpc-call', {
                 method: `${sessionId}:${method}`,
-                params: await sessionEncryption.encryptRaw(params)
+                params: encryptedParams,
             });
+        let result: any;
+        if (relaySocket) {
+            try {
+                result = await relaySocket
+                    .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
+                    .emitWithAck('session-rpc-call', {
+                        sessionId,
+                        method: `${sessionId}:${method}`,
+                        params: encryptedParams,
+                    });
+                if (!result?.ok && result?.error === 'Session unavailable') {
+                    // The relay proved there was no runner to receive the
+                    // request, so central fallback cannot double-execute it.
+                    this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+                    result = await callCentral();
+                } else if (!result?.ok) {
+                    throw new Error(result?.error || 'Regional session RPC failed');
+                }
+            } catch (error) {
+                // The runner may have completed a mutating RPC even if its ack
+                // was lost. Never replay the same call over control; put only
+                // subsequent explicit calls on the compatibility path.
+                this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+                throw error;
+            }
+        } else {
+            result = await callCentral();
+        }
         
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
         throw new Error('RPC call failed');
+    }
+
+    /**
+     * Deliver encrypted structured messages to the session runner through its
+     * machine's regional relay. The runner durably writes the batch before it
+     * acknowledges; null means the caller must use the central v3 endpoint.
+     */
+    async deliverSessionMessages(
+        machineId: string,
+        sessionId: string,
+        messages: Array<{ localId: string; content: string }>,
+    ): Promise<SessionDeliveryResult | null> {
+        if ((this.sessionRelayRetryAfter.get(sessionId) ?? 0) > Date.now()) return null;
+        const relaySocket = await this.ensureMachineRelaySoon(machineId, 800);
+        if (!relaySocket) return null;
+        try {
+            const result = await relaySocket.timeout(3_000).emitWithAck('session-message-deliver', {
+                sessionId,
+                messages,
+            }) as SessionDeliveryResult;
+            if (!result?.ok || !Array.isArray(result.messages)) {
+                this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+                return null;
+            }
+            this.sessionRelayRetryAfter.delete(sessionId);
+            return result;
+        } catch {
+            // localId makes an ack-loss fallback idempotent at the central API.
+            this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+            return null;
+        }
+    }
+
+    prepareMachineRelay(machineId: string) {
+        void this.ensureMachineRelay(machineId);
     }
 
     /**
@@ -348,6 +429,16 @@ class ApiSocket {
         const connecting = this.connectMachineRelay(machineId).finally(() => this.relayConnecting.delete(machineId));
         this.relayConnecting.set(machineId, connecting);
         return connecting;
+    }
+
+    private async ensureMachineRelaySoon(machineId: string, timeoutMs: number): Promise<Socket | null> {
+        const existing = this.relaySockets.get(machineId);
+        if (existing?.connected) return existing;
+        const connecting = this.ensureMachineRelay(machineId);
+        return await Promise.race([
+            connecting,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+        ]);
     }
 
     private async connectMachineRelay(machineId: string): Promise<Socket | null> {

@@ -52,6 +52,60 @@ describe('database-free regional relay', () => {
         otherWeb.emit('terminal-input', { machineId: 'm1', terminalId: 't1', data: 'aw==', enc: true });
         await noCrossMachineInput;
     });
+
+    it('relays session messages and RPC only inside the token session and machine scope', async () => {
+        const secret = 'regional-relay-integration-secret';
+        const server = await startRelayServer({
+            RELAY_ID: 'sin', RELAY_REGION: 'Singapore', RELAY_TOKEN_SECRET: secret,
+            HOST: '127.0.0.1', PORT: '0', LOG_LEVEL: 'silent',
+        } as NodeJS.ProcessEnv);
+        servers.push(server);
+        const origin = `http://127.0.0.1:${server.port}`;
+        const sessionToken = signRelayToken({
+            secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', sessionId: 's1', clientType: 'session',
+        }).token;
+        const webToken = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', clientType: 'web' }).token;
+        const otherWebToken = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm2', clientType: 'web' }).token;
+        const runner = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: sessionToken } });
+        const web = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: webToken } });
+        const otherWeb = connect(origin, { path: '/v1/relay', transports: ['websocket'], auth: { token: otherWebToken } });
+        clients.push(runner, web, otherWeb);
+        await Promise.all([once(runner, 'connect'), once(web, 'connect'), once(otherWeb, 'connect')]);
+
+        runner.on('session-message-deliver', (data, callback) => callback({
+            ok: true,
+            messages: data.messages.map((message: any, index: number) => ({
+                id: `stored-${index}`,
+                seq: index + 1,
+                localId: message.localId,
+                createdAt: 1,
+                updatedAt: 1,
+            })),
+        }));
+        runner.on('rpc-request', (data, callback) => callback(`rpc:${data.params}`));
+
+        const delivered = await web.timeout(2_000).emitWithAck('session-message-deliver', {
+            sessionId: 's1', messages: [{ localId: 'l1', content: 'cipher' }],
+        });
+        expect(delivered).toMatchObject({ ok: true, messages: [{ id: 'stored-0', localId: 'l1' }] });
+
+        const rpc = await web.timeout(2_000).emitWithAck('session-rpc-call', {
+            sessionId: 's1', method: 's1:abort', params: 'cipher-rpc',
+        });
+        expect(rpc).toEqual({ ok: true, result: 'rpc:cipher-rpc' });
+
+        const committed = once(web, 'session-message-committed');
+        runner.emit('session-message-committed', {
+            sessionId: 's1',
+            messages: [{ id: 'stored-1', seq: 2, localId: 'l2', content: 'cipher-out', createdAt: 2, updatedAt: 2 }],
+        });
+        await expect(committed).resolves.toMatchObject({ machineId: 'm1', sessionId: 's1' });
+
+        const crossScope = await otherWeb.timeout(2_000).emitWithAck('session-message-deliver', {
+            sessionId: 's1', messages: [{ localId: 'l3', content: 'cipher' }],
+        });
+        expect(crossScope).toEqual({ ok: false, error: 'Session unavailable' });
+    });
 });
 
 function once(socket: Socket, event: string): Promise<any> {

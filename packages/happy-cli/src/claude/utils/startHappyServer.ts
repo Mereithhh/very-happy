@@ -52,7 +52,7 @@ export interface StartHappyServerOptions {
 
 function createMcpServer(handlers: HappyMcpHandlers, options?: StartHappyServerOptions): McpServer {
     const mcp = new McpServer({
-        name: "Happy MCP",
+        name: "Very Happy Tools",
         version: "1.0.0",
     });
 
