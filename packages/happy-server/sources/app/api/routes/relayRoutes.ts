@@ -46,7 +46,14 @@ export function relayRoutes(app: Fastify) {
             machineId,
             clientType: 'machine',
         });
-        return reply.send({ assignment: { ...candidate, ...signed } });
+        return reply.send({
+            assignment: {
+                relayId: candidate.id,
+                url: candidate.url,
+                region: candidate.region,
+                ...signed,
+            },
+        });
     });
 
     app.get('/v1/relays/machines/:machineId', {
@@ -71,6 +78,13 @@ export function relayRoutes(app: Fastify) {
             machineId,
             clientType: 'web',
         });
-        return reply.send({ assignment: { ...candidate, ...signed } });
+        return reply.send({
+            assignment: {
+                relayId: candidate.id,
+                url: candidate.url,
+                region: candidate.region,
+                ...signed,
+            },
+        });
     });
 }
