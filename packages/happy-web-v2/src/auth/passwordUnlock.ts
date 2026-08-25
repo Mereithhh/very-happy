@@ -11,7 +11,7 @@
 import axios from 'axios';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
-import type { AuthCredentials } from '@/auth/tokenStorage';
+import type { AuthCredentials, TrustedAuthCredentials } from '@/auth/tokenStorage';
 
 export type AccountAuthErrorCode =
     | 'invalid-credentials' // wrong username/password (401)
@@ -30,7 +30,7 @@ export class AccountAuthError extends Error {
 }
 
 /** POST /v1/account/login — returns happy credentials for the matched account. */
-export async function loginWithPassword(username: string, password: string): Promise<AuthCredentials> {
+export async function loginWithPassword(username: string, password: string): Promise<TrustedAuthCredentials> {
     const serverUrl = getServerUrl();
     try {
         const res = await axios.post<{ token: string; secret: string }>(
@@ -53,10 +53,10 @@ export async function signupWithPassword(
     password: string,
     secret: string,
     inviteCode?: string,
-): Promise<AuthCredentials> {
+): Promise<TrustedAuthCredentials> {
     const serverUrl = getServerUrl();
     try {
-        const response = await axios.post<AuthCredentials>(
+        const response = await axios.post<TrustedAuthCredentials>(
             `${serverUrl}/v1/account/signup/password`,
             {
                 username: username.trim().toLowerCase(),
@@ -89,7 +89,7 @@ export async function setAccountCredentials(
     password: string,
     secret: string,
     credentials: AuthCredentials,
-): Promise<AuthCredentials | null> {
+): Promise<TrustedAuthCredentials | null> {
     const serverUrl = getServerUrl();
     try {
         const response = await axios.post<{ token?: string; secret?: string }>(

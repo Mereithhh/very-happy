@@ -6,9 +6,14 @@ import {
   Outlet,
   useLocation,
 } from 'react-router-dom';
-import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
+import {
+  TokenStorage,
+  isE2eeAuthCredentials,
+  type AuthCredentials,
+} from '@/auth/tokenStorage';
+import type { AuthStatus } from '@/auth/AuthContext';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
-import { syncRestore } from '@/sync/sync';
+import { syncLock, syncRestore } from '@/sync/sync';
 import { ThemeProvider, ToastProvider, Spinner } from '@/ui';
 import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
@@ -53,7 +58,7 @@ function Lazy({ children }: { children: ReactNode }) {
 }
 
 function RequireAuth() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isUnlocked } = useAuth();
   const location = useLocation();
   // Global back lives HERE, not in AppLayout: it must also cover /assistant,
   // which is a sibling of the layout tree. Installs the in-app history tracker
@@ -62,13 +67,24 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+  if (!isUnlocked) return <Navigate to="/" replace />;
   return <Outlet />;
 }
 
 function RootGate() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isUnlocked } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
+  if (!isUnlocked) {
+    return (
+      <main className="auth-page" data-testid="e2ee-locked">
+        <section className="auth-card" aria-live="polite">
+          <h1>Encrypted device locked</h1>
+          <p>Your account is authenticated, but this browser needs its local E2EE keys before sync can start.</p>
+        </section>
+      </main>
+    );
+  }
   return <AppLayout />;
 }
 
@@ -173,6 +189,7 @@ function Splash() {
 export function AppRoot() {
   const [booting, setBooting] = useState(true);
   const [creds, setCreds] = useState<AuthCredentials | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('anonymous');
 
   useEffect(() => {
     let cancelled = false;
@@ -181,9 +198,22 @@ export function AppRoot() {
         const stored = await TokenStorage.getCredentials();
         if (cancelled) return;
         if (stored) {
-          await syncRestore(stored);
-          if (cancelled) return;
-          setCreds(stored);
+          try {
+            await syncRestore(stored);
+            if (cancelled) return;
+            setCreds(stored);
+            setAuthStatus('authenticated-unlocked');
+          } catch (error) {
+            if (!isE2eeAuthCredentials(stored)) throw error;
+            // An E2EE bearer remains authenticated even when IndexedDB was
+            // cleared or its authenticated ciphertext is corrupt. Do not
+            // start sync and do not attempt the trusted-v1 secret path.
+            if (cancelled) return;
+            syncLock();
+            setCreds(stored);
+            setAuthStatus('authenticated-locked');
+            console.warn('[bootstrap] E2EE session requires local unlock');
+          }
         }
       } catch (e) {
         console.error('[bootstrap] restore failed', e);
@@ -203,7 +233,7 @@ export function AppRoot() {
           {booting ? (
             <Splash />
           ) : (
-            <AuthProvider initialCredentials={creds}>
+            <AuthProvider initialCredentials={creds} initialStatus={authStatus}>
               <RouterProvider router={router} />
             </AuthProvider>
           )}

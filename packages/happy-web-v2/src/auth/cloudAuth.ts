@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
-import type { AuthCredentials } from './tokenStorage';
+import type { AuthCredentials, TrustedAuthCredentials } from './tokenStorage';
 
 export type SignupMode = 'open' | 'invite' | 'closed';
 
@@ -70,9 +70,9 @@ export async function loginWithGoogle(
     credential: string,
     nonce: string,
     inviteCode?: string,
-): Promise<AuthCredentials> {
+): Promise<TrustedAuthCredentials> {
     try {
-        const response = await axios.post<AuthCredentials>(
+        const response = await axios.post<TrustedAuthCredentials>(
             `${getServerUrl()}/v1/account/login/google`,
             { credential, nonce, ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}) },
             { headers: { 'X-Happy-Client': getHappyClientId() } },

@@ -3,7 +3,8 @@ import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocke
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
-import { AuthCredentials } from '@/auth/tokenStorage';
+import { AuthCredentials, isE2eeAuthCredentials } from '@/auth/tokenStorage';
+import { disposeE2eeRuntimeKeys, loadE2eeRuntimeKeys } from '@/auth/e2eeRuntime';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
 import { handleFilePreviewPush } from '@/sync/filePreviewPush';
@@ -993,7 +994,9 @@ class Sync {
             if (session.dataEncryptionKey) {
                 let decrypted: Uint8Array | null = null;
                 try {
-                    decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
+                    decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey, {
+                        domain: 'session', objectId: session.id, field: 'dataEncryptionKey',
+                    });
                 } catch (error) {
                     console.error(`Failed to decrypt data encryption key for session ${session.id}:`, error);
                 }
@@ -1110,7 +1113,9 @@ class Sync {
             for (const artifact of artifacts) {
                 try {
                     // Decrypt the data encryption key
-                    const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+                    const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey, {
+                        domain: 'artifact', objectId: artifact.id, field: 'dataEncryptionKey',
+                    });
                     if (!decryptedKey) {
                         console.error(`Failed to decrypt key for artifact ${artifact.id}`);
                         continue;
@@ -1171,7 +1176,9 @@ class Sync {
             const artifact = await fetchArtifact(this.credentials, artifactId);
 
             // Decrypt the data encryption key
-            const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+            const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey, {
+                domain: 'artifact', objectId: artifact.id, field: 'dataEncryptionKey',
+            });
             if (!decryptedKey) {
                 console.error(`Failed to decrypt key for artifact ${artifactId}`);
                 return null;
@@ -1303,7 +1310,9 @@ class Sync {
                 
                 // Decrypt and store the data encryption key if we don't have it
                 if (!dataEncryptionKey) {
-                    const decryptedKey = await this.encryption.decryptEncryptionKey(fullArtifact.dataEncryptionKey);
+                    const decryptedKey = await this.encryption.decryptEncryptionKey(fullArtifact.dataEncryptionKey, {
+                        domain: 'artifact', objectId: artifactId, field: 'dataEncryptionKey',
+                    });
                     if (!decryptedKey) {
                         throw new Error('Failed to decrypt encryption key');
                     }
@@ -1423,7 +1432,9 @@ class Sync {
             if (machine.dataEncryptionKey) {
                 let decryptedKey: Uint8Array | null = null;
                 try {
-                    decryptedKey = await this.encryption.decryptEncryptionKey(machine.dataEncryptionKey);
+                    decryptedKey = await this.encryption.decryptEncryptionKey(machine.dataEncryptionKey, {
+                        domain: 'machine', objectId: machine.id, field: 'dataEncryptionKey',
+                    });
                 } catch (error) {
                     console.error(`Failed to decrypt data encryption key for machine ${machine.id}:`, error);
                 }
@@ -2483,7 +2494,9 @@ class Sync {
             // restart / socket reconnect triggers a full machine refetch.
             const machineKeysMap = new Map<string, Uint8Array | null>();
             if (machineUpdate.dataEncryptionKey) {
-                const decryptedKey = await this.encryption.decryptEncryptionKey(machineUpdate.dataEncryptionKey);
+                const decryptedKey = await this.encryption.decryptEncryptionKey(machineUpdate.dataEncryptionKey, {
+                    domain: 'machine', objectId: machineId, field: 'dataEncryptionKey',
+                });
                 if (decryptedKey) {
                     machineKeysMap.set(machineId, decryptedKey);
                     this.machineDataKeys.set(machineId, decryptedKey);
@@ -2619,7 +2632,9 @@ class Sync {
             
             try {
                 // Decrypt the data encryption key
-                const decryptedKey = await this.encryption.decryptEncryptionKey(artifactUpdate.dataEncryptionKey);
+                const decryptedKey = await this.encryption.decryptEncryptionKey(artifactUpdate.dataEncryptionKey, {
+                    domain: 'artifact', objectId: artifactId, field: 'dataEncryptionKey',
+                });
                 if (!decryptedKey) {
                     console.error(`Failed to decrypt key for new artifact ${artifactId}`);
                     return;
@@ -2808,7 +2823,7 @@ class Sync {
         if (Platform.OS !== 'web') return;
         try {
             const credentials = this.getCredentials();
-            if (!credentials) return;
+            if (!credentials || isE2eeAuthCredentials(credentials)) return;
             const seed = decodeBase64(credentials.secret, 'base64url');
             const payload = decryptNotificationEnc(body.enc, seed);
             if (!payload) return;
@@ -2951,7 +2966,12 @@ export async function syncCreate(credentials: AuthCredentials) {
         return;
     }
     isInitialized = true;
-    await syncInit(credentials, false);
+    try {
+        await syncInit(credentials, false);
+    } catch (error) {
+        isInitialized = false;
+        throw error;
+    }
 }
 
 export async function syncRestore(credentials: AuthCredentials) {
@@ -2960,24 +2980,52 @@ export async function syncRestore(credentials: AuthCredentials) {
         return;
     }
     isInitialized = true;
-    await syncInit(credentials, true);
+    try {
+        await syncInit(credentials, true);
+    } catch (error) {
+        isInitialized = false;
+        throw error;
+    }
 }
 
 async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
-    // Initialize sync engine
-    const secretKey = decodeBase64(credentials.secret, 'base64url');
-    if (secretKey.length !== 32) {
-        throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
+    // Identity and content unlock are separate for E2EE accounts. Loading and
+    // authenticating the IndexedDB vault happens before any HTTP sync or socket
+    // is started; failure therefore cannot downgrade into the legacy path.
+    let encryption: Encryption;
+    if (isE2eeAuthCredentials(credentials)) {
+        const runtime = await loadE2eeRuntimeKeys(credentials);
+        try {
+            encryption = await Encryption.createE2ee(runtime);
+        } finally {
+            disposeE2eeRuntimeKeys(runtime);
+        }
+    } else {
+        const secretKey = decodeBase64(credentials.secret, 'base64url');
+        if (secretKey.length !== 32) {
+            throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
+        }
+        encryption = await Encryption.create(secretKey);
     }
-    const encryption = await Encryption.create(secretKey);
 
     // Initialize tracking
     initializeTracking(encryption.anonID);
 
     // Initialize socket connection
-    const API_ENDPOINT = getServerUrl();
-    apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
+    const API_ENDPOINT = isE2eeAuthCredentials(credentials) ? credentials.origin : getServerUrl();
+    apiSocket.initialize({
+        endpoint: API_ENDPOINT,
+        token: credentials.token,
+        ...(isE2eeAuthCredentials(credentials) ? {
+            e2eeIdentity: {
+                cryptoMode: credentials.cryptoMode,
+                e2eeProtocol: credentials.e2eeProtocol,
+                deviceId: credentials.deviceId,
+                cryptoEpoch: credentials.cryptoEpoch,
+            },
+        } : {}),
+    }, encryption);
 
     // Wire socket status to storage
     apiSocket.onStatusChange((status) => {
@@ -2990,4 +3038,10 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     } else {
         await sync.create(credentials, encryption);
     }
+}
+
+export function syncLock(): void {
+    apiSocket.disconnect();
+    if (sync.encryption) sync.encryption.destroy();
+    isInitialized = false;
 }

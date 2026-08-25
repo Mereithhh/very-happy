@@ -15,6 +15,7 @@ import { decodeBase64 } from '@/encryption/base64';
 import { decryptNotificationEnc, type NotificationPayload } from './encryption/notificationDecrypt';
 import { useReadWatermark } from './notificationReadState';
 import type { FeedItem, NotifType } from './feedTypes';
+import { isTrustedAuthCredentials } from '@/auth/tokenStorage';
 
 export interface NotificationEntry {
     id: string;
@@ -39,7 +40,7 @@ const decryptCache = new Map<string, NotificationPayload | null>();
 
 function getSeed(): Uint8Array | null {
     const credentials = sync.getCredentials?.();
-    if (!credentials) return null;
+    if (!credentials || !isTrustedAuthCredentials(credentials)) return null;
     try {
         return decodeBase64(credentials.secret, 'base64url');
     } catch {

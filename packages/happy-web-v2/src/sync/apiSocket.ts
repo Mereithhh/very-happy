@@ -4,6 +4,10 @@ import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
+import {
+    E2eeSocketIdentityV1Schema,
+    type E2eeSocketIdentityV1,
+} from '@slopus/happy-wire';
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -39,6 +43,7 @@ export function getCurrentAppState(): 'active' | 'background' {
 export interface SyncSocketConfig {
     endpoint: string;
     token: string;
+    e2eeIdentity?: E2eeSocketIdentityV1;
 }
 
 export interface SyncSocketState {
@@ -48,6 +53,19 @@ export interface SyncSocketState {
 }
 
 export type SyncSocketListener = (state: SyncSocketState) => void;
+
+export function buildUserScopedSocketAuth(config: SyncSocketConfig) {
+    const e2eeIdentity = config.e2eeIdentity
+        ? E2eeSocketIdentityV1Schema.parse(config.e2eeIdentity)
+        : undefined;
+    return {
+        token: config.token,
+        clientType: 'user-scoped' as const,
+        happyClient: getHappyClientId(),
+        appState: getCurrentAppState(),
+        ...(e2eeIdentity ?? {}),
+    };
+}
 
 //
 // Main Class
@@ -87,12 +105,7 @@ class ApiSocket {
 
         this.socket = io(this.config.endpoint, {
             path: '/v1/updates',
-            auth: {
-                token: this.config.token,
-                clientType: 'user-scoped' as const,
-                happyClient: getHappyClientId(),
-                appState: getCurrentAppState(),
-            },
+            auth: buildUserScopedSocketAuth(this.config),
             // Allow HTTP long-polling fallback (+ try every transport on the
             // first attempt) so the socket still connects when wss is blocked by
             // a proxy/VPN (e.g. Clash TUN) — websocket-only would silently hang.
