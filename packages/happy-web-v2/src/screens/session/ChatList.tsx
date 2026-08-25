@@ -65,7 +65,7 @@ function buildRows(messages: Message[]): Row[] {
     return rows;
 }
 
-export function ChatList({ sessionId }: { sessionId: string }) {
+export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; jumpRequest?: number }) {
     const { t } = useTranslation();
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -103,6 +103,14 @@ export function ChatList({ sessionId }: { sessionId: string }) {
         if (!el) return;
         el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduced ? 'smooth' : 'auto' });
     };
+
+    // The live status strip sits outside this scroll container. Treat its tap
+    // exactly like the local jump button so permission/thinking/tool activity
+    // is one gesture away even while the user is reading older history.
+    useEffect(() => {
+        if (jumpRequest > 0) scrollToBottom(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [jumpRequest]);
 
     // Touch-scrolling the transcript dismisses the composer keyboard — the
     // native `keyboardDismissMode="onDrag"` convention (iOS Messages, Telegram,

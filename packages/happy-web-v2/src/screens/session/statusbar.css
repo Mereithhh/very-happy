@@ -1,11 +1,30 @@
 .lsb {
+  width: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--sp-2);
   padding: var(--sp-1) var(--sp-4);
   font-family: var(--font-mono);
   font-size: var(--fs-12);
+  text-align: left;
+  cursor: pointer;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  transition: filter var(--motion-fast);
+}
+.lsb:hover {
+  filter: brightness(1.08);
+}
+.lsb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.lsb-content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 .lsb--live {
   color: var(--accent-2);
@@ -17,4 +36,17 @@
 }
 .lsb-label {
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lsb-action {
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+@media (pointer: coarse) {
+  .lsb {
+    min-height: 44px;
+  }
 }
