@@ -73,6 +73,12 @@
    - 验证桶：IP 30/min、email 10/min、challenge 6/min、global 600/min。
    - 已有 `provider=email, providerSubject=<normalized email>`：加载原 secret、创建 login session。
    - 新 email：走 `withSignupGate(provider='email')`，生成 account secret/public key，写 AccountSecret + AccountIdentity 后创建 login session。
+3. `GET /v1/account/identities` → 当前账户可用登录方式的最小摘要。
+4. `POST /v1/account/identities/email { email, challengeId, code, secret }` → 显式关联 Email 登录。
+   - 必须同时具备有效 bearer、10 分钟内创建且未撤销/未过期的 login session，以及与当前 Account public key 匹配的本机 secret。
+   - OTP 消费与 identity insert 在同一数据库事务；冲突会回滚 OTP 消费。
+   - 一个账户最多一个 Email identity；一个 Email identity 只属于一个账户。已有归属返回 409，绝不移动、替换或按 Google claim email 隐式合并。
+   - 绑定成功后 Email OTP 登录返回原账户，不创建第二个账户。
 
 ### 发信适配器
 
@@ -106,7 +112,7 @@ Google 作为第二入口。仅 `passwordLoginEnabled=true` 时显示“Use pass
 3. **账号枚举**：send response 不区分已有/新账号；signup policy 仅在正确 code 后判定。
 4. **误锁 Owner**：禁用 password 前要求新 Web 已发布、provider 有效且至少 Google 或 Email 可用；startup 配置交叉校验。
 5. **供应商 outage/Beta**：provider adapter 可在 Cloudflare/Resend 间切换；密码开关可逆且凭据不删除。
-6. **同邮箱错误合并**：不按 Google claim email 自动合并；不同 provider identity 保持独立，后续显式 link flow 另做。
+6. **同邮箱错误合并**：不按 Google claim email 自动合并；不同 provider identity 保持独立。Email 显式 link 需要近期登录、当前账户 secret 与独立 OTP 三重证明；冲突 fail closed。
 
 ## 验收标准
 
@@ -115,6 +121,7 @@ Google 作为第二入口。仅 `passwordLoginEnabled=true` 时显示“Use pass
 - [x] 已有 email 登录与新 email signup policy/capacity/invite 有 integration coverage。
 - [x] Email sender 两 provider 的 URL/header/payload、timeout、错误净化有单测。
 - [x] Web 默认 Email flow、resend/change email、Google/password 条件显示和错误状态有测试。
+- [x] 已登录账户显式 Email link 对近期 session、账户 secret、单账户/单邮箱唯一性、并发冲突与事务回滚有回归测试。
 - [x] desktop/mobile real browser 无溢出，输入字号与 tap target 合规。
 - [ ] server/web 全门禁、production Email 实信、password disabled/reenabled rollback 冒烟通过。
 

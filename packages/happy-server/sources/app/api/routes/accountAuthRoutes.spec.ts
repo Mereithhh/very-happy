@@ -11,6 +11,8 @@ const {
     createEmailChallengeMock,
     consumeEmailChallengeMock,
     sendLoginCodeMock,
+    getAccountLoginMethodsMock,
+    linkVerifiedEmailIdentityMock,
 } = vi.hoisted(() => {
     const dbMock: any = {
         account: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn(async () => 0) },
@@ -29,10 +31,12 @@ const {
             loadAccountSecret: vi.fn(),
             upsertAccountSecret: vi.fn(async () => 'encrypted-secret'),
         },
-        allowAuthRequestMock: vi.fn(async () => true),
+        allowAuthRequestMock: vi.fn(async (_key: string, _options: unknown) => true),
         createEmailChallengeMock: vi.fn(),
         consumeEmailChallengeMock: vi.fn(),
         sendLoginCodeMock: vi.fn(),
+        getAccountLoginMethodsMock: vi.fn(),
+        linkVerifiedEmailIdentityMock: vi.fn(),
     };
 });
 
@@ -50,6 +54,11 @@ vi.mock('@/app/auth/emailLoginSecurity', () => ({
 vi.mock('@/app/auth/emailSender', () => ({
     sendLoginCode: sendLoginCodeMock,
     EmailDeliveryError: class EmailDeliveryError extends Error {},
+}));
+vi.mock('@/app/auth/emailIdentityLink', () => ({
+    getAccountLoginMethods: getAccountLoginMethodsMock,
+    linkVerifiedEmailIdentity: linkVerifiedEmailIdentityMock,
+    EmailIdentityInUseError: class EmailIdentityInUseError extends Error {},
 }));
 
 import {
@@ -106,6 +115,12 @@ beforeEach(() => {
     });
     consumeEmailChallengeMock.mockResolvedValue(true);
     sendLoginCodeMock.mockResolvedValue(undefined);
+    getAccountLoginMethodsMock.mockResolvedValue({
+        email: null,
+        google: { connected: false, email: null },
+        passwordConfigured: true,
+    });
+    linkVerifiedEmailIdentityMock.mockResolvedValue('linked');
 });
 
 describe('public Email OTP and password policy', () => {
@@ -451,6 +466,143 @@ describe('authenticated account credential secret validation', () => {
             expect.stringContaining('FOR UPDATE'),
             'account-1',
         );
+        await app.close();
+    });
+});
+
+describe('authenticated Email identity linking', () => {
+    const linkPayload = {
+        email: ' Owner@Example.com ',
+        challengeId: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+        code: '123456',
+        secret: credentialSecret,
+    };
+
+    function enableEmail() {
+        process.env.AUTH_EMAIL_PROVIDER = 'resend';
+        process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+        process.env.RESEND_API_KEY = 'test-key';
+    }
+
+    it('reports only the current account login methods without exposing provider subjects', async () => {
+        getAccountLoginMethodsMock.mockResolvedValue({
+            email: 'owner@example.com',
+            google: { connected: true, email: 'owner@example.com' },
+            passwordConfigured: true,
+        });
+        const app = await buildApp();
+        const response = await app.inject({ method: 'GET', url: '/v1/account/identities' });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({
+            email: 'owner@example.com',
+            google: { connected: true, email: 'owner@example.com' },
+            passwordConfigured: true,
+        });
+        expect(getAccountLoginMethodsMock).toHaveBeenCalledWith(dbMock, 'account-1');
+        await app.close();
+    });
+
+    it('binds a verified normalized email to the authenticated account anchored by its secret', async () => {
+        enableEmail();
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ success: true, email: 'owner@example.com' });
+        expect(linkVerifiedEmailIdentityMock).toHaveBeenCalledWith(dbMock, 'account-1', {
+            email: 'owner@example.com',
+            challengeId: linkPayload.challengeId,
+            code: linkPayload.code,
+        });
+        await app.close();
+    });
+
+    it('rejects the wrong account secret before consuming the email challenge', async () => {
+        enableEmail();
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/identities/email',
+            payload: { ...linkPayload, secret: Buffer.alloc(32, 9).toString('base64url') },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({ error: 'invalid_secret' });
+        expect(linkVerifiedEmailIdentityMock).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it('requires a fresh, unrevoked login session before checking the account secret or OTP', async () => {
+        enableEmail();
+        dbMock.accountLoginSession.findFirst.mockResolvedValue({
+            createdAt: new Date(Date.now() - 11 * 60_000),
+        });
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(403);
+        expect(response.json()).toEqual({ error: 'reauth_required' });
+        expect(dbMock.accountLoginSession.findFirst).toHaveBeenCalledWith({
+            where: {
+                id: 'login-session-1',
+                accountId: 'account-1',
+                revokedAt: null,
+                expiresAt: { gt: expect.any(Date) },
+            },
+            select: { createdAt: true },
+        });
+        expect(dbMock.account.findUnique).not.toHaveBeenCalled();
+        expect(linkVerifiedEmailIdentityMock).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it('maps a consumed, expired, mismatched, or wrong Email OTP to one generic response', async () => {
+        enableEmail();
+        linkVerifiedEmailIdentityMock.mockResolvedValue('invalid-code');
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(401);
+        expect(response.json()).toEqual({ error: 'invalid_email_code' });
+        await app.close();
+    });
+
+    it('adds per-account hour/day budgets to the shared Email verification buckets', async () => {
+        enableEmail();
+        allowAuthRequestMock.mockImplementation(async (key: string) => !key.includes('email-link:account:'));
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(429);
+        expect(allowAuthRequestMock).toHaveBeenCalledWith(
+            expect.stringMatching(/^email-link:account:[a-f0-9]+:hour$/),
+            { max: 5, windowMs: 60 * 60_000 },
+        );
+        expect(linkVerifiedEmailIdentityMock).not.toHaveBeenCalled();
+        await app.close();
+    });
+
+    it('does not merge an email identity that already belongs to another account', async () => {
+        enableEmail();
+        const { EmailIdentityInUseError } = await import('@/app/auth/emailIdentityLink');
+        linkVerifiedEmailIdentityMock.mockRejectedValue(new EmailIdentityInUseError());
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toEqual({ error: 'email_identity_in_use' });
+        expect(linkVerifiedEmailIdentityMock).toHaveBeenCalledOnce();
+        await app.close();
+    });
+
+    it('is idempotent when the verified email is already linked to this account', async () => {
+        enableEmail();
+        const app = await buildApp();
+        const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
+
+        expect(response.statusCode).toBe(200);
+        expect(linkVerifiedEmailIdentityMock).toHaveBeenCalledOnce();
         await app.close();
     });
 });

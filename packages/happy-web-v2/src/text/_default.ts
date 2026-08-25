@@ -1325,6 +1325,13 @@ export const en = {
         password: 'Password',
         passwordSet: 'Set a password to sign in on the web',
         passwordChange: 'Change your account password',
+        emailLogin: 'Email sign-in',
+        emailNotLinked: 'Link an email address for passwordless sign-in',
+        emailUnavailable: 'Not available on this relay',
+        googleLogin: 'Google sign-in',
+        googleConnected: 'Connected',
+        googleNotLinked: 'Not connected',
+        loginMethodsUnavailable: 'Could not load sign-in status. Tap to retry.',
         profile: 'Profile',
         name: 'Name',
         github: 'GitHub',
@@ -1938,6 +1945,18 @@ export const en = {
         deliveryUnavailable: 'Email delivery is temporarily unavailable. Try again shortly.',
         notConfigured: 'Email sign-in is not configured on this relay.',
         network: 'Could not reach the relay. Check your connection and try again.',
+    },
+
+    emailLink: {
+        title: 'Link email sign-in',
+        subtitle: 'Add a verified email address to this account.',
+        securityNote: 'For your security, linking requires a recent sign-in and this device’s account key.',
+        inUse: 'That email is already linked to another account, or this account already uses a different email.',
+        reauthRequired: 'Sign out and sign in again, then retry within 10 minutes.',
+        invalidAccount: 'This device cannot prove ownership of the current account. Restore the correct account key and try again.',
+        success: 'Email sign-in linked.',
+        verifyAndLink: 'Verify and link email',
+        signOutAndContinue: 'Sign out and continue',
     },
 
     // Per-agent defaults settings screen.

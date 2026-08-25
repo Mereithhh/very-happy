@@ -96,37 +96,46 @@ export async function consumeEmailLoginChallenge(
     code: string,
     nowMs = Date.now(),
 ): Promise<boolean> {
+    return db.$transaction((tx: TransactionClient) =>
+        consumeEmailLoginChallengeWithClient(tx, id, emailInput, code, nowMs));
+}
+
+export async function consumeEmailLoginChallengeWithClient(
+    tx: TransactionClient,
+    id: string,
+    emailInput: string,
+    code: string,
+    nowMs = Date.now(),
+): Promise<boolean> {
     const email = normalizeEmail(emailInput);
     const now = new Date(nowMs);
-    return db.$transaction(async (tx: TransactionClient) => {
-        const rows = await tx.$queryRawUnsafe<Array<{
+    const rows = await tx.$queryRawUnsafe<Array<{
             id: string;
             email: string;
             codeHash: string;
             expiresAt: Date;
             consumedAt: Date | null;
             attempts: number;
-        }>>(
-            'SELECT "id", "email", "codeHash", "expiresAt", "consumedAt", "attempts" FROM "EmailLoginChallenge" WHERE "id" = $1 FOR UPDATE',
+    }>>(
+        'SELECT "id", "email", "codeHash", "expiresAt", "consumedAt", "attempts" FROM "EmailLoginChallenge" WHERE "id" = $1 FOR UPDATE',
+        id,
+    );
+    const row = rows[0];
+    if (!row || row.email !== email || row.consumedAt || row.expiresAt.getTime() <= nowMs || row.attempts >= MAX_ATTEMPTS) {
+        return false;
+    }
+    const candidate = hashEmailLoginCode(id, email, code);
+    if (!hashesEqual(candidate, row.codeHash)) {
+        const attempts = row.attempts + 1;
+        await tx.$executeRawUnsafe(
+            'UPDATE "EmailLoginChallenge" SET "attempts" = $1::integer, "consumedAt" = CASE WHEN $1::integer >= $2::integer THEN $3 ELSE "consumedAt" END WHERE "id" = $4',
+            attempts,
+            MAX_ATTEMPTS,
+            now,
             id,
         );
-        const row = rows[0];
-        if (!row || row.email !== email || row.consumedAt || row.expiresAt.getTime() <= nowMs || row.attempts >= MAX_ATTEMPTS) {
-            return false;
-        }
-        const candidate = hashEmailLoginCode(id, email, code);
-        if (!hashesEqual(candidate, row.codeHash)) {
-            const attempts = row.attempts + 1;
-            await tx.$executeRawUnsafe(
-                'UPDATE "EmailLoginChallenge" SET "attempts" = $1::integer, "consumedAt" = CASE WHEN $1::integer >= $2::integer THEN $3 ELSE "consumedAt" END WHERE "id" = $4',
-                attempts,
-                MAX_ATTEMPTS,
-                now,
-                id,
-            );
-            return false;
-        }
-        await tx.$executeRawUnsafe('UPDATE "EmailLoginChallenge" SET "consumedAt" = $1 WHERE "id" = $2', now, id);
-        return true;
-    });
+        return false;
+    }
+    await tx.$executeRawUnsafe('UPDATE "EmailLoginChallenge" SET "consumedAt" = $1 WHERE "id" = $2', now, id);
+    return true;
 }

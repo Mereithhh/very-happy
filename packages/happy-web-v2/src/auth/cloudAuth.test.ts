@@ -13,6 +13,8 @@ import {
   createGoogleLoginChallenge,
   loginWithEmail,
   loadPublicAuthConfig,
+  loadAccountLoginMethods,
+  linkEmailIdentity,
   loginWithGoogle,
   requestEmailLoginCode,
   revokeCloudLogin,
@@ -42,6 +44,42 @@ describe('cloud auth client', () => {
     expect(postMock.mock.calls[1][1]).toEqual({
       email: 'person@example.com', challengeId: 'challenge', code: '123456', inviteCode: 'invite',
     });
+  });
+
+  it('loads current login methods and links Email with the authenticated account secret', async () => {
+    const credentials = { token: 'current-token', secret: 'account-secret' };
+    getMock.mockResolvedValueOnce({
+      data: { email: null, google: { connected: true, email: 'owner@example.com' }, passwordConfigured: true },
+    });
+    postMock.mockResolvedValueOnce({ data: { success: true, email: 'owner@example.com' } });
+
+    await expect(loadAccountLoginMethods(credentials)).resolves.toMatchObject({
+      google: { connected: true }, passwordConfigured: true,
+    });
+    await expect(linkEmailIdentity(' Owner@Example.com ', 'challenge', '123456', credentials))
+      .resolves.toEqual({ success: true, email: 'owner@example.com' });
+    expect(getMock).toHaveBeenCalledWith(
+      'https://cloud.example/v1/account/identities',
+      { headers: expect.objectContaining({ Authorization: 'Bearer current-token' }) },
+    );
+    expect(postMock).toHaveBeenCalledWith(
+      'https://cloud.example/v1/account/identities/email',
+      {
+        email: 'owner@example.com', challengeId: 'challenge', code: '123456', secret: 'account-secret',
+      },
+      { headers: expect.objectContaining({ Authorization: 'Bearer current-token' }) },
+    );
+  });
+
+  it.each([
+    [409, 'email_identity_in_use', 'email-identity-in-use'],
+    [403, 'reauth_required', 'reauth-required'],
+    [401, 'invalid_email_code', 'invalid-email-code'],
+    [429, 'too_many_requests', 'rate-limited'],
+  ])('maps Email identity link failure %s/%s', async (status, error, expected) => {
+    postMock.mockRejectedValueOnce({ response: { status, data: { error } } });
+    await expect(linkEmailIdentity('owner@example.com', 'challenge', '000000', { token: 't', secret: 's' }))
+      .rejects.toMatchObject({ code: expected });
   });
 
   it.each([
