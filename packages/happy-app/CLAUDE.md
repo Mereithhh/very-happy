@@ -3,19 +3,31 @@
 > **Archived upstream client:** `packages/happy-app` is not the Very Happy
 > production Web client and is not built, shipped, or supported. Its historical
 > architecture notes do not describe Very Happy's server-trusted security model.
-> Its npm and Cargo manifests were deliberately retired before the public
-> candidate: this directory is a source snapshot for protocol archaeology, not
-> an installable package. Use `packages/happy-web-v2` for all product work.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## No supported commands
+## Commands
 
-Do not install, build, test, release, or restore native/Tauri packaging from this
-snapshot. Historical commands and dependency manifests were removed because the
-tree is outside the supported workspace and carried unmaintained advisories.
-Retrieve an old revision only for archaeology; new implementation belongs in
-Web V2, CLI, Server, or Wire and must use their current gates.
+### Development
+- `pnpm start` - Start the Expo development server
+- `pnpm ios` - Run the app on iOS simulator
+- `pnpm android` - Run the app on Android emulator
+- `pnpm web` - Run the app in web browser
+- `pnpm prebuild` - Generate native iOS and Android directories
+- `pnpm typecheck` - Run TypeScript type checking after all changes
+
+### macOS Desktop (Tauri)
+- `pnpm tauri:dev` - Run macOS desktop app with hot reload
+- `pnpm tauri:build:dev` - Build development variant
+- `pnpm tauri:build:preview` - Build preview variant
+- `pnpm tauri:build:production` - Build production variant
+
+### Testing
+- `pnpm test` - Run tests in watch mode (Vitest)
+- No existing tests in the codebase yet
+
+### Production
+- `pnpm ota` - Deploy over-the-air updates via EAS Update to production branch
 
 ## Architecture Overview
 

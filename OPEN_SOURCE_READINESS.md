@@ -804,13 +804,12 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   complex. The release remains explicitly server-trusted. A future E2EE design must preserve the
   default “sign in on a new device and continue” journey, make recovery and revocation legible,
   and complete every data/control plane before any public E2EE claim.
-- The history-only `packages/happy-app` snapshot is excluded from the pnpm workspace, CI,
-  production, and the supported product. Enabling Dependabot exposed multiple advisories in its
-  abandoned Expo/Tauri dependency graph, including high-severity transitive Rust findings. Rather
-  than normalize vulnerable dead code or imply support, the npm and Cargo manifests are retired;
-  the remaining source is protocol archaeology only and cannot be installed or built. Restoring
-  any client from it requires a new maintained manifest, a fresh dependency audit, and normal
-  product gates.
+- The history-only `packages/happy-app` Tauri archive is excluded from the pnpm workspace, CI,
+  production, and the supported product. Its transitive `bytes` advisory is patched at 1.11.1 and
+  `cargo check --locked` passes. Its Tauri 2/Wry GTK3 stack still resolves `glib` 0.18, which has a
+  medium advisory and no compatible 0.20 upgrade in that stack; the Dependabot alert is dismissed
+  as tolerable only while the archive remains non-shipping. Reopen and resolve it with the
+  Tauri 3/GTK4 migration, or before restoring this archive as a supported build target.
 - The server image still runs as root and is 1.55 GB. Reducing privileges and image size is a
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.
