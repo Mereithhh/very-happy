@@ -2,7 +2,7 @@
 
 > Assessed: 2026-08-25 (Asia/Singapore)
 >
-> Public candidate head: `e9af51ed` on PR #4
+> Protected public `main` after the readiness merge: `1bbd6bef`
 >
 > Decision: **READY for Owner final confirmation**
 
@@ -57,8 +57,9 @@ OAuth/Cloud policy, the Android Chrome tactile check, and release messaging.
 | Area | Evidence |
 |---|---|
 | Public base | `12861872ee701526f4644f763a83b431fe252d4b`; explicit-main-only push |
-| Quality Gates | PR #4 run `32824955015`: quality, server container/migration/persistence and introduced-commit secret scan passed |
-| CLI Smoke | PR #4 run `32824954860`: Linux Node 20/24 passed; private macOS/Windows jobs are intentionally unavailable to public PRs |
+| Quality Gates | PR #4 run `32825832908`: quality, server container/migration/persistence and introduced-commit secret scan passed |
+| CLI Smoke | PR #4 run `32825833131`: Linux Node 20/24 passed; private macOS/Windows jobs are intentionally unavailable to public PRs |
+| Post-merge main | Exact head `1bbd6bef`: Quality `32826119316` and CLI Smoke `32826119257` passed |
 | Protected PR | PR #1 run `32817704371`: all three required checks passed without bypass |
 | Fork isolation | PR #2 from `MiroMindAI` run `32817718015`: all checks passed on `ubuntu-latest`; 0 public runners/secrets/variables; closed unmerged |
 | Web | 112 test files / 1,495 tests; Vite production build; TypeScript zero errors |
@@ -114,7 +115,7 @@ pure regression so a transient empty probe cannot consume the badge.
 
 ## Publication closeout
 
-- [x] The verified readiness branch was merged into protected `main` without bypass (`52669cc2`).
+- [x] PR #4 was merged into protected `main` without bypass (`1bbd6bef`).
 - [x] A fork-origin pull request proves hosted-runner/no-secret isolation.
 - [x] The original repository is renamed as a private archive/release plane.
 - [x] The sanitized repository has the canonical `Mereithhh/very-happy` name.
