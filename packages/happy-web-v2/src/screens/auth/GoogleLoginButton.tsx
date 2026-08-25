@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGoogleLoginChallenge, loadPublicAuthConfig } from '@/auth/cloudAuth';
+import { useTheme } from '@/ui';
 import { initialGoogleButtonState, reduceGoogleButtonState } from './googleButtonState';
 import './auth.css';
 
@@ -67,6 +68,7 @@ export function GoogleLoginButton({
   required?: boolean;
   loadingLabel?: string;
 }) {
+  const { resolved: resolvedTheme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onCredential);
   const [state, setState] = useState(initialGoogleButtonState);
@@ -112,7 +114,7 @@ export function GoogleLoginButton({
           });
           identity.renderButton(containerRef.current, {
             type: 'standard',
-            theme: 'outline',
+            theme: resolvedTheme === 'dark' ? 'filled_black' : 'outline',
             size: 'large',
             width: Math.min(400, Math.max(200, containerRef.current.clientWidth || 400)),
             text: 'continue_with',
@@ -135,7 +137,7 @@ export function GoogleLoginButton({
       cancelled = true;
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     };
-  }, [attempt, onUnavailable, required]);
+  }, [attempt, onUnavailable, required, resolvedTheme]);
 
   const loading = required && !enabled && !failed;
   return <div className={`auth-google-block${enabled || failed || required ? ' is-ready' : ''}${failed ? ' is-failed' : ''}${loading ? ' is-loading' : ''}`}>
