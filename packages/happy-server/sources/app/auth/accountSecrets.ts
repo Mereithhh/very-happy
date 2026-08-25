@@ -22,13 +22,6 @@ export function decryptAccountSecret(accountId: string, stored: string): { secre
 }
 
 export async function upsertAccountSecret(client: SqlClient, accountId: string, secret: string): Promise<string> {
-    const accounts = await client.$queryRawUnsafe<Array<{ cryptoMode?: string }>>(
-        'SELECT "cryptoMode" FROM "Account" WHERE "id" = $1 LIMIT 1',
-        accountId,
-    );
-    if (accounts[0]?.cryptoMode === 'e2ee-v1') {
-        throw new Error('e2ee_account_escrow_forbidden');
-    }
     const secretEnc = encryptAccountSecret(accountId, secret);
     await client.$executeRawUnsafe(
         `INSERT INTO "AccountSecret" ("accountId", "secretEnc", "updatedAt")

@@ -3,50 +3,10 @@ import { Fastify } from "../types";
 import { kvGet } from "@/app/kv/kvGet";
 import { kvList } from "@/app/kv/kvList";
 import { kvBulkGet } from "@/app/kv/kvBulkGet";
-import { kvKeySchema, kvMutate, kvMutationsBodySchema, KV_KEY_MAX_BYTES, KV_VALUE_MAX_BYTES } from "@/app/kv/kvMutate";
+import { kvKeySchema, kvMutate, kvMutationsBodySchema, KV_KEY_MAX_BYTES } from "@/app/kv/kvMutate";
 import { log } from "@/utils/log";
 import { isAccountResourceLimitError } from '../resourceLimits';
 import { utf8StringSchema } from '../resourceSchemas';
-import { db } from '@/storage/db';
-import {
-    E2eeDataGuardError,
-    isE2eeDataGuardError,
-    validateE2eeKvValue,
-    writerAuthFromRequest,
-    type AccountCryptoState,
-} from '@/app/auth/e2eeDataGuard';
-
-const e2eeReadErrorSchema = z.object({ error: z.literal('e2ee_data_invalid') });
-const e2eeWriteErrorSchema = z.object({
-    error: z.enum(['invalid_e2ee_envelope', 'e2ee_data_invalid', 'e2ee_rekey_required', 'e2ee_client_required']),
-});
-
-async function getAccountCryptoState(accountId: string): Promise<AccountCryptoState | null> {
-    const account = await db.account.findUnique({
-        where: { id: accountId },
-        select: { id: true, cryptoMode: true, cryptoEpoch: true, cryptoWriteState: true, e2eeOrigin: true },
-    });
-    return account ? account as AccountCryptoState : null;
-}
-
-async function validateKvReadResults(
-    accountId: string,
-    values: ReadonlyArray<{ key: string; value: string }>,
-): Promise<void> {
-    const account = await getAccountCryptoState(accountId);
-    if (!account) throw new E2eeDataGuardError(409, 'e2ee_data_invalid');
-    if (account.cryptoMode !== 'e2ee-v1') return;
-    for (const item of values) {
-        validateE2eeKvValue(
-            item.value,
-            item.key,
-            account,
-            KV_VALUE_MAX_BYTES,
-            'e2ee_data_invalid',
-            'read-existing',
-        );
-    }
-}
 
 export function kvRoutes(app: Fastify) {
     // GET /v1/kv/:key - Get single value
@@ -65,7 +25,6 @@ export function kvRoutes(app: Fastify) {
                 404: z.object({
                     error: z.literal('Key not found')
                 }),
-                409: e2eeReadErrorSchema,
                 500: z.object({
                     error: z.literal('Failed to get value')
                 })
@@ -82,12 +41,8 @@ export function kvRoutes(app: Fastify) {
                 return reply.code(404).send({ error: 'Key not found' });
             }
 
-            await validateKvReadResults(userId, [result]);
             return reply.send(result);
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(409).send({ error: 'e2ee_data_invalid' });
-            }
             log({ module: 'api', level: 'error', error }, 'Failed to get KV value');
             return reply.code(500).send({ error: 'Failed to get value' });
         }
@@ -109,7 +64,6 @@ export function kvRoutes(app: Fastify) {
                         version: z.number()
                     }))
                 }),
-                409: e2eeReadErrorSchema,
                 500: z.object({
                     error: z.literal('Failed to list items')
                 })
@@ -121,12 +75,8 @@ export function kvRoutes(app: Fastify) {
 
         try {
             const result = await kvList({ uid: userId }, { prefix, limit });
-            await validateKvReadResults(userId, result.items);
             return reply.send(result);
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(409).send({ error: 'e2ee_data_invalid' });
-            }
             log({ module: 'api', level: 'error', error }, 'Failed to list KV items');
             return reply.code(500).send({ error: 'Failed to list items' });
         }
@@ -147,7 +97,6 @@ export function kvRoutes(app: Fastify) {
                         version: z.number()
                     }))
                 }),
-                409: e2eeReadErrorSchema,
                 500: z.object({
                     error: z.literal('Failed to get values')
                 })
@@ -159,12 +108,8 @@ export function kvRoutes(app: Fastify) {
 
         try {
             const result = await kvBulkGet({ uid: userId }, keys);
-            await validateKvReadResults(userId, result.values);
             return reply.send(result);
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(409).send({ error: 'e2ee_data_invalid' });
-            }
             log({ module: 'api', level: 'error', error }, 'Failed to bulk get KV values');
             return reply.code(500).send({ error: 'Failed to get values' });
         }
@@ -191,11 +136,7 @@ export function kvRoutes(app: Fastify) {
                         version: z.number(),
                         value: z.string().nullable()
                     }))
-                }).or(e2eeWriteErrorSchema),
-                // Fastify body validation also uses 400; keep its standard
-                // error shape while handler-originated E2EE errors stay stable.
-                400: z.any(),
-                426: z.object({ error: z.literal('e2ee_client_required') }),
+                }),
                 413: z.object({ error: z.literal('kv_bytes_quota_exceeded') }),
                 429: z.object({ error: z.enum(['kv_count_quota_exceeded', 'kv_rate_quota_exceeded']) }),
                 500: z.object({
@@ -208,10 +149,7 @@ export function kvRoutes(app: Fastify) {
         const { mutations } = request.body;
 
         try {
-            const result = await kvMutate({
-                uid: userId,
-                e2eeWriterAuth: writerAuthFromRequest(request),
-            }, mutations);
+            const result = await kvMutate({ uid: userId }, mutations);
 
             if (!result.success) {
                 return reply.code(409).send({
@@ -225,9 +163,6 @@ export function kvRoutes(app: Fastify) {
                 results: result.results!
             });
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(error.statusCode).send({ error: error.code as any });
-            }
             if (isAccountResourceLimitError(error)) {
                 return reply.code(error.statusCode).send({ error: error.code as any });
             }

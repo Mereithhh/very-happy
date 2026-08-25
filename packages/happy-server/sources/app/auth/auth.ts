@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "crypto";
 import { log } from "@/utils/log";
 import { db } from "@/storage/db";
 import type { Prisma } from "@prisma/client";
-import { E2EE_SUITE_V1, e2eeCapabilitySchema } from '@slopus/happy-wire';
 
 /** Cache entries expire after 24 hours */
 const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -16,20 +15,8 @@ const DEFAULT_MAX_LOGIN_SESSIONS_PER_ACCOUNT = 20;
 
 interface TokenCacheEntry {
     userId: string;
-    extras?: VerifiedAuthExtras;
+    extras?: any;
     cachedAt: number;
-}
-
-export interface VerifiedAuthExtras {
-    loginSessionId?: string;
-    deviceId?: string;
-    capabilities?: string[];
-    e2eeProtocol?: string;
-    cryptoMode?: 'trusted-v1' | 'e2ee-migrating' | 'e2ee-v1';
-    cryptoEpoch?: number;
-    cryptoWriteState?: 'active' | 'rekey-required';
-    e2eeOrigin?: string;
-    [key: string]: unknown;
 }
 
 interface AuthTokens {
@@ -95,7 +82,7 @@ class AuthModule {
         return this.tokens.generator.new(payload);
     }
 
-    private cacheToken(token: string, userId: string, extras?: VerifiedAuthExtras): void {
+    private cacheToken(token: string, userId: string, extras?: any): void {
         this.tokenCache.set(token, {
             userId,
             extras,
@@ -113,13 +100,7 @@ class AuthModule {
     async createLoginToken(
         userId: string,
         client?: Pick<Prisma.TransactionClient, '$executeRawUnsafe' | '$queryRawUnsafe'>,
-        options: {
-            cache?: boolean;
-            deviceId?: string;
-            capabilities?: string[];
-            e2eeProtocol?: string;
-            ttlMs?: number;
-        } = {},
+        options: { cache?: boolean } = {},
     ): Promise<{ token: string; expiresAt: Date }> {
         if (!client) {
             return db.$transaction((tx) => this.createLoginToken(userId, tx, options));
@@ -128,14 +109,8 @@ class AuthModule {
         const loginSessionId = randomUUID();
         const ttlDays = parseLoginSessionTtlDays(process.env.LOGIN_SESSION_TTL_DAYS);
         const maxSessions = parseMaxLoginSessionsPerAccount(process.env.MAX_LOGIN_SESSIONS_PER_ACCOUNT);
-        const expiresAt = new Date(Date.now() + (options.ttlMs ?? ttlDays * 24 * 60 * 60 * 1000));
-        const capabilities = options.capabilities ?? [];
-        const extras: VerifiedAuthExtras = {
-            loginSessionId,
-            ...(options.deviceId ? { deviceId: options.deviceId } : {}),
-            ...(capabilities.length > 0 ? { capabilities } : {}),
-            ...(options.e2eeProtocol ? { e2eeProtocol: options.e2eeProtocol } : {}),
-        };
+        const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+        const extras = { loginSessionId };
         const token = await this.generateToken(userId, extras);
 
         // Serialize cleanup, eviction, and insertion for this account across all
@@ -164,35 +139,31 @@ class AuthModule {
         );
         await client.$executeRawUnsafe(
             `INSERT INTO "AccountLoginSession"
-             ("id", "accountId", "tokenHash", "deviceId", "capabilities", "e2eeProtocol", "expiresAt", "lastUsedAt", "createdAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())`,
+             ("id", "accountId", "tokenHash", "expiresAt", "lastUsedAt", "createdAt")
+             VALUES ($1, $2, $3, $4, now(), now())`,
             loginSessionId,
             userId,
             hashLoginToken(token),
-            options.deviceId ?? null,
-            capabilities,
-            options.e2eeProtocol ?? null,
             expiresAt,
         );
         if (options.cache !== false) this.cacheToken(token, userId, extras);
         return { token, expiresAt };
     }
     
-    async verifyToken(token: string): Promise<{ userId: string; extras?: VerifiedAuthExtras } | null> {
+    async verifyToken(token: string): Promise<{ userId: string; extras?: any } | null> {
         // Check cache first (with TTL)
         const cached = this.tokenCache.get(token);
         if (cached) {
             if (Date.now() - cached.cachedAt > TOKEN_CACHE_TTL) {
                 this.tokenCache.delete(token);
             } else {
-                const extras = await this.resolveAuthExtras(token, cached.userId, cached.extras);
-                if (!extras) {
+                if (!(await this.isLoginSessionValid(token, cached.userId, cached.extras))) {
                     this.tokenCache.delete(token);
                     return null;
                 }
                 return {
                     userId: cached.userId,
-                    extras,
+                    extras: cached.extras
                 };
             }
         }
@@ -209,8 +180,8 @@ class AuthModule {
             }
             
             const userId = verified.user as string;
-            const extras = await this.resolveAuthExtras(token, userId, verified.extras);
-            if (!extras) {
+            const extras = verified.extras;
+            if (!(await this.isLoginSessionValid(token, userId, extras))) {
                 return null;
             }
             
@@ -328,92 +299,25 @@ class AuthModule {
         }
     }
 
-    private async resolveAuthExtras(token: string, userId: string, extras: any): Promise<VerifiedAuthExtras | null> {
+    private async isLoginSessionValid(token: string, userId: string, extras: any): Promise<boolean> {
         const loginSessionId = extras?.loginSessionId;
-        // CLI/daemon and pre-migration Web tokens deliberately remain valid for
-        // trusted-v1 only. E2EE requires a database-backed device session.
-        if (typeof loginSessionId !== 'string' || loginSessionId.length === 0) {
-            const accounts = await db.$queryRawUnsafe<Array<{
-                cryptoMode?: string;
-                cryptoEpoch?: number;
-                cryptoWriteState?: string;
-                e2eeOrigin?: string | null;
-            }>>(
-                `SELECT "cryptoMode", "cryptoEpoch", "cryptoWriteState", "e2eeOrigin"
-                 FROM "Account" WHERE "id" = $1 LIMIT 1`,
-                userId,
-            );
-            const account = accounts[0];
-            if (!account || account.cryptoMode === 'e2ee-v1') return null;
-            return {
-                ...(extras ?? {}),
-                cryptoMode: (account.cryptoMode ?? 'trusted-v1') as VerifiedAuthExtras['cryptoMode'],
-                cryptoEpoch: account.cryptoEpoch ?? 0,
-                cryptoWriteState: (account.cryptoWriteState ?? 'active') as VerifiedAuthExtras['cryptoWriteState'],
-            };
-        }
+        // CLI/daemon and pre-migration Web tokens deliberately remain valid.
+        if (typeof loginSessionId !== 'string' || loginSessionId.length === 0) return true;
 
         const rows = await db.$queryRawUnsafe<Array<{
             accountId: string;
             tokenHash: string;
             expiresAt: Date;
             revokedAt: Date | null;
-            deviceId?: string | null;
-            capabilities?: string[];
-            e2eeProtocol?: string | null;
-            cryptoMode?: string;
-            cryptoEpoch?: number;
-            cryptoWriteState?: string;
-            e2eeOrigin?: string | null;
-            deviceStatus?: string | null;
-            deviceType?: string | null;
         }>>(
-            `SELECT s."accountId", s."tokenHash", s."expiresAt", s."revokedAt",
-                    s."deviceId", s."capabilities", s."e2eeProtocol",
-                    a."cryptoMode", a."cryptoEpoch", a."cryptoWriteState", a."e2eeOrigin",
-                    d."status" AS "deviceStatus", d."type" AS "deviceType"
-             FROM "AccountLoginSession" s
-             JOIN "Account" a ON a."id" = s."accountId"
-             LEFT JOIN "CryptoDevice" d
-               ON d."accountId" = s."accountId" AND d."id" = s."deviceId"
-             WHERE s."id" = $1 LIMIT 1`,
+            `SELECT "accountId", "tokenHash", "expiresAt", "revokedAt"
+             FROM "AccountLoginSession" WHERE "id" = $1 LIMIT 1`,
             loginSessionId,
         );
         const row = rows[0];
-        if (!row || row.accountId !== userId || row.revokedAt !== null) return null;
-        if (new Date(row.expiresAt).getTime() <= Date.now()) return null;
-        if (row.tokenHash !== hashLoginToken(token)) return null;
-
-        const cryptoMode = (row.cryptoMode ?? 'trusted-v1') as VerifiedAuthExtras['cryptoMode'];
-        const capabilities = row.capabilities ?? [];
-        if (cryptoMode === 'e2ee-v1') {
-            if (!row.deviceId || row.e2eeProtocol !== E2EE_SUITE_V1) return null;
-            const parsedCapabilities = capabilities.map((capability) => e2eeCapabilitySchema.safeParse(capability));
-            if (parsedCapabilities.some((capability) => !capability.success)) return null;
-            const pendingUnlock = row.deviceStatus === 'pending'
-                && row.deviceType === 'web'
-                && capabilities.length === 1
-                && capabilities[0] === 'e2ee:unlock';
-            const activeControl = row.deviceStatus === 'active'
-                && row.deviceType === 'web'
-                && capabilities.length === 1
-                && capabilities[0] === 'e2ee:control';
-            const activeRunner = row.deviceStatus === 'active'
-                && (row.deviceType === 'daemon' || row.deviceType === 'cli')
-                && capabilities.length === 1
-                && capabilities[0] === 'e2ee:runner';
-            if (!pendingUnlock && !activeControl && !activeRunner) return null;
-        }
-        return {
-            loginSessionId,
-            ...(row.deviceId ? { deviceId: row.deviceId } : {}),
-            capabilities,
-            ...(row.e2eeProtocol ? { e2eeProtocol: row.e2eeProtocol } : {}),
-            cryptoMode,
-            cryptoEpoch: row.cryptoEpoch ?? 0,
-            cryptoWriteState: (row.cryptoWriteState ?? 'active') as VerifiedAuthExtras['cryptoWriteState'],
-            ...(row.e2eeOrigin ? { e2eeOrigin: row.e2eeOrigin } : {}),
-        };
+        if (!row || row.accountId !== userId || row.revokedAt !== null) return false;
+        if (new Date(row.expiresAt).getTime() <= Date.now()) return false;
+        return row.tokenHash === hashLoginToken(token);
     }
 }
 

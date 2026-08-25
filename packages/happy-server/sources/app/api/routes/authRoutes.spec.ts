@@ -66,7 +66,6 @@ describe('claim-secret pairing routes', () => {
         state.row = null;
         vi.clearAllMocks();
         delete process.env.AUTH_ALLOW_LEGACY_PAIRING;
-        delete process.env.E2EE_SIGNUP_REQUIRED;
     });
 
     it('creates v3 requests and rejects a wrong claim', async () => {
@@ -150,22 +149,6 @@ describe('claim-secret pairing routes', () => {
         } });
 
         expect(response.statusCode).toBe(400);
-        expect(storeMock.approvePairingRow).not.toHaveBeenCalled();
-        await app.close();
-    });
-
-    it('rejects legacy pairing approval for an E2EE account', async () => {
-        dbMock.account.findUnique.mockResolvedValueOnce({ cryptoMode: 'e2ee-v1' });
-        state.row = {
-            id: 'pending', publicKey, supportsV2: true, claimSecretHash: claimSecretHash(claim),
-            response: null, responseAccountId: null, createdAt: new Date(), updatedAt: new Date(),
-        };
-        const app = await buildApp();
-        const response = await app.inject({
-            method: 'POST', url: '/v1/auth/response', payload: { publicKey, response: 'ciphertext' },
-        });
-        expect(response.statusCode).toBe(426);
-        expect(response.json()).toEqual({ error: 'e2ee_client_required' });
         expect(storeMock.approvePairingRow).not.toHaveBeenCalled();
         await app.close();
     });

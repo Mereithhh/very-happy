@@ -8,9 +8,6 @@ const { sessions, dbMock } = vi.hoisted(() => {
         expiresAt: Date;
         revokedAt: Date | null;
         createdAt: Date;
-        deviceId: string | null;
-        capabilities: string[];
-        e2eeProtocol: string | null;
     }>();
     const dbMock = {
         $executeRawUnsafe: vi.fn(async (sql: string, ...values: unknown[]) => {
@@ -34,10 +31,7 @@ const { sessions, dbMock } = vi.hoisted(() => {
                 sessions.set(values[0] as string, {
                     accountId: values[1] as string,
                     tokenHash: values[2] as string,
-                    deviceId: values[3] as string | null,
-                    capabilities: values[4] as string[],
-                    e2eeProtocol: values[5] as string | null,
-                    expiresAt: values[6] as Date,
+                    expiresAt: values[3] as Date,
                     revokedAt: null,
                     createdAt: new Date(++createdCounter),
                 });
@@ -58,13 +52,7 @@ const { sessions, dbMock } = vi.hoisted(() => {
         $queryRawUnsafe: vi.fn(async (sql: string, id: string) => {
             if (sql.includes('FROM "Account"')) return [{ id }];
             const row = sessions.get(id);
-            return row ? [{
-                ...row,
-                cryptoMode: 'trusted-v1',
-                cryptoEpoch: 0,
-                cryptoWriteState: 'active',
-                deviceStatus: null,
-            }] : [];
+            return row ? [row] : [];
         }),
     };
     (dbMock as any).$transaction = vi.fn(async (fn: (tx: typeof dbMock) => unknown) => fn(dbMock));

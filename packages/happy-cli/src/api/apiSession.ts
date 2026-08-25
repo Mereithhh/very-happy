@@ -1,7 +1,6 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import type { E2eeSocketIdentityV1 } from '@slopus/happy-wire';
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
@@ -119,7 +118,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
 
-    constructor(token: string, session: Session, e2eeIdentity?: E2eeSocketIdentityV1) {
+    constructor(token: string, session: Session) {
         super()
         this.token = token;
         this.sessionId = session.id;
@@ -150,8 +149,7 @@ export class ApiSessionClient extends EventEmitter {
                 token: this.token,
                 clientType: 'session-scoped' as const,
                 sessionId: this.sessionId,
-                happyClient: `cli-coding-session/${configuration.currentCliVersion}`,
-                ...(e2eeIdentity ?? {}),
+                happyClient: `cli-coding-session/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
             reconnection: false,

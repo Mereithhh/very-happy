@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
@@ -11,22 +11,12 @@ import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
 import { authReturnTarget } from '@/app/authReturnTarget';
-import {
-  E2eeAccountAuthError,
-  commitE2eePasswordSignup,
-  requestE2eeSignupChallenge,
-} from '@/auth/e2eeAccountApi';
-import {
-  disposePreparedE2eeSignup,
-  prepareE2eePasswordSignup,
-  type PreparedE2eePasswordSignup,
-} from '@/auth/e2eeAccountSetup';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
 
 export function SignupScreen() {
-  const { login, loginE2ee } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -42,10 +32,6 @@ export function SignupScreen() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [authConfig, setAuthConfig] = useState<PublicAuthConfig | null>(null);
-  const [preparedE2ee, setPreparedE2ee] = useState<PreparedE2eePasswordSignup | null>(null);
-  const preparedRef = useRef<PreparedE2eePasswordSignup | null>(null);
-  const [recoveryConfirmation, setRecoveryConfirmation] = useState('');
-  const [recoveryCopied, setRecoveryCopied] = useState(false);
   // Field-level validation only surfaces after a field is touched (audit S2:
   // real-time inline validation that doesn't scream at an empty pristine form).
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean; c?: boolean }>({});
@@ -86,28 +72,6 @@ export function SignupScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => () => {
-    if (preparedRef.current) disposePreparedE2eeSignup(preparedRef.current);
-  }, []);
-
-  function holdPrepared(prepared: PreparedE2eePasswordSignup | null) {
-    preparedRef.current = prepared;
-    setPreparedE2ee(prepared);
-  }
-
-  function authErrorText(error: unknown): string {
-    if (!(error instanceof E2eeAccountAuthError)) return t('signup.errorGeneric');
-    if (error.code === 'username-taken') return t('signup.errorUsernameTaken');
-    if (error.code === 'rate-limited') return t('signup.errorRateLimited');
-    if (error.code === 'capacity-reached') return t('signup.errorCapacityReached');
-    if (error.code === 'invite-required') return t('signup.errorInviteRequired');
-    if (error.code === 'signup-closed') return t('signup.errorSignupClosed');
-    if (error.code === 'same-origin-required') {
-      return 'E2EE setup requires the Web app and relay API on the same origin. See Self-hosting.';
-    }
-    return t('signup.errorGeneric');
-  }
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setTouched({ u: true, p: true, c: true });
@@ -116,13 +80,6 @@ export function SignupScreen() {
     setServerError(null);
     setGoogleError(null);
     try {
-      if (authConfig?.e2ee?.enabled) {
-        const { origin, challenge } = await requestE2eeSignupChallenge();
-        const prepared = await prepareE2eePasswordSignup({ origin, challenge, username });
-        holdPrepared(prepared);
-        setRecoveryConfirmation('');
-        return;
-      }
       // Generate a fresh 32-byte account secret and base64url-encode it. The
       // secret is what happy uses for encryption/sync; here we register it
       // server-side so any browser with username+password can become the account.
@@ -134,9 +91,7 @@ export function SignupScreen() {
       toast.success(t('signup.success'));
       navigate(authReturnTarget(location.state), { replace: true });
     } catch (err: any) {
-      if (err instanceof E2eeAccountAuthError) {
-        setServerError(authErrorText(err));
-      } else if (err instanceof AccountAuthError) {
+      if (err instanceof AccountAuthError) {
         if (err.code === 'username-taken') setServerError(t('signup.errorUsernameTaken'));
         else if (err.code === 'rate-limited') setServerError(t('signup.errorRateLimited'));
         else setServerError(t('signup.errorGeneric'));
@@ -156,62 +111,6 @@ export function SignupScreen() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function finishE2eeSignup(e: FormEvent) {
-    e.preventDefault();
-    if (!preparedE2ee || recoveryConfirmation.trim() !== preparedE2ee.recoveryCode || busy) return;
-    setBusy(true);
-    setServerError(null);
-    try {
-      // commitE2eePasswordSignup owns and wipes the prepared secret buffers.
-      preparedRef.current = null;
-      const credentials = await commitE2eePasswordSignup({
-        prepared: preparedE2ee,
-        password,
-        inviteCode: invite.trim() || undefined,
-      });
-      holdPrepared(null);
-      const unlocked = await loginE2ee(credentials);
-      if (!unlocked) throw new Error('New E2EE device did not unlock');
-      toast.success(t('signup.success'));
-      navigate(authReturnTarget(location.state), { replace: true });
-    } catch (error) {
-      holdPrepared(null);
-      setServerError(authErrorText(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copyRecoveryCode() {
-    if (!preparedE2ee) return;
-    try {
-      await navigator.clipboard.writeText(preparedE2ee.recoveryCode);
-      setRecoveryCopied(true);
-    } catch {
-      setServerError('Copy failed. Select the recovery code and save it manually.');
-    }
-  }
-
-  function downloadRecoveryCode() {
-    if (!preparedE2ee) return;
-    const blob = new Blob([
-      `Very Happy recovery code\n\n${preparedE2ee.recoveryCode}\n\n`,
-      'Keep this file private. Very Happy and the relay cannot recover this code.\n',
-    ], { type: 'text/plain;charset=utf-8' });
-    const href = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = href;
-    anchor.download = 'very-happy-recovery-code.txt';
-    anchor.click();
-    URL.revokeObjectURL(href);
-  }
-
-  function cancelPreparedSignup() {
-    if (preparedE2ee) disposePreparedE2eeSignup(preparedE2ee);
-    holdPrepared(null);
-    setRecoveryConfirmation('');
   }
 
   async function onGoogleCredential(credential: string, nonce: string) {
@@ -235,50 +134,6 @@ export function SignupScreen() {
       setBusy(false);
     }
   }
-
-  if (preparedE2ee) return (
-    <div className="auth-page">
-      <CyberBackdrop />
-      <form className="auth-card auth-card--recovery" onSubmit={finishE2eeSignup}>
-        <div className="auth-brand"><CyberMark size={40} glow /><div className="auth-wordmark">very happy</div></div>
-        <div className="auth-eyebrow eyebrow">SAVE YOUR RECOVERY CODE</div>
-        <h1 className="auth-recovery-title">Your password cannot decrypt this account.</h1>
-        <p className="auth-recovery-copy">
-          This one-time code is the only way to approve a new browser. The relay never receives it and cannot reset it.
-        </p>
-        <output className="auth-recovery-code" aria-label="Recovery code">
-          {preparedE2ee.recoveryCode}
-        </output>
-        <div className="auth-recovery-actions">
-          <Button type="button" variant="secondary" onClick={copyRecoveryCode}>
-            {recoveryCopied ? 'Copied' : 'Copy code'}
-          </Button>
-          <Button type="button" variant="ghost" onClick={downloadRecoveryCode}>Download .txt</Button>
-        </div>
-        <Input
-          label="Paste the recovery code to confirm"
-          autoComplete="off"
-          spellCheck={false}
-          value={recoveryConfirmation}
-          onChange={(event) => setRecoveryConfirmation(event.target.value.trim().toUpperCase())}
-          placeholder="VH1-…"
-        />
-        {serverError && <div className="auth-error" role="alert">{serverError}</div>}
-        <Button
-          type="submit"
-          variant="primary"
-          fullWidth
-          loading={busy}
-          disabled={recoveryConfirmation !== preparedE2ee.recoveryCode || busy}
-        >
-          Create encrypted account
-        </Button>
-        <button type="button" className="auth-alt" disabled={busy} onClick={cancelPreparedSignup}>
-          Start over
-        </button>
-      </form>
-    </div>
-  );
 
   return (
     <div className="auth-page">
@@ -306,17 +161,13 @@ export function SignupScreen() {
             placeholder={t('signup.inviteCodePlaceholder')}
           />}
 
-        {authConfig && !authConfig.e2ee?.enabled ? <GoogleLoginButton
-            disabled={busy}
-            dividerLabel={t('signup.orPassword')}
-            retryLabel={t('common.retry')}
-            unavailableLabel={t('signup.errorGoogle')}
-            onCredential={onGoogleCredential}
-          /> : authConfig?.e2ee?.enabled ? (
-            <div className="auth-policy" role="status">
-              Google registration is temporarily unavailable while encrypted-device approval is completed. Use password signup.
-            </div>
-          ) : null}
+        <GoogleLoginButton
+          disabled={busy}
+          dividerLabel={t('signup.orPassword')}
+          retryLabel={t('common.retry')}
+          unavailableLabel={t('signup.errorGoogle')}
+          onCredential={onGoogleCredential}
+        />
         {googleError && <div className="auth-error" role="alert">{googleError}</div>}
 
         <Input

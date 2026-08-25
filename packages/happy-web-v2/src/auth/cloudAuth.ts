@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
-import type { AuthCredentials, TrustedAuthCredentials } from './tokenStorage';
+import type { AuthCredentials } from './tokenStorage';
 
 export type SignupMode = 'open' | 'invite' | 'closed';
 
@@ -13,11 +13,6 @@ export interface PublicAuthConfig {
         registeredAccounts: number;
         remainingAccounts: number | null;
         atCapacity: boolean;
-    };
-    /** Absent only on a pre-E2EE server. */
-    e2ee?: {
-        enabled: boolean;
-        required: boolean;
     };
 }
 
@@ -75,9 +70,9 @@ export async function loginWithGoogle(
     credential: string,
     nonce: string,
     inviteCode?: string,
-): Promise<TrustedAuthCredentials> {
+): Promise<AuthCredentials> {
     try {
-        const response = await axios.post<TrustedAuthCredentials>(
+        const response = await axios.post<AuthCredentials>(
             `${getServerUrl()}/v1/account/login/google`,
             { credential, nonce, ...(inviteCode?.trim() ? { inviteCode: inviteCode.trim() } : {}) },
             { headers: { 'X-Happy-Client': getHappyClientId() } },

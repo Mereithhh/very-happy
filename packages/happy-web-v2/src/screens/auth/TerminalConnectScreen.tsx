@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, MonitorUp, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
-import { isTrustedAuthCredentials } from '@/auth/tokenStorage';
 import { authApprove } from '@/auth/authApprove';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { sync } from '@/sync/sync';
@@ -32,12 +31,6 @@ export function TerminalConnectScreen() {
 
   async function approve() {
     if (!credentials || !publicKey) return;
-    if (!isTrustedAuthCredentials(credentials)) {
-      // The legacy approval would hand a server-known account secret to the
-      // runner. E2EE runners use the separate scoped certificate flow.
-      setState('error');
-      return;
-    }
     setState('approving');
     try {
       const answer = buildTerminalApproval(

@@ -38,7 +38,6 @@ import {
 import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
-import { isTrustedAuthCredentials } from '@/auth/tokenStorage';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
@@ -1998,13 +1997,12 @@ function Password() {
     touched.c && confirm.length > 0 && confirm !== password ? (t('setPassword.errorMismatch')) : null;
 
   const canSubmit =
-    username.trim().length > 0 && password.length >= MIN_PASSWORD && confirm === password && !busy
-    && !!credentials && isTrustedAuthCredentials(credentials);
+    username.trim().length > 0 && password.length >= MIN_PASSWORD && confirm === password && !busy && !!credentials;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched({ u: true, p: true, c: true });
-    if (!canSubmit || !credentials || !isTrustedAuthCredentials(credentials)) return;
+    if (!canSubmit || !credentials) return;
     setBusy(true);
     setServerError(null);
     try {

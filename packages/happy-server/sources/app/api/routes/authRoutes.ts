@@ -17,7 +17,6 @@ import {
     findPairing,
     type PairingKind,
 } from '@/app/auth/pairingStore';
-import { resolveE2eeSignupConfig } from '@/app/auth/e2eeConfig';
 
 const publicKeySchema = z.string().min(40).max(48);
 const claimSecretSchema = z.string().min(43).max(48);
@@ -80,9 +79,6 @@ export function authRoutes(app: Fastify) {
         const publicKeyHex = privacyKit.encodeHex(Uint8Array.from(publicKey));
         let user = await db.account.findUnique({ where: { publicKey: publicKeyHex } });
         if (!user) {
-            if (resolveE2eeSignupConfig().required) {
-                return reply.code(426).send({ error: 'e2ee_client_required' });
-            }
             if (process.env.ALLOW_LEGACY_KEY_SIGNUP !== 'true') return reply.code(403).send({ error: 'legacy-key-signup-disabled' });
             const ipAllowed = await allowAuthRequest(`key-signup:ip:${hashPairingValue(request.ip).slice(0, 32)}`, { max: 10, windowMs: 60_000 });
             const globalAllowed = await allowAuthRequest('key-signup:global', { max: 50, windowMs: 60_000 });
@@ -169,8 +165,6 @@ async function handlePairingRequest(kind: PairingKind, request: any, reply: any)
     if (existing.response && existing.responseAccountId) {
         const claimed = await authorizePairing(kind, publicKeyHex, request.body.claimSecret);
         if (!claimed || typeof claimed === 'string') return pairingError(reply, claimed === 'expired' ? 410 : 404, claimed || 'not-found');
-        const account = await db.account.findUnique({ where: { id: claimed.accountId }, select: { cryptoMode: true } });
-        if (account?.cryptoMode === 'e2ee-v1') return pairingError(reply, 426, 'e2ee_client_required');
         return reply.send({
             state: 'authorized', protocolVersion: 3, claimSecretRequired: true,
             token: await auth.createToken(claimed.accountId, kind === 'terminal' ? { session: claimed.id } : undefined),
@@ -184,8 +178,6 @@ async function approvePairing(kind: PairingKind, request: any, reply: any) {
     const publicKey = decodePairingPublicKey(request.body.publicKey);
     if (!publicKey) return pairingError(reply, 401, 'invalid-public-key');
     const publicKeyHex = privacyKit.encodeHex(Uint8Array.from(publicKey));
-    const account = await db.account.findUnique({ where: { id: request.userId }, select: { cryptoMode: true } });
-    if (account?.cryptoMode === 'e2ee-v1') return pairingError(reply, 426, 'e2ee_client_required');
     if (!await allowPairingRate({ action: 'approve', ip: request.ip, publicKeyHex, accountId: request.userId })) return pairingError(reply, 429, 'rate-limit');
     const row = await findPairing(kind, publicKeyHex);
     if (!row || pairingExpired(row.createdAt)) return pairingError(reply, 404, row ? 'expired' : 'not-found');

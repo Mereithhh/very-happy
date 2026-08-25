@@ -4,7 +4,6 @@
  */
 
 import { io, Socket } from 'socket.io-client';
-import type { E2eeSocketIdentityV1 } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { configuration } from '@/configuration';
@@ -228,8 +227,7 @@ export class ApiMachineClient {
 
     constructor(
         private token: string,
-        private machine: Machine,
-        private e2eeIdentity?: E2eeSocketIdentityV1,
+        private machine: Machine
     ) {
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
@@ -776,8 +774,7 @@ export class ApiMachineClient {
                 token: this.token,
                 clientType: 'machine-scoped' as const,
                 machineId: this.machine.id,
-                happyClient: `cli-daemon/${configuration.currentCliVersion}`,
-                ...(this.e2eeIdentity ?? {}),
+                happyClient: `cli-daemon/${configuration.currentCliVersion}`
             },
             path: '/v1/updates',
             reconnection: false,

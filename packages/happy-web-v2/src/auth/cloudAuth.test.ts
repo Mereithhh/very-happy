@@ -24,19 +24,6 @@ describe('cloud auth client', () => {
     await expect(loadPublicAuthConfig()).resolves.toBeNull();
   });
 
-  it('preserves the server E2EE rollout flags for auth routing', async () => {
-    getMock.mockResolvedValueOnce({ data: {
-      signup: {
-        mode: 'open', maxAccounts: 100, registeredAccounts: 4,
-        remainingAccounts: 96, atCapacity: false,
-      },
-      e2ee: { enabled: true, required: false },
-    } });
-    await expect(loadPublicAuthConfig()).resolves.toMatchObject({
-      e2ee: { enabled: true, required: false },
-    });
-  });
-
   it('returns Google account credentials and forwards a non-empty invite', async () => {
     postMock.mockResolvedValueOnce({ data: { token: 'token', secret: 'secret' } });
     await expect(loginWithGoogle('id-token', 'signed-nonce', ' invite ')).resolves.toEqual({ token: 'token', secret: 'secret' });

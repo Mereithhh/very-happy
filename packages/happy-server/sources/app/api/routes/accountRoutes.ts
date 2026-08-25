@@ -8,19 +8,10 @@ import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import { AccountProfile } from "@/types";
 import {
-    ACCOUNT_SETTINGS_MAX_BYTES,
     accountSettingsUpdateSchema,
     enforceAccountSettingsWriteRate,
 } from '@/app/account/accountSettingsLimits';
 import { isAccountResourceLimitError } from '@/app/api/resourceLimits';
-import { inTx } from '@/storage/inTx';
-import {
-    isE2eeDataGuardError,
-    lockAndValidateE2eeWriter,
-    validateE2eeSettingsValue,
-    writerAuthFromRequest,
-    type AccountCryptoState,
-} from '@/app/auth/e2eeDataGuard';
 
 export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
@@ -59,7 +50,6 @@ export function accountRoutes(app: Fastify) {
                     settings: z.string().nullable(),
                     settingsVersion: z.number()
                 }),
-                409: z.object({ error: z.literal('e2ee_data_invalid') }),
                 500: z.object({
                     error: z.literal('Failed to get account settings')
                 })
@@ -69,28 +59,11 @@ export function accountRoutes(app: Fastify) {
         try {
             const user = await db.account.findUnique({
                 where: { id: request.userId },
-                select: {
-                    id: true,
-                    settings: true,
-                    settingsVersion: true,
-                    cryptoMode: true,
-                    cryptoEpoch: true,
-                    cryptoWriteState: true,
-                    e2eeOrigin: true,
-                }
+                select: { settings: true, settingsVersion: true }
             });
 
             if (!user) {
                 return reply.code(500).send({ error: 'Failed to get account settings' });
-            }
-            if (user.cryptoMode === 'e2ee-v1' && user.settings !== null) {
-                validateE2eeSettingsValue(
-                    user.settings,
-                    user as AccountCryptoState,
-                    ACCOUNT_SETTINGS_MAX_BYTES,
-                    'e2ee_data_invalid',
-                    'read-existing',
-                );
             }
 
             return reply.send({
@@ -98,9 +71,6 @@ export function accountRoutes(app: Fastify) {
                 settingsVersion: user.settingsVersion
             });
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(409).send({ error: 'e2ee_data_invalid' });
-            }
             return reply.code(500).send({ error: 'Failed to get account settings' });
         }
     });
@@ -126,12 +96,7 @@ export function accountRoutes(app: Fastify) {
                 429: z.object({
                     success: z.literal(false),
                     error: z.literal('account_settings_rate_quota_exceeded')
-                }),
-                // Fastify body validation also uses 400; keep its standard
-                // error shape while handler-originated E2EE errors stay stable.
-                400: z.any(),
-                409: z.object({ error: z.enum(['e2ee_rekey_required', 'e2ee_data_invalid']) }),
-                426: z.object({ error: z.literal('e2ee_client_required') }),
+                })
             }
         },
         preHandler: app.authenticate
@@ -141,55 +106,52 @@ export function accountRoutes(app: Fastify) {
 
         try {
             await enforceAccountSettingsWriteRate(userId);
-            const outcome = await inTx(async (tx) => {
-                const account = await lockAndValidateE2eeWriter(tx, userId, writerAuthFromRequest(request));
-                if (account.cryptoMode === 'e2ee-v1' && settings !== null) {
-                    validateE2eeSettingsValue(settings, account, ACCOUNT_SETTINGS_MAX_BYTES);
-                }
-
-                const currentUser = await tx.account.findUnique({
-                    where: { id: userId },
-                    select: { settings: true, settingsVersion: true },
-                });
-                if (!currentUser) return { kind: 'missing' as const };
-                if (account.cryptoMode === 'e2ee-v1' && currentUser.settings !== null) {
-                    validateE2eeSettingsValue(
-                        currentUser.settings,
-                        account,
-                        ACCOUNT_SETTINGS_MAX_BYTES,
-                        'e2ee_data_invalid',
-                        'read-existing',
-                    );
-                }
-                if (currentUser.settingsVersion !== expectedVersion) {
-                    return {
-                        kind: 'mismatch' as const,
-                        currentVersion: currentUser.settingsVersion,
-                        currentSettings: currentUser.settings,
-                    };
-                }
-
-                const { count } = await tx.account.updateMany({
-                    where: { id: userId, settingsVersion: expectedVersion },
-                    data: {
-                        settings,
-                        settingsVersion: expectedVersion + 1,
-                        updatedAt: new Date(),
-                    },
-                });
-                if (count !== 1) throw new Error('Account settings CAS changed while account row was locked');
-                return { kind: 'updated' as const };
+            // Get current user data for version check
+            const currentUser = await db.account.findUnique({
+                where: { id: userId },
+                select: { settings: true, settingsVersion: true }
             });
 
-            if (outcome.kind === 'missing') {
-                return reply.code(500).send({ success: false, error: 'Failed to update account settings' });
+            if (!currentUser) {
+                return reply.code(500).send({
+                    success: false,
+                    error: 'Failed to update account settings'
+                });
             }
-            if (outcome.kind === 'mismatch') {
+
+            // Check current version
+            if (currentUser.settingsVersion !== expectedVersion) {
                 return reply.code(200).send({
                     success: false,
                     error: 'version-mismatch',
-                    currentVersion: outcome.currentVersion,
-                    currentSettings: outcome.currentSettings,
+                    currentVersion: currentUser.settingsVersion,
+                    currentSettings: currentUser.settings
+                });
+            }
+
+            // Update settings with version check
+            const { count } = await db.account.updateMany({
+                where: {
+                    id: userId,
+                    settingsVersion: expectedVersion
+                },
+                data: {
+                    settings: settings,
+                    settingsVersion: expectedVersion + 1,
+                    updatedAt: new Date()
+                }
+            });
+
+            if (count === 0) {
+                // Re-fetch to get current version
+                const account = await db.account.findUnique({
+                    where: { id: userId }
+                });
+                return reply.code(200).send({
+                    success: false,
+                    error: 'version-mismatch',
+                    currentVersion: account?.settingsVersion || 0,
+                    currentSettings: account?.settings || null
                 });
             }
 
@@ -213,9 +175,6 @@ export function accountRoutes(app: Fastify) {
                 version: expectedVersion + 1
             });
         } catch (error) {
-            if (isE2eeDataGuardError(error)) {
-                return reply.code(error.statusCode).send({ error: error.code as any });
-            }
             if (isAccountResourceLimitError(error) && error.code === 'account_settings_rate_quota_exceeded') {
                 return reply.code(429).send({ success: false, error: 'account_settings_rate_quota_exceeded' });
             }

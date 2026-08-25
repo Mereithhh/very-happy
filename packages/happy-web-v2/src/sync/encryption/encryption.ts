@@ -8,26 +8,8 @@ import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import sodium from '@/encryption/libsodium.lib';
 import { decryptBox, encryptBox } from "@/encryption/libsodium";
 import { randomUUID } from 'expo-crypto';
-import type { E2eeRuntimeKeys } from '@/auth/e2eeRuntime';
-import type { E2eeAuthCredentials } from '@/auth/tokenStorage';
-import { deriveEpochContentKeyPair } from '@/auth/e2eeKeyHierarchy';
-import {
-    decryptAccountEnvelopeBytes,
-    decryptAccountEnvelopeJson,
-    encryptAccountEnvelopeBytes,
-    encryptAccountEnvelopeJson,
-    parseAccountEnvelope,
-    serializeAccountEnvelope,
-} from './e2eeAccountEnvelope';
-import { deriveE2eeKey } from './e2eeKdf';
-import { E2EE_DOMAIN_PREFIX } from './e2eeEncoding';
-import { utf8, utf8String } from './e2eeEncoding';
-import {
-    unwrapE2eeDataKey,
-    type ExpectedWrappedDataKeyContext,
-} from './e2eeWrappedDataKey';
 
-type SodiumKeyPair = { publicKey: Uint8Array; privateKey: Uint8Array; keyType?: string };
+type SodiumKeyPair = { publicKey: Uint8Array; privateKey: Uint8Array; keyType: string };
 
 export class Encryption {
 
@@ -46,59 +28,12 @@ export class Encryption {
         const masterBlobKey = await deriveKey(masterSecret, 'Happy Blobs', ['master']);
 
         // Create encryption
-        return new Encryption({
-            anonID,
-            legacySecret: masterSecret,
-            contentKeyPair,
-            masterBlobKey,
-        });
+        return new Encryption(anonID, masterSecret, contentKeyPair, masterBlobKey);
     }
 
-    static async createE2ee(runtime: E2eeRuntimeKeys): Promise<Encryption> {
-        const epochSecrets = new Map<number, Uint8Array>();
-        const contentKeyPairs = new Map<number, SodiumKeyPair>();
-        try {
-            for (const item of runtime.keyring.epochs) {
-                epochSecrets.set(item.epoch, item.secret.slice());
-                contentKeyPairs.set(item.epoch, await deriveEpochContentKeyPair(item.secret, item.epoch));
-            }
-            const currentSecret = epochSecrets.get(runtime.credentials.cryptoEpoch);
-            const currentPair = contentKeyPairs.get(runtime.credentials.cryptoEpoch);
-            if (!currentSecret || !currentPair) throw new Error('Current E2EE epoch is absent');
-            const anonKey = await deriveE2eeKey(currentSecret, `${E2EE_DOMAIN_PREFIX}/analytics/id`);
-            const anonID = encodeHex(anonKey).slice(0, 16).toLowerCase();
-            anonKey.fill(0);
-            return new Encryption({
-                anonID,
-                contentKeyPair: currentPair,
-                e2ee: {
-                    origin: runtime.credentials.origin,
-                    accountId: runtime.credentials.accountId,
-                    currentEpoch: runtime.credentials.cryptoEpoch,
-                    epochSecrets,
-                    contentKeyPairs,
-                },
-            });
-        } catch (error) {
-            epochSecrets.forEach((secret) => secret.fill(0));
-            contentKeyPairs.forEach((pair) => {
-                pair.privateKey.fill(0);
-                pair.publicKey.fill(0);
-            });
-            throw error;
-        }
-    }
-
-    private readonly legacyEncryption: SecretBoxEncryption | null;
+    private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: SodiumKeyPair;
-    private readonly masterBlobKey: Uint8Array | null;
-    private readonly e2ee: {
-        origin: string;
-        accountId: string;
-        currentEpoch: number;
-        epochSecrets: Map<number, Uint8Array>;
-        contentKeyPairs: Map<number, SodiumKeyPair>;
-    } | null;
+    private readonly masterBlobKey: Uint8Array;
     readonly anonID: string;
     readonly contentDataKey: Uint8Array;
 
@@ -108,83 +43,13 @@ export class Encryption {
     private sessionBlobKeys = new Map<string, Uint8Array>();
     private cache: EncryptionCache;
 
-    private constructor(input: {
-        anonID: string;
-        contentKeyPair: SodiumKeyPair;
-        legacySecret?: Uint8Array;
-        masterBlobKey?: Uint8Array;
-        e2ee?: NonNullable<Encryption['e2ee']>;
-    }) {
-        this.anonID = input.anonID;
-        this.contentKeyPair = input.contentKeyPair;
-        this.legacyEncryption = input.legacySecret ? new SecretBoxEncryption(input.legacySecret) : null;
-        this.masterBlobKey = input.masterBlobKey ?? null;
-        this.e2ee = input.e2ee ?? null;
+    private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: SodiumKeyPair, masterBlobKey: Uint8Array) {
+        this.anonID = anonID;
+        this.contentKeyPair = contentKeyPair;
+        this.legacyEncryption = new SecretBoxEncryption(masterSecret);
+        this.masterBlobKey = masterBlobKey;
         this.cache = new EncryptionCache();
-        this.contentDataKey = input.contentKeyPair.publicKey;
-    }
-
-    get isE2ee(): boolean { return this.e2ee !== null; }
-
-    matchesE2eeAccount(credentials: E2eeAuthCredentials): boolean {
-        return this.e2ee !== null
-            && this.e2ee.origin === credentials.origin
-            && this.e2ee.accountId === credentials.accountId
-            && this.e2ee.currentEpoch === credentials.cryptoEpoch;
-    }
-
-    private e2eeKvDomain(key: string): 'tasks' | 'notes' | 'kv' {
-        if (key === 'vh.board-tasks.v1') return 'tasks';
-        if (key.startsWith('vh.note.v1.')) return 'notes';
-        return 'kv';
-    }
-
-    /** Encrypt the exact bytes carried by the legacy base64 KV API. */
-    async encryptKvValue(key: string, base64Value: string): Promise<string> {
-        if (!this.e2ee) throw new Error('E2EE account encryption is unavailable');
-        const secret = this.e2ee.epochSecrets.get(this.e2ee.currentEpoch);
-        if (!secret) throw new Error('Current E2EE KV key is unavailable');
-        const plaintext = decodeBase64(base64Value, 'base64');
-        if (plaintext.length > 256 * 1024) throw new Error('KV plaintext exceeds 256 KiB');
-        try {
-            const envelope = await encryptAccountEnvelopeBytes({
-                origin: this.e2ee.origin,
-                accountId: this.e2ee.accountId,
-                epochSecret: secret,
-                epoch: this.e2ee.currentEpoch,
-                domain: this.e2eeKvDomain(key),
-                objectId: key,
-                field: 'value',
-                plaintext,
-            });
-            return encodeBase64(utf8(serializeAccountEnvelope(envelope)), 'base64');
-        } finally {
-            plaintext.fill(0);
-        }
-    }
-
-    /** Decrypt a KV carrier and restore the byte-for-byte legacy base64 value. */
-    async decryptKvValue(key: string, encryptedBase64Value: string): Promise<string> {
-        if (!this.e2ee) throw new Error('E2EE account encryption is unavailable');
-        const serialized = utf8String(decodeBase64(encryptedBase64Value, 'base64'));
-        const envelope = parseAccountEnvelope(serialized);
-        const secret = this.e2ee.epochSecrets.get(envelope.epoch);
-        if (!secret) throw new Error(`Unknown E2EE KV epoch ${envelope.epoch}`);
-        const plaintext = await decryptAccountEnvelopeBytes({
-            origin: this.e2ee.origin,
-            accountId: this.e2ee.accountId,
-            epochSecret: secret,
-            envelope,
-            expectedDomain: this.e2eeKvDomain(key),
-            expectedObjectId: key,
-            expectedField: 'value',
-        });
-        try {
-            if (plaintext.length > 256 * 1024) throw new Error('KV plaintext exceeds 256 KiB');
-            return encodeBase64(plaintext, 'base64');
-        } finally {
-            plaintext.fill(0);
-        }
+        this.contentDataKey = contentKeyPair.publicKey;
     }
 
     //
@@ -193,9 +58,6 @@ export class Encryption {
 
     async openEncryption(dataEncryptionKey: Uint8Array | null): Promise<Encryptor & Decryptor> {
         if (!dataEncryptionKey) {
-            if (!this.legacyEncryption) {
-                throw new Error('E2EE records require a per-object data key');
-            }
             return this.legacyEncryption;
         }
         return new AES256Encryption(dataEncryptionKey);
@@ -233,7 +95,7 @@ export class Encryption {
             // are cryptographically isolated from message encryption.
             const blobKey = dataKey
                 ? await deriveKey(dataKey, 'Happy Blobs', ['session'])
-                : this.masterBlobKey!;
+                : this.masterBlobKey;
             this.sessionBlobKeys.set(sessionId, blobKey);
         }
     }
@@ -314,42 +176,11 @@ export class Encryption {
     //
 
     async encryptRaw(data: any): Promise<string> {
-        if (this.e2ee) {
-            const secret = this.e2ee.epochSecrets.get(this.e2ee.currentEpoch);
-            if (!secret) throw new Error('Current E2EE settings key is unavailable');
-            const envelope = await encryptAccountEnvelopeJson({
-                origin: this.e2ee.origin,
-                accountId: this.e2ee.accountId,
-                epochSecret: secret,
-                epoch: this.e2ee.currentEpoch,
-                domain: 'settings',
-                objectId: this.e2ee.accountId,
-                field: 'settings',
-                value: data,
-            });
-            return serializeAccountEnvelope(envelope);
-        }
-        if (!this.legacyEncryption) throw new Error('Legacy encryption is unavailable');
         const encrypted = await this.legacyEncryption.encrypt([data]);
         return encodeBase64(encrypted[0], 'base64');
     }
 
     async decryptRaw(encrypted: string): Promise<any | null> {
-        if (this.e2ee) {
-            const envelope = parseAccountEnvelope(encrypted);
-            const secret = this.e2ee.epochSecrets.get(envelope.epoch);
-            if (!secret) throw new Error(`Unknown E2EE settings epoch ${envelope.epoch}`);
-            return decryptAccountEnvelopeJson({
-                origin: this.e2ee.origin,
-                accountId: this.e2ee.accountId,
-                epochSecret: secret,
-                envelope,
-                expectedDomain: 'settings',
-                expectedObjectId: this.e2ee.accountId,
-                expectedField: 'settings',
-            });
-        }
-        if (!this.legacyEncryption) throw new Error('Legacy encryption is unavailable');
         try {
             const encryptedData = decodeBase64(encrypted, 'base64');
             const decrypted = await this.legacyEncryption.decrypt([encryptedData]);
@@ -363,23 +194,12 @@ export class Encryption {
     // Data Encryption Key decryption
     //
 
-    async decryptEncryptionKey(
-        encrypted: string,
-        expected?: Omit<ExpectedWrappedDataKeyContext, 'origin' | 'accountId'>,
-    ) {
+    async decryptEncryptionKey(encrypted: string) {
         // Never throw: callers (fetchMachines/fetchSessions/artifacts) iterate
         // many keys, and an exception on one malformed/foreign key would
         // reject the whole sync and silently drop every item. Always degrade
         // to null so the caller can decide per-item.
         try {
-            if (this.e2ee) {
-                if (!expected) return null;
-                return unwrapE2eeDataKey(
-                    encrypted,
-                    (epoch) => this.e2ee?.contentKeyPairs.get(epoch)?.privateKey ?? null,
-                    { ...expected, origin: this.e2ee.origin, accountId: this.e2ee.accountId },
-                );
-            }
             const encryptedKey = decodeBase64(encrypted, 'base64');
             if (encryptedKey[0] !== 0) {
                 return null;
@@ -397,9 +217,6 @@ export class Encryption {
     }
 
     async encryptEncryptionKey(key: Uint8Array): Promise<Uint8Array> {
-        if (this.e2ee) {
-            throw new Error('E2EE data keys require a context-bound WrappedDataKeyV1 envelope');
-        }
         // Use public key for encryption (encrypt TO ourselves)
         const encrypted = encryptBox(key, this.contentKeyPair.publicKey);
         const result = new Uint8Array(encrypted.length + 1);
@@ -410,22 +227,5 @@ export class Encryption {
 
     generateId(): string {
         return randomUUID();
-    }
-
-    destroy(): void {
-        this.cache.clearAll();
-        this.sessionEncryptions.clear();
-        this.machineEncryptions.clear();
-        this.sessionBlobKeys.forEach((key) => key.fill(0));
-        this.sessionBlobKeys.clear();
-        if (this.e2ee) {
-            this.e2ee.epochSecrets.forEach((secret) => secret.fill(0));
-            this.e2ee.epochSecrets.clear();
-            this.e2ee.contentKeyPairs.forEach((pair) => {
-                pair.privateKey.fill(0);
-                pair.publicKey.fill(0);
-            });
-            this.e2ee.contentKeyPairs.clear();
-        }
     }
 }

@@ -39,7 +39,7 @@ export class ApiClient {
     let dataEncryptionKey: Uint8Array | null = null;
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type !== 'legacy') {
+    if (this.credential.encryption.type === 'dataKey') {
 
       // Generate new encryption key
       encryptionKey = getRandomBytes(32);
@@ -153,7 +153,7 @@ export class ApiClient {
     let dataEncryptionKey: Uint8Array | null = null;
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type !== 'legacy') {
+    if (this.credential.encryption.type === 'dataKey') {
       // Encrypt data encryption key
       encryptionVariant = 'dataKey';
       encryptionKey = this.credential.encryption.machineKey;
@@ -294,23 +294,11 @@ export class ApiClient {
   }
 
   sessionSyncClient(session: Session): ApiSessionClient {
-    const identity = this.credential.encryption.type === 'e2ee-v1' ? {
-      cryptoMode: 'e2ee-v1' as const,
-      e2eeProtocol: this.credential.encryption.e2eeProtocol,
-      deviceId: this.credential.encryption.deviceId,
-      cryptoEpoch: this.credential.encryption.cryptoEpoch,
-    } : undefined;
-    return new ApiSessionClient(this.credential.token, session, identity);
+    return new ApiSessionClient(this.credential.token, session);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {
-    const identity = this.credential.encryption.type === 'e2ee-v1' ? {
-      cryptoMode: 'e2ee-v1' as const,
-      e2eeProtocol: this.credential.encryption.e2eeProtocol,
-      deviceId: this.credential.encryption.deviceId,
-      cryptoEpoch: this.credential.encryption.cryptoEpoch,
-    } : undefined;
-    return new ApiMachineClient(this.credential.token, machine, identity);
+    return new ApiMachineClient(this.credential.token, machine);
   }
 
   push(): PushNotificationClient {

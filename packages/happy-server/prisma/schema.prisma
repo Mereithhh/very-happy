@@ -2,17 +2,17 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["metrics", "relationJoins", "driverAdapters"]
+    provider        = "prisma-client-js"
+    previewFeatures = ["metrics", "relationJoins", "driverAdapters"]
 }
 
 generator json {
-  provider = "prisma-json-types-generator"
+    provider = "prisma-json-types-generator"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
 }
 
 //
@@ -20,225 +20,157 @@ datasource db {
 //
 
 model Account {
-  id                         String      @id @default(cuid())
-  publicKey                  String?     @unique
-  seq                        Int         @default(0)
-  feedSeq                    BigInt      @default(0)
-  createdAt                  DateTime    @default(now())
-  updatedAt                  DateTime    @updatedAt
-  settings                   String?
-  settingsVersion            Int         @default(0)
-  messageCount               BigInt      @default(0)
-  messageBytes               BigInt      @default(0)
-  cryptoMode                 String      @default("trusted-v1")
-  cryptoEpoch                Int         @default(0)
-  cryptoWriteState           String      @default("active")
-  e2eeOrigin                 String?
-  recoveryAuthorityPublicKey String?     @unique
-  e2eeContentPublicKey       String?
-  e2eeContentKeySignature    String?
-  recoveryCiphertext         String?
-  githubUserId               String?     @unique
-  githubUser                 GithubUser? @relation(fields: [githubUserId], references: [id])
+    id              String      @id @default(cuid())
+    publicKey       String      @unique
+    seq             Int         @default(0)
+    feedSeq         BigInt      @default(0)
+    createdAt       DateTime    @default(now())
+    updatedAt       DateTime    @updatedAt
+    settings        String?
+    settingsVersion Int         @default(0)
+    messageCount    BigInt      @default(0)
+    messageBytes    BigInt      @default(0)
+    githubUserId    String?     @unique
+    githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
 
-  // Profile
-  firstName String?
-  lastName  String?
-  username  String? @unique
-  /// [ImageRef]
-  avatar    Json?
+    // Profile
+    firstName String?
+    lastName  String?
+    username  String? @unique
+    /// [ImageRef]
+    avatar    Json?
 
-  Session                   Session[]
-  AccountPushToken          AccountPushToken[]
-  TerminalAuthRequest       TerminalAuthRequest[]
-  AccountAuthRequest        AccountAuthRequest[]
-  UsageReport               UsageReport[]
-  Machine                   Machine[]
-  UploadedFile              UploadedFile[]
-  ServiceAccountToken       ServiceAccountToken[]
-  RelationshipsFrom         UserRelationship[]          @relation("RelationshipsFrom")
-  RelationshipsTo           UserRelationship[]          @relation("RelationshipsTo")
-  Artifact                  Artifact[]
-  AccessKey                 AccessKey[]
-  UserFeedItem              UserFeedItem[]
-  UserKVStore               UserKVStore[]
-  VoiceConversation         VoiceConversation[]
-  AccountUnlock             AccountUnlock?
-  AccountCredential         AccountCredential?
-  AccountSecret             AccountSecret?
-  AccountIdentity           AccountIdentity[]
-  AccountLoginSession       AccountLoginSession[]
-  CryptoDevice              CryptoDevice[]
-  ControlDeviceRootEnvelope ControlDeviceRootEnvelope[]
+    Session             Session[]
+    AccountPushToken    AccountPushToken[]
+    TerminalAuthRequest TerminalAuthRequest[]
+    AccountAuthRequest  AccountAuthRequest[]
+    UsageReport         UsageReport[]
+    Machine             Machine[]
+    UploadedFile        UploadedFile[]
+    ServiceAccountToken ServiceAccountToken[]
+    RelationshipsFrom   UserRelationship[]    @relation("RelationshipsFrom")
+    RelationshipsTo     UserRelationship[]    @relation("RelationshipsTo")
+    Artifact            Artifact[]
+    AccessKey           AccessKey[]
+    UserFeedItem        UserFeedItem[]
+    UserKVStore         UserKVStore[]
+    VoiceConversation   VoiceConversation[]
+    AccountUnlock       AccountUnlock?
+    AccountCredential   AccountCredential?
+    AccountSecret       AccountSecret?
+    AccountIdentity     AccountIdentity[]
+    AccountLoginSession AccountLoginSession[]
 }
 
 model AccountCredential {
-  username     String   @id
-  accountId    String   @unique
-  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  passwordHash String
-  secretEnc    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+    username     String   @id
+    accountId    String   @unique
+    account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    passwordHash String
+    secretEnc    String
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
 }
 
 model AccountSecret {
-  accountId String   @id
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  secretEnc String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    accountId String   @id
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    secretEnc String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 model AccountIdentity {
-  id              String   @id @default(cuid())
-  accountId       String
-  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  provider        String
-  providerSubject String
-  email           String?
-  profile         Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+    id              String   @id @default(cuid())
+    accountId       String
+    account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    provider        String
+    providerSubject String
+    email           String?
+    profile         Json?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
 
-  @@unique([provider, providerSubject])
-  @@index([accountId])
+    @@unique([provider, providerSubject])
+    @@index([accountId])
 }
 
 model AccountLoginSession {
-  id           String        @id
-  accountId    String
-  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  tokenHash    String        @unique
-  deviceId     String?
-  device       CryptoDevice? @relation(fields: [accountId, deviceId], references: [accountId, id])
-  capabilities String[]      @default([])
-  e2eeProtocol String?
-  expiresAt    DateTime
-  revokedAt    DateTime?
-  lastUsedAt   DateTime      @default(now())
-  createdAt    DateTime      @default(now())
+    id         String    @id
+    accountId  String
+    account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    tokenHash  String    @unique
+    expiresAt  DateTime
+    revokedAt  DateTime?
+    lastUsedAt DateTime  @default(now())
+    createdAt  DateTime  @default(now())
 
-  @@index([accountId, revokedAt, expiresAt])
-}
-
-model CryptoDevice {
-  id                  String
-  accountId           String
-  account             Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  type                String
-  encryptionPublicKey String
-  signingPublicKey    String
-  status              String    @default("pending")
-  keyEpoch            Int       @default(0)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  revokedAt           DateTime?
-
-  loginSessions       AccountLoginSession[]
-  rootEnvelopes       ControlDeviceRootEnvelope[] @relation("RootEnvelopeRecipient")
-  authorizedEnvelopes ControlDeviceRootEnvelope[] @relation("RootEnvelopeAuthorizer")
-
-  @@id([accountId, id])
-  @@unique([id])
-  @@index([accountId, status])
-}
-
-model ControlDeviceRootEnvelope {
-  id                 String        @id @default(cuid())
-  accountId          String
-  account            Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  deviceId           String
-  device             CryptoDevice  @relation("RootEnvelopeRecipient", fields: [accountId, deviceId], references: [accountId, id], onDelete: Cascade)
-  keyEpoch           Int
-  suite              String
-  ciphertext         String
-  authorizerKind     String
-  authorizerDeviceId String?
-  authorizerDevice   CryptoDevice? @relation("RootEnvelopeAuthorizer", fields: [accountId, authorizerDeviceId], references: [accountId, id])
-  signature          String
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-
-  @@unique([accountId, deviceId, keyEpoch])
-  @@index([accountId, keyEpoch])
-}
-
-model E2eeSignupReservation {
-  id         String    @id @default(cuid())
-  accountId  String    @unique
-  nonceHash  String    @unique
-  origin     String
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([expiresAt])
+    @@index([accountId, revokedAt, expiresAt])
 }
 
 model SignupCapacity {
-  id        Int      @id
-  updatedAt DateTime @updatedAt
+    id        Int      @id
+    updatedAt DateTime @updatedAt
 }
 
 model GoogleLoginChallenge {
-  nonceHash  String    @id
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
+    nonceHash  String    @id
+    expiresAt  DateTime
+    consumedAt DateTime?
+    createdAt  DateTime  @default(now())
 
-  @@index([expiresAt])
+    @@index([expiresAt])
 }
 
 model AuthRateLimitBucket {
-  key       String   @id
-  count     Int
-  resetAt   DateTime
-  updatedAt DateTime @updatedAt
+    key       String   @id
+    count     Int
+    resetAt   DateTime
+    updatedAt DateTime @updatedAt
 
-  @@index([resetAt])
+    @@index([resetAt])
 }
 
 model AccountUnlock {
-  accountId String   @id
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  /// [PasswordBlob]
-  blob      Json
-  updatedAt DateTime @updatedAt
+    accountId String   @id
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    /// [PasswordBlob]
+    blob      Json
+    updatedAt DateTime @updatedAt
 }
 
 model TerminalAuthRequest {
-  id                String   @id @default(cuid())
-  publicKey         String   @unique
-  supportsV2        Boolean  @default(false)
-  claimSecretHash   String?
-  response          String?
-  responseAccountId String?
-  responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+    id                String   @id @default(cuid())
+    publicKey         String   @unique
+    supportsV2        Boolean  @default(false)
+    claimSecretHash   String?
+    response          String?
+    responseAccountId String?
+    responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
 }
 
 model AccountAuthRequest {
-  id                String   @id @default(cuid())
-  publicKey         String   @unique
-  claimSecretHash   String?
-  response          String?
-  responseAccountId String?
-  responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+    id                String   @id @default(cuid())
+    publicKey         String   @unique
+    claimSecretHash   String?
+    response          String?
+    responseAccountId String?
+    responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
 }
 
 model AccountPushToken {
-  id        String   @id @default(cuid())
-  accountId String
-  account   Account  @relation(fields: [accountId], references: [id])
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    token     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([accountId, token])
+    @@unique([accountId, token])
 }
 
 //
@@ -246,41 +178,41 @@ model AccountPushToken {
 //
 
 model Session {
-  id                String           @id @default(cuid())
-  tag               String
-  accountId         String
-  account           Account          @relation(fields: [accountId], references: [id])
-  metadata          String
-  metadataVersion   Int              @default(0)
-  agentState        String?
-  agentStateVersion Int              @default(0)
-  dataEncryptionKey Bytes?
-  seq               Int              @default(0)
-  active            Boolean          @default(true)
-  lastActiveAt      DateTime         @default(now())
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  messages          SessionMessage[]
-  usageReports      UsageReport[]
-  accessKeys        AccessKey[]
+    id                String           @id @default(cuid())
+    tag               String
+    accountId         String
+    account           Account          @relation(fields: [accountId], references: [id])
+    metadata          String
+    metadataVersion   Int              @default(0)
+    agentState        String?
+    agentStateVersion Int              @default(0)
+    dataEncryptionKey Bytes?
+    seq               Int              @default(0)
+    active            Boolean          @default(true)
+    lastActiveAt      DateTime         @default(now())
+    createdAt         DateTime         @default(now())
+    updatedAt         DateTime         @updatedAt
+    messages          SessionMessage[]
+    usageReports      UsageReport[]
+    accessKeys        AccessKey[]
 
-  @@unique([accountId, tag])
-  @@index([accountId, updatedAt(sort: Desc)])
+    @@unique([accountId, tag])
+    @@index([accountId, updatedAt(sort: Desc)])
 }
 
 model SessionMessage {
-  id        String   @id @default(cuid())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id])
-  localId   String?
-  seq       Int
-  /// [SessionMessageContent]
-  content   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    sessionId String
+    session   Session  @relation(fields: [sessionId], references: [id])
+    localId   String?
+    seq       Int
+    /// [SessionMessageContent]
+    content   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([sessionId, localId])
-  @@index([sessionId, seq])
+    @@unique([sessionId, localId])
+    @@index([sessionId, seq])
 }
 
 //
@@ -288,21 +220,21 @@ model SessionMessage {
 //
 
 model GithubUser {
-  id        String    @id
-  /// [GitHubProfile]
-  profile   Json
-  token     Bytes?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  Account   Account[]
+    id        String    @id
+    /// [GitHubProfile]
+    profile   Json
+    token     Bytes?
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    Account   Account[]
 }
 
 model GithubOrganization {
-  id        String   @id
-  /// [GitHubOrg]
-  profile   Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id
+    /// [GitHubOrg]
+    profile   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 //
@@ -310,25 +242,25 @@ model GithubOrganization {
 //
 
 model GlobalLock {
-  key       String   @id @default(cuid())
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  expiresAt DateTime
+    key       String   @id @default(cuid())
+    value     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    expiresAt DateTime
 }
 
 model RepeatKey {
-  key       String   @id
-  value     String
-  createdAt DateTime @default(now())
-  expiresAt DateTime
+    key       String   @id
+    value     String
+    createdAt DateTime @default(now())
+    expiresAt DateTime
 }
 
 model SimpleCache {
-  key       String   @id
-  value     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    key       String   @id
+    value     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 //
@@ -336,20 +268,20 @@ model SimpleCache {
 //
 
 model UsageReport {
-  id        String   @id @default(cuid())
-  key       String
-  accountId String
-  account   Account  @relation(fields: [accountId], references: [id])
-  sessionId String?
-  session   Session? @relation(fields: [sessionId], references: [id])
-  /// [UsageReportData]
-  data      Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    key       String
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    sessionId String?
+    session   Session? @relation(fields: [sessionId], references: [id])
+    /// [UsageReportData]
+    data      Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([accountId, sessionId, key])
-  @@index([accountId])
-  @@index([sessionId])
+    @@unique([accountId, sessionId, key])
+    @@index([accountId])
+    @@index([sessionId])
 }
 
 //
@@ -357,55 +289,55 @@ model UsageReport {
 //
 
 model Machine {
-  id                 String      @id
-  accountId          String
-  account            Account     @relation(fields: [accountId], references: [id])
-  metadata           String // Encrypted - contains static machine info
-  metadataVersion    Int         @default(0)
-  daemonState        String? // Encrypted - contains dynamic daemon state
-  daemonStateVersion Int         @default(0)
-  dataEncryptionKey  Bytes?
-  seq                Int         @default(0)
-  active             Boolean     @default(true)
-  lastActiveAt       DateTime    @default(now())
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-  accessKeys         AccessKey[]
+    id                 String      @id
+    accountId          String
+    account            Account     @relation(fields: [accountId], references: [id])
+    metadata           String // Encrypted - contains static machine info
+    metadataVersion    Int         @default(0)
+    daemonState        String? // Encrypted - contains dynamic daemon state
+    daemonStateVersion Int         @default(0)
+    dataEncryptionKey  Bytes?
+    seq                Int         @default(0)
+    active             Boolean     @default(true)
+    lastActiveAt       DateTime    @default(now())
+    createdAt          DateTime    @default(now())
+    updatedAt          DateTime    @updatedAt
+    accessKeys         AccessKey[]
 
-  @@unique([accountId, id])
-  @@index([accountId])
+    @@unique([accountId, id])
+    @@index([accountId])
 }
 
 model UploadedFile {
-  id        String   @id @default(cuid())
-  accountId String
-  account   Account  @relation(fields: [accountId], references: [id])
-  path      String
-  width     Int?
-  height    Int?
-  thumbhash String?
-  reuseKey  String?
-  size      Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    path      String
+    width     Int?
+    height    Int?
+    thumbhash String?
+    reuseKey  String?
+    size      Int?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([accountId, path])
-  @@index([accountId])
+    @@unique([accountId, path])
+    @@index([accountId])
 }
 
 model ServiceAccountToken {
-  id         String    @id @default(cuid())
-  accountId  String
-  account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  vendor     String
-  token      Bytes // Encrypted token
-  metadata   Json? // Optional vendor metadata
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+    id         String    @id @default(cuid())
+    accountId  String
+    account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    vendor     String
+    token      Bytes // Encrypted token
+    metadata   Json? // Optional vendor metadata
+    lastUsedAt DateTime?
+    createdAt  DateTime  @default(now())
+    updatedAt  DateTime  @updatedAt
 
-  @@unique([accountId, vendor])
-  @@index([accountId])
+    @@unique([accountId, vendor])
+    @@index([accountId])
 }
 
 //
@@ -413,20 +345,20 @@ model ServiceAccountToken {
 //
 
 model Artifact {
-  id                String   @id // UUID provided by client
-  accountId         String
-  account           Account  @relation(fields: [accountId], references: [id])
-  header            Bytes // Encrypted header (can contain JSON)
-  headerVersion     Int      @default(0)
-  body              Bytes // Encrypted body
-  bodyVersion       Int      @default(0)
-  dataEncryptionKey Bytes // Encryption key for this artifact
-  seq               Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+    id                String   @id // UUID provided by client
+    accountId         String
+    account           Account  @relation(fields: [accountId], references: [id])
+    header            Bytes // Encrypted header (can contain JSON)
+    headerVersion     Int      @default(0)
+    body              Bytes // Encrypted body
+    bodyVersion       Int      @default(0)
+    dataEncryptionKey Bytes // Encryption key for this artifact
+    seq               Int      @default(0)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
 
-  @@index([accountId])
-  @@index([accountId, updatedAt(sort: Desc)])
+    @@index([accountId])
+    @@index([accountId, updatedAt(sort: Desc)])
 }
 
 //
@@ -434,22 +366,22 @@ model Artifact {
 //
 
 model AccessKey {
-  id          String   @id @default(cuid())
-  accountId   String
-  account     Account  @relation(fields: [accountId], references: [id])
-  machineId   String
-  machine     Machine  @relation(fields: [accountId, machineId], references: [accountId, id])
-  sessionId   String
-  session     Session  @relation(fields: [sessionId], references: [id])
-  data        String // Encrypted data
-  dataVersion Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+    id          String   @id @default(cuid())
+    accountId   String
+    account     Account  @relation(fields: [accountId], references: [id])
+    machineId   String
+    machine     Machine  @relation(fields: [accountId, machineId], references: [accountId, id])
+    sessionId   String
+    session     Session  @relation(fields: [sessionId], references: [id])
+    data        String // Encrypted data
+    dataVersion Int      @default(0)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
 
-  @@unique([accountId, machineId, sessionId])
-  @@index([accountId])
-  @@index([sessionId])
-  @@index([machineId])
+    @@unique([accountId, machineId, sessionId])
+    @@index([accountId])
+    @@index([sessionId])
+    @@index([machineId])
 }
 
 //
@@ -457,27 +389,27 @@ model AccessKey {
 //
 
 enum RelationshipStatus {
-  none
-  requested
-  pending
-  friend
-  rejected
+    none
+    requested
+    pending
+    friend
+    rejected
 }
 
 model UserRelationship {
-  fromUserId     String
-  fromUser       Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUserId       String
-  toUser         Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
-  status         RelationshipStatus @default(pending)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  acceptedAt     DateTime?
-  lastNotifiedAt DateTime?
+    fromUserId     String
+    fromUser       Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+    toUserId       String
+    toUser         Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
+    status         RelationshipStatus @default(pending)
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
+    acceptedAt     DateTime?
+    lastNotifiedAt DateTime?
 
-  @@id([fromUserId, toUserId])
-  @@index([toUserId, status])
-  @@index([fromUserId, status])
+    @@id([fromUserId, toUserId])
+    @@index([toUserId, status])
+    @@index([fromUserId, status])
 }
 
 //
@@ -485,19 +417,19 @@ model UserRelationship {
 //
 
 model UserFeedItem {
-  id        String   @id @default(cuid())
-  userId    String
-  user      Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  counter   BigInt
-  repeatKey String?
-  /// [FeedBody]
-  body      Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    userId    String
+    user      Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    counter   BigInt
+    repeatKey String?
+    /// [FeedBody]
+    body      Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([userId, counter])
-  @@unique([userId, repeatKey])
-  @@index([userId, counter(sort: Desc)])
+    @@unique([userId, counter])
+    @@unique([userId, repeatKey])
+    @@index([userId, counter(sort: Desc)])
 }
 
 //
@@ -505,17 +437,17 @@ model UserFeedItem {
 //
 
 model UserKVStore {
-  id        String   @id @default(cuid())
-  accountId String
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  key       String // Unencrypted for indexing
-  value     Bytes? // Encrypted value, null when "deleted"
-  version   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    key       String   // Unencrypted for indexing
+    value     Bytes?   // Encrypted value, null when "deleted"
+    version   Int      @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  @@unique([accountId, key])
-  @@index([accountId])
+    @@unique([accountId, key])
+    @@index([accountId])
 }
 
 //
@@ -523,12 +455,12 @@ model UserKVStore {
 //
 
 model VoiceConversation {
-  id                       String   @id @default(cuid())
-  accountId                String
-  account                  Account  @relation(fields: [accountId], references: [id])
-  elevenLabsConversationId String   @unique
-  durationSecs             Int? // Filled in lazily from ElevenLabs API
-  createdAt                DateTime @default(now())
+    id                         String   @id @default(cuid())
+    accountId                  String
+    account                    Account  @relation(fields: [accountId], references: [id])
+    elevenLabsConversationId   String   @unique
+    durationSecs               Int?     // Filled in lazily from ElevenLabs API
+    createdAt                  DateTime @default(now())
 
-  @@index([accountId, createdAt(sort: Desc)])
+    @@index([accountId, createdAt(sort: Desc)])
 }

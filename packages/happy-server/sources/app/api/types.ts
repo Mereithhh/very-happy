@@ -54,13 +54,6 @@ declare module 'fastify' {
     interface FastifyRequest {
         userId: string;
         authLoginSessionId?: string;
-        authDeviceId?: string;
-        authCapabilities: string[];
-        authE2eeProtocol?: string;
-        accountCryptoMode: 'trusted-v1' | 'e2ee-migrating' | 'e2ee-v1';
-        accountCryptoEpoch: number;
-        accountCryptoWriteState: 'active' | 'rekey-required';
-        accountE2eeOrigin?: string;
         startTime?: number;
     }
     interface FastifyInstance {

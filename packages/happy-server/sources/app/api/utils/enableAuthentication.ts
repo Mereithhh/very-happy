@@ -24,25 +24,6 @@ export function enableAuthentication(app: Fastify) {
             request.authLoginSessionId = typeof verified.extras?.loginSessionId === 'string'
                 ? verified.extras.loginSessionId
                 : undefined;
-            request.authDeviceId = typeof verified.extras?.deviceId === 'string'
-                ? verified.extras.deviceId
-                : undefined;
-            request.authCapabilities = Array.isArray(verified.extras?.capabilities)
-                ? verified.extras.capabilities
-                : [];
-            request.authE2eeProtocol = typeof verified.extras?.e2eeProtocol === 'string'
-                ? verified.extras.e2eeProtocol
-                : undefined;
-            request.accountCryptoMode = verified.extras?.cryptoMode ?? 'trusted-v1';
-            request.accountCryptoEpoch = verified.extras?.cryptoEpoch ?? 0;
-            request.accountCryptoWriteState = verified.extras?.cryptoWriteState ?? 'active';
-            request.accountE2eeOrigin = verified.extras?.e2eeOrigin;
-            if (
-                request.accountCryptoMode === 'e2ee-v1'
-                && !request.authCapabilities.includes('e2ee:control')
-            ) {
-                return reply.code(426).send({ error: 'e2ee_client_required' });
-            }
         } catch (error) {
             return reply.code(401).send({ error: 'Authentication failed' });
         }
