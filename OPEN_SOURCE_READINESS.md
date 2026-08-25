@@ -2,6 +2,7 @@
 
 > Assessment date: 2026-08-25 (Asia/Singapore)
 > Candidate branch: `main`
+> E2EE deferral revert: `e1c2b9902a6449284abcb9e821d9fb20a0a8a865`
 > Released Web source: `a01d1c76e67a8ba4a8ad9fcf9bd98637e9300e07`
 > Released Server source: `2300f4ab335c105a92d281806c955b7e44d8854a`
 > Production CLI: `very-happy-cli@0.2.64` (`v0.2.64`)
@@ -711,6 +712,13 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
 
 ## Known non-blocking limitations
 
+- End-to-end encryption is deliberately deferred. The August 25 protocol and client/server
+  experiment is preserved on `codex/e2ee-experimental-archive-2026-08-25` at `408742b7`; it was
+  never enabled or deployed. `main` reverted it in `e1c2b990` because its recovery-code and
+  per-device activation model made ordinary cross-device password/Google login materially more
+  complex. The release remains explicitly server-trusted. A future E2EE design must preserve the
+  default “sign in on a new device and continue” journey, make recovery and revocation legible,
+  and complete every data/control plane before any public E2EE claim.
 - The server image still runs as root and is 1.55 GB. Reducing privileges and image size is a
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.
