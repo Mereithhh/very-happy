@@ -113,59 +113,6 @@
   font: inherit;
 }
 
-.cfp-card--transfer {
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--line);
-  border-left: 0 !important;
-}
-
-.cfp-card--transfer .cfp-copy {
-  min-height: 0;
-  max-width: 920px;
-}
-
-.cfp-transfer {
-  min-height: 0;
-}
-
-.cfp-transfer-frame {
-  position: relative;
-  z-index: 1;
-  padding: var(--sp-5);
-}
-
-.cfp-transfer .product-app {
-  height: 520px;
-  border-radius: var(--r-md);
-}
-
-.cfp-transfer-facts {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg-1) 88%, transparent);
-  color: var(--text-faint);
-  font: var(--fs-10) var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.cfp-transfer-facts span {
-  min-height: 46px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  text-align: center;
-}
-
-.cfp-transfer-facts span + span {
-  border-left: 1px solid var(--line);
-}
-
 .cfp-surface {
   position: relative;
   min-height: 650px;
@@ -489,27 +436,6 @@
 
   .cfp-surface {
     min-height: 710px;
-  }
-
-  .cfp-transfer {
-    min-height: 0;
-  }
-
-  .cfp-transfer-frame {
-    padding: var(--sp-3);
-  }
-
-  .cfp-transfer .product-app {
-    height: 500px;
-  }
-
-  .cfp-transfer-facts {
-    grid-template-columns: 1fr;
-  }
-
-  .cfp-transfer-facts span + span {
-    border-top: 1px solid var(--line);
-    border-left: 0;
   }
 
   .cfp-surface-bar span:last-child {

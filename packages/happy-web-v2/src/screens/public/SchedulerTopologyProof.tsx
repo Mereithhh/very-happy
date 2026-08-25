@@ -10,14 +10,11 @@ import {
   Server,
   Smartphone,
   TerminalSquare,
-  Workflow,
 } from 'lucide-react';
 import { useReducer } from 'react';
 import {
   getSchedulerRouteLabel,
   INITIAL_SCHEDULER_TOPOLOGY_STATE,
-  SCHEDULER_AGENT_LABELS,
-  SCHEDULER_ENVIRONMENT_LABELS,
   SCHEDULER_LANE_DESCRIPTIONS,
   schedulerTopologyReducer,
 } from './schedulerTopologyModel';
@@ -53,10 +50,6 @@ export function SchedulerTopologyProof() {
       <path className={`scheduler-wire scheduler-wire--input${state.environment === 'computer' ? ' is-active' : ''}`} d="M92 67 C92 122 252 104 318 174" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--input${state.environment === 'server' ? ' is-active' : ''}`} d="M350 67 L350 165" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--input${state.environment === 'runtime' ? ' is-active' : ''}`} d="M608 67 C608 122 448 104 382 174" pathLength="1" />
-      <path className="scheduler-wire scheduler-wire--side" d="M122 208 C184 208 206 226 242 236" pathLength="1" />
-      <path className="scheduler-wire scheduler-wire--side" d="M578 208 C516 208 490 226 458 236" pathLength="1" />
-      <path className="scheduler-wire scheduler-wire--side scheduler-wire--meta" d="M122 302 C144 344 110 369 92 427" pathLength="1" />
-      <path className="scheduler-wire scheduler-wire--side" d="M578 302 C516 302 490 281 458 270" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'claude' ? ' is-active' : ''}`} d="M316 330 C250 382 92 354 92 427" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'codex' ? ' is-active' : ''}`} d="M338 335 C312 380 264 382 264 427" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'opencode' ? ' is-active' : ''}`} d="M362 335 C388 380 436 382 436 427" pathLength="1" />
@@ -70,10 +63,6 @@ export function SchedulerTopologyProof() {
       </button>)}
     </div>
 
-    {LANES.map(({ id, label, detail, Icon }) => <button key={id} type="button" className={`scheduler-node scheduler-node--lane scheduler-node--${id}`} aria-label={`Inspect ${SCHEDULER_LANE_DESCRIPTIONS[id]}`} onClick={() => dispatch({ type: 'inspect-lane', id })}>
-      <Icon size={16} /><span><strong>{label}</strong><small className="mono">{detail}</small></span>
-    </button>)}
-
     <div className="scheduler-hub">
       <span className="scheduler-hub-ring scheduler-hub-ring--outer" aria-hidden="true" />
       <span className="scheduler-hub-ring scheduler-hub-ring--inner" aria-hidden="true" />
@@ -83,13 +72,20 @@ export function SchedulerTopologyProof() {
           <div className="scheduler-phone-kicker mono">WEB / PHONE CONTROL</div>
           <strong>One control plane.</strong>
           <div className="scheduler-stack mono" aria-label="Web or PWA through trusted relay and CLI daemon">
-            <span>WEB / PWA</span><i>⇅</i><span>TRUSTED RELAY</span><i>⇅</i><span>CLI + DAEMON</span>
+            <span className="sr-only">WEB / PWA → TRUSTED RELAY → CLI + DAEMON</span>
+            <span>WEB</span><i>⇅</i><span>RELAY</span><i>⇅</i><span>DAEMON</span>
           </div>
-          <div className="scheduler-route mono"><span>{SCHEDULER_ENVIRONMENT_LABELS[state.environment]}</span><Workflow size={13} /><span>{SCHEDULER_AGENT_LABELS[state.agent]}</span></div>
+          <div className="scheduler-route mono" title={route}><span>{route}</span></div>
           <div className="scheduler-dispatch mono"><i /> MANUAL DISPATCH</div>
         </div>
         <div className="scheduler-phone-nav mono"><span>SESSIONS</span><span>FILES</span><span>TASKS</span></div>
       </div>
+    </div>
+
+    <div className="scheduler-lanes" aria-label="Inspect supporting control surfaces">
+      {LANES.map(({ id, label, detail, Icon }) => <button key={id} type="button" className={`scheduler-node scheduler-node--lane scheduler-node--${id}${state.inspectedLane === id ? ' is-inspected' : ''}`} aria-label={`Inspect ${SCHEDULER_LANE_DESCRIPTIONS[id]}`} onClick={() => dispatch({ type: 'inspect-lane', id })}>
+        <Icon size={14} /><span><strong>{label}</strong><small className="mono">{detail}</small></span>
+      </button>)}
     </div>
 
     <div className="scheduler-zone-label scheduler-zone-label--agents mono">AGENT + TUI FABRIC</div>

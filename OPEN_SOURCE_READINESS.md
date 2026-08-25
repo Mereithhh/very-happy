@@ -268,6 +268,19 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 Fresh isolated browser profiles covered desktop and 390x844 mobile layouts:
 
+- The final density pass reduced the Landing from 13 top-level sections to seven without
+  removing the real product proof: the sanitized production workspace now follows the Hero,
+  while Web/PWA positioning, file handoff, agent support, first connection, and the trust
+  boundary are consolidated into those primary surfaces. Local responsive measurements fell
+  from 11,697/11,486/13,574/17,018 px to 6,718/7,179/8,210/9,320 px at
+  1440/1024/768/390 respectively, with `scrollWidth === innerWidth` at every size.
+- The same pass programmatically inspected every visible architecture label at
+  390/768/1024/1440: no text clipping and no status/zone-label overlap remained. Normal browser
+  clicks completed machine + agent route selection and terminal → structured conversation →
+  terminal. Interactive phone geometry is stable while non-geometric light, ring, packet, scan,
+  orbit, and title animations remain. An independent read-only visual review ended at P0=0,
+  P1=0; both reported P2s (unlabelled narrow capability lanes and missing narrow handoff arrows)
+  were fixed and rechecked.
 - production landing and all 13 documentation chapters render with no horizontal overflow;
 - the redesigned production landing and docs were rechecked at 390x844 and 1440px in light
   and dark themes; the current UI no longer exposes marketing scene tabs, and its sidebar,

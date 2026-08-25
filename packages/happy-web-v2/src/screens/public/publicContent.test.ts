@@ -69,7 +69,7 @@ describe('public documentation registry', () => {
     expect(text).toContain('Command K on macOS or Ctrl K on Windows and Linux');
     expect(text).toContain('Ctrl W remains browser/window behavior');
     expect(text).not.toContain('non-macOS installed PWAs use the platform Ctrl app chord');
-    expect(landing).toContain('<KeyboardWorkflowProof />');
+    expect(landing).toContain('<KeyboardWorkflowProof compact />');
     expect(docs).toContain('<KeyboardWorkflowProof compact />');
     expect(proof).toContain("import '../command/commandpalette.css'");
     expect(proof).toContain('className="cp-panel"');
@@ -130,15 +130,15 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Every machine.<br />Every agent.');
     expect(landing).toContain('Claude Code');
     expect(landing).toContain('Codex');
-    expect(landing).toContain('Gemini + OpenCode via ACP');
-    expect(landing).toContain('BETA · IMPLEMENTED');
+    expect(landing).toContain('Gemini + OpenCode via a compatible ACP stdio endpoint');
+    expect(landing).toContain('Gemini + OpenCode via a compatible ACP stdio endpoint');
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
-    expect(landing).toContain('ONE PANEL // MANY RUNNERS');
+    expect(landing).toContain('REAL PRODUCT // SANITIZED DATA');
     expect(landing).toContain('MULTI-MACHINE COMMAND PANEL');
-    expect(landing).toContain('From zero to a live agent in six steps.');
-    expect(landing).toContain('<h3>Configure the agent</h3>');
-    expect(landing).toContain('<h3>Start the daemon</h3>');
+    expect(landing).toContain('FIRST CONNECTION // THREE MOVES');
+    expect(landing).toContain('<h3>Prepare the machine</h3>');
+    expect(landing).toContain('<h3>Connect and keep it online</h3>');
     expect(landing).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
     expect(landing).toContain('tmux is recommended for durable terminals');
     expect(landing).toContain('SEE THE FLEET.');
@@ -155,7 +155,7 @@ describe('public documentation registry', () => {
     expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landing).toContain('You get to be Very Happy.');
-    expect(landing).toContain('Today you explicitly choose the target machine and agent for each session');
+    expect(landing).toContain('today you explicitly choose the machine and agent');
     expect(productPreview).toContain('Example multi-machine session command panel');
     expect(productPreview).toContain('office · codex');
     expect(html).toContain('One Web command panel for every connected machine');
@@ -204,12 +204,12 @@ describe('public documentation registry', () => {
     const standaloneMcp = readFileSync(new URL('../../../../happy-cli/src/commands/mcp.ts', import.meta.url), 'utf8');
 
     for (const source of [text, landing, readme, gettingStarted]) {
-      expect(source).toMatch(/Web(?: UI)?(?: or| \/) installable PWA|Web\/PWA/);
+      expect(source).toMatch(/Web(?: UI)?(?: or| \/) installable PWA|Web\s*\/\s*PWA/i);
       expect(source).toMatch(/recommended daily|everyday workspace|daily workspace/i);
     }
-    expect(landing).toContain('<ProductWorkspacePreview compact initialView="terminal" initialFilesOpen={false} />');
+    expect(landing).toContain('<ProductWorkspacePreview fileTransferDemo />');
     expect(landing).toContain('ordinary xterm-256color text TUIs—not only coding agents');
-    expect(landing).toContain('SANITIZED PRODUCT PREVIEW');
+    expect(landing).toContain('REAL PRODUCT // SANITIZED DATA');
     expect(landing).not.toContain('LIVE PRODUCT UI');
     expect(architecture).toContain('terminal transport is intentionally agent-neutral');
     expect(architecture).toContain('shell / xterm-compatible text TUI');
@@ -276,16 +276,17 @@ describe('public documentation registry', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
     const featureStyles = readFileSync(new URL('./coreFeatureProofs.css', import.meta.url), 'utf8');
+    const mobileStyles = readFileSync(new URL('./mobileContinuityProof.css', import.meta.url), 'utf8');
     const scheduler = readFileSync(new URL('./SchedulerTopologyProof.tsx', import.meta.url), 'utf8');
     const schedulerStyles = readFileSync(new URL('./schedulerTopologyProof.css', import.meta.url), 'utf8');
     expect(landing).toContain('pub-hero-product');
     expect(landing).toContain('<SchedulerTopologyProof />');
     expect(landing).toContain('pub-product-frame');
-    expect(landing).toContain('pub-fleet');
+    expect(landing).toContain('pub-product-facts');
     expect(landing).toContain('INTERACTIVE SYSTEM MAP · CURRENT PATHS');
     expect(landing).toContain('PHONE / WEB CONTROL PLANE');
-    expect(landing).toContain('FLEET COMMAND / SANITIZED');
-    expect(landing).toContain('NEW SESSION → CHOOSE MACHINE + AGENT');
+    expect(landing).toContain('ACCOUNT WORKSPACE · PRODUCTION UI CONTRACTS');
+    expect(landing).toContain('PASTE FILE → TRUSTED RELAY → QUOTED PATH');
     expect(landing).not.toContain('CONNECTED · 42 MS');
     expect(landing).not.toContain('FLEET / LIVE NOW');
     expect(styles).toContain('@keyframes pub-field-drift');
@@ -315,6 +316,13 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.docs-cards > a:hover[^}]*transform: none/);
     expect(featureStyles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(featureStyles).toContain('animation-duration: 0.01ms !important');
+    const phoneMotion = mobileStyles.slice(
+      mobileStyles.indexOf('@keyframes mcp-phone-float'),
+      mobileStyles.indexOf('@keyframes mcp-ring-breathe'),
+    );
+    expect(phoneMotion).toContain('filter: brightness');
+    expect(phoneMotion).not.toContain('translate');
+    expect(mobileStyles).toContain('--mcp-arrow-rotation: 90deg');
     expect(scheduler).toContain('Interactive sanitized Very Happy scheduler architecture');
     expect(scheduler).toContain('YOU CHOOSE THE ROUTE');
     expect(scheduler).toContain('Your computer');
@@ -335,7 +343,7 @@ describe('public documentation registry', () => {
     expect(schedulerStyles).toContain('@keyframes scheduler-route-flow');
     expect(schedulerStyles).toContain('@keyframes scheduler-orbit');
     expect(schedulerStyles).toContain('@container scheduler-proof (max-width: 520px)');
-    expect(schedulerStyles).toMatch(/@media \(max-width: 680px\)[\s\S]*\.scheduler-proof \{ height: 500px; \}/);
+    expect(schedulerStyles).toMatch(/@media \(max-width: 680px\)[\s\S]*\.scheduler-proof \{ height: 520px; \}/);
     const schedulerContainerBlock = schedulerStyles.slice(
       schedulerStyles.indexOf('@container scheduler-proof'),
       schedulerStyles.indexOf('@media (max-width: 680px)'),
@@ -402,8 +410,8 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.term-screen:has\(\.product-term-files\)[^}]*\.term-header,[\s\S]*\.term-mid:has\(\.product-term-files\)[^}]*\.term-host \{ visibility: hidden; \}/);
     expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
     expect(styles).toContain('@container product-preview (max-width: 480px)');
-    expect(publicStyles).toMatch(/\.pub-flow code \{[^}]*white-space: pre-line/);
-    expect(landing).toContain("{'Web → New session\\nchoose machine + agent'}");
+    expect(publicStyles).toMatch(/\.pub-start code \{[^}]*white-space: pre-line/);
+    expect(landing).toContain('Then open Web → New session and choose the machine plus agent.');
     expect(landing).not.toContain('One thread. Three ways');
   });
 
@@ -417,7 +425,7 @@ describe('public documentation registry', () => {
     expect(proof).toContain('initialView="terminal" initialFilesOpen={false} sidebar={false}');
     expect(proof).toContain('initialView="conversation" sidebar={false}');
     expect(proof).toContain('SAME CLAUDE PROCESS');
-    expect(proof).toContain('OPTIONAL CLAUDE HOOKS');
+    expect(proof).toMatch(/optional Claude hooks/i);
     expect(proof).toContain('TERM · SOURCE');
     expect(proof).toContain('CHAT · MIRROR');
     expect(proof).not.toContain('TERM · LIVE');
@@ -465,12 +473,12 @@ describe('public documentation registry', () => {
     expect(proof).toContain('OpenClaw gateway over its own protocol—not ACP');
     expect(proof).toContain('LOCAL INTERACTION · NO AUDIO CAPTURE');
     expect(proof).toContain('SANITIZED DEMO · NO CONNECTION');
-    expect(proof).toContain('CLIPBOARD → TARGET MACHINE');
-    expect(proof).toContain('8 MB LIMIT · PATH ONLY · NO AUTO-RUN');
-    expect(proof).toContain('fileTransferDemo');
-    expect(proof).toContain('trusted relay');
-    expect(proof).toContain('PRODUCTION TERMINAL UPLOAD CONTRACT');
-    expect(proof).toContain('WORKSTATION · SANITIZED LOCAL PREVIEW · NO BYTES READ');
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const product = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
+    expect(landing).toContain('<ProductWorkspacePreview fileTransferDemo />');
+    expect(product).toContain('Local file handoff preview: paste or drop a file here');
+    expect(product).toContain('Uploaded to the selected machine · path pasted, not executed');
+    expect(product).toContain('Preview screenshot handoff');
     expect(proof).toContain("onClick={() => { if (voiceState === 'idle') finishVoicePreview(); }}");
     expect(proof).toContain('setSpeakingTurn((turn) => turn + 1)');
     expect(proof).toContain('[speakingTurn, voiceState]');

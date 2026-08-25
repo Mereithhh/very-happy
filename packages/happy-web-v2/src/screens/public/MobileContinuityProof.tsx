@@ -31,7 +31,7 @@ export function MobileContinuityProof({ compact = false }: { compact?: boolean }
         <span className="mcp-handoff-ring"><MessagesSquare size={20} /></span>
         <span className="mcp-handoff-line"><i /><i /><i /></span>
         <strong className="mono">SAME CLAUDE PROCESS</strong>
-        <small>OPTIONAL CLAUDE HOOKS</small>
+        <small>Tap conversation, then Back to terminal</small>
         <ArrowRight size={18} />
       </div>
 
