@@ -71,8 +71,9 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 
 <p align="center"><sub>美国 + 新加坡机器边缘 · 中央持久状态 · 实测 RELAY RTT · 最小权限 TOKEN</sub></p>
 
-控制与数据服务器仍是持久状态的唯一事实源。延迟敏感的终端字节流和 machine RPC 可以使用
-按 daemon 实测 RTT 选择的 operator 配置区域 Relay，兼容客户端仍保留中央回退路径。
+控制与数据服务器仍是持久状态的唯一事实源。延迟敏感的终端字节流、machine/session RPC 和
+已提交的结构化消息交付可以使用按 daemon 实测 RTT 选择的 operator 配置区域 Relay，兼容客户端
+仍保留中央回退路径。
 
 <table>
   <tr>
@@ -323,6 +324,15 @@ claude mcp add --scope user very-happy-clipboard -- very-happy mcp
 Prompt/工具权限视为高权限机器控制面。这不代表通用 MCP 或提供商路由能力。详见精确的
 [集成契约](docs/channels.md)。
 
+### 配置集成
+
+| 能力 | 配置入口 |
+|---|---|
+| 外部 Todo 列表 | 在对应机器的 `~/.happy/settings.json` 添加 `todoProvider`；复制[契约与示例](docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui)。 |
+| 账户 Webhook | 打开 **设置 → 通道**，保存一个 HTTPS endpoint，并选择完成/权限事件。 |
+| 派发其他会话 | 在 **设置 → 语音与 Assistant** 选择机器，打开 **Assistant**（`/assistant`），并审查其高权限审批设置。见 [Assistant 配置](docs/channels.md#inbound-web-assistant--meta-agent)。 |
+| 脚本 / IM adapter | 在 daemon 所在机器运行 [`very-happy spawn` 与 `very-happy send`](docs/channels.md#inbound-daemon-control-via-the-cli)。 |
+
 ## 组合进更大的 Agent 系统
 
 Very Happy 是执行界面，不是封闭的自动化平台。通用 webhook 加上
@@ -340,7 +350,7 @@ Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
 
 ### 区域 Relay 的行为与边界
 
-账号与数据库服务可以集中部署，延迟敏感的终端字节流和 machine RPC 则走 operator 配置的
+账号与数据库服务可以集中部署，延迟敏感的终端字节流、machine/session RPC 和结构化消息交付则走 operator 配置的
 区域 relay。daemon 会并行探测所有健康候选，并锚定实测 RTT 最低的节点；浏览器凭短期、
 machine-scoped token 跟随同一 assignment。终端标题栏会直接显示当前 relay 与浏览器到 relay
 的 RTT。
@@ -350,7 +360,11 @@ machine-scoped token 跟随同一 assignment。终端标题栏会直接显示当
 区域；托管 Cloud 实际有哪些 PoP 是运维事实，不等于默认承诺全球 SLA。未来 WebRTC 直连
 会复用同一 transport seam，区域 relay 继续作为 fallback。
 
-control/data server 同步工作区状态，区域实时面转发延迟敏感的 machine RPC 与终端流量。
+结构化输入由 session runner 持久化后才交给 Agent 执行；结构化输出拿到中央权威 id/seq 后才经
+Relay 推送。因此 control/data server 仍是历史与恢复的事实源，区域面只缩短实时交付；它本身不
+等于 Claude token 级流式输出。
+
+control/data server 同步工作区状态，区域实时面转发延迟敏感的 machine/session RPC、结构化交付与终端流量。
 继承自 Happy 的加密信封仍然提供纵深防御，但
 Very Happy 服务器可以恢复账号密钥。传输/存储加密并不代表中继是零知识系统。请阅读
 [架构](docs/architecture.md)与[安全说明](docs/security.md)。

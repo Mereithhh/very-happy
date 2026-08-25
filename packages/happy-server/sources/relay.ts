@@ -42,6 +42,25 @@ function sanitizeActivity(value: unknown, now = Date.now()): Array<{ id: string;
 
 function machineRoom(machineId: string): string { return `relay:${machineId}:machine`; }
 function webRoom(machineId: string): string { return `relay:${machineId}:web`; }
+function sessionRoom(machineId: string, sessionId: string): string { return `relay:${machineId}:session:${sessionId}`; }
+
+function validSessionBatch(value: unknown): value is Array<{ localId: string; content: string }> {
+    return Array.isArray(value) && value.length > 0 && value.length <= 50 && value.every((item) =>
+        item && typeof item === 'object' && boundedId((item as any).localId) && typeof (item as any).content === 'string'
+    );
+}
+
+function validCommittedBatch(value: unknown): value is Array<{
+    id: string; seq: number; localId: string | null; content: string; createdAt: number; updatedAt: number;
+}> {
+    return Array.isArray(value) && value.length > 0 && value.length <= 50 && value.every((item) =>
+        item && typeof item === 'object' && boundedId((item as any).id) &&
+        Number.isSafeInteger((item as any).seq) && (item as any).seq > 0 &&
+        ((item as any).localId === null || boundedId((item as any).localId)) &&
+        typeof (item as any).content === 'string' &&
+        Number.isFinite((item as any).createdAt) && Number.isFinite((item as any).updatedAt)
+    );
+}
 
 export function relayRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     const relayId = env.RELAY_ID?.trim();
@@ -82,6 +101,7 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
         maxHttpBufferSize: Number.isFinite(payloadLimit) && payloadLimit > 0 ? payloadLimit : 1024 * 1024,
     });
     const terminalLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit(env));
+    const sessionLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit(env));
     const rpcLimiter = new AccountTerminalRateLimiter(resolveRpcRelayLimit(env));
 
     io.use((socket: RelaySocket, next) => {
@@ -99,6 +119,24 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
         socket.on('relay-ping', (_data: unknown, callback?: (response: { serverAt: number }) => void) => {
             callback?.({ serverAt: Date.now() });
         });
+        if (clientType === 'session') {
+            const sessionId = claims.sessionId!;
+            const room = sessionRoom(machineId, sessionId);
+            socket.join(room);
+            socket.on('session-message-committed', (data: any) => {
+                if (!sessionLimiter.consume(accountId, relayPayloadBytes(data))) return socket.disconnect(true);
+                if (!data || data.sessionId !== sessionId || !validCommittedBatch(data.messages)) return;
+                io.to(webRoom(machineId)).emit('session-message-committed', {
+                    machineId,
+                    sessionId,
+                    messages: data.messages,
+                });
+            });
+            void io.in(room).fetchSockets().then((existing) => {
+                for (const old of existing) if (old.id !== socket.id) old.disconnect(true);
+            });
+            return;
+        }
         if (clientType === 'machine') {
             socket.join(machineRoom(machineId));
             const registered = new Set<string>();
@@ -166,6 +204,55 @@ export async function startRelayServer(env: NodeJS.ProcessEnv = process.env) {
                 callback?.({ ok: true, result: responses[0] });
             } catch {
                 callback?.({ ok: false, error: 'Machine unavailable' });
+            }
+        });
+
+        socket.on('session-message-deliver', async (data: any, callback?: (response: any) => void) => {
+            if (!sessionLimiter.consume(accountId, relayPayloadBytes(data))) {
+                callback?.({ ok: false, error: 'Session message rate limit reached' });
+                return;
+            }
+            if (!data || !boundedId(data.sessionId) || !validSessionBatch(data.messages)) {
+                callback?.({ ok: false, error: 'Invalid session message request' });
+                return;
+            }
+            try {
+                const responses = await io.to(sessionRoom(machineId, data.sessionId)).timeout(RPC_TIMEOUT_MS).emitWithAck(
+                    'session-message-deliver',
+                    { sessionId: data.sessionId, messages: data.messages },
+                );
+                if (responses.length !== 1) {
+                    callback?.({ ok: false, error: responses.length === 0 ? 'Session unavailable' : 'Multiple session connections' });
+                    return;
+                }
+                callback?.(responses[0]);
+            } catch {
+                callback?.({ ok: false, error: 'Session unavailable' });
+            }
+        });
+
+        socket.on('session-rpc-call', async (data: any, callback?: (response: any) => void) => {
+            if (!rpcLimiter.consume(accountId, relayPayloadBytes(data))) {
+                callback?.({ ok: false, error: 'RPC account rate limit reached' });
+                return;
+            }
+            if (!data || !boundedId(data.sessionId) || !boundedId(data.method) ||
+                !data.method.startsWith(`${data.sessionId}:`) || typeof data.params !== 'string') {
+                callback?.({ ok: false, error: 'Invalid session RPC request' });
+                return;
+            }
+            try {
+                const responses = await io.to(sessionRoom(machineId, data.sessionId)).timeout(RPC_TIMEOUT_MS).emitWithAck(
+                    'rpc-request',
+                    { method: data.method, params: data.params },
+                );
+                if (responses.length !== 1) {
+                    callback?.({ ok: false, error: responses.length === 0 ? 'Session unavailable' : 'Multiple session connections' });
+                    return;
+                }
+                callback?.({ ok: true, result: responses[0] });
+            } catch {
+                callback?.({ ok: false, error: 'Session unavailable' });
             }
         });
 

@@ -14,7 +14,7 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
-import { type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { RelayAssignmentResponseSchema, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -82,6 +82,7 @@ export class ApiSessionClient extends EventEmitter {
     private agentState: AgentState | null;
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+    private relaySocket: Socket | null = null;
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     private pendingFileEvents: FileEventMessage[] = [];
@@ -117,6 +118,8 @@ export class ApiSessionClient extends EventEmitter {
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
+    private readonly directInboundLocalIds = new Set<string>();
+    private readonly routedInboundLocalIds = new Set<string>();
 
     constructor(token: string, session: Session) {
         super()
@@ -170,6 +173,7 @@ export class ApiSessionClient extends EventEmitter {
             }
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.receiveSync.invalidate();
+            void this.connectSessionRelay();
         })
 
         // Set up global RPC request handler
@@ -223,9 +227,15 @@ export class ApiSessionClient extends EventEmitter {
                         this.receiveSync.invalidate();
                         return;
                     }
+                    const localId = data.body.message.localId;
+                    if (localId && this.directInboundLocalIds.delete(localId)) {
+                        this.lastSeq = messageSeq;
+                        return;
+                    }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
                     this.routeIncomingMessage(body);
+                    if (localId) this.rememberRoutedInbound(localId);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
@@ -435,6 +445,10 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (skipRouting) continue;
 
+                if (message.localId && this.directInboundLocalIds.delete(message.localId)) {
+                    continue;
+                }
+
                 if (message.content?.t !== 'encrypted') {
                     continue;
                 }
@@ -442,6 +456,7 @@ export class ApiSessionClient extends EventEmitter {
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
                     this.routeIncomingMessage(body);
+                    if (message.localId) this.rememberRoutedInbound(message.localId);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
                         sessionId: this.sessionId,
@@ -498,7 +513,123 @@ export class ApiSessionClient extends EventEmitter {
                 message.seq > acc ? message.seq : acc
             ), this.lastSeq);
             this.lastSeq = maxSeq;
+            this.pushCommittedMessagesToRelay(batch, messages);
             this.pendingOutbox.splice(0, batch.length);
+        }
+    }
+
+    private rememberRoutedInbound(localId: string) {
+        this.routedInboundLocalIds.add(localId);
+        if (this.routedInboundLocalIds.size > 2_000) {
+            const oldest = this.routedInboundLocalIds.values().next().value;
+            if (oldest) this.routedInboundLocalIds.delete(oldest);
+        }
+    }
+
+    private rememberDirectInbound(localId: string) {
+        this.directInboundLocalIds.add(localId);
+        if (this.directInboundLocalIds.size > 2_000) {
+            const oldest = this.directInboundLocalIds.values().next().value;
+            if (oldest) this.directInboundLocalIds.delete(oldest);
+        }
+    }
+
+    private async connectSessionRelay() {
+        const machineId = this.metadata?.machineId;
+        if (!machineId || this.relaySocket?.connected) return;
+        try {
+            const response = await fetch(
+                `${configuration.serverUrl}/v1/relays/sessions/${encodeURIComponent(this.sessionId)}/machines/${encodeURIComponent(machineId)}`,
+                { headers: this.authHeaders(), cache: 'no-store' },
+            );
+            if (!response.ok) return;
+            const assignment = RelayAssignmentResponseSchema.parse(await response.json()).assignment;
+            if (!assignment) return;
+            const relaySocket = io(assignment.url, {
+                path: '/v1/relay',
+                auth: { token: assignment.token },
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionDelay: 500,
+                reconnectionDelayMax: 5_000,
+            });
+            this.relaySocket?.close();
+            this.relaySocket = relaySocket;
+            relaySocket.on('connect', () => {
+                if (this.relaySocket !== relaySocket) return;
+                this.rpcHandlerManager.onSocketConnect(relaySocket);
+                logger.debug(`[API] Session connected to regional relay ${assignment.relayId}`);
+            });
+            relaySocket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+                callback(await this.rpcHandlerManager.handleRequest(data));
+            });
+            relaySocket.on('session-message-deliver', async (data: {
+                sessionId?: unknown;
+                messages?: Array<{ localId?: unknown; content?: unknown }>;
+            }, callback: (response: unknown) => void) => {
+                if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages) || data.messages.length === 0 || data.messages.length > 50) {
+                    callback({ ok: false, error: 'Invalid session message request' });
+                    return;
+                }
+                const unique = new Map<string, { localId: string; content: string }>();
+                for (const item of data.messages) {
+                    if (typeof item?.localId !== 'string' || !item.localId || typeof item.content !== 'string') {
+                        callback({ ok: false, error: 'Invalid session message request' });
+                        return;
+                    }
+                    if (!unique.has(item.localId)) unique.set(item.localId, { localId: item.localId, content: item.content });
+                }
+                const batch = Array.from(unique.values());
+                for (const item of batch) this.rememberDirectInbound(item.localId);
+                try {
+                    const persisted = await axios.post<V3PostSessionMessagesResponse>(
+                        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+                        { messages: batch },
+                        { headers: this.authHeaders(), timeout: 60_000 },
+                    );
+                    const stored = Array.isArray(persisted.data.messages) ? persisted.data.messages : [];
+                    const storedLocalIds = new Set(stored.map((message) => message.localId));
+                    if (batch.some((item) => !storedLocalIds.has(item.localId))) {
+                        throw new Error('Central persistence response omitted a session message');
+                    }
+                    this.lastSeq = stored.reduce((max, message) => Math.max(max, message.seq), this.lastSeq);
+                    for (const item of batch) {
+                        if (this.routedInboundLocalIds.has(item.localId)) continue;
+                        const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.content));
+                        this.routeIncomingMessage(body);
+                        this.rememberRoutedInbound(item.localId);
+                    }
+                    callback({ ok: true, messages: stored });
+                } catch (error) {
+                    for (const item of batch) this.directInboundLocalIds.delete(item.localId);
+                    callback({ ok: false, error: error instanceof Error ? error.message : 'Failed to persist session messages' });
+                }
+            });
+            relaySocket.on('disconnect', () => {
+                if (this.relaySocket === relaySocket) this.rpcHandlerManager.onSocketDisconnect(relaySocket);
+            });
+        } catch (error) {
+            logger.debug(`[API] Session regional relay unavailable: ${error instanceof Error ? error.message : error}`);
+        }
+    }
+
+    private pushCommittedMessagesToRelay(
+        batch: Array<{ content: string; localId: string }>,
+        messages: V3PostSessionMessagesResponse['messages'],
+    ) {
+        if (!this.relaySocket?.connected || messages.length === 0) return;
+        const contentByLocalId = new Map(batch.map((item) => [item.localId, item.content]));
+        const committed = messages.flatMap((message) => {
+            if (!message.localId) return [];
+            const content = contentByLocalId.get(message.localId);
+            if (!content) return [];
+            return [{ ...message, content }];
+        });
+        if (committed.length > 0) {
+            this.relaySocket.emit('session-message-committed', {
+                sessionId: this.sessionId,
+                messages: committed,
+            });
         }
     }
 
@@ -849,6 +980,8 @@ export class ApiSessionClient extends EventEmitter {
             this.reconnectInterval = null;
         }
         this.socket.close();
+        this.relaySocket?.close();
+        this.relaySocket = null;
     }
 
     private startSmartReconnect() {

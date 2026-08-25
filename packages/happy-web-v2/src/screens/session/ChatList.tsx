@@ -16,6 +16,7 @@ import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
 import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
+import { visibleToolCalls } from './toolVisibility';
 import './chatlist.css';
 
 type Row =
@@ -43,7 +44,10 @@ function buildRows(messages: Message[]): Row[] {
                 tools.push(messages[i] as ToolCallMessage);
                 i++;
             }
-            rows.push({ type: 'toolgroup', key: `tg-${tools[0].id}`, tools });
+            const visibleTools = visibleToolCalls(tools);
+            if (visibleTools.length > 0) {
+                rows.push({ type: 'toolgroup', key: `tg-${visibleTools[0].id}`, tools: visibleTools });
+            }
             continue;
         }
         // Approximate thinking duration: from this thinking message's createdAt

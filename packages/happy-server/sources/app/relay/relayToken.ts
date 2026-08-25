@@ -1,13 +1,14 @@
 import jwt from 'jsonwebtoken';
 import { RELAY_TOKEN_TTL_SECONDS } from './relayConfig';
 
-export type RelayClientType = 'machine' | 'web';
+export type RelayClientType = 'machine' | 'web' | 'session';
 
 export type RelayTokenClaims = {
     sub: string;
     relayId: string;
     machineId: string;
     clientType: RelayClientType;
+    sessionId?: string;
     iat: number;
     exp: number;
 };
@@ -21,6 +22,7 @@ export function signRelayToken(input: {
     relayId: string;
     machineId: string;
     clientType: RelayClientType;
+    sessionId?: string;
     nowSeconds?: number;
 }): { token: string; expiresAt: number } {
     const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1000);
@@ -29,6 +31,7 @@ export function signRelayToken(input: {
         relayId: input.relayId,
         machineId: input.machineId,
         clientType: input.clientType,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         iat: nowSeconds,
         exp: expiresAtSeconds,
     }, input.secret, {
@@ -54,7 +57,8 @@ export function verifyRelayToken(input: {
         if (!decoded || typeof decoded === 'string') return null;
         if (decoded.relayId !== input.relayId || typeof decoded.sub !== 'string' ||
             typeof decoded.machineId !== 'string' || decoded.machineId.length === 0 ||
-            (decoded.clientType !== 'machine' && decoded.clientType !== 'web') ||
+            (decoded.clientType !== 'machine' && decoded.clientType !== 'web' && decoded.clientType !== 'session') ||
+            (decoded.clientType === 'session' && (typeof decoded.sessionId !== 'string' || decoded.sessionId.length === 0)) ||
             typeof decoded.iat !== 'number' || typeof decoded.exp !== 'number') return null;
         return decoded as RelayTokenClaims;
     } catch {

@@ -359,7 +359,16 @@ function FailureCard({
             <div className="td-setup">
                 <div className="td-setup-title">{t('todos.notConfiguredTitle')}</div>
                 <p className="td-setup-body">{t('todos.notConfiguredBody', { machine: machineName })}</p>
-                <p className="td-setup-body">{t('todos.notConfiguredDocs')}</p>
+                <p className="td-setup-body">
+                    <a
+                        href="https://github.com/Mereithhh/very-happy/blob/main/docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        {t('todos.notConfiguredDocs')}
+                    </a>
+                </p>
+                <pre className="td-setup-body td-setup-example mono">{'{\n  "todoProvider": {\n    "command": "/absolute/path/to/provider",\n    "args": []\n  }\n}'}</pre>
                 <p className="td-setup-body td-setup-example mono">{t('todos.notConfiguredExample')}</p>
             </div>
         );

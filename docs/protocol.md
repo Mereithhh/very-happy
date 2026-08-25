@@ -121,6 +121,31 @@ Field names below match on-wire payloads.
 - `usage`: `{ type: "usage", id: sessionId, key, tokens, cost, timestamp }`
 - `machine-status`: `{ type: "machine-status", machineId, online, timestamp }`
 
+### Regional session relay events
+
+These events use `/v1/relay`, not the durable `/v1/updates` socket. A Web socket
+is bound to one account+machine assignment; a session runner token is additionally
+bound to one `sessionId`. Payload bodies remain opaque session-key ciphertext.
+
+- web -> session runner: `session-message-deliver`
+  - request: `{ sessionId, messages: [{ localId, content }] }`
+  - ack: `{ ok, messages?: [{ id, seq, localId, createdAt, updatedAt }], error? }`
+  - The runner POSTs the batch to `/v3/sessions/:id/messages` first and only then
+    routes it to the agent. An ack-loss fallback with the same `localId` is
+    idempotent at the central API.
+- session runner -> web: `session-message-committed`
+  - `{ machineId, sessionId, messages: [{ id, seq, localId, content, createdAt, updatedAt }] }`
+  - Every envelope already has the central server's authoritative id/seq. The
+    normal central `new-message` update remains the durable replay/fallback path.
+- web -> session runner: `session-rpc-call`
+  - `{ sessionId, method, params }` -> `{ ok, result? | error? }`
+  - A lost ack is not automatically replayed over the central socket because
+    the RPC may already have mutated local state.
+
+Old control servers cannot mint session tokens; old relays ignore these events;
+old runners do not join a session room. New clients detect those cases and use
+the existing central HTTP/socket path.
+
 ### Terminal relay events (machine <-> web, not on the `ephemeral` bus)
 Non-persisted, non-sequenced signals relayed by `terminalHandler` straight to
 the account's user-scoped room. `machineId` is always stamped by the server from

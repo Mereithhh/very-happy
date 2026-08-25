@@ -78,8 +78,9 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 <p align="center"><sub>US + SINGAPORE MACHINE EDGES · CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS</sub></p>
 
 The control and data server remains the durable source of truth. Latency-sensitive
-terminal bytes and machine RPC can use operator-configured regional relays chosen
-by measured daemon RTT, while compatible clients retain the central fallback.
+terminal bytes, machine/session RPC, and committed structured-message delivery
+can use operator-configured regional relays chosen by measured daemon RTT, while
+compatible clients retain the central fallback.
 
 <table>
   <tr>
@@ -382,6 +383,15 @@ journals; treat that variant and its prompt/tool permissions as a high-privilege
 machine control surface. This is not a universal MCP or provider-routing claim.
 See the exact [integration contracts](docs/channels.md).
 
+### Configure integrations
+
+| Capability | Setup |
+|---|---|
+| External Todo list | Add `todoProvider` to the machine's `~/.happy/settings.json`; copy the [provider contract and example](docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui). |
+| Account webhook | Open **Settings → Channels**, save one HTTPS endpoint, and select completion / permission events. |
+| Dispatch other sessions | Select an Assistant machine in **Settings → Voice & Assistant**, open **Assistant** (`/assistant`), and review its high-privilege permission setting. See the [Assistant setup](docs/channels.md#inbound-web-assistant--meta-agent). |
+| Script / IM adapter | Run [`very-happy spawn` and `very-happy send`](docs/channels.md#inbound-daemon-control-via-the-cli) on the daemon machine. |
+
 ## Compose it into a larger agent system
 
 Very Happy is an execution surface, not a closed automation platform. Generic
@@ -402,7 +412,7 @@ authorization by themselves.
 ### Regional relay behavior and limits
 
 The account/database server can stay central while latency-sensitive terminal
-bytes and machine RPC use operator-configured regional relays. Each daemon probes
+bytes, machine/session RPC, and structured-message delivery use operator-configured regional relays. Each daemon probes
 the healthy candidates in parallel and anchors to the lowest measured RTT; the
 browser follows that machine assignment with a short-lived, machine-scoped token.
 The active relay and browser-to-relay RTT are visible in the terminal header.
@@ -414,8 +424,14 @@ regions exist; hosted PoP availability is an operational fact, not an implied
 global SLA. A future WebRTC direct path can use the same transport seam, with
 regional relays remaining the fallback.
 
+Structured input is persisted by the session runner before agent execution;
+structured output receives its authoritative central id/seq before the relay
+push. The control/data server therefore remains the recovery and history source,
+while the regional plane shortens live delivery. It does not add token-level
+Claude streaming by itself.
+
 The control/data server synchronizes workspace state; the regional plane routes
-latency-sensitive machine RPC and terminal traffic. Encrypted
+latency-sensitive machine/session RPC, structured delivery, and terminal traffic. Encrypted
 envelopes inherited from Happy remain defense in depth, but the Very Happy server
 can recover account keys. Transport/storage encryption does not make the relay
 zero knowledge. Read [Architecture](docs/architecture.md) and

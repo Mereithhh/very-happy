@@ -12,6 +12,25 @@ describe('relay token', () => {
         });
     });
 
+    it('requires and round trips a session id for session-scoped tokens', () => {
+        const signed = signRelayToken({
+            secret,
+            accountId: 'a1',
+            relayId: 'sin',
+            machineId: 'm1',
+            sessionId: 's1',
+            clientType: 'session',
+        });
+        expect(verifyRelayToken({ token: signed.token, secret, relayId: 'sin' })).toMatchObject({
+            sub: 'a1', relayId: 'sin', machineId: 'm1', sessionId: 's1', clientType: 'session',
+        });
+
+        const missingSession = jwt.sign({ relayId: 'sin', machineId: 'm1', clientType: 'session' }, secret, {
+            algorithm: 'HS256', issuer: 'very-happy-control', audience: 'very-happy-relay', subject: 'a1', expiresIn: 60,
+        });
+        expect(verifyRelayToken({ token: missingSession, secret, relayId: 'sin' })).toBeNull();
+    });
+
     it('rejects a token at another relay and a token with another audience', () => {
         const signed = signRelayToken({ secret, accountId: 'a1', relayId: 'sin', machineId: 'm1', clientType: 'web' });
         expect(verifyRelayToken({ token: signed.token, secret, relayId: 'usw' })).toBeNull();

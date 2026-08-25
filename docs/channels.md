@@ -14,6 +14,16 @@ There are two directions:
   an optional stdio MCP server (`very-happy mcp`) that gives a plain `claude`
   a `copy_to_clipboard` tool.
 
+## Choose a path
+
+| You want to… | Configure here |
+|---|---|
+| Receive completion / permission notifications | [Account webhook](#outbound-account-webhook), or **Settings → Channels** |
+| Show an external task list in the Todo panel | [Todo provider](#inbound-todo-provider-external-task-lists-in-the-web-ui), in `~/.happy/settings.json` on that machine |
+| Dispatch work from a script, scheduler, or IM bridge | [`very-happy spawn` / `very-happy send`](#inbound-daemon-control-via-the-cli) |
+| Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
+| Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
+
 ## MCP capability matrix
 
 MCP is a handoff surface into the Web workspace, not a claim that every runner
@@ -198,6 +208,25 @@ through the server REST outbox directly.
 
 Exit codes: `0` delivered, `1` anything else (bad args, unknown session /
 missing key, send failed).
+
+## Inbound: Web Assistant / meta-agent
+
+The Web Assistant is the built-in path for asking one Claude coordinator to
+inspect and dispatch other Very Happy sessions. It is separate from an external
+IM adapter and currently spawns **Claude sessions on one selected machine**.
+
+1. Connect a machine whose daemon can start Claude structured sessions.
+2. Open **Settings → Voice & Assistant** and select the Assistant machine.
+3. Review **Skip permission approvals**. It is convenient for dispatch, but it
+   grants the coordinator a high-privilege machine-control surface.
+4. Open **Assistant** (or `/assistant`) and ask with an absolute workspace path,
+   for example: `在 /srv/project 派一个会话修复登录测试，然后汇报结果。`
+
+The assistant uses `session_spawn` to return a new session immediately; it does
+not wait for that worker to finish. Use `sessions_list`, `session_read`, and
+`session_send` to follow up. `~` may be expanded, but explicit absolute paths
+are the least ambiguous. Automatic cross-machine or cross-provider routing is
+not shipped today.
 
 ### `very-happy mcp` — clipboard tool for a plain `claude`
 

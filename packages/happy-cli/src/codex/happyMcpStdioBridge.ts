@@ -61,7 +61,7 @@ async function main() {
 
   // Create STDIO MCP server
   const server = new McpServer({
-    name: 'Happy MCP Bridge',
+    name: 'Very Happy Tools',
     version: '1.0.0',
   });
 
@@ -161,4 +161,3 @@ main().catch((err) => {
     process.exit(1);
   }
 });
-
