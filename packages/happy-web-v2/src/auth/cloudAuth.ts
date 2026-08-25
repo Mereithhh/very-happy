@@ -34,6 +34,8 @@ export type CloudAuthErrorCode =
     | 'email-delivery-unavailable'
     | 'email-not-configured'
     | 'email-identity-in-use'
+    | 'google-identity-in-use'
+    | 'google-not-configured'
     | 'reauth-required'
     | 'invalid-account-secret'
     | 'network';
@@ -113,6 +115,32 @@ export async function linkEmailIdentity(
         if (reason === 'reauth_required' || status === 403) throw new CloudAuthError('reauth-required');
         if (reason === 'email_not_configured' || status === 501) throw new CloudAuthError('email-not-configured');
         if (reason === 'invalid_email_code' || status === 401) throw new CloudAuthError('invalid-email-code');
+        if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
+}
+
+export async function linkGoogleIdentity(
+    credential: string,
+    nonce: string,
+    credentials: AuthCredentials,
+): Promise<{ success: true; email: string | null }> {
+    try {
+        const response = await axios.post<{ success: true; email: string | null }>(
+            `${getServerUrl()}/v1/account/identities/google`,
+            { credential, nonce, secret: credentials.secret },
+            { headers: authenticatedHeaders(credentials) },
+        );
+        return response.data;
+    } catch (error: any) {
+        const status = error?.response?.status;
+        const reason = error?.response?.data?.error;
+        if (reason === 'google_identity_in_use' || status === 409) throw new CloudAuthError('google-identity-in-use');
+        if (reason === 'reauth_required') throw new CloudAuthError('reauth-required');
+        if (reason === 'origin_not_allowed') throw new CloudAuthError('origin-not-allowed');
+        if (reason === 'google_not_configured' || status === 501) throw new CloudAuthError('google-not-configured');
+        if (reason === 'invalid_google_credential' || status === 401) throw new CloudAuthError('invalid-credential');
         if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
         if (status === 429) throw new CloudAuthError('rate-limited');
         throw new CloudAuthError('network');

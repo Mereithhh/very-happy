@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGoogleLoginChallenge, loadPublicAuthConfig } from '@/auth/cloudAuth';
+import { initialGoogleButtonState, reduceGoogleButtonState } from './googleButtonState';
+import './auth.css';
 
 type GoogleIdentity = {
   initialize(options: {
@@ -52,6 +54,8 @@ export function GoogleLoginButton({
   unavailableLabel,
   onCredential,
   onUnavailable,
+  required = false,
+  loadingLabel,
 }: {
   disabled?: boolean;
   leadingDividerLabel?: string;
@@ -59,12 +63,14 @@ export function GoogleLoginButton({
   unavailableLabel: string;
   onCredential: (credential: string, nonce: string) => void | Promise<void>;
   onUnavailable?: () => void;
+  /** Settings link flows must surface missing/failed config; public auth may hide it. */
+  required?: boolean;
+  loadingLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onCredential);
-  const [enabled, setEnabled] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState(initialGoogleButtonState);
+  const { enabled, failed, attempt } = state;
   callbackRef.current = onCredential;
 
   useEffect(() => {
@@ -72,20 +78,22 @@ export function GoogleLoginButton({
     let refreshTimer: number | undefined;
     const markUnavailable = () => {
       if (cancelled) return;
-      setEnabled(false);
-      setFailed(true);
+      setState((current) => reduceGoogleButtonState(current, 'unavailable'));
       onUnavailable?.();
     };
     void loadPublicAuthConfig().then(async (config) => {
-      if (cancelled || !config?.googleClientId) return;
+      if (cancelled) return;
+      if (!config?.googleClientId) {
+        if (required) markUnavailable();
+        return;
+      }
       try {
         await loadGoogleScript();
         if (cancelled || !containerRef.current || !window.google?.accounts?.id) return;
         const renderWithFreshChallenge = async (): Promise<void> => {
           if (cancelled || !containerRef.current || !window.google?.accounts?.id) return;
           if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
-          setEnabled(false);
-          setFailed(false);
+          setState((current) => reduceGoogleButtonState(current, 'rendering'));
           containerRef.current.replaceChildren();
           const challenge = await createGoogleLoginChallenge();
           if (cancelled || !containerRef.current || !window.google?.accounts?.id) return;
@@ -106,10 +114,10 @@ export function GoogleLoginButton({
             type: 'standard',
             theme: 'outline',
             size: 'large',
-            width: 328,
+            width: Math.min(328, Math.max(200, containerRef.current.clientWidth || 328)),
             text: 'continue_with',
           });
-          setEnabled(true);
+          setState((current) => reduceGoogleButtonState(current, 'rendered'));
           const expiresAtMs = Date.parse(challenge.expiresAt);
           const refreshInMs = Number.isFinite(expiresAtMs)
             ? Math.max(1_000, expiresAtMs - Date.now() - 30_000)
@@ -127,14 +135,16 @@ export function GoogleLoginButton({
       cancelled = true;
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     };
-  }, [attempt, onUnavailable]);
+  }, [attempt, onUnavailable, required]);
 
-  return <div className={`auth-google-block${enabled || failed ? ' is-ready' : ''}`}>
+  const loading = required && !enabled && !failed;
+  return <div className={`auth-google-block${enabled || failed || required ? ' is-ready' : ''}${failed ? ' is-failed' : ''}${loading ? ' is-loading' : ''}`}>
     {leadingDividerLabel && <div className="auth-divider"><span>{leadingDividerLabel}</span></div>}
     <div className={`auth-google${disabled ? ' is-disabled' : ''}`} ref={containerRef} />
+    {loading && <div className="auth-google-loading" role="status">{loadingLabel}</div>}
     {failed && <div className="auth-google-unavailable" role="status">
       <span>{unavailableLabel}</span>
-      <button type="button" disabled={disabled} onClick={() => setAttempt((value) => value + 1)}>
+      <button type="button" disabled={disabled} onClick={() => setState((current) => reduceGoogleButtonState(current, 'retry'))}>
         {retryLabel}
       </button>
     </div>}

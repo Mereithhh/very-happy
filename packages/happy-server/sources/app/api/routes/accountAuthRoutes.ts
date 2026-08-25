@@ -38,6 +38,10 @@ import {
     getAccountLoginMethods,
     linkVerifiedEmailIdentity,
 } from '@/app/auth/emailIdentityLink';
+import {
+    GoogleIdentityInUseError,
+    linkVerifiedGoogleIdentity,
+} from '@/app/auth/googleIdentityLink';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
@@ -140,9 +144,48 @@ export function emailVerifyRateBuckets(ip: string, email: string, challengeId: s
     ];
 }
 
+export function googleChallengeRateBucket(ip: string): { key: string; max: number; windowMs: number } {
+    return {
+        key: `google-challenge:ip:${hashPairingValue(ip).slice(0, 32)}`,
+        max: 60,
+        windowMs: 60_000,
+    };
+}
+
+export function googleLoginRateBucket(ip: string): { key: string; max: number; windowMs: number } {
+    return {
+        key: `google-login:ip:${hashPairingValue(ip).slice(0, 32)}`,
+        max: 60,
+        windowMs: 60_000,
+    };
+}
+
 export function enabledReplacementIdentityProviders(emailEnabled: boolean, googleEnabled: boolean): Array<'email' | 'google'> {
     return [emailEnabled ? 'email' as const : null, googleEnabled ? 'google' as const : null]
         .filter((provider): provider is 'email' | 'google' => provider !== null);
+}
+
+async function hasRecentLoginSession(accountId: string, loginSessionId: string | undefined): Promise<boolean> {
+    const session = loginSessionId
+        ? await db.accountLoginSession.findFirst({
+            where: {
+                id: loginSessionId,
+                accountId,
+                revokedAt: null,
+                expiresAt: { gt: new Date() },
+            },
+            select: { createdAt: true },
+        })
+        : null;
+    return !!session && session.createdAt.getTime() >= Date.now() - 10 * 60_000;
+}
+
+async function matchesAccountSecret(accountId: string, secret: string): Promise<boolean> {
+    const derivedPublicKey = accountPublicKeyFromSecret(secret);
+    const account = derivedPublicKey
+        ? await db.account.findUnique({ where: { id: accountId }, select: { publicKey: true } })
+        : null;
+    return !!account && account.publicKey === derivedPublicKey;
 }
 
 export function accountAuthRoutes(app: Fastify) {
@@ -260,7 +303,8 @@ export function accountAuthRoutes(app: Fastify) {
         if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
-        if (!(await allowAuthRequest(`google-challenge:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+        const challengeBucket = googleChallengeRateBucket(request.ip);
+        if (!(await allowAuthRequest(challengeBucket.key, challengeBucket))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
         try {
@@ -549,25 +593,10 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (request, reply) => {
         if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
         const accountId = request.userId;
-        const recentSession = request.authLoginSessionId
-            ? await db.accountLoginSession.findFirst({
-                where: {
-                    id: request.authLoginSessionId,
-                    accountId,
-                    revokedAt: null,
-                    expiresAt: { gt: new Date() },
-                },
-                select: { createdAt: true },
-            })
-            : null;
-        if (!recentSession || recentSession.createdAt.getTime() < Date.now() - 10 * 60_000) {
+        if (!(await hasRecentLoginSession(accountId, request.authLoginSessionId))) {
             return reply.code(403).send({ error: 'reauth_required' as const });
         }
-        const derivedPublicKey = accountPublicKeyFromSecret(request.body.secret);
-        const account = derivedPublicKey
-            ? await db.account.findUnique({ where: { id: accountId }, select: { publicKey: true } })
-            : null;
-        if (!account || account.publicKey !== derivedPublicKey) {
+        if (!(await matchesAccountSecret(accountId, request.body.secret))) {
             return reply.code(400).send({ error: 'invalid_secret' as const });
         }
 
@@ -596,6 +625,73 @@ export function accountAuthRoutes(app: Fastify) {
         }
         log({ module: 'email-auth', accountId }, 'Email login identity linked');
         return reply.send({ success: true as const, email });
+    });
+
+    app.post('/v1/account/identities/google', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                credential: z.string().min(1).max(16_384),
+                nonce: z.string().min(32).max(256),
+                secret: z.string().min(1).max(1024),
+            }).strict(),
+            response: {
+                200: z.object({ success: z.literal(true), email: z.string().nullable() }),
+                400: z.object({ error: z.literal('invalid_secret') }),
+                401: z.object({ error: z.literal('invalid_google_credential') }),
+                403: z.object({ error: z.enum(['reauth_required', 'origin_not_allowed']) }),
+                409: z.object({ error: z.literal('google_identity_in_use') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('google_not_configured') }),
+            },
+        },
+    }, async (request, reply) => {
+        const clientId = googleConfig.clientId;
+        if (!clientId) return reply.code(501).send({ error: 'google_not_configured' as const });
+        if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
+            return reply.code(403).send({ error: 'origin_not_allowed' as const });
+        }
+        const accountId = request.userId;
+        if (!(await hasRecentLoginSession(accountId, request.authLoginSessionId))) {
+            return reply.code(403).send({ error: 'reauth_required' as const });
+        }
+        if (!(await matchesAccountSecret(accountId, request.body.secret))) {
+            return reply.code(400).send({ error: 'invalid_secret' as const });
+        }
+        const accountKey = hashPairingValue(accountId).slice(0, 32);
+        const allowed = await consumeRateBucketsSequentially([
+            { key: `google-link:ip:${hashPairingValue(request.ip).slice(0, 32)}:minute`, max: 10 },
+            { key: `google-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
+            { key: `google-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
+            { key: 'google-link:global:hour', max: 300, windowMs: 60 * 60_000 },
+        ]);
+        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+
+        let claims;
+        try {
+            claims = await verifyGoogleIdToken(request.body.credential, clientId, {
+                expectedNonce: request.body.nonce,
+            });
+        } catch (error) {
+            log({ module: 'google-auth', level: 'warn', error }, 'Google credential rejected while linking');
+            return reply.code(401).send({ error: 'invalid_google_credential' as const });
+        }
+        try {
+            const result = await linkVerifiedGoogleIdentity(db, accountId, {
+                nonce: request.body.nonce,
+                claims,
+            });
+            if (result === 'invalid-challenge') {
+                return reply.code(401).send({ error: 'invalid_google_credential' as const });
+            }
+        } catch (error) {
+            if (error instanceof GoogleIdentityInUseError) {
+                return reply.code(409).send({ error: 'google_identity_in_use' as const });
+            }
+            throw error;
+        }
+        log({ module: 'google-auth', accountId }, 'Google login identity linked');
+        return reply.send({ success: true as const, email: claims.email ?? null });
     });
 
     app.post('/v1/account/login', {
@@ -745,7 +841,8 @@ export function accountAuthRoutes(app: Fastify) {
         if (!isGoogleOriginAllowed(request.headers.origin, googleConfig)) {
             return reply.code(403).send({ error: 'origin_not_allowed' as const });
         }
-        if (!(await allowAuthRequest(`google-login:${request.ip}`, { max: 60, windowMs: 60_000 }))) {
+        const loginBucket = googleLoginRateBucket(request.ip);
+        if (!(await allowAuthRequest(loginBucket.key, loginBucket))) {
             return reply.code(429).send({ error: 'too_many_requests' as const });
         }
 

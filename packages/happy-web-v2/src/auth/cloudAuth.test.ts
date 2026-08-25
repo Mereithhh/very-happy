@@ -15,6 +15,7 @@ import {
   loadPublicAuthConfig,
   loadAccountLoginMethods,
   linkEmailIdentity,
+  linkGoogleIdentity,
   loginWithGoogle,
   requestEmailLoginCode,
   revokeCloudLogin,
@@ -79,6 +80,32 @@ describe('cloud auth client', () => {
   ])('maps Email identity link failure %s/%s', async (status, error, expected) => {
     postMock.mockRejectedValueOnce({ response: { status, data: { error } } });
     await expect(linkEmailIdentity('owner@example.com', 'challenge', '000000', { token: 't', secret: 's' }))
+      .rejects.toMatchObject({ code: expected });
+  });
+
+  it('links Google with the authenticated account secret', async () => {
+    const credentials = { token: 'current-token', secret: 'account-secret' };
+    postMock.mockResolvedValueOnce({ data: { success: true, email: 'owner@example.com' } });
+    await expect(linkGoogleIdentity('id-token', 'signed-nonce', credentials))
+      .resolves.toEqual({ success: true, email: 'owner@example.com' });
+    expect(postMock).toHaveBeenCalledWith(
+      'https://cloud.example/v1/account/identities/google',
+      { credential: 'id-token', nonce: 'signed-nonce', secret: 'account-secret' },
+      { headers: expect.objectContaining({ Authorization: 'Bearer current-token' }) },
+    );
+  });
+
+  it.each([
+    [409, 'google_identity_in_use', 'google-identity-in-use'],
+    [403, 'reauth_required', 'reauth-required'],
+    [403, 'origin_not_allowed', 'origin-not-allowed'],
+    [400, 'invalid_secret', 'invalid-account-secret'],
+    [401, 'invalid_google_credential', 'invalid-credential'],
+    [501, 'google_not_configured', 'google-not-configured'],
+    [429, 'too_many_requests', 'rate-limited'],
+  ])('maps Google identity link failure %s/%s', async (status, error, expected) => {
+    postMock.mockRejectedValueOnce({ response: { status, data: { error } } });
+    await expect(linkGoogleIdentity('bad-token', 'nonce', { token: 't', secret: 's' }))
       .rejects.toMatchObject({ code: expected });
   });
 

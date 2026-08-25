@@ -79,6 +79,10 @@
    - OTP 消费与 identity insert 在同一数据库事务；冲突会回滚 OTP 消费。
    - 一个账户最多一个 Email identity；一个 Email identity 只属于一个账户。已有归属返回 409，绝不移动、替换或按 Google claim email 隐式合并。
    - 绑定成功后 Email OTP 登录返回原账户，不创建第二个账户。
+5. `POST /v1/account/identities/google { credential, nonce, secret }` → 显式关联 Google 登录。
+   - 与 Email link 相同，要求 10 分钟内的有效登录 session 和能推导当前账户 public key 的本地 secret。
+   - Google ID token 必须绑定五分钟一次性 nonce；token 先验签，nonce 消费与 identity insert 在同一事务。
+   - 一个账户最多一个 Google identity；已有归属返回 409，绝不按 Google claim email 自动合并或移动身份。
 
 ### 发信适配器
 
@@ -112,7 +116,7 @@ Google 作为第二入口。仅 `passwordLoginEnabled=true` 时显示“Use pass
 3. **账号枚举**：send response 不区分已有/新账号；signup policy 仅在正确 code 后判定。
 4. **误锁 Owner**：禁用 password 前要求新 Web 已发布、provider 有效且至少 Google 或 Email 可用；startup 配置交叉校验。
 5. **供应商 outage/Beta**：provider adapter 可在 Cloudflare/Resend 间切换；密码开关可逆且凭据不删除。
-6. **同邮箱错误合并**：不按 Google claim email 自动合并；不同 provider identity 保持独立。Email 显式 link 需要近期登录、当前账户 secret 与独立 OTP 三重证明；冲突 fail closed。
+6. **同邮箱错误合并**：不按 Google claim email 自动合并；不同 provider identity 保持独立。Email/Google 显式 link 都需要近期登录、当前账户 secret 与独立 provider proof；冲突 fail closed。
 
 ## 验收标准
 
@@ -122,6 +126,7 @@ Google 作为第二入口。仅 `passwordLoginEnabled=true` 时显示“Use pass
 - [x] Email sender 两 provider 的 URL/header/payload、timeout、错误净化有单测。
 - [x] Web 默认 Email flow、resend/change email、Google/password 条件显示和错误状态有测试。
 - [x] 已登录账户显式 Email link 对近期 session、账户 secret、单账户/单邮箱唯一性、并发冲突与事务回滚有回归测试。
+- [x] 已登录账户显式 Google link 对近期 session、账户 secret、Origin、nonce、单账户/单 subject 唯一性与事务回滚有回归测试。
 - [x] desktop/mobile real browser 无溢出，输入字号与 tap target 合规。
 - [ ] server/web 全门禁、production Email 实信、password disabled/reenabled rollback 冒烟通过。
 
