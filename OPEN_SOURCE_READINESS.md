@@ -4,12 +4,11 @@
 >
 > Public candidate base: `12861872` on `main`
 >
-> Decision: **PENDING FINAL PROTECTED-PR VERIFICATION**
+> Decision: **PENDING FINAL MERGE**
 
-Very Happy's product and sanitized public lineage are ready. Publication closes
-when this readiness change passes the newly enforced pull-request gates and the
-final remote/fork/production checks below are recorded. Until then, treat this
-file as the release checklist rather than a READY declaration.
+Very Happy's product, sanitized public lineage, fork isolation, canonical clone,
+and production health checks are complete. This document intentionally remains
+pending until the verified readiness branch is merged through protected main.
 
 ## Product delivered
 
@@ -59,6 +58,8 @@ file as the release checklist rather than a READY declaration.
 | Public base | `12861872ee701526f4644f763a83b431fe252d4b`; explicit-main-only push |
 | Quality Gates | Run `32816809293`: success on the exact public base |
 | CLI Smoke | Run `32816809328`: Linux/macOS, Node 20/24, success |
+| Protected PR | PR #1 run `32817704371`: all three required checks passed without bypass |
+| Fork isolation | PR #2 from `MiroMindAI` run `32817718015`: all checks passed on `ubuntu-latest`; 0 public runners/secrets/variables; closed unmerged |
 | Web | 109 test files / 1,477 tests; Vite production build; TypeScript zero errors |
 | CLI | 129 test files / 1,241 tests; build, types and isolated HOME runtime; final real-tmux follow-up 20/20 targeted tests |
 | Server | 57 test files / 408 tests; TypeScript zero errors; container/migration/persistence checks |
@@ -66,7 +67,8 @@ file as the release checklist rather than a READY declaration.
 | Clean install | Frozen-lockfile output-free checkout; server tarball migration; CLI tarball postinstall/version smoke in isolated prefix/HOME |
 | New user | Signup, pairing, daemon, machine discovery, tmux terminal/file preview, and no-tmux downgrade exercised on an isolated machine |
 | Browser | Fresh desktop/phone Chromium: landing/docs, signup errors, PWA prompt, scheduler, terminal/structured handoff, no overflow, 16 px inputs, zero console errors |
-| Production | Web deploy `32812476449` from `a49adce7`; health, welcome, docs, manifest, service worker and immutable asset verified |
+| Production | Web deploy `32812476449` from `a49adce7`; post-publication health OK; GET `/welcome` and `/docs`, manifest, service worker and immutable asset verified |
+| Canonical clone | Fresh `https://github.com/Mereithhh/very-happy` clone: 2,617 commits scanned, gitleaks 0, fsck strict pass, no legacy tags/private emails |
 | Reviews | Independent security/public-repo, code/release, and first-user/UI/docs reviews; confirmed P0/P1 closed |
 
 The terminal auto-restore follow-up covers cwd/title/terminal identity, resume
@@ -100,12 +102,12 @@ pure regression so a transient empty probe cannot consume the badge.
 
 ## Publication closeout
 
-- [ ] This branch passes all protected pull-request checks and is merged without bypass.
-- [ ] A fork-origin pull request proves hosted-runner/no-secret isolation.
-- [ ] The original repository is renamed as a private archive/release plane.
-- [ ] The sanitized repository takes the canonical `Mereithhh/very-happy` name.
-- [ ] A fresh canonical clone passes ref, fsck, gitleaks, identity and runner checks.
-- [ ] Production health and public landing/docs/PWA endpoints remain healthy.
+- [ ] This verified branch is merged into protected `main` without bypass.
+- [x] A fork-origin pull request proves hosted-runner/no-secret isolation.
+- [x] The original repository is renamed as a private archive/release plane.
+- [x] The sanitized repository has the canonical `Mereithhh/very-happy` name.
+- [x] A fresh canonical clone passes ref, fsck, gitleaks, identity and runner checks.
+- [x] Production health and public landing/docs/PWA endpoints remain healthy.
 
 No history force-push, production data deletion, DNS change, external ownership
 change, or credential rotation is part of this publication procedure.
