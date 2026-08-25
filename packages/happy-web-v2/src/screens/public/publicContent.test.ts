@@ -166,7 +166,8 @@ describe('public documentation registry', () => {
     expect(html).toContain('One Web command panel for every connected machine');
     expect(landing).not.toContain('private Tanka deployment');
     expect(landing).toContain('ROADMAP');
-    expect(landing).toContain('not end-to-end encrypted');
+    expect(landing).not.toContain('not end-to-end encrypted');
+    expect(landing).toContain('Cloud convenience or your own infrastructure.');
     expect(html).toContain('One panel. Every machine. Every agent.');
     expect(html).not.toContain('Claude Code, from any browser.');
   });
@@ -291,7 +292,7 @@ describe('public documentation registry', () => {
     expect(landing).toContain('INTERACTIVE SYSTEM MAP · CURRENT PATHS');
     expect(landing).toContain('PHONE / WEB CONTROL PLANE');
     expect(landing).toContain('ACCOUNT WORKSPACE · PRODUCTION UI CONTRACTS');
-    expect(landing).toContain('PASTE FILE → TRUSTED RELAY → QUOTED PATH');
+    expect(landing).toContain('PASTE FILE → SELECTED MACHINE');
     expect(landing).not.toContain('CONNECTED · 42 MS');
     expect(landing).not.toContain('FLEET / LIVE NOW');
     expect(styles).toContain('@keyframes pub-field-drift');
@@ -342,7 +343,7 @@ describe('public documentation registry', () => {
     expect(scheduler).toContain('API + webhooks');
     expect(scheduler).toContain('MCP tools');
     expect(scheduler).toContain('Meta Agent');
-    expect(scheduler).toContain('TRUSTED RELAY');
+    expect(scheduler).toContain('CLOUD OR SELF-HOSTED RELAY');
     expect(scheduler).toContain('CLI + DAEMON');
     expect(scheduler).toContain('Claude only');
     expect(scheduler).toContain('runner-specific');

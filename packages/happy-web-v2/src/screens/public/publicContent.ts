@@ -44,12 +44,12 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: '1. Choose a relay', blocks: [
         { type: 'p', text: 'Use Very Happy Cloud at happy.mereith.com for the shortest path, or deploy your own relay first. A browser account and every connected CLI must use the same relay.' },
-        { type: 'note', text: 'The relay is trusted infrastructure, not an end-to-end encrypted blind relay. Read Security & privacy before connecting a sensitive machine.' },
+        { type: 'note', text: 'Very Happy Cloud is the fastest path. Self-hosting gives you control of the operator, access policy, storage, backups, and upgrades. Read Security & privacy when choosing a deployment for sensitive work.' },
       ] },
       { heading: '2. Check the machine', blocks: [
         { type: 'list', items: ['Required: Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm.', 'Structured Claude: the CLI bundles the Agent SDK; configure Claude provider credentials for the daemon user. Native Claude terminal/mirror, Codex, Gemini, OpenCode, and OpenClaw need their local command or gateway.', 'Recommended: tmux keeps Web terminals alive across browser disconnects. Without it, terminals use a non-durable direct shell.', 'Optional Claude terminal mirror: tmux 3.2 or newer. The normal structured Claude path does not require tmux or hooks.'] },
         { type: 'code', code: 'node --version\ntmux -V            # recommended; may be absent\nclaude --version  # or codex / gemini / opencode / openclaw' },
-        { type: 'note', text: 'The CLI bundles ripgrep and difftastic on supported platforms. Provider credentials stay agent-local by default. If you explicitly run very-happy connect, the selected OpenAI, Anthropic, or Gemini OAuth credential is uploaded to and retained by the trusted relay; this is not an end-to-end encrypted vault and is currently used primarily by the Gemini path.' },
+        { type: 'note', text: 'The CLI bundles ripgrep and difftastic on supported platforms. Provider credentials stay agent-local by default. If you explicitly run very-happy connect, the selected OpenAI, Anthropic, or Gemini OAuth credential is stored on your chosen deployment so Web-launched integrations can use it; this is currently used primarily by the Gemini path.' },
       ] },
       { heading: '3. Configure Claude credentials', blocks: [
         { type: 'p', text: 'Very Happy bundles the Claude Agent SDK, not Claude usage or a Claude account. For structured sessions, configure ANTHROPIC_API_KEY or a supported Bedrock, Vertex AI, or Foundry environment for the same OS user and startup environment that runs the daemon.' },
@@ -73,7 +73,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'note', text: 'The Web terminal is an xterm.js surface with TERM=xterm-256color. Most common text TUIs work, but terminal-specific graphics or extensions such as sixel and Kitty graphics are not a compatibility promise.' },
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # local Claude TUI; requires external claude\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
         { type: 'p', text: 'Local CLI modes require their matching command or gateway. The beta Agent Client Protocol backend includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio. OpenClaw uses its own local gateway protocol, not ACP. Run very-happy daemon status if the machine remains offline.' },
-        { type: 'note', text: 'In a Web terminal, paste a clipboard image/file or drop a file to hand it to the selected machine. Terminal uploads are capped at 8 MB, staged under ~/.happy/uploads/terminal/, and return a path quoted for the daemon default shell at the cursor without pressing Enter. The trusted relay can access relayed content; larger uploads and native Windows path insertion require the current daemon.' },
+        { type: 'note', text: 'In a Web terminal, paste a clipboard image/file or drop a file to hand it to the selected machine. Terminal uploads are capped at 8 MB, staged under ~/.happy/uploads/terminal/, and return a path quoted for the daemon default shell at the cursor without pressing Enter. Larger uploads and native Windows path insertion require the current daemon.' },
       ] },
       { heading: 'Optional: mirror a hand-started Claude terminal', blocks: [
         { type: 'code', code: 'very-happy install-terminal-hooks\n# rollback\nvery-happy install-terminal-hooks --remove' },

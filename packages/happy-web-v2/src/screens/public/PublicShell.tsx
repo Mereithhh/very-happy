@@ -23,7 +23,7 @@ export function PublicHeader() {
 export function PublicFooter() {
   return (
     <footer className="pub-footer">
-      <span>Very Happy · server-trusted remote coding</span>
+      <span>Very Happy · work anywhere, keep the thread</span>
       <nav aria-label="Footer navigation">
         <Link to="/docs/security">Security</Link>
         <Link to="/privacy">Privacy</Link>

@@ -116,8 +116,8 @@ run() {
 }
 
 say ''
-say 'Very Happy uses a trusted relay; it is not end-to-end encrypted.'
-say 'Review the trust model before approving a sensitive machine:'
+say 'Connect to Very Happy Cloud, or point the CLI at your self-hosted deployment.'
+say 'Deployment, privacy, and security details:'
 say '  https://happy.mereith.com/docs/security'
 say ''
 if [ "$CLI_VERSION" = '<published-version>' ]; then

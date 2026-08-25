@@ -210,7 +210,7 @@ export const en = {
         developer: 'Developer',
         developerTools: 'Developer Tools',
         about: 'About',
-        aboutFooter: 'Very Happy is a web client for Codex and Claude Code. It uses a server-trusted relay, not end-to-end encryption; the relay operator may access relayed content. Not affiliated with Anthropic.',
+        aboutFooter: 'Very Happy is a Web-first workspace for Codex and Claude Code, available through Very Happy Cloud or your own deployment. Not affiliated with Anthropic.',
         whatsNew: 'What\'s New',
         whatsNewSubtitle: 'See the latest updates and improvements',
         reportIssue: 'Report an Issue',
@@ -1543,7 +1543,7 @@ export const en = {
         loginWithPassword: 'Login with password',
         // WelcomeInstall landing card (web)
         installForkTitle: 'A friendly fork of Happy',
-        installIntro: 'Very Happy builds on Happy and trades end-to-end encryption for password-based, multi-device convenience.',
+        installIntro: 'Very Happy builds on Happy with password-based sign-in for seamless access across your devices.',
         installFeaturePassword: 'Password sign-in, any device',
         installFeatureSync: 'Multi-device sync',
         installFeatureTerminal: 'Web terminal over tmux',
@@ -1552,7 +1552,7 @@ export const en = {
         installStep1: 'Install Claude Code so the `claude` command is on your PATH.',
         installStep2: 'Install the CLI from npm:',
         installStep3: 'Run it on the machine you want to control — pre-configured to this server.',
-        installNote: 'Server-trusted: your sessions are relayed through this server, whose operator can read them. Only sign up if you trust them.',
+        installNote: 'Your sessions use this deployment. Review its privacy and security policy before connecting a sensitive machine.',
     },
 
     passwordLogin: {

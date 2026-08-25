@@ -31,6 +31,11 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { DecryptedArtifact } from "./artifactTypes";
 import { isHiddenSession, isMirrorSession } from "@/assistant/assistantSession";
 import { FeedItem } from "./feedTypes";
+import {
+    applySessionInactiveHold,
+    holdSessionInactive,
+    releaseSessionInactive,
+} from './sessionArchiveHold';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -423,7 +428,9 @@ export const storage = create<StorageState>()((set, get) => {
         applySessions: (incomingSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             // Drop sessions that were already deleted — a raced update/fetch
             // must not resurrect them (see deletedSessionTombstones above).
-            const sessions = incomingSessions.filter(session => !deletedSessionTombstones.has(session.id));
+            const sessions = incomingSessions
+                .filter(session => !deletedSessionTombstones.has(session.id))
+                .map(session => applySessionInactiveHold(session));
 
             // Load drafts and permission modes if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
@@ -1185,6 +1192,8 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         setSessionActiveLocal: (sessionId: string, active: boolean) => set((state) => {
+            if (active) releaseSessionInactive(sessionId);
+            else holdSessionInactive(sessionId);
             const session = state.sessions[sessionId];
             if (!session || session.active === active) return state;
 

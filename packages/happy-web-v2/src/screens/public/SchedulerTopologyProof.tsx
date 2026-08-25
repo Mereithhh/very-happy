@@ -71,8 +71,8 @@ export function SchedulerTopologyProof() {
         <div className="scheduler-phone-body">
           <div className="scheduler-phone-kicker mono">WEB / PHONE CONTROL</div>
           <strong>One control plane.</strong>
-          <div className="scheduler-stack mono" aria-label="Web or PWA through trusted relay and CLI daemon">
-            <span className="sr-only">WEB / PWA → TRUSTED RELAY → CLI + DAEMON</span>
+          <div className="scheduler-stack mono" aria-label="Web or PWA through a Cloud or self-hosted relay and CLI daemon">
+            <span className="sr-only">WEB / PWA → CLOUD OR SELF-HOSTED RELAY → CLI + DAEMON</span>
             <span>WEB</span><i>⇅</i><span>RELAY</span><i>⇅</i><span>DAEMON</span>
           </div>
           <div className="scheduler-route mono" title={route}><span>{route}</span></div>

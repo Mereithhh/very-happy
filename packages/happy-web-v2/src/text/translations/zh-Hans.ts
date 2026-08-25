@@ -250,7 +250,7 @@ export const zhHans: TranslationStructure = {
         developer: '开发者',
         developerTools: '开发者工具',
         about: '关于',
-        aboutFooter: 'Very Happy 是 Codex 和 Claude Code 的 Web 客户端。它采用服务器可信中继，而非端到端加密；运营者可访问中继内容。与 Anthropic 无关联。',
+        aboutFooter: 'Very Happy 是面向 Codex 和 Claude Code 的 Web-first 工作台，可使用 Very Happy Cloud 或自行部署。与 Anthropic 无关联。',
         whatsNew: '更新日志',
         whatsNewSubtitle: '查看最新更新和改进',
         reportIssue: '报告问题',
@@ -1456,14 +1456,14 @@ export const zhHans: TranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Codex 和 Claude Code 移动客户端',
-        subtitle: '可信中继服务器可访问中继内容。',
+        subtitle: '随时从手机或电脑继续你的对话、终端、文件和任务。',
         createAccount: '创建账户',
         linkOrRestoreAccount: '链接或恢复账户',
         loginWithMobileApp: '使用移动应用登录',
         loginWithPassword: '使用密码登录',
         // WelcomeInstall landing card (web)
         installForkTitle: '基于 Happy 的友好分支',
-        installIntro: '用密码登录代替端到端加密，换来多设备即开即用的便利。',
+        installIntro: '使用密码登录，在不同设备上无缝进入同一个工作台。',
         installFeaturePassword: '密码登录，任意设备，免扫码',
         installFeatureSync: '多设备实时同步，会话随身',
         installFeatureTerminal: '浏览器里的真实终端',
@@ -1472,7 +1472,7 @@ export const zhHans: TranslationStructure = {
         installStep1: '安装 Claude Code，确保 claude 命令在 PATH 上。',
         installStep2: '从 npm 安装 CLI：',
         installStep3: '在你想控制的机器上运行，已预设连到本服务器。',
-        installNote: '服务器可见你的会话内容，信任再注册。',
+        installNote: '会话将使用当前部署；连接敏感机器前请查看其隐私与安全说明。',
     },
 
     passwordLogin: {

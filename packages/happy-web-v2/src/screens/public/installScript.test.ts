@@ -58,7 +58,8 @@ describe('public first-machine bootstrap', () => {
     expect(spawnSync('/bin/sh', ['-n', scriptPath.pathname]).status).toBe(0);
     const source = readFileSync(scriptPath, 'utf8');
     expect(source).toContain('very-happy-cli@$CLI_VERSION');
-    expect(source).toContain('not end-to-end encrypted');
+    expect(source).toContain('Very Happy Cloud');
+    expect(source).toContain('self-hosted deployment');
     expect(source).toContain('run "$VH_BIN" doctor');
     expect(source).toContain('run "$VH_BIN" auth login');
     expect(source).toContain('run "$VH_BIN" daemon start');

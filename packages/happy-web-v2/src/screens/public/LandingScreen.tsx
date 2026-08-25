@@ -14,7 +14,7 @@ function ProductShowcase() {
   return <section className="pub-product" aria-labelledby="product-title">
     <div className="pub-product-intro"><div><div className="eyebrow">REAL PRODUCT // SANITIZED DATA</div><h2 id="product-title">See the fleet. Open the work.</h2></div><p>This is the interface you actually use: sessions from multiple machines in one sidebar, with the live terminal, structured Claude mirror, files, previews, and task board one click away.</p></div>
     <div className="pub-product-frame"><div className="pub-product-frame-head mono"><span><i /> ACCOUNT WORKSPACE · PRODUCTION UI CONTRACTS</span><span>3 MACHINES · CLAUDE + CODEX + TTY</span></div><ProductWorkspacePreview fileTransferDemo /></div>
-    <div className="pub-product-caption mono"><span>ONE SIDEBAR · MULTI-MACHINE WORK</span><span>PASTE FILE → TRUSTED RELAY → QUOTED PATH · 8 MB · NO AUTO-RUN</span><span>DISPATCH · WATCH · STEP IN</span></div>
+    <div className="pub-product-caption mono"><span>ONE SIDEBAR · MULTI-MACHINE WORK</span><span>PASTE FILE → SELECTED MACHINE · 8 MB · NO AUTO-RUN</span><span>DISPATCH · WATCH · STEP IN</span></div>
     <div className="pub-product-facts">
       <article><MonitorSmartphone size={18} /><div><span className="mono">WEB / PWA · RECOMMENDED</span><strong>The recommended daily command surface on desktop, tablet, and phone.</strong></div></article>
       <article><Cable size={18} /><div><span className="mono">CLI + DAEMON + TMUX</span><strong>The machine-side bridge keeps ordinary xterm-256color text TUIs—not only coding agents—reachable.</strong></div></article>
@@ -37,12 +37,12 @@ function StartAndTrust() {
       <Link className="pub-start-guide" to="/docs/quickstart">Complete quick start <ArrowRight size={15} /></Link>
     </div>
     <aside className="pub-start-trust" aria-labelledby="trust-title">
-      <div className="eyebrow">TRUST MODEL</div>
-      <h2 id="trust-title">Choose the relay boundary.</h2>
-      <p>Very Happy is <strong>server-trusted, not end-to-end encrypted</strong>. The operator—or an attacker controlling the relay—may access relayed content, recovery material, and capabilities exposed by an online daemon.</p>
+      <div className="eyebrow">DEPLOYMENT CHOICE</div>
+      <h2 id="trust-title">Cloud convenience or your own infrastructure.</h2>
+      <p>Start immediately with Very Happy Cloud, or run the same open-source stack yourself when you need your own access policy, storage, backups, and operational controls.</p>
       <div className="pub-start-choice"><Globe2 size={18} /><div><strong>Very Happy Cloud</strong><span>Fastest start · capacity-limited · no uptime SLA</span></div><Link to="/docs/cloud" aria-label="Read the Very Happy Cloud guide"><ArrowRight size={15} /></Link></div>
       <div className="pub-start-choice"><Server size={18} /><div><strong>Self-hosted</strong><span>Your operator, access policy, storage, and backups</span></div><Link to="/docs/self-hosting" aria-label="Read the self-hosting guide"><ArrowRight size={15} /></Link></div>
-      <Link className="pub-start-security" to="/docs/security">Read the complete security model <ArrowRight size={15} /></Link>
+      <Link className="pub-start-security" to="/docs/security">Privacy and security details <ArrowRight size={15} /></Link>
     </aside>
   </section>;
 }

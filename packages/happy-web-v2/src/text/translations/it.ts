@@ -122,7 +122,7 @@ export const it: PartialTranslationStructure = {
         developer: 'Sviluppatore',
         developerTools: 'Strumenti sviluppatore',
         about: 'Informazioni',
-        aboutFooter: 'Very Happy è un client web per Codex e Claude Code. Usa un server fidato, non la cifratura end-to-end; il gestore può accedere ai contenuti inoltrati. Non affiliato con Anthropic.',
+        aboutFooter: 'Very Happy è uno spazio di lavoro Web-first per Codex e Claude Code, disponibile su Very Happy Cloud o nella tua installazione. Non affiliato con Anthropic.',
         whatsNew: 'Novità',
         whatsNewSubtitle: 'Scopri gli ultimi aggiornamenti e miglioramenti',
         reportIssue: 'Segnala un problema',

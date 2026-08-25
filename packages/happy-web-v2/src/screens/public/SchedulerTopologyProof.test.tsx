@@ -27,7 +27,7 @@ describe('SchedulerTopologyProof', () => {
     expect(html).toContain('MCP tools');
     expect(html).toContain('Meta Agent');
     expect(html).toContain('WEB / PHONE CONTROL');
-    expect(html).toContain('TRUSTED RELAY');
+    expect(html).toContain('CLOUD OR SELF-HOSTED RELAY');
     expect(html).toContain('CLI + DAEMON');
     expect(html).toContain('MANUAL DISPATCH');
     expect(html).toContain('YOU CHOOSE THE ROUTE');
