@@ -12,6 +12,17 @@
 .fr-hero { width: min(100%, 720px); }
 .fr-hero h1 { margin: var(--sp-2) 0 var(--sp-3); font-size: clamp(var(--fs-28), 5vw, var(--fs-40)); line-height: 1.1; }
 .fr-hero p { margin: 0; color: var(--text-dim); font-size: var(--fs-16); line-height: 1.55; }
+.fr-fast-path {
+  width: min(100%, 720px);
+  padding: var(--sp-5);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--bg-1);
+}
+.fr-fast-path h2 { margin: var(--sp-2) 0 var(--sp-1); font-size: var(--fs-20); }
+.fr-fast-path > p { margin: 0 0 var(--sp-4); color: var(--text-dim); font-size: var(--fs-13); line-height: 1.55; }
+.fr-fast-path .fr-runtime-help { margin: var(--sp-3) 0 0; font-size: var(--fs-12); }
+.fr-runtime-help a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .fr-steps {
   width: min(100%, 720px);
   display: flex;
@@ -81,5 +92,6 @@
 .fr-actions { width: min(100%, 720px); display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 @media (max-width: 599px) {
   .fr-page { padding: var(--sp-6) var(--sp-4); }
+  .fr-fast-path { padding: var(--sp-4); }
   .fr-steps li { padding: var(--sp-4); }
 }

@@ -54,8 +54,8 @@ case "$(uname -s 2>/dev/null || true)" in
   *) fail 'this bootstrap currently supports macOS and Linux; use the manual npm instructions on other systems' ;;
 esac
 
-command -v node >/dev/null 2>&1 || fail 'Node.js is required (20.19+ within 20.x, 22.13+ within 22.x, or 24+)'
-command -v npm >/dev/null 2>&1 || fail 'npm is required'
+command -v node >/dev/null 2>&1 || fail 'Node.js is required (20.19+ within 20.x, 22.13+ within 22.x, or 24+). Install it from https://nodejs.org/en/download (npm is included), then rerun this command'
+command -v npm >/dev/null 2>&1 || fail 'npm is required. Install or repair a supported Node.js release from https://nodejs.org/en/download, then rerun this command'
 
 NODE_VERSION=$(node -p 'process.versions.node')
 node -e '

@@ -125,6 +125,13 @@ esac`);
     expect(() => readFileSync(f.calls, 'utf8')).toThrow();
   });
 
+  it('gives an actionable official install path when Node or npm is missing', () => {
+    const source = readFileSync(scriptPath, 'utf8');
+    expect(source).toContain('https://nodejs.org/en/download (npm is included)');
+    expect(source).toContain('Install or repair a supported Node.js release from https://nodejs.org/en/download');
+    expect(source).toContain('then rerun this command');
+  });
+
   it('rejects unsupported architectures and unsafe or mismatched custom endpoints', () => {
     const unsupported = fixture({ arch: 'ia32' });
     const archResult = spawnSync('/bin/sh', [scriptPath.pathname], {

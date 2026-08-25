@@ -34,6 +34,12 @@ the detached daemon:
 )
 ```
 
+The bootstrap still needs Node.js because the CLI and daemon run on Node. If
+`node` or `npm` is missing, install a supported Node.js release from the
+[official download page](https://nodejs.org/en/download)—npm is included—then
+run the same command again. The script fails with this guidance rather than
+invoking `sudo` or silently changing the system runtime.
+
 Read the [version-controlled script](../packages/happy-web-v2/public/install.sh)
 before running remote code. Hosted bytes can change with a Web release, so the
 auditable path is to download, compare, and run the local file. Preview its
