@@ -55,6 +55,7 @@ interface ServerToDaemonEvents {
     'terminal-input': (data: { terminalId: string, data: string, enc?: boolean }) => void;
     'terminal-resize': (data: { terminalId: string, cols: number, rows: number }) => void;
     'terminal-close': (data: { terminalId: string }) => void;
+    'session-archive': (data: { sessionId: string }) => void;
 }
 
 interface DaemonToServerEvents {
@@ -128,6 +129,7 @@ type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
+    listTrackedSessionIds?: () => string[];
     requestShutdown: () => void;
 }
 
@@ -161,6 +163,8 @@ export class ApiMachineClient {
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private stopSessionHandler: ((sessionId: string) => boolean) | null = null;
+    private listTrackedSessionIds: (() => string[]) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
     // Terminals negotiated with `encStream` protect the live byte payload with
     // the per-machine key. This keeps it opaque to passive storage/forwarding
@@ -273,9 +277,12 @@ export class ApiMachineClient {
         spawnSession,
         resumeSession,
         stopSession,
+        listTrackedSessionIds,
         requestShutdown
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
+        this.stopSessionHandler = stopSession;
+        this.listTrackedSessionIds = listTrackedSessionIds ?? null;
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
@@ -419,7 +426,13 @@ export class ApiMachineClient {
         // Permanently destroy a terminal's tmux session (sidebar delete).
         this.rpcHandlerManager.registerHandler('kill-terminal', async (params: any) => {
             const { terminalId } = params || {};
-            if (terminalId) { this.encTerminals.delete(terminalId); this.webTerminal.killSession(terminalId); }
+            if (typeof terminalId !== 'string' || !terminalId) {
+                return { type: 'error', errorMessage: 'Terminal ID is required' };
+            }
+            if (!this.webTerminal.killSession(terminalId)) {
+                return { type: 'error', errorMessage: 'tmux session is still running' };
+            }
+            this.encTerminals.delete(terminalId);
             return { type: 'success' };
         });
 
@@ -839,6 +852,7 @@ export class ApiMachineClient {
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
+            void this.reconcileArchivedSessions();
             void this.refreshRelayConnection();
         });
 
@@ -940,6 +954,40 @@ export class ApiMachineClient {
         });
         socket.on('terminal-resize', (data: any) => this.webTerminal.resize(data.terminalId, data.cols, data.rows));
         socket.on('terminal-close', (data: any) => this.webTerminal.unsubscribe(data.terminalId));
+        socket.on('session-archive', (data: { sessionId?: unknown }) => {
+            if (typeof data?.sessionId !== 'string') return;
+            const stopped = this.stopSessionHandler?.(data.sessionId) ?? false;
+            logger.debug(`[API MACHINE] Server archived session ${data.sessionId}; local process stopped=${stopped}`);
+        });
+    }
+
+    /** Reconcile commands missed while the daemon was offline. The server
+     * returns only ids owned by this account and durably archived in the DB. */
+    private async reconcileArchivedSessions(): Promise<void> {
+        const tracked = this.listTrackedSessionIds?.() ?? [];
+        if (tracked.length === 0) return;
+        try {
+            for (let offset = 0; offset < tracked.length; offset += 500) {
+                const response = await fetch(`${configuration.serverUrl}/v1/sessions/archive-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.token}`,
+                        'Content-Type': 'application/json',
+                        'X-Happy-Client': `cli-daemon/${configuration.currentCliVersion}`,
+                    },
+                    body: JSON.stringify({ sessionIds: tracked.slice(offset, offset + 500) }),
+                });
+                if (response.status === 404) return; // older server
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const body = await response.json() as { archivedSessionIds?: unknown };
+                if (!Array.isArray(body.archivedSessionIds)) continue;
+                for (const sessionId of body.archivedSessionIds) {
+                    if (typeof sessionId === 'string') this.stopSessionHandler?.(sessionId);
+                }
+            }
+        } catch (error) {
+            logger.debug(`[API MACHINE] Archived-session reconciliation failed: ${error instanceof Error ? error.message : error}`);
+        }
     }
 
     private async refreshRelayConnection(): Promise<void> {

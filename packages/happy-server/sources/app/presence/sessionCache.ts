@@ -16,6 +16,13 @@ interface MachineCacheEntry {
     userId: string;
 }
 
+/** A heartbeat may update presence only while no durable archive tombstone
+ * exists. Keeping the guard in the database predicate closes the race where a
+ * batch was collected before the archive transaction committed. */
+export function sessionActivityUpdateWhere(sessionId: string) {
+    return { id: sessionId, archivedAt: null } as const;
+}
+
 class ActivityCache {
     private sessionCache = new Map<string, SessionCacheEntry>();
     private machineCache = new Map<string, MachineCacheEntry>();
@@ -140,6 +147,13 @@ class ActivityCache {
         return false; // No update needed
     }
 
+    /** Drop activity collected before an authoritative archive transition. */
+    discardSessionUpdate(sessionId: string): void {
+        const cached = this.sessionCache.get(sessionId);
+        if (!cached) return;
+        cached.pendingUpdate = null;
+    }
+
     queueMachineUpdate(machineId: string, timestamp: number): boolean {
         const cached = this.machineCache.get(machineId);
         if (!cached) {
@@ -187,8 +201,8 @@ class ActivityCache {
         if (sessionUpdates.length > 0) {
             try {
                 await Promise.all(sessionUpdates.map(update =>
-                    db.session.update({
-                        where: { id: update.id },
+                    db.session.updateMany({
+                        where: sessionActivityUpdateWhere(update.id),
                         data: { lastActiveAt: new Date(update.timestamp), active: true }
                     })
                 ));

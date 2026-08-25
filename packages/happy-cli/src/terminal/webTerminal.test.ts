@@ -4,7 +4,16 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, type TerminalListItem } from './webTerminal';
+
+describe('tmuxKillVerified', () => {
+    it('requires a successful probe proving the session is absent', () => {
+        expect(tmuxKillVerified({}, { status: 1 })).toBe(true);
+        expect(tmuxKillVerified({}, { status: 0 })).toBe(false);
+        expect(tmuxKillVerified({ error: new Error('spawn') }, { status: 1 })).toBe(false);
+        expect(tmuxKillVerified({}, { status: null, error: new Error('probe') })).toBe(false);
+    });
+});
 
 describe('planScrollAction', () => {
     it('scrolling up from the live view enters copy-mode scroll', () => {

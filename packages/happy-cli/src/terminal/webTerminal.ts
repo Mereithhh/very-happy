@@ -117,6 +117,13 @@ import {
 // only helps clients new enough to carry it.)
 export const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export function tmuxKillVerified(
+    kill: { error?: unknown },
+    probe: { status: number | null, error?: unknown },
+): boolean {
+    return !kill.error && !probe.error && typeof probe.status === 'number' && probe.status !== 0;
+}
+
 /** Prune expired entries (pure; exported for tests). */
 export function pruneTombstones(
     map: Record<string, number>,
@@ -2462,7 +2469,7 @@ export class WebTerminalManager {
     /** Permanently destroy the terminal: detach the pty AND kill the tmux
      *  session (so a local `tmux attach` won't find it either). Used when the
      *  user deletes the terminal from the sidebar. */
-    killSession(terminalId: string) {
+    killSession(terminalId: string): boolean {
         // Record the close BEFORE the kill, while title/cwd are still knowable
         // (B-084). Cache first (fed by every tracking tick), fresh tmux lookup
         // as fallback (kill can arrive before tracking ever observed this id).
@@ -2470,6 +2477,18 @@ export class WebTerminalManager {
         // fabricate a record for a bogus/stale id.
         const info = this.lastSeenInfo.get(terminalId)
             ?? this.listSessions().find((t) => t.id === terminalId);
+        // The tmux process is the source of truth. Do not remove the UI/list
+        // record until tmux itself confirms that the session no longer exists.
+        // spawnSync returning is not enough: the old implementation ignored a
+        // non-zero exit code and acknowledged kills that never happened.
+        const target = `=vh-${terminalId}:`;
+        const killed = spawnSync('tmux', ['kill-session', '-t', target], { stdio: 'ignore', env: ptyEnv() });
+        const verified = spawnSync('tmux', ['has-session', '-t', target], { stdio: 'ignore', env: ptyEnv() });
+        if (!tmuxKillVerified(killed, verified)) {
+            logger.debug(`[WEB TERMINAL] failed to verify tmux session removal ${target}`);
+            return false;
+        }
+
         if (info) {
             // B-149/B-150: the resume id matters MORE here than in the gap path —
             // "I closed it and want it back" is the common case. Live mirror
@@ -2491,11 +2510,6 @@ export class WebTerminalManager {
             logger.debug(`[WEB TERMINAL] terminal-closed callback failed: ${e}`);
         }
         this.detach(terminalId);
-        try {
-            spawnSync('tmux', ['kill-session', '-t', `vh-${terminalId}`], { stdio: 'ignore', env: ptyEnv() });
-        } catch {
-            // tmux gone / session already dead
-        }
         // Tombstone the id so stale clients can't legacy-create it back.
         this.tombstones[terminalId] = Date.now();
         saveTombstones(this.tombstones);
@@ -2505,6 +2519,7 @@ export class WebTerminalManager {
         // Deletion propagates by ABSENCE from the pushed list — refresh now so
         // every device converges without tombstone bookkeeping.
         this.kickListRefresh();
+        return true;
     }
 
     /**

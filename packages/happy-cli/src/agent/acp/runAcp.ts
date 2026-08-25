@@ -876,7 +876,7 @@ export async function runAcp(opts: {
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
-  });
+  }, session);
 
   try {
     const started = await backend.startSession();

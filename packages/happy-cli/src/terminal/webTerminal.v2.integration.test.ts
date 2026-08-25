@@ -380,7 +380,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         const id = 'v2kill1';
         await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });
         await waitFor(() => seen(id).length > 0, 15_000, 'session live');
-        mgr.killSession(id);
+        expect(mgr.killSession(id)).toBe(true);
         await waitFor(
             () => spawnSync('tmux', ['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
             10_000,

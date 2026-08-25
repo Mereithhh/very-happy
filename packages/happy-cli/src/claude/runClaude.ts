@@ -258,6 +258,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     logger.debug(`Session created: ${response.id}`);
 
+    if (reconnectSessionId && !await api.reactivateSession(response.id)) {
+        throw new Error(`Failed to reactivate archived session ${response.id}`);
+    }
+
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
@@ -537,12 +541,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentEffort = DEFAULT_CLAUDE_EFFORT;
         logger.debug('[loop] Reset current mode defaults after abort');
     };
-
-    // Exit when session is archived from web/mobile
-    session.on('archived', () => {
-        logger.debug('[loop] Session archived from web/mobile, cleaning up...');
-        cleanup();
-    });
 
     // Handle file events — each download promise resolves to its own decoded
     // attachment (or null). drainAttachmentsForUserMessage on the next text
@@ -896,7 +894,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Browser-side "Archive" button routes through this RPC and DOES
     // want the metadata stamped — it's the user explicitly choosing to
     // retire the session, not just disconnecting.
-    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }));
+    registerKillSessionHandler(session.rpcHandlerManager, () => cleanup({ archive: true }), session);
 
     // Create claude loop
     const exitCode = await loop({

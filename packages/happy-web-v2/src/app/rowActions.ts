@@ -16,7 +16,7 @@ import { t } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { notifyWebhook } from '@/sync/apiWebhook';
-import { sessionUpdateTitleTags, sessionArchive, sessionKill, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
+import { sessionUpdateTitleTags, sessionArchive, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
@@ -33,17 +33,13 @@ export function nextSessionPathAfterClose(closedId: string): string {
   return next ? `/session/${next}` : '/';
 }
 
-/** The kill-first archive itself (no confirm). A kill RPC acknowledges before
- *  the CLI finishes cleanup, so success is not proof that the relay marked the
- *  row inactive. Always commit the server archive after the kill attempt. */
+/** The server-owned archive transition (no confirm). The server commits the
+ *  durable state first and then tells the daemon/session process to stop. */
 export async function archiveSessionNow(session: Session): Promise<void> {
   const wasActive = session.active;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
   try {
-    await commitSessionArchive(
-      () => sessionKill(session.id),
-      () => sessionArchive(session.id),
-    );
+    await commitSessionArchive(() => sessionArchive(session.id));
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
     throw error;

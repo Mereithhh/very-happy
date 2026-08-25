@@ -193,7 +193,7 @@ export function rpcHandler(
         try {
             const { method } = data ?? {};
             if (!registrationScope) {
-                socket.emit('rpc-error', { type: 'register', error: 'Machine-scoped connection required' });
+                socket.emit('rpc-error', { type: 'register', error: 'Authenticated RPC scope required' });
                 return;
             }
             if (!method || typeof method !== 'string' || method.length > 128) {
@@ -201,7 +201,7 @@ export function rpcHandler(
                 return;
             }
             if (!method.startsWith(`${registrationScope}:`)) {
-                socket.emit('rpc-error', { type: 'register', error: 'Method is outside authenticated machine scope' });
+                socket.emit('rpc-error', { type: 'register', error: 'Method is outside authenticated connection scope' });
                 return;
             }
             if (registeredMethods.has(method)) {
@@ -226,7 +226,7 @@ export function rpcHandler(
         try {
             const { method } = data ?? {};
             if (!registrationScope) {
-                socket.emit('rpc-error', { type: 'unregister', error: 'Machine-scoped connection required' });
+                socket.emit('rpc-error', { type: 'unregister', error: 'Authenticated RPC scope required' });
                 return;
             }
             if (!method || typeof method !== 'string' || method.length > 128) {
@@ -234,7 +234,7 @@ export function rpcHandler(
                 return;
             }
             if (!method.startsWith(`${registrationScope}:`)) {
-                socket.emit('rpc-error', { type: 'unregister', error: 'Method is outside authenticated machine scope' });
+                socket.emit('rpc-error', { type: 'unregister', error: 'Method is outside authenticated connection scope' });
                 return;
             }
             socket.leave(rpcRoom(userId, method));

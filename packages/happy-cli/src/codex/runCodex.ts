@@ -166,6 +166,10 @@ export async function runCodex(opts: {
         response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     }
 
+    if (reconnectSessionId && response && !await api.reactivateSession(response.id)) {
+        throw new Error(`Failed to reactivate archived session ${response.id}`);
+    }
+
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
     // Permission handler declared here so it can be updated in onSessionSwap callback
@@ -492,7 +496,7 @@ export async function runCodex(opts: {
     // Register abort handler
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
-    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
+    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession, session);
 
     //
     // Initialize Ink UI

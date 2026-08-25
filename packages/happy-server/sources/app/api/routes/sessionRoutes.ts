@@ -8,6 +8,7 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { sessionDelete } from "@/app/session/sessionDelete";
 import { isAccountResourceLimitError } from '../resourceLimits';
 import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/accountStateStore';
+import { activityCache } from '@/app/presence/sessionCache';
 
 export function sessionRoutes(app: Fastify) {
 
@@ -347,6 +348,24 @@ export function sessionRoutes(app: Fastify) {
     });
 
     // Archive session (force deactivate)
+    app.post('/v1/sessions/archive-status', {
+        schema: {
+            body: z.object({ sessionIds: z.array(z.string()).max(500) })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const rows = await db.session.findMany({
+            where: {
+                accountId: request.userId,
+                id: { in: request.body.sessionIds },
+                archivedAt: { not: null },
+            },
+            select: { id: true },
+        });
+        return reply.send({ archivedSessionIds: rows.map((row) => row.id) });
+    });
+
+    // Archive session (force deactivate)
     app.post('/v1/sessions/:sessionId/archive', {
         schema: {
             params: z.object({
@@ -360,12 +379,15 @@ export function sessionRoutes(app: Fastify) {
 
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },
-            data: { active: false, lastActiveAt: new Date() }
+            data: { archivedAt: new Date(), active: false, lastActiveAt: new Date() }
         });
 
         if (result.count === 0) {
             return reply.code(404).send({ error: 'Session not found' });
         }
+
+        activityCache.discardSessionUpdate(sessionId);
+        eventRouter.emitSessionArchived(userId, sessionId);
 
         // Notify all clients about the session deactivation
         const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
@@ -375,6 +397,22 @@ export function sessionRoutes(app: Fastify) {
             recipientFilter: { type: 'user-scoped-only' }
         });
 
+        return reply.send({ success: true });
+    });
+
+    // Explicit reverse transition used only by intentional resume flows.
+    app.post('/v1/sessions/:sessionId/unarchive', {
+        schema: {
+            params: z.object({ sessionId: z.string() })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const { sessionId } = request.params;
+        const result = await db.session.updateMany({
+            where: { id: sessionId, accountId: request.userId },
+            data: { archivedAt: null, active: false, lastActiveAt: new Date() }
+        });
+        if (result.count === 0) return reply.code(404).send({ error: 'Session not found' });
         return reply.send({ success: true });
     });
 

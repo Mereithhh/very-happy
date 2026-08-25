@@ -7,6 +7,7 @@ import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
 import type { MachineMetadata, Metadata } from './storageTypes';
+import { commitSessionResume } from './sessionResumeFlow';
 
 // Strict type definitions for all operations
 
@@ -834,19 +835,15 @@ export async function codexListRewindPoints(
 export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
     const { machineId, sessionId, model, permissionMode } = options;
 
-    try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+    return commitSessionResume(
+        () => sessionUnarchive(sessionId),
+        () => apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
             machineId,
             'resume-happy-session',
             { sessionId, model, permissionMode },
-        );
-        return result;
-    } catch (error) {
-        return {
-            type: 'error',
-            errorMessage: error instanceof Error ? error.message : 'Failed to resume session',
-        };
-    }
+        ),
+        () => sessionArchive(sessionId),
+    );
 }
 
 /**
@@ -1366,6 +1363,19 @@ export async function sessionArchive(sessionId: string): Promise<{ success: bool
         return { success: true };
     } catch (error) {
         return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/** Prepare an intentional resume. A 404 means an older server that has no
+ * durable archive tombstone yet, so continuing preserves backward compat. */
+export async function sessionUnarchive(sessionId: string): Promise<{ success: boolean; supported: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}/unarchive`, { method: 'POST' });
+        if (response.status === 404) return { success: true, supported: false };
+        if (!response.ok) return { success: false, supported: true, message: `Server error: ${response.status}` };
+        return { success: true, supported: true };
+    } catch (error) {
+        return { success: false, supported: true, message: error instanceof Error ? error.message : 'Unknown error' };
     }
 }
 

@@ -24,21 +24,26 @@ describe('RPC socket boundaries', () => {
         delete process.env.RPC_MAX_REGISTERED_METHODS_PER_SOCKET;
     });
 
-    it('rejects registration from user/session sockets', () => {
+    it('rejects registration from user sockets', () => {
         const { socket, handlers } = fakeSocket();
         rpcHandler('account-1', socket, {} as any);
         handlers.get('rpc-register')!({ method: 'machine:spawn' });
         expect(socket.join).not.toHaveBeenCalled();
         expect(socket.emit).toHaveBeenCalledWith('rpc-error', {
-            type: 'register', error: 'Machine-scoped connection required',
+            type: 'register', error: 'Authenticated RPC scope required',
         });
     });
 
-    it('allows registration from machine sockets only', () => {
+    it('allows registration within an authenticated machine or session scope', () => {
         const { socket, handlers } = fakeSocket();
         rpcHandler('account-1', socket, {} as any, 'machine-1');
         handlers.get('rpc-register')!({ method: 'machine-1:spawn' });
         expect(socket.join).toHaveBeenCalledWith('rpc:account-1:machine-1:spawn');
+
+        const session = fakeSocket('session-socket');
+        rpcHandler('account-1', session.socket, {} as any, 'session-1');
+        session.handlers.get('rpc-register')!({ method: 'session-1:killSession' });
+        expect(session.socket.join).toHaveBeenCalledWith('rpc:account-1:session-1:killSession');
     });
 
     it('rejects a machine daemon registering another machine scope', () => {
@@ -47,7 +52,17 @@ describe('RPC socket boundaries', () => {
         handlers.get('rpc-register')!({ method: 'machine-2:spawn' });
         expect(socket.join).not.toHaveBeenCalled();
         expect(socket.emit).toHaveBeenCalledWith('rpc-error', {
-            type: 'register', error: 'Method is outside authenticated machine scope',
+            type: 'register', error: 'Method is outside authenticated connection scope',
+        });
+    });
+
+    it('rejects a session client registering another session scope', () => {
+        const { socket, handlers } = fakeSocket();
+        rpcHandler('account-1', socket, {} as any, 'session-1');
+        handlers.get('rpc-register')!({ method: 'session-2:killSession' });
+        expect(socket.join).not.toHaveBeenCalled();
+        expect(socket.emit).toHaveBeenCalledWith('rpc-error', {
+            type: 'register', error: 'Method is outside authenticated connection scope',
         });
     });
 

@@ -39,6 +39,7 @@ vi.mock('@/api/rpc/RpcHandlerManager', () => ({
         handleRequest = vi.fn(async () => '');
         registerHandler = vi.fn();
         unregisterHandler = vi.fn();
+        hasHandler = vi.fn(() => false);
     }
 }));
 
@@ -144,5 +145,48 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(2);
 
         client.shutdown();
+    });
+
+    it('forwards a durable server archive command to local process termination', () => {
+        const stopSession = vi.fn(() => true);
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession,
+            requestShutdown: vi.fn(),
+        });
+        client.connect();
+
+        emitSocketEvent('session-archive', { sessionId: 'session-1' });
+
+        expect(stopSession).toHaveBeenCalledWith('session-1');
+        client.shutdown();
+    });
+
+    it('reconciles archived tracked sessions after missed realtime delivery', async () => {
+        const stopSession = vi.fn(() => true);
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ archivedSessionIds: ['session-2'] }),
+        } as Response);
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(),
+            stopSession,
+            listTrackedSessionIds: () => ['session-1', 'session-2'],
+            requestShutdown: vi.fn(),
+        });
+
+        await (client as any).reconcileArchivedSessions();
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            'http://127.0.0.1:3005/v1/sessions/archive-status',
+            expect.objectContaining({
+                method: 'POST',
+                body: JSON.stringify({ sessionIds: ['session-1', 'session-2'] }),
+            }),
+        );
+        expect(stopSession).toHaveBeenCalledWith('session-2');
     });
 });
