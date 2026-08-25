@@ -23,6 +23,7 @@ export function SessionDetailScreen() {
     const { t } = useTranslation();
     const session = useSession(id ?? '');
     const [filesOpen, setFilesOpen] = useState(false);
+    const [jumpToLatestRequest, setJumpToLatestRequest] = useState(0);
     // Desktop (>860px, matching session.css): the files panel is an inline
     // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
     // (shared with the terminal's file browser, B-088). Narrow viewports keep
@@ -87,11 +88,14 @@ export function SessionDetailScreen() {
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
                 <div className="sd-body">
-                    <ChatList sessionId={id} />
+                    <ChatList sessionId={id} jumpRequest={jumpToLatestRequest} />
                 </div>
                 {!mirror && (
                     <div className="sd-foot">
-                        <SessionLiveStatusBar sessionId={id} />
+                        <SessionLiveStatusBar
+                            sessionId={id}
+                            onActivate={() => setJumpToLatestRequest((request) => request + 1)}
+                        />
                         <AgentInput sessionId={id} />
                     </div>
                 )}
