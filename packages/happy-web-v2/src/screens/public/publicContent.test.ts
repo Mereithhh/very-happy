@@ -24,6 +24,9 @@ describe('public documentation registry', () => {
   it('keeps onboarding commands and trust disclosure in the published content', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     expect(text).toContain(INSTALL_COMMAND);
+    expect(text).toContain('No node or npm command?');
+    expect(text).toContain('npm is included with Node.js');
+    expect(text).toContain('https://nodejs.org/en/download');
     expect(getPublicDoc('quickstart')?.sections.find((section) => section.heading === 'Fast path: one command')?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
     expect(text).toContain(LOGIN_COMMAND);
     expect(text).toContain('not end-to-end encrypted');

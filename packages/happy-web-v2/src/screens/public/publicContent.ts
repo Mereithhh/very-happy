@@ -46,8 +46,10 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'note', text: 'The Web still needs a connected daemon to reach local processes and files. “Web first” means the browser is the default interface, not that the machine-side CLI is optional.' },
       ] },
       { heading: 'Fast path: one command', blocks: [
-        { type: 'p', text: 'On macOS or Linux, the Cloud bootstrap installs one exact published CLI version, runs local diagnostics, opens the normal one-time Web approval, and starts the detached machine daemon.' },
+        { type: 'p', text: 'On macOS or Linux, the Cloud bootstrap installs one exact published CLI version, runs local diagnostics, opens the normal one-time Web approval, and starts the detached machine daemon. It requires a supported Node.js runtime with npm.' },
         { type: 'code', code: BOOTSTRAP_COMMAND },
+        { type: 'note', text: 'No node or npm command? Install a supported Node.js release first; npm is included with Node.js. Then rerun the same bootstrap. The script deliberately stops with this instruction instead of invoking sudo or silently installing a system runtime.' },
+        { type: 'link', href: 'https://nodejs.org/en/download', label: 'Download Node.js from the official site' },
         { type: 'note', text: 'The command downloads the complete script to a random temporary file before execution and removes it afterward. Review the version-controlled install.sh before running remote code; hosted bytes can change with a Web release. It never invokes sudo, installs tmux, writes provider credentials, or enables optional Claude hooks. Run the downloaded script with --dry-run for an offline, no-mutation command preview. If you add a structured Claude credential afterward, restart the daemon so it inherits the new environment. Windows, self-hosted endpoints, and users who prefer explicit control should follow the manual steps below.' },
       ] },
       { heading: '1. Choose a relay', blocks: [
@@ -55,7 +57,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'note', text: 'Very Happy Cloud is the fastest path. Self-hosting gives you control of the operator, access policy, storage, backups, and upgrades. Read Security & privacy when choosing a deployment for sensitive work.' },
       ] },
       { heading: '2. Check the machine', blocks: [
-        { type: 'list', items: ['Required: Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm.', 'Structured Claude: the CLI bundles the Agent SDK; configure Claude provider credentials for the daemon user. Native Claude terminal/mirror, Codex, Gemini, OpenCode, and OpenClaw need their local command or gateway.', 'Recommended: tmux keeps Web terminals alive across browser disconnects. Without it, terminals use a non-durable direct shell.', 'Optional Claude terminal mirror: tmux 3.2 or newer. The normal structured Claude path does not require tmux or hooks.'] },
+        { type: 'list', items: ['Required: Node.js 20.19+ within 20.x, 22.13+ within 22.x, or 24+, with npm. If both commands are missing, install Node.js first; npm is included.', 'Structured Claude: the CLI bundles the Agent SDK; configure Claude provider credentials for the daemon user. Native Claude terminal/mirror, Codex, Gemini, OpenCode, and OpenClaw need their local command or gateway.', 'Recommended: tmux keeps Web terminals alive across browser disconnects. Without it, terminals use a non-durable direct shell.', 'Optional Claude terminal mirror: tmux 3.2 or newer. The normal structured Claude path does not require tmux or hooks.'] },
         { type: 'code', code: 'node --version\ntmux -V            # recommended; may be absent\nclaude --version  # or codex / gemini / opencode / openclaw' },
         { type: 'note', text: 'The CLI bundles ripgrep and difftastic on supported platforms. Provider credentials stay agent-local by default. If you explicitly run very-happy connect, the selected OpenAI, Anthropic, or Gemini OAuth credential is stored on your chosen deployment so Web-launched integrations can use it; this is currently used primarily by the Gemini path.' },
       ] },

@@ -192,6 +192,12 @@ open the one-time browser approval, and start the detached daemon in one command
 )
 ```
 
+The bootstrap still needs Node.js because the CLI and daemon run on Node. If
+`node` or `npm` is missing, install a supported Node.js release from the
+[official download page](https://nodejs.org/en/download)—npm is included—then
+run the same command again. The script stops with this guidance instead of
+invoking `sudo` or silently changing the system runtime.
+
 The bootstrap is intentionally boring where trust matters. It:
 
 1. verifies a supported Node.js runtime;

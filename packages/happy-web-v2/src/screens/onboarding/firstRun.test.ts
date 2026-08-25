@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { shouldShowFirstRun, shouldShowWorkspaceGuide } from './firstRun';
-import { firstMachineCommands } from './firstMachineCommands';
+import { CLOUD_BOOTSTRAP_COMMAND, firstMachineBootstrapCommand, firstMachineCommands } from './firstMachineCommands';
 
 describe('shouldShowFirstRun', () => {
   it('waits for hydration before deciding the account is new', () => {
@@ -33,10 +33,12 @@ describe('first-machine command sequence', () => {
   const chinese = readFileSync(new URL('../../text/translations/zh-Hans.ts', import.meta.url), 'utf8');
 
   it('makes daemon startup the final copyable step before the workspace takes over', () => {
+    expect(firstMachineBootstrapCommand('https://veryhappy.dev', 'https://veryhappy.dev')).toBe(CLOUD_BOOTSTRAP_COMMAND);
     expect(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev')).toEqual({
       login: 'very-happy auth login',
       daemon: 'very-happy daemon start',
     });
+    expect(screen).toContain('<Command value={bootstrapCommand} />');
     expect(screen).toContain('<ShellCommands posix={commands.daemon} powershell={commands.daemonPowerShell} />');
     expect(screen.indexOf("t('onboarding.linkTitle')")).toBeLessThan(screen.indexOf("t('onboarding.daemonTitle')"));
     expect(screen).not.toContain("t('onboarding.startTitle')");
@@ -50,7 +52,12 @@ describe('first-machine command sequence', () => {
     expect(commands.daemon).toBe("export HAPPY_HOME_DIR=\"$HOME/.very-happy-relay.example.com-8443\"\nexport HAPPY_SERVER_URL='https://api.example.com:9443'\nexport HAPPY_WEBAPP_URL='https://relay.example.com:8443'\nvery-happy daemon start");
     expect(commands.loginPowerShell).toContain("$env:HAPPY_SERVER_URL='https://api.example.com:9443'");
     expect(commands.daemonPowerShell).toContain('very-happy daemon start');
+    const bootstrap = firstMachineBootstrapCommand('https://api.example.com:9443/v1', 'https://relay.example.com:8443/path');
+    expect(bootstrap).toContain("export HAPPY_SERVER_URL='https://api.example.com:9443'");
+    expect(bootstrap).toContain("export HAPPY_WEBAPP_URL='https://relay.example.com:8443'");
+    expect(bootstrap).toContain(CLOUD_BOOTSTRAP_COMMAND);
     expect(firstMachineCommands('not a URL', 'also bad')).toEqual(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev'));
+    expect(firstMachineBootstrapCommand('not a URL', 'also bad')).toBe(CLOUD_BOOTSTRAP_COMMAND);
   });
 
   it('does not tell users to choose a removed authentication channel', () => {
@@ -66,6 +73,9 @@ describe('first-machine command sequence', () => {
     expect(english).toContain('Structured Claude uses the bundled Agent SDK');
     expect(english).toContain('other agent and native terminal paths need their local command');
     expect(chinese).toContain('结构化 Claude 使用内置 Agent SDK');
+    expect(english).toContain('npm is included');
+    expect(chinese).toContain('会自带 npm');
+    expect(screen).toContain('https://nodejs.org/en/download');
     expect(english).toContain("terminalSubtitle: 'Open a terminal on a connected machine'");
     expect(english).not.toContain("terminalSubtitle: 'Open a terminal (tmux)");
   });
