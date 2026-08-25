@@ -21,25 +21,60 @@ export function selectLowestLatencyRelay(candidates: RelayCandidate[], probes: R
   return selected;
 }
 
+export const RELAY_SWITCH_WIN_ROUNDS = 20;
+export const RELAY_SWITCH_MIN_ADVANTAGE_MS = 50;
+export const RELAY_SWITCH_MIN_ADVANTAGE_RATIO = 0.30;
+
+export type RelaySwitchTracker = {
+  challengerRelayId: string;
+  consecutiveWins: number;
+} | null;
+
+export type StableRelayDecision = {
+  candidate: RelayCandidate | null;
+  tracker: RelaySwitchTracker;
+};
+
 /**
- * Keep an already-connected relay sticky. A live Socket.IO connection is a
- * stronger health signal than a single HTTP probe, and moving it rebuilds RPC
- * registrations and terminal subscriptions. The caller must only pass
- * `connectedRelayId` while that relay socket is actually connected.
+ * Keep an already-connected relay sticky unless another region has a material
+ * advantage for many consecutive rounds. A live Socket.IO connection is a
+ * stronger health signal than one HTTP probe, and moving it rebuilds RPC
+ * registrations and terminal subscriptions.
  *
- * If the connected relay was removed from discovery, fall back to the fastest
- * successful probe so configuration changes still take effect immediately.
+ * The caller must only pass `connectedRelayId` while that relay socket is
+ * actually connected. A disconnect or removal from discovery falls back to
+ * the fastest successful probe immediately.
  */
 export function selectStableRelay(
   candidates: RelayCandidate[],
   probes: RelayProbe[],
   connectedRelayId?: string,
-): RelayCandidate | null {
-  if (connectedRelayId) {
-    const connected = candidates.find((candidate) => candidate.id === connectedRelayId);
-    if (connected) return connected;
-  }
-  return selectLowestLatencyRelay(candidates, probes);
+  tracker: RelaySwitchTracker = null,
+): StableRelayDecision {
+  const fastest = selectLowestLatencyRelay(candidates, probes);
+  if (!connectedRelayId) return { candidate: fastest, tracker: null };
+
+  const connected = candidates.find((candidate) => candidate.id === connectedRelayId);
+  if (!connected) return { candidate: fastest, tracker: null };
+  if (!fastest || fastest.id === connected.id) return { candidate: connected, tracker: null };
+
+  const rttById = new Map(probes.map((probe) => [probe.relayId, probe.rttMs]));
+  const connectedRtt = rttById.get(connected.id);
+  const fastestRtt = rttById.get(fastest.id);
+  if (connectedRtt === undefined || fastestRtt === undefined) return { candidate: connected, tracker: null };
+
+  const materiallyFaster = connectedRtt - fastestRtt >= RELAY_SWITCH_MIN_ADVANTAGE_MS
+    && fastestRtt <= connectedRtt * (1 - RELAY_SWITCH_MIN_ADVANTAGE_RATIO);
+  if (!materiallyFaster) return { candidate: connected, tracker: null };
+
+  const consecutiveWins = tracker?.challengerRelayId === fastest.id
+    ? tracker.consecutiveWins + 1
+    : 1;
+  if (consecutiveWins >= RELAY_SWITCH_WIN_ROUNDS) return { candidate: fastest, tracker: null };
+  return {
+    candidate: connected,
+    tracker: { challengerRelayId: fastest.id, consecutiveWins },
+  };
 }
 
 export async function probeRelayCandidates(
@@ -77,8 +112,9 @@ export async function discoverAndClaimRelay(input: {
   token: string;
   machineId: string;
   connectedRelayId?: string;
+  switchTracker?: RelaySwitchTracker;
   fetchImpl?: typeof fetch;
-}): Promise<{ assignment: RelayAssignment; probes: RelayProbe[] } | null> {
+}): Promise<{ assignment: RelayAssignment; probes: RelayProbe[]; switchTracker: RelaySwitchTracker } | null> {
   const fetchImpl = input.fetchImpl ?? fetch;
   try {
     const discoveryResponse = await fetchImpl(`${input.controlUrl}/v1/relays`, {
@@ -89,7 +125,8 @@ export async function discoverAndClaimRelay(input: {
     const discovery = RelayCandidatesResponseSchema.parse(await discoveryResponse.json());
     if (!discovery.enabled || discovery.candidates.length === 0) return null;
     const probes = await probeRelayCandidates(discovery.candidates, { fetchImpl });
-    const selected = selectStableRelay(discovery.candidates, probes, input.connectedRelayId);
+    const decision = selectStableRelay(discovery.candidates, probes, input.connectedRelayId, input.switchTracker);
+    const selected = decision.candidate;
     if (!selected) return null;
     const claimResponse = await fetchImpl(`${input.controlUrl}/v1/relays/machines/${encodeURIComponent(input.machineId)}/claim`, {
       method: 'POST',
@@ -98,7 +135,7 @@ export async function discoverAndClaimRelay(input: {
     });
     if (!claimResponse.ok) return null;
     const claimed = RelayAssignmentResponseSchema.parse(await claimResponse.json());
-    return claimed.assignment ? { assignment: claimed.assignment, probes } : null;
+    return claimed.assignment ? { assignment: claimed.assignment, probes, switchTracker: decision.tracker } : null;
   } catch {
     return null;
   }

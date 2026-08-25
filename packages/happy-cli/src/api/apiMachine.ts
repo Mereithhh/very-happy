@@ -33,7 +33,7 @@ import {
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
-import { discoverAndClaimRelay } from './relaySelection';
+import { discoverAndClaimRelay, type RelaySwitchTracker } from './relaySelection';
 import type { RelayAssignment } from '@slopus/happy-wire';
 import {
     CodexForkRewindPointNotFoundError,
@@ -152,6 +152,7 @@ export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private relaySocket: Socket | null = null;
     private relayAssignment: RelayAssignment | null = null;
+    private relaySwitchTracker: RelaySwitchTracker = null;
     private relayRefreshInFlight: Promise<void> | null = null;
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
@@ -949,8 +950,13 @@ export class ApiMachineClient {
                 token: this.token,
                 machineId: this.machine.id,
                 connectedRelayId: this.relaySocket?.connected ? this.relayAssignment?.relayId : undefined,
+                switchTracker: this.relaySwitchTracker,
             });
-            if (!selected) return;
+            if (!selected) {
+                this.relaySwitchTracker = null;
+                return;
+            }
+            this.relaySwitchTracker = selected.switchTracker;
             const previousUrl = this.relayAssignment?.url;
             this.relayAssignment = selected.assignment;
             const probe = selected.probes.find((item) => item.relayId === selected.assignment.relayId);
@@ -980,6 +986,7 @@ export class ApiMachineClient {
                 logger.debug(`[API MACHINE] Connected to regional relay ${selected.assignment.relayId}`);
             });
             relaySocket.on('disconnect', () => {
+                this.relaySwitchTracker = null;
                 this.rpcHandlerManager.onSocketDisconnect(relaySocket);
                 if (!this.socket?.connected) this.webTerminal.resetSubscribers();
             });
