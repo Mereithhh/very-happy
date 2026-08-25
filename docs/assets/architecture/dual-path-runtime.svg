@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
+  <title id="title">Structured Claude and universal terminal runtime paths</title>
+  <desc id="desc">The daemon exposes a structured Claude SDK path and a universal tmux-backed terminal path, with optional Claude mirroring and a bounded terminal file handoff channel.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071116"/><stop offset="1" stop-color="#0b151d"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#72ffe2"/><stop offset="1" stop-color="#18bca7"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b4adff"/><stop offset="1" stop-color="#7168dc"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity=".45"/></filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#9ab5bb" stroke-opacity=".055"/></pattern>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#43f5d0"/></marker>
+    <marker id="p" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#9189ef"/></marker>
+    <style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.title{font:700 34px ui-sans-serif,system-ui,sans-serif;fill:#effffc}.eyebrow{font-size:14px;letter-spacing:3px;fill:#43f5d0}.head{font-size:20px;font-weight:700;fill:#effffc}.body{font-size:14px;fill:#9cb2b7}.code{font-size:13px;fill:#ddf9f3}.dim{font-size:12px;fill:#718b91}.chip{font-size:12px;font-weight:700;fill:#dffcf6}.cyanLine{fill:none;stroke:#43f5d0;stroke-width:3;marker-end:url(#a)}.purpleLine{fill:none;stroke:#9189ef;stroke-width:3;marker-end:url(#p)}.dash{fill:none;stroke:#9189ef;stroke-width:2;stroke-dasharray:8 8;marker-end:url(#p)}</style>
+  </defs>
+  <rect width="1600" height="960" rx="30" fill="url(#bg)"/><rect width="1600" height="960" rx="30" fill="url(#grid)"/>
+  <text x="64" y="66" class="eyebrow">RUNTIME ARCHITECTURE / TWO SOURCES OF TRUTH</text>
+  <text x="64" y="112" class="title">Structured agent semantics meet a real, durable TTY.</text>
+  <text x="64" y="144" class="body">The two paths share the workspace and relay, but they intentionally preserve different capability contracts.</text>
+
+  <g filter="url(#shadow)"><rect x="70" y="210" width="310" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
+    <text x="100" y="250" class="dim">BROWSER CONTROL SURFACE</text>
+    <rect x="100" y="280" width="250" height="180" rx="16" fill="#172438" stroke="#7067db"/><text x="124" y="316" class="head">Structured UI</text><text x="124" y="350" class="body">messages · tools · diffs</text><text x="124" y="377" class="body">permissions · usage</text><text x="124" y="404" class="body">resume semantics</text><circle cx="324" cy="428" r="7" fill="#9189ef" filter="url(#glow)"/>
+    <rect x="100" y="490" width="250" height="226" rx="16" fill="#0b171c" stroke="#43f5d0"/><rect x="118" y="510" width="214" height="34" rx="8" fill="#13282d"/><circle cx="136" cy="527" r="5" fill="#43f5d0"/><text x="153" y="532" class="chip">XTERM.JS / LIVE</text><text x="124" y="582" class="code">$ claude</text><text x="124" y="612" class="code">$ codex</text><text x="124" y="642" class="code">$ ssh prod-box</text><text x="124" y="684" class="body">actual TUI pixels? no.</text><text x="124" y="706" class="body">actual PTY byte stream? yes.</text>
+  </g>
+
+  <g filter="url(#shadow)"><rect x="520" y="210" width="360" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
+    <text x="550" y="250" class="dim">LOCAL DAEMON / ADAPTER LAYER</text>
+    <rect x="550" y="280" width="300" height="180" rx="16" fill="#172438" stroke="#7067db"/><circle cx="580" cy="316" r="8" fill="#9189ef" filter="url(#glow)"/><text x="601" y="322" class="head">Claude Agent SDK</text><path d="M576 350H824" stroke="#3b405e"/><text x="576" y="381" class="code">native event → envelope</text><text x="576" y="411" class="body">Claude-specific rich path</text><rect x="576" y="425" width="130" height="24" rx="12" fill="#2a2850"/><text x="594" y="442" class="chip">STRUCTURED</text>
+    <rect x="550" y="490" width="300" height="226" rx="16" fill="#102a2d" stroke="#43f5d0"/><circle cx="580" cy="526" r="8" fill="#43f5d0" filter="url(#glow)"/><text x="601" y="532" class="head">tmux control mode</text><path d="M576 560H824" stroke="#31504f"/><text x="576" y="591" class="code">pane output ⇄ input bytes</text><text x="576" y="621" class="body">tmux owns long-lived TTY/TUI</text><text x="576" y="649" class="body">direct-shell fallback: no durability</text><rect x="576" y="673" width="180" height="24" rx="12" fill="#173f3d"/><text x="594" y="690" class="chip">AGENT-NEUTRAL</text>
+  </g>
+
+  <path d="M380 370H520" class="purpleLine"/><text x="402" y="350" class="dim">SESSION EVENTS</text>
+  <path d="M380 604H520" class="cyanLine"/><text x="418" y="584" class="dim">PTY I/O</text>
+
+  <g filter="url(#shadow)"><rect x="1020" y="210" width="510" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
+    <text x="1050" y="250" class="dim">MACHINE EXECUTION / SOURCE OF TRUTH</text>
+    <rect x="1050" y="280" width="450" height="180" rx="16" fill="#172438" stroke="#7067db"/><text x="1080" y="320" class="head">Managed Claude process</text><text x="1080" y="354" class="body">launched and resumed through SDK contract</text><g transform="translate(1080 382)"><rect width="122" height="34" rx="9" fill="#29274c"/><text x="18" y="22" class="chip">MESSAGES</text><rect x="132" width="92" height="34" rx="9" fill="#29274c"/><text x="153" y="22" class="chip">TOOLS</text><rect x="234" width="84" height="34" rx="9" fill="#29274c"/><text x="255" y="22" class="chip">DIFFS</text></g>
+    <rect x="1050" y="490" width="450" height="226" rx="16" fill="#102a2d" stroke="#43f5d0"/><text x="1080" y="530" class="head">Real process inside tmux</text><text x="1080" y="564" class="body">shell · agent CLI · editor · SSH · database TUI</text><g transform="translate(1080 594)"><rect width="126" height="34" rx="9" fill="#173f3d"/><text x="20" y="22" class="chip">SCROLLBACK</text><rect x="136" width="92" height="34" rx="9" fill="#173f3d"/><text x="157" y="22" class="chip">SEARCH</text><rect x="238" width="112" height="34" rx="9" fill="#173f3d"/><text x="259" y="22" class="chip">RECONNECT</text></g><text x="1080" y="678" class="code">TERM=xterm-256color</text>
+  </g>
+  <path d="M880 370H1020" class="purpleLine"/><text x="914" y="350" class="dim">SDK CALLS</text>
+  <path d="M880 604H1020" class="cyanLine"/><text x="908" y="584" class="dim">CONTROL MODE</text>
+
+  <path d="M1250 490C1250 446 982 442 850 445" class="dash"/><rect x="914" y="420" width="238" height="40" rx="12" fill="#191f31" stroke="#514c91"/><text x="934" y="445" class="code">optional Claude mirror</text>
+  <text x="1082" y="472" class="dim">tmux ≥ 3.2 + installed hooks</text>
+
+  <g transform="translate(70 798)"><rect width="1460" height="112" rx="20" fill="#0d1e25" stroke="#34505a"/><text x="28" y="32" class="dim">TERMINAL FILE HANDOFF / AUTHENTICATED MACHINE-SCOPED RPC</text><rect x="28" y="52" width="210" height="38" rx="10" fill="#142b33"/><text x="47" y="76" class="code">clipboard / drop</text><path d="M252 71H360" class="cyanLine"/><rect x="376" y="52" width="252" height="38" rx="10" fill="#142b33"/><text x="394" y="76" class="code">bounded encrypted chunks</text><path d="M642 71H750" class="cyanLine"/><rect x="766" y="52" width="260" height="38" rx="10" fill="#142b33"/><text x="784" y="76" class="code">validate order + size</text><path d="M1040 71H1148" class="cyanLine"/><rect x="1164" y="52" width="268" height="38" rx="10" fill="#142b33"/><text x="1182" y="76" class="code">atomic expose · ≤ 8 MB</text></g>
+  <text x="70" y="936" class="dim">Quoted absolute path is inserted at the cursor · no automatic execution · terminal graphics extensions are not guaranteed</text>
+</svg>
