@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as privacyKit from 'privacy-kit';
 
 const { state, dbMock } = vi.hoisted(() => {
     type Row = { publicKey: string; createdAt: Date };
@@ -98,5 +99,17 @@ describe('pairingStore growth bounds', () => {
             'account-1',
             dbMock as any,
         )).rejects.toThrow(`at most ${PAIRING_RESPONSE_MAX_BYTES} bytes`);
+    });
+
+    it('accepts the uppercase public-key encoding produced by the auth route', async () => {
+        const publicKey = privacyKit.encodeHex(Uint8Array.from(Buffer.alloc(32, 0xab)));
+        expect(publicKey).toBe('AB'.repeat(32));
+
+        await expect(createPairing('terminal', {
+            publicKey,
+            claimSecretHash,
+            supportsV2: true,
+        })).resolves.toBeUndefined();
+        expect(state.terminal).toContainEqual(expect.objectContaining({ publicKey }));
     });
 });
