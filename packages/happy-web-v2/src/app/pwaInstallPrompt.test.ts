@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
-  PWA_INSTALL_DISMISS_COOLDOWN_MS,
   canOfferPwaInstall,
   isAppleMobile,
-  isInstallDismissalCoolingDown,
   isStandalonePwa,
   manualInstallGuide,
   requestNativePwaInstall,
@@ -11,6 +10,7 @@ import {
 } from './pwaInstallPolicy';
 
 describe('PWA install prompt policy', () => {
+  const component = readFileSync(new URL('./PwaInstallPrompt.tsx', import.meta.url), 'utf8');
   it('recognizes standalone display mode and the iOS navigator flag', () => {
     expect(isStandalonePwa(true, false)).toBe(true);
     expect(isStandalonePwa(false, true)).toBe(true);
@@ -25,20 +25,23 @@ describe('PWA install prompt policy', () => {
     expect(manualInstallGuide('Mozilla/5.0 (Linux; Android 15)', 5)).toBe('manual');
   });
 
-  it('suppresses recently dismissed prompts but recovers after seven days', () => {
-    const now = 2_000_000_000_000;
-    expect(isInstallDismissalCoolingDown(String(now - 1_000), now)).toBe(true);
-    expect(isInstallDismissalCoolingDown(String(now - PWA_INSTALL_DISMISS_COOLDOWN_MS), now)).toBe(false);
-    expect(isInstallDismissalCoolingDown('not-a-date', now)).toBe(false);
-  });
-
-  it('offers only to eligible mobile browser sessions', () => {
-    const base = { isMobile: true, isStandalone: false, installConfirmed: false, rawDismissedAt: null };
+  it('offers on every eligible browser launch until installed or explicitly disabled', () => {
+    const base = { isStandalone: false, installConfirmed: false, neverPrompt: false };
     expect(canOfferPwaInstall(base)).toBe(true);
-    expect(canOfferPwaInstall({ ...base, isMobile: false })).toBe(false);
     expect(canOfferPwaInstall({ ...base, isStandalone: true })).toBe(false);
     expect(canOfferPwaInstall({ ...base, installConfirmed: true })).toBe(false);
-    expect(canOfferPwaInstall({ ...base, rawDismissedAt: String(Date.now()) })).toBe(false);
+    expect(canOfferPwaInstall({ ...base, neverPrompt: true })).toBe(false);
+  });
+
+  it('keeps a normal dismissal session-only and reserves persistence for the explicit never action', () => {
+    const dismissBody = component.slice(component.indexOf('const dismiss ='), component.indexOf('const neverPrompt ='));
+    expect(dismissBody).not.toContain('writeStorage');
+    expect(component).toContain("writeStorage(PWA_INSTALL_NEVER_KEY, '1')");
+  });
+
+  it('lets a new browser install event recover from a stale installed marker', () => {
+    expect(component).toContain('removeStorage(PWA_INSTALL_CONFIRMED_KEY)');
+    expect(component.indexOf('window.addEventListener(\'beforeinstallprompt\'')).toBeGreaterThan(-1);
   });
 
   it('defers a proactive panel while the user is editing', () => {

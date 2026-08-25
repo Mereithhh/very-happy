@@ -13,7 +13,7 @@ const en = {
     eyebrow: 'WORK ANYWHERE // WEB APP', title: 'Install Very Happy',
     nativeBody: 'Launch the standalone workspace from your Home Screen—no browser-tab hunt required.',
     manualBody: 'Open the standalone workspace from your Home Screen. It uses the same account and relay.',
-    install: 'Install web app', later: 'Not now', done: 'Got it',
+    install: 'Install web app', later: 'Not now', never: 'Never show again', done: 'Got it',
     iosOne: 'Tap Share in your browser toolbar', iosTwo: 'Choose Add to Home Screen',
     manualOne: 'Open your browser menu', manualTwo: 'Choose Install app or Add to Home screen',
     close: 'Close install prompt', pending: 'Opening…',
@@ -77,10 +77,10 @@ type PublicCopy = Widen<typeof en>;
 
 const zhHans: PublicCopy = {
   pwa: {
-    eyebrow: '随时工作 // WEB APP', title: '把 Very Happy 装到手机',
-    nativeBody: '从主屏幕一键进入独立工作区，不需要先找到浏览器标签页。',
-    manualBody: '从主屏幕直接进入独立工作区；安装后仍使用同一个账号和中继。',
-    install: '安装 Web App', later: '暂不', done: '知道了',
+    eyebrow: '随时工作 // WEB APP', title: '安装 Very Happy',
+    nativeBody: '从桌面或主屏幕一键进入独立工作区，不需要先找到浏览器标签页。',
+    manualBody: '从桌面或主屏幕直接进入独立工作区；安装后仍使用同一个账号和中继。',
+    install: '安装 Web App', later: '暂不', never: '不再提示', done: '知道了',
     iosOne: '点浏览器工具栏里的“分享”', iosTwo: '选择“添加到主屏幕”',
     manualOne: '打开浏览器菜单', manualTwo: '选择“安装应用”或“添加到主屏幕”',
     close: '关闭安装提示', pending: '正在打开…',

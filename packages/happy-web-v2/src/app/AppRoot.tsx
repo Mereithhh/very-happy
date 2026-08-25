@@ -14,7 +14,9 @@ import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
-import { useAllMachines, useIsDataReady, useLocalSetting } from '@/sync/storage';
+import { HelpScreen } from '@/screens/help/HelpScreen';
+import { useAllMachines, useIsDataReady, useLocalSetting, useSessions } from '@/sync/storage';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useGlobalBackNav } from '@/app/appBack';
 import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
@@ -79,7 +81,10 @@ function HomeGate() {
   const homeView = useLocalSetting('homeView');
   const dataReady = useIsDataReady();
   const machines = useAllMachines({ includeOffline: true });
+  const sessions = useSessions();
+  const terminalCount = useTerminalSessions((state) => state.terminals.length);
   if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
+  if (dataReady && (sessions?.length ?? 0) === 0 && terminalCount === 0) return <HelpScreen />;
   if (homeView === 'board') {
     return (
       <Lazy>
@@ -109,7 +114,7 @@ const router = createBrowserRouter(
           { path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> },
           // Real post-connect home content without auth/store seeding. This is
           // DEV-only like the sidebar harness and is stripped from prod builds.
-          { path: '/dev/workspace-guide', element: <EmptyDetail /> },
+          { path: '/dev/workspace-guide', element: <HelpScreen /> },
         ]
       : []),
     {
@@ -152,6 +157,7 @@ const router = createBrowserRouter(
         {
           element: <AppLayout />,
           children: [
+            { path: 'help', element: <HelpScreen /> },
             { path: 'board', element: <Lazy><TaskBoardScreen /></Lazy> },
             { path: 'notes', element: <Lazy><NotesScreen /></Lazy> },
             { path: 'todos', element: <Lazy><TodosScreen /></Lazy> },

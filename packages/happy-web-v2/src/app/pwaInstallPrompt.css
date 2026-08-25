@@ -69,21 +69,19 @@
 .pwa-install-steps { display: grid; gap: var(--sp-2); margin: var(--sp-4) 0 0; padding: 0; list-style: none; }
 .pwa-install-steps li { min-height: 34px; display: flex; align-items: center; gap: var(--sp-3); color: var(--text-dim); font-size: var(--fs-13); }
 .pwa-install-steps svg { flex: 0 0 auto; color: var(--text-faint); }
-.pwa-install-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
+.pwa-install-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
 .pwa-install-primary, .pwa-install-later { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); padding: 0 var(--sp-4); border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: var(--fs-13); }
 .pwa-install-primary { background: var(--text); color: var(--bg-0); font-weight: 600; }
 .pwa-install-primary:hover { opacity: .88; }
 .pwa-install-primary:disabled { cursor: wait; opacity: .58; }
 .pwa-install-later { color: var(--text-dim); }
 .pwa-install-later:hover { color: var(--text); background: var(--bg-2); }
+.pwa-install-never { min-height: 44px; padding: 0 var(--sp-2); color: var(--text-faint); font-size: var(--fs-11); }
+.pwa-install-never:hover { color: var(--text-dim); }
 
 @keyframes pwa-install-enter {
   from { opacity: 0; transform: translate3d(0, 24px, 0) scale(.97); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@media (min-width: 861px) and (pointer: fine) {
-  .pwa-install { display: none; }
 }
 
 @media (max-width: 520px) {
@@ -101,7 +99,7 @@
   .pwa-install-copy { padding-right: var(--sp-5); }
   .pwa-install h2 { font-size: clamp(var(--fs-16), 5vw, var(--fs-20)); }
   .pwa-install-actions { align-items: stretch; flex-direction: column; }
-  .pwa-install-primary, .pwa-install-later { width: 100%; }
+  .pwa-install-primary, .pwa-install-later, .pwa-install-never { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

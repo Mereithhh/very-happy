@@ -17,6 +17,16 @@
   align-items: center;
   gap: var(--sp-2);
 }
+.sb-brand--button {
+  width: 38px;
+  height: 38px;
+  justify-content: center;
+  margin: -4px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  transition: background var(--motion-fast);
+}
+.sb-brand--button:hover { background: var(--bg-2); }
 .sb-header-right {
   display: flex;
   align-items: center;
