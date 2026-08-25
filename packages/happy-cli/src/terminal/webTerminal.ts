@@ -1396,14 +1396,15 @@ export class WebTerminalManager {
         return this.closedTerminals;
     }
 
-    /** B-150: stamp the auto-restored marks onto a list (and drop marks whose
-     *  terminal is gone, so the map cannot leak one entry per restore ever). */
+    /** B-150: stamp auto-restored marks onto a list.
+     *
+     * Do not delete a mark merely because one tmux list probe omits the row:
+     * a transient probe failure immediately after `new-session` used to erase
+     * the badge before the next successful poll. This map is bounded by the
+     * once-per-daemon auto-restore selection and is cleared when the user opens
+     * a terminal, so keeping an absent mark for this daemon lifetime is safe. */
     private markRestored(list: TerminalListItem[]): TerminalListItem[] {
         if (this.autoRestoredIds.size === 0) return list;
-        const liveIds = new Set(list.map((t) => t.id));
-        for (const id of [...this.autoRestoredIds.keys()]) {
-            if (!liveIds.has(id)) this.autoRestoredIds.delete(id);
-        }
         return list.map((t) => {
             const at = this.autoRestoredIds.get(t.id);
             return at ? { ...t, restoredAt: at } : t;
@@ -1685,7 +1686,12 @@ export class WebTerminalManager {
         const created = spawnSync('tmux',
             ['new-session', '-d', ...envFlags, '-s', name, '-x', '120', '-y', '30', '-c', plan.cwd],
             { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
-        if (created.status !== 0) {
+        // Some tmux builds have returned status 0 even when the server socket
+        // could not be created. Verify the durable session itself before
+        // recording a restore or reporting success.
+        const live = created.status === 0 && spawnSync('tmux', ['has-session', '-t', `=${name}:`],
+            { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+        if (!live) {
             logger.debug(`[WEB TERMINAL] auto-restore: tmux create failed for ${plan.terminalId}`);
             return false;
         }

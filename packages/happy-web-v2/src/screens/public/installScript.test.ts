@@ -63,6 +63,7 @@ describe('public first-machine bootstrap', () => {
     expect(source).toContain('run "$VH_BIN" auth login');
     expect(source).toContain('run "$VH_BIN" daemon start');
     expect(source).toContain('very-happy daemon stop && very-happy daemon start');
+    expect(source).toContain('non-persistent direct-shell fallback');
     expect(source).not.toMatch(/\bsudo\b.*(?:npm|apt|brew)/);
     expect(source).not.toContain('install-terminal-hooks');
   });
@@ -81,7 +82,10 @@ describe('public first-machine bootstrap', () => {
       'very-happy auth login',
       'very-happy daemon start',
     ]);
-    expect(result.stdout).toContain('non-persistent direct-shell fallback');
+    // Hosted Linux images may already include tmux while a clean macOS host
+    // commonly does not. The bootstrap must report the detected branch instead
+    // of making this fixture depend on the runner's global packages.
+    expect(result.stdout).toMatch(/tmux (?:detected: durable Web terminals are available|not detected: terminals will use the non-persistent direct-shell fallback)/);
   });
 
   it('supports an offline no-mutation dry run and explicit skipped steps', () => {

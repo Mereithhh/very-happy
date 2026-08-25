@@ -8,8 +8,8 @@
  * set BACK BY ITSELF — right directory, right conversation, no clicks — while
  * refusing the cases that would make it a resource incident or a wrong resume.
  */
-import { describe, it, expect, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
+import { describe, it, expect, afterAll, vi } from 'vitest';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -19,10 +19,18 @@ const tmuxAvailable = spawnSync('tmux', ['-V'], { stdio: 'ignore' }).status === 
 const happyHome = mkdtempSync(join(tmpdir(), 'vh-ar-home-'));
 const tmuxDir = mkdtempSync(join(tmpdir(), 'vh-ar-tmux-'));
 const workDir = mkdtempSync(join(tmpdir(), 'vh-ar-work-'));
+const binDir = mkdtempSync(join(tmpdir(), 'vh-ar-bin-'));
 const prevHome = process.env.HAPPY_HOME_DIR;
 const prevTmux = process.env.TMUX_TMPDIR;
+const prevPath = process.env.PATH;
 process.env.HAPPY_HOME_DIR = happyHome;
 process.env.TMUX_TMPDIR = tmuxDir;
+// Keep the restored pane alive independent of whether the host has Claude
+// installed. The test verifies command injection, not the provider runtime.
+const fakeClaude = join(binDir, 'claude');
+writeFileSync(fakeClaude, '#!/bin/sh\nwhile :; do sleep 3600; done\n');
+chmodSync(fakeClaude, 0o755);
+process.env.PATH = `${binDir}:${prevPath ?? ''}`;
 
 const FRESH = 'arfresh01';      // recent + cwd exists + has a conversation → restored
 const STALE = 'arstale01';      // last seen 40h ago → a reboot's cleanup must stand
@@ -85,9 +93,10 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
         mgr.stopListTracking();
         for (const id of [FRESH, STALE, GONEDIR, SHELL]) tmux('kill-session', '-t', `=vh-${id}:`);
         tmux('kill-server');
-        for (const d of [happyHome, tmuxDir, workDir]) rmSync(d, { recursive: true, force: true });
+        for (const d of [happyHome, tmuxDir, workDir, binDir]) rmSync(d, { recursive: true, force: true });
         if (prevHome === undefined) delete process.env.HAPPY_HOME_DIR; else process.env.HAPPY_HOME_DIR = prevHome;
         if (prevTmux === undefined) delete process.env.TMUX_TMPDIR; else process.env.TMUX_TMPDIR = prevTmux;
+        if (prevPath === undefined) delete process.env.PATH; else process.env.PATH = prevPath;
     });
 
     it('restores the recent terminal into its own cwd and types the resume command', async () => {
@@ -131,6 +140,11 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
     });
 
     it('marks the restored terminal on the list until it is opened', () => {
+        // A single failed/transient tmux list probe must not consume the badge.
+        // GitHub-hosted Ubuntu exposed this race immediately after new-session.
+        const probe = vi.spyOn(mgr, 'listSessions').mockReturnValueOnce([]);
+        expect(mgr.buildTerminalList()).toEqual([]);
+        probe.mockRestore();
         const row = mgr.buildTerminalList().find((t) => t.id === FRESH);
         expect(row?.restoredAt).toBeGreaterThan(0);
     });
