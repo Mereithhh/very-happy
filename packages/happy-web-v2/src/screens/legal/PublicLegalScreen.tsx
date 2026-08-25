@@ -9,7 +9,7 @@ export function PrivacyScreen() {
   return (
     <LegalPage title="Privacy Policy">
       <p><strong>Last updated:</strong> {UPDATED}</p>
-      <p>very happy is an open-source remote Web client for coding agents. This policy describes the hosted instance at happy.mereith.com. A self-hosted deployment is operated by its own administrator and may follow different practices.</p>
+      <p>very happy is an open-source remote Web client for coding agents. This policy describes the hosted instance at veryhappy.dev. A self-hosted deployment is operated by its own administrator and may follow different practices.</p>
       <h2>Data we process</h2>
       <p>We process account identifiers, login sessions, machine metadata, session and terminal traffic, files or prompts you choose to send, and operational security logs. If you sign in with Google, we receive your Google account subject, verified email address, name, and profile image.</p>
       <h2>How data is used</h2>

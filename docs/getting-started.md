@@ -28,7 +28,7 @@ the detached daemon:
   trap 'rm -f "$vh_installer"' \
     EXIT HUP INT TERM
   curl -fsSL \
-    https://happy.mereith.com/install.sh \
+    https://veryhappy.dev/install.sh \
     -o "$vh_installer"
   sh "$vh_installer"
 )
@@ -155,7 +155,7 @@ for provider and recovery details.
 
 ## 2. Create or sign in to an account
 
-Open [happy.mereith.com](https://happy.mereith.com). Choose Google or a username
+Open [veryhappy.dev](https://veryhappy.dev). Choose Google or a username
 and password. New registration can be open, invite-only, closed, or temporarily
 full; an existing account can still sign in in every mode.
 

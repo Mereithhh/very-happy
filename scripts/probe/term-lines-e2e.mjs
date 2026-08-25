@@ -16,7 +16,7 @@
  * 拒杀开跑前就存在的会话）只能有一份实现，2026-08-14 误杀过真终端。
  *
  *   node scripts/probe/term-lines-e2e.mjs
- *   node scripts/probe/term-lines-e2e.mjs --url https://happy.mereith.com
+ *   node scripts/probe/term-lines-e2e.mjs --url https://veryhappy.dev
  *
  * 退出码：0 全通过 · 1 有断言失败 · 2 跑不出结论（2 绝不当 0 用）。
  */
@@ -28,12 +28,12 @@ import {
 } from './term-input-goldendiff.mjs';
 
 const opts = {
-    url: 'https://happy.mereith.com',
+    url: 'https://veryhappy.dev',
     port: 9227,
     profile: '/tmp/vh-goldendiff-profile',
     chrome: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     // ensureLoggedIn / createTestTerminal 复用 goldendiff 的字段名
-    base: 'https://happy.mereith.com',
+    base: 'https://veryhappy.dev',
     machine: hostname(),
     keep: false,
     /** 'lines' = 期望 v2 通道；'attach' = 期望回退轨（新 web + 老 daemon 象限）。 */

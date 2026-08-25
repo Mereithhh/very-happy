@@ -550,7 +550,7 @@ describe('public documentation registry', () => {
     expect(appRoot).toContain("path: '/welcome'");
     expect(publicShell).toContain('to="/welcome"');
     expect(publicLegal).toContain('className="legal-brand" to="/welcome"');
-    expect(readme).toContain('href="https://happy.mereith.com/welcome"');
+    expect(readme).toContain('href="https://veryhappy.dev/welcome"');
     expect(publicRoot).not.toContain('AuthProvider');
     expect(publicRoot).not.toContain('@/sync/');
     expect(publicRoot).toContain('<PwaInstallPrompt />');

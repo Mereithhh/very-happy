@@ -264,7 +264,7 @@ function truncate(s: string, max: number): string {
  * (HAPPY_INJECT_HTML_CONFIG is arbitrary JSON injected into the webapp's
  * HTML, not an authoritative origin, and it isn't plumbed into this module),
  * so this is an explicit opt-in env: set `HAPPY_WEB_URL` (e.g.
- * `https://happy.mereith.com`) on the server to get URL lines; unset, the
+ * `https://veryhappy.dev`) on the server to get URL lines; unset, the
  * message still carries the bare `session: <id>` line. Read per-call so
  * tests can toggle it.
  */

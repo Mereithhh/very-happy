@@ -2,7 +2,7 @@
 
 自托管的 Claude Code web 客户端 + 中继，fork 自 slopus/happy 并深度魔改
 （自有账号密码登录、服务端可信非 e2e、只用 web 不用官方 App）。
-单人 Owner（jojo）+ AI agent 集群开发；repo 私有。生产：happy.mereith.com
+单人 Owner（jojo）+ AI agent 集群开发；repo 私有。生产：veryhappy.dev
 （server+web 在 hw-sg，daemon/CLI 跑在 mac-office）。
 
 ## 包结构

@@ -14,14 +14,14 @@ describe('Google login security', () => {
             .toThrow('GOOGLE_ALLOWED_ORIGINS');
         const config = resolveGoogleLoginConfig({
             GOOGLE_CLIENT_ID: 'client-id',
-            GOOGLE_ALLOWED_ORIGINS: 'https://happy.mereith.com,http://localhost:8082',
+            GOOGLE_ALLOWED_ORIGINS: 'https://veryhappy.dev,http://localhost:8082',
         } as NodeJS.ProcessEnv);
-        expect(isGoogleOriginAllowed('https://happy.mereith.com', config)).toBe(true);
+        expect(isGoogleOriginAllowed('https://veryhappy.dev', config)).toBe(true);
         expect(isGoogleOriginAllowed('https://evil.example', config)).toBe(false);
         expect(isGoogleOriginAllowed(undefined, config)).toBe(false);
         expect(() => resolveGoogleLoginConfig({
             GOOGLE_CLIENT_ID: 'client-id',
-            GOOGLE_ALLOWED_ORIGINS: 'https://user:password@happy.mereith.com',
+            GOOGLE_ALLOWED_ORIGINS: 'https://user:password@veryhappy.dev',
         } as NodeJS.ProcessEnv)).toThrow('plain origins');
         expect(() => resolveGoogleLoginConfig({
             GOOGLE_CLIENT_ID: 'client-id',

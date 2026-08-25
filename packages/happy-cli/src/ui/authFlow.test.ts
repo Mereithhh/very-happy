@@ -82,10 +82,10 @@ describe('Web-only CLI authentication flow', () => {
   });
 
   it('refuses to silently reuse credentials issued by another or unknown relay', () => {
-    expect(credentialRelayProblem('https://happy.mereith.com', 'https://relay.example.com')).toContain('Credentials belong to');
+    expect(credentialRelayProblem('https://veryhappy.dev', 'https://relay.example.com')).toContain('Credentials belong to');
     expect(credentialRelayProblem(undefined, 'https://relay.example.com')).toContain('predate relay tracking');
     expect(credentialRelayProblem('https://relay.example.com/', 'https://relay.example.com')).toBeUndefined();
-    expect(credentialRelayProblem(undefined, 'https://happy.mereith.com')).toBeUndefined();
+    expect(credentialRelayProblem(undefined, 'https://veryhappy.dev')).toBeUndefined();
     expect(authFlow).toContain('credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl)');
     expect(authFlow.indexOf('credentialRelayProblem(credentials.authServerUrl')).toBeLessThan(
       authFlow.indexOf("logger.debug('[AUTH] Using existing credentials')"),

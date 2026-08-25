@@ -15,7 +15,7 @@ daemon, Web Terminal, Codex and Gemini modes, MCP/automation commands, account
 pairing, and a configurable relay endpoint. Review the release notes when
 mixing CLI and server versions.
 
-By default it connects to **https://happy.mereith.com**. You can point it at any
+By default it connects to **https://veryhappy.dev**. You can point it at any
 compatible Happy server (including your own) by setting both
 `HAPPY_SERVER_URL` and `HAPPY_WEBAPP_URL`.
 
@@ -25,10 +25,10 @@ This is **not end-to-end encrypted against the server**. It is a
 **server-trusted relay**: the server operator can decrypt and read session
 contents (prompts, code, tool output), recover account secrets, and exercise the
 remote-control capabilities exposed by an online daemon. The default server
-`happy.mereith.com` is operated by the maintainer of this fork.
+`veryhappy.dev` is operated by the maintainer of this fork.
 
 **Only use a server you trust with your session contents and connected
-machines.** If you don't trust the operator of `happy.mereith.com`, run your own
+machines.** If you don't trust the operator of `veryhappy.dev`, run your own
 Very Happy server and set both client endpoint variables to it, or don't use
 this tool.
 
@@ -155,7 +155,7 @@ credentials, machine ID, and daemon state before pairing again.
 
 The web client URL follows the same precedence (`HAPPY_WEBAPP_URL`, then
 `settings.webappUrl`, then the default). Defaults for both point at
-`https://happy.mereith.com`.
+`https://veryhappy.dev`.
 
 ### MCP handoffs
 
@@ -188,7 +188,7 @@ For both the API server and the web app URL:
 
 1. environment variable (`HAPPY_SERVER_URL` / `HAPPY_WEBAPP_URL`)
 2. `settings.json` (`serverUrl` / `webappUrl`) in the Happy home dir
-3. built-in default (`https://happy.mereith.com`)
+3. built-in default (`https://veryhappy.dev`)
 
 ## License
 

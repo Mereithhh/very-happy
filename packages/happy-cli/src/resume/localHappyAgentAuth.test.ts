@@ -31,7 +31,7 @@ describe('local happy-agent credential relay binding', () => {
       .toBeNull();
     expect(readLocalHappyAgentCredentials(writeAgentKey(), 'https://relay.example'))
       .toBeNull();
-    expect(readLocalHappyAgentCredentials(writeAgentKey(), 'https://happy.mereith.com'))
+    expect(readLocalHappyAgentCredentials(writeAgentKey(), 'https://veryhappy.dev'))
       .toBeNull();
   });
 });

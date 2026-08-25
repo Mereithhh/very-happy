@@ -1,7 +1,7 @@
 # Deployment
 
 This document describes generic self-hosting. Maintainer production details for
-`happy.mereith.com` live in [`operations.md`](operations.md).
+`veryhappy.dev` live in [`operations.md`](operations.md).
 
 ## Runtime modes
 
@@ -105,7 +105,7 @@ For the maintainer Cloud, the origin configuration is:
 
 ```env
 GOOGLE_CLIENT_ID=<maintainer-owned-web-client-id>
-GOOGLE_ALLOWED_ORIGINS=https://happy.mereith.com
+GOOGLE_ALLOWED_ORIGINS=https://veryhappy.dev
 TRUST_PROXY=1
 ```
 

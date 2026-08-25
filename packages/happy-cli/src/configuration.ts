@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import packageJson from '../package.json'
 import { ensurePrivateDirectorySync, hardenPrivateDirectoryFilesSync, hardenPrivateFileSync } from '@/utils/secureFiles'
 
-const DEFAULT_RELAY_URL = 'https://happy.mereith.com'
+const DEFAULT_RELAY_URL = 'https://veryhappy.dev'
 
 /**
  * Client endpoints are origins, not arbitrary URL prefixes. Normalize the

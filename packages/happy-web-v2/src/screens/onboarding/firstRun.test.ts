@@ -20,7 +20,7 @@ describe('first-machine command sequence', () => {
   const chinese = readFileSync(new URL('../../text/translations/zh-Hans.ts', import.meta.url), 'utf8');
 
   it('makes daemon startup the final copyable step before the workspace takes over', () => {
-    expect(firstMachineCommands('https://happy.mereith.com', 'https://happy.mereith.com')).toEqual({
+    expect(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev')).toEqual({
       login: 'very-happy auth login',
       daemon: 'very-happy daemon start',
     });
@@ -37,7 +37,7 @@ describe('first-machine command sequence', () => {
     expect(commands.daemon).toBe("export HAPPY_HOME_DIR=\"$HOME/.very-happy-relay.example.com-8443\"\nexport HAPPY_SERVER_URL='https://api.example.com:9443'\nexport HAPPY_WEBAPP_URL='https://relay.example.com:8443'\nvery-happy daemon start");
     expect(commands.loginPowerShell).toContain("$env:HAPPY_SERVER_URL='https://api.example.com:9443'");
     expect(commands.daemonPowerShell).toContain('very-happy daemon start');
-    expect(firstMachineCommands('not a URL', 'also bad')).toEqual(firstMachineCommands('https://happy.mereith.com', 'https://happy.mereith.com'));
+    expect(firstMachineCommands('not a URL', 'also bad')).toEqual(firstMachineCommands('https://veryhappy.dev', 'https://veryhappy.dev'));
   });
 
   it('does not tell users to choose a removed authentication channel', () => {

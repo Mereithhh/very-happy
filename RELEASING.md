@@ -94,7 +94,7 @@ git push origin v0.1.2
   unpacks the right one; **unsupported platforms fail to install** (no fallback).
 - **Runtime prerequisite:** users must have Claude Code installed and logged in
   (`claude` on PATH). Documented in the package README.
-- **Default server** is `https://happy.mereith.com` (override with
+- **Default server** is `https://veryhappy.dev` (override with
   `HAPPY_SERVER_URL` / `HAPPY_WEBAPP_URL` or `~/.happy/settings.json`).
 - **2FA:** automation and granular tokens both bypass the npm 2FA prompt, so CI
   publishes don't get blocked.

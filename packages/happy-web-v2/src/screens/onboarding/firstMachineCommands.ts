@@ -1,4 +1,4 @@
-const CLOUD_ORIGIN = 'https://happy.mereith.com';
+const CLOUD_ORIGIN = 'https://veryhappy.dev';
 
 function httpOrigin(value: string, fallback: string): string {
   try {

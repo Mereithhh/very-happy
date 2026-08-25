@@ -10,7 +10,7 @@ import os from 'node:os';
 import { credentialRelayProblem } from '@/ui/authRelay';
 import { localMachineIdentityStatus } from '@/ui/authStatusFacts';
 
-const DEFAULT_SERVER_URL = 'https://happy.mereith.com';
+const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];

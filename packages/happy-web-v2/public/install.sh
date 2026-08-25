@@ -118,7 +118,7 @@ run() {
 say ''
 say 'Connect to Very Happy Cloud, or point the CLI at your self-hosted deployment.'
 say 'Deployment, privacy, and security details:'
-say '  https://happy.mereith.com/docs/security'
+say '  https://veryhappy.dev/docs/security'
 say ''
 if [ "$CLI_VERSION" = '<published-version>' ]; then
   say 'Package target: the current published very-happy-cli version (resolved during a real run)'
@@ -175,7 +175,7 @@ else
   say 'Skipping daemon startup (--no-daemon).'
 fi
 
-WEB_URL=${HAPPY_WEBAPP_URL:-https://happy.mereith.com}
+WEB_URL=${HAPPY_WEBAPP_URL:-https://veryhappy.dev}
 say ''
 if [ "$DRY_RUN" -eq 1 ]; then
   say 'Preview complete; no local changes were made.'

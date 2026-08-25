@@ -7,7 +7,7 @@ describe('resolveServerUrl', () => {
       isDev: false,
       runtime: 'same-origin',
       origin: 'https://self-host.example',
-      fallback: 'https://happy.mereith.com',
+      fallback: 'https://veryhappy.dev',
     })).toBe('https://self-host.example');
   });
 
@@ -17,7 +17,7 @@ describe('resolveServerUrl', () => {
       stored: 'https://chosen.example',
       runtime: 'same-origin',
       origin: 'https://web.example',
-      fallback: 'https://happy.mereith.com',
+      fallback: 'https://veryhappy.dev',
     })).toBe('https://chosen.example');
   });
 });

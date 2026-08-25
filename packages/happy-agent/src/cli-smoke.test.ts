@@ -553,7 +553,7 @@ describe('Smoke: Full test suite runs', () => {
 
         try {
             const config = loadConfig();
-            expect(config.serverUrl).toBe('https://happy.mereith.com');
+            expect(config.serverUrl).toBe('https://veryhappy.dev');
             expect(config.homeDir).toContain('.happy');
             expect(config.credentialPath).toContain('agent.key');
         } finally {

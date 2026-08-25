@@ -82,7 +82,7 @@ describe('credentials', () => {
 
     describe('relay binding', () => {
         it('rejects issuer-less legacy credentials even on the fork Cloud', () => {
-            config.serverUrl = 'https://happy.mereith.com';
+            config.serverUrl = 'https://veryhappy.dev';
             writeFileSync(config.credentialPath, JSON.stringify({
                 token: 'upstream-token',
                 secret: encodeBase64(getRandomBytes(32)),
