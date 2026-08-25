@@ -14,8 +14,9 @@ import { useNewTerminalShortcuts } from '@/app/newTerminal';
 import { useCloseViewShortcuts, useUnloadGuard } from '@/app/viewShortcuts';
 import { useNotificationGenerator } from '@/app/useNotificationGenerator';
 import { useSeenTracker } from '@/app/useSeenTracker';
-import { useAllMachines, useIsDataReady } from '@/sync/storage';
-import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
+import { useAllMachines, useIsDataReady, useSessions } from '@/sync/storage';
+import { shouldShowFirstRun, shouldShowWorkspaceGuide } from '@/screens/onboarding/firstRun';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import './layout.css';
 
 export function AppLayout() {
@@ -43,7 +44,10 @@ export function AppLayout() {
   const atRoot = location.pathname === '/' || location.pathname === '';
   const dataReady = useIsDataReady();
   const allMachines = useAllMachines({ includeOffline: true });
+  const sessions = useSessions();
+  const terminalCount = useTerminalSessions((state) => state.terminals.length);
   const firstRun = shouldShowFirstRun(dataReady, allMachines.length);
+  const workspaceGuide = shouldShowWorkspaceGuide(dataReady, allMachines.length, sessions?.length ?? 0, terminalCount);
   const { width, collapsed, setWidth, setCollapsed } = useSidebarPrefs();
   const draggingRef = useRef(false);
 
@@ -128,7 +132,7 @@ export function AppLayout() {
   // mobile: single pane — sidebar at root, detail otherwise (detail has its own back nav)
   shell = (
     <div className="app-shell app-shell--mobile">
-      {atRoot && !firstRun ? (
+      {atRoot && !firstRun && !workspaceGuide ? (
         <aside className="app-sidebar app-sidebar--full">
           <Sidebar />
         </aside>

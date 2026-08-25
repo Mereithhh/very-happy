@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-192 | **机器连接后的新手工作区导览**：首页不再只有模糊空态，必须直接引导创建 AI 对话、Web 终端和了解设置；同时介绍快捷键、文件查看、临时笔记、Todo、Claude 终端/结构化文本切换、终端文件粘贴/拖放和 AI `copy_to_clipboard`，并同步站内与仓库入门文档 | ux/docs | Owner 2026-08-26 | done | 已用可反复回看的首页 guide 取代空态，不新增一次性持久化；移动端仅在“已连机器+零对话+零终端”时先显示导览。中英产品文案、站内 Quick start 与 `docs/getting-started.md` 同步；保留 tmux、Claude-only hooks、8 MB 上传与 managed/plain MCP 边界。Web 122 files / 1,553 tests、build、tsc 0；真实 Chromium 1440×1000 / 390×844 无溢出，全部 CTA 44px，独立 review P0/P1/P2=0。 |
 | B-191 | **语言选择器改为 Console 风格自绘菜单**：公开页、登录与注册页不再使用浏览器原生 `<select>`，统一为可主题化的弹出式单选菜单，并保留完整键盘导航、焦点管理与移动端触控尺寸 | ux | Owner 2026-08-25 | done | 基于 Radix DropdownMenu 的 radio pattern，不新增依赖；沿用 Console token，强调色只表示焦点/当前项。Chromium 验收登录页与欢迎页桌面/390px 窄屏、键盘方向键/Enter/Escape、语言即时切换均通过；Web 120 files / 1,543 tests、build、tsc 0 通过。 |
 | B-192 | **把实时终端链路拆成自动选择的多地域 Relay plane**：中央 control/data server 保留登录、账号、PostgreSQL 与 durable sync；daemon 探测候选 relay 并锚定最低 RTT 节点，Web 按 machine assignment 直连同一 relay，使终端字节流与 machine RPC 不再绕行单一 origin；旧 Web/CLI 必须继续可用，后续为 WebRTC 直连保留 fallback seam | feat/architecture | Owner 2026-08-25 | doing | 前置 spec：`specs/2026-08-multi-region-relay-plane.md`。完成且实测前 README/Landing 不得宣称已具备全球自动路由。 |
 | B-190 | **统一项目级 agent 指令并修正 Web 验收取证顺序**：`AGENTS.md` 成为唯一事实源，`CLAUDE.md` 只导入；浏览器混版先保留 entry/CSS/computed-style 现场再恢复；Web tsc 门禁直接使用编译器退出码 | debt/docs | Owner 2026-08-25 | done | 避免 AGENTS/CLAUDE 双份普通文件漂移；禁止一上来 hard refresh/unregister 销毁自动更新事故证据；移除零错误时反而可能让 grep 返回 1 的 tsc 管道。同步 `docs/PROCESS.md` 与 troubleshooting，避免口径冲突。 |

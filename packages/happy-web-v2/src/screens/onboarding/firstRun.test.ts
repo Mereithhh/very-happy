@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { shouldShowFirstRun } from './firstRun';
+import { shouldShowFirstRun, shouldShowWorkspaceGuide } from './firstRun';
 import { firstMachineCommands } from './firstMachineCommands';
 
 describe('shouldShowFirstRun', () => {
@@ -11,6 +11,19 @@ describe('shouldShowFirstRun', () => {
   it('shows only when the hydrated account has no registered machine', () => {
     expect(shouldShowFirstRun(true, 0)).toBe(true);
     expect(shouldShowFirstRun(true, 1)).toBe(false);
+  });
+});
+
+describe('shouldShowWorkspaceGuide', () => {
+  const layout = readFileSync(new URL('../AppLayout.tsx', import.meta.url), 'utf8');
+
+  it('shows the mobile guide only for a hydrated, connected, empty workspace', () => {
+    expect(shouldShowWorkspaceGuide(false, 1, 0, 0)).toBe(false);
+    expect(shouldShowWorkspaceGuide(true, 0, 0, 0)).toBe(false);
+    expect(shouldShowWorkspaceGuide(true, 1, 0, 0)).toBe(true);
+    expect(shouldShowWorkspaceGuide(true, 1, 1, 0)).toBe(false);
+    expect(shouldShowWorkspaceGuide(true, 1, 0, 1)).toBe(false);
+    expect(layout).toContain('atRoot && !firstRun && !workspaceGuide');
   });
 });
 

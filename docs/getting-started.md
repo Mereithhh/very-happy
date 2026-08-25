@@ -264,6 +264,37 @@ command can also run with `very-happy acp -- your-agent --agent-specific-acp-fla
 `very-happy daemon status` and [Troubleshooting](troubleshooting.md) if the
 machine stays offline.
 
+### Tour the workspace after the machine connects
+
+The home screen becomes a reusable workspace guide as soon as the first machine
+appears. Start both paths once: **New conversation** opens a structured agent
+session, while **New terminal** opens a real shell/TUI. Open **Settings** early
+to review appearance and language, agent defaults and review mode, saved prompt
+shortcuts and terminal behavior, notifications, connected machines, channels,
+and clipboard handoffs.
+
+The guide also points to the everyday tools that are easy to miss:
+
+- Press `Command/Ctrl+K` to search actions, chats, and terminals;
+  `Command/Ctrl+.` opens saved prompts, and `Command/Ctrl+J` toggles scratch
+  notes. Visible sidebar and header buttons provide the same paths on touch.
+- Open **Files** from a conversation or terminal header. Paths emitted by
+  structured agent tools are clickable and open the same preview surface.
+- Keep temporary prompts and context in the notes dock. Open **Todo** from the
+  sidebar or command palette to read the provider configured on a machine and
+  group its items by list or priority.
+- After installing the optional Claude terminal hooks, a Claude process started
+  inside a Very Happy Web terminal can switch between the native terminal TUI
+  and its structured text transcript. This toggle is Claude-specific; a generic
+  terminal does not manufacture structured events.
+- Paste a clipboard image/file or drag a file onto a Web terminal to upload it
+  to the selected machine and insert its safely quoted path. The Web client does
+  not press Enter or execute the path.
+- Ask a managed agent to copy a result for you: its `copy_to_clipboard` handoff
+  sends text to the browser. **Settings → Channels** controls automatic copy,
+  and clipboard history keeps received items available for manual copy. The
+  standalone MCP bridge for plain Claude exposes only this clipboard tool.
+
 ### Hand a local file to the terminal
 
 While a Web terminal is focused, paste a clipboard image/file or drag a file
