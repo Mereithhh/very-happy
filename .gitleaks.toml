@@ -15,6 +15,15 @@ paths = [
 description = "fake environment expansion tokens"
 paths = ['''packages/happy-cli/src/utils/expandEnvVars\.test\.ts$''']
 
+# Fixed UUID used as an Email OTP challenge id in route tests. The generic API
+# key rule matches it only because the fixture was adjacent to an
+# `idempotencyKey` property; allow this one inert value rather than the file or
+# the rule.
+[[allowlists]]
+description = "email OTP challenge UUID fixture"
+regexTarget = "match"
+regexes = ['''37ac495d-799b-4290-9048-fcf4ee37c0f0''']
+
 # Google treats installed-app OAuth clients as public clients; this credential
 # is embedded in the upstream Gemini desktop flow and cannot be kept secret.
 # It is not used for Very Happy account login or the hosted server.
