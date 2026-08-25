@@ -76,6 +76,9 @@ release date. “Long-term concept” is product exploration.
 - Add scheduled work and repeatable pipelines with clear approval boundaries.
 - Keep improving keyboard, touch, foldable, accessibility, and low-bandwidth
   behavior so mobile access remains a first-class work surface.
+- Keep the installable Web/PWA as the default client while evaluating the
+  retained Tauri shell as an optional desktop client with tighter operating
+  system integration. It is not a committed or supported release yet.
 
 ## Long-term concept: the virtual office
 

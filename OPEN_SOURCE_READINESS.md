@@ -804,12 +804,14 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   complex. The release remains explicitly server-trusted. A future E2EE design must preserve the
   default “sign in on a new device and continue” journey, make recovery and revocation legible,
   and complete every data/control plane before any public E2EE claim.
-- The history-only `packages/happy-app` Tauri archive is excluded from the pnpm workspace, CI,
-  production, and the supported product. Its transitive `bytes` advisory is patched at 1.11.1 and
-  `cargo check --locked` passes. Its Tauri 2/Wry GTK3 stack still resolves `glib` 0.18, which has a
-  medium advisory and no compatible 0.20 upgrade in that stack; the Dependabot alert is dismissed
-  as tolerable only while the archive remains non-shipping. Reopen and resolve it with the
-  Tauri 3/GTK4 migration, or before restoring this archive as a supported build target.
+- The retained experimental `packages/happy-app` Tauri shell is excluded from the pnpm workspace,
+  CI, production, and the supported product. Its metadata now identifies Very Happy/MIT, and its
+  lockfile is refreshed to Tauri 2.11.5, `bytes` 1.12.1, `quinn-proto` 0.11.17,
+  `rustls-webpki` 0.103.15, `serde_with` 3.22.0, and `time` 0.3.55; `cargo check --locked`
+  passes on macOS. The Linux GTK3 path still resolves `glib` 0.18, which has a medium advisory and
+  no compatible 0.20 upgrade in the current Wry stack. Its alert is dismissed as tolerable only
+  while the shell remains experimental and non-shipping; reopen it for Tauri 3/GTK4 or before any
+  supported desktop release.
 - The server image still runs as root and is 1.55 GB. Reducing privileges and image size is a
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.

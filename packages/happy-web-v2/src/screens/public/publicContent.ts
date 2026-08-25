@@ -294,7 +294,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     sections: [
       { heading: 'Supported development path', blocks: [
         { type: 'code', code: 'pnpm install --frozen-lockfile\npnpm -C packages/happy-wire build\npnpm -C packages/happy-web-v2 exec vitest run\npnpm -C packages/happy-web-v2 exec tsc --noEmit\npnpm -C packages/happy-web-v2 exec vite build' },
-        { type: 'p', text: 'happy-web-v2 is the production client. The legacy Expo happy-app remains only for upstream history and is not the supported frontend.' },
+        { type: 'p', text: 'happy-web-v2 is the production client. The retained Expo/Tauri happy-app is an experimental seed for a possible future desktop client, not a supported frontend in this release.' },
       ] },
       { heading: 'Change discipline', blocks: [
         { type: 'list', items: ['Open a focused change with tests proportional to risk.', 'Write a spec before changing protocols, state models, storage semantics, or multiple packages.', 'Never commit credentials, private session data, generated homes, or production logs.', 'Preserve old-client compatibility and document deployment order.'] },

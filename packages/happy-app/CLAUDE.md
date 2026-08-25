@@ -1,8 +1,9 @@
 # CLAUDE.md
 
-> **Archived upstream client:** `packages/happy-app` is not the Very Happy
-> production Web client and is not built, shipped, or supported. Its historical
-> architecture notes do not describe Very Happy's server-trusted security model.
+> **Archived upstream client / experimental desktop seed:** `packages/happy-app` is retained as a seed
+> for a possible future desktop client. It is not the Very Happy production Web
+> client and is not currently shipped or supported. Its historical architecture
+> notes do not describe Very Happy's server-trusted security model.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

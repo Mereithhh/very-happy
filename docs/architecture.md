@@ -28,8 +28,9 @@ provider-neutral automatic router. Cross-provider delegation remains roadmap wor
   implementation.
 - `packages/happy-wire`: shared compatibility schemas.
 
-The legacy Expo `packages/happy-app` is retained from upstream history and is not
-a supported production client in this fork.
+The legacy Expo/Tauri `packages/happy-app` is retained as an experimental seed
+for a possible future desktop client. It is not a supported production client in
+this release.
 
 ### One account, multiple machines
 

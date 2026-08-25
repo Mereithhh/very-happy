@@ -409,9 +409,10 @@ human has to hold.** See the [roadmap](docs/roadmap.md).
 - [Contributing](docs/CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
-The production frontend is `packages/happy-web-v2`. The upstream Expo
-`packages/happy-app` remains only for history; it is excluded from the pnpm
-workspace and the supported Very Happy client/security scope.
+The production frontend is `packages/happy-web-v2`. The upstream Expo/Tauri
+`packages/happy-app` is retained as an experimental seed for a possible future
+desktop client; it is currently excluded from the pnpm workspace, production,
+and the supported Very Happy client/security scope.
 
 ## Attribution and license
 

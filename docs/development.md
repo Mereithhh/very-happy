@@ -1,9 +1,9 @@
 # Development
 
-The production development path is Web V2 + standalone server + CLI. The Expo
-`happy-app` remains in the repository for upstream history but is not the product
-frontend. It is deliberately outside the pnpm workspace because its archived
-dependency tree is not maintained or security-supported.
+The production development path is Web V2 + standalone server + CLI. The
+Expo/Tauri `happy-app` is retained as an experimental seed for a possible future
+desktop client, but it is not the current product frontend. It remains outside
+the pnpm workspace, production, and the supported security scope.
 
 ## Setup
 
