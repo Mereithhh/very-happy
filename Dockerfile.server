@@ -29,6 +29,8 @@ RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile \
 # Stage 2: build the server
 FROM deps AS builder
 
+ARG VH_VERSION=2.0.0
+
 # Whitelist build inputs. Never copy whole package directories: self-hosters
 # commonly keep ignored .env files, PGlite clusters, logs, and session dumps
 # beside these sources, and Docker layers are recoverable even after deletion.
@@ -42,7 +44,7 @@ COPY packages/happy-web-v2/public packages/happy-web-v2/public
 COPY packages/happy-web-v2/src packages/happy-web-v2/src
 
 RUN pnpm --filter @slopus/happy-wire build
-RUN pnpm --filter @slopus/happy-web-v2 exec vite build
+RUN VH_VERSION="$VH_VERSION" pnpm --filter @slopus/happy-web-v2 exec vite build
 RUN rm -rf packages/happy-server/webapp && cp -a packages/happy-web-v2/dist packages/happy-server/webapp
 # The image intentionally runs the TypeScript source through the workspace tsx
 # runtime below; validate it here without invoking the optional Bun package build.

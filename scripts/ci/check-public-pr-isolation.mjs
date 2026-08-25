@@ -1,4 +1,8 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const workflowDir = new URL('../../.github/workflows/', import.meta.url);
 const workflows = Object.fromEntries(
@@ -9,6 +13,7 @@ const workflows = Object.fromEntries(
 const dockerfile = readFileSync(new URL('../../Dockerfile.server', import.meta.url), 'utf8');
 const dockerignore = readFileSync(new URL('../../.dockerignore', import.meta.url), 'utf8');
 const deployScript = readFileSync(new URL('./deploy-hwsg.sh', import.meta.url), 'utf8');
+const remoteServerDeployScript = readFileSync(new URL('./deploy-server-remote.sh', import.meta.url), 'utf8');
 const daemonUpdateScript = readFileSync(new URL('../update-daemon.sh', import.meta.url), 'utf8');
 
 const errors = [];
@@ -95,8 +100,51 @@ if (/^COPY packages\/(happy-server|happy-web-v2) \.\/packages\//m.test(dockerfil
 if (!/server-container-smoke:[\s\S]*smoke-server-container\.sh/.test(workflows['quality.yml'] ?? '')) {
   errors.push('quality.yml: executable container migration/persistence smoke is required');
 }
-if (!/docker inspect happy-server[\s\S]*\*migrate\*/.test(deployScript)) {
-  errors.push('deploy-hwsg.sh: server deploy must fail closed without migration-on-start');
+if (!/SERVER_IMAGE:\?SERVER_IMAGE digest is required/.test(deployScript)
+  || !/very-happy-server@sha256/.test(deployScript)
+  || !/deploy-server-remote\.sh/.test(deployScript)) {
+  errors.push('deploy-hwsg.sh: server deploy must use the immutable GHCR digest and remote deploy helper');
+}
+if (!/permissions:\s*\n\s+contents: read\s*\n\s+packages: write/.test(workflows['deploy-hwsg.yml'] ?? '')
+  || !/test "\$GITHUB_REF" = refs\/heads\/main/.test(workflows['deploy-hwsg.yml'] ?? '')
+  || !/docker\/build-push-action@[a-f0-9]{40}[\s\S]*file: Dockerfile\.server[\s\S]*push: true/.test(
+    workflows['deploy-hwsg.yml'] ?? '',
+  )
+  || !/Promote verified image to latest[\s\S]*if: inputs\.target != 'publish'/.test(
+    workflows['deploy-hwsg.yml'] ?? '',
+  )) {
+  errors.push('deploy-hwsg.yml: main-only complete server image publication to GHCR is required');
+}
+if (!/docker pull "\$IMAGE"/.test(remoteServerDeployScript)
+  || !/node_modules\/\.prisma\/client\/schema\.prisma/.test(remoteServerDeployScript)
+  || !/docker compose up -d --force-recreate happy-server/.test(remoteServerDeployScript)) {
+  errors.push('deploy-server-remote.sh: pull, Prisma consistency check, and forced recreate are required');
+}
+if (/docker compose restart happy-server/.test(remoteServerDeployScript)) {
+  errors.push('deploy-server-remote.sh: source-only container restart is forbidden');
+}
+
+const rewriteTestDir = mkdtempSync(join(tmpdir(), 'vh-compose-rewrite-'));
+try {
+  const composeFixture = join(rewriteTestDir, 'compose.yml');
+  const oldDigest = `sha256:${'a'.repeat(64)}`;
+  const newDigest = `sha256:${'b'.repeat(64)}`;
+  writeFileSync(composeFixture, `services:\n  happy-server:\n    image: ghcr.io/mereithhh/very-happy-server@${oldDigest}\n    volumes:\n      - happy-data:/data\n      - /opt/happy/webapp:/repo/packages/happy-server/webapp:ro\n      - /opt/happy-src/packages/happy-server/sources:/repo/packages/happy-server/sources:ro\n      - /opt/happy-src/packages/happy-server/prisma/migrations:/repo/packages/happy-server/prisma/migrations:ro\n`);
+  const rewrite = spawnSync('bash', [
+    fileURLToPath(new URL('./deploy-server-remote.sh', import.meta.url)),
+    '--rewrite-compose-test',
+    composeFixture,
+    `ghcr.io/mereithhh/very-happy-server@${newDigest}`,
+  ], { encoding: 'utf8' });
+  const rewritten = readFileSync(composeFixture, 'utf8');
+  if (rewrite.status !== 0
+    || !rewritten.includes(`image: ghcr.io/mereithhh/very-happy-server@${newDigest}`)
+    || rewritten.includes('/opt/happy-src/')
+    || rewritten.includes('/opt/happy/webapp:')) {
+    errors.push(`deploy-server-remote.sh: digest-to-digest Compose rewrite failed: ${rewrite.stderr.trim()}`);
+  }
+} finally {
+  rmSync(rewriteTestDir, { recursive: true, force: true });
 }
 if (!/npm view very-happy-cli@latest version/.test(daemonUpdateScript)
   || !/very-happy-cli@\$LATEST_VERSION/.test(daemonUpdateScript)

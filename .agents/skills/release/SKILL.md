@@ -17,8 +17,8 @@ release commit or tag to it, and never trigger a deployment from it.
 
 Release targets are:
 
-- `server`: sync server sources + migrations to the active production host.
-- `web`: build and atomically swap `happy-web-v2` on the active production host.
+- `server`: publish and deploy the complete server image, including Web V2.
+- `web`: deploy the same complete image; Web is not a host-mounted artifact.
 - `cli`: publish `very-happy-cli` from a `vX.Y.Z` tag.
 - `daemon`: install the published CLI and restart mac-office via `vh-update`.
 - `all`: normally server → web → CLI → daemon, modified only by a spec's
@@ -66,15 +66,23 @@ gh run view <run-id> --json headSha,status,conclusion,url
 manual and deploys only checked-out repository state. Release from merged
 `main`; do not assume pushing a feature branch changes the workflow's checkout.
 
+The workflow publishes `ghcr.io/mereithhh/very-happy-server:<commit-sha>`, resolves
+its manifest digest, and the remote host pulls that immutable digest. It promotes
+the verified digest to `latest` only after production acceptance. Never restore
+the old source-only overlay deployment: source, migrations, Prisma
+schema/generated Client and Web must move together. The remote helper checks
+Prisma consistency and force-recreates the container with a rollback copy of
+Compose.
+
 Environment changes are different: `docker compose restart` does not reread
-`env_file`. Apply them through the verified `vh-prod` local alias with:
+`env_file`. Apply them through the verified `vh-us` local alias with:
 
 ```bash
-ssh vh-prod 'cd /opt/happy && docker compose up -d happy-server'
+ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
-The legacy `hw-sg` SSH alias points at the retired origin and must never be used
-for production deployment. If `vh-prod` is absent or does not resolve to the
+The legacy `hw-sg` SSH alias is not the control origin and must never be used
+for production deployment. If `vh-us` is absent or does not resolve to the
 current `veryhappy.dev` origin, stop and establish the exact target first.
 
 After any server deploy, run `vh-update` on mac-office until backlog B-001 is
@@ -119,8 +127,7 @@ declaring a mixed-version failure. Complete relevant items in
 
 ## Rollback
 
-- Web: restore vh-us `/opt/happy/webapp.prev` or redeploy the prior commit.
-- Server: revert the server commit, redeploy, then `vh-update`.
+- Web/server: redeploy the prior immutable image/commit, then update the daemon.
 - CLI/daemon: `npm i -g very-happy-cli@<previous>` and restart the daemon.
 - Database: migrations must be forward-compatible; never improvise a destructive
   down migration during an incident.
