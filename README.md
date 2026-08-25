@@ -66,13 +66,13 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 ## One workspace. Three layers that do different jobs.
 
 <a href="docs/architecture.md">
-  <img src="docs/assets/architecture/system-topology.svg" width="100%" alt="Very Happy account-level architecture: multiple machines and agent runners converge into one Web and PWA workspace">
+  <img src="packages/happy-web-v2/public/architecture/system-topology.svg" width="100%" alt="Very Happy account-level architecture: multiple machines and agent runners converge into one Web and PWA workspace">
 </a>
 
 <p align="center"><sub>ACCOUNT-LEVEL FLEET · EXPLICIT MACHINE + RUNNER TARGETING · ONE CONTROL SURFACE</sub></p>
 
 <a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: a US machine and a Singapore machine use their nearest configured relays while durable control and account state remain central">
+  <img src="packages/happy-web-v2/public/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: a US machine and a Singapore machine use their nearest configured relays while durable control and account state remain central">
 </a>
 
 <p align="center"><sub>US + SINGAPORE MACHINE EDGES · CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS</sub></p>
@@ -106,7 +106,7 @@ by measured daemon RTT, while compatible clients retain the central fallback.
 </table>
 
 <a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
-  <img src="docs/assets/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy dual runtime architecture: structured Claude Agent SDK events and a universal tmux-backed terminal path">
+  <img src="packages/happy-web-v2/public/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy dual runtime architecture: structured Claude Agent SDK events and a universal tmux-backed terminal path">
 </a>
 
 <p align="center"><sub>STRUCTURED SEMANTICS · REAL PTY BYTES · OPTIONAL CLAUDE MIRROR · BOUNDED FILE HANDOFF</sub></p>
@@ -388,7 +388,7 @@ rate limits, and least-privilege execution. Incoming messages are input, never
 authorization by themselves.
 
 <a href="docs/architecture.md#session-path">
-  <img src="docs/assets/architecture/session-data-flow.svg" width="100%" alt="Very Happy session lifecycle: machine-targeted commands flow to runner adapters and normalized events return to durable workspace state">
+  <img src="packages/happy-web-v2/public/architecture/session-data-flow.svg" width="100%" alt="Very Happy session lifecycle: machine-targeted commands flow to runner adapters and normalized events return to durable workspace state">
 </a>
 
 <p align="center"><sub>MACHINE-SCOPED RPC · RUNNER-SPECIFIC NORMALIZATION · DURABLE MULTI-BROWSER CONVERGENCE</sub></p>

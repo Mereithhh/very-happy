@@ -60,13 +60,13 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 ## 一个工作区，三个职责不同的层次
 
 <a href="docs/architecture.md">
-  <img src="docs/assets/architecture/system-topology.svg" width="100%" alt="Very Happy 账号级架构：多台机器和多种 Agent runner 汇聚到同一个 Web/PWA 工作区">
+  <img src="packages/happy-web-v2/public/architecture/system-topology.svg" width="100%" alt="Very Happy 账号级架构：多台机器和多种 Agent runner 汇聚到同一个 Web/PWA 工作区">
 </a>
 
 <p align="center"><sub>账号级机器集群 · 显式选择机器与 RUNNER · 一个统一控制界面</sub></p>
 
 <a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：美国机器和新加坡机器分别连接最近的区域 Relay，持久控制与账号状态保持集中">
+  <img src="packages/happy-web-v2/public/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：美国机器和新加坡机器分别连接最近的区域 Relay，持久控制与账号状态保持集中">
 </a>
 
 <p align="center"><sub>美国 + 新加坡机器边缘 · 中央持久状态 · 实测 RELAY RTT · 最小权限 TOKEN</sub></p>
@@ -95,7 +95,7 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 </table>
 
 <a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
-  <img src="docs/assets/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy 双运行路径架构：Claude Agent SDK 结构化事件与 tmux 托管的通用终端路径">
+  <img src="packages/happy-web-v2/public/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy 双运行路径架构：Claude Agent SDK 结构化事件与 tmux 托管的通用终端路径">
 </a>
 
 <p align="center"><sub>结构化语义 · 真实 PTY 字节流 · 可选 CLAUDE 镜像 · 有界文件交接</sub></p>
@@ -333,7 +333,7 @@ Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
 永远不能自行构成授权。
 
 <a href="docs/architecture.md#session-path">
-  <img src="docs/assets/architecture/session-data-flow.svg" width="100%" alt="Very Happy 会话生命周期：定向到机器的命令进入 runner adapter，归一化事件返回持久工作区状态">
+  <img src="packages/happy-web-v2/public/architecture/session-data-flow.svg" width="100%" alt="Very Happy 会话生命周期：定向到机器的命令进入 runner adapter，归一化事件返回持久工作区状态">
 </a>
 
 <p align="center"><sub>机器级 RPC · RUNNER 专属归一化 · 多浏览器持久收敛</sub></p>

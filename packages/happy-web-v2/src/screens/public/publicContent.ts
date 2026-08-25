@@ -1,8 +1,9 @@
 import { PUBLIC_DOCS_ZH_HANS } from './publicContent.zhHans';
-import dualPathRuntimeDiagram from '../../../../../docs/assets/architecture/dual-path-runtime.svg';
-import regionalRealtimeDiagram from '../../../../../docs/assets/architecture/regional-realtime-plane.svg';
-import sessionDataFlowDiagram from '../../../../../docs/assets/architecture/session-data-flow.svg';
-import systemTopologyDiagram from '../../../../../docs/assets/architecture/system-topology.svg';
+
+const dualPathRuntimeDiagram = '/architecture/dual-path-runtime.svg';
+const regionalRealtimeDiagram = '/architecture/regional-realtime-plane.svg';
+const sessionDataFlowDiagram = '/architecture/session-data-flow.svg';
+const systemTopologyDiagram = '/architecture/system-topology.svg';
 
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';

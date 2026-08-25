@@ -2,7 +2,7 @@
 
 ## Components
 
-![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](assets/architecture/system-topology.svg)
+![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
 
 The optional voice Meta Agent is currently a Claude coordinator on a selected machine, not a
 provider-neutral automatic router. Cross-provider delegation remains roadmap work.
@@ -19,7 +19,7 @@ provider-neutral automatic router. Cross-provider delegation remains roadmap wor
 Latency-sensitive terminal bytes and machine RPC can leave the central
 control/data path without moving account state or PostgreSQL:
 
-![Regional realtime relay plane: durable sync stays on the control and data server while scoped machine RPC and terminal traffic use the daemon-selected regional relay](assets/architecture/regional-realtime-plane.svg)
+![Regional realtime relay plane: durable sync stays on the control and data server while scoped machine RPC and terminal traffic use the daemon-selected regional relay](../packages/happy-web-v2/public/architecture/regional-realtime-plane.svg)
 
 The operator supplies a finite relay candidate list. The daemon probes every
 healthy candidate in parallel and anchors to the lowest measured RTT; region is
@@ -64,7 +64,7 @@ path. Each runner maps its native events into the shared session protocol and
 sends normalized updates back through the relay. The server persists sync state
 needed by other browsers.
 
-![Session data flow: commands travel from the browser through the relay and daemon to a runner, while normalized events return to persisted sync state and connected browsers](assets/architecture/session-data-flow.svg)
+![Session data flow: commands travel from the browser through the relay and daemon to a runner, while normalized events return to persisted sync state and connected browsers](../packages/happy-web-v2/public/architecture/session-data-flow.svg)
 
 Provider parity is not implied. Claude currently has the richest structured and
 terminal-mirroring experience; Codex, ACP providers, and OpenClaw reuse the
@@ -77,7 +77,7 @@ Upstream Happy's core Claude flow wraps the Claude Agent SDK to provide a
 structured conversation. Very Happy retains that flow and adds a terminal path
 whose source of truth is the real agent process:
 
-![Dual runtime paths: structured Claude Agent SDK events and universal tmux-backed terminal IO share the workspace while retaining different capability contracts](assets/architecture/dual-path-runtime.svg)
+![Dual runtime paths: structured Claude Agent SDK events and universal tmux-backed terminal IO share the workspace while retaining different capability contracts](../packages/happy-web-v2/public/architecture/dual-path-runtime.svg)
 
 | Path | Process and transport | Browser experience |
 |---|---|---|
