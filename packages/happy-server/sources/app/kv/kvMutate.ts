@@ -18,7 +18,10 @@ import {
 } from '@/app/auth/e2eeDataGuard';
 
 export const KV_KEY_MAX_BYTES = 512;
-export const KV_VALUE_MAX_BYTES = 256 * 1024;
+// An E2EE value carries up to 256 KiB of ciphertext plaintext plus AES-GCM,
+// base64url, and canonical-envelope overhead. The relay validates this carrier
+// but cannot inspect its logical size; Web enforces the 256 KiB plaintext cap.
+export const KV_VALUE_MAX_BYTES = 384 * 1024;
 export const kvKeySchema = utf8StringSchema({ minBytes: 1, maxBytes: KV_KEY_MAX_BYTES });
 export const kvValueSchema = base64BytesSchema(KV_VALUE_MAX_BYTES);
 export const kvMutationSchema = z.object({

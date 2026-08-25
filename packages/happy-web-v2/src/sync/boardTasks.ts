@@ -1,9 +1,10 @@
 /**
  * Board-task registry (Task Board V2): the boss's high-level task list,
- * server-backed in the account KV store (key `vh.board-tasks.v1`, plain
- * base64 JSON — same non-e2e convention as `vh.terminal-sessions`, which is
- * what lets the daemon-side boardAnalyzer read task titles) with an MMKV
- * blob as the instant offline cache.
+ * server-backed in the account KV store (key `vh.board-tasks.v1`) with an
+ * MMKV blob as the instant offline cache. Trusted-v1 accounts retain the
+ * legacy base64 carrier; E2EE accounts transparently wrap the exact bytes in
+ * a context-bound stored envelope before they leave the browser. Server-side
+ * task-title analysis is therefore unavailable for E2EE accounts by design.
  *
  * Mutations update local state + cache immediately (optimistic) and push to
  * KV in the background. The blob is version-checked; on a conflict the two

@@ -9,15 +9,19 @@ import sodium from '@/encryption/libsodium.lib';
 import { decryptBox, encryptBox } from "@/encryption/libsodium";
 import { randomUUID } from 'expo-crypto';
 import type { E2eeRuntimeKeys } from '@/auth/e2eeRuntime';
+import type { E2eeAuthCredentials } from '@/auth/tokenStorage';
 import { deriveEpochContentKeyPair } from '@/auth/e2eeKeyHierarchy';
 import {
+    decryptAccountEnvelopeBytes,
     decryptAccountEnvelopeJson,
+    encryptAccountEnvelopeBytes,
     encryptAccountEnvelopeJson,
     parseAccountEnvelope,
     serializeAccountEnvelope,
 } from './e2eeAccountEnvelope';
 import { deriveE2eeKey } from './e2eeKdf';
 import { E2EE_DOMAIN_PREFIX } from './e2eeEncoding';
+import { utf8, utf8String } from './e2eeEncoding';
 import {
     unwrapE2eeDataKey,
     type ExpectedWrappedDataKeyContext,
@@ -121,6 +125,67 @@ export class Encryption {
     }
 
     get isE2ee(): boolean { return this.e2ee !== null; }
+
+    matchesE2eeAccount(credentials: E2eeAuthCredentials): boolean {
+        return this.e2ee !== null
+            && this.e2ee.origin === credentials.origin
+            && this.e2ee.accountId === credentials.accountId
+            && this.e2ee.currentEpoch === credentials.cryptoEpoch;
+    }
+
+    private e2eeKvDomain(key: string): 'tasks' | 'notes' | 'kv' {
+        if (key === 'vh.board-tasks.v1') return 'tasks';
+        if (key.startsWith('vh.note.v1.')) return 'notes';
+        return 'kv';
+    }
+
+    /** Encrypt the exact bytes carried by the legacy base64 KV API. */
+    async encryptKvValue(key: string, base64Value: string): Promise<string> {
+        if (!this.e2ee) throw new Error('E2EE account encryption is unavailable');
+        const secret = this.e2ee.epochSecrets.get(this.e2ee.currentEpoch);
+        if (!secret) throw new Error('Current E2EE KV key is unavailable');
+        const plaintext = decodeBase64(base64Value, 'base64');
+        if (plaintext.length > 256 * 1024) throw new Error('KV plaintext exceeds 256 KiB');
+        try {
+            const envelope = await encryptAccountEnvelopeBytes({
+                origin: this.e2ee.origin,
+                accountId: this.e2ee.accountId,
+                epochSecret: secret,
+                epoch: this.e2ee.currentEpoch,
+                domain: this.e2eeKvDomain(key),
+                objectId: key,
+                field: 'value',
+                plaintext,
+            });
+            return encodeBase64(utf8(serializeAccountEnvelope(envelope)), 'base64');
+        } finally {
+            plaintext.fill(0);
+        }
+    }
+
+    /** Decrypt a KV carrier and restore the byte-for-byte legacy base64 value. */
+    async decryptKvValue(key: string, encryptedBase64Value: string): Promise<string> {
+        if (!this.e2ee) throw new Error('E2EE account encryption is unavailable');
+        const serialized = utf8String(decodeBase64(encryptedBase64Value, 'base64'));
+        const envelope = parseAccountEnvelope(serialized);
+        const secret = this.e2ee.epochSecrets.get(envelope.epoch);
+        if (!secret) throw new Error(`Unknown E2EE KV epoch ${envelope.epoch}`);
+        const plaintext = await decryptAccountEnvelopeBytes({
+            origin: this.e2ee.origin,
+            accountId: this.e2ee.accountId,
+            epochSecret: secret,
+            envelope,
+            expectedDomain: this.e2eeKvDomain(key),
+            expectedObjectId: key,
+            expectedField: 'value',
+        });
+        try {
+            if (plaintext.length > 256 * 1024) throw new Error('KV plaintext exceeds 256 KiB');
+            return encodeBase64(plaintext, 'base64');
+        } finally {
+            plaintext.fill(0);
+        }
+    }
 
     //
     // Core encryption opening

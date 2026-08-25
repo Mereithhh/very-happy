@@ -1,7 +1,8 @@
-import { AuthCredentials } from '@/auth/tokenStorage';
+import { AuthCredentials, isE2eeAuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 import { getHappyClientId } from './apiSocket';
+import { requireE2eeAccountEncryption } from './accountEncryptionRuntime';
 
 //
 // Types
@@ -60,6 +61,49 @@ export interface KvMutateErrorResponse {
 
 export type KvMutateResponse = KvMutateSuccessResponse | KvMutateErrorResponse;
 
+function apiEndpoint(credentials: AuthCredentials): string {
+    return isE2eeAuthCredentials(credentials) ? credentials.origin : getServerUrl();
+}
+
+async function decryptItem(credentials: AuthCredentials, item: KvItem): Promise<KvItem> {
+    if (!isE2eeAuthCredentials(credentials)) return item;
+    return {
+        ...item,
+        value: await requireE2eeAccountEncryption(credentials).decryptKvValue(item.key, item.value),
+    };
+}
+
+async function encryptMutation(
+    credentials: AuthCredentials,
+    mutation: KvMutation,
+): Promise<KvMutation> {
+    if (!isE2eeAuthCredentials(credentials) || mutation.value === null) return mutation;
+    return {
+        ...mutation,
+        value: await requireE2eeAccountEncryption(credentials).encryptKvValue(
+            mutation.key,
+            mutation.value,
+        ),
+    };
+}
+
+async function decryptMutationError(
+    credentials: AuthCredentials,
+    error: KvMutateErrorResponse['errors'][number],
+): Promise<KvMutateErrorResponse['errors'][number]> {
+    if (!isE2eeAuthCredentials(credentials) || error.value === null) return error;
+    return {
+        ...error,
+        value: await requireE2eeAccountEncryption(credentials).decryptKvValue(error.key, error.value),
+    };
+}
+
+// Retry transport failures only. HTTP status codes are authoritative and must
+// surface immediately (not spin forever inside the generic backoff helper).
+async function fetchWithNetworkRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return backoff(() => fetch(input, init));
+}
+
 //
 // API Functions
 //
@@ -71,27 +115,21 @@ export async function kvGet(
     credentials: AuthCredentials,
     key: string
 ): Promise<KvItem | null> {
-    const API_ENDPOINT = getServerUrl();
+    const API_ENDPOINT = apiEndpoint(credentials);
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/kv/${encodeURIComponent(key)}`, {
+    const response = await fetchWithNetworkRetry(
+        `${API_ENDPOINT}/v1/kv/${encodeURIComponent(key)}`,
+        {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
                 'X-Happy-Client': getHappyClientId(),
             }
-        });
-
-        if (response.status === 404) {
-            return null;
-        }
-
-        if (!response.ok) {
-            throw new Error(`Failed to get KV value: ${response.status}`);
-        }
-
-        const data = await response.json() as KvItem;
-        return data;
-    });
+        },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`Failed to get KV value: ${response.status}`);
+    const data = await response.json() as KvItem;
+    return decryptItem(credentials, data);
 }
 
 /**
@@ -101,7 +139,7 @@ export async function kvList(
     credentials: AuthCredentials,
     params: KvListParams = {}
 ): Promise<KvListResponse> {
-    const API_ENDPOINT = getServerUrl();
+    const API_ENDPOINT = apiEndpoint(credentials);
 
     const queryParams = new URLSearchParams();
     if (params.prefix) {
@@ -115,21 +153,15 @@ export async function kvList(
         ? `${API_ENDPOINT}/v1/kv?${queryParams.toString()}`
         : `${API_ENDPOINT}/v1/kv`;
 
-    return await backoff(async () => {
-        const response = await fetch(url, {
+    const response = await fetchWithNetworkRetry(url, {
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
                 'X-Happy-Client': getHappyClientId(),
             }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to list KV items: ${response.status}`);
-        }
-
-        const data = await response.json() as KvListResponse;
-        return data;
     });
+    if (!response.ok) throw new Error(`Failed to list KV items: ${response.status}`);
+    const data = await response.json() as KvListResponse;
+    return { items: await Promise.all(data.items.map((item) => decryptItem(credentials, item))) };
 }
 
 /**
@@ -147,10 +179,9 @@ export async function kvBulkGet(
         throw new Error('Cannot bulk get more than 100 keys at once');
     }
 
-    const API_ENDPOINT = getServerUrl();
+    const API_ENDPOINT = apiEndpoint(credentials);
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/kv/bulk`, {
+    const response = await fetchWithNetworkRetry(`${API_ENDPOINT}/v1/kv/bulk`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
@@ -158,15 +189,10 @@ export async function kvBulkGet(
                 'X-Happy-Client': getHappyClientId(),
             },
             body: JSON.stringify({ keys })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to bulk get KV values: ${response.status}`);
-        }
-
-        const data = await response.json() as KvBulkGetResponse;
-        return data;
     });
+    if (!response.ok) throw new Error(`Failed to bulk get KV values: ${response.status}`);
+    const data = await response.json() as KvBulkGetResponse;
+    return { values: await Promise.all(data.values.map((item) => decryptItem(credentials, item))) };
 }
 
 /**
@@ -186,31 +212,37 @@ export async function kvMutate(
         throw new Error('Cannot mutate more than 100 keys at once');
     }
 
-    const API_ENDPOINT = getServerUrl();
+    const API_ENDPOINT = apiEndpoint(credentials);
+    const encryptedMutations = await Promise.all(
+        mutations.map((mutation) => encryptMutation(credentials, mutation)),
+    );
 
-    return await backoff(async () => {
-        const response = await fetch(`${API_ENDPOINT}/v1/kv`, {
+    const response = await fetchWithNetworkRetry(`${API_ENDPOINT}/v1/kv`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${credentials.token}`,
                 'Content-Type': 'application/json',
                 'X-Happy-Client': getHappyClientId(),
             },
-            body: JSON.stringify({ mutations })
-        });
-
-        if (response.status === 409) {
-            const data = await response.json() as KvMutateErrorResponse;
-            return data;
-        }
-
-        if (!response.ok) {
-            throw new Error(`Failed to mutate KV values: ${response.status}`);
-        }
-
-        const data = await response.json() as KvMutateSuccessResponse;
-        return data;
+            body: JSON.stringify({ mutations: encryptedMutations })
     });
+    let result: KvMutateResponse;
+    if (response.status === 409) {
+        const data = await response.json() as KvMutateErrorResponse | { error?: string };
+        if (!('success' in data) || data.success !== false || !Array.isArray(data.errors)) {
+            const reason = 'error' in data ? data.error : undefined;
+            throw new Error(`Failed to mutate E2EE KV values: ${reason ?? 'conflict'}`);
+        }
+        result = data;
+    } else {
+        if (!response.ok) throw new Error(`Failed to mutate KV values: ${response.status}`);
+        result = await response.json() as KvMutateSuccessResponse;
+    }
+    if (result.success) return result;
+    return {
+        success: false,
+        errors: await Promise.all(result.errors.map((error) => decryptMutationError(credentials, error))),
+    };
 }
 
 //

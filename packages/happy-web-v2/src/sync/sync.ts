@@ -63,6 +63,7 @@ import { maybePlayNotificationSound } from './notificationChime';
 import { stampSeenOnArrival } from './seenOnArrival';
 import { soundEventOfNotifType } from './notificationInbox';
 import { dispatchKvChanges } from './kvUpdates';
+import { bindAccountEncryption, clearAccountEncryption } from './accountEncryptionRuntime';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
@@ -2809,7 +2810,24 @@ class Sync {
             // these). Fanned out to the KV-backed stores — e.g. the synced
             // notification read state, so opening a session on one device
             // clears its notifications on the others without polling.
-            dispatchKvChanges(updateData.body.changes);
+            if (isE2eeAuthCredentials(this.credentials)) {
+                try {
+                    const changes = await Promise.all(updateData.body.changes.map(async (change) => ({
+                        ...change,
+                        value: change.value === null
+                            ? null
+                            : await this.encryption.decryptKvValue(change.key, change.value),
+                    })));
+                    dispatchKvChanges(changes);
+                } catch (error) {
+                    // A mixed, foreign, or tampered batch is rejected as a
+                    // whole so listeners never observe a partially trusted
+                    // account state.
+                    console.warn('[kvUpdates] rejected invalid E2EE batch', error);
+                }
+            } else {
+                dispatchKvChanges(updateData.body.changes);
+            }
         }
     }
 
@@ -3009,39 +3027,52 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
         encryption = await Encryption.create(secretKey);
     }
 
-    // Initialize tracking
-    initializeTracking(encryption.anonID);
+    bindAccountEncryption(encryption);
+    try {
+        // Initialize tracking
+        initializeTracking(encryption.anonID);
 
-    // Initialize socket connection
-    const API_ENDPOINT = isE2eeAuthCredentials(credentials) ? credentials.origin : getServerUrl();
-    apiSocket.initialize({
-        endpoint: API_ENDPOINT,
-        token: credentials.token,
-        ...(isE2eeAuthCredentials(credentials) ? {
-            e2eeIdentity: {
-                cryptoMode: credentials.cryptoMode,
-                e2eeProtocol: credentials.e2eeProtocol,
-                deviceId: credentials.deviceId,
-                cryptoEpoch: credentials.cryptoEpoch,
-            },
-        } : {}),
-    }, encryption);
+        // Initialize socket connection
+        const API_ENDPOINT = isE2eeAuthCredentials(credentials) ? credentials.origin : getServerUrl();
+        apiSocket.initialize({
+            endpoint: API_ENDPOINT,
+            token: credentials.token,
+            ...(isE2eeAuthCredentials(credentials) ? {
+                e2eeIdentity: {
+                    cryptoMode: credentials.cryptoMode,
+                    e2eeProtocol: credentials.e2eeProtocol,
+                    deviceId: credentials.deviceId,
+                    cryptoEpoch: credentials.cryptoEpoch,
+                },
+            } : {}),
+        }, encryption);
 
-    // Wire socket status to storage
-    apiSocket.onStatusChange((status) => {
-        storage.getState().setSocketStatus(status);
-    });
+        // Wire socket status to storage
+        apiSocket.onStatusChange((status) => {
+            storage.getState().setSocketStatus(status);
+        });
 
-    // Initialize sessions engine
-    if (restore) {
-        await sync.restore(credentials, encryption);
-    } else {
-        await sync.create(credentials, encryption);
+        // Initialize sessions engine
+        if (restore) {
+            await sync.restore(credentials, encryption);
+        } else {
+            await sync.create(credentials, encryption);
+        }
+    } catch (error) {
+        clearAccountEncryption(encryption);
+        apiSocket.disconnect();
+        encryption.destroy();
+        throw error;
     }
 }
 
 export function syncLock(): void {
     apiSocket.disconnect();
-    if (sync.encryption) sync.encryption.destroy();
+    if (sync.encryption) {
+        clearAccountEncryption(sync.encryption);
+        sync.encryption.destroy();
+    } else {
+        clearAccountEncryption();
+    }
     isInitialized = false;
 }
