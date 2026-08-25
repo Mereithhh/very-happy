@@ -2,13 +2,14 @@
 
 > Assessed: 2026-08-25 (Asia/Singapore)
 >
-> Public candidate base: `12861872` on `main`
+> Public candidate head: `e9af51ed` on PR #4
 >
-> Decision: **READY**
+> Decision: **READY for Owner final confirmation**
 
 Very Happy's product, sanitized public lineage, fork isolation, canonical clone,
 production health checks, and protected readiness merge are complete. There are
-no confirmed P0/P1 findings or remaining irreversible Owner actions in scope.
+no confirmed P0/P1 findings. Owner acceptance is limited to external Google
+OAuth/Cloud policy, the Android Chrome tactile check, and release messaging.
 
 ## Product delivered
 
@@ -23,8 +24,8 @@ no confirmed P0/P1 findings or remaining irreversible Owner actions in scope.
 - Claude structured sessions, the agent-independent native TTY/TUI path, Codex,
   and the ACP beta boundary are described according to the implementation. Pi,
   automatic routing, and the pixel office remain roadmap.
-- Public copy consistently states that the relay is trusted and the product is
-  **not end-to-end encrypted**. The canceled E2EE experiment is not published.
+- Security, Privacy, and Terms document the trusted-relay boundary; marketing
+  does not use it as a warning banner and no surface claims end-to-end encryption.
 - Password and Google signup, global capacity, pairing, rate/resource limits,
   actionable failures, PWA installation, and first-machine recovery are covered.
 - The experimental Tauri shell is retained for future desktop work; Web/PWA is
@@ -56,18 +57,18 @@ no confirmed P0/P1 findings or remaining irreversible Owner actions in scope.
 | Area | Evidence |
 |---|---|
 | Public base | `12861872ee701526f4644f763a83b431fe252d4b`; explicit-main-only push |
-| Quality Gates | Run `32816809293`: success on the exact public base |
-| CLI Smoke | Run `32816809328`: Linux/macOS, Node 20/24, success |
+| Quality Gates | PR #4 run `32824955015`: quality, server container/migration/persistence and introduced-commit secret scan passed |
+| CLI Smoke | PR #4 run `32824954860`: Linux Node 20/24 passed; private macOS/Windows jobs are intentionally unavailable to public PRs |
 | Protected PR | PR #1 run `32817704371`: all three required checks passed without bypass |
 | Fork isolation | PR #2 from `MiroMindAI` run `32817718015`: all checks passed on `ubuntu-latest`; 0 public runners/secrets/variables; closed unmerged |
-| Web | 109 test files / 1,477 tests; Vite production build; TypeScript zero errors |
-| CLI | 129 test files / 1,241 tests; build, types and isolated HOME runtime; final real-tmux follow-up 20/20 targeted tests |
-| Server | 57 test files / 408 tests; TypeScript zero errors; container/migration/persistence checks |
+| Web | 112 test files / 1,495 tests; Vite production build; TypeScript zero errors |
+| CLI | 129 test files / 1,242 tests; build, types, isolated HOME runtime, public Linux smoke and private real-macOS Node 20/24 tag smoke |
+| Server | 58 test files / 410 tests; TypeScript zero errors; container/migration/persistence checks |
 | Wire / agent | Wire 2 files / 19 tests; agent 9 files / 229 tests; clean builds |
 | Clean install | Frozen-lockfile output-free checkout; server tarball migration; CLI tarball postinstall/version smoke in isolated prefix/HOME |
 | New user | Signup, pairing, daemon, machine discovery, tmux terminal/file preview, and no-tmux downgrade exercised on an isolated machine |
 | Browser | Fresh desktop/phone Chromium: landing/docs, signup errors, PWA prompt, scheduler, terminal/structured handoff, no overflow, 16 px inputs, zero console errors |
-| Production | Web deploy `32812476449` from `a49adce7`; post-publication health OK; GET `/welcome` and `/docs`, manifest, service worker and immutable asset verified |
+| Production | Web deploy `32822501595` from `caa53f11`; Server deploy `32823571969` with code `7bf65e16`; CLI 0.2.67; health, single runtime config, manifest, service worker and immutable asset verified |
 | Canonical clone | Fresh `https://github.com/Mereithhh/very-happy` clone: 2,617 commits scanned, gitleaks 0, fsck strict pass, no legacy tags/private emails |
 | Reviews | Independent security/public-repo, code/release, and first-user/UI/docs reviews; confirmed P0/P1 closed |
 
@@ -79,8 +80,15 @@ pure regression so a transient empty probe cannot consume the badge.
 ## Deployment and version lineage
 
 - Production Web source is `a49adce7`, deploy run `32812476449`, entry asset
-  `index-IwacsF_b-202608250521.js`.
-- Production CLI is `very-happy-cli@0.2.64`. Public source retains historical
+  `index-IwacsF_b-202608250521.js`. The final mobile terminal release supersedes it:
+  source `caa53f11`, deploy `32822501595`, entry `index-BODNfbYU-202608250737.js`.
+- Production Server code is `7bf65e16`, deployed by run `32823571969`; `/` and
+  `/welcome` each contain exactly one runtime config for `https://veryhappy.dev`.
+- Production CLI is `very-happy-cli@0.2.67`. Quality `32824942499`, tag publish
+  `32825204241`, and Linux/real-macOS Node 20/24 smoke `32825204211` passed.
+  mac-office runs 0.2.67 after real-credential preflight and restart. Doctor/status
+  omit the daemon control token and report only `controlAuthentication=configured`.
+  Public source retains historical
   package metadata `0.2.61`; that version must not be republished.
 - The first public-lineage release should be `v0.3.0` or later, after a deliberate
   version/changelog PR and isolated packed-CLI smoke. Old private tags must not
@@ -99,6 +107,10 @@ pure regression so a transient empty probe cannot consume the badge.
   Reopen it before claiming or releasing Linux desktop support; it does not
   affect the shipped Web, server, or CLI path.
 - Public Cloud capacity and abuse controls are configurable; there is no SLA.
+- Mobile terminal focus/gesture tests cover tap-versus-drag, compatibility mouse,
+  normal/alternate buffers, fling cancellation and RPC batching. Desktop emulation
+  cannot reproduce Android Chrome's real soft keyboard; V-081 is the final tactile
+  acceptance pass and is not falsely claimed as automated evidence.
 
 ## Publication closeout
 
@@ -112,4 +124,4 @@ pure regression so a transient empty probe cannot consume the badge.
 No history force-push, production data deletion, DNS change, external ownership
 change, or credential rotation is part of this publication procedure.
 
-**Conclusion: READY.**
+**Conclusion: READY for Owner final confirmation.**
