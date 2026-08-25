@@ -108,7 +108,12 @@ jobs:
             if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
               echo "Already published: $package_name@$package_version"
             else
-              pnpm --dir "$package_dir" publish --no-git-checks --access public
+              # npm/pnpm reject publishing a package whose os/cpu metadata does
+              # not match the runner. Packing first makes the publish input a
+              # platform-neutral tarball while preserving that metadata for
+              # consumers during install.
+              npm pack "$package_dir" --pack-destination "$RUNNER_TEMP"
+              npm publish "$RUNNER_TEMP/${package_name}-${package_version}.tgz" --access public
             fi
           done
         env:
@@ -123,7 +128,8 @@ jobs:
           if npm view "very-happy-cli@$package_version" version >/dev/null 2>&1; then
             echo "Already published: very-happy-cli@$package_version"
           else
-            pnpm --filter very-happy-cli publish --no-git-checks --access public
+            npm pack packages/happy-cli --pack-destination "$RUNNER_TEMP"
+            npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
