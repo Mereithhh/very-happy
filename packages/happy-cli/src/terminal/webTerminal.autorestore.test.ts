@@ -140,13 +140,19 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
     });
 
     it('marks the restored terminal on the list until it is opened', () => {
+        const initial = mgr.buildTerminalList().find((t) => t.id === FRESH);
+        expect(initial?.restoredAt).toBeGreaterThan(0);
+        const { restoredAt: _restoredAt, ...raw } = initial!;
+
         // A single failed/transient tmux list probe must not consume the badge.
         // GitHub-hosted Ubuntu exposed this race immediately after new-session.
-        const probe = vi.spyOn(mgr, 'listSessions').mockReturnValueOnce([]);
+        const probe = vi.spyOn(mgr, 'listSessions')
+            .mockReturnValueOnce([])
+            .mockReturnValueOnce([raw]);
         expect(mgr.buildTerminalList()).toEqual([]);
-        probe.mockRestore();
         const row = mgr.buildTerminalList().find((t) => t.id === FRESH);
-        expect(row?.restoredAt).toBeGreaterThan(0);
+        expect(row?.restoredAt).toBe(initial?.restoredAt);
+        probe.mockRestore();
     });
 
     it('does not restore into a shutting-down daemon', async () => {
