@@ -1,10 +1,10 @@
-import { RelayClaimRequestSchema } from '@slopus/happy-wire';
 import { z } from 'zod';
 import { db } from '@/storage/db';
 import { Fastify } from '../types';
 import { RELAY_ASSIGNMENT_TTL_MS, relayFeatureConfig } from '@/app/relay/relayConfig';
 import { relayRegistry } from '@/app/relay/relayRegistry';
 import { signRelayToken } from '@/app/relay/relayToken';
+import { ServerRelayClaimRequestSchema } from '@/app/relay/relaySchemas';
 
 async function ownsMachine(accountId: string, machineId: string): Promise<boolean> {
     return !!await db.machine.findFirst({ where: { id: machineId, accountId }, select: { id: true } });
@@ -24,7 +24,7 @@ export function relayRoutes(app: Fastify) {
         preHandler: app.authenticate,
         schema: {
             params: z.object({ machineId: z.string().min(1).max(256) }),
-            body: RelayClaimRequestSchema,
+            body: ServerRelayClaimRequestSchema,
         },
     }, async (request, reply) => {
         const config = relayFeatureConfig();

@@ -1,4 +1,4 @@
-import { RelayCandidateSchema, type RelayCandidate } from '@slopus/happy-wire';
+import { ServerRelayCandidateSchema, type ServerRelayCandidate } from './relaySchemas';
 
 export const RELAY_ASSIGNMENT_TTL_MS = 75_000;
 export const RELAY_TOKEN_TTL_SECONDS = 10 * 60;
@@ -12,14 +12,14 @@ function normalizeRelayUrl(value: string): string {
     return parsed.origin;
 }
 
-export function parseRelayCandidates(raw: string | undefined): RelayCandidate[] {
+export function parseRelayCandidates(raw: string | undefined): ServerRelayCandidate[] {
     if (!raw?.trim()) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error('HAPPY_RELAYS_JSON must be an array');
     const seenIds = new Set<string>();
     const seenUrls = new Set<string>();
     return parsed.map((item) => {
-        const candidate = RelayCandidateSchema.parse(item);
+        const candidate = ServerRelayCandidateSchema.parse(item);
         const normalized = { ...candidate, url: normalizeRelayUrl(candidate.url) };
         if (seenIds.has(normalized.id)) throw new Error(`duplicate relay id: ${normalized.id}`);
         if (seenUrls.has(normalized.url)) throw new Error(`duplicate relay url: ${normalized.url}`);
@@ -31,7 +31,7 @@ export function parseRelayCandidates(raw: string | undefined): RelayCandidate[] 
 
 export function relayFeatureConfig(env: NodeJS.ProcessEnv = process.env): {
     enabled: boolean;
-    candidates: RelayCandidate[];
+    candidates: ServerRelayCandidate[];
     tokenSecret?: string;
 } {
     const candidates = parseRelayCandidates(env.HAPPY_RELAYS_JSON);

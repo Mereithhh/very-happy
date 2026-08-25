@@ -1,10 +1,10 @@
-import type { RelayProbe } from '@slopus/happy-wire';
+import type { ServerRelayProbe } from './relaySchemas';
 
 export type RelayMachineLease = {
     accountId: string;
     machineId: string;
     relayId: string;
-    probes: RelayProbe[];
+    probes: ServerRelayProbe[];
     updatedAt: number;
 };
 

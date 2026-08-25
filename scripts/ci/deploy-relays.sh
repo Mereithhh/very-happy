@@ -28,16 +28,9 @@ deploy_us() {
     echo "== relay-us: upload image through fb-us to k3s =="
     docker save "$IMAGE" | gzip -1 | ssh "${ssh_opts[@]}" "$remote" "umask 077; cat > '$archive'"
     scp "${scp_opts[@]}" ops/relay/k8s-us.yaml "$remote:/tmp/very-happy-relay-k8s.yaml"
-    ssh "${ssh_opts[@]}" "$remote" "IMAGE='$IMAGE' VERSION='$VERSION' ARCHIVE='$archive' bash -s" <<'REMOTE'
-set -euo pipefail
-K8S_HOST=root@100.100.3.2
-ssh "$K8S_HOST" 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n very-happy-relay get secret relay-token >/dev/null'
-scp -q "$ARCHIVE" "$K8S_HOST:/tmp/relay-image.tar.gz"
-sed -e "s|__RELAY_IMAGE__|$IMAGE|g" -e "s|__RELAY_VERSION__|$VERSION|g" \
-  /tmp/very-happy-relay-k8s.yaml | ssh "$K8S_HOST" 'cat > /tmp/relay-k8s.yaml'
-ssh "$K8S_HOST" 'set -e; gzip -dc /tmp/relay-image.tar.gz | k3s ctr images import - >/dev/null; KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl apply -f /tmp/relay-k8s.yaml; KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n very-happy-relay rollout status deployment/relay-us --timeout=180s; rm -f /tmp/relay-image.tar.gz /tmp/relay-k8s.yaml'
-rm -f "$ARCHIVE" /tmp/very-happy-relay-k8s.yaml
-REMOTE
+    scp "${scp_opts[@]}" scripts/ci/deploy-relay-k8s-remote.sh "$remote:/tmp/deploy-relay-k8s-remote.sh"
+    ssh "${ssh_opts[@]}" "$remote" \
+        "chmod 700 /tmp/deploy-relay-k8s-remote.sh && /tmp/deploy-relay-k8s-remote.sh '$IMAGE' '$VERSION' '$archive'"
 }
 
 case "$TARGET" in
