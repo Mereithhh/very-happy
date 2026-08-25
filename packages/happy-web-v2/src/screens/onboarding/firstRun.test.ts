@@ -75,4 +75,12 @@ describe('first-machine command sequence', () => {
     expect(styles).toMatch(/\.fr-command button \{[^}]*width: 44px;[^}]*height: 44px;/s);
     expect(styles).toMatch(/\.fr-command code \{[^}]*white-space: pre-wrap;[^}]*line-height: 1\.55;/s);
   });
+
+  it('centers the first-run content column without centering its text', () => {
+    const styles = readFileSync(new URL('./firstRun.css', import.meta.url), 'utf8');
+    expect(styles).toMatch(/\.fr-page \{[^}]*align-items: center;/s);
+    expect(styles).toMatch(/\.fr-hero \{ width: min\(100%, 720px\); \}/);
+    expect(styles).toMatch(/\.fr-actions \{ width: min\(100%, 720px\);/);
+    expect(styles).not.toMatch(/\.fr-page \{[^}]*text-align: center;/s);
+  });
 });
