@@ -1,0 +1,12 @@
+# The public repository has one maintainer today. Keep a default owner so new
+# paths cannot silently fall outside review routing as the project grows.
+* @Mereithhh
+
+# High-risk trust and release surfaces are called out for discoverability.
+/.github/workflows/ @Mereithhh
+/scripts/ci/ @Mereithhh
+/scripts/deploy-hwsg.sh @Mereithhh
+/scripts/update-daemon.sh @Mereithhh
+/packages/happy-server/ @Mereithhh
+/packages/happy-cli/src/terminal/ @Mereithhh
+/SECURITY.md @Mereithhh

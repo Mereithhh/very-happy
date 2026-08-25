@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 
-# Scan only the commits introduced by the current trusted push or pull request.
-# The repository has known historical findings that must be removed in a
-# coordinated, one-time history rewrite before it can become public; scanning
-# the entire existing history on every run would therefore create a permanent
-# red CI signal. `--history` is the explicit publication gate.
+# Ordinary CI scans only commits introduced by the current push or pull request.
+# The public lineage was sanitized and passed a complete-history scan before
+# publication; `--history` remains the repeatable full-lineage audit mode.
 
 set -euo pipefail
 
