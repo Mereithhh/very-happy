@@ -8,7 +8,7 @@
  * set BACK BY ITSELF — right directory, right conversation, no clicks — while
  * refusing the cases that would make it a resource incident or a wrong resume.
  */
-import { describe, it, expect, afterAll, vi } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -137,22 +137,6 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
         expect(summaries[0]).toContain('too old');
         expect(summaries[0]).toContain('directory gone');
         expect(summaries[0]).toContain('no conversation');
-    });
-
-    it('marks the restored terminal on the list until it is opened', () => {
-        const initial = mgr.buildTerminalList().find((t) => t.id === FRESH);
-        expect(initial?.restoredAt).toBeGreaterThan(0);
-        const { restoredAt: _restoredAt, ...raw } = initial!;
-
-        // A single failed/transient tmux list probe must not consume the badge.
-        // GitHub-hosted Ubuntu exposed this race immediately after new-session.
-        const probe = vi.spyOn(mgr, 'listSessions')
-            .mockReturnValueOnce([])
-            .mockReturnValueOnce([raw]);
-        expect(mgr.buildTerminalList()).toEqual([]);
-        const row = mgr.buildTerminalList().find((t) => t.id === FRESH);
-        expect(row?.restoredAt).toBe(initial?.restoredAt);
-        probe.mockRestore();
     });
 
     it('does not restore into a shutting-down daemon', async () => {

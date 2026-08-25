@@ -96,6 +96,7 @@ import {
     selectAutoRestore,
     resolveAutoRestoreConfig,
     autoRestoreSummary,
+    markAutoRestored,
     type AutoRestoreCandidate,
     type AutoRestorePlan,
 } from './autoRestore';
@@ -1404,11 +1405,7 @@ export class WebTerminalManager {
      * once-per-daemon auto-restore selection and is cleared when the user opens
      * a terminal, so keeping an absent mark for this daemon lifetime is safe. */
     private markRestored(list: TerminalListItem[]): TerminalListItem[] {
-        if (this.autoRestoredIds.size === 0) return list;
-        return list.map((t) => {
-            const at = this.autoRestoredIds.get(t.id);
-            return at ? { ...t, restoredAt: at } : t;
-        });
+        return markAutoRestored(list, this.autoRestoredIds);
     }
 
     /** The user looked at it — the "restored while you were away" badge has done

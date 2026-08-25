@@ -114,6 +114,23 @@ export interface AutoRestoreSelection {
     skipped: AutoRestoreSkip[];
 }
 
+/** Overlay the one-daemon-life "restored while you were away" marker.
+ *
+ * This is intentionally a read-only transformation. A tmux list probe may
+ * transiently return no rows immediately after `new-session`; treating that
+ * observation as garbage collection consumed the badge before the next good
+ * poll. The bounded marks map is cleared only when the terminal is opened. */
+export function markAutoRestored<T extends { id: string }>(
+    list: readonly T[],
+    marks: ReadonlyMap<string, number>,
+): Array<T & { restoredAt?: number }> {
+    if (marks.size === 0) return [...list];
+    return list.map((item) => {
+        const restoredAt = marks.get(item.id);
+        return restoredAt ? { ...item, restoredAt } : item;
+    });
+}
+
 /** The ONE place the auto-restore command is built (uuid-validated). */
 export function autoResumeCommand(claudeSessionId: string): string {
     if (!isClaudeSessionId(claudeSessionId)) throw new Error('autoResumeCommand: not a claude session id');
