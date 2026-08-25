@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, KeyboardOff, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket } from '@/sync/apiSocket';
 import {
@@ -73,6 +73,7 @@ import {
   MOBILE_TYPO_BASE,
   type TermTypography,
 } from './termKbViewport';
+import { createTouchFling, stopSyntheticScrollForBufferChange } from './termTouchFling';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -1256,6 +1257,12 @@ export function WebTerminalScreen() {
     let wheelAccum = 0;
     let wheelFlushTimer: ReturnType<typeof setTimeout> | null = null;
     let scrollInFlight = false;
+    let cancelSyntheticTouchScroll = () => {};
+    const clearPendingWheelBatch = () => {
+      if (wheelFlushTimer != null) clearTimeout(wheelFlushTimer);
+      wheelFlushTimer = null;
+      wheelAccum = 0;
+    };
     const flushWheel = () => {
       wheelFlushTimer = null;
       const lines = Math.trunc(wheelAccum);
@@ -1301,6 +1308,10 @@ export function WebTerminalScreen() {
     // class is driven from here — the JS handlers read term.buffer directly.
     const bufferDisp = term.buffer.onBufferChange(() => {
       if (disposed) return;
+      stopSyntheticScrollForBufferChange({
+        cancelFling: cancelSyntheticTouchScroll,
+        clearPendingBatch: clearPendingWheelBatch,
+      });
       setAltBuffer(term.buffer.active.type === 'alternate');
     });
 
@@ -1396,7 +1407,7 @@ export function WebTerminalScreen() {
       // Don't steal focus from the line-input bar (input-bar mode): this runs
       // async after mount, and the bar may already own the keyboard.
       // Input-element coupling point 4/11 (spec 现状表).
-      if (!(IS_COARSE_POINTER && focusStateRef.current.barMode)) renderer.focusInput();
+      if (!IS_COARSE_POINTER) renderer.focusInput();
       // Arm the blank-screen belt once the restore (and stash flush) has been
       // written; give late tmux-attach repaint chunks a moment to land first.
       outChain = outChain.then(() => {
@@ -1524,9 +1535,12 @@ export function WebTerminalScreen() {
     // text selection → don't steal focus.
     let touchX = 0;
     let touchY = 0;
+    let gestureScrolled = false;
     const onTouchStart = (e: TouchEvent) => {
       const p = e.touches[0];
       if (selectModeRef.current) return; // let the browser select/scroll natively
+      gestureScrolled = false;
+      touchFling.cancel();
       if (p) { touchX = p.clientX; touchY = p.clientY; }
     };
     const onTouchEnd = (e: TouchEvent) => {
@@ -1545,13 +1559,16 @@ export function WebTerminalScreen() {
       // the own-input path xterm consumes those and focuses its hidden textarea
       // after we focus ours, creating an own -> xterm -> own bounce that closes
       // the mobile keyboard on the first tap. Claim only the real tap; drags,
-      // select mode, and the xterm-owned path remain native.
+      // select mode, and ordinary xterm-owned per-key taps remain native. The
+      // line-input bar is claimed too so its blur cannot bounce into xterm.
       completeTerminalTouchTap({
         inputOwnership,
+        barMode: focusStateRef.current.barMode,
         selectMode: selectModeRef.current,
         distanceSquared,
         threshold: 12,
         cancelable: e.cancelable,
+        scrolled: gestureScrolled,
       }, {
         preventDefault: () => e.preventDefault(),
         stopPropagation: () => e.stopPropagation(),
@@ -1574,30 +1591,10 @@ export function WebTerminalScreen() {
     let scrollActive = false;
     let scrollLastY = 0;
     let scrollAccum = 0;
-    const onTouchMove = (e: TouchEvent) => {
-      if (selectModeRef.current) return; // native selection/scroll, don't hijack
-      // B-121 lines mode, NORMAL buffer = the native track: hands completely
-      // off. xterm owns a real local scrollback here, so the browser scrolls it
-      // with pixel-level tracking and system inertia — the entire point of this
-      // batch. No preventDefault, no synthetic wheel, no RPC. (`touch-action`
-      // is handed back in CSS via .term-host--lines; without both halves the
-      // gesture either doesn't scroll or isn't cancelable.) The ALTERNATE
-      // buffer falls through to the v1 synthetic-wheel track below.
-      if (linesActive && term.buffer.active.type !== 'alternate') return;
-      if (e.touches.length > 1) { scrollActive = false; return; }
-      const p = e.touches[0];
-      if (!p) return;
-      if (!scrollActive) {
-        const dx = p.clientX - touchX;
-        const dy = p.clientY - touchY;
-        if (dx * dx + dy * dy <= 12 * 12) return; // still a potential tap
-        scrollActive = true;
-        scrollLastY = p.clientY;
-        scrollAccum = 0;
-      }
-      if (e.cancelable) e.preventDefault();
-      scrollAccum += p.clientY - scrollLastY;
-      scrollLastY = p.clientY;
+    let scrollClientX = 0;
+    let scrollClientY = 0;
+    const dispatchScrollPixels = (deltaPx: number) => {
+      scrollAccum += deltaPx;
       const termEl = term.element;
       const lineH = Math.max(12, (termEl?.clientHeight ?? mount.clientHeight) / Math.max(1, term.rows));
       const lines = Math.trunc(scrollAccum / lineH);
@@ -1606,17 +1603,68 @@ export function WebTerminalScreen() {
       const target = host.querySelector('.xterm-screen') ?? termEl;
       if (!target) return;
       // finger moved down (lines > 0) → wheel up → negative deltaY.
-      // clientX/Y matter: tmux mouse reports carry cell coordinates.
       target.dispatchEvent(new WheelEvent('wheel', {
         deltaY: -lines * lineH,
         deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-        clientX: p.clientX,
-        clientY: p.clientY,
+        clientX: scrollClientX,
+        clientY: scrollClientY,
         bubbles: true,
         cancelable: true,
       }));
     };
-    const onTouchDone = () => { scrollActive = false; scrollAccum = 0; };
+    const touchFling = createTouchFling({ emit: dispatchScrollPixels });
+    cancelSyntheticTouchScroll = () => {
+      touchFling.cancel();
+      scrollActive = false;
+      scrollAccum = 0;
+      // If the buffer flips during a live drag, its eventual touchend must not
+      // be reclassified as a tap and unexpectedly summon the keyboard.
+      gestureScrolled = true;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (selectModeRef.current) return; // native selection/scroll, don't hijack
+      if (e.touches.length > 1) {
+        gestureScrolled = true;
+        scrollActive = false;
+        touchFling.cancel();
+        return;
+      }
+      const p = e.touches[0];
+      if (!p) return;
+      const totalDx = p.clientX - touchX;
+      const totalDy = p.clientY - touchY;
+      if (totalDx * totalDx + totalDy * totalDy > 12 * 12) gestureScrolled = true;
+      // B-121 lines mode, NORMAL buffer = the native track: hands completely
+      // off. xterm owns a real local scrollback here, so the browser scrolls it
+      // with pixel-level tracking and system inertia — the entire point of this
+      // batch. No preventDefault, no synthetic wheel, no RPC. (`touch-action`
+      // is handed back in CSS via .term-host--lines; without both halves the
+      // gesture either doesn't scroll or isn't cancelable.) The ALTERNATE
+      // buffer falls through to the v1 synthetic-wheel track below.
+      if (linesActive && term.buffer.active.type !== 'alternate') return;
+      if (!scrollActive) {
+        if (!gestureScrolled) return; // still a potential tap
+        scrollActive = true;
+        scrollLastY = p.clientY;
+        scrollClientX = p.clientX;
+        scrollClientY = p.clientY;
+        scrollAccum = 0;
+      }
+      if (e.cancelable) e.preventDefault();
+      const deltaY = p.clientY - scrollLastY;
+      scrollLastY = p.clientY;
+      scrollClientX = p.clientX;
+      scrollClientY = p.clientY;
+      touchFling.sample(deltaY, e.timeStamp);
+      dispatchScrollPixels(deltaY);
+    };
+    const onTouchDone = (e: TouchEvent) => {
+      if (scrollActive && e.type === 'touchend') touchFling.release(e.timeStamp);
+      else touchFling.cancel();
+      scrollActive = false;
+      scrollAccum = 0;
+      gestureScrolled = false;
+    };
     // When the soft keyboard opens, window.innerHeight doesn't change — only
     // window.visualViewport shrinks — so the keyboard covers the bottom of the
     // terminal (including the input line). Cap the host's height to the visible
@@ -1922,6 +1970,7 @@ export function WebTerminalScreen() {
         restoreLayoutRef.current = null;
         mobileBridge?.dispose();
         mobileBridge = null;
+        touchFling.cancel();
         host.style.maxHeight = '';
       }
       if (!IS_COARSE_POINTER) {
@@ -1967,9 +2016,9 @@ export function WebTerminalScreen() {
     // Either way the user presses Enter to run — never auto-execute.
     const viaChokepoint = pasteTextRef.current;
     const done = viaChokepoint ? viaChokepoint(command) : (tm.paste(command), Promise.resolve());
-    // Mobile: route through the focus policy (explicit menu gesture → may
-    // focus + clear a dismissal; in input-bar mode it leaves focus with the
-    // bar). Desktop keeps the unconditional historical refocus.
+    // Mobile menu actions never raise the keyboard; body tap / the explicit
+    // keyboard control own that consent boundary. Desktop keeps its historical
+    // unconditional refocus.
     // Input-element coupling point 6/11 (spec 现状表).
     if (IS_COARSE_POINTER) dispatchFocus({ type: 'snippet' });
     else tm.focusInput();
@@ -2031,14 +2080,16 @@ export function WebTerminalScreen() {
   };
 
   // Send raw bytes to the pty via the effect's sendInput (base64/encryption
-  // aware). Whether the terminal is refocused afterwards (keeping the soft
-  // keyboard up) is the focus policy's call: yes in normal per-key use, NO
-  // after the user explicitly dismissed the keyboard (arrow keys with the
-  // screen fully visible is a first-class TUI flow), and never in input-bar
-  // mode (the bar keeps its own focus — its buttons preventDefault mousedown).
+  // aware). Extra keys never summon a closed keyboard; their preventDefault
+  // mousedown preserves an input surface that is already focused.
   const sendBytes = (bytes: string) => {
     sendInputRef.current?.(bytes);
     dispatchFocus({ type: 'bar-key' });
+  };
+  const toggleSoftKeyboard = () => {
+    const active = document.activeElement;
+    const ownsKeyboard = isTerminalInputElement(active) || inputBarRef.current === active;
+    dispatchFocus({ type: ownsKeyboard ? 'dismiss-key' : 'show-keyboard' });
   };
   // A literal key from the bar. If Ctrl is armed and this is a single ASCII
   // letter, fold it to its control code (Ctrl+A=\x01 … Ctrl+Z=\x1a) and consume
@@ -2215,15 +2266,15 @@ export function WebTerminalScreen() {
             <button
               type="button"
               className="term-keybar-key term-keybar-sys"
-              aria-label={t('terminal.hideKeyboard')}
-              title={t('terminal.hideKeyboard')}
+              aria-label={t('terminal.toggleKeyboard')}
+              title={t('terminal.toggleKeyboard')}
               // preventDefault keeps the focus where it is for the click's
               // duration; the policy then blurs everything explicitly (no
               // focus flicker through the button).
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => dispatchFocus({ type: 'dismiss-key' })}
+              onClick={toggleSoftKeyboard}
             >
-              <KeyboardOff size={16} />
+              <Keyboard size={16} />
             </button>
             <button
               type="button"
@@ -2240,10 +2291,8 @@ export function WebTerminalScreen() {
               variant="keybar"
               onPick={insertPreset}
               onRun={execPreset}
-              // Same post-close refocus as the header variant. The in-gesture
-              // dispatchFocus inside runCommand is what opens the iOS keyboard;
-              // this pass is what makes the focus STICK past the menu's
-              // FocusScope, so typing/Enter lands in the terminal.
+              // Closing a mobile menu deliberately does not raise the keyboard.
+              // Users resume input through the keyboard control or body tap.
               onCancel={() => dispatchFocus({ type: 'snippet' })}
             />
             <span className="term-keybar-sep" aria-hidden />

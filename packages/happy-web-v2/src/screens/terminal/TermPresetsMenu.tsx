@@ -99,9 +99,8 @@ export function TermPresetsMenu({
     };
 
     // Digit direct-select while open — identical to clicking the item (run
-    // entries execute; insert entries paste without Enter; focus returns to
-    // the terminal inside the handler, and onCloseAutoFocus below keeps Radix
-    // from stealing it back).
+    // entries execute; insert entries paste without Enter; the caller decides
+    // whether focus should return after Radix closes).
     // preventDefault also stops Radix's title typeahead from shadowing digits.
     const onMenuKeyDown = (e: React.KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -140,10 +139,7 @@ export function TermPresetsMenu({
                     onEscapeKeyDown={() => { kbCancelRef.current = true; }}
                     onCloseAutoFocus={(e) => {
                         // Always suppress Radix's "refocus the trigger", then
-                        // hand focus to the terminal ourselves — for keyboard
-                        // cancels AND for picks (see pickedRef: the in-onSelect
-                        // focus() loses to the still-mounted FocusScope, so
-                        // this post-unmount pass is the one that sticks).
+                        // let the caller apply its platform focus policy.
                         e.preventDefault();
                         const wanted = kbCancelRef.current || pickedRef.current;
                         kbCancelRef.current = false;

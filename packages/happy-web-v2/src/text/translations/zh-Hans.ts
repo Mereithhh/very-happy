@@ -1409,6 +1409,7 @@ export const zhHans: TranslationStructure = {
         selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
         keybarLabel: '终端按键',
         hideKeyboard: '收起键盘',
+        toggleKeyboard: '显示或收起键盘',
         inputBarToggle: '输入行模式',
         inputBarPlaceholder: '输入命令 · 回车发送',
         inputBarSend: '发送',

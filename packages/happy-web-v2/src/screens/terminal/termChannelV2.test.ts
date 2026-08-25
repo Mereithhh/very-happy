@@ -111,6 +111,11 @@ describe('two-track scrolling (§D2) and what must NOT be retired (§D4)', () =>
         expect(screen.includes('attachCustomWheelEventHandler')).toBe(true);
         expect(screen.includes("new WheelEvent('wheel'")).toBe(true);
         expect(screen.includes('SCROLL_RPC_MAX_FAILS')).toBe(true);
+        // Mobile parity with Termux: a gesture that ever crossed the drag
+        // threshold cannot become a keyboard tap on release, and the synthetic
+        // alt/TUI track gets bounded momentum through the same wheel batcher.
+        expect(screen.includes('gestureScrolled')).toBe(true);
+        expect(screen.includes('createTouchFling({ emit: dispatchScrollPixels })')).toBe(true);
     });
 
     it('the normal buffer under lines mode takes neither touch nor wheel', () => {
@@ -133,6 +138,21 @@ describe('two-track scrolling (§D2) and what must NOT be retired (§D4)', () =>
     it('the blank-screen belt is retired on the lines track only', () => {
         expect(screen.includes('if (linesActive) return; // belt retired')).toBe(true);
         expect(screen.includes('isScreenBlank')).toBe(true); // still there for attach
+    });
+});
+
+describe('mobile terminal gesture and keyboard consent boundary', () => {
+    it('never auto-focuses after async open and exposes an explicit keyboard toggle', () => {
+        expect(screen.includes('if (!IS_COARSE_POINTER) renderer.focusInput();')).toBe(true);
+        expect(screen.includes("type: ownsKeyboard ? 'dismiss-key' : 'show-keyboard'"))
+            .toBe(true);
+        expect(screen.includes('onClick={toggleSoftKeyboard}')).toBe(true);
+    });
+
+    it('latches any drag before touchend can be classified as a keyboard tap', () => {
+        expect(screen.includes('if (totalDx * totalDx + totalDy * totalDy > 12 * 12) gestureScrolled = true;'))
+            .toBe(true);
+        expect(screen.includes('scrolled: gestureScrolled')).toBe(true);
     });
 });
 
