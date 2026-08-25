@@ -942,6 +942,9 @@ export const en = {
     workspaceGuide: {
         eyebrow: 'MACHINE CONNECTED',
         title: 'Your workspace is ready',
+        firstMachineConnectedTitle: 'Your first machine is online',
+        firstMachineConnectedDescription: 'The workspace tour is ready behind this message. Start with a conversation or terminal.',
+        exploreWorkspace: 'Explore workspace',
         intro: 'Start one conversation and one terminal, then tune the workspace to match how you work. This page stays available as a quick tour whenever no session is open.',
         compactIntro: 'Create your first workspace, or open a topic below when you need the details.',
         stepsLabel: 'First things to try',

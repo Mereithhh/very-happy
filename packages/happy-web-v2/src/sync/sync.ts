@@ -70,6 +70,10 @@ import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import {
+    emitFirstMachineConnected,
+    shouldAnnounceFirstMachine,
+} from '@/screens/onboarding/firstMachineWelcome';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -2504,6 +2508,10 @@ class Sync {
 
             // Preserve an existing createdAt if we somehow already know this machine.
             const existing = storage.getState().machines[machineId];
+            const announceFirstMachine = shouldAnnounceFirstMachine(
+                Object.keys(storage.getState().machines).length,
+                !!existing,
+            );
             const newMachine: Machine = {
                 id: machineId,
                 seq: machineUpdate.seq,
@@ -2531,6 +2539,7 @@ class Sync {
             }
 
             storage.getState().applyMachines([newMachine]);
+            if (announceFirstMachine) emitFirstMachineConnected({ machineId });
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
