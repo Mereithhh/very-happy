@@ -15,17 +15,48 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
+
+env:
+  RELAY_IMAGE: ghcr.io/mereithhh/very-happy-relay:${{ github.sha }}
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Require merged main
         run: test "$GITHUB_REF" = refs/heads/main
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Build immutable relay image
-        run: docker build -f Dockerfile.relay -t "very-happy-relay:${GITHUB_SHA}" .
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and push immutable relay image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile.relay
+          push: true
+          tags: ${{ env.RELAY_IMAGE }}
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,mode=max,scope=relay
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        region: ${{ fromJSON(inputs.target == 'all' && '["sg","us"]' || format('["{0}"]', inputs.target)) }}
+    name: Deploy relay (${{ matrix.region }})
+    steps:
+      - name: Require merged main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure SSH
         run: |
           umask 077
@@ -40,7 +71,7 @@ jobs:
           RELAY_US_HOST: ${{ secrets.RELAY_US_HOST }}
           RELAY_US_PORT: ${{ secrets.RELAY_US_PORT }}
           RELAY_US_USER: ${{ secrets.RELAY_US_USER }}
-        run: bash scripts/ci/deploy-relays.sh '${{ inputs.target }}'
+        run: bash scripts/ci/deploy-relays.sh '${{ matrix.region }}'
       - name: Remove SSH key
         if: always()
         run: rm -f '${{ runner.temp }}/relay_key'

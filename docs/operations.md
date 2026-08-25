@@ -140,11 +140,21 @@ moved to shared storage.
 
 Relay images are deployed from merged `main` with the manual GitHub-hosted
 `deploy-relays.yml` workflow (`all | sg | us`). The workflow builds
-[`Dockerfile.relay`](../Dockerfile.relay), uses a dedicated deploy key, and never
-creates or rotates `RELAY_TOKEN_SECRET`. The one-time secret and reverse-proxy
-setup must already exist. `hw-sg` binds the container on `127.0.0.1:3011`
-because port 3010 belongs to another service; k3s keeps the relay's container
-port at 3010.
+[`Dockerfile.relay`](../Dockerfile.relay), pushes the immutable
+`ghcr.io/mereithhh/very-happy-relay:<commit-sha>` image with `GITHUB_TOKEN`, and
+deploys Singapore and the US in parallel for an `all` rollout. Each remote pulls
+from GHCR directly, so unchanged layers remain cached instead of sending a full
+`docker save` archive through SSH. The GHCR package must be public; newly created
+GHCR packages default to private, so make it public once in the package settings
+before the first deploy. Do not put a package token on either relay node unless
+the package is intentionally changed back to private.
+
+The workflow uses a dedicated deploy key and never creates or rotates
+`RELAY_TOKEN_SECRET`. The one-time secret and reverse-proxy setup must already
+exist. `hw-sg` binds the container on `127.0.0.1:3011` because port 3010 belongs
+to another service; k3s keeps the relay's container port at 3010. Post-deploy
+health checks require both the configured relay id and the exact commit SHA in
+`version`; a healthy old pod is not accepted as a successful rollout.
 
 ### Web static swap and cache safety
 
