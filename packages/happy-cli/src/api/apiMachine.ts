@@ -33,6 +33,8 @@ import {
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import { discoverAndClaimRelay } from './relaySelection';
+import type { RelayAssignment } from '@slopus/happy-wire';
 import {
     CodexForkRewindPointNotFoundError,
     forkCodexThread,
@@ -148,6 +150,9 @@ async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClien
 
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
+    private relaySocket: Socket | null = null;
+    private relayAssignment: RelayAssignment | null = null;
+    private relayRefreshInFlight: Promise<void> | null = null;
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
@@ -179,12 +184,12 @@ export class ApiMachineClient {
         // is socket.io's own primitive for exactly this; the `connected` check
         // covers the window before the socket object exists at all.)
         if (event === 'terminal-activity') {
-            const s = this.socket as any;
-            if (!s?.connected) return;
-            (s.volatile ?? s).emit(event, out);
+            const sockets = [this.socket as any, this.relaySocket as any].filter((s) => s?.connected);
+            for (const s of sockets) (s.volatile ?? s).emit(event, out);
             return;
         }
-        (this.socket as any)?.emit(event, out);
+        if ((this.socket as any)?.connected || !this.relaySocket?.connected) (this.socket as any)?.emit(event, out);
+        if (this.relaySocket?.connected) this.relaySocket.emit(event, out);
     }, (n) => {
         // Web-terminal agent transitions (turn finished / waiting for input)
         // → account webhook, via the server's /v1/webhook/notify. This is the
@@ -792,6 +797,7 @@ export class ApiMachineClient {
             path: '/v1/updates',
             reconnection: false,
         });
+        this.bindRealtimeHandlers(this.socket, 'control');
 
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
@@ -832,47 +838,18 @@ export class ApiMachineClient {
             this.rpcHandlerManager.onSocketConnect(this.socket);
             this.syncResumeSessionRpcRegistration();
             this.startKeepAlive();
+            void this.refreshRelayConnection();
         });
 
         this.socket.on('disconnect', (reason) => {
             logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
-            this.rpcHandlerManager.onSocketDisconnect();
+            this.rpcHandlerManager.onSocketDisconnect(this.socket);
             // No web view can reach us while the socket is down → drop all terminal
             // subscriber counts to 0 so a blip/crash can't inflate them and wedge a
             // pty un-reapable. Views re-subscribe on reconnect (++ from 0).
-            this.webTerminal.resetSubscribers();
+            if (!this.relaySocket?.connected) this.webTerminal.resetSubscribers();
             this.stopKeepAlive();
             this.startSmartReconnect();
-        });
-
-        // Single consolidated RPC handler
-        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
-            logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
-            callback(await this.rpcHandlerManager.handleRequest(data));
-        });
-
-        // Web terminal byte stream (relayed by server, already account-scoped).
-        this.socket.on('terminal-input', (data) => {
-            let payload = data.data;
-            if (data.enc) {
-                // Encrypted keystrokes — decrypt with the per-machine key. If it
-                // can't be decrypted, drop it; never guess/write plaintext.
-                const dec = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(data.data));
-                if (typeof dec !== 'string') return;
-                payload = dec;
-            }
-            this.webTerminal.write(data.terminalId, payload);
-        });
-        this.socket.on('terminal-resize', (data) => {
-            this.webTerminal.resize(data.terminalId, data.cols, data.rows);
-        });
-        // A web view stopped watching: unsubscribe, don't kill. The daemon keeps
-        // the pty + authoritative screen alive so any device can reattach; the
-        // encTerminals flag is kept (a reconnect re-negotiates encStream anyway,
-        // and killSession clears it). Only the sidebar's explicit delete
-        // (kill-terminal) truly destroys the terminal.
-        this.socket.on('terminal-close', (data) => {
-            this.webTerminal.unsubscribe(data.terminalId);
         });
 
         // Handle update events from server
@@ -919,6 +896,7 @@ export class ApiMachineClient {
                 logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
             }
             this.socket.emit('machine-alive', payload);
+            void this.refreshRelayConnection();
 
             // Re-detect CLI availability and push metadata update if changed
             const newAvailability = detectCLIAvailability();
@@ -943,6 +921,69 @@ export class ApiMachineClient {
             }
         }, 20000);
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
+    }
+
+    private bindRealtimeHandlers(socket: Socket, transport: 'control' | 'regional-relay') {
+        socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+            logger.debugLargeJson(`[API MACHINE] Received RPC request via ${transport}:`, data);
+            callback(await this.rpcHandlerManager.handleRequest(data));
+        });
+        socket.on('terminal-input', (data: any) => {
+            let payload = data.data;
+            if (data.enc) {
+                const dec = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(data.data));
+                if (typeof dec !== 'string') return;
+                payload = dec;
+            }
+            this.webTerminal.write(data.terminalId, payload);
+        });
+        socket.on('terminal-resize', (data: any) => this.webTerminal.resize(data.terminalId, data.cols, data.rows));
+        socket.on('terminal-close', (data: any) => this.webTerminal.unsubscribe(data.terminalId));
+    }
+
+    private async refreshRelayConnection(): Promise<void> {
+        if (this.relayRefreshInFlight) return this.relayRefreshInFlight;
+        this.relayRefreshInFlight = (async () => {
+            const selected = await discoverAndClaimRelay({
+                controlUrl: configuration.serverUrl,
+                token: this.token,
+                machineId: this.machine.id,
+            });
+            if (!selected) return;
+            const previousUrl = this.relayAssignment?.url;
+            this.relayAssignment = selected.assignment;
+            const probe = selected.probes.find((item) => item.relayId === selected.assignment.relayId);
+            logger.debug(`[API MACHINE] Regional relay selected: ${selected.assignment.relayId} (${selected.assignment.region}), RTT ${probe ? Math.round(probe.rttMs) : 'unknown'}ms`);
+            if (this.relaySocket && previousUrl === selected.assignment.url) {
+                this.relaySocket.auth = { token: selected.assignment.token };
+                if (this.relaySocket.connected) return;
+            }
+            if (this.relaySocket) {
+                this.rpcHandlerManager.onSocketDisconnect(this.relaySocket);
+                this.relaySocket.disconnect();
+            }
+            const relaySocket = io(selected.assignment.url, {
+                transports: ['websocket'],
+                path: '/v1/relay',
+                auth: { token: selected.assignment.token },
+                reconnection: true,
+                reconnectionDelay: 500,
+                reconnectionDelayMax: 5_000,
+            });
+            this.relaySocket = relaySocket;
+            this.bindRealtimeHandlers(relaySocket, 'regional-relay');
+            relaySocket.on('connect', () => {
+                if (this.relaySocket !== relaySocket) return;
+                this.rpcHandlerManager.onSocketConnect(relaySocket);
+                this.syncResumeSessionRpcRegistration();
+                logger.debug(`[API MACHINE] Connected to regional relay ${selected.assignment.relayId}`);
+            });
+            relaySocket.on('disconnect', () => {
+                this.rpcHandlerManager.onSocketDisconnect(relaySocket);
+                if (!this.socket?.connected) this.webTerminal.resetSubscribers();
+            });
+        })().finally(() => { this.relayRefreshInFlight = null; });
+        return this.relayRefreshInFlight;
     }
 
     private startSmartReconnect() {
@@ -987,6 +1028,12 @@ export class ApiMachineClient {
         if (this.socket) {
             this.socket.close();
             logger.debug('[API MACHINE] Socket closed');
+        }
+        if (this.relaySocket) {
+            this.rpcHandlerManager.onSocketDisconnect(this.relaySocket);
+            this.relaySocket.close();
+            this.relaySocket = null;
+            logger.debug('[API MACHINE] Regional relay socket closed');
         }
     }
 }

@@ -4,6 +4,8 @@ import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
+import { RelayAssignmentResponseSchema, type RelayAssignment } from '@slopus/happy-wire';
+import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -49,6 +51,14 @@ export interface SyncSocketState {
 
 export type SyncSocketListener = (state: SyncSocketState) => void;
 
+export type MachineRelayStatus = {
+    transport: 'legacy' | 'regional';
+    state: 'connecting' | 'connected' | 'fallback';
+    relayId?: string;
+    region?: string;
+    rttMs?: number;
+};
+
 //
 // Main Class
 //
@@ -63,6 +73,11 @@ class ApiSocket {
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+    private relaySockets = new Map<string, Socket>();
+    private relayConnecting = new Map<string, Promise<Socket | null>>();
+    private relayRetryAfter = new Map<string, number>();
+    private relayStatuses = new Map<string, MachineRelayStatus>();
+    private relayStatusListeners = new Set<(machineId: string, status: MachineRelayStatus) => void>();
 
     //
     // Initialization
@@ -112,6 +127,10 @@ class ApiSocket {
             this.socket.disconnect();
             this.socket = null;
         }
+        for (const socket of this.relaySockets.values()) socket.disconnect();
+        this.relaySockets.clear();
+        this.relayConnecting.clear();
+        this.relayRetryAfter.clear();
         this.updateStatus('disconnected');
     }
 
@@ -130,6 +149,15 @@ class ApiSocket {
         listener(this.currentStatus);
         return () => this.statusListeners.delete(listener);
     };
+
+    onMachineRelayStatus = (listener: (machineId: string, status: MachineRelayStatus) => void) => {
+        this.relayStatusListeners.add(listener);
+        return () => { this.relayStatusListeners.delete(listener); };
+    };
+
+    getMachineRelayStatus(machineId: string): MachineRelayStatus {
+        return this.relayStatuses.get(machineId) ?? { transport: 'legacy', state: 'fallback' };
+    }
 
     //
     // Message Handling
@@ -187,12 +215,30 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!
+        const relaySocket = await this.ensureMachineRelay(machineId);
+        const encryptedParams = await machineEncryption.encryptRaw(params);
+        const call = (socket: Socket) => socket
             .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
             .emitWithAck('rpc-call', {
                 method: `${machineId}:${method}`,
-                params: await machineEncryption.encryptRaw(params)
+                params: encryptedParams
             });
+        let result: any;
+        try {
+            result = await call(relaySocket ?? this.socket!);
+            if (relaySocket && !result?.ok) throw new Error(result?.error || 'Regional relay RPC failed');
+        } catch (error) {
+            if (!relaySocket) throw error;
+            relaySocket.close();
+            if (this.relaySockets.get(machineId) === relaySocket) this.relaySockets.delete(machineId);
+            this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            // The relay may have delivered a mutating RPC even when its ack was
+            // lost. Retrying inside the same call could spawn/stop/write twice.
+            // Fail this bounded call; the next explicit user action uses the
+            // compatibility path during the cooldown.
+            throw error;
+        }
 
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
@@ -209,6 +255,13 @@ class ApiSocket {
     }
 
     send(event: string, data: any) {
+        if (isMachineRealtimeEvent(event) && typeof data?.machineId === 'string') {
+            const relay = this.relaySockets.get(data.machineId);
+            if (relay?.connected) {
+                relay.emit(event, data);
+                return true;
+            }
+        }
         this.socket!.emit(event, data);
         return true;
     }
@@ -281,6 +334,93 @@ class ApiSocket {
         }
     }
 
+    private updateRelayStatus(machineId: string, status: MachineRelayStatus) {
+        this.relayStatuses.set(machineId, status);
+        for (const listener of this.relayStatusListeners) listener(machineId, status);
+    }
+
+    private async ensureMachineRelay(machineId: string): Promise<Socket | null> {
+        const existing = this.relaySockets.get(machineId);
+        if (existing?.connected) return existing;
+        if ((this.relayRetryAfter.get(machineId) ?? 0) > Date.now()) return null;
+        const inFlight = this.relayConnecting.get(machineId);
+        if (inFlight) return inFlight;
+        const connecting = this.connectMachineRelay(machineId).finally(() => this.relayConnecting.delete(machineId));
+        this.relayConnecting.set(machineId, connecting);
+        return connecting;
+    }
+
+    private async connectMachineRelay(machineId: string): Promise<Socket | null> {
+        if (!this.config) return null;
+        this.updateRelayStatus(machineId, { transport: 'regional', state: 'connecting' });
+        let assignment: RelayAssignment | null = null;
+        try {
+            const response = await fetch(`${this.config.endpoint}/v1/relays/machines/${encodeURIComponent(machineId)}`, {
+                headers: { Authorization: `Bearer ${this.config.token}`, 'X-Happy-Client': getHappyClientId() },
+                cache: 'no-store',
+            });
+            if (!response.ok) throw new Error(`relay discovery failed (${response.status})`);
+            assignment = RelayAssignmentResponseSchema.parse(await response.json()).assignment;
+        } catch {
+            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            return null;
+        }
+        if (!assignment) {
+            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            return null;
+        }
+
+        const socket = io(assignment.url, {
+            path: '/v1/relay',
+            auth: { token: assignment.token },
+            transports: ['websocket'],
+            reconnection: false,
+            timeout: 5_000,
+        });
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('relay connect timeout')), 5_000);
+                socket.once('connect', () => { clearTimeout(timer); resolve(); });
+                socket.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
+            });
+        } catch {
+            socket.close();
+            this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            return null;
+        }
+
+        this.relaySockets.get(machineId)?.close();
+        this.relaySockets.set(machineId, socket);
+        socket.onAny((event, data) => {
+            if (this.relaySockets.get(machineId) !== socket) return;
+            const handler = this.messageHandlers.get(event);
+            if (handler) handler(data);
+        });
+        socket.on('disconnect', () => {
+            if (this.relaySockets.get(machineId) !== socket) return;
+            this.relaySockets.delete(machineId);
+            this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+        });
+        const startedAt = performance.now();
+        let rttMs: number | undefined;
+        try {
+            await socket.timeout(3_000).emitWithAck('relay-ping', { sentAt: Date.now() });
+            rttMs = Math.max(0, performance.now() - startedAt);
+        } catch { /* connection itself is still usable */ }
+        if (!socket.connected || this.relaySockets.get(machineId) !== socket) return null;
+        this.relayRetryAfter.delete(machineId);
+        this.updateRelayStatus(machineId, {
+            transport: 'regional',
+            state: 'connected',
+            relayId: assignment.relayId,
+            region: assignment.region,
+            rttMs,
+        });
+        return socket;
+    }
+
     private setupEventHandlers() {
         if (!this.socket) return;
 
@@ -323,6 +463,8 @@ class ApiSocket {
             if (this.isVerboseLogging()) {
                 console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
             }
+            if (shouldIgnoreLegacyRealtime(event, data?.machineId,
+                typeof data?.machineId === 'string' && this.relaySockets.get(data.machineId)?.connected === true)) return;
             const handler = this.messageHandlers.get(event);
             if (handler) {
                 handler(data);

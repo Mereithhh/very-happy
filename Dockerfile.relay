@@ -1,0 +1,36 @@
+# Regional relay image: database-free and intentionally separate from the
+# control/web image in Dockerfile.server.
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS deps
+
+RUN apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY scripts ./scripts
+COPY patches ./patches
+RUN mkdir -p packages/happy-server packages/happy-wire
+COPY packages/happy-server/package.json packages/happy-server/
+COPY packages/happy-wire/package.json packages/happy-wire/
+COPY packages/happy-server/prisma packages/happy-server/prisma
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --filter very-happy-server...
+
+FROM deps AS builder
+COPY packages/happy-wire/tsconfig.json packages/happy-wire/
+COPY packages/happy-wire/src packages/happy-wire/src
+COPY packages/happy-server/tsconfig.json packages/happy-server/
+COPY packages/happy-server/sources packages/happy-server/sources
+COPY packages/happy-server/scripts packages/happy-server/scripts
+RUN pnpm --filter @slopus/happy-wire build \
+    && pnpm --filter very-happy-server deploy --prod --legacy /runtime
+
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5 AS runner
+WORKDIR /app
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3010
+COPY --from=builder /runtime/node_modules /app/node_modules
+COPY --from=builder /repo/packages/happy-server/sources /app/sources
+USER node
+EXPOSE 3010
+CMD ["/app/node_modules/.bin/tsx", "/app/sources/standalone.ts", "relay"]

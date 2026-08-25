@@ -13,18 +13,20 @@ commits or tags to it and do not use it as a deployment source.
 
 | Role | Runtime |
 |---|---|
-| Web + server | `hw-sg`, `/opt/happy/docker-compose.yml`, container `happy-server` |
+| Web + server | `vh-us`, `/opt/happy/docker-compose.yml`, container `happy-server` |
 | Public endpoint | `https://veryhappy.dev`, Caddy TLS proxy to `127.0.0.1:3005` |
 | Production Web | `packages/happy-web-v2`, served from `/opt/happy/webapp` |
 | Server source overlay | `/opt/happy-src/packages/happy-server/{sources,prisma/migrations}` |
-| Database | PGlite in a Docker named volume |
+| Database | External PostgreSQL in the colocated `happy-postgres` container |
 | Daemon | published `very-happy-cli` on `mac-office` |
+| Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
+| US relay | `us-fb`, `https://relay-us.veryhappy.dev`, k3s + Traefik on `fb-us`/`k8sus` |
 
 The hosted service is server-trusted, not E2E. The server can recover account
 secrets and relay remote execution to a user's connected daemon. Treat access to
-hw-sg, its environment, backups and deploy key as high impact.
+vh-us, its environment, backups and deploy key as high impact.
 
-Production secret values live only in hw-sg `/opt/happy/.env`. Documentation and
+Production secret values live only on vh-us in `/opt/happy/.env`. Documentation and
 Git contain variable names only. Relevant variables include
 `HANDY_MASTER_SECRET`, signup policy/capacity, VAPID credentials, Google Client ID
 and Origin allowlist. Never copy the environment file into an agent transcript.
@@ -66,7 +68,11 @@ schema-dependent source and fails closed if a hand-edited deployment has removed
 it. After a server deployment, run `vh-update` on mac-office until B-001 is fixed;
 a half-open daemon connection may otherwise fail to re-register RPCs.
 
-### PGlite process exclusivity and incident recovery
+### Standalone PGlite process exclusivity and incident recovery
+
+The maintainer Cloud uses external PostgreSQL. This section applies only to
+standalone/self-host deployments that omit `DATABASE_URL`; do not use PGlite
+recovery commands against the production `happy-postgres` service.
 
 Never open a live PGlite directory from a second Node/Bun/PGlite process—not even
 for a read-only integrity query. PGlite's PostgreSQL `postmaster.pid` is not a
@@ -98,11 +104,47 @@ its advisory-lock and durability semantics are outside this deployment contract.
 `/opt/happy/.env`, recreate the service:
 
 ```bash
-ssh hw-sg 'cd /opt/happy && docker compose up -d happy-server'
+ssh vh-prod 'cd /opt/happy && docker compose up -d happy-server'
 ```
+
+`vh-prod` is the operator's local alias for the active production origin. The
+legacy `hw-sg` alias is retired and must not be used for deployment.
 
 For the official Google login configuration, also confirm the exact Web origin
 in Google Cloud Console. See [`deployment.md`](deployment.md#environment-variables).
+
+### Regional relay rollout
+
+Regional relays are independent `happy-server relay` processes. They must not
+receive the control server's database URL, storage credentials, or
+`HANDY_MASTER_SECRET`. Each needs only its public id/region, bind address, and the
+dedicated `RELAY_TOKEN_SECRET` shared with control.
+
+Roll out in this order:
+
+1. Generate/store one dedicated relay signing secret outside Git.
+2. Start every planned relay behind HTTPS with `RELAY_ID`, `RELAY_REGION`,
+   `RELAY_TOKEN_SECRET`, `HOST`, and `PORT`.
+3. Verify each public `/health` returns the exact configured id and region; then
+   run the repository relay Socket.IO integration test against the release SHA.
+4. Add only those verified origins to control `HAPPY_RELAYS_JSON`, add the same
+   `RELAY_TOKEN_SECRET`, and recreate—not merely restart—the control container.
+5. Update Web, then CLI/daemon. Confirm the terminal header shows the expected
+   relay id and RTT, and verify terminal input/output plus machine RPC.
+
+The emergency rollback is to clear `HAPPY_RELAYS_JSON` and recreate control;
+new clients then use the compatibility path. Relay processes can be stopped only
+after that configuration is live. The current in-memory assignment registry is
+for a single control replica; do not claim control-plane HA until the registry is
+moved to shared storage.
+
+Relay images are deployed from merged `main` with the manual GitHub-hosted
+`deploy-relays.yml` workflow (`all | sg | us`). The workflow builds
+[`Dockerfile.relay`](../Dockerfile.relay), uses a dedicated deploy key, and never
+creates or rotates `RELAY_TOKEN_SECRET`. The one-time secret and reverse-proxy
+setup must already exist. `hw-sg` binds the container on `127.0.0.1:3011`
+because port 3010 belongs to another service; k3s keeps the relay's container
+port at 3010.
 
 ### Web static swap and cache safety
 

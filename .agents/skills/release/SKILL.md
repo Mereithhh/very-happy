@@ -1,11 +1,11 @@
 ---
 name: release
-description: Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to hw-sg, update the mac-office daemon, verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
+description: Release and deploy very-happy: publish the very-happy-cli npm package from v* tags, deploy happy-web-v2 and happy-server to the active production host, update the mac-office daemon, verify production, and roll back. Use when asked to release, publish, deploy, ship, roll back, or update production.
 ---
 
 # very-happy release
 
-Production is `veryhappy.dev`: server + Web V2 on hw-sg, published CLI on
+Production is `veryhappy.dev`: server + Web V2 on vh-us, published CLI on
 npm, daemon on mac-office. `docs/operations.md` is the topology/runbook source;
 `docs/PROCESS.md` is the gate/process source.
 
@@ -17,8 +17,8 @@ release commit or tag to it, and never trigger a deployment from it.
 
 Release targets are:
 
-- `server`: sync server sources + migrations to hw-sg.
-- `web`: build and atomically swap `happy-web-v2` on hw-sg.
+- `server`: sync server sources + migrations to the active production host.
+- `web`: build and atomically swap `happy-web-v2` on the active production host.
 - `cli`: publish `very-happy-cli` from a `vX.Y.Z` tag.
 - `daemon`: install the published CLI and restart mac-office via `vh-update`.
 - `all`: normally server → web → CLI → daemon, modified only by a spec's
@@ -67,11 +67,15 @@ manual and deploys only checked-out repository state. Release from merged
 `main`; do not assume pushing a feature branch changes the workflow's checkout.
 
 Environment changes are different: `docker compose restart` does not reread
-`env_file`. Apply them on hw-sg with:
+`env_file`. Apply them through the verified `vh-prod` local alias with:
 
 ```bash
-ssh hw-sg 'cd /opt/happy && docker compose up -d happy-server'
+ssh vh-prod 'cd /opt/happy && docker compose up -d happy-server'
 ```
+
+The legacy `hw-sg` SSH alias points at the retired origin and must never be used
+for production deployment. If `vh-prod` is absent or does not resolve to the
+current `veryhappy.dev` origin, stop and establish the exact target first.
 
 After any server deploy, run `vh-update` on mac-office until backlog B-001 is
 fixed, because a half-open daemon socket may fail to re-register RPCs.
@@ -115,7 +119,7 @@ declaring a mixed-version failure. Complete relevant items in
 
 ## Rollback
 
-- Web: restore hw-sg `/opt/happy/webapp.prev` or redeploy the prior commit.
+- Web: restore vh-us `/opt/happy/webapp.prev` or redeploy the prior commit.
 - Server: revert the server commit, redeploy, then `vh-update`.
 - CLI/daemon: `npm i -g very-happy-cli@<previous>` and restart the daemon.
 - Database: migrations must be forward-compatible; never improvise a destructive

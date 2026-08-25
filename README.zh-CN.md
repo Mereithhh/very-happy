@@ -319,15 +319,40 @@ Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
 适配器必须负责发送者授权、固定工作区策略、去重、限流与最小权限执行。传入消息只是输入，
 永远不能自行构成授权。
 
+### 区域实时面与账号数据面分离
+
+账号与数据库服务可以集中部署，延迟敏感的终端字节流和 machine RPC 则走 operator 配置的
+区域 relay。daemon 会并行探测所有健康候选，并锚定实测 RTT 最低的节点；浏览器凭短期、
+machine-scoped token 跟随同一 assignment。终端标题栏会直接显示当前 relay 与浏览器到 relay
+的 RTT。
+
 ```text
-浏览器 / PWA  ⇄  Cloud 或自托管中继  ⇄  机器 daemon
+浏览器 / PWA ───────── 持久同步 ────────> control + data + Postgres
+      │                                      ▲
+      └── scoped token ──> regional relay ───┘ 只交换 assignment
+                               │
+                         RPC + 终端字节流
+                               │
+                          machine daemon
+```
+
+选择依据是实测网络，不是 GeoIP 猜测；relay 也不需要数据库凭据。discovery 或区域 relay
+失败时，新客户端会回退到兼容的 control-server 路径。自托管 operator 自己决定部署哪些
+区域；托管 Cloud 实际有哪些 PoP 是运维事实，不等于默认承诺全球 SLA。未来 WebRTC 直连
+会复用同一 transport seam，区域 relay 继续作为 fallback。
+
+```text
+浏览器 / PWA  ⇄  区域实时 relay  ⇄  机器 daemon
+      │                                  │
+      └──────── control / data server ───┘
                                          │
                        ┌─────────────────┼─────────────┐
                        ▼                 ▼             ▼
                   结构化 Agent         真实 TTY      文件 / 任务
 ```
 
-中继同步工作区状态，并转发 RPC/socket 流量。继承自 Happy 的加密信封仍然提供纵深防御，但
+control/data server 同步工作区状态，区域实时面转发延迟敏感的 machine RPC 与终端流量。
+继承自 Happy 的加密信封仍然提供纵深防御，但
 Very Happy 服务器可以恢复账号密钥。传输/存储加密并不代表中继是零知识系统。请阅读
 [架构](docs/architecture.md)与[安全说明](docs/security.md)。
 

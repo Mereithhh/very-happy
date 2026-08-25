@@ -31,6 +31,8 @@ import { injectRuntimeConfig, runtimeConfigScript } from './htmlConfigInjection'
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configuredResourceLimit } from './resourceLimits';
+import { relayRoutes } from './routes/relayRoutes';
+import { relayFeatureConfig } from '@/app/relay/relayConfig';
 
 export interface StartApiOptions {
     port?: number;
@@ -44,6 +46,10 @@ export async function startApi(opts: StartApiOptions = {}) {
 
     // Configure
     log('Starting API...');
+    // Parse once at startup so a configured relay fleet with a missing/weak
+    // signing secret fails before accepting traffic instead of surfacing as a
+    // request-time 500.
+    relayFeatureConfig();
 
     // Start API
     const configuredBodyLimit = configuredResourceLimit('HTTP_BODY_LIMIT_BYTES', 1024 * 1024);
@@ -122,6 +128,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     kvRoutes(typed);
     v3SessionRoutes(typed);
     attachmentRoutes(typed);
+    relayRoutes(typed);
 
     // Static webapp (self-host mode)
     if (opts.staticDir) {

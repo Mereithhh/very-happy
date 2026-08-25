@@ -83,6 +83,8 @@ guides.
 | `HANDY_MASTER_SECRET` | Yes | - | Master secret for auth/encryption |
 | `PUBLIC_URL` | No | `http://localhost:3005` | Public base URL for file URLs sent to clients |
 | `PORT` | No | `3005` | Server port |
+| `HAPPY_RELAYS_JSON` | No | disabled | Control-mode candidate origins: JSON array of `{id,url,region}` |
+| `RELAY_TOKEN_SECRET` | With regional relays | - | Dedicated shared signing secret; never reuse `HANDY_MASTER_SECRET` |
 | `DATA_DIR` | No | `/data` in the Docker image; `./data` for the bare package | Base data directory |
 | `PGLITE_DIR` | No | `<DATA_DIR>/pglite` | PGlite database directory |
 | `SIGNUP_MODE` | No | `closed` | Account signup mode: `open`, `invite`, or `closed`; opening registration must be explicit |
@@ -138,6 +140,32 @@ First deliver and consume a real code, verify Google too if it is your fallback,
 then recreate the server with password login disabled. Startup fails closed if
 password login is disabled while neither email nor Google is configured, or if
 any password identity still has no email/Google identity on the same Account.
+
+### Optional: Regional realtime relays
+
+Run the control/data server with a dedicated signing secret and a finite candidate
+list:
+
+```bash
+export RELAY_TOKEN_SECRET='<dedicated-high-entropy-secret>'
+export HAPPY_RELAYS_JSON='[{"id":"relay-a","url":"https://relay-a.example.com","region":"region-a"}]'
+```
+
+Run each relay from the same server package without database or storage credentials:
+
+```bash
+RELAY_ID=relay-a \
+RELAY_REGION=region-a \
+RELAY_TOKEN_SECRET='<same-dedicated-secret>' \
+HOST=0.0.0.0 PORT=3010 \
+happy-server relay
+```
+
+Terminate TLS in front of every relay. Verify `/health` before adding an origin
+to `HAPPY_RELAYS_JSON`. Relay mode serves Socket.IO at `/v1/relay`, validates
+short-lived machine-scoped tokens locally, and never needs `DATABASE_URL` or
+`HANDY_MASTER_SECRET`. Clearing the candidate list disables discovery and keeps
+the compatible single-server path.
 
 ### Optional: External Services
 

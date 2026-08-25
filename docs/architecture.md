@@ -8,12 +8,12 @@
  VM / container ────┘        ▲       ▲                   ├─ Gemini / OpenCode / compatible ACP
                              │       │ runner-specific   ├─ OpenClaw gateway
                     MCP tools┘       │                   └─ shell / xterm-compatible text TUI
-                                     │ account RPC
+                                     │ durable control
                                      ▼
-                         trusted happy-server ── database / files / optional Redis
+                         control/data server ── database / files / optional Redis
                                ▲         ▲
                                │         └─ API / webhooks
-                               │ HTTPS + Socket.IO
+                               │ HTTPS + durable Socket.IO
                          Web V2 / installed PWA
                          desktop · tablet · phone
 ```
@@ -27,6 +27,34 @@ provider-neutral automatic router. Cross-provider delegation remains roadmap wor
 - `packages/happy-cli`: local daemon, agent launcher, terminal bridge, and RPC
   implementation.
 - `packages/happy-wire`: shared compatibility schemas.
+
+### Regional realtime relay plane
+
+Latency-sensitive terminal bytes and machine RPC can leave the central
+control/data path without moving account state or PostgreSQL:
+
+```text
+Web / PWA ───────── durable sync ────────> control/data + Postgres
+    │                                          ▲
+    └── short-lived scoped token ──> regional relay <── machine assignment
+                                           │
+                                     RPC + terminal bytes
+                                           │
+                                      machine daemon
+```
+
+The operator supplies a finite relay candidate list. The daemon probes every
+healthy candidate in parallel and anchors to the lowest measured RTT; region is
+only an operator-facing label, not a GeoIP routing decision. The browser asks
+the control plane for that machine's current assignment and connects to the same
+relay. Relay tokens are short-lived and scoped to one account, machine, relay,
+and client role. A relay validates them locally and needs no database credential.
+
+The first version keeps assignments in the single control process with a short
+TTL refreshed by daemon heartbeat. Multi-control HA requires moving that registry
+to shared storage. Discovery/relay failure falls back to the legacy control
+socket during the compatibility window. Future WebRTC DataChannel transport can
+occupy the same realtime seam, with regional relay as fallback.
 
 The legacy Expo/Tauri `packages/happy-app` is retained as an experimental seed
 for a possible future desktop client. It is not a supported production client in

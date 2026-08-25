@@ -1,0 +1,46 @@
+name: Deploy regional relays
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Relay region to deploy
+        type: choice
+        options: [all, sg, us]
+        default: all
+
+concurrency:
+  group: deploy-regional-relays
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require merged main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build immutable relay image
+        run: docker build -f Dockerfile.relay -t "very-happy-relay:${GITHUB_SHA}" .
+      - name: Configure SSH
+        run: |
+          umask 077
+          printf '%s\n' '${{ secrets.RELAY_SSH_KEY }}' > '${{ runner.temp }}/relay_key'
+          chmod 600 '${{ runner.temp }}/relay_key'
+      - name: Deploy
+        env:
+          SSH_KEY: ${{ runner.temp }}/relay_key
+          RELAY_SG_HOST: ${{ secrets.RELAY_SG_HOST }}
+          RELAY_SG_PORT: ${{ secrets.RELAY_SG_PORT }}
+          RELAY_SG_USER: ${{ secrets.RELAY_SG_USER }}
+          RELAY_US_HOST: ${{ secrets.RELAY_US_HOST }}
+          RELAY_US_PORT: ${{ secrets.RELAY_US_PORT }}
+          RELAY_US_USER: ${{ secrets.RELAY_US_USER }}
+        run: bash scripts/ci/deploy-relays.sh '${{ inputs.target }}'
+      - name: Remove SSH key
+        if: always()
+        run: rm -f '${{ runner.temp }}/relay_key'

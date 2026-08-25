@@ -11,8 +11,8 @@ This document describes generic self-hosting. Maintainer production details for
 | Full infrastructure | External Postgres | Optional Redis | Local or S3-compatible | Multiple processes/replicas and managed infrastructure |
 
 Both modes run Fastify + Socket.IO on port 3005 and can expose Prometheus metrics
-on a separate port. The maintainer Cloud currently uses the standalone/PGlite
-shape inside Docker; Postgres/Redis/S3 are not universally required.
+on a separate port. The maintainer Cloud currently uses external PostgreSQL in
+Docker; Postgres/Redis/S3 are not universally required for self-hosting.
 
 Before exposing an instance, read [`security.md`](security.md), set an explicit
 `SIGNUP_MODE` and `SIGNUP_MAX_ACCOUNTS`, configure exact proxy trust, and keep the
@@ -45,7 +45,7 @@ dependency surface. Do not install the upstream-owned
    - For local k8s dev, a MinIO pod is deployed via `deploy/overlays/local/minio.yaml`.
 
 ## Environment variables
-**Required in every mode**
+**Required in control/data mode**
 - `HANDY_MASTER_SECRET`: master key for auth tokens and server-side encryption.
 
 **Standalone storage**
@@ -56,6 +56,12 @@ dependency surface. Do not install the upstream-owned
 - `DATABASE_URL`: external Postgres connection string.
 - `REDIS_URL`: optional Redis connection string.
 - `S3_HOST`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_PUBLIC_URL`: S3-compatible object storage. Without `S3_HOST`, files use local storage.
+
+**Optional regional realtime plane**
+- `HAPPY_RELAYS_JSON`: control-server JSON array of `{ "id", "url", "region" }` relay origins.
+- `RELAY_TOKEN_SECRET`: high-entropy secret shared only by the control server and regional relays; do not reuse `HANDY_MASTER_SECRET`.
+- Relay processes run `happy-server relay` with `RELAY_ID`, `RELAY_REGION`, the same `RELAY_TOKEN_SECRET`, `HOST`, and `PORT`. Relay mode does not require `HANDY_MASTER_SECRET`, `DATABASE_URL`, or storage credentials.
+- Every relay URL must be an HTTPS origin in production and expose `/health` plus Socket.IO `/v1/relay`. Deploy and verify all candidates before enabling `HAPPY_RELAYS_JSON`; clearing the variable returns new clients to the legacy control path.
 
 **Common**
 - `PORT`: API server port (default `3005`).
@@ -144,6 +150,11 @@ The same origin must be listed under **Authorized JavaScript origins** in Google
 
 ## Docker image
 A production Dockerfile is provided at `Dockerfile.server`.
+
+Operators who split realtime traffic into regional data-plane processes can
+build the database-free image from `Dockerfile.relay`. Maintainer deployment
+manifests for Docker/Caddy and k3s/Traefik live under `ops/relay/`; they are
+examples of topology, not a source for signing secrets.
 
 Key notes:
 - The server defaults to port `3005` (set `PORT` explicitly in container environments).
