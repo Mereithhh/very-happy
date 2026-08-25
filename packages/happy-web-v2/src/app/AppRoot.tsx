@@ -14,7 +14,7 @@ import {
 import type { AuthStatus } from '@/auth/AuthContext';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncLock, syncRestore } from '@/sync/sync';
-import { ThemeProvider, ToastProvider, Spinner } from '@/ui';
+import { ThemeProvider, ToastProvider, Spinner, Button } from '@/ui';
 import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
@@ -28,6 +28,8 @@ import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
+import { Link } from 'react-router-dom';
+import { E2eeUnlockError } from '@/auth/e2eeRuntime';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -72,15 +74,34 @@ function RequireAuth() {
 }
 
 function RootGate() {
-  const { isAuthenticated, isUnlocked } = useAuth();
+  const { isAuthenticated, isUnlocked, status, logout } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
   if (!isUnlocked) {
+    const unavailable = status === 'authenticated-unavailable';
     return (
       <main className="auth-page" data-testid="e2ee-locked">
-        <section className="auth-card" aria-live="polite">
-          <h1>Encrypted device locked</h1>
-          <p>Your account is authenticated, but this browser needs its local E2EE keys before sync can start.</p>
+        <section className="auth-card auth-card--recovery" aria-live="polite">
+          <div className="auth-eyebrow eyebrow">
+            {unavailable ? 'RELAY UNAVAILABLE' : 'LOCAL KEYS UNAVAILABLE'}
+          </div>
+          <h1 className="auth-recovery-title">
+            {unavailable ? 'Your keys are safe. Sync could not start.' : 'This browser is locked.'}
+          </h1>
+          <p className="auth-recovery-copy">
+            {unavailable
+              ? 'Check the relay status or your network, then retry. Your encrypted vault remains local and no downgrade was attempted.'
+              : 'Sync is stopped and no encrypted account data has been requested. Sign in again to approve a fresh browser with your recovery code.'}
+          </p>
+          {unavailable ? (
+            <Button variant="primary" fullWidth onClick={() => window.location.reload()}>Retry connection</Button>
+          ) : (
+            <Button variant="primary" fullWidth onClick={() => void logout()}>
+              Sign in and recover this browser
+            </Button>
+          )}
+          {unavailable && <Button variant="ghost" fullWidth onClick={() => void logout()}>Sign out locally</Button>}
+          <div className="auth-help"><Link to="/docs/security">How encrypted device recovery works</Link></div>
         </section>
       </main>
     );
@@ -211,8 +232,13 @@ export function AppRoot() {
             if (cancelled) return;
             syncLock();
             setCreds(stored);
-            setAuthStatus('authenticated-locked');
-            console.warn('[bootstrap] E2EE session requires local unlock');
+            if (error instanceof E2eeUnlockError) {
+              setAuthStatus('authenticated-locked');
+              console.warn('[bootstrap] E2EE session requires local unlock');
+            } else {
+              setAuthStatus('authenticated-unavailable');
+              console.warn('[bootstrap] E2EE relay unavailable; local keys remain locked in memory');
+            }
           }
         }
       } catch (e) {

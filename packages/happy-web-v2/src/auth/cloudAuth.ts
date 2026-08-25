@@ -14,6 +14,11 @@ export interface PublicAuthConfig {
         remainingAccounts: number | null;
         atCapacity: boolean;
     };
+    /** Absent only on a pre-E2EE server. */
+    e2ee?: {
+        enabled: boolean;
+        required: boolean;
+    };
 }
 
 export interface GoogleLoginChallenge {

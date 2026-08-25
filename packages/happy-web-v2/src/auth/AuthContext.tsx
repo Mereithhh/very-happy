@@ -16,7 +16,11 @@ import { revokeCloudLogin } from '@/auth/cloudAuth';
 import { E2eeIndexedDbKeyVault } from './e2eeVault';
 import { establishE2eeLogin } from './e2eeLoginLifecycle';
 
-export type AuthStatus = 'anonymous' | 'authenticated-locked' | 'authenticated-unlocked';
+export type AuthStatus =
+    | 'anonymous'
+    | 'authenticated-locked'
+    | 'authenticated-unavailable'
+    | 'authenticated-unlocked';
 
 interface AuthContextType {
     isAuthenticated: boolean;
