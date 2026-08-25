@@ -14,6 +14,7 @@
 .pub-hero-copy { position: relative; z-index: 2; }
 .pub-hero-copy h1 { max-width: 760px; margin: var(--sp-5) 0 var(--sp-6); font-size: clamp(56px, 7.3vw, 96px); line-height: .88; letter-spacing: -.06em; text-wrap: balance; }
 .pub-hero-copy h1.pub-fleet-title { font-size: clamp(48px, 6.1vw, 82px); }
+.pub-hero-copy h1.pub-fleet-title.is-zh { line-height: .98; }
 .pub-hero-copy h1 span { background: linear-gradient(104deg, var(--text-faint) 0 18%, var(--text-dim) 34%, var(--text) 46%, var(--text-dim) 58%, var(--text-faint) 76% 100%); background-size: 260% 100%; background-clip: text; color: transparent; animation: pub-title-sheen 5.6s cubic-bezier(.45, 0, .2, 1) infinite; }
 .pub-hero-copy > p { max-width: 680px; margin: 0; color: var(--text-dim); font-size: clamp(var(--fs-16), 1.8vw, var(--fs-20)); line-height: 1.6; }
 .pub-hero-thesis { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-5); font-size: var(--fs-11); letter-spacing: .07em; }
