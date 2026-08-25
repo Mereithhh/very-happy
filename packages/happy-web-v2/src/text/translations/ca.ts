@@ -232,7 +232,7 @@ export const ca: PartialTranslationStructure = {
         voiceServiceUnavailable: 'El servei de veu no està disponible temporalment',
         voiceLimitReachedTitle: 'Límit de veu assolit',
         voiceHardLimitReached: ({ hours }: { hours: number }) => `Has utilitzat ${hours}+ hores de veu aquest mes. Aquest és el màxim permès. Pots configurar el teu propi agent ElevenLabs a la configuració de veu per utilitzar la teva pròpia quota.`,
-        voiceConversationLimitReached: 'Has assolit el nombre màxim de converses de veu aquest mes. És possible que en el futur afegim ús de veu sota demanda — si us plau, crea un issue a github.com/nicepkg/happy/issues si arribes a aquest límit.',
+        voiceConversationLimitReached: 'Has assolit el nombre màxim de converses de veu aquest mes. És possible que en el futur afegim ús de veu sota demanda — si us plau, crea un issue a github.com/Mereithhh/very-happy/issues si arribes a aquest límit.',
         oauthInitializationFailed: 'Ha fallat la inicialització del flux OAuth',
         tokenStorageFailed: 'Ha fallat l\'emmagatzematge dels tokens d\'autenticació',
         oauthStateMismatch: 'Ha fallat la validació de seguretat. Si us plau, torna-ho a provar',

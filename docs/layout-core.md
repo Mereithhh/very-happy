@@ -1,6 +1,11 @@
 # Happy Layout — Core Spec
 
-## Current Layout (from code)
+> **Legacy Expo reference.** This is an archived description of the retired
+> `happy-app` layout, not the current Very Happy product UI. Production uses
+> `packages/happy-web-v2`; its Console tokens and components are the current
+> implementation source of truth.
+
+## Historical layout (from the retired Expo code)
 
 Two-column layout using `expo-router/drawer` with `drawerType: 'permanent'` on tablet/desktop.
 

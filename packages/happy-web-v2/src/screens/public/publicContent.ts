@@ -3,6 +3,15 @@ export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://happy.mereith.com/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
 export const LOGIN_COMMAND = 'very-happy auth login';
 export const DAEMON_START_COMMAND = 'very-happy daemon start';
+export const PROVIDER_KEY_COMMAND = `printf 'Anthropic API key: '
+if [ -n "\${ZSH_VERSION:-}" ]; then
+  read -rs "ANTHROPIC_API_KEY?Anthropic API key: "
+else
+  read -rsp "Anthropic API key: " ANTHROPIC_API_KEY
+fi
+printf '\\n'
+export ANTHROPIC_API_KEY
+very-happy doctor`;
 export const PUBLIC_COMMAND_PROOF_EVENT = 'vh:public-command-proof-open';
 
 export type DocBlock =
@@ -44,7 +53,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: '3. Configure Claude credentials', blocks: [
         { type: 'p', text: 'Very Happy bundles the Claude Agent SDK, not Claude usage or a Claude account. For structured sessions, configure ANTHROPIC_API_KEY or a supported Bedrock, Vertex AI, or Foundry environment for the same OS user and startup environment that runs the daemon.' },
-        { type: 'code', code: 'read -rsp "Anthropic API key: " ANTHROPIC_API_KEY\nexport ANTHROPIC_API_KEY\necho\nvery-happy doctor' },
+        { type: 'code', code: PROVIDER_KEY_COMMAND },
         { type: 'note', text: 'Doctor reports only the source category captured from the daemon, never the credential value. A service manager needs the credential in its own secret store or private environment file. Restart the daemon after changing credentials; exporting a value in an unrelated shell does not update an already-running service. The normal path keeps provider credentials local. very-happy connect is a separate relay-upload flow and is not required here.' },
       ] },
       { heading: '4. Create an account', blocks: [

@@ -98,4 +98,13 @@ describe('t() English fallback for partial languages', () => {
       expect(copy, lang).toContain('very-happy');
     }
   });
+
+  it('routes voice quota errors to the Very Happy issue tracker in every locale', () => {
+    for (const lang of ['en', 'ru', 'pl', 'es', 'it', 'pt', 'ca', 'ja', 'zh-Hans', 'zh-Hant'] as const) {
+      setLanguage(lang);
+      const copy = t('errors.voiceConversationLimitReached');
+      expect(copy, lang).toContain('github.com/Mereithhh/very-happy/issues');
+      expect(copy, lang).not.toContain('github.com/nicepkg/happy/issues');
+    }
+  });
 });

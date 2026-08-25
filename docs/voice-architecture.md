@@ -1,5 +1,10 @@
 # Voice Architecture
 
+> **Legacy Expo reference.** This document describes the retired `happy-app`
+> implementation and is retained for historical context only. Production uses
+> `packages/happy-web-v2`; see the public Voice & meta-agent documentation and
+> current Web V2 source before making product or security decisions.
+
 How the ElevenLabs voice assistant integrates with the Happy app, routes messages to sessions, and manages context delivery.
 
 ## Components

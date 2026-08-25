@@ -121,9 +121,13 @@ environment as the daemon**:
 For an interactive first run, avoid placing a key in shell history:
 
 ```bash
-read -rsp "Anthropic API key: " ANTHROPIC_API_KEY
+if [ -n "${ZSH_VERSION:-}" ]; then
+  read -rs "ANTHROPIC_API_KEY?Anthropic API key: "
+else
+  read -rsp "Anthropic API key: " ANTHROPIC_API_KEY
+fi
+printf '\n'
 export ANTHROPIC_API_KEY
-echo
 very-happy doctor
 ```
 

@@ -234,7 +234,7 @@ export const es: PartialTranslationStructure = {
         voiceServiceUnavailable: 'El servicio de voz no está disponible temporalmente',
         voiceLimitReachedTitle: 'Límite de voz alcanzado',
         voiceHardLimitReached: ({ hours }: { hours: number }) => `Has usado ${hours}+ horas de voz este mes. Este es el máximo permitido. Puedes configurar tu propio agente ElevenLabs en la configuración de voz para usar tu propia cuota.`,
-        voiceConversationLimitReached: 'Has alcanzado el número máximo de conversaciones de voz este mes. Es posible que en el futuro agreguemos uso de voz bajo demanda — por favor crea un issue en github.com/nicepkg/happy/issues si alcanzas este límite.',
+        voiceConversationLimitReached: 'Has alcanzado el número máximo de conversaciones de voz este mes. Es posible que en el futuro agreguemos uso de voz bajo demanda — por favor crea un issue en github.com/Mereithhh/very-happy/issues si alcanzas este límite.',
         oauthInitializationFailed: 'Falló al inicializar el flujo OAuth',
         tokenStorageFailed: 'Falló al almacenar los tokens de autenticación',
         oauthStateMismatch: 'Falló la validación de seguridad. Inténtalo de nuevo',

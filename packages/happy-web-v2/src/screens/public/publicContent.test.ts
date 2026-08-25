@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PUBLIC_DOCS } from './publicContent';
+import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PROVIDER_KEY_COMMAND, PUBLIC_DOCS } from './publicContent';
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
@@ -43,6 +43,11 @@ describe('public documentation registry', () => {
     expect(text).toContain('It never invokes sudo, installs tmux, writes provider credentials');
     expect(text).toContain('downloads the complete script to a random temporary file');
     expect(text).toContain('restart the daemon so it inherits the new environment');
+    expect(PUBLIC_DOCS[0]?.sections.find((section) => section.heading === '3. Configure Claude credentials')?.blocks[1])
+      .toEqual({ type: 'code', code: PROVIDER_KEY_COMMAND });
+    expect(PROVIDER_KEY_COMMAND).toContain('ZSH_VERSION');
+    expect(PROVIDER_KEY_COMMAND).toContain('read -rs "ANTHROPIC_API_KEY?Anthropic API key: "');
+    expect(PROVIDER_KEY_COMMAND).toContain('read -rsp "Anthropic API key: " ANTHROPIC_API_KEY');
   });
 
   it('documents the exact tmux and endpoint degradation boundaries', () => {

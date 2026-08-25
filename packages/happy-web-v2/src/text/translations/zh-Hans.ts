@@ -392,7 +392,7 @@ export const zhHans: TranslationStructure = {
         voiceServiceUnavailable: '语音服务暂时不可用',
         voiceLimitReachedTitle: '已达语音上限',
         voiceHardLimitReached: ({ hours }: { hours: number }) => `您本月已使用超过 ${hours} 小时的语音。这是允许的最大用量。您可以在语音设置中配置自己的 ElevenLabs 代理，以使用您自己的配额。`,
-        voiceConversationLimitReached: '您本月已达到语音对话的最大次数。我们未来可能会添加按需语音使用功能——如果您遇到此限制，请在 github.com/nicepkg/happy/issues 提交 issue。',
+        voiceConversationLimitReached: '您本月已达到语音对话的最大次数。我们未来可能会添加按需语音使用功能——如果您遇到此限制，请在 github.com/Mereithhh/very-happy/issues 提交 issue。',
         oauthInitializationFailed: '初始化 OAuth 流程失败',
         tokenStorageFailed: '存储认证令牌失败',
         oauthStateMismatch: '安全验证失败。请重试',
