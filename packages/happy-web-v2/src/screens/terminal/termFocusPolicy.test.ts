@@ -46,7 +46,7 @@ describe('completeTerminalTouchTap', () => {
         expect(runTap({ inputOwnership: 'xterm' })).toEqual({ handled: true, calls: ['dispatch-focus'] });
     });
 
-    it('still blocks xterm focus propagation when a browser reports a non-cancelable own tap', () => {
+    it('skips preventDefault but still dispatches focus synchronously for a non-cancelable own tap', () => {
         expect(runTap({ cancelable: false })).toEqual({
             handled: true,
             calls: ['stop-propagation', 'dispatch-focus'],
