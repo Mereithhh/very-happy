@@ -110,12 +110,12 @@ Google 作为第二入口。仅 `passwordLoginEnabled=true` 时显示“Use pass
 
 ## 验收标准
 
-- [ ] provider config 解析、缺项 fail closed、password disabled route guard 有单测。
-- [ ] OTP HMAC、TTL、错误次数、单次消费、并发双提交、email/challenge mismatch 有回归测试。
-- [ ] 已有 email 登录与新 email signup policy/capacity/invite 有 integration coverage。
-- [ ] Email sender 两 provider 的 URL/header/payload、timeout、错误净化有单测。
-- [ ] Web 默认 Email flow、resend/change email、Google/password 条件显示和错误状态有测试。
-- [ ] desktop/mobile real browser 无溢出，输入字号与 tap target 合规。
+- [x] provider config 解析、缺项 fail closed、password disabled route guard 有单测。
+- [x] OTP HMAC、TTL、错误次数、单次消费、并发双提交、email/challenge mismatch 有回归测试。
+- [x] 已有 email 登录与新 email signup policy/capacity/invite 有 integration coverage。
+- [x] Email sender 两 provider 的 URL/header/payload、timeout、错误净化有单测。
+- [x] Web 默认 Email flow、resend/change email、Google/password 条件显示和错误状态有测试。
+- [x] desktop/mobile real browser 无溢出，输入字号与 tap target 合规。
 - [ ] server/web 全门禁、production Email 实信、password disabled/reenabled rollback 冒烟通过。
 
 ## 留真机验证项
