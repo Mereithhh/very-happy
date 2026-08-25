@@ -1612,12 +1612,35 @@ export const en = {
         copiedToClipboard: ({ label }: { label: string }) => `${label} copied to clipboard`
     },
 
+    cliUpdate: {
+        availableEyebrow: 'CLI UPDATE AVAILABLE',
+        requiredEyebrow: 'CLI UPDATE REQUIRED',
+        availableTitle: 'A newer machine runtime is ready',
+        requiredTitle: 'This daemon is below the relay minimum',
+        summary: ({ machine, current, target, count }: { machine: string; current: string; target: string; count: number }) =>
+            count > 1
+                ? `${machine} is on ${current}; update to ${target}. ${count} machines need attention.`
+                : `${machine} is on ${current}; update to ${target}.`,
+        copyCommand: 'Copy update command',
+        copied: 'Exact update command copied.',
+        copyFailed: 'Could not copy the update command.',
+        details: 'View machines',
+        later: 'Ignore this version',
+        recommended: 'Recommended version',
+        minimum: 'Minimum version',
+        current: 'Up to date',
+        available: 'Update available',
+        required: 'Update required',
+        status: 'CLI update status',
+        offlineHelp: '• Make sure your computer is online\n• Run `very-happy daemon status` to diagnose\n• Open Diagnostics for the relay-approved exact update command',
+    },
+
     machine: {
         noMachines: 'No machines connected',
         noMachinesDescription: 'Start the Happy daemon on a computer to see it here.',
         launchNewSessionInDirectory: 'Launch New Session in Directory',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
-        offlineHelp: '• Make sure your computer is online\n• Run `very-happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g very-happy-cli@latest`',
+        offlineHelp: '• Make sure your computer is online\n• Run `very-happy daemon status` to diagnose\n• Open Diagnostics for the relay-approved exact update command',
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',

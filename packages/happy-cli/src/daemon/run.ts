@@ -41,6 +41,7 @@ import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
+import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -1065,7 +1066,7 @@ export async function startDaemon(): Promise<void> {
 
     // Write initial daemon state (no lock needed for state file)
     const daemonClaudeCredentials = resolveClaudeCredentialReadiness();
-    const fileState: DaemonLocallyPersistedState = {
+    let fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
       controlToken,
@@ -1152,6 +1153,35 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    // The daemon is the long-lived, relay-aware update checker. It never runs
+    // npm: it only publishes the relay's version policy for Web/CLI UX. A
+    // successful local npm install is already handed over by the bundle-mtime
+    // mechanism below.
+    let cliUpdateCheckRunning = false;
+    const refreshCliUpdate = async () => {
+      if (cliUpdateCheckRunning) return;
+      cliUpdateCheckRunning = true;
+      try {
+        const cliUpdate = await fetchCliUpdateState(configuration.serverUrl, packageJson.version);
+        if (!cliUpdate) return;
+        fileState = { ...fileState, cliUpdate };
+        writeDaemonState(fileState);
+        apiMachine.setCliUpdateState(cliUpdate);
+        logger.debug(`[DAEMON RUN] CLI update policy checked: ${cliUpdate.status} (recommended=${cliUpdate.recommendedVersion ?? 'none'}, minimum=${cliUpdate.minimumVersion ?? 'none'})`);
+      } catch (error) {
+        logger.debug('[DAEMON RUN] CLI update policy check failed:', error);
+      } finally {
+        cliUpdateCheckRunning = false;
+      }
+    };
+    void refreshCliUpdate();
+    const cliUpdateIntervalMs = resolveCliUpdateCheckInterval(process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL);
+    if (process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL && cliUpdateIntervalMs === DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS
+      && process.env.HAPPY_CLI_UPDATE_CHECK_INTERVAL.trim() !== String(DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS)) {
+      logger.warn(`[DAEMON RUN] Ignoring invalid HAPPY_CLI_UPDATE_CHECK_INTERVAL; using ${DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS}ms`);
+    }
+    const cliUpdateInterval = setInterval(() => void refreshCliUpdate(), cliUpdateIntervalMs);
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
@@ -1200,6 +1230,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Daemon bundle replaced on disk, handing off to new daemon');
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
+        clearInterval(cliUpdateInterval);
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
         // `very-happy daemon start` reads our still-present daemon.state.json, sees
@@ -1235,10 +1266,10 @@ export async function startDaemon(): Promise<void> {
       try {
         // Preserve the process control token (and any future state fields)
         // instead of silently dropping them on the first heartbeat.
-        const updatedState = withDaemonHeartbeat(fileState, new Date().toLocaleString());
-        writeDaemonState(updatedState);
+        fileState = withDaemonHeartbeat(fileState, new Date().toLocaleString());
+        writeDaemonState(fileState);
         if (process.env.DEBUG) {
-          logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
+          logger.debug(`[DAEMON RUN] Health check completed at ${fileState.lastHeartbeat}`);
         }
       } catch (error) {
         logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
@@ -1256,6 +1287,7 @@ export async function startDaemon(): Promise<void> {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
+      clearInterval(cliUpdateInterval);
 
       // Update daemon state before shutting down
       await apiMachine.updateDaemonState((state: DaemonState | null) => ({

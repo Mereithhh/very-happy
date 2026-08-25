@@ -144,21 +144,6 @@ export const SettingsSchema = z.object({
     // default lives in settingsDefaults, and any unknown/missing value is
     // read as 'recent' (sidebarRecentSort.resolveSidebarSort).
     sidebarSort: z.enum(['recent', 'manual']).describe('Sidebar 列表 order: recent activity (default) or the manual sidebarOrder'),
-    // Dismissed CLI warning banners (supports both per-machine and global dismissal)
-    dismissedCLIWarnings: z.object({
-        perMachine: z.record(z.string(), z.object({
-            claude: z.boolean().optional(),
-            codex: z.boolean().optional(),
-            gemini: z.boolean().optional(),
-            openclaw: z.boolean().optional(),
-        })).default({}),
-        global: z.object({
-            claude: z.boolean().optional(),
-            codex: z.boolean().optional(),
-            gemini: z.boolean().optional(),
-            openclaw: z.boolean().optional(),
-        }).default({}),
-    }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),
 });
 
 //
@@ -231,7 +216,6 @@ export const settingsDefaults: Settings = {
     pinnedRows: [],
     sidebarOrder: [],
     sidebarSort: 'recent',
-    dismissedCLIWarnings: { perMachine: {}, global: {} },
 };
 Object.freeze(settingsDefaults);
 

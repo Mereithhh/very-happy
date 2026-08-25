@@ -11,7 +11,7 @@ import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
-import type { Metadata } from '@/api/types';
+import type { CliUpdateState, Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
 import { credentialRelayProblem } from '@/ui/authRelay';
 import {
@@ -134,6 +134,8 @@ export interface DaemonLocallyPersistedState {
   daemonLogPath?: string;
   /** Non-secret category captured from the daemon's own startup environment. */
   claudeCredentialSource?: string;
+  /** Last successful relay update-policy check; safe to show in doctor output. */
+  cliUpdate?: CliUpdateState;
 }
 
 export async function readSettings(): Promise<Settings> {

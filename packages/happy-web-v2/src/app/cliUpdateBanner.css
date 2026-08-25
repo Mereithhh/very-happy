@@ -1,0 +1,40 @@
+.cli-update {
+  position: fixed;
+  top: max(var(--sp-4), env(safe-area-inset-top));
+  right: max(var(--sp-4), env(safe-area-inset-right));
+  z-index: 900;
+  width: min(460px, calc(100vw - 2 * var(--sp-4)));
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-1) 96%, transparent);
+  color: var(--text);
+  box-shadow: var(--shadow-modal);
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.cli-update[data-severity='required'] { border-color: var(--danger); }
+.cli-update__icon { color: var(--text-dim); margin-top: var(--sp-1); }
+.cli-update[data-severity='required'] .cli-update__icon { color: var(--danger); }
+.cli-update__body { min-width: 0; padding-right: var(--sp-5); }
+.cli-update__eyebrow { margin-bottom: var(--sp-1); color: var(--text-faint); font-size: var(--fs-10); letter-spacing: .08em; }
+.cli-update strong { font-size: var(--fs-14); }
+.cli-update p { margin: var(--sp-2) 0 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.cli-update__close { position: absolute; top: var(--sp-2); right: var(--sp-2); width: 36px; height: 36px; display: grid; place-items: center; color: var(--text-faint); border-radius: var(--r-sm); }
+.cli-update__close:hover { color: var(--text); background: var(--bg-2); }
+.cli-update__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.cli-update__actions button { min-height: 38px; display: inline-flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--text-dim); font-size: var(--fs-12); }
+.cli-update__actions button:first-child { color: var(--text); background: var(--bg-2); }
+.cli-update__actions button:hover { color: var(--text); border-color: var(--line-2); background: var(--bg-2); }
+
+@media (max-width: 520px) {
+  /* The install prompt owns the compact viewport while visible; showing both
+     fixed cards can cover the entire 320×568 usable area. */
+  body:has(.pwa-install) .cli-update { display: none; }
+  .cli-update { left: max(var(--sp-3), env(safe-area-inset-left)); right: max(var(--sp-3), env(safe-area-inset-right)); top: max(var(--sp-3), env(safe-area-inset-top)); width: auto; }
+  .cli-update__actions { align-items: stretch; flex-direction: column; }
+  .cli-update__actions button { justify-content: center; width: 100%; min-height: 44px; }
+}

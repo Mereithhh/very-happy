@@ -504,7 +504,7 @@ export function AssistantScreen() {
                         current: cliVersion ?? '?',
                     })}
                 </div>
-                <code className="as-gate-code">npm i -g very-happy-cli@latest</code>
+                <code className="as-gate-code">{`npm i -g very-happy-cli@${ASSISTANT_MIN_CLI_VERSION}`}</code>
             </div>
         );
     } else if (spawnError) {

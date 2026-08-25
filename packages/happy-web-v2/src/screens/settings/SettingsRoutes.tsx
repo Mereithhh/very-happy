@@ -39,6 +39,7 @@ import { useTheme } from '@/ui';
 import { Modal } from '@/modal';
 import { useAuth } from '@/auth/AuthContext';
 import { checkForUpdateNow } from '@/app/staleBundleReload';
+import { machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 import { BackButton } from '@/app/BackButton';
 import { useTranslation, type SupportedLanguage } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
@@ -2230,12 +2231,15 @@ function Diagnostics() {
               const claudeMissing = online && cli && !cli.claude;
               const name = m.metadata?.displayName || m.metadata?.host || m.id;
               const daemonStatus = m.metadata?.daemonLastKnownStatus;
+              const cliUpdate = machineCliUpdateNotice(m);
               return (
                 <Item
                   key={m.id}
                   title={name}
                   subtitle={
-                    claudeMissing
+                    cliUpdate
+                      ? `${cliUpdate.currentVersion} → ${cliUpdate.targetVersion}`
+                      : claudeMissing
                       ? (t('diagnostics.cliMissing', { cli: 'claude' }))
                       : daemonStatus
                         ? `${t('diagnostics.daemonStatus')}: ${daemonStatus}`
@@ -2244,8 +2248,12 @@ function Diagnostics() {
                   detail={m.metadata?.host}
                   left={<StatusDot status={online ? 'connected' : 'offline'} />}
                   right={
-                    <Badge tone={claudeMissing ? 'err' : online ? 'live' : 'muted'}>
-                      {online ? t('diagnostics.online') : t('diagnostics.offline')}
+                    <Badge tone={cliUpdate?.severity === 'required' ? 'err' : cliUpdate ? 'warn' : claudeMissing ? 'err' : online ? 'live' : 'muted'}>
+                      {cliUpdate?.severity === 'required'
+                        ? t('cliUpdate.required')
+                        : cliUpdate
+                          ? t('cliUpdate.available')
+                          : online ? t('diagnostics.online') : t('diagnostics.offline')}
                     </Badge>
                   }
                   onClick={() => navigate(`/machine/${m.id}`)}

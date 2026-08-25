@@ -30,6 +30,7 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import '@/screens/settings/settings.css';
+import { cliUpdateInstallCommand, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -168,6 +169,20 @@ export function MachineScreen() {
 
   const cli = machine.metadata?.cliAvailability;
   const daemon = machine.daemonState;
+  const cliUpdate = machineCliUpdateNotice(machine);
+  const cliUpdateState = daemon?.cliUpdate;
+  const cliUpdatePolicyKnown = hasValidCliUpdatePolicy(machine);
+
+  async function copyUpdateCommand() {
+    const command = cliUpdate ? cliUpdateInstallCommand(cliUpdate.targetVersion) : null;
+    if (!command) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      toast.success(t('cliUpdate.copied'));
+    } catch {
+      toast.error(t('cliUpdate.copyFailed'));
+    }
+  }
 
   return (
     <div className="set-scroll" style={{ height: '100dvh' }}>
@@ -226,7 +241,7 @@ export function MachineScreen() {
             <ItemGroup>
               <Item title={t('machine.offlineUnableToSpawn')} />
               <div className="set-note" style={{ padding: '0 var(--sp-3) var(--sp-3)', whiteSpace: 'pre-line' }}>
-                {t('machine.offlineHelp')}
+                {t('cliUpdate.offlineHelp')}
               </div>
             </ItemGroup>
           )}
@@ -249,6 +264,34 @@ export function MachineScreen() {
             )}
             {daemon?.startedWithCliVersion && (
               <Item title={t('machine.cliVersion')} detail={String(daemon.startedWithCliVersion)} />
+            )}
+            {cliUpdateState?.recommendedVersion && (
+              <Item title={t('cliUpdate.recommended')} detail={String(cliUpdateState.recommendedVersion)} />
+            )}
+            {cliUpdateState?.minimumVersion && (
+              <Item title={t('cliUpdate.minimum')} detail={String(cliUpdateState.minimumVersion)} />
+            )}
+            {cliUpdatePolicyKnown && (
+              <Item
+                title={t('cliUpdate.status')}
+                right={
+                  <Badge tone={cliUpdate?.severity === 'required' ? 'err' : cliUpdate ? 'warn' : 'live'}>
+                    {cliUpdate?.severity === 'required'
+                      ? t('cliUpdate.required')
+                      : cliUpdate
+                        ? t('cliUpdate.available')
+                        : t('cliUpdate.current')}
+                  </Badge>
+                }
+              />
+            )}
+            {cliUpdate && (
+              <Item
+                title={t('cliUpdate.copyCommand')}
+                subtitle={cliUpdateInstallCommand(cliUpdate.targetVersion) ?? undefined}
+                onClick={() => void copyUpdateCommand()}
+                right={<ChevronRight size={16} />}
+              />
             )}
             <Item title={t('machine.daemonStateVersion')} detail={String(machine.daemonStateVersion)} />
             {online && (
