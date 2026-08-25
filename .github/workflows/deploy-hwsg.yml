@@ -1,7 +1,7 @@
-name: Deploy to hw-sg
+name: Deploy production
 
-# Manual (deliberate) production deploy of the web app and/or self-host server
-# to hw-sg over SSH. Never runs automatically — you trigger it from the Actions
+# Manual (deliberate) production deploy of the web app and/or server over SSH.
+# Never runs automatically — you trigger it from the Actions
 # tab or `gh workflow run deploy-hwsg.yml -f target=all`.
 #
 # 惯例：先等目标 commit 的 quality.yml（Quality Gates）跑绿再触发本 deploy
@@ -10,17 +10,9 @@ name: Deploy to hw-sg
 # 但常态下跳过 quality 直发视为违规操作。
 #
 # Requires repo secrets: HWSG_SSH_KEY (private key), HWSG_HOST, HWSG_PORT,
-# HWSG_USER. The matching public key is in hw-sg's authorized_keys.
-# secrets 在 self-hosted 上一样可用（workflow_dispatch 触发、非 fork），所以密钥
-# 仍然从 secrets 注入、用完即删——**刻意不**改成硬编码在 runner 上。
-#
-# 2026-08-14：跑在 fb-us self-hosted runner 上（0 计费分钟）。self-hosted 差异：
-#   - 私钥写到 ${{ runner.temp }}（job 级，runner 会回收），不再写 ~/.ssh —— 原来
-#     硬编码的 /home/runner/.ssh/hwsg_key 在 self-hosted 上根本不是这个路径。
-#   - 需要 runner 上有 ssh / ssh-keyscan / tar / curl（托管 ubuntu 自带，
-#     self-hosted 不一定）→ 开跑前有一步 preflight 显式检查，缺了立刻报错。
-#   - runner 掉线时：`gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'` 切回
-#     托管；本地应急直发路径见 docs/PROCESS.md §4。
+# HWSG_USER. The legacy HWSG_* names now identify the active production host.
+# The matching public key is installed on that host. The private key is written
+# only to the GitHub-hosted job's runner.temp and removed in the final step.
 
 on:
   workflow_dispatch:
@@ -40,10 +32,10 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Preflight (self-hosted 上不假设装了什么)
+      - name: Preflight
         run: |
           missing=
           for c in ssh ssh-keyscan tar curl git; do
@@ -56,12 +48,8 @@ jobs:
           echo "OK: ssh/ssh-keyscan/tar/curl/git 都在 ($(uname -a))"
 
       - name: Checkout
-        # clean=true（默认）：self-hosted 工作目录复用，靠这步保证工作树干净。
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # ⚠️ setup-node 先于 pnpm/action-setup：后者默认要用现成的 node/npm 装 pnpm，
-      # self-hosted 上不能假设系统装了 node。不用 `cache: pnpm`（那要求反过来的顺序），
-      # self-hosted 靠本地持久化 pnpm store。
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -82,11 +70,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up SSH
-        # 私钥落在 job 级 runner.temp（不是 ~/.ssh）：self-hosted 的 HOME 是复用的，
-        # 密钥不该在那里留痕，且 runner 用户名不一定是 `runner`（原来硬编码
-        # /home/runner/.ssh/hwsg_key 在 self-hosted 上会直接找不到文件）。
-        # known_hosts 仍写 ~/.ssh（幂等追加，无敏感信息）；真正兜底的是脚本里的
-        # StrictHostKeyChecking=accept-new，keyscan 只是预热。
+        # 私钥只落在 job 级 runner.temp；known_hosts 的 keyscan 只是预热，
+        # 脚本仍用 StrictHostKeyChecking=accept-new 兜底。
         run: |
           umask 077
           printf '%s\n' "${{ secrets.HWSG_SSH_KEY }}" > "${{ runner.temp }}/hwsg_key"

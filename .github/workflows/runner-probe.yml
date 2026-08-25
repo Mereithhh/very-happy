@@ -1,16 +1,6 @@
-name: Runner Probe
+name: Hosted Runner Probe
 
-# Cheapest possible job that proves the self-hosted runner is alive and usable.
-#
-# Why it exists: GitHub's billing gate ("recent account payments have failed or
-# your spending limit needs to be increased") stops GITHUB-HOSTED jobs at the
-# start gate — the job dies in ~2s with an empty runner_name. Whether that gate
-# also blocks SELF-HOSTED jobs decides whether the whole self-hosted plan works,
-# and the only way to know is to run one. Keep this around afterwards as a
-# runner health check: dispatch it before blaming a workflow for "queued
-# forever" (the usual cause is the runner being offline).
-#
-# Consumes no billable minutes: self-hosted runners are not metered.
+# Minimal manual probe for GitHub-hosted runner availability and networking.
 
 on:
   workflow_dispatch: {}
@@ -20,7 +10,7 @@ permissions:
 
 jobs:
   probe:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Who am I
