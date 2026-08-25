@@ -59,6 +59,21 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 
 ## 一个工作区，三个职责不同的层次
 
+<a href="docs/architecture.md">
+  <img src="packages/happy-web-v2/public/architecture/system-topology.svg" width="100%" alt="Very Happy 账号级架构：多台机器和多种 Agent runner 汇聚到同一个 Web/PWA 工作区">
+</a>
+
+<p align="center"><sub>账号级机器集群 · 显式选择机器与 RUNNER · 一个统一控制界面</sub></p>
+
+<a href="docs/architecture.md#regional-realtime-relay-plane">
+  <img src="packages/happy-web-v2/public/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：美国机器和新加坡机器分别连接最近的区域 Relay，持久控制与账号状态保持集中">
+</a>
+
+<p align="center"><sub>美国 + 新加坡机器边缘 · 中央持久状态 · 实测 RELAY RTT · 最小权限 TOKEN</sub></p>
+
+控制与数据服务器仍是持久状态的唯一事实源。延迟敏感的终端字节流和 machine RPC 可以使用
+按 daemon 实测 RTT 选择的 operator 配置区域 Relay，兼容客户端仍保留中央回退路径。
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -79,13 +94,11 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
   </tr>
 </table>
 
-```text
-Claude Agent SDK ─────────────────> 结构化对话
+<a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
+  <img src="packages/happy-web-v2/public/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy 双运行路径架构：Claude Agent SDK 结构化事件与 tmux 托管的通用终端路径">
+</a>
 
-shell / vim / lazygit / ssh / 文本 TUI ─> tmux TTY ──> Web / PWA
-Agent CLI ─────────────────────────────> tmux TTY ──> Web / PWA
-                                                   ╰─> 可选 Claude 镜像
-```
+<p align="center"><sub>结构化语义 · 真实 PTY 字节流 · 可选 CLAUDE 镜像 · 有界文件交接</sub></p>
 
 终端是兼容层。它转发真实 TTY，并不关心另一端是什么品牌、甚至是什么类别的程序。某个工具能在
 终端运行，并不意味着它会自动暴露 Claude 风格的结构化事件。持久终端需要 `tmux`；可选的
@@ -319,37 +332,23 @@ Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
 适配器必须负责发送者授权、固定工作区策略、去重、限流与最小权限执行。传入消息只是输入，
 永远不能自行构成授权。
 
-### 区域实时面与账号数据面分离
+<a href="docs/architecture.md#session-path">
+  <img src="packages/happy-web-v2/public/architecture/session-data-flow.svg" width="100%" alt="Very Happy 会话生命周期：定向到机器的命令进入 runner adapter，归一化事件返回持久工作区状态">
+</a>
+
+<p align="center"><sub>机器级 RPC · RUNNER 专属归一化 · 多浏览器持久收敛</sub></p>
+
+### 区域 Relay 的行为与边界
 
 账号与数据库服务可以集中部署，延迟敏感的终端字节流和 machine RPC 则走 operator 配置的
 区域 relay。daemon 会并行探测所有健康候选，并锚定实测 RTT 最低的节点；浏览器凭短期、
 machine-scoped token 跟随同一 assignment。终端标题栏会直接显示当前 relay 与浏览器到 relay
 的 RTT。
 
-```text
-浏览器 / PWA ───────── 持久同步 ────────> control + data + Postgres
-      │                                      ▲
-      └── scoped token ──> regional relay ───┘ 只交换 assignment
-                               │
-                         RPC + 终端字节流
-                               │
-                          machine daemon
-```
-
 选择依据是实测网络，不是 GeoIP 猜测；relay 也不需要数据库凭据。discovery 或区域 relay
 失败时，新客户端会回退到兼容的 control-server 路径。自托管 operator 自己决定部署哪些
 区域；托管 Cloud 实际有哪些 PoP 是运维事实，不等于默认承诺全球 SLA。未来 WebRTC 直连
 会复用同一 transport seam，区域 relay 继续作为 fallback。
-
-```text
-浏览器 / PWA  ⇄  区域实时 relay  ⇄  机器 daemon
-      │                                  │
-      └──────── control / data server ───┘
-                                         │
-                       ┌─────────────────┼─────────────┐
-                       ▼                 ▼             ▼
-                  结构化 Agent         真实 TTY      文件 / 任务
-```
 
 control/data server 同步工作区状态，区域实时面转发延迟敏感的 machine RPC 与终端流量。
 继承自 Happy 的加密信封仍然提供纵深防御，但

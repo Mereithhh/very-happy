@@ -26,10 +26,10 @@ const VALUE_ROUTES = [
 ] as const;
 
 const VALUE_ROUTES_ZH = [
-  { friction: '多台机器上的 Agent 与终端四处分散。', title: '一个面板掌握整个机器群。', outcome: '会话、状态、任务与待处理事项，都围绕你选择的机器和 Agent 集中呈现。' },
-  { friction: '结构化对话很顺手——直到真正的工具需要你亲自操作。', title: '适合时用结构化界面，必要时回到原生终端。', outcome: '先跟进清晰的对话，需要原始控制时，再进入同一个持久 TTY。' },
-  { friction: '离开桌面后，正在运行的工作很难继续跟进。', title: '让工作跟着你切换屏幕。', outcome: '响应式 Web 与 PWA 让对话、终端、文件和决策随时可达。' },
-  { friction: '远程控制必须适配你的运营方式。', title: '选择运营方，而不是再进一个孤岛。', outcome: '可以从 Very Happy Cloud 开始，也可以用自己的策略与存储运行同一套开源系统。' },
+  { friction: '多台机器上的 Agent 与终端四处分散。', title: '一个面板掌握整个机器群', outcome: '会话、状态、任务与待处理事项，都围绕你选择的机器和 Agent 集中呈现。' },
+  { friction: '结构化对话很顺手——直到真正的工具需要你亲自操作。', title: '适合时用结构化界面，必要时回到原生终端', outcome: '先跟进清晰的对话，需要原始控制时，再进入同一个持久 TTY。' },
+  { friction: '离开桌面后，正在运行的工作很难继续跟进。', title: '让工作跟着你切换屏幕', outcome: '响应式 Web 与 PWA 让对话、终端、文件和决策随时可达。' },
+  { friction: '远程控制必须适配你的运营方式。', title: '选择运营方，而不是再进一个孤岛', outcome: '可以从 Very Happy Cloud 开始，也可以用自己的策略与存储运行同一套开源系统。' },
 ] as const;
 
 export function WhyVeryHappy() {
@@ -40,7 +40,7 @@ export function WhyVeryHappy() {
     <header className="why-vh-head">
       <div>
         <div className="eyebrow">{zh ? '为什么选择 VERY HAPPY // 协作开销收口' : 'WHY VERY HAPPY // OVERHEAD ROUTING'}</div>
-        <h2 id="why-vh-title">{zh ? '工作已经够复杂。' : 'The work is already complex.'}<br /><span>{zh ? '界面不该再添麻烦。' : "The interface shouldn't add to it."}</span></h2>
+        <h2 id="why-vh-title">{zh ? '工作已经够复杂' : 'The work is already complex.'}<br /><span>{zh ? '界面不该再添麻烦' : "The interface shouldn't add to it."}</span></h2>
       </div>
       <p>{zh ? 'Very Happy 不会取代已经好用的机器和工具，它只负责承接它们之间的协作开销。' : 'Very Happy does not replace the machines and tools that already work. It carries the coordination overhead between them.'}</p>
     </header>

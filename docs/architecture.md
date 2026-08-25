@@ -2,21 +2,7 @@
 
 ## Components
 
-```text
- personal computer ─┐                                   ┌─ Claude Code
- remote server ─────┼─ very-happy CLI + daemon ─────────┼─ Codex
- VM / container ────┘        ▲       ▲                   ├─ Gemini / OpenCode / compatible ACP
-                             │       │ runner-specific   ├─ OpenClaw gateway
-                    MCP tools┘       │                   └─ shell / xterm-compatible text TUI
-                                     │ durable control
-                                     ▼
-                         control/data server ── database / files / optional Redis
-                               ▲         ▲
-                               │         └─ API / webhooks
-                               │ HTTPS + durable Socket.IO
-                         Web V2 / installed PWA
-                         desktop · tablet · phone
-```
+![Very Happy system topology: multiple machines and agent runners converge through the trusted relay into one account workspace](../packages/happy-web-v2/public/architecture/system-topology.svg)
 
 The optional voice Meta Agent is currently a Claude coordinator on a selected machine, not a
 provider-neutral automatic router. Cross-provider delegation remains roadmap work.
@@ -33,15 +19,7 @@ provider-neutral automatic router. Cross-provider delegation remains roadmap wor
 Latency-sensitive terminal bytes and machine RPC can leave the central
 control/data path without moving account state or PostgreSQL:
 
-```text
-Web / PWA ───────── durable sync ────────> control/data + Postgres
-    │                                          ▲
-    └── short-lived scoped token ──> regional relay <── machine assignment
-                                           │
-                                     RPC + terminal bytes
-                                           │
-                                      machine daemon
-```
+![Regional realtime relay plane: durable sync stays on the control and data server while scoped machine RPC and terminal traffic use the daemon-selected regional relay](../packages/happy-web-v2/public/architecture/regional-realtime-plane.svg)
 
 The operator supplies a finite relay candidate list. The daemon probes every
 healthy candidate in parallel and anchors to the lowest measured RTT; region is
@@ -69,12 +47,6 @@ runner sessions without opening a separate control plane per host. Creating a
 session explicitly selects its target machine and agent; automatic
 provider-neutral routing remains roadmap.
 
-```text
-build machine  ─┐
-workstation    ─┼─ trusted relay ⇄ one account panel ⇄ user
-field laptop   ─┘                 sessions / tasks / files
-```
-
 ## Identity and connection
 
 Verified email-code, optional password, and verified Google identities map to an `Account`. Web logins receive
@@ -92,6 +64,8 @@ path. Each runner maps its native events into the shared session protocol and
 sends normalized updates back through the relay. The server persists sync state
 needed by other browsers.
 
+![Session data flow: commands travel from the browser through the relay and daemon to a runner, while normalized events return to persisted sync state and connected browsers](../packages/happy-web-v2/public/architecture/session-data-flow.svg)
+
 Provider parity is not implied. Claude currently has the richest structured and
 terminal-mirroring experience; Codex, ACP providers, and OpenClaw reuse the
 common workspace but expose only the capabilities their runners normalize. See
@@ -102,6 +76,8 @@ common workspace but expose only the capabilities their runners normalize. See
 Upstream Happy's core Claude flow wraps the Claude Agent SDK to provide a
 structured conversation. Very Happy retains that flow and adds a terminal path
 whose source of truth is the real agent process:
+
+![Dual runtime paths: structured Claude Agent SDK events and universal tmux-backed terminal IO share the workspace while retaining different capability contracts](../packages/happy-web-v2/public/architecture/dual-path-runtime.svg)
 
 | Path | Process and transport | Browser experience |
 |---|---|---|
