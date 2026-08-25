@@ -1,5 +1,5 @@
 export type SchedulerEnvironmentId = 'computer' | 'server' | 'runtime';
-export type SchedulerAgentId = 'claude' | 'codex' | 'opencode' | 'terminal';
+export type SchedulerAgentId = 'claude' | 'codex' | 'gemini' | 'terminal';
 export type SchedulerLaneId = 'cli' | 'api' | 'mcp' | 'meta';
 
 export type SchedulerTopologyState = {
@@ -28,7 +28,7 @@ export const SCHEDULER_ENVIRONMENT_LABELS: Record<SchedulerEnvironmentId, string
 export const SCHEDULER_AGENT_LABELS: Record<SchedulerAgentId, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
-  opencode: 'OpenCode',
+  gemini: 'Gemini',
   terminal: 'Any text TUI',
 };
 

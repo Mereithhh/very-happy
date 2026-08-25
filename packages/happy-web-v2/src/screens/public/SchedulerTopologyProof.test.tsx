@@ -19,7 +19,8 @@ describe('SchedulerTopologyProof', () => {
     expect(html).toContain('Any runtime');
     expect(html).toContain('Claude Code');
     expect(html).toContain('Codex');
-    expect(html).toContain('OpenCode');
+    expect(html).toContain('Gemini');
+    expect(html).not.toContain('OpenCode');
     expect(html).toContain('Any text TUI');
     expect(html).toContain('CLI + daemon');
     expect(html).toContain('API + webhooks');

@@ -192,6 +192,19 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 ### 2026-08-25 release-candidate freeze
 
+- The Landing hierarchy/refinement implementation commit is `b3dded54`. The complete self-hosted
+  wire/server/Web/CLI job in exact-SHA Quality run `32804099737` passed, as did the local Web
+  gate (109 files / 1,477 tests, Vite build, TypeScript 0 errors) and introduced-commit gitleaks
+  scan. The overall GitHub run is nevertheless red because the isolated `ubuntu-latest`
+  secret-scan job was refused before checkout with: “recent account payments have failed or
+  your spending limit needs to be increased” (job `97670656140`, zero runner/steps). This is an
+  external billing/capacity failure, not a scan finding, but the release rule still forbids a
+  Web deploy from a failing gate. Production therefore remains on the preceding verified Web
+  release until the Owner restores hosted Actions billing and reruns the current `main` HEAD successfully.
+  A subsequent independent claim/security review found P0=0/P1=0 and one P2: OpenCode was shown
+  as a Web-dispatch route even though it is currently a CLI ACP beta. The final source replaces
+  that route with the actually Web-supported Gemini beta and labels OpenCode's CLI boundary;
+  the complete Web gate and 390 px real-browser route/clipping pass were rerun successfully.
 - The scheduler-topology Hero shipped from source `a01d1c76`. Its reducer regression tests pin
   machine/agent selection, informational side-lane inspection, route labels, and exactly two
   active-wire identities; rendered contracts pin the fixed trust chain, initial pressed state,
@@ -723,6 +736,14 @@ These operations are intentionally not performed by this release-candidate work:
 Recommended order: **history rewrite → credential/session invalidation → all-ref scan → new
 private staging remote → fork-PR isolation drill → Owner production acceptance → public switch**.
 
+## Current external release blocker
+
+- GitHub-hosted Actions billing is currently refusing `ubuntu-latest` jobs before a runner is
+  assigned. The mandatory public-runner secret scan is therefore externally blocked even though
+  the same pinned script passed locally for the introduced Landing commit. Restore billing/spend
+  capacity, rerun Quality Gates for the current `main` HEAD, and require a green overall
+  conclusion before deploying it.
+
 ## Known non-blocking limitations
 
 - End-to-end encryption is deliberately deferred. The August 25 protocol and client/server
@@ -759,9 +780,11 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
 
 ## Final decision
 
-**NOT READY for public visibility only because the Owner-controlled public-switch procedure has
-not been executed:** history rewrite and all-ref rescan, credential/session invalidation,
-repository protections and fork-PR isolation drill, external OAuth/Cloud policy checks, and
-final production acceptance. The current source tree, product flow, documentation, self-host
-distribution, deployed service, and CLI release are otherwise an open-source release candidate
+**NOT READY only because of Owner/external hard blockers:** (1) GitHub-hosted billing must be
+restored so the mandatory isolated secret-scan job can produce a green exact-SHA Quality run and
+the final Landing commit can be Web-deployed; and (2) the Owner-controlled public-switch procedure
+has not been executed: history rewrite and all-ref rescan, credential/session invalidation,
+repository protections and fork-PR isolation drill, external OAuth/Cloud policy checks, and final
+production acceptance. The current source tree, product flow, documentation, self-host
+distribution, deployed service, and CLI release otherwise remain an open-source release candidate
 with no known in-scope P0/P1/P2.

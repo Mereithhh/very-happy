@@ -130,8 +130,8 @@ describe('public documentation registry', () => {
     expect(landing).toContain('Every machine.<br />Every agent.');
     expect(landing).toContain('Claude Code');
     expect(landing).toContain('Codex');
-    expect(landing).toContain('Gemini + OpenCode via a compatible ACP stdio endpoint');
-    expect(landing).toContain('Gemini + OpenCode via a compatible ACP stdio endpoint');
+    expect(landing).toContain('Gemini available from Web through a compatible ACP stdio endpoint');
+    expect(landing).toContain('OpenCode through the CLI ACP beta');
     expect(landing).not.toContain('ACP extensible');
     expect(landing).toContain('Pi + provider gateway');
     expect(landing).toContain('REAL PRODUCT // SANITIZED DATA');
@@ -155,7 +155,7 @@ describe('public documentation registry', () => {
     expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
     expect(landing).toContain('You get to be Very Happy.');
-    expect(landing).toContain('today you explicitly choose the machine and agent');
+    expect(landing).toContain('today you explicitly choose a Web-supported machine and agent');
     expect(productPreview).toContain('Example multi-machine session command panel');
     expect(productPreview).toContain('office · codex');
     expect(html).toContain('One Web command panel for every connected machine');
@@ -330,7 +330,8 @@ describe('public documentation registry', () => {
     expect(scheduler).toContain('Any runtime');
     expect(scheduler).toContain('Claude Code');
     expect(scheduler).toContain('Codex');
-    expect(scheduler).toContain('OpenCode');
+    expect(scheduler).toContain('Gemini');
+    expect(scheduler).not.toContain("id: 'opencode'");
     expect(scheduler).toContain('Any text TUI');
     expect(scheduler).toContain('CLI + daemon');
     expect(scheduler).toContain('API + webhooks');

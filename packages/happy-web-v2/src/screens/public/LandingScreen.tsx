@@ -18,7 +18,7 @@ function ProductShowcase() {
     <div className="pub-product-facts">
       <article><MonitorSmartphone size={18} /><div><span className="mono">WEB / PWA · RECOMMENDED</span><strong>The recommended daily command surface on desktop, tablet, and phone.</strong></div></article>
       <article><Cable size={18} /><div><span className="mono">CLI + DAEMON + TMUX</span><strong>The machine-side bridge keeps ordinary xterm-256color text TUIs—not only coding agents—reachable.</strong></div></article>
-      <article><TerminalSquare size={18} /><div><span className="mono">AGENT FABRIC · SHIPPED + BETA + ROADMAP</span><strong>Claude Code deep support · Codex available · Gemini + OpenCode via a compatible ACP stdio endpoint (BETA · IMPLEMENTED) · any text TUI. Pi + provider gateway remain roadmap; today you explicitly choose the machine and agent.</strong></div></article>
+      <article><TerminalSquare size={18} /><div><span className="mono">AGENT FABRIC · SHIPPED + BETA + ROADMAP</span><strong>Claude Code deep support · Codex available · Gemini available from Web through a compatible ACP stdio endpoint (BETA · IMPLEMENTED) · OpenCode through the CLI ACP beta · any text TUI. Pi + provider gateway remain roadmap; today you explicitly choose a Web-supported machine and agent.</strong></div></article>
     </div>
     <div className="pub-product-links"><Link to="/docs/architecture">Architecture <ArrowRight size={14} /></Link><Link to="/docs/integrations">Agent and MCP matrix <ArrowRight size={14} /></Link></div>
   </section>;

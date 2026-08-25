@@ -29,7 +29,7 @@ const ENVIRONMENTS = [
 const AGENTS = [
   { id: 'claude' as const, label: 'Claude Code', detail: 'SDK + real TTY', Icon: Bot },
   { id: 'codex' as const, label: 'Codex', detail: 'native runner', Icon: Command },
-  { id: 'opencode' as const, label: 'OpenCode', detail: 'ACP beta', Icon: Braces },
+  { id: 'gemini' as const, label: 'Gemini', detail: 'ACP beta', Icon: Braces },
   { id: 'terminal' as const, label: 'Any text TUI', detail: 'tmux terminal', Icon: TerminalSquare },
 ];
 
@@ -52,7 +52,7 @@ export function SchedulerTopologyProof() {
       <path className={`scheduler-wire scheduler-wire--input${state.environment === 'runtime' ? ' is-active' : ''}`} d="M608 67 C608 122 448 104 382 174" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'claude' ? ' is-active' : ''}`} d="M316 330 C250 382 92 354 92 427" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'codex' ? ' is-active' : ''}`} d="M338 335 C312 380 264 382 264 427" pathLength="1" />
-      <path className={`scheduler-wire scheduler-wire--output${state.agent === 'opencode' ? ' is-active' : ''}`} d="M362 335 C388 380 436 382 436 427" pathLength="1" />
+      <path className={`scheduler-wire scheduler-wire--output${state.agent === 'gemini' ? ' is-active' : ''}`} d="M362 335 C388 380 436 382 436 427" pathLength="1" />
       <path className={`scheduler-wire scheduler-wire--output${state.agent === 'terminal' ? ' is-active' : ''}`} d="M384 330 C450 382 608 354 608 427" pathLength="1" />
     </svg>
 
