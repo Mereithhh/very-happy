@@ -11,12 +11,19 @@ const zlib = require('zlib');
 const tar = require('tar');
 const os = require('os');
 
+const PLATFORM_PACKAGES = Object.freeze({
+    'arm64-darwin': 'very-happy-tools-arm64-darwin',
+    'x64-darwin': 'very-happy-tools-x64-darwin',
+    'arm64-linux': 'very-happy-tools-arm64-linux',
+    'x64-linux': 'very-happy-tools-x64-linux',
+    'arm64-win32': 'very-happy-tools-arm64-win32',
+    'x64-win32': 'very-happy-tools-x64-win32',
+});
+
 /**
  * Get the platform-specific directory name
  */
-function getPlatformDir() {
-    const platform = os.platform();
-    const arch = os.arch();
+function getPlatformDir(platform = os.platform(), arch = os.arch()) {
     
     if (platform === 'darwin') {
         if (arch === 'arm64') return 'arm64-darwin';
@@ -32,6 +39,12 @@ function getPlatformDir() {
     throw new Error(`Unsupported platform: ${arch}-${platform}`);
 }
 
+function getPlatformPackageName(platformDir = getPlatformDir()) {
+    const packageName = PLATFORM_PACKAGES[platformDir];
+    if (!packageName) throw new Error(`Unsupported platform tools target: ${platformDir}`);
+    return packageName;
+}
+
 /**
  * Get the root tools directory
  */
@@ -39,6 +52,39 @@ function getToolsDir() {
     // Handle both direct execution and require() calls
     const scriptDir = __dirname;
     return path.resolve(scriptDir, '..', 'tools');
+}
+
+function hasPlatformArchives(archivesDir, platformDir) {
+    return [
+        `difftastic-${platformDir}.tar.gz`,
+        `ripgrep-${platformDir}.tar.gz`,
+    ].every((archive) => fs.existsSync(path.join(archivesDir, archive)));
+}
+
+/**
+ * Locate the current OS/CPU package. The legacy in-package directory remains a
+ * fallback so source checkouts and old repacks fail safely during migration.
+ */
+function getArchivesDir(toolsDir, platformDir = getPlatformDir(), resolvePackage = require.resolve) {
+    const packageName = getPlatformPackageName(platformDir);
+    try {
+        const manifest = resolvePackage(`${packageName}/package.json`, {
+            paths: [path.resolve(toolsDir, '..')],
+        });
+        const archivesDir = path.join(path.dirname(manifest), 'archives');
+        if (!hasPlatformArchives(archivesDir, platformDir)) {
+            throw new Error(`${packageName} is missing archives for ${platformDir}`);
+        }
+        return archivesDir;
+    } catch (error) {
+        const legacyArchivesDir = path.join(toolsDir, 'archives');
+        if (hasPlatformArchives(legacyArchivesDir, platformDir)) return legacyArchivesDir;
+        const detail = error instanceof Error ? ` (${error.message})` : '';
+        throw new Error(
+            `The optional package ${packageName} is required for ${platformDir}${detail}. ` +
+            'Reinstall very-happy-cli without --omit=optional.'
+        );
+    }
 }
 
 /**
@@ -109,7 +155,7 @@ async function unpackTools() {
     try {
         const platformDir = getPlatformDir();
         const toolsDir = getToolsDir();
-        const archivesDir = path.join(toolsDir, 'archives');
+        const archivesDir = getArchivesDir(toolsDir, platformDir);
         const unpackedPath = path.join(toolsDir, 'unpacked');
         
         // Check if already unpacked
@@ -149,7 +195,15 @@ async function unpackTools() {
 }
 
 // Export for use as module
-module.exports = { unpackTools, getPlatformDir, getToolsDir };
+module.exports = {
+    PLATFORM_PACKAGES,
+    unpackTools,
+    getPlatformDir,
+    getPlatformPackageName,
+    getToolsDir,
+    getArchivesDir,
+    hasPlatformArchives,
+};
 
 // Run if executed directly
 if (require.main === module) {

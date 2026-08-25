@@ -2,6 +2,7 @@ packages:
   - "packages/happy-web-v2"
   - "packages/happy-agent"
   - "packages/happy-cli"
+  - "packages/happy-cli-tools/*"
   - "packages/happy-server"
   - "packages/happy-wire"
   - "packages/happy-app-logs"

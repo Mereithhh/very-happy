@@ -1,0 +1,25 @@
+{
+  "name": "very-happy-tools-arm64-darwin",
+  "version": "0.2.61",
+  "description": "Platform tools for very-happy-cli (darwin arm64).",
+  "license": "MIT",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "archives",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mereithhh/very-happy.git",
+    "directory": "packages/happy-cli-tools/arm64-darwin"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
+}

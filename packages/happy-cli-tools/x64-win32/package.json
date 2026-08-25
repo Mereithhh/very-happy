@@ -1,0 +1,25 @@
+{
+  "name": "very-happy-tools-x64-win32",
+  "version": "0.2.61",
+  "description": "Platform tools for very-happy-cli (win32 x64).",
+  "license": "MIT",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "archives",
+    "THIRD_PARTY_LICENSES.txt"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mereithhh/very-happy.git",
+    "directory": "packages/happy-cli-tools/x64-win32"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
+}

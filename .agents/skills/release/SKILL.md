@@ -101,10 +101,15 @@ gh run list --workflow=publish.yml --limit 3
 
 The tag also launches hosted cross-platform smoke jobs. npm publication and
 smoke run concurrently, so npm availability is not sufficient release evidence.
-Verify both:
+The publish workflow releases all six `very-happy-tools-<arch>-<os>` packages
+before the main CLI, with one exact shared version. It is safe to rerun after a
+partial publish; never publish the main package manually ahead of its platform
+artifacts. Verify the main package, the platform artifact for the deployment
+machine, and the smoke run:
 
 ```bash
 npm view very-happy-cli@X.Y.Z version
+npm view very-happy-tools-arm64-darwin@X.Y.Z version
 gh run list --workflow=cli-smoke-test.yml --commit=<tag-sha>
 ```
 

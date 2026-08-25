@@ -14,12 +14,12 @@ rg_ver=15.1.0
 
 # where we are
 dir=$(cd "$(dirname "$0")" && pwd)
-archives="$dir/../tools/archives"
+platform_packages="$dir/../../happy-cli-tools"
 tmp="${TMPDIR:-/tmp}/dl-tools.$$"
 
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-mkdir -p "$tmp" "$archives"
+mkdir -p "$tmp" "$platform_packages"
 
 # map our platform names to upstream naming conventions
 difft_upstream() {
@@ -77,11 +77,11 @@ fetch_difft() {
 	fi
 
 	url="https://github.com/Wilfred/difftastic/releases/download/${difft_ver}/difft-${up}.${ext}"
-	out="$archives/difftastic-${plat}.tar.gz"
+	out="$platform_packages/$plat/archives/difftastic-${plat}.tar.gz"
 
 	echo "difft $plat: $url"
 
-	mkdir -p "$tmp/difft-$plat"
+	mkdir -p "$tmp/difft-$plat" "$(dirname "$out")"
 
 	if test "$ext" = "zip"; then
 		curl -fsSL "$url" -o "$tmp/difft-$plat.zip" || return 1
@@ -113,11 +113,11 @@ fetch_rg() {
 	fi
 
 	url="https://github.com/BurntSushi/ripgrep/releases/download/${rg_ver}/ripgrep-${rg_ver}-${up}.${ext}"
-	out="$archives/ripgrep-${plat}.tar.gz"
+	out="$platform_packages/$plat/archives/ripgrep-${plat}.tar.gz"
 
 	echo "rg $plat: $url"
 
-	mkdir -p "$tmp/rg-$plat"
+	mkdir -p "$tmp/rg-$plat" "$(dirname "$out")"
 
 	if test "$ext" = "zip"; then
 		curl -fsSL "$url" -o "$tmp/rg-$plat.zip" || return 1
