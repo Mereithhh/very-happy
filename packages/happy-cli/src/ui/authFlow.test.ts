@@ -86,6 +86,11 @@ describe('Web-only CLI authentication flow', () => {
     expect(credentialRelayProblem(undefined, 'https://relay.example.com')).toContain('predate relay tracking');
     expect(credentialRelayProblem('https://relay.example.com/', 'https://relay.example.com')).toBeUndefined();
     expect(credentialRelayProblem(undefined, 'https://veryhappy.dev')).toBeUndefined();
+    // Incident regression: v0.2.65 changed the Cloud default and then refused
+    // an Owner install whose issuer-less access.key still used the old Cloud
+    // alias, leaving the production daemon stopped after vh-update.
+    expect(credentialRelayProblem(undefined, 'https://happy.mereith.com')).toBeUndefined();
+    expect(credentialRelayProblem(undefined, 'https://happy.mereith.com/')).toBeUndefined();
     expect(authFlow).toContain('credentialRelayProblem(credentials.authServerUrl, configuration.serverUrl)');
     expect(authFlow.indexOf('credentialRelayProblem(credentials.authServerUrl')).toBeLessThan(
       authFlow.indexOf("logger.debug('[AUTH] Using existing credentials')"),
