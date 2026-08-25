@@ -65,6 +65,12 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 
 ## One workspace. Three layers that do different jobs.
 
+<a href="docs/architecture.md">
+  <img src="docs/assets/architecture/system-topology.svg" width="100%" alt="Very Happy account-level architecture: multiple machines and agent runners converge into one Web and PWA workspace">
+</a>
+
+<p align="center"><sub>ACCOUNT-LEVEL FLEET · EXPLICIT MACHINE + RUNNER TARGETING · ONE CONTROL SURFACE</sub></p>
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -89,13 +95,11 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
   </tr>
 </table>
 
-```text
-Claude Agent SDK ──────────────> structured conversation
+<a href="docs/architecture.md#structured-agent-path-and-universal-terminal-path">
+  <img src="docs/assets/architecture/dual-path-runtime.svg" width="100%" alt="Very Happy dual runtime architecture: structured Claude Agent SDK events and a universal tmux-backed terminal path">
+</a>
 
-shell / vim / lazygit / ssh / text TUI ─> tmux TTY ──> Web / PWA
-agent CLI ──────────────────────────────> tmux TTY ──> Web / PWA
-                                                  ╰─> optional Claude mirror
-```
+<p align="center"><sub>STRUCTURED SEMANTICS · REAL PTY BYTES · OPTIONAL CLAUDE MIRROR · BOUNDED FILE HANDOFF</sub></p>
 
 The terminal is the compatibility layer. It forwards a real TTY and does not
 care which brand—or category—of process is on the other side. A tool working in
@@ -373,6 +377,12 @@ The adapter must own sender authorization, fixed workspace policy, deduplication
 rate limits, and least-privilege execution. Incoming messages are input, never
 authorization by themselves.
 
+<a href="docs/architecture.md#session-path">
+  <img src="docs/assets/architecture/session-data-flow.svg" width="100%" alt="Very Happy session lifecycle: machine-targeted commands flow to runner adapters and normalized events return to durable workspace state">
+</a>
+
+<p align="center"><sub>MACHINE-SCOPED RPC · RUNNER-SPECIFIC NORMALIZATION · DURABLE MULTI-BROWSER CONVERGENCE</sub></p>
+
 ### A regional realtime plane, separate from account data
 
 The account/database server can stay central while latency-sensitive terminal
@@ -381,15 +391,11 @@ the healthy candidates in parallel and anchors to the lowest measured RTT; the
 browser follows that machine assignment with a short-lived, machine-scoped token.
 The active relay and browser-to-relay RTT are visible in the terminal header.
 
-```text
-browser / PWA ───────── durable sync ─────────> control + data + Postgres
-      │                                               ▲
-      └── scoped token ──> regional relay <───────────┘ assignment only
-                               │
-                         RPC + terminal bytes
-                               │
-                         machine daemon
-```
+<a href="docs/architecture.md#regional-realtime-relay-plane">
+  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: durable state stays central while terminal bytes and machine RPC use a daemon-selected regional relay">
+</a>
+
+<p align="center"><sub>CENTRAL DURABLE STATE · MEASURED RELAY RTT · SHORT-LIVED SCOPED TOKENS · LEGACY FALLBACK</sub></p>
 
 This is measured routing, not a GeoIP guess, and relays do not need database
 credentials. If discovery or a regional relay fails, current clients fall back
@@ -397,16 +403,6 @@ to the compatible control-server path. Self-hosted operators decide which relay
 regions exist; hosted PoP availability is an operational fact, not an implied
 global SLA. A future WebRTC direct path can use the same transport seam, with
 regional relays remaining the fallback.
-
-```text
-browser / PWA  ⇄  regional realtime relay  ⇄  machine daemon
-      │                                             │
-      └──────── control / data server ──────────────┘
-                                                    │
-                         ┌─────────────────────────┼───────────────┐
-                         ▼                         ▼               ▼
-                  structured agent            real TTY       files / tasks
-```
 
 The control/data server synchronizes workspace state; the regional plane routes
 latency-sensitive machine RPC and terminal traffic. Encrypted
