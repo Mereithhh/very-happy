@@ -15,7 +15,7 @@
 ## 文档地图
 
 ```
-CLAUDE.md（本文件）── 入口：门禁 / 铁律 / 热区
+AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热区
   │
   ├─ docs/PROCESS.md ──────── 流程：批次制 / 门禁 / 发布 / 验收 / 沉淀
   │    ├─ docs/backlog.md ──────── 需求层：一切输入落这（主 agent 单写者）
@@ -45,8 +45,8 @@ CLAUDE.md（本文件）── 入口：门禁 / 铁律 / 热区
 # happy-web-v2：测试 + 构建 + tsc **零错误**（2026-08-18 实测已是 0，不再有存量债）
 pnpm -C packages/happy-web-v2 exec vitest run
 pnpm -C packages/happy-web-v2 exec vite build
-pnpm -C packages/happy-web-v2 exec tsc --noEmit 2>&1 | grep -cE 'error TS'   # 必须是 0
-# ⚠️ 别用 `| wc -l`：0 错误时它输出 1（pnpm 那行 WARN），这个指标会骗人。
+pnpm -C packages/happy-web-v2 exec tsc --noEmit
+# 直接以 tsc 退出码为准；不要接 grep/wc，零错误时 grep 无匹配会返回 1，污染门禁退出码。
 # 「存量 ~490 债只减不增」是过期口径（债已还完），照它判会把新引入的错误当成在预算内。
 
 # happy-cli：build + unit + 运行冒烟（build 绿 ≠ 运行不崩，有 CJS 事故先例）
@@ -63,7 +63,10 @@ pnpm -C packages/happy-server exec vitest run
 
 - 自动化能验的当批验掉（E2E 冒烟有先例脚本手法）；验不了的（真机 IME/触屏/
   视觉观感）登记 `docs/verify-queue.md`，下一批开始前 Owner 清账。
-- 浏览器验证注意 SW 缓存混版：硬刷新 / unregister 后再判断「没生效」。
+- 浏览器判断「发布没生效」前先保留现场：在原标签页记录实际加载的 entry/CSS URL、
+  目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry；再用普通 reload
+  验证版本迁移。只有证据留存后才 hard refresh / unregister 做恢复；强刷后正常不能单独
+  作为发布成功证据。
 - 发布顺序默认 server → web → CLI；涉及协议字段按 spec 兼容矩阵定顺序。
 
 ## UI 设计约束（Console 设计语言）

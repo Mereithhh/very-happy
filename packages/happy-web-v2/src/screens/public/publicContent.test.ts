@@ -4,6 +4,14 @@ import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PROVID
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
+  it('only references declared spacing tokens in the public shell', () => {
+    const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    const tokens = readFileSync(new URL('../../styles/tokens.css', import.meta.url), 'utf8');
+    const declared = new Set([...tokens.matchAll(/(--sp-\d+):/g)].map((match) => match[1]));
+    const referenced = new Set([...styles.matchAll(/var\((--sp-\d+)\)/g)].map((match) => match[1]));
+    expect([...referenced].filter((token) => !declared.has(token))).toEqual([]);
+  });
+
   it('provides every public-release topic with unique stable slugs', () => {
     expect(new Set(PUBLIC_DOCS.map((doc) => doc.slug)).size).toBe(PUBLIC_DOCS.length);
     expect(PUBLIC_DOCS.map((doc) => doc.slug)).toEqual(expect.arrayContaining([
@@ -95,6 +103,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.kwp-palette \.cp-panel[^}]*max-height/);
     expect(styles).toContain('container: keyboard-workflow / inline-size');
     expect(styles).toMatch(/@container keyboard-workflow \(max-width: 880px\)[\s\S]*\.kwp-layout \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+    expect(styles).toMatch(/@container keyboard-workflow \(max-width: 880px\)[\s\S]*\.kwp--compact \.kwp-layout \{ grid-template-columns: minmax\(0, 1fr\); \}/);
     expect(styles).not.toMatch(/@container keyboard-workflow[^}]*\.kwp \{ grid-template-columns/);
     expect(styles).toMatch(/@container keyboard-workflow \(max-width: 560px\)[\s\S]*\.kwp-palette \{ transform: none; \}/);
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
@@ -358,6 +367,35 @@ describe('public documentation registry', () => {
     expect(schedulerContainerBlock).not.toContain('.scheduler-proof { height:');
     expect(schedulerStyles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(schedulerStyles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+
+  it('places the concise Why Very Happy narrative between product proof and onboarding', () => {
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const why = readFileSync(new URL('./WhyVeryHappy.tsx', import.meta.url), 'utf8');
+    const whyStyles = readFileSync(new URL('./whyVeryHappy.css', import.meta.url), 'utf8');
+    const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
+    const pageOrder = landing.slice(landing.indexOf('return <div className="pub-page"'));
+    const readmeWhy = readme.slice(readme.indexOf('## Why choose Very Happy?'), readme.indexOf('## One command to your first machine'));
+
+    expect(pageOrder).toContain('<ProductShowcase />');
+    expect(pageOrder).toContain('<WhyVeryHappy />');
+    expect(pageOrder).toContain('<StartAndTrust />');
+    expect(pageOrder).toContain('<MobileContinuityProof />');
+    expect(pageOrder).toContain('<CoreFeatureProofs />');
+    expect(pageOrder.indexOf('<ProductShowcase />')).toBeLessThan(pageOrder.indexOf('<WhyVeryHappy />'));
+    expect(pageOrder.indexOf('<WhyVeryHappy />')).toBeLessThan(pageOrder.indexOf('<StartAndTrust />'));
+    expect(pageOrder.indexOf('<StartAndTrust />')).toBeLessThan(pageOrder.indexOf('<MobileContinuityProof />'));
+    expect(pageOrder.indexOf('<MobileContinuityProof />')).toBeLessThan(pageOrder.indexOf('<CoreFeatureProofs />'));
+    expect(why).toContain('VALUE_ROUTES.map');
+    expect(why).toContain('One panel holds the fleet.');
+    expect(why).toContain('Structured when useful. Native when necessary.');
+    expect(why).toContain('Carry the work between screens.');
+    expect(why).toContain('Choose the operator—not another silo.');
+    expect(whyStyles).toContain('@keyframes why-vh-packet');
+    expect(whyStyles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(readmeWhy.match(/^\| “/gm)).toHaveLength(4);
+    expect(readmeWhy).toContain('My agents and terminals are scattered across several machines.');
+    expect(readmeWhy).toContain('Remote control must fit my operating model.');
   });
 
   it('renders public product proof from production UI class contracts without app state imports', () => {
