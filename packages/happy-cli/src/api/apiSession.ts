@@ -186,8 +186,22 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('connect_error', (error) => {
             logger.debug('[API] Socket connection error:', error);
             this.rpcHandlerManager.onSocketDisconnect();
+            if (error.message === 'Session archived') {
+                logger.debug('[API] Archived session rejected during reconnect; exiting');
+                this.emit('archived');
+                return;
+            }
             this.startSmartReconnect();
         })
+
+        // Server-owned lifecycle command. The database transition is already
+        // committed when this arrives, so cleanup is idempotent and does not
+        // decide whether the archive succeeded.
+        this.socket.on('session-archive', ({ sessionId }) => {
+            if (sessionId !== this.sessionId) return;
+            logger.debug('[SOCKET] Server archived this session; exiting...');
+            this.emit('archived');
+        });
 
         // Server events
         this.socket.on('update', (data: Update) => {

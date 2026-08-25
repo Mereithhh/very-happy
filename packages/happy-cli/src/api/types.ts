@@ -46,6 +46,7 @@ export interface ServerToClientEvents {
   update: (data: Update) => void
   'rpc-request': (data: { method: string, params: string }, callback: (response: string) => void) => void
   'rpc-registered': (data: { method: string }) => void
+  'session-archive': (data: { sessionId: string }) => void
   'rpc-unregistered': (data: { method: string }) => void
   'rpc-error': (data: { type: string, error: string }) => void
   ephemeral: (data: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void

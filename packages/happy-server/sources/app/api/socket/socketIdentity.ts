@@ -16,8 +16,12 @@ export async function validateSocketOwnership(input: {
 }, client: Pick<typeof db, 'session' | 'machine'> = db): Promise<string | null> {
     if (input.clientType === 'session-scoped') {
         if (!input.sessionId) return 'Session ID required for session-scoped clients';
-        const owned = await client.session.findFirst({ where: { id: input.sessionId, accountId: input.userId }, select: { id: true } });
-        return owned ? null : 'Session not found';
+        const owned = await client.session.findFirst({
+            where: { id: input.sessionId, accountId: input.userId },
+            select: { id: true, archivedAt: true },
+        });
+        if (!owned) return 'Session not found';
+        return owned.archivedAt ? 'Session archived' : null;
     }
     if (input.clientType === 'machine-scoped') {
         if (!input.machineId) return 'Machine ID required for machine-scoped clients';

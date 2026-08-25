@@ -244,7 +244,11 @@ export function startSocket(app: Fastify) {
             userId,
             socket,
             io,
-            connection.connectionType === 'machine-scoped' ? connection.machineId : undefined,
+            connection.connectionType === 'machine-scoped'
+                ? connection.machineId
+                : connection.connectionType === 'session-scoped'
+                    ? connection.sessionId
+                    : undefined,
             rpcRateLimiter,
         );
         usageHandler(userId, socket);

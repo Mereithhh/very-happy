@@ -492,4 +492,28 @@ export class ApiClient {
       return false;
     }
   }
+
+  /** Clear the server-owned archive tombstone before an intentional resume.
+   * Older servers return 404 because the endpoint does not exist; that is a
+   * compatible no-op because those servers also have no durable tombstone. */
+  async reactivateSession(sessionId: string): Promise<boolean> {
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/sessions/${sessionId}/unarchive`,
+        {},
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
+          },
+          timeout: 3000,
+          validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+        },
+      );
+      return (response.status >= 200 && response.status < 300) || response.status === 404;
+    } catch (error) {
+      logger.debug('[API] reactivateSession failed:', error);
+      return false;
+    }
+  }
 }

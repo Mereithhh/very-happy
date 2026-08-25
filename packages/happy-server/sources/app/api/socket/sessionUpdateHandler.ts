@@ -14,6 +14,10 @@ import {
 } from '../sessionMessageStore';
 import { updateSessionStateWithQuota } from '@/app/state/accountStateStore';
 
+export function ownsSessionLifecycle(connection: ClientConnection, sessionId: string): boolean {
+    return connection.connectionType === 'session-scoped' && connection.sessionId === sessionId;
+}
+
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
     const labels = getMetricsLabelsFromSocket(socket);
     socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
@@ -129,6 +133,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             const { sid, thinking } = data;
+            if (!ownsSessionLifecycle(connection, sid)) return;
 
             // Check session validity using cache
             const isValid = await activityCache.isSessionValid(sid, userId);
@@ -216,6 +221,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     }) => {
         try {
             const { sid, time } = data;
+            if (!ownsSessionLifecycle(connection, sid)) return;
             let t = time;
             if (typeof t !== 'number') {
                 return;

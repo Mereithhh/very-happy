@@ -237,6 +237,7 @@ class EventRouter {
                 socket.join(`user:${userId}:session:${connection.sessionId}`);
                 break;
             case 'machine-scoped':
+                socket.join(`user:${userId}:machine-scoped`);
                 socket.join(`user:${userId}:machine:${connection.machineId}`);
                 break;
         }
@@ -244,6 +245,20 @@ class EventRouter {
 
     removeConnection(userId: string, connection: ClientConnection): void {
         // Socket.IO automatically removes sockets from all rooms on disconnect
+    }
+
+    /**
+     * A server-owned lifecycle command. The durable DB transition happens
+     * before this method is called; delivery is only an acceleration path.
+     * Daemons stop locally tracked processes, while the session socket exits
+     * itself. Disconnecting the session room prevents an already-running
+     * client from submitting more heartbeats after the archive commit.
+     */
+    emitSessionArchived(userId: string, sessionId: string): void {
+        const payload = { sessionId };
+        this.io.to(`user:${userId}:session:${sessionId}`).emit('session-archive', payload);
+        this.io.to(`user:${userId}:machine-scoped`).emit('session-archive', payload);
+        this.io.in(`user:${userId}:session:${sessionId}`).disconnectSockets(true);
     }
 
     // === EVENT EMISSION METHODS ===

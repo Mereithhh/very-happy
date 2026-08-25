@@ -42,6 +42,9 @@ import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager'
 import { createDaemonControlToken } from './controlAuth';
 import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
+import { terminateProcess } from './processTermination';
+import { findAllHappyProcesses } from './doctor';
+import { recoverableSessionPid } from './sessionProcessRecovery';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -189,8 +192,9 @@ export async function startDaemon(): Promise<void> {
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     const persisted = readPersistedSessions();
+    const liveHappyPids = new Set((await findAllHappyProcesses()).map((entry) => entry.pid));
     for (const [id, s] of Object.entries(persisted)) {
-      sessionIdToFinishedSession.set(id, {
+      const tracked: TrackedSession = {
         startedBy: 'persisted',
         happySessionId: id,
         happySessionMetadataFromLocalWebhook: s.metadata,
@@ -202,7 +206,15 @@ export async function startDaemon(): Promise<void> {
           agentStateVersion: s.agentStateVersion,
         },
         pid: 0,
-      });
+      };
+      const livePid = recoverableSessionPid(s.metadata, liveHappyPids);
+      if (livePid !== null) {
+        tracked.pid = livePid;
+        tracked.startedBy = 'recovered after daemon restart';
+        pidToTrackedSession.set(livePid, tracked);
+      } else {
+        sessionIdToFinishedSession.set(id, tracked);
+      }
     }
     if (Object.keys(persisted).length > 0) {
       logger.debug(`[DAEMON RUN] Loaded ${Object.keys(persisted).length} persisted sessions from disk`);
@@ -929,26 +941,25 @@ export async function startDaemon(): Promise<void> {
         if (session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))) {
 
-          if (session.startedBy === 'daemon' && session.childProcess) {
-            try {
-              session.childProcess.kill('SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
+          const requested = terminateProcess(pid, (stopped) => {
+            if (!stopped) {
+              logger.debug(`[DAEMON RUN] Session ${sessionId} survived SIGTERM and SIGKILL attempts`);
+              return;
             }
+            const tracked = pidToTrackedSession.get(pid);
+            if (!tracked) return; // child exit handler already finalized it
+            if (tracked.happySessionId && tracked.encryption) {
+              sessionIdToFinishedSession.set(tracked.happySessionId, tracked);
+            }
+            pidToTrackedSession.delete(pid);
+            logger.debug(`[DAEMON RUN] Verified session ${sessionId} stopped and removed it from tracking`);
+          });
+          if (requested) {
+            logger.debug(`[DAEMON RUN] Requested verified termination for session ${sessionId} (PID ${pid})`);
           } else {
-            // For externally started sessions, try to kill by PID
-            try {
-              process.kill(pid, 'SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to external session PID ${pid}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill external session PID ${pid}:`, error);
-            }
+            logger.debug(`[DAEMON RUN] Failed to signal session ${sessionId} (PID ${pid})`);
           }
-
-          pidToTrackedSession.delete(pid);
-          logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
-          return true;
+          return requested;
         }
       }
 
@@ -1147,6 +1158,9 @@ export async function startDaemon(): Promise<void> {
       spawnSession,
       resumeSession,
       stopSession,
+      listTrackedSessionIds: () => [...pidToTrackedSession.values()]
+        .map((session) => session.happySessionId)
+        .filter((sessionId): sessionId is string => typeof sessionId === 'string'),
       requestShutdown: () => requestShutdown('happy-app')
     });
 
@@ -1205,9 +1219,11 @@ export async function startDaemon(): Promise<void> {
           // Check if process is still alive (signal 0 doesn't kill, just checks)
           process.kill(pid, 0);
         } catch (error) {
-          // Process is dead, remove from tracking
-          logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
-          pidToTrackedSession.delete(pid);
+          // Recovered processes have no ChildProcess 'exit' listener after a
+          // daemon restart. Route stale pruning through the same finalizer so
+          // their persisted encryption/resume state remains discoverable.
+          logger.debug(`[DAEMON RUN] Finalizing stale session with PID ${pid} (process no longer exists)`);
+          onChildExited(pid);
         }
       }
 

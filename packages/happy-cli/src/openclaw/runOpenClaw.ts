@@ -310,7 +310,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     messageQueue.close();
     clearPendingTurn(new Error('Session terminated'));
     await handleAbort();
-  });
+  }, session);
 
   try {
     const started = await backend.startSession();
