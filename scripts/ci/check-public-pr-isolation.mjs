@@ -85,6 +85,9 @@ for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
 if (!/^CMD .*standalone\.ts migrate.*standalone\.ts serve/m.test(dockerfile)) {
   errors.push('Dockerfile.server: startup must migrate before serving');
 }
+if (!/prisma format --schema=prisma\/schema\.prisma[\s\\]+&& cmp packages\/happy-server\/prisma\/schema\.prisma node_modules\/\.prisma\/client\/schema\.prisma/.test(dockerfile)) {
+  errors.push('Dockerfile.server: packaged Prisma schema must be canonicalized and byte-match the generated Client');
+}
 if (!/^ENV DATA_DIR=\/data$/m.test(dockerfile) || !/^EXPOSE 3005$/m.test(dockerfile)) {
   errors.push('Dockerfile.server: public persistence and port contract changed');
 }

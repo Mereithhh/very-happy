@@ -46,6 +46,11 @@ COPY packages/happy-web-v2/src packages/happy-web-v2/src
 RUN pnpm --filter @slopus/happy-wire build
 RUN VH_VERSION="$VH_VERSION" pnpm --filter @slopus/happy-web-v2 exec vite build
 RUN rm -rf packages/happy-server/webapp && cp -a packages/happy-web-v2/dist packages/happy-server/webapp
+# Prisma generate stores a canonically formatted schema beside the generated
+# Client. Format the packaged copy the same way, then fail the image build if
+# schema and Client ever stop being the same release unit.
+RUN pnpm --filter very-happy-server exec prisma format --schema=prisma/schema.prisma \
+    && cmp packages/happy-server/prisma/schema.prisma node_modules/.prisma/client/schema.prisma
 # The image intentionally runs the TypeScript source through the workspace tsx
 # runtime below; validate it here without invoking the optional Bun package build.
 RUN pnpm --filter very-happy-server exec tsc --noEmit
