@@ -936,6 +936,9 @@ export const zhHans: TranslationStructure = {
     workspaceGuide: {
         eyebrow: '机器已连接',
         title: '你的工作区已就绪',
+        firstMachineConnectedTitle: '第一台机器已上线',
+        firstMachineConnectedDescription: '已为你打开工作区教程。接下来可以先创建一个 AI 对话或网页终端。',
+        exploreWorkspace: '开始了解工作区',
         intro: '先创建一个 AI 对话和一个网页终端，再把工作区调成适合你的样子。未打开会话时，随时可以回到本页查看这份快速导览。',
         compactIntro: '创建你的第一个工作区；需要细节时，再展开下方主题。',
         stepsLabel: '首先尝试这些功能',

@@ -5,12 +5,13 @@ import {
   Navigate,
   Outlet,
   useLocation,
+  useNavigate,
 } from 'react-router-dom';
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
 import { ThemeProvider, ToastProvider, OrbitLoader } from '@/ui';
-import { ModalProvider } from '@/modal';
+import { Modal, ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
 import { EmptyDetail } from '@/screens/sessions/EmptyDetail';
@@ -20,6 +21,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useGlobalBackNav } from '@/app/appBack';
 import { FirstRunScreen } from '@/screens/onboarding/FirstRunScreen';
 import { shouldShowFirstRun } from '@/screens/onboarding/firstRun';
+import { subscribeFirstMachineConnected } from '@/screens/onboarding/firstMachineWelcome';
 import { PrivacyScreen, TermsScreen } from '@/screens/legal/PublicLegalScreen';
 import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
@@ -66,14 +68,30 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /></>;
+  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <><AppLayout /><CliUpdateBanner /></>;
+  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /></>;
+}
+
+function FirstMachineWelcome() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+
+  useEffect(() => subscribeFirstMachineConnected(() => {
+    navigate('/', { replace: true });
+    Modal.alert(
+      t('workspaceGuide.firstMachineConnectedTitle'),
+      t('workspaceGuide.firstMachineConnectedDescription'),
+      [{ text: t('workspaceGuide.exploreWorkspace') }],
+    );
+  }), [navigate, t]);
+
+  return null;
 }
 
 /** `/` home: the classic empty-detail placeholder, or the Task Board when the
