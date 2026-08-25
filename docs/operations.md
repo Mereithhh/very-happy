@@ -4,6 +4,11 @@ This is the repository source of truth for the maintainer-operated
 `veryhappy.dev` deployment. It records topology and procedures, never secret
 values. Generic self-hosting remains in [`deployment.md`](deployment.md).
 
+The canonical source and release repository is the public
+[`Mereithhh/very-happy`](https://github.com/Mereithhh/very-happy). The former
+`very-happy-private-archive-20260825` repository is archive-only: do not push
+commits or tags to it and do not use it as a deployment source.
+
 ## Topology and trust boundary
 
 | Role | Runtime |
@@ -29,6 +34,10 @@ and Origin allowlist. Never copy the environment file into an agent transcript.
 The normal path is the manual GitHub workflow:
 
 ```bash
+test "$(git remote get-url origin)" = "https://github.com/Mereithhh/very-happy.git"
+test "$(gh repo view Mereithhh/very-happy --json visibility --jq .visibility)" = PUBLIC
+git push origin main
+# Wait at least 20 seconds for GitHub's ref to settle.
 gh workflow run deploy-hwsg.yml -f target=all   # all | server | web
 gh run list --workflow=deploy-hwsg.yml --limit 3
 gh run view <run-id> --json headSha,status,conclusion,url
