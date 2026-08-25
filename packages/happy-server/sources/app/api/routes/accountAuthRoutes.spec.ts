@@ -560,6 +560,20 @@ describe('authenticated Email identity linking', () => {
         await app.close();
     });
 
+    it('accepts the uppercase hex public keys stored by legacy Happy accounts', async () => {
+        dbMock.account.findUnique.mockResolvedValueOnce({ publicKey: credentialPublicKey.toUpperCase() });
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/login/refresh',
+            payload: { secret: credentialSecret },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ token: 'login-token', secret: credentialSecret });
+        await app.close();
+    });
+
     it('rejects refresh with the wrong secret before repairing recovery material', async () => {
         const app = await buildApp();
         const response = await app.inject({

@@ -202,7 +202,11 @@ async function matchesAccountSecret(accountId: string, secret: string): Promise<
     const account = derivedPublicKey
         ? await db.account.findUnique({ where: { id: accountId }, select: { publicKey: true } })
         : null;
-    return !!account && account.publicKey === derivedPublicKey;
+    // Legacy Happy accounts stored this hex key in uppercase while newer
+    // account-login paths store lowercase. Hex is case-insensitive; treating
+    // the representation as identity would lock valid legacy owners out of
+    // refresh and identity linking.
+    return !!account && account.publicKey.toLowerCase() === derivedPublicKey;
 }
 
 export function accountAuthRoutes(app: Fastify) {
@@ -467,7 +471,7 @@ export function accountAuthRoutes(app: Fastify) {
                     AccountIdentity: { select: { provider: true } },
                 },
             });
-            if (!account || account.publicKey !== derivedPublicKey) {
+            if (!account || account.publicKey.toLowerCase() !== derivedPublicKey) {
                 return reply.code(400).send({ error: 'invalid_secret' as const });
             }
 
