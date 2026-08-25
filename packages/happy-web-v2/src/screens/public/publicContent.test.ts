@@ -18,12 +18,13 @@ describe('public documentation registry', () => {
       'quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting', 'configuration', 'architecture',
       'integrations', 'security', 'accounts-and-quotas', 'upgrades', 'troubleshooting', 'contributing',
     ]));
+    expect(PUBLIC_DOCS.slice(0, 2).map((doc) => doc.slug)).toEqual(['architecture', 'quickstart']);
   });
 
   it('keeps onboarding commands and trust disclosure in the published content', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     expect(text).toContain(INSTALL_COMMAND);
-    expect(PUBLIC_DOCS[0]?.sections.find((section) => section.heading === 'Fast path: one command')?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
+    expect(getPublicDoc('quickstart')?.sections.find((section) => section.heading === 'Fast path: one command')?.blocks[1]).toEqual({ type: 'code', code: BOOTSTRAP_COMMAND });
     expect(text).toContain(LOGIN_COMMAND);
     expect(text).toContain('not end-to-end encrypted');
     expect(text).toContain('server-trusted');
@@ -51,7 +52,7 @@ describe('public documentation registry', () => {
     expect(text).toContain('It never invokes sudo, installs tmux, writes provider credentials');
     expect(text).toContain('downloads the complete script to a random temporary file');
     expect(text).toContain('restart the daemon so it inherits the new environment');
-    expect(PUBLIC_DOCS[0]?.sections.find((section) => section.heading === '3. Configure Claude credentials')?.blocks[1])
+    expect(getPublicDoc('quickstart')?.sections.find((section) => section.heading === '3. Configure Claude credentials')?.blocks[1])
       .toEqual({ type: 'code', code: PROVIDER_KEY_COMMAND });
     expect(PROVIDER_KEY_COMMAND).toContain('ZSH_VERSION');
     expect(PROVIDER_KEY_COMMAND).toContain('read -rs "ANTHROPIC_API_KEY?Anthropic API key: "');
@@ -70,6 +71,7 @@ describe('public documentation registry', () => {
   it('presents regional relay routing as measured capability without inventing hosted PoPs', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const relayMap = readFileSync(new URL('./GlobalRelayMap.tsx', import.meta.url), 'utf8');
     const i18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
     expect(text).toContain('lowest measured healthy RTT');
@@ -80,9 +82,32 @@ describe('public documentation registry', () => {
     expect(i18n).toContain('REGIONAL RELAY PLANE // LATENCY IS A ROUTING PROBLEM');
     expect(i18n).toContain('REAL RTT · NOT GEOIP GUESSING');
     expect(i18n).toContain('区域 RELAY 平面 // 延迟是路由问题');
-    expect(`${landing}\n${i18n}`).not.toMatch(/enterprise-grade|zero latency|global SLA/i);
+    expect(relayMap).toContain('US MACHINE');
+    expect(relayMap).toContain('US RELAY');
+    expect(relayMap).toContain('SINGAPORE MACHINE');
+    expect(relayMap).toContain('SINGAPORE RELAY');
+    expect(relayMap).toContain('JAPAN CONTROL');
+    expect(relayMap).toContain('NEAREST HEALTHY');
+    expect(`${landing}\n${relayMap}\n${i18n}`).not.toMatch(/enterprise-grade|zero latency|global SLA/i);
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(styles).toMatch(/@media \(max-width: 720px\)[\s\S]*\.pub-relay-path \{ grid-template-columns: 1fr;/);
+    expect(styles).toMatch(/@media \(max-width: 720px\)[\s\S]*\.pub-global-map-stage svg \{ width: 108%;/);
+  });
+
+  it('renders the shared architecture SVG set in the in-product architecture guide', () => {
+    const architecture = getPublicDoc('architecture');
+    const docsScreen = readFileSync(new URL('./DocsScreen.tsx', import.meta.url), 'utf8');
+    const images = architecture?.sections.flatMap((section) => section.blocks).filter((block) => block.type === 'image') ?? [];
+
+    expect(images).toHaveLength(4);
+    expect(docsScreen).toContain('<Navigate replace to="/docs/architecture" />');
+    expect(docsScreen).toContain('navigator.clipboard.writeText(code)');
+    expect(docsScreen).toContain('<CopyableCode');
+    expect(images.map((block) => block.type === 'image' ? block.src : '')).toEqual(expect.arrayContaining([
+      expect.stringContaining('system-topology.svg'),
+      expect.stringContaining('regional-realtime-plane.svg'),
+      expect.stringContaining('session-data-flow.svg'),
+      expect.stringContaining('dual-path-runtime.svg'),
+    ]));
   });
 
   it('anchors the public keyboard story to shipped chords and browser boundaries', () => {
@@ -251,7 +276,7 @@ describe('public documentation registry', () => {
     expect(landingCopy).toContain('REAL PRODUCT // SANITIZED DATA');
     expect(landingCopy).not.toContain('LIVE PRODUCT UI');
     expect(architecture).toContain('terminal transport is intentionally agent-neutral');
-    expect(architecture).toContain('shell / xterm-compatible text TUI');
+    expect(architecture).toContain('ordinary xterm-compatible text TUI');
     expect(webTerminal).toContain("env.TERM = 'xterm-256color'");
     for (const source of [text, readme, gettingStarted, architecture]) {
       expect(source).toContain('xterm-256color');
@@ -408,6 +433,8 @@ describe('public documentation registry', () => {
     expect(pageOrder).toContain('<StartAndTrust />');
     expect(pageOrder).toContain('<MobileContinuityProof />');
     expect(pageOrder).toContain('<CoreFeatureProofs />');
+    expect(pageOrder.indexOf('<RegionalRelayProof />')).toBeLessThan(pageOrder.indexOf('<RuntimeArchitectureProof />'));
+    expect(pageOrder.indexOf('<RuntimeArchitectureProof />')).toBeLessThan(pageOrder.indexOf('<ProductShowcase />'));
     expect(pageOrder.indexOf('<ProductShowcase />')).toBeLessThan(pageOrder.indexOf('<WhyVeryHappy />'));
     expect(pageOrder.indexOf('<WhyVeryHappy />')).toBeLessThan(pageOrder.indexOf('<StartAndTrust />'));
     expect(pageOrder.indexOf('<StartAndTrust />')).toBeLessThan(pageOrder.indexOf('<MobileContinuityProof />'));

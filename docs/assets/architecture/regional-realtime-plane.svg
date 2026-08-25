@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940" role="img" aria-labelledby="title desc">
   <title id="title">Regional realtime relay plane</title>
-  <desc id="desc">The browser and daemon keep durable state on the central control and data server while machine RPC and terminal bytes prefer a daemon-selected regional relay using short-lived scoped tokens.</desc>
+  <desc id="desc">A US machine uses a nearby US relay and a Singapore machine uses a nearby Singapore relay, while both keep account control and durable state on the Japan control and data server.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071116"/><stop offset="1" stop-color="#0a151c"/></linearGradient>
     <radialGradient id="halo"><stop stop-color="#43f5d0" stop-opacity=".16"/><stop offset="1" stop-color="#43f5d0" stop-opacity="0"/></radialGradient>
@@ -13,8 +13,8 @@
   </defs>
   <rect width="1600" height="940" rx="30" fill="url(#bg)"/><rect width="1600" height="940" rx="30" fill="url(#grid)"/><ellipse cx="818" cy="600" rx="480" ry="250" fill="url(#halo)"/>
   <text x="64" y="66" class="eyebrow">NETWORK ARCHITECTURE / SPLIT CONTROL + REALTIME PLANES</text>
-  <text x="64" y="112" class="title">Durable state stays central. Interactive traffic takes the fast seam.</text>
-  <text x="64" y="144" class="body">Machine-anchored routing by measured daemon RTT · finite operator candidate list · legacy control fallback</text>
+  <text x="64" y="112" class="title">Two machines take the nearest relay. Durable control stays in Japan.</text>
+  <text x="64" y="144" class="body">US machine → US relay · Singapore machine → Singapore relay · one account control and data server</text>
 
   <g filter="url(#shadow)"><rect x="70" y="260" width="330" height="420" rx="24" fill="#101f29" stroke="#59618f"/>
     <text x="100" y="298" class="dim">UNIFIED CONTROL SURFACE</text><text x="100" y="340" class="head">Web V2 / PWA</text>
@@ -25,23 +25,23 @@
   </g>
 
   <g filter="url(#shadow)"><rect x="600" y="200" width="400" height="300" rx="26" fill="#171f31" stroke="#7067db"/>
-    <text x="630" y="238" class="dim">CENTRAL · STATEFUL</text><text x="630" y="278" class="head">Control / Data server</text>
+    <text x="630" y="238" class="dim">JAPAN · CENTRAL · STATEFUL</text><text x="630" y="278" class="head">Japan Control / Data server</text>
     <g transform="translate(630 310)"><rect width="106" height="38" rx="9" fill="#282847"/><text x="30" y="24" class="chip">AUTH</text><rect x="116" width="112" height="38" rx="9" fill="#282847"/><text x="151" y="24" class="chip">SYNC</text><rect x="238" width="132" height="38" rx="9" fill="#282847"/><text x="268" y="24" class="chip">POSTGRES</text></g>
     <text x="630" y="392" class="body">candidate discovery · ownership check</text><text x="630" y="419" class="body">assignment registry · token minting</text>
     <rect x="630" y="447" width="212" height="30" rx="15" fill="#29274c"/><text x="648" y="467" class="chip">DURABLE SOURCE OF TRUTH</text>
   </g>
 
   <g filter="url(#shadow)"><rect x="600" y="600" width="400" height="250" rx="26" fill="#0f292c" stroke="#43f5d0" stroke-width="2"/>
-    <text x="630" y="638" class="dim">REGIONAL · DATABASE-FREE</text><text x="630" y="678" class="head">Selected realtime relay</text>
+    <text x="630" y="638" class="dim">US + SINGAPORE · DATABASE-FREE</text><text x="630" y="678" class="head">Nearest regional relays</text>
     <circle cx="944" cy="670" r="9" fill="#43f5d0" filter="url(#glow)"/>
-    <text x="630" y="718" class="body">allowlisted event forwarding only</text><text x="630" y="745" class="body">machine room · bounded RPC ack</text>
-    <rect x="630" y="780" width="118" height="34" rx="10" fill="#173f3d"/><text x="648" y="802" class="chip">RPC CALL</text><rect x="758" y="780" width="194" height="34" rx="10" fill="#173f3d"/><text x="777" y="802" class="chip">TERMINAL BYTES</text>
+    <text x="630" y="718" class="body">each daemon anchors to its nearest healthy relay</text><text x="630" y="745" class="body">allowlisted RPC · terminal bytes · bounded ack</text>
+    <rect x="630" y="780" width="142" height="34" rx="10" fill="#173f3d"/><text x="653" y="802" class="chip">US RELAY</text><rect x="782" y="780" width="170" height="34" rx="10" fill="#173f3d"/><text x="800" y="802" class="chip">SINGAPORE RELAY</text>
   </g>
 
   <g filter="url(#shadow)"><rect x="1200" y="260" width="330" height="420" rx="24" fill="#101f29" stroke="#39515a"/>
-    <text x="1230" y="298" class="dim">MACHINE-ANCHORED EDGE</text><text x="1230" y="340" class="head">very-happy daemon</text>
-    <rect x="1230" y="376" width="270" height="104" rx="14" fill="#142a32" stroke="#35505a"/><text x="1252" y="405" class="code">parallel health probes</text><text x="1252" y="431" class="body">2 s timeout · min RTT</text><text x="1252" y="457" class="body">stable config-order tie-break</text>
-    <rect x="1230" y="500" width="270" height="104" rx="14" fill="#102e30" stroke="#43f5d0"/><text x="1252" y="529" class="code">assignment heartbeat</text><text x="1252" y="555" class="body">claim every 20 s</text><text x="1252" y="581" class="body">assignment TTL 75 s</text>
+    <text x="1230" y="298" class="dim">TWO MACHINE-ANCHORED EDGES</text><text x="1230" y="340" class="head">US + Singapore daemons</text>
+    <rect x="1230" y="376" width="270" height="104" rx="14" fill="#142a32" stroke="#35505a"/><text x="1252" y="405" class="code">US machine → US relay</text><text x="1252" y="431" class="body">parallel probe · min healthy RTT</text><text x="1252" y="457" class="body">scoped machine assignment</text>
+    <rect x="1230" y="500" width="270" height="104" rx="14" fill="#102e30" stroke="#43f5d0"/><text x="1252" y="529" class="code">SG machine → Singapore relay</text><text x="1252" y="555" class="body">parallel probe · min healthy RTT</text><text x="1252" y="581" class="body">scoped machine assignment</text>
     <text x="1230" y="645" class="dim">agent + terminal processes remain local</text>
   </g>
 
@@ -53,5 +53,5 @@
 
   <g transform="translate(70 754)"><rect width="430" height="96" rx="18" fill="#0d1d24" stroke="#31474f"/><text x="22" y="29" class="dim">TOKEN SCOPE</text><text x="22" y="57" class="code">account · machine · relay · clientType</text><text x="22" y="80" class="body">short-lived · locally verified by relay</text></g>
   <g transform="translate(1100 754)"><rect width="430" height="96" rx="18" fill="#0d1d24" stroke="#31474f"/><text x="22" y="29" class="dim">FAILURE CONTRACT</text><text x="22" y="57" class="code">stream → legacy control fallback</text><text x="22" y="80" class="body">unknown RPC result is never auto-replayed</text></g>
-  <text x="70" y="900" class="dim">Selection is nearest-to-daemon by measured healthy RTT, not GeoIP · WebRTC direct transport remains a future occupant of the same seam</text>
+  <text x="70" y="900" class="dim">US → US relay · Singapore → Singapore relay · account control + durable sync → Japan · selection uses measured healthy RTT, not GeoIP</text>
 </svg>

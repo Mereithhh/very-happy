@@ -14,7 +14,7 @@ export function MobileContinuityProof({ compact = false }: { compact?: boolean }
   const zh = language === 'zh-Hans';
   return <section className={`mcp${compact ? ' mcp--compact' : ''}`} aria-labelledby={titleId}>
     <header className="mcp-heading">
-      <div><div className="eyebrow">{zh ? '想要时结构化 // 需要时回原生终端' : 'STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT'}</div><h2 id={titleId}>{zh ? '离开终端。' : 'Leave the terminal.'}<br /><span>{zh ? '不离开工作。' : 'Not the work.'}</span></h2></div>
+      <div><div className="eyebrow">{zh ? '想要时结构化 // 需要时回原生终端' : 'STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT'}</div><h2 id={titleId}>{zh ? '离开终端' : 'Leave the terminal.'}<br /><span>{zh ? '不离开工作' : 'Not the work.'}</span></h2></div>
       <p>{zh ? 'Very Happy 保留基于 SDK 的 Claude 体验；在可用 tmux 时，还提供以真实 CLI/TUI 为事实源的持久终端路径。tmux 3.2+ 下可选的 Claude hooks 能把手动启动的终端连到下方的结构化镜像。' : 'Very Happy keeps the SDK-backed Claude experience and, where tmux is available, adds a durable terminal path where the real CLI/TUI remains the source of truth. With tmux 3.2+, optional Claude hooks connect a hand-started terminal to the structured mirror below.'}</p>
     </header>
 

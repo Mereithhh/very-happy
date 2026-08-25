@@ -71,6 +71,16 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 
 <p align="center"><sub>ACCOUNT-LEVEL FLEET · EXPLICIT MACHINE + RUNNER TARGETING · ONE CONTROL SURFACE</sub></p>
 
+<a href="docs/architecture.md#regional-realtime-relay-plane">
+  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: a US machine and a Singapore machine use their nearest configured relays while durable control and account state remain central">
+</a>
+
+<p align="center"><sub>US + SINGAPORE MACHINE EDGES · CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS</sub></p>
+
+The control and data server remains the durable source of truth. Latency-sensitive
+terminal bytes and machine RPC can use operator-configured regional relays chosen
+by measured daemon RTT, while compatible clients retain the central fallback.
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -383,19 +393,13 @@ authorization by themselves.
 
 <p align="center"><sub>MACHINE-SCOPED RPC · RUNNER-SPECIFIC NORMALIZATION · DURABLE MULTI-BROWSER CONVERGENCE</sub></p>
 
-### A regional realtime plane, separate from account data
+### Regional relay behavior and limits
 
 The account/database server can stay central while latency-sensitive terminal
 bytes and machine RPC use operator-configured regional relays. Each daemon probes
 the healthy candidates in parallel and anchors to the lowest measured RTT; the
 browser follows that machine assignment with a short-lived, machine-scoped token.
 The active relay and browser-to-relay RTT are visible in the terminal header.
-
-<a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy regional realtime architecture: durable state stays central while terminal bytes and machine RPC use a daemon-selected regional relay">
-</a>
-
-<p align="center"><sub>CENTRAL DURABLE STATE · MEASURED RELAY RTT · SHORT-LIVED SCOPED TOKENS · LEGACY FALLBACK</sub></p>
 
 This is measured routing, not a GeoIP guess, and relays do not need database
 credentials. If discovery or a regional relay fails, current clients fall back

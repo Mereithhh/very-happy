@@ -129,7 +129,7 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
           <span>{zh ? '可选语音' : 'OPTIONAL VOICE'}</span>
           <span>{zh ? '需要语音配置' : 'REQUIRES VOICE CONFIGURATION'}</span>
         </div>
-        <h3 id={titleId}>{zh ? '在你选择的机器上，直接与工作对话。' : 'Talk to the work, on the machine you chose.'}</h3>
+        <h3 id={titleId}>{zh ? '在你选择的机器上，直接与工作对话' : 'Talk to the work, on the machine you chose.'}</h3>
         <p>
           {zh ? '协调器是选定机器上的 Claude meta-agent 会话。按住说话或直接输入；配置语音服务后可增加 STT/TTS。跨机器或跨 provider 自动路由仍在路线图中。' : 'The coordinator is a Claude meta-agent session on one selected machine. Hold to talk or type; configured speech services add STT/TTS. Automatic cross-machine or cross-provider routing is roadmap.'}
         </p>
@@ -263,7 +263,7 @@ function NewSessionProof({ titleId }: { titleId: string }) {
           <span>{zh ? '多 AGENT 启动' : 'MULTI-AGENT LAUNCH'}</span>
           <span>{zh ? '明确的机器范围' : 'EXPLICIT MACHINE SCOPE'}</span>
         </div>
-        <h3 id={titleId}>{zh ? '选好机器、路径和 Agent，然后开始。' : 'Pick the machine, path, and agent. Then start.'}</h3>
+        <h3 id={titleId}>{zh ? '选好机器、路径和 Agent，然后开始' : 'Pick the machine, path, and agent. Then start.'}</h3>
         <p>
           {zh ? '当前 Web 启动器支持 Claude、Codex、Gemini 和 OpenClaw。选定机器会启动 Agent，或连接已配置的 OpenClaw gateway。Gemini 使用 beta ACP；OpenClaw 不使用 ACP。' : 'The current Web launcher offers Claude, Codex, Gemini, and OpenClaw. The selected machine starts the agent—or connects its configured OpenClaw gateway. Gemini uses beta ACP; OpenClaw does not.'}
         </p>
@@ -399,7 +399,7 @@ export function CoreFeatureProofs() {
       <header className="cfp-heading">
         <div>
           <div className="cfp-eyebrow">{zh ? '核心能力 // 在产品界面中呈现' : 'CORE CAPABILITIES // SHOWN IN PRODUCT UI'}</div>
-          <h2 id={sectionTitleId}>{zh ? '功能主张与真实界面，并排展示。' : 'The feature claim and the interface, side by side.'}</h2>
+          <h2 id={sectionTitleId}>{zh ? '功能主张与真实界面，并排展示' : 'The feature claim and the interface, side by side.'}</h2>
         </div>
         <p>
           {zh ? '这些是生产交互契约的轻量、纯数据演示，不是凭空想象的仪表盘。可以尝试操作；公开页不会连接任何机器。' : 'These are lightweight, data-only renderings of the production interaction contracts—not imaginary dashboards. Try the controls; nothing connects to a machine from this public page.'}

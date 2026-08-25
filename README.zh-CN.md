@@ -65,6 +65,15 @@ Very Happy 是一个面向你所掌控的计算机与 Agent 的开放式指挥�
 
 <p align="center"><sub>账号级机器集群 · 显式选择机器与 RUNNER · 一个统一控制界面</sub></p>
 
+<a href="docs/architecture.md#regional-realtime-relay-plane">
+  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：美国机器和新加坡机器分别连接最近的区域 Relay，持久控制与账号状态保持集中">
+</a>
+
+<p align="center"><sub>美国 + 新加坡机器边缘 · 中央持久状态 · 实测 RELAY RTT · 最小权限 TOKEN</sub></p>
+
+控制与数据服务器仍是持久状态的唯一事实源。延迟敏感的终端字节流和 machine RPC 可以使用
+按 daemon 实测 RTT 选择的 operator 配置区域 Relay，兼容客户端仍保留中央回退路径。
+
 <table>
   <tr>
     <td width="33%" valign="top">
@@ -329,18 +338,12 @@ Issue Tracker、调度器、聊天系统或未来的提供商感知协调器。
 
 <p align="center"><sub>机器级 RPC · RUNNER 专属归一化 · 多浏览器持久收敛</sub></p>
 
-### 区域实时面与账号数据面分离
+### 区域 Relay 的行为与边界
 
 账号与数据库服务可以集中部署，延迟敏感的终端字节流和 machine RPC 则走 operator 配置的
 区域 relay。daemon 会并行探测所有健康候选，并锚定实测 RTT 最低的节点；浏览器凭短期、
 machine-scoped token 跟随同一 assignment。终端标题栏会直接显示当前 relay 与浏览器到 relay
 的 RTT。
-
-<a href="docs/architecture.md#regional-realtime-relay-plane">
-  <img src="docs/assets/architecture/regional-realtime-plane.svg" width="100%" alt="Very Happy 区域实时架构：持久状态保留在中央服务，终端字节流和机器 RPC 使用 daemon 选择的区域 relay">
-</a>
-
-<p align="center"><sub>中央持久状态 · 实测 RELAY RTT · 短期最小权限 TOKEN · 兼容路径回退</sub></p>
 
 选择依据是实测网络，不是 GeoIP 猜测；relay 也不需要数据库凭据。discovery 或区域 relay
 失败时，新客户端会回退到兼容的 control-server 路径。自托管 operator 自己决定部署哪些

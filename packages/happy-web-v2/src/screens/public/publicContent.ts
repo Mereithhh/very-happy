@@ -1,4 +1,8 @@
 import { PUBLIC_DOCS_ZH_HANS } from './publicContent.zhHans';
+import dualPathRuntimeDiagram from '../../../../../docs/assets/architecture/dual-path-runtime.svg';
+import regionalRealtimeDiagram from '../../../../../docs/assets/architecture/regional-realtime-plane.svg';
+import sessionDataFlowDiagram from '../../../../../docs/assets/architecture/session-data-flow.svg';
+import systemTopologyDiagram from '../../../../../docs/assets/architecture/system-topology.svg';
 
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
@@ -21,6 +25,7 @@ export type DocBlock =
   | { type: 'code'; code: string }
   | { type: 'list'; items: string[] }
   | { type: 'link'; href: string; label: string }
+  | { type: 'image'; src: string; alt: string; caption: string }
   | { type: 'note'; text: string };
 
 export type DocSection = { heading: string; blocks: DocBlock[] };
@@ -31,7 +36,7 @@ export type PublicDoc = {
   sections: DocSection[];
 };
 
-export const PUBLIC_DOCS: PublicDoc[] = [
+const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
   {
     slug: 'quickstart', label: 'Quick start', summary: 'Connect one machine, then use the Web/PWA as your daily workspace.',
     sections: [
@@ -197,17 +202,20 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'architecture', label: 'Architecture & data flow', summary: 'See which component owns identity, state, relay traffic, and execution.',
     sections: [
       { heading: 'Components', blocks: [
-        { type: 'code', code: 'Web / PWA ── durable sync ── control + data + Postgres\n    │                              ▲\n    └─ scoped token ─ regional relay ─ machine daemon\n                       RPC + terminal bytes' },
+        { type: 'image', src: systemTopologyDiagram, alt: 'Very Happy system topology with multiple machines, local daemons, the control and data plane, and one account workspace', caption: 'ACCOUNT-LEVEL FLEET · CONTROL / DATA · ONE WEB WORKSPACE' },
         { type: 'p', text: 'The browser is the unified command surface for every machine connected to the account. Its sidebar and board aggregate sessions and attention state across those machines; creating work explicitly targets a machine and agent. The control/data server authenticates accounts and stores synchronized state. A database-free regional relay carries latency-sensitive machine RPC and terminal traffic; each daemon probes configured candidates and anchors to the lowest measured healthy RTT, then the browser follows that machine assignment.' },
       ] },
       { heading: 'Regional relay selection', blocks: [
+        { type: 'image', src: regionalRealtimeDiagram, alt: 'Regional realtime relay architecture separating central durable state from latency-sensitive machine RPC and terminal traffic', caption: 'CENTRAL DURABLE STATE · MEASURED RELAY RTT · SCOPED TOKENS · FALLBACK' },
         { type: 'list', items: ['The operator configures the candidate relay origins; no client can inject a relay URL.', 'The daemon probes health endpoints in parallel and selects the lowest measured RTT, using configuration order as a stable tie-break.', 'The control server verifies machine ownership and mints short-lived, machine-scoped relay tokens. Relays do not receive database or account bearer credentials.', 'The terminal header shows the active relay and browser-to-relay RTT. Discovery or relay failure falls back to the compatible control-server path.'] },
         { type: 'note', text: 'This is machine-anchored routing, not a global-SLA claim. Self-hosted operators decide which regions exist. WebRTC direct browser-to-daemon transport is a future path; regional relay remains its fallback.' },
       ] },
       { heading: 'Session flow', blocks: [
+        { type: 'image', src: sessionDataFlowDiagram, alt: 'Session lifecycle with commands flowing through server planes and the daemon to runner adapters while normalized events return to browsers', caption: 'MACHINE-SCOPED COMMANDS · RUNNER NORMALIZATION · DURABLE CONVERGENCE' },
         { type: 'list', items: ['The user authenticates the browser to the control/data server.', 'A one-time approval connects a CLI identity to the same account.', 'Durable requests and updates stay on the control path; machine RPC and terminal bytes prefer the assigned regional relay.', 'The daemon invokes local terminal or agent processes and streams results back.'] },
       ] },
       { heading: 'Structured and native terminal paths', blocks: [
+        { type: 'image', src: dualPathRuntimeDiagram, alt: 'Two execution paths in one workspace: structured Claude Agent SDK semantics and a universal tmux-backed terminal', caption: 'TWO EXECUTION PATHS · ONE WORKSPACE · TWO SOURCES OF TRUTH' },
         { type: 'p', text: "Upstream Happy's core Claude flow is an SDK-backed structured session. Very Happy keeps that path and, when tmux is installed, also carries the actual TTY from a process on the user's machine. The terminal transport is agent-neutral: a shell, vim, lazygit, ssh, database console, ordinary xterm-256color-compatible text TUI, or agent CLI all use the same byte stream. The daemon carries pane output and input through the trusted relay, and xterm renders the terminal in the browser; it is not a screenshot or a browser reimplementation." },
         { type: 'list', items: ['SDK path: Claude Agent SDK events become structured messages, tools, diffs, permissions, usage, and resume state.', 'Terminal path: tmux keeps the real TTY/TUI alive across browser disconnects and supports reconnect, scrollback, search, files, and mobile input.', 'Fallback: without tmux, Web terminals are non-persistent direct shells; tmux 3.2 or newer is required for the optional Claude mirror.', 'Parity is not implied: a terminal-backed process does not automatically expose Claude-style structured messages or agent controls.'] },
       ] },
@@ -328,6 +336,12 @@ export const PUBLIC_DOCS: PublicDoc[] = [
   },
 ];
 
+const DOC_PRIORITY: Record<string, number> = { architecture: 0, quickstart: 1 };
+
+export const PUBLIC_DOCS: PublicDoc[] = [...PUBLIC_DOCS_SOURCE].sort(
+  (left, right) => (DOC_PRIORITY[left.slug] ?? 2) - (DOC_PRIORITY[right.slug] ?? 2),
+);
+
 export function getPublicDoc(slug: string | undefined): PublicDoc | undefined {
   return PUBLIC_DOCS.find((doc) => doc.slug === slug);
 }
@@ -354,6 +368,7 @@ function buildZhHansDocs(): PublicDoc[] {
             if (block.type === 'list') return Array.isArray(value) ? { ...block, items: value } : block;
             if (Array.isArray(value)) return block;
             if (block.type === 'link') return { ...block, label: value };
+            if (block.type === 'image') return { ...block, caption: value };
             return { ...block, text: value };
           }),
         };

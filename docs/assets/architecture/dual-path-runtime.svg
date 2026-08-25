@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
-  <title id="title">Structured Claude and universal terminal runtime paths</title>
-  <desc id="desc">The daemon exposes a structured Claude SDK path and a universal tmux-backed terminal path, with optional Claude mirroring and a bounded terminal file handoff channel.</desc>
+  <title id="title">Two execution paths in one Very Happy workspace</title>
+  <desc id="desc">Structured Claude sessions preserve agent semantics while the universal tmux-backed terminal path preserves the actual TTY, with optional Claude mirroring and bounded terminal file handoff.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071116"/><stop offset="1" stop-color="#0b151d"/></linearGradient>
     <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#72ffe2"/><stop offset="1" stop-color="#18bca7"/></linearGradient>
@@ -13,18 +13,18 @@
     <style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.title{font:700 34px ui-sans-serif,system-ui,sans-serif;fill:#effffc}.eyebrow{font-size:14px;letter-spacing:3px;fill:#43f5d0}.head{font-size:20px;font-weight:700;fill:#effffc}.body{font-size:14px;fill:#9cb2b7}.code{font-size:13px;fill:#ddf9f3}.dim{font-size:12px;fill:#718b91}.chip{font-size:12px;font-weight:700;fill:#dffcf6}.cyanLine{fill:none;stroke:#43f5d0;stroke-width:3;marker-end:url(#a)}.purpleLine{fill:none;stroke:#9189ef;stroke-width:3;marker-end:url(#p)}.dash{fill:none;stroke:#9189ef;stroke-width:2;stroke-dasharray:8 8;marker-end:url(#p)}</style>
   </defs>
   <rect width="1600" height="960" rx="30" fill="url(#bg)"/><rect width="1600" height="960" rx="30" fill="url(#grid)"/>
-  <text x="64" y="66" class="eyebrow">RUNTIME ARCHITECTURE / TWO SOURCES OF TRUTH</text>
-  <text x="64" y="112" class="title">Structured agent semantics meet a real, durable TTY.</text>
-  <text x="64" y="144" class="body">The two paths share the workspace and relay, but they intentionally preserve different capability contracts.</text>
+  <text x="64" y="66" class="eyebrow">TWO EXECUTION PATHS / ONE WORKSPACE</text>
+  <text x="64" y="112" class="title">Understand the work. Touch the real process.</text>
+  <text x="64" y="144" class="body">Structured semantics and real PTY bytes share one workspace without pretending they expose the same capabilities.</text>
 
   <g filter="url(#shadow)"><rect x="70" y="210" width="310" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
-    <text x="100" y="250" class="dim">BROWSER CONTROL SURFACE</text>
+    <text x="100" y="250" class="dim">ONE BROWSER WORKSPACE</text>
     <rect x="100" y="280" width="250" height="180" rx="16" fill="#172438" stroke="#7067db"/><text x="124" y="316" class="head">Structured UI</text><text x="124" y="350" class="body">messages · tools · diffs</text><text x="124" y="377" class="body">permissions · usage</text><text x="124" y="404" class="body">resume semantics</text><circle cx="324" cy="428" r="7" fill="#9189ef" filter="url(#glow)"/>
     <rect x="100" y="490" width="250" height="226" rx="16" fill="#0b171c" stroke="#43f5d0"/><rect x="118" y="510" width="214" height="34" rx="8" fill="#13282d"/><circle cx="136" cy="527" r="5" fill="#43f5d0"/><text x="153" y="532" class="chip">XTERM.JS / LIVE</text><text x="124" y="582" class="code">$ claude</text><text x="124" y="612" class="code">$ codex</text><text x="124" y="642" class="code">$ ssh prod-box</text><text x="124" y="684" class="body">actual TUI pixels? no.</text><text x="124" y="706" class="body">actual PTY byte stream? yes.</text>
   </g>
 
   <g filter="url(#shadow)"><rect x="520" y="210" width="360" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
-    <text x="550" y="250" class="dim">LOCAL DAEMON / ADAPTER LAYER</text>
+    <text x="550" y="250" class="dim">MACHINE BRIDGE / LOCAL DAEMON</text>
     <rect x="550" y="280" width="300" height="180" rx="16" fill="#172438" stroke="#7067db"/><circle cx="580" cy="316" r="8" fill="#9189ef" filter="url(#glow)"/><text x="601" y="322" class="head">Claude Agent SDK</text><path d="M576 350H824" stroke="#3b405e"/><text x="576" y="381" class="code">native event → envelope</text><text x="576" y="411" class="body">Claude-specific rich path</text><rect x="576" y="425" width="130" height="24" rx="12" fill="#2a2850"/><text x="594" y="442" class="chip">STRUCTURED</text>
     <rect x="550" y="490" width="300" height="226" rx="16" fill="#102a2d" stroke="#43f5d0"/><circle cx="580" cy="526" r="8" fill="#43f5d0" filter="url(#glow)"/><text x="601" y="532" class="head">tmux control mode</text><path d="M576 560H824" stroke="#31504f"/><text x="576" y="591" class="code">pane output ⇄ input bytes</text><text x="576" y="621" class="body">tmux owns long-lived TTY/TUI</text><text x="576" y="649" class="body">direct-shell fallback: no durability</text><rect x="576" y="673" width="180" height="24" rx="12" fill="#173f3d"/><text x="594" y="690" class="chip">AGENT-NEUTRAL</text>
   </g>
@@ -33,7 +33,7 @@
   <path d="M380 604H520" class="cyanLine"/><text x="418" y="584" class="dim">PTY I/O</text>
 
   <g filter="url(#shadow)"><rect x="1020" y="210" width="510" height="540" rx="24" fill="#0e2028" stroke="#354d56"/>
-    <text x="1050" y="250" class="dim">MACHINE EXECUTION / SOURCE OF TRUTH</text>
+    <text x="1050" y="250" class="dim">EXECUTION / TWO SOURCES OF TRUTH</text>
     <rect x="1050" y="280" width="450" height="180" rx="16" fill="#172438" stroke="#7067db"/><text x="1080" y="320" class="head">Managed Claude process</text><text x="1080" y="354" class="body">launched and resumed through SDK contract</text><g transform="translate(1080 382)"><rect width="122" height="34" rx="9" fill="#29274c"/><text x="18" y="22" class="chip">MESSAGES</text><rect x="132" width="92" height="34" rx="9" fill="#29274c"/><text x="153" y="22" class="chip">TOOLS</text><rect x="234" width="84" height="34" rx="9" fill="#29274c"/><text x="255" y="22" class="chip">DIFFS</text></g>
     <rect x="1050" y="490" width="450" height="226" rx="16" fill="#102a2d" stroke="#43f5d0"/><text x="1080" y="530" class="head">Real process inside tmux</text><text x="1080" y="564" class="body">shell · agent CLI · editor · SSH · database TUI</text><g transform="translate(1080 594)"><rect width="126" height="34" rx="9" fill="#173f3d"/><text x="20" y="22" class="chip">SCROLLBACK</text><rect x="136" width="92" height="34" rx="9" fill="#173f3d"/><text x="157" y="22" class="chip">SEARCH</text><rect x="238" width="112" height="34" rx="9" fill="#173f3d"/><text x="259" y="22" class="chip">RECONNECT</text></g><text x="1080" y="678" class="code">TERM=xterm-256color</text>
   </g>

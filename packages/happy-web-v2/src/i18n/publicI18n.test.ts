@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { getPublicCopy } from './publicI18n';
 import { PUBLIC_DOCS, getPublicDocs } from '../screens/public/publicContent';
 import { PUBLIC_DOCS_ZH_HANS } from '../screens/public/publicContent.zhHans';
@@ -8,6 +9,23 @@ describe('public i18n', () => {
     expect(getPublicCopy('zh-Hans').shell.signIn).toBe('登录');
     expect(getPublicCopy('zh-Hans').landing.primaryCta).toBe('连接第一台机器');
     expect(getPublicCopy('ja').shell.signIn).toBe('Sign in');
+  });
+
+  it('keeps visible Chinese landing headlines free of sentence-ending punctuation', () => {
+    const landing = getPublicCopy('zh-Hans').landing;
+    const translatedHeadlines = [
+      landing.heroTitleA, landing.heroTitleB, landing.heroTitleC, landing.productTitle,
+      landing.relayTitleA, landing.relayTitleB, landing.startTitle, landing.deploymentTitle,
+      landing.finalTitleA, landing.finalTitleB,
+    ];
+    const componentSources = [
+      'WhyVeryHappy.tsx', 'MobileContinuityProof.tsx', 'CoreFeatureProofs.tsx',
+      'KeyboardWorkflowProof.tsx', 'RuntimeArchitectureProof.tsx',
+    ].map((file) => readFileSync(new URL(`../screens/public/${file}`, import.meta.url), 'utf8'));
+
+    expect(translatedHeadlines.every((headline) => !/[。！？]$/.test(headline))).toBe(true);
+    expect(componentSources.flatMap((source) => source.split('\n').filter((line) => /<h[1-3]/.test(line) && /\{zh \? '[^']*[。！？]'/u.test(line)))).toEqual([]);
+    expect(componentSources.join('\n')).not.toMatch(/title: '[^']*[。！？]'/u);
   });
 
   it('keeps every Chinese public guide structurally aligned with English', () => {
