@@ -9,14 +9,14 @@ Step 3 的**硬门**：同一个终端、同一构建，`?input=xterm` 与 `?inp
 按键扫描表，比对写进 PTY 的字节。**逐字节一致才算通过**（spec §风险 R3、§验收标准）。
 
 ```sh
-node scripts/probe/term-input-goldendiff.mjs            # 真站扫描（默认 happy.mereith.com）
+node scripts/probe/term-input-goldendiff.mjs            # 真站扫描（默认 veryhappy.dev）
 node scripts/probe/term-input-goldendiff.mjs --selftest # 离线自测，不开浏览器、不碰终端
 node scripts/probe/term-input-goldendiff.mjs --help     # 全部选项
 ```
 
 首次跑（专用 Chrome profile 里还没登录）：
 `VH_USER=... VH_PASS=... node scripts/probe/term-input-goldendiff.mjs`
-（凭据在 rbw 的 `happy.mereith.com`；profile 会记住登录态，之后不用再给。）
+（凭据在 rbw 的 `veryhappy.dev`；profile 会记住登录态，之后不用再给。）
 
 **退出码**：`0` 全一致 · `1` 有不一致 · `2` 跑不出结论（通道死 / 两条路径没真的分叉 /
 终端没连上 / DECCKM 稳不住）。**2 绝不当 0 用** —— 这套工具最大的风险是假绿，不是漏报。

@@ -12,7 +12,7 @@
  *
  * 一行用法
  * --------
- *   node scripts/probe/term-input-goldendiff.mjs                     # 真站扫描（默认 happy.mereith.com）
+ *   node scripts/probe/term-input-goldendiff.mjs                     # 真站扫描（默认 veryhappy.dev）
  *   node scripts/probe/term-input-goldendiff.mjs --selftest          # 离线自测（不开浏览器、不碰终端）
  *   VH_USER=... VH_PASS=... node scripts/probe/term-input-goldendiff.mjs   # 首次（profile 里还没登录）
  *
@@ -69,7 +69,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseArgs(argv) {
     const o = {
-        base: 'https://happy.mereith.com',
+        base: 'https://veryhappy.dev',
         port: 9227,                                   // 9226 是 ime-diag 那套的，别抢
         profile: '/tmp/vh-goldendiff-profile',
         chrome: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -117,7 +117,7 @@ const HELP = `按键 golden 差分（?input=xterm vs ?input=own，逐字节）
 
   node scripts/probe/term-input-goldendiff.mjs [选项]
 
-  --base <url>          默认 https://happy.mereith.com
+  --base <url>          默认 https://veryhappy.dev
   --machine <label>     在哪台机器上开测试终端（默认本机 hostname）
   --reader vh|ondata    vh=window.__vhTermInput.emitted（默认，Step 1 契约）
                         ondata=term.onData 兜底（⚠️ 只覆盖走 xterm 编码器的键）

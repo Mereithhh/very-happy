@@ -1,6 +1,6 @@
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
-export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://happy.mereith.com/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
+export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://veryhappy.dev/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
 export const LOGIN_COMMAND = 'very-happy auth login';
 export const DAEMON_START_COMMAND = 'very-happy daemon start';
 export const PROVIDER_KEY_COMMAND = `printf 'Anthropic API key: '
@@ -43,7 +43,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'note', text: 'The command downloads the complete script to a random temporary file before execution and removes it afterward. Review the version-controlled install.sh before running remote code; hosted bytes can change with a Web release. It never invokes sudo, installs tmux, writes provider credentials, or enables optional Claude hooks. Run the downloaded script with --dry-run for an offline, no-mutation command preview. If you add a structured Claude credential afterward, restart the daemon so it inherits the new environment. Windows, self-hosted endpoints, and users who prefer explicit control should follow the manual steps below.' },
       ] },
       { heading: '1. Choose a relay', blocks: [
-        { type: 'p', text: 'Use Very Happy Cloud at happy.mereith.com for the shortest path, or deploy your own relay first. A browser account and every connected CLI must use the same relay.' },
+        { type: 'p', text: 'Use Very Happy Cloud at veryhappy.dev for the shortest path, or deploy your own relay first. A browser account and every connected CLI must use the same relay.' },
         { type: 'note', text: 'Very Happy Cloud is the fastest path. Self-hosting gives you control of the operator, access policy, storage, backups, and upgrades. Read Security & privacy when choosing a deployment for sensitive work.' },
       ] },
       { heading: '2. Check the machine', blocks: [
@@ -128,7 +128,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'cloud', label: 'Very Happy Cloud', summary: 'Understand the hosted public relay, registration policy, and operational boundary.',
     sections: [
       { heading: 'What Cloud provides', blocks: [
-        { type: 'p', text: 'happy.mereith.com hosts the web client, account service, sync storage, and relay. It is convenient for trying Very Happy without operating a server.' },
+        { type: 'p', text: 'veryhappy.dev hosts the web client, account service, sync storage, and relay. It is convenient for trying Very Happy without operating a server.' },
         { type: 'list', items: ['Public registration can be open, invite-only, paused, or capped globally.', 'No uptime or durability SLA is promised for the community service.', 'The operator can access relay-held content and account recovery material.'] },
       ] },
       { heading: 'When to self-host', blocks: [
@@ -161,7 +161,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'configuration', label: 'Configuration', summary: 'Keep web, relay, and daemon endpoints and policies aligned.',
     sections: [
       { heading: 'Client endpoints', blocks: [
-        { type: 'list', items: ['Cloud users need no endpoint variables; both client URLs default to https://happy.mereith.com.', 'HAPPY_SERVER_URL selects the API and socket relay for the CLI.', 'HAPPY_WEBAPP_URL selects the browser origin opened for machine approval.', 'HAPPY_HOME_DIR selects machine-local credentials, settings, logs, and daemon state.', 'VH_SERVER_URL selects the Vite development proxy target for Web V2.'] },
+        { type: 'list', items: ['Cloud users need no endpoint variables; both client URLs default to https://veryhappy.dev.', 'HAPPY_SERVER_URL selects the API and socket relay for the CLI.', 'HAPPY_WEBAPP_URL selects the browser origin opened for machine approval.', 'HAPPY_HOME_DIR selects machine-local credentials, settings, logs, and daemon state.', 'VH_SERVER_URL selects the Vite development proxy target for Web V2.'] },
         { type: 'code', code: 'export HAPPY_HOME_DIR="$HOME/.very-happy-happy.example.com"\nexport HAPPY_SERVER_URL=https://happy.example.com\nexport HAPPY_WEBAPP_URL=https://happy.example.com\nvery-happy doctor' },
         { type: 'note', text: 'The daemon inherits its environment at startup. Provider credentials and agent commands must be available to the daemon OS user and PATH by default. Running very-happy connect is an explicit exception: it uploads the chosen OAuth credential to the trusted relay.' },
         { type: 'p', text: 'OpenClaw reads OPENCLAW_GATEWAY_URL plus OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD when set, or queries an already configured local openclaw command. Its paired device identity stays on the machine under $HAPPY_HOME_DIR/openclaw with private permissions.' },

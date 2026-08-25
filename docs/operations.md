@@ -1,7 +1,7 @@
 # Production operations
 
 This is the repository source of truth for the maintainer-operated
-`happy.mereith.com` deployment. It records topology and procedures, never secret
+`veryhappy.dev` deployment. It records topology and procedures, never secret
 values. Generic self-hosting remains in [`deployment.md`](deployment.md).
 
 ## Topology and trust boundary
@@ -9,7 +9,7 @@ values. Generic self-hosting remains in [`deployment.md`](deployment.md).
 | Role | Runtime |
 |---|---|
 | Web + server | `hw-sg`, `/opt/happy/docker-compose.yml`, container `happy-server` |
-| Public endpoint | `https://happy.mereith.com`, Caddy TLS proxy to `127.0.0.1:3005` |
+| Public endpoint | `https://veryhappy.dev`, Caddy TLS proxy to `127.0.0.1:3005` |
 | Production Web | `packages/happy-web-v2`, served from `/opt/happy/webapp` |
 | Server source overlay | `/opt/happy-src/packages/happy-server/{sources,prisma/migrations}` |
 | Database | PGlite in a Docker named volume |
@@ -136,9 +136,9 @@ and invokes a nonexistent command.
 Public endpoint:
 
 ```bash
-curl -fsS https://happy.mereith.com/health
-VH_MAIN=$(curl -fsS https://happy.mereith.com/ | grep -oE '/assets/[^" ]+\.js' | head -1)
-curl -fsSI "https://happy.mereith.com${VH_MAIN}" | grep -i '^content-type:.*javascript'
+curl -fsS https://veryhappy.dev/health
+VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
+curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
 ```
 
 Daemon:

@@ -27,9 +27,9 @@ describe('applyMemorySectionUpdate', () => {
     })
 
     it('replaces the last section without touching earlier ones', () => {
-        const { doc, replaced } = applyMemorySectionUpdate(DOC, '长期事实', '- [2026-08-13] 生产域名 happy.mereith.com')
+        const { doc, replaced } = applyMemorySectionUpdate(DOC, '长期事实', '- [2026-08-13] 生产域名 veryhappy.dev')
         expect(replaced).toBe(true)
-        expect(doc).toContain('## 长期事实\n\n- [2026-08-13] 生产域名 happy.mereith.com\n')
+        expect(doc).toContain('## 长期事实\n\n- [2026-08-13] 生产域名 veryhappy.dev\n')
         expect(doc).not.toContain('（暂无）')
         expect(doc).toContain('喜欢简短汇报')
     })

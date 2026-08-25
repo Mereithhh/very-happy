@@ -1,6 +1,6 @@
 # Public Cloud
 
-`https://happy.mereith.com` is the maintainer-operated Very Happy instance and
+`https://veryhappy.dev` is the maintainer-operated Very Happy instance and
 the CLI's default target. It is useful for evaluation and ordinary use, but it is
 not equivalent to self-hosting.
 

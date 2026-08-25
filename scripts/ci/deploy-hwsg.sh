@@ -13,7 +13,7 @@
 #   web     build happy-web-v2 (Vite) → stage → swap → restart → verify JS
 #
 # The web app is the pure-React v2 (packages/happy-web-v2), which serves at the
-# root of happy.mereith.com via happy-server's /webapp static dir. It is a plain
+# root of veryhappy.dev via happy-server's /webapp static dir. It is a plain
 # Vite app: index.html already carries the title / viewport-fit / apple-meta /
 # splash, and vite-plugin-pwa emits the manifest + service worker — so NO
 # index.html post-patch is needed (unlike the old expo happy-app).
@@ -35,7 +35,7 @@ WEB_VERSION="${VH_VERSION:-$(date +%Y%m%d%H%M)}"
 wait_health() {
     local c=000
     for _ in $(seq 1 20); do
-        c=$(curl -s -o /dev/null -w "%{http_code}" https://happy.mereith.com/health 2>/dev/null || echo 000)
+        c=$(curl -s -o /dev/null -w "%{http_code}" https://veryhappy.dev/health 2>/dev/null || echo 000)
         [ "$c" = "200" ] && break; sleep 3
     done
     echo "  health: $c"
@@ -85,11 +85,11 @@ deploy_web() {
     ssh_x 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new && docker compose restart happy-server >/dev/null 2>&1'
     wait_health
     local main ct
-    main=$(curl -s https://happy.mereith.com/ | grep -oE '/assets/[^"]+\.js' | head -1)
-    ct=$(curl -s -o /dev/null -w '%{content_type}' "https://happy.mereith.com$main")
+    main=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
+    ct=$(curl -s -o /dev/null -w '%{content_type}' "https://veryhappy.dev$main")
     echo "  main asset $main → $ct"
     case "$ct" in
-        *javascript*) echo "  ✓ web live at https://happy.mereith.com/" ;;
+        *javascript*) echo "  ✓ web live at https://veryhappy.dev/" ;;
         *) echo "  ✗ assets not serving as JS — check happy-server"; exit 1 ;;
     esac
 }

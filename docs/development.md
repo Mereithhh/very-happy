@@ -21,7 +21,7 @@ pnpm -C packages/happy-web-v2 dev
 ```
 
 Open `http://localhost:8082`. Vite proxies API/socket traffic to
-`https://happy.mereith.com`, preserving a same-origin browser shape.
+`https://veryhappy.dev`, preserving a same-origin browser shape.
 
 ## Run Web V2 against a local standalone server
 

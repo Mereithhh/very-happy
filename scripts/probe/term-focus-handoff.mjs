@@ -21,7 +21,7 @@
  * 断言 id 不在开跑前的 tmux 快照里 / finally 清理），**绝不碰 Owner 已有的会话**。
  *
  *   node scripts/probe/term-focus-handoff.mjs
- *   node scripts/probe/term-focus-handoff.mjs --clicks 5 --base https://happy.mereith.com
+ *   node scripts/probe/term-focus-handoff.mjs --clicks 5 --base https://veryhappy.dev
  *
  * 退出码：0=全部通过  1=有断言失败  2=跑不出结论（没建成终端/契约不在/页面没起来）
  */
@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseArgs(argv) {
     const o = {
-        base: 'https://happy.mereith.com',
+        base: 'https://veryhappy.dev',
         port: 9227,
         profile: '/tmp/vh-goldendiff-profile',
         chrome: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',

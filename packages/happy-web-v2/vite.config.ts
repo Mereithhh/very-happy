@@ -5,7 +5,7 @@ import { fileURLToPath, URL } from 'node:url';
 
 // Default server target; overridable at runtime via window.__HAPPY_CONFIG__.serverUrl
 // (injected into index.html on deploy, mirroring the v1 HAPPY_INJECT_HTML_CONFIG path).
-const DEFAULT_SERVER_URL = process.env.VH_SERVER_URL ?? 'https://happy.mereith.com';
+const DEFAULT_SERVER_URL = process.env.VH_SERVER_URL ?? 'https://veryhappy.dev';
 const APP_VERSION = process.env.VH_VERSION ?? '2.0.0';
 const BASE = process.env.VH_BASE ?? '/';
 

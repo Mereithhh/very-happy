@@ -22,7 +22,7 @@ describe('client endpoint configuration', () => {
 
   it('uses the Cloud origin only when neither source is configured', () => {
     expect(resolveHttpEndpoint(undefined, undefined, 'HAPPY_SERVER_URL', 'serverUrl'))
-      .toBe('https://happy.mereith.com')
+      .toBe('https://veryhappy.dev')
   })
 
   it.each([

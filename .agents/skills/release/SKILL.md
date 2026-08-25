@@ -5,7 +5,7 @@ description: Release and deploy very-happy: publish the very-happy-cli npm packa
 
 # very-happy release
 
-Production is `happy.mereith.com`: server + Web V2 on hw-sg, published CLI on
+Production is `veryhappy.dev`: server + Web V2 on hw-sg, published CLI on
 npm, daemon on mac-office. `docs/operations.md` is the topology/runbook source;
 `docs/PROCESS.md` is the gate/process source.
 
@@ -94,9 +94,9 @@ or move/force an existing tag.
 ## Production verification
 
 ```bash
-curl -fsS https://happy.mereith.com/health
-VH_MAIN=$(curl -fsS https://happy.mereith.com/ | grep -oE '/assets/[^" ]+\.js' | head -1)
-curl -fsSI "https://happy.mereith.com${VH_MAIN}" | grep -i '^content-type:.*javascript'
+curl -fsS https://veryhappy.dev/health
+VH_MAIN=$(curl -fsS https://veryhappy.dev/ | grep -oE '/assets/[^" ]+\.js' | head -1)
+curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascript'
 ```
 
 For browser acceptance, hard-refresh or unregister the service worker before

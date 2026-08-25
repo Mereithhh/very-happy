@@ -1,4 +1,4 @@
-const DEFAULT_SERVER_URL = 'https://happy.mereith.com';
+const DEFAULT_SERVER_URL = 'https://veryhappy.dev';
 
 function sameRelay(left: string, right: string): boolean {
   try {

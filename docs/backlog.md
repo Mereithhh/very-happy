@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-180 | **Very Happy Cloud 正式迁移到 `veryhappy.dev`**：README、Web、CLI/daemon 默认 relay、安装脚本、部署/运维文档和生产公开 URL 全部使用新域名；Cloudflare 代理开启；HTML/SW 保持 `no-store`，带 hash 的 JS/CSS 保持 immutable，保证发版自动发现新 bundle；旧 `happy.mereith.com` 不再作为用户可见入口 | feat/docs/ops | Owner 2026-08-25 | doing | DNS 与 Caddy alias 已完成；待代码门禁、主域生产 env、Google OAuth exact-origin、发布与新域验收。 |
 | B-178 | **移动 Chrome 终端首次点击输入框时键盘弹出后立刻收起，第二次点击才可持续输入**：触摸激活后的真实 input/textarea 必须保持焦点，终端 fit、visualViewport、overlay 切换或自动焦点恢复不得在同一手势后触发 blur；修复需覆盖首次点击而非靠重复 focus/延时掩盖 | bug/incident | Owner 2026-08-25 | doing | 正在追踪移动输入桥、focus ownership、viewport pin 与菜单焦点恢复的事件顺序。 |
 | B-177 | **Claude SDK 普通对话点击归档后仍留在列表**：归档不能依赖 `killSession` 的异步清理副作用；Web 必须以 Server 已确认的 inactive 状态为成功条件，kill/归档任一路径失败都要给出可操作反馈，并防止在线状态竞态把已确认归档的行顶回来 | bug/incident | Owner 2026-08-25 | done | `fc3f4ac7`：kill 后无条件提交 Server archive，失败回滚并提示；5 秒 inactive hold 屏蔽迟到 activity，之后允许正常 resume。新增 6 个机制回归；Web 111 files / 1,483 tests、build、tsc 0 通过；deploy `32820011768`，生产 asset `index-DpTRdjiZ-202608250707.js`。 |
 | B-176 | **降低公开页面对“非 E2EE”的过度高亮**：首页和普通导航不再用醒目警告式措辞劝退用户；改为中性的 Cloud privacy / operator trust 入口与常见云服务 trade-off 表述，同时在 Security、Privacy、Terms、自托管和敏感数据边界处继续准确披露，不得暗示 E2EE | ux/docs | Owner 2026-08-25 | done | Landing/README/Docs 首页/安装脚本/登录与 About 改为 Cloud convenience / self-host control 正向表达；Security、Privacy、Terms 和敏感 OAuth 存储事实仍完整。生产 PublicRoot chunk 确认新文案存在、旧醒目句不存在。 |

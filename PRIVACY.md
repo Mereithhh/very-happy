@@ -3,7 +3,7 @@
 **Last updated: August 24, 2026**
 
 This notice describes the maintainer-operated service at
-`https://happy.mereith.com`. A self-hosted operator controls their own deployment
+`https://veryhappy.dev`. A self-hosted operator controls their own deployment
 and must provide a notice appropriate to their use.
 
 ## Trust model

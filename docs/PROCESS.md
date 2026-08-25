@@ -135,9 +135,9 @@ ssh hw-sg 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev \
   && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new \
   && docker compose restart happy-server'
 # 核对两条，缺一不可：
-curl -s -o /dev/null -w '%{http_code}\n' https://happy.mereith.com/health   # 要 200
-M=$(curl -s https://happy.mereith.com/ | grep -oE '/assets/[^"]+\.js' | head -1)
-curl -s -o /dev/null -w '%{content_type}\n' "https://happy.mereith.com$M"   # 必须是 javascript
+curl -s -o /dev/null -w '%{http_code}\n' https://veryhappy.dev/health   # 要 200
+M=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
+curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须是 javascript
 ```
 
 - 第二条核对是硬性的：happy-server 的静态路由在**启动时**才 glob `/webapp`，交换后不重启

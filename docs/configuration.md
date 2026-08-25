@@ -141,8 +141,8 @@ See [deployment.md](deployment.md) for the full list and persistence guidance.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `HAPPY_SERVER_URL` | HTTP/WebSocket relay used by the CLI and daemon | `https://happy.mereith.com` |
-| `HAPPY_WEBAPP_URL` | Browser origin opened for the one-time machine approval | `https://happy.mereith.com` |
+| `HAPPY_SERVER_URL` | HTTP/WebSocket relay used by the CLI and daemon | `https://veryhappy.dev` |
+| `HAPPY_WEBAPP_URL` | Browser origin opened for the one-time machine approval | `https://veryhappy.dev` |
 | `HAPPY_HOME_DIR` | Credentials, settings, logs, daemon state, and local server data | `~/.happy` |
 | `HAPPY_DISABLE_CAFFEINATE` | Disable the macOS sleep-prevention helper when `true`/`1`/`yes` | unset |
 | `HAPPY_EXPERIMENTAL` | Enable explicitly experimental CLI paths | unset |

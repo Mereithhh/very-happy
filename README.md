@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://happy.mereith.com/welcome">
+  <a href="https://veryhappy.dev/welcome">
     <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — one command panel for every connected machine and agent">
   </a>
 </div>
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://happy.mereith.com/welcome"><strong>Explore the live workspace</strong></a>
+  <a href="https://veryhappy.dev/welcome"><strong>Explore the live workspace</strong></a>
   &nbsp;·&nbsp;
   <a href="#one-command-to-your-first-machine">Connect a machine</a>
   &nbsp;·&nbsp;
@@ -104,7 +104,7 @@ The browser terminal advertises `TERM=xterm-256color` and renders through
 xterm.js. Common text TUIs are the compatibility target; sixel/Kitty graphics
 and other terminal-specific extensions are not guaranteed.
 
-<a href="https://happy.mereith.com/welcome">
+<a href="https://veryhappy.dev/welcome">
   <img src="docs/screenshots/workspace.png" width="100%" alt="Very Happy production UI with a session sidebar, real running terminal, and file preview using sanitized data">
 </a>
 
@@ -128,7 +128,7 @@ dragged file or screenshot                     ~/.happy/uploads/terminal/…
                                                         ╰─> shell-quoted path at cursor
 ```
 
-<a href="https://happy.mereith.com/welcome#proofs">
+<a href="https://veryhappy.dev/welcome#proofs">
   <img src="docs/screenshots/file-handoff.png" width="100%" alt="Very Happy terminal file handoff using the production terminal UI contract with sanitized local demo data">
 </a>
 
@@ -170,7 +170,7 @@ open the one-time browser approval, and start the detached daemon in one command
   trap 'rm -f "$vh_installer"' \
     EXIT HUP INT TERM
   curl -fsSL \
-    https://happy.mereith.com/install.sh \
+    https://veryhappy.dev/install.sh \
     -o "$vh_installer"
   sh "$vh_installer"
 )
@@ -217,7 +217,7 @@ very-happy daemon start
 ```
 
 Approve only a machine request you just initiated. Then open
-[happy.mereith.com](https://happy.mereith.com), choose the connected machine,
+[veryhappy.dev](https://veryhappy.dev), choose the connected machine,
 and create your first session.
 
 </details>
