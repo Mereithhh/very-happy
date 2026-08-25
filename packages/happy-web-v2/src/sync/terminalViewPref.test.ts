@@ -1,9 +1,42 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveTerminalView,
+  resolveTerminalOpenPath,
+  isTerminalViewRedirectWindowOpen,
   withTerminalViewOverride,
   pruneTerminalViewOverrides,
 } from './terminalViewPref';
+
+describe('resolveTerminalOpenPath', () => {
+  const base = { machineId: 'm/1', terminalId: 't 1', mirrorSessionId: 's/1' };
+
+  it('opens a known mirror directly when structured is preferred', () => {
+    expect(resolveTerminalOpenPath({ ...base, defaultView: 'structured', overrides: {} }))
+      .toBe('/session/s%2F1');
+  });
+
+  it('keeps xterm when explicitly overridden, even with a mirror', () => {
+    expect(resolveTerminalOpenPath({ ...base, defaultView: 'structured', overrides: { 't 1': 'xterm' } }))
+      .toBe('/terminal/m%2F1?tid=t%201');
+  });
+
+  it('keeps xterm when the mirror has not arrived yet', () => {
+    expect(resolveTerminalOpenPath({ ...base, mirrorSessionId: undefined, defaultView: 'structured' }))
+      .toBe('/terminal/m%2F1?tid=t%201');
+  });
+});
+
+describe('isTerminalViewRedirectWindowOpen', () => {
+  it('allows the initial hydration window, including its boundary', () => {
+    expect(isTerminalViewRedirectWindowOpen(10_000, 10_000)).toBe(true);
+    expect(isTerminalViewRedirectWindowOpen(10_000, 13_000)).toBe(true);
+  });
+
+  it('refuses a late mirror so active terminal input is never hijacked', () => {
+    expect(isTerminalViewRedirectWindowOpen(10_000, 13_001)).toBe(false);
+    expect(isTerminalViewRedirectWindowOpen(10_000, 60_000)).toBe(false);
+  });
+});
 
 describe('resolveTerminalView', () => {
   it('falls back to xterm when nothing is set', () => {

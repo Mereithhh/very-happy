@@ -81,6 +81,10 @@ function fakeSession(id: string, title: string, i: number, opts: FakeOpts = {}):
 
 function seed() {
   const now = Date.now();
+  storage.getState().applyLocalSettings({
+    terminalViewDefault: 'structured',
+    terminalViewOverrides: {},
+  });
   storage.getState().applyMachines([
     {
       id: 'm1',
@@ -113,7 +117,14 @@ function seed() {
   storage.getState().applyReady();
   useTerminalSessions.setState({
     terminals: [
-      { id: 'term1', machineId: 'm1', machineName: 'devbox', title: 'web zsh', createdAt: now },
+      {
+        id: 'term1',
+        machineId: 'm1',
+        machineName: 'devbox',
+        title: 'Claude mirror',
+        mirrorSessionId: 'mirror-session-1',
+        createdAt: now,
+      },
       { id: 'term2', machineId: 'm1', machineName: 'devbox', title: 'agent needs input', createdAt: now - 60_000 },
       { id: 'term3', machineId: 'm1', machineName: 'devbox', title: 'plain shell', createdAt: now - 120_000 },
     ],

@@ -55,7 +55,11 @@ import {
   type TermFocusEvent,
   type TermFocusAction,
 } from './termFocusPolicy';
-import { resolveTerminalView, withTerminalViewOverride } from '@/sync/terminalViewPref';
+import {
+  isTerminalViewRedirectWindowOpen,
+  resolveTerminalView,
+  withTerminalViewOverride,
+} from '@/sync/terminalViewPref';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
@@ -181,7 +185,7 @@ export function WebTerminalScreen() {
   const mirrorAutoRef = useRef(false);
   useEffect(() => {
     if (mirrorAutoRef.current || !tid || !mirrorSessionId) return;
-    if (Date.now() - mirrorMountAtRef.current > 3000) return;
+    if (!isTerminalViewRedirectWindowOpen(mirrorMountAtRef.current, Date.now())) return;
     mirrorAutoRef.current = true;
     if (resolveTerminalView(viewDefault, viewOverrides, tid) === 'structured') {
       navigate(`/session/${mirrorSessionId}`, { replace: true });

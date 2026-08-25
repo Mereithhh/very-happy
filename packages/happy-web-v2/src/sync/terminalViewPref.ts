@@ -16,6 +16,7 @@
  */
 
 export type TerminalView = 'xterm' | 'structured';
+export const TERMINAL_VIEW_REDIRECT_WINDOW_MS = 3000;
 
 function asView(v: unknown): TerminalView | undefined {
   return v === 'xterm' || v === 'structured' ? v : undefined;
@@ -32,6 +33,34 @@ export function resolveTerminalView(
     if (o) return o;
   }
   return asView(defaultView) ?? 'xterm';
+}
+
+/**
+ * Resolve the route before mounting either face. Existing callers used to
+ * always enter `/terminal/*` and let WebTerminalScreen redirect after paint;
+ * on a phone that exposed a one-frame dark xterm flash before the structured
+ * Claude mirror appeared. Keeping this pure lets every entry surface make the
+ * same decision without loading xterm first.
+ */
+export function resolveTerminalOpenPath(input: {
+  machineId: string;
+  terminalId: string;
+  mirrorSessionId?: string;
+  defaultView: unknown;
+  overrides?: Record<string, string>;
+}): string {
+  if (
+    input.mirrorSessionId
+    && resolveTerminalView(input.defaultView, input.overrides, input.terminalId) === 'structured'
+  ) {
+    return `/session/${encodeURIComponent(input.mirrorSessionId)}`;
+  }
+  return `/terminal/${encodeURIComponent(input.machineId)}?tid=${encodeURIComponent(input.terminalId)}`;
+}
+
+/** A mirror discovered long after entry must not yank a typing user away. */
+export function isTerminalViewRedirectWindowOpen(openedAt: number, now: number): boolean {
+  return now - openedAt <= TERMINAL_VIEW_REDIRECT_WINDOW_MS;
 }
 
 /**
