@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { CyberMark } from '@/ui/CyberMark';
+import { QuickThemeToggle } from '@/ui/QuickThemeToggle';
 import { GITHUB_URL } from './publicContent';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
@@ -18,6 +19,7 @@ export function PublicHeader() {
         <NavLink to="/docs">{copy.shell.docs}</NavLink>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
         <a href={`${import.meta.env.BASE_URL}login`}>{copy.shell.signIn}</a>
+        <QuickThemeToggle className="pub-theme-toggle" />
         <a className="pub-nav-cta" href={`${import.meta.env.BASE_URL}login`}>{copy.shell.getStarted}</a>
       </nav>
     </header></>

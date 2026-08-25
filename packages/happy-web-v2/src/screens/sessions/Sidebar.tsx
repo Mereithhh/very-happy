@@ -17,7 +17,7 @@ import { groupRowsByTag } from './sidebarTagGroups';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
-import { StatusDot, CyberMark, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
+import { StatusDot, CyberMark, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
@@ -986,7 +986,7 @@ export function Sidebar() {
 
       <footer className="sb-footer">
         <button className="sb-footer-btn" onClick={() => navigate('/settings')}>
-          <Settings size={16} /> {t('tabs.settings')}
+          <Settings size={16} /> <span>{t('tabs.settings')}</span>
         </button>
         {/* notes dock toggle (B-094) — app chrome, so it shares the footer row */}
         <button
@@ -1006,6 +1006,7 @@ export function Sidebar() {
         >
           <ListChecks size={16} />
         </button>
+        <QuickThemeToggle className="sb-footer-btn sb-footer-icon sb-theme-toggle" />
         {/* Notification center: bell + unread badge + panel (self-contained;
             the collapsed desktop rail carries its own instance). It used to
             sit in the header, which was overflowing as header-right icons

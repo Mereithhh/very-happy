@@ -441,6 +441,12 @@
   color: var(--text-dim);
   font-size: var(--fs-13);
 }
+.sb-footer-btn > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sb-footer-btn:hover {
   background: var(--bg-2);
   color: var(--text);
@@ -451,6 +457,11 @@
 .sb-footer-icon {
   flex: none;
   padding: 10px;
+}
+.sb-theme-toggle {
+  width: 36px;
+  height: 36px;
+  justify-content: center;
 }
 
 /* shared Radix dropdown menu */
