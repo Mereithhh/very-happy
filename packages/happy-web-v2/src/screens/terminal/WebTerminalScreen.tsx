@@ -4,7 +4,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
-import { apiSocket } from '@/sync/apiSocket';
+import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import {
   machineOpenTerminal,
   encryptTerminalData,
@@ -150,6 +150,12 @@ export function WebTerminalScreen() {
   const renameTerminal = useTerminalSessions((s) => s.rename);
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
+  const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
+    machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
+  const relayLatency = relayStatus.rttMs === undefined ? '-- ms' : `${Math.round(relayStatus.rttMs)} ms`;
+  useEffect(() => apiSocket.onMachineRelayStatus((changedMachineId, status) => {
+    if (changedMachineId === machineId) setRelayStatus(status);
+  }), [machineId]);
 
   // ── B-105 terminal mirror: xterm ↔ structured toggle ──────────────────────
   // The daemon pushes `mirrorSessionId` on terminals whose hand-launched
@@ -2128,6 +2134,18 @@ export function WebTerminalScreen() {
           <span className="term-title-text">{title}</span>
           <Pencil size={13} className="term-title-edit" />
         </button>
+        <span
+          className={`term-relay mono is-${relayStatus.state}`}
+          title={relayStatus.transport === 'regional'
+            ? `${relayStatus.relayId} · ${relayStatus.region} · browser RTT ${relayLatency}`
+            : 'Control relay fallback'}
+        >
+          {relayStatus.state === 'connecting'
+            ? 'RELAY…'
+            : relayStatus.transport === 'regional'
+              ? `${relayStatus.relayId} · ${relayLatency}`
+              : 'CONTROL'}
+        </span>
         <div className="term-header-right">
           {connecting && <span className="term-connecting mono">{t('common.loading')}</span>}
           {/* B-105: structured-view toggle — header-level on purpose (mobile

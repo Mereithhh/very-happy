@@ -19,7 +19,7 @@ export class RpcHandlerManager {
     private readonly encryptionKey: Uint8Array;
     private readonly encryptionVariant: 'legacy' | 'dataKey';
     private readonly logger: (message: string, data?: any) => void;
-    private socket: Socket | null = null;
+    private sockets = new Set<Socket>();
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix;
@@ -42,18 +42,14 @@ export class RpcHandlerManager {
         // Store the handler
         this.handlers.set(prefixedMethod, handler);
 
-        if (this.socket) {
-            this.socket.emit('rpc-register', { method: prefixedMethod });
-        }
+        for (const socket of this.sockets) socket.emit('rpc-register', { method: prefixedMethod });
     }
 
     unregisterHandler(method: string): void {
         const prefixedMethod = this.getPrefixedMethod(method);
         this.handlers.delete(prefixedMethod);
 
-        if (this.socket) {
-            this.socket.emit('rpc-unregister', { method: prefixedMethod });
-        }
+        for (const socket of this.sockets) socket.emit('rpc-unregister', { method: prefixedMethod });
     }
 
     /**
@@ -96,14 +92,15 @@ export class RpcHandlerManager {
     }
 
     onSocketConnect(socket: Socket): void {
-        this.socket = socket;
+        this.sockets.add(socket);
         for (const [prefixedMethod] of this.handlers) {
             socket.emit('rpc-register', { method: prefixedMethod });
         }
     }
 
-    onSocketDisconnect(): void {
-        this.socket = null;
+    onSocketDisconnect(socket?: Socket): void {
+        if (socket) this.sockets.delete(socket);
+        else this.sockets.clear();
     }
 
     /**

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CI deploy to hw-sg (web + server). Ported from the local deploy.sh so GitHub
+# CI deploy to the active production host (legacy filename/env names retained).
+# Ported from the local deploy.sh so GitHub
 # Actions can run it. Triggered manually (workflow_dispatch).
 #
 # Env (provided by the workflow from repo secrets):

@@ -29,6 +29,36 @@ function ProductShowcase() {
   </section>;
 }
 
+function RegionalRelayProof() {
+  const { copy } = usePublicI18n();
+  const c = copy.landing;
+  return <section className="pub-relay" aria-labelledby="relay-title">
+    <div className="pub-relay-copy">
+      <div className="eyebrow">{c.relayEyebrow}</div>
+      <h2 id="relay-title">{c.relayTitleA}<br /><span>{c.relayTitleB}</span></h2>
+      <p>{c.relayBody}</p>
+      <div className="pub-relay-facts mono">
+        <span>{c.relayFactRtt}</span>
+        <span>{c.relayFactVisible}</span>
+        <span>{c.relayFactFallback}</span>
+      </div>
+      <Link to="/docs/architecture">{c.relayLink} <ArrowRight size={14} /></Link>
+    </div>
+    <div className="pub-relay-console" aria-label="Regional relay routing architecture">
+      <div className="pub-relay-console-head mono"><span><i /> REALTIME TRANSPORT</span><span>MACHINE-ANCHORED</span></div>
+      <div className="pub-relay-control mono"><span>CONTROL / DATA</span><strong>AUTH · METADATA · POSTGRES · DURABLE SYNC</strong></div>
+      <div className="pub-relay-path">
+        <article><MonitorSmartphone size={18} /><span className="mono">BROWSER / PWA</span><strong>follows assignment</strong></article>
+        <div className="pub-relay-hop mono"><span>SCOPED TOKEN</span><i /></div>
+        <article className="is-live"><Globe2 size={18} /><span className="mono">REGIONAL RELAY</span><strong>lowest measured RTT</strong><small className="mono">RELAY ID · RTT VISIBLE</small></article>
+        <div className="pub-relay-hop mono"><span>RPC + TTY BYTES</span><i /></div>
+        <article><Cable size={18} /><span className="mono">CLI DAEMON</span><strong>machine anchor</strong></article>
+      </div>
+      <div className="pub-relay-candidates mono"><span>OPERATOR-CONFIGURED CANDIDATES</span><b>PROBE IN PARALLEL</b><b>AUTO SELECT</b><b>FAIL BACK</b></div>
+    </div>
+  </section>;
+}
+
 function StartAndTrust() {
   const { copy } = usePublicI18n();
   const c = copy.landing;
@@ -101,6 +131,7 @@ export function LandingScreen() {
   return <div className="pub-page"><PublicHeader /><main id="main-content">
     <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">{c.heroEyebrow}</div><h1 id="hero-title" className={`pub-fleet-title${language === 'zh-Hans' ? ' is-zh' : ''}`}>{c.heroTitleA}<br /><span>{c.heroTitleB}<br />{c.heroTitleC}</span></h1><p>{c.heroBody}</p><div className="pub-hero-thesis mono"><span>{c.thesisA}</span><strong>{c.thesisB}</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}login`}>{c.primaryCta} <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">{c.secondaryCta}</Link></div><div className="pub-meta mono"><span>{c.metaWeb}</span><span>{c.metaChoice}</span><span>{c.metaHost}</span></div></div><HeroProductStage /></section>
     <ProductShowcase />
+    <RegionalRelayProof />
     <WhyVeryHappy />
     <StartAndTrust />
     <MobileContinuityProof />

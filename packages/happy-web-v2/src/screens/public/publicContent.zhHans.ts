@@ -70,8 +70,9 @@ export const PUBLIC_DOCS_ZH_HANS: Record<string, PublicDocTranslation> = {
   architecture: {
     label: '架构与数据流', summary: '了解身份、状态、中继流量与执行分别由哪个组件负责。',
     sections: [
-      { heading: '组件', blocks: [null, '浏览器是账户下所有已连接机器的统一指挥界面。侧栏与看板聚合这些机器上的会话和注意力状态；创建工作时要明确选择机器与 Agent。服务端认证账户、存储同步状态并中继 socket 流量。每个 daemon 运行在所连接机器上，并暴露获授权的远程能力。'] },
-      { heading: '会话流程', blocks: [['用户向中继认证浏览器。', '一次性授权把 CLI 身份连接到同一账户。', '服务端在浏览器与在线 daemon 之间路由请求和更新。', 'daemon 调用本地终端或 Agent 进程，并把结果流式传回。']] },
+      { heading: '组件', blocks: [null, '浏览器是账户下所有已连接机器的统一指挥界面。侧栏与看板聚合这些机器上的会话和注意力状态；创建工作时要明确选择机器与 Agent。控制/数据服务负责账户认证与同步状态；无数据库的区域 Relay 承载对延迟敏感的机器 RPC 与终端流量。每个 daemon 并行探测候选节点并锚定实测 RTT 最低的健康 Relay，浏览器随后跟随同一机器分配。'] },
+      { heading: '区域 Relay 选择', blocks: [['运营方配置候选 Relay origin；客户端不能注入任意 Relay URL。', 'daemon 并行探测健康端点，以实测 RTT 最低者为首选，RTT 相同时按配置顺序稳定选择。', '控制服务验证机器归属，并签发短期、机器级 Relay token；Relay 不接收数据库凭据或账户 bearer token。', '终端标题栏显示当前 Relay 和浏览器到 Relay 的 RTT。发现或连接失败时自动回退兼容的控制服务链路。'], '这是以机器为锚点的路由，不是全球 SLA 承诺。自托管运营方决定实际部署哪些区域。浏览器到 daemon 的 WebRTC 直连是后续路径，区域 Relay 将继续作为 fallback。'] },
+      { heading: '会话流程', blocks: [['用户向控制/数据服务认证浏览器。', '一次性授权把 CLI 身份连接到同一账户。', '持久请求和更新保留在控制链路；机器 RPC 与终端字节优先走已分配的区域 Relay。', 'daemon 调用本地终端或 Agent 进程，并把结果流式传回。']] },
       { heading: '结构化与原生终端路径', blocks: ['上游 Happy 的核心 Claude 流程是 SDK 驱动的结构化会话。Very Happy 保留该路径；安装 tmux 后，还能传输用户机器上真实进程的 TTY。终端传输与 Agent 无关：shell、vim、lazygit、ssh、数据库控制台、普通 xterm-256color 文本 TUI 或 Agent CLI 都使用同一字节流。daemon 通过可信中继传输 pane 输出与输入，xterm 在浏览器中渲染终端；它不是截图，也不是浏览器重写的 TUI。', ['SDK 路径：Claude Agent SDK 事件转为结构化消息、工具、diff、权限、用量与恢复状态。', '终端路径：tmux 让真实 TTY/TUI 在浏览器断开后继续运行，并支持重连、scrollback、搜索、文件与移动输入。', '后备路径：没有 tmux 时，Web 终端是不持久的直接 shell；可选 Claude 镜像需要 tmux 3.2+。', '两条路径不保证等价：终端进程不会自动获得 Claude 风格的结构化消息或 Agent 控件。']] },
       { heading: 'Agent 适配器', blocks: ['Claude Code 与 Codex 有专用集成路径，OpenClaw 使用自己的本地 gateway 适配器。beta Gemini/OpenCode 适配器通过官方 SDK 在本地 stdio 上使用 Agent Client Protocol；它不同于同样简称 ACP 的旧 Agent Communication Protocol。自定义 ACP 命令必须实现兼容的 Agent Client Protocol 端点。'] },
       { heading: '可选终端镜像', blocks: ['SDK Claude 会话直接发送结构化事件。在 Very Happy Web 终端中手动启动的 Claude 不同：可选的 very-happy install-terminal-hooks 会加入作用域明确的 SessionStart/SessionEnd 项，使 daemon 能把进程绑定到结构化影子会话并返回同一个 TUI。--remove 只回滚这些条目。该镜像仅适用于 Claude。'] },

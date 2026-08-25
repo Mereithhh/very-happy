@@ -373,15 +373,43 @@ The adapter must own sender authorization, fixed workspace policy, deduplication
 rate limits, and least-privilege execution. Incoming messages are input, never
 authorization by themselves.
 
+### A regional realtime plane, separate from account data
+
+The account/database server can stay central while latency-sensitive terminal
+bytes and machine RPC use operator-configured regional relays. Each daemon probes
+the healthy candidates in parallel and anchors to the lowest measured RTT; the
+browser follows that machine assignment with a short-lived, machine-scoped token.
+The active relay and browser-to-relay RTT are visible in the terminal header.
+
 ```text
-browser / PWA  ⇄  Cloud or self-hosted relay  ⇄  machine daemon
-                                                   │
+browser / PWA ───────── durable sync ─────────> control + data + Postgres
+      │                                               ▲
+      └── scoped token ──> regional relay <───────────┘ assignment only
+                               │
+                         RPC + terminal bytes
+                               │
+                         machine daemon
+```
+
+This is measured routing, not a GeoIP guess, and relays do not need database
+credentials. If discovery or a regional relay fails, current clients fall back
+to the compatible control-server path. Self-hosted operators decide which relay
+regions exist; hosted PoP availability is an operational fact, not an implied
+global SLA. A future WebRTC direct path can use the same transport seam, with
+regional relays remaining the fallback.
+
+```text
+browser / PWA  ⇄  regional realtime relay  ⇄  machine daemon
+      │                                             │
+      └──────── control / data server ──────────────┘
+                                                    │
                          ┌─────────────────────────┼───────────────┐
                          ▼                         ▼               ▼
                   structured agent            real TTY       files / tasks
 ```
 
-The relay synchronizes workspace state and routes RPC/socket traffic. Encrypted
+The control/data server synchronizes workspace state; the regional plane routes
+latency-sensitive machine RPC and terminal traffic. Encrypted
 envelopes inherited from Happy remain defense in depth, but the Very Happy server
 can recover account keys. Transport/storage encryption does not make the relay
 zero knowledge. Read [Architecture](docs/architecture.md) and

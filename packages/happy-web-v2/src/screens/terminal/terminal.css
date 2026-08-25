@@ -40,6 +40,27 @@
   transition: opacity var(--motion-fast);
 }
 .term-title:hover .term-title-edit { opacity: 1; }
+.term-relay {
+  flex-shrink: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  background: var(--bg-2);
+  font-size: var(--fs-10);
+  letter-spacing: 0.04em;
+}
+.term-relay.is-connected {
+  color: var(--accent);
+  border-color: var(--accent-2);
+}
+@media (max-width: 520px) {
+  .term-relay { max-width: 112px; }
+}
 .term-header-right {
   display: flex;
   align-items: center;

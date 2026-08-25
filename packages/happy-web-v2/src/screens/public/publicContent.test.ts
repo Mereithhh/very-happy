@@ -67,6 +67,24 @@ describe('public documentation registry', () => {
     expect(text).toContain('Use a separate HAPPY_HOME_DIR for each relay');
   });
 
+  it('presents regional relay routing as measured capability without inventing hosted PoPs', () => {
+    const text = JSON.stringify(PUBLIC_DOCS);
+    const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const i18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
+    const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    expect(text).toContain('lowest measured healthy RTT');
+    expect(text).toContain('short-lived, machine-scoped relay tokens');
+    expect(landing).toContain('{c.relayEyebrow}');
+    expect(landing).toContain('{c.relayFactRtt}');
+    expect(landing).toContain('{c.relayFactVisible}');
+    expect(i18n).toContain('REGIONAL RELAY PLANE // LATENCY IS A ROUTING PROBLEM');
+    expect(i18n).toContain('REAL RTT · NOT GEOIP GUESSING');
+    expect(i18n).toContain('区域 RELAY 平面 // 延迟是路由问题');
+    expect(`${landing}\n${i18n}`).not.toMatch(/enterprise-grade|zero latency|global SLA/i);
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(styles).toMatch(/@media \(max-width: 720px\)[\s\S]*\.pub-relay-path \{ grid-template-columns: 1fr;/);
+  });
+
   it('anchors the public keyboard story to shipped chords and browser boundaries', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');

@@ -208,6 +208,14 @@ async function serve() {
     process.exit(0);
 }
 
+async function serveRelay() {
+    const { startRelayServer } = await import('./relay');
+    await startRelayServer(process.env);
+    const { awaitShutdown } = await import('./utils/shutdown');
+    await awaitShutdown();
+    process.exit(0);
+}
+
 function findStaticDir(): string | undefined {
     const candidates = [
         process.env.HAPPY_STATIC_DIR,
@@ -261,12 +269,19 @@ if (isDirectInvocation) {
                 process.exit(1);
             });
             break;
+        case "relay":
+            serveRelay().catch(e => {
+                console.error('Relay failed to start', safeErrorMetadata(e));
+                process.exit(1);
+            });
+            break;
         default:
             console.log(`happy-server - portable distribution
 
 Usage:
   happy-server migrate    Apply database migrations
   happy-server serve      Start the server
+  happy-server relay      Start a database-free regional realtime relay
 
 Environment variables:
   DATA_DIR          Base data directory (default: ./data)
@@ -288,6 +303,7 @@ Environment variables:
   CLOUDFLARE_EMAIL_ACCOUNT_ID / CLOUDFLARE_EMAIL_API_TOKEN  Required for Cloudflare
   AUTH_PASSWORD_LOGIN_DISABLED  true disables password signup/login/credential changes
   TRUST_PROXY        Trusted proxy hop count or IP/CIDR list (never unrestricted)
+  RELAY_ID / RELAY_REGION / RELAY_TOKEN_SECRET  Required in relay mode
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);
     }
