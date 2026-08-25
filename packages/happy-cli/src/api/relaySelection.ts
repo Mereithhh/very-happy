@@ -21,6 +21,27 @@ export function selectLowestLatencyRelay(candidates: RelayCandidate[], probes: R
   return selected;
 }
 
+/**
+ * Keep an already-connected relay sticky. A live Socket.IO connection is a
+ * stronger health signal than a single HTTP probe, and moving it rebuilds RPC
+ * registrations and terminal subscriptions. The caller must only pass
+ * `connectedRelayId` while that relay socket is actually connected.
+ *
+ * If the connected relay was removed from discovery, fall back to the fastest
+ * successful probe so configuration changes still take effect immediately.
+ */
+export function selectStableRelay(
+  candidates: RelayCandidate[],
+  probes: RelayProbe[],
+  connectedRelayId?: string,
+): RelayCandidate | null {
+  if (connectedRelayId) {
+    const connected = candidates.find((candidate) => candidate.id === connectedRelayId);
+    if (connected) return connected;
+  }
+  return selectLowestLatencyRelay(candidates, probes);
+}
+
 export async function probeRelayCandidates(
   candidates: RelayCandidate[],
   options: { timeoutMs?: number; fetchImpl?: typeof fetch; now?: () => number } = {},
@@ -55,6 +76,7 @@ export async function discoverAndClaimRelay(input: {
   controlUrl: string;
   token: string;
   machineId: string;
+  connectedRelayId?: string;
   fetchImpl?: typeof fetch;
 }): Promise<{ assignment: RelayAssignment; probes: RelayProbe[] } | null> {
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -67,7 +89,7 @@ export async function discoverAndClaimRelay(input: {
     const discovery = RelayCandidatesResponseSchema.parse(await discoveryResponse.json());
     if (!discovery.enabled || discovery.candidates.length === 0) return null;
     const probes = await probeRelayCandidates(discovery.candidates, { fetchImpl });
-    const selected = selectLowestLatencyRelay(discovery.candidates, probes);
+    const selected = selectStableRelay(discovery.candidates, probes, input.connectedRelayId);
     if (!selected) return null;
     const claimResponse = await fetchImpl(`${input.controlUrl}/v1/relays/machines/${encodeURIComponent(input.machineId)}/claim`, {
       method: 'POST',

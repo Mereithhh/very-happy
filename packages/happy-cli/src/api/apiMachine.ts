@@ -948,6 +948,7 @@ export class ApiMachineClient {
                 controlUrl: configuration.serverUrl,
                 token: this.token,
                 machineId: this.machine.id,
+                connectedRelayId: this.relaySocket?.connected ? this.relayAssignment?.relayId : undefined,
             });
             if (!selected) return;
             const previousUrl = this.relayAssignment?.url;

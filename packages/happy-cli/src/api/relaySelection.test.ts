@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { probeRelayCandidates, selectLowestLatencyRelay } from './relaySelection';
+import { probeRelayCandidates, selectLowestLatencyRelay, selectStableRelay } from './relaySelection';
 
 const candidates = [
   { id: 'sin', url: 'https://sin.example.com', region: 'Singapore' },
@@ -12,6 +12,25 @@ describe('relay selection', () => {
   it('selects the lowest measured RTT and preserves config order on a tie', () => {
     expect(selectLowestLatencyRelay(candidates, [{ relayId: 'sin', rttMs: 80 }, { relayId: 'usw', rttMs: 20 }])?.id).toBe('usw');
     expect(selectLowestLatencyRelay(candidates, [{ relayId: 'sin', rttMs: 20 }, { relayId: 'usw', rttMs: 20 }])?.id).toBe('sin');
+  });
+
+  it('keeps a connected relay despite a slower or missing one-shot health probe', () => {
+    expect(selectStableRelay(candidates, [
+      { relayId: 'sin', rttMs: 600 },
+      { relayId: 'usw', rttMs: 20 },
+    ], 'sin')?.id).toBe('sin');
+    expect(selectStableRelay(candidates, [
+      { relayId: 'usw', rttMs: 20 },
+    ], 'sin')?.id).toBe('sin');
+  });
+
+  it('reselects the fastest healthy relay when disconnected or removed from discovery', () => {
+    const probes = [
+      { relayId: 'sin', rttMs: 80 },
+      { relayId: 'usw', rttMs: 20 },
+    ];
+    expect(selectStableRelay(candidates, probes)?.id).toBe('usw');
+    expect(selectStableRelay(candidates, probes, 'removed')?.id).toBe('usw');
   });
 
   it('filters failed and identity-mismatched health responses', async () => {
