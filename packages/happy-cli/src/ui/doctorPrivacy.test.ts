@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy';
+import { shareSafeDaemonState, shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy';
 
 describe('doctor privacy', () => {
     it('never includes arbitrary process arguments in diagnostics', () => {
@@ -43,5 +43,30 @@ describe('doctor privacy', () => {
             expect(serialized).not.toContain(privateValue);
         }
         expect(info).not.toHaveProperty('processArgv');
+    });
+
+    it('never includes the daemon control bearer token in shareable status', () => {
+        const summary = shareSafeDaemonState({
+            pid: 42,
+            httpPort: 31337,
+            controlToken: 'must-never-appear-in-doctor-output',
+            startTime: 'now',
+            startedWithCliVersion: '0.2.66',
+            serverUrl: 'https://veryhappy.dev',
+        });
+
+        expect(summary).toMatchObject({
+            pid: 42,
+            httpPort: 31337,
+            controlAuthentication: 'configured',
+        });
+        expect(summary).not.toHaveProperty('controlToken');
+        expect(JSON.stringify(summary)).not.toContain('must-never-appear');
+        expect(shareSafeDaemonState({
+            pid: 1,
+            httpPort: 2,
+            startTime: 'then',
+            startedWithCliVersion: '0.2.64',
+        }).controlAuthentication).toBe('legacy');
     });
 });
