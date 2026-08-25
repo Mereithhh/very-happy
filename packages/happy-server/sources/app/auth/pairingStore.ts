@@ -28,8 +28,11 @@ export class PairingCapacityError extends Error {
 }
 
 function validatePairingInput(input: { publicKey: string; claimSecretHash: string | null }): void {
-    if (!/^[a-f0-9]{64}$/.test(input.publicKey)) {
-        throw new Error('Pairing public key must be a lowercase 32-byte hex value');
+    // privacy-kit encodeHex is the canonical encoder used by authRoutes and
+    // returns uppercase A-F. Keep this strict so lookup and insertion cannot
+    // disagree on key casing, but validate the casing the route actually uses.
+    if (!/^[A-F0-9]{64}$/.test(input.publicKey)) {
+        throw new Error('Pairing public key must be an uppercase 32-byte hex value');
     }
     if (input.claimSecretHash !== null && !/^[a-f0-9]{64}$/.test(input.claimSecretHash)) {
         throw new Error('Pairing claim secret hash must be a lowercase SHA-256 digest');
