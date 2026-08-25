@@ -177,18 +177,19 @@ describe('public Email OTP and password policy', () => {
 
     it('sends a normalized code without exposing it in the API response', async () => {
         enableEmail();
+        const challengeId = '37ac495d-799b-4290-9048-fcf4ee37c0f0';
         const app = await buildApp();
         const response = await app.inject({
             method: 'POST', url: '/v1/auth/email/code', payload: { email: ' Person@Example.com ' },
         });
         expect(response.statusCode).toBe(200);
         expect(response.json()).toEqual({
-            challengeId: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+            challengeId,
             expiresAt: '2030-01-01T00:10:00.000Z',
         });
         expect(sendLoginCodeMock).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend' }), {
             to: 'person@example.com', code: '123456', expiresInMinutes: 10,
-            idempotencyKey: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+            idempotencyKey: challengeId,
         });
         expect(response.body).not.toContain('123456');
         await app.close();
