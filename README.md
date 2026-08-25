@@ -115,7 +115,9 @@ and other terminal-specific extensions are not guaranteed.
 Paste a screenshot or drag a file straight into a Very Happy browser terminal.
 The daemon receives it on the selected machine under
 `~/.happy/uploads/terminal/`, then Very Happy pastes a path quoted for the
-daemon's default shell at the terminal cursor. It never presses Enter for you.
+daemon's default shell at the terminal cursor. The chosen Cloud or self-hosted
+server is the trusted relay for this bounded transfer.
+It never presses Enter for you.
 Native Windows insertion requires the current daemon so the Web client can
 distinguish cmd from PowerShell.
 
