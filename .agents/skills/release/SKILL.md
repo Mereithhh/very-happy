@@ -9,6 +9,10 @@ Production is `veryhappy.dev`: server + Web V2 on hw-sg, published CLI on
 npm, daemon on mac-office. `docs/operations.md` is the topology/runbook source;
 `docs/PROCESS.md` is the gate/process source.
 
+The only canonical source and release repository is the public GitHub repository
+`Mereithhh/very-happy`. A private archive is read-only history: never push a
+release commit or tag to it, and never trigger a deployment from it.
+
 ## Establish the target
 
 Release targets are:
@@ -29,6 +33,12 @@ state, target and rollback point. Do not deploy unrelated local edits.
 git status --short
 git branch --show-current
 git log -1 --oneline
+RELEASE_ORIGIN=$(git remote get-url origin)
+case "$RELEASE_ORIGIN" in
+  https://github.com/Mereithhh/very-happy.git|git@github.com:Mereithhh/very-happy.git) ;;
+  *) echo "refusing release from non-canonical origin: $RELEASE_ORIGIN" >&2; exit 1 ;;
+esac
+test "$(gh repo view Mereithhh/very-happy --json visibility --jq .visibility)" = PUBLIC
 ```
 
 Run the exact gates in `AGENTS.md`. For CLI also run the built artifact:
