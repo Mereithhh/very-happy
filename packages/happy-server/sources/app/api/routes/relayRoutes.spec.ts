@@ -53,10 +53,24 @@ describe('relay routes', () => {
             payload: { relayId: 'sin', probes: [{ relayId: 'sin', rttMs: 12 }] },
         });
         expect(claim.statusCode).toBe(200);
-        expect(verifyRelayToken({ token: claim.json().assignment.token, secret: 'route-test-secret-at-least-32-bytes', relayId: 'sin' })?.clientType).toBe('machine');
+        const machineAssignment = claim.json().assignment;
+        expect(machineAssignment).toMatchObject({
+            relayId: 'sin',
+            url: 'https://sin.example.com',
+            region: 'Singapore',
+        });
+        expect(machineAssignment).not.toHaveProperty('id');
+        expect(verifyRelayToken({ token: machineAssignment.token, secret: 'route-test-secret-at-least-32-bytes', relayId: 'sin' })?.clientType).toBe('machine');
         const assignment = await app.inject({ method: 'GET', url: '/v1/relays/machines/m1' });
         expect(assignment.statusCode).toBe(200);
-        expect(verifyRelayToken({ token: assignment.json().assignment.token, secret: 'route-test-secret-at-least-32-bytes', relayId: 'sin' })?.clientType).toBe('web');
+        const webAssignment = assignment.json().assignment;
+        expect(webAssignment).toMatchObject({
+            relayId: 'sin',
+            url: 'https://sin.example.com',
+            region: 'Singapore',
+        });
+        expect(webAssignment).not.toHaveProperty('id');
+        expect(verifyRelayToken({ token: webAssignment.token, secret: 'route-test-secret-at-least-32-bytes', relayId: 'sin' })?.clientType).toBe('web');
         await app.close();
     });
 });
