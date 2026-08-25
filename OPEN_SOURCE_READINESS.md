@@ -13,6 +13,18 @@ OAuth/Cloud policy, the Android Chrome tactile check, and release messaging.
 
 ## Product delivered
 
+- Passwordless Email OTP is implemented with Cloudflare Email Sending and
+  Resend adapters, durable HMAC-hashed single-use challenges, bounded attempts,
+  long-window abuse budgets, and a startup guard that prevents password-only
+  account lockout. Email becomes the default Web method only when configured;
+  otherwise existing password and Google login remain compatible.
+- Private exact-SHA Quality run `32830436767`, production Server deploy
+  `32830672345`, Web deploy `32830827506`, and mac-office daemon reconnect all
+  passed. Public PR [#6](https://github.com/Mereithhh/very-happy/pull/6) passed
+  hosted secret scan, container migration/persistence smoke, every package gate,
+  and GitGuardian before merging. Production delivery is deliberately dormant
+  until the operator configures a verified sender and scoped provider token.
+
 - Responsive `/welcome` landing and `/docs` surfaces cover quick start, CLI and
   daemon setup, Cloud/self-hosting, configuration, architecture, security and
   privacy, accounts and quotas, operations, troubleshooting, and contributing.
