@@ -14,13 +14,12 @@
  *
  * The machine's core invariant: after the user EXPLICITLY dismisses the
  * keyboard (`dismiss-key`, or an unhandled focus loss = `focus-settled:none`),
- * NOTHING auto-refocuses the terminal until the next explicit tap on the
- * terminal body. Key-bar keys still send their bytes — they just stop dragging
- * the keyboard back up.
+ * NOTHING auto-refocuses the terminal until the next explicit terminal-body
+ * tap or keyboard-toggle request. Key-bar keys and snippet actions still do
+ * their work — they never count as consent to raise the keyboard.
  *
  * Desktop is unaffected: the machine is only consulted from coarse-pointer
- * code paths (and from runCommand, where the desktop state is the initial
- * state and reduces to the historical focus-terminal behavior).
+ * code paths; desktop runCommand keeps its separate historical refocus.
  *
  * States (orthogonal flags):
  *  - dismissed:  user closed the keyboard; suppress automatic terminal refocus.
@@ -44,8 +43,10 @@ export interface TermFocusState {
 export type TermFocusEvent =
     /** A tap (≤ threshold movement) on the terminal body. */
     | { type: 'tap' }
-    /** The key bar's hide-keyboard key. */
+    /** Explicit keyboard control requested that every input surface blur. */
     | { type: 'dismiss-key' }
+    /** Explicit keyboard toggle requested that the active input surface show. */
+    | { type: 'show-keyboard' }
     /** Any pty key on the key bar (Esc/Tab/arrows/Ctrl-fold/…). */
     | { type: 'bar-key' }
     /** A snippet command was pasted (explicit menu gesture). */
@@ -93,17 +94,22 @@ export const TERMINAL_TOUCH_END_OPTIONS: AddEventListenerOptions = Object.freeze
 
 export function completeTerminalTouchTap(input: {
     inputOwnership: 'xterm' | 'own';
+    barMode: boolean;
     selectMode: boolean;
     distanceSquared: number;
     threshold: number;
     cancelable: boolean;
+    scrolled: boolean;
 }, effects: {
     preventDefault(): void;
     stopPropagation(): void;
     dispatchTap(): void;
 }): boolean {
-    if (input.selectMode || input.distanceSquared > input.threshold * input.threshold) return false;
-    if (input.inputOwnership === 'own') {
+    if (input.selectMode || input.scrolled || input.distanceSquared > input.threshold * input.threshold) return false;
+    // The line-input bar also needs to claim the touch. Its tap action blurs
+    // the bar; allowing Chrome's compatibility mousedown through would then
+    // focus xterm's hidden textarea and reopen the keyboard immediately.
+    if (input.inputOwnership === 'own' || input.barMode) {
         if (input.cancelable) effects.preventDefault();
         effects.stopPropagation();
     }
@@ -132,21 +138,26 @@ export function reduceTermFocus(
         case 'dismiss-key':
             return { state: { ...s, dismissed: true }, action: 'blur-all' };
 
+        case 'show-keyboard':
+            if (s.selectMode) return { state: s, action: 'none' };
+            return {
+                state: { ...s, dismissed: false },
+                action: s.barMode ? 'focus-input-bar' : 'focus-terminal',
+            };
+
         case 'bar-key':
-            // The key's bytes go to the pty regardless; the only question is
-            // whether pressing it drags the keyboard back up. It must NOT
-            // after an explicit dismissal (arrow keys with the screen fully
-            // visible is a first-class TUI flow), and it must never steal the
-            // input bar's focus in bar mode (the bar's buttons keep focus via
-            // preventDefault — no action needed to preserve it).
-            if (s.barMode || s.dismissed || s.selectMode) return { state: s, action: 'none' };
-            return { state: s, action: 'focus-terminal' };
+            // Bytes are sent independently of focus. The key-bar buttons use
+            // preventDefault to preserve an already-open keyboard, so focusing
+            // here adds no value and makes Esc/arrows unexpectedly summon a
+            // closed keyboard. Termux uses the same separation: extra keys and
+            // the explicit KEYBOARD control are distinct actions.
+            return { state: s, action: 'none' };
 
         case 'snippet':
-            // Explicit menu gesture. In bar mode the paste goes to the pty
-            // while the user keeps editing in the bar — don't move focus.
-            if (s.barMode || s.selectMode) return { state: s, action: 'none' };
-            return { state: { ...s, dismissed: false }, action: 'focus-terminal' };
+            // A menu/preset action may write bytes, but it is not consent to
+            // raise the keyboard. The explicit keyboard control or a terminal
+            // body tap is the only way back into mobile text entry.
+            return { state: s, action: 'none' };
 
         case 'focus-settled':
             if (e.target === 'none') {
@@ -176,11 +187,9 @@ export function reduceTermFocus(
                 // OS long-press selection isn't fighting the caret.
                 return { state: { ...s, selectMode: true, dismissed: true }, action: 'blur-all' };
             }
-            // Leaving (explicit gesture): resume the mode that owns typing.
-            return {
-                state: { ...s, selectMode: false, dismissed: false },
-                action: s.barMode ? 'focus-input-bar' : 'focus-terminal',
-            };
+            // Leaving selection is a view-mode action, not a request to type.
+            // Keep the keyboard down until the explicit toggle/tap.
+            return { state: { ...s, selectMode: false, dismissed: true }, action: 'none' };
     }
 }
 

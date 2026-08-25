@@ -18,10 +18,12 @@ describe('completeTerminalTouchTap', () => {
         const calls: string[] = [];
         const handled = completeTerminalTouchTap({
             inputOwnership: 'own',
+            barMode: false,
             selectMode: false,
             distanceSquared: 0,
             threshold: 12,
             cancelable: true,
+            scrolled: false,
             ...overrides,
         }, {
             preventDefault: () => calls.push('prevent-default'),
@@ -40,10 +42,18 @@ describe('completeTerminalTouchTap', () => {
         expect(TERMINAL_TOUCH_END_OPTIONS).toEqual({ capture: true, passive: false });
     });
 
-    it('leaves scroll, selection, and the xterm-owned input path native', () => {
+    it('leaves scroll, selection, and ordinary xterm-owned taps native', () => {
         expect(runTap({ distanceSquared: 12 * 12 + 1 })).toEqual({ handled: false, calls: [] });
+        expect(runTap({ scrolled: true })).toEqual({ handled: false, calls: [] });
         expect(runTap({ selectMode: true })).toEqual({ handled: false, calls: [] });
         expect(runTap({ inputOwnership: 'xterm' })).toEqual({ handled: true, calls: ['dispatch-focus'] });
+    });
+
+    it('claims a body tap in line-input mode so Chrome cannot reopen xterm after the bar blurs', () => {
+        expect(runTap({ inputOwnership: 'xterm', barMode: true })).toEqual({
+            handled: true,
+            calls: ['prevent-default', 'stop-propagation', 'dispatch-focus'],
+        });
     });
 
     it('skips preventDefault but still dispatches focus synchronously for a non-cancelable own tap', () => {
@@ -98,9 +108,9 @@ describe('termFocusPolicy', () => {
     });
 
     describe('bar-key (assistive key bar pty keys)', () => {
-        it('refocuses the terminal in normal per-key use (keyboard stays up)', () => {
+        it('never summons the keyboard; the button preserves an already-focused input itself', () => {
             const { action } = run(S(), { type: 'bar-key' });
-            expect(action).toBe('focus-terminal');
+            expect(action).toBe('none');
         });
 
         it('does NOT re-open the keyboard after an explicit dismissal — the core fix', () => {
@@ -135,10 +145,10 @@ describe('termFocusPolicy', () => {
     });
 
     describe('snippet insertion', () => {
-        it('focuses the terminal (explicit gesture) and clears dismissal', () => {
+        it('writes without treating a menu action as consent to raise the keyboard', () => {
             const { state, action } = run(S({ dismissed: true }), { type: 'snippet' });
-            expect(action).toBe('focus-terminal');
-            expect(state.dismissed).toBe(false);
+            expect(action).toBe('none');
+            expect(state.dismissed).toBe(true);
         });
 
         it('leaves focus alone in bar mode', () => {
@@ -162,6 +172,21 @@ describe('termFocusPolicy', () => {
         });
     });
 
+    describe('explicit keyboard control', () => {
+        it('shows the active per-key input surface', () => {
+            const { state, action } = run(S({ dismissed: true }), { type: 'show-keyboard' });
+            expect(state.dismissed).toBe(false);
+            expect(action).toBe('focus-terminal');
+        });
+
+        it('shows the line-input bar in bar mode and stays inert in select mode', () => {
+            expect(run(S({ barMode: true, dismissed: true }), { type: 'show-keyboard' }).action)
+                .toBe('focus-input-bar');
+            expect(run(S({ selectMode: true, dismissed: true }), { type: 'show-keyboard' }).action)
+                .toBe('none');
+        });
+    });
+
     describe('select mode', () => {
         it('entering blurs everything (keyboard down for OS selection)', () => {
             const { state, action } = run(S(), { type: 'select-mode', on: true });
@@ -170,21 +195,21 @@ describe('termFocusPolicy', () => {
             expect(action).toBe('blur-all');
         });
 
-        it('leaving returns focus to the terminal in per-key mode', () => {
+        it('leaving keeps the keyboard down in per-key mode', () => {
             const { state, action } = run(S({ selectMode: true, dismissed: true }), { type: 'select-mode', on: false });
             expect(state.selectMode).toBe(false);
-            expect(state.dismissed).toBe(false);
-            expect(action).toBe('focus-terminal');
+            expect(state.dismissed).toBe(true);
+            expect(action).toBe('none');
         });
 
-        it('leaving returns focus to the input bar when bar mode is on', () => {
+        it('leaving does not reopen the input bar keyboard when bar mode is on', () => {
             const { action } = run(S({ selectMode: true, barMode: true }), { type: 'select-mode', on: false });
-            expect(action).toBe('focus-input-bar');
+            expect(action).toBe('none');
         });
     });
 
     describe('full user journeys', () => {
-        it('dismiss → arrow keys stay quiet → tap re-opens → keys refocus again', () => {
+        it('dismiss → arrow keys stay quiet → tap re-opens → keys preserve without refocusing', () => {
             let s = S();
             let r = run(s, { type: 'dismiss-key' });
             expect(r.action).toBe('blur-all');
@@ -195,7 +220,7 @@ describe('termFocusPolicy', () => {
             r = run(r.state, { type: 'tap' });
             expect(r.action).toBe('focus-terminal');
             r = run(r.state, { type: 'bar-key' });
-            expect(r.action).toBe('focus-terminal'); // back to keep-focus behavior
+            expect(r.action).toBe('none'); // the key itself never changes focus
         });
 
         it('OS-level dismissal (Done key) is honored: focusout none → no auto-refocus', () => {
