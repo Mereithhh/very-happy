@@ -37,10 +37,18 @@ for (const [name, source] of Object.entries(workflows)) {
 
 for (const name of ['quality.yml', 'cli-smoke-test.yml']) {
   const source = workflows[name] ?? '';
-  const hostedPrExpression = "github.event_name == 'pull_request' && '[\"ubuntu-latest\"]'";
-  if (!source.includes(hostedPrExpression)) {
-    errors.push(`${name}: every PR code-execution job must select ubuntu-latest before private runner variables`);
+  if (/runs-on:[^\n]*(?:self-hosted|vars\.LINUX_RUNNER)/.test(source)) {
+    errors.push(`${name}: public quality and smoke jobs must never select private runners`);
   }
+}
+
+if (!/secret-scan:[\s\S]*?runs-on: ubuntu-latest/.test(workflows['quality.yml'] ?? '')
+  || !/gates:[\s\S]*?runs-on: ubuntu-latest/.test(workflows['quality.yml'] ?? '')) {
+  errors.push('quality.yml: secret scan and package gates must always use ubuntu-latest');
+}
+if (!/smoke-linux:[\s\S]*?runs-on: ubuntu-latest/.test(workflows['cli-smoke-test.yml'] ?? '')
+  || !/smoke-macos:[\s\S]*?runs-on: macos-14/.test(workflows['cli-smoke-test.yml'] ?? '')) {
+  errors.push('cli-smoke-test.yml: Linux and macOS smoke must use GitHub-hosted runners');
 }
 
 if (!/server-container-smoke:[\s\S]*if: github\.event_name == 'pull_request'[\s\S]*runs-on: ubuntu-latest/.test(
@@ -52,10 +60,9 @@ if (!/server-container-smoke:[\s\S]*if: github\.event_name == 'pull_request'[\s\
 const secretScanJob = (workflows['quality.yml'] ?? '').match(
   /\n  secret-scan:\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\n|$)/,
 )?.[1] ?? '';
-if (!secretScanJob.includes("github.event_name == 'pull_request' && '[\"ubuntu-latest\"]'")
-  || !secretScanJob.includes("vars.LINUX_RUNNER || '[\"self-hosted\",\"linux\",\"x64\"]'")
+if (!secretScanJob.includes('runs-on: ubuntu-latest')
   || !/fetch-depth: 0[\s\S]*scan-secrets\.sh --ci/.test(secretScanJob)) {
-  errors.push('quality.yml: introduced-commit secret scan must keep PRs hosted, trusted runs isolated, and full history available');
+  errors.push('quality.yml: introduced-commit secret scan must stay hosted with full history available');
 }
 const secretScanScript = readFileSync(new URL('./scan-secrets.sh', import.meta.url), 'utf8');
 if (!/GITLEAKS_VERSION="8\.30\.0"/.test(secretScanScript)
@@ -68,11 +75,6 @@ for (const name of ['deploy-hwsg.yml', 'publish.yml', 'runner-probe.yml']) {
   if (/pull_request\s*:/.test(workflows[name] ?? '')) {
     errors.push(`${name}: privileged workflow must never accept pull_request`);
   }
-}
-
-const macSmokeSource = (workflows['cli-smoke-test.yml'] ?? '').split('smoke-windows:')[0];
-if (/smoke-macos:[\s\S]*cache:\s*['"]pnpm['"]/.test(macSmokeSource)) {
-  errors.push('cli-smoke-test.yml: mac-office must use its persistent store, not GitHub cache-save');
 }
 
 if (!/^CMD .*standalone\.ts migrate.*standalone\.ts serve/m.test(dockerfile)) {

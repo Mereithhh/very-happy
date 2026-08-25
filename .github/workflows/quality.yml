@@ -2,41 +2,9 @@ name: Quality Gates
 
 # 质量门禁（docs/PROCESS.md §3 的 CI 落地）——push main + 所有 PR 必跑。
 #
-# 2026-08-14 改造：受信任的 main/manual 运行在 fb-us self-hosted runner 上。
-# 公开 fork PR 固定使用一次性的 ubuntu-latest，绝不让不受信代码进入私有 runner。
-# 原来的 5 个并行 ubuntu job 合并成 1 个 job：
-#   - self-hosted 只有 1 个 worker，5 个 job 不会并行，只会排队串行 →
-#     并行结构除了把 checkout + pnpm install + wire build 重复 5 遍以外没有收益。
-#   - 合并后墙钟 ~13 分钟 → ~7 分钟（省掉 4 次装配），且只占 1 次 runner 槽位。
-#   - "哪个 gate 挂了" 的可读性用 step 名字（`Gate: xxx`）保留；每个 gate step
-#     带 `if: !cancelled() && steps.deps.outcome == 'success'`，所以**一个 gate 失败
-#     不会挡住后面的 gate**——一次 run 仍然能看到全部门禁结果（等价于原来 5 个
-#     job 各自跑完），只有装配（install / wire build）失败才会整体跳过。
-#
-# runs-on 说明（降级路径，所有 workflow 统一）：
-#   PR = ["ubuntu-latest"]；push main/manual 默认 = ["self-hosted","linux","x64"]。
-#   fb-us runner 掉线时受信 job 会永久排队，
-#   此时不要改文件，直接翻 repo 变量把所有 Linux job 切回托管 runner：
-#     gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'   # 降级（开始计费）
-#     gh variable delete LINUX_RUNNER                           # 恢复 self-hosted
-#
-# self-hosted 环境差异（逐条）：
-#   - 工作目录复用：actions/checkout 默认 clean=true（`git clean -ffdx` + reset），
-#     连 node_modules / dist 这类 ignored 产物一起清掉，所以每次 run 的**工作树是
-#     干净的**；不干净的只有 runner 的 HOME（pnpm store / tool cache），那正是我们
-#     想复用的部分。
-#   - node / pnpm 不假设 runner 上有：照样 setup-node + pnpm/action-setup 显式声明
-#     （setup-node 在 self-hosted 上把 node 装进 RUNNER_TOOL_CACHE，第二次起是命中）。
-#   - 缓存：**刻意不用 GitHub 缓存服务**（去掉了 setup-node 的 `cache: pnpm`）。
-#     actions/cache 即使在 self-hosted 上也走 GitHub 的缓存服务，几百 MB 上下行
-#     比 fb-us 本地持久化 pnpm store 的硬链接安装慢得多，还占 repo 缓存配额。
-#     依赖本地 store 的风险（store 脏/半损）由 `--frozen-lockfile` + 校验和兜底，
-#     真出问题就 `pnpm store prune`（见 PROCESS.md §4）。托管 runner 上唯一保留
-#     缓存的地方是 cli-smoke-test.yml 的 macOS/Windows 矩阵——那里 1 分钟安装
-#     =10/2 倍计费分钟，缓存是真省钱。
-#   - 写 HOME 的行为（cli 运行冒烟会碰 ~/.happy）改指到 runner.temp，别污染 runner。
-#   - timeout-minutes 必填：self-hosted 卡死不会像托管那样有天然上限，会永久占住
-#     唯一的 worker。
+# 所有常态门禁固定使用 GitHub 托管的临时 runner。公开 PR、main push 和手动运行
+# 都不会进入 Owner 的私有基础设施。各包合并在一个 gates job 中以复用依赖装配；
+# 每个 gate 使用独立 step，一个失败不会阻止其他 gate 报告结果。
 
 on:
   push:
@@ -54,11 +22,8 @@ permissions:
 jobs:
   secret-scan:
     name: secret scan (introduced commits)
-    # Public PR code must stay on an ephemeral hosted runner. Trusted main/manual
-    # runs use the private Linux runner so a private-repo billing incident cannot
-    # silently remove the publication gate. The downloaded scanner is version-
-    # and SHA256-pinned in scan-secrets.sh before execution.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    # The downloaded scanner is version- and SHA256-pinned in scan-secrets.sh.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -84,7 +49,7 @@ jobs:
 
   gates:
     name: quality gates (wire / server / web-v2 / cli)
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

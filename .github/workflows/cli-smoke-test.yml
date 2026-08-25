@@ -5,35 +5,9 @@ name: CLI Smoke Test
 # (scripts/unpack-tools.cjs) unpacks platform-specific binaries — we want to
 # catch a broken install on Linux/macOS/Windows before publishing.
 #
-# 2026-08-14 成本改造（私有仓计费倍率 Linux 1× / Windows 2× / macOS 10×）：
-# 原来每次 push/PR 都跑 3 系统 × 2 node = 6 格，**单次就吃 102 分钟额度**
-# （ubuntu 6 + windows 18×2 + macOS 6×10），9 次就把月度免费额打穿。现在拆两档：
-#
-#   smoke-linux   每次 push/PR 都跑，只有 Linux（node 20 + 24）。公开 PR 固定
-#                 ubuntu-latest；受信 push 才跑 fb-us self-hosted。
-#   smoke-macos   打 tag / 手动勾 cross_platform 时跑，**mac-office self-hosted**
-#                 （node 20 + 24）→ 0 计费分钟。macOS 必须有覆盖：daemon 实际
-#                 就跑在这台机上，platform-specific postinstall 只有它能验。
-#   smoke-windows 只在手动勾 cross_platform 时跑，托管 windows-latest（会计费）。
-#
-# ⚠️ 2026-08-18（B-148）：原来 macOS/Windows 合成一个 `smoke-hosted` 挂在 tag 上，
-#    结果从 v0.2.44 到 v0.2.52 **连续 9 个 tag 全红**——4 个格子 `steps: []`、
-#    2 秒结束、无失败步骤 = job 根本没启动（几乎肯定是私有仓 hosted 分钟数/
-#    spending limit）。而 main 上的 Linux 档一直绿，于是这个红叉被当成背景噪音，
-#    发版的人（包括 agent）学会了忽略它。**红得没有信息量比没有更危险**，所以：
-#    macOS 挪到 self-hosted 真的跑起来；Windows 明确降级为「手动才跑」，不再
-#    假装它是发版门禁（代价：Windows 现在**没有**常态覆盖，见 backlog B-148）。
-#
-# ⚠️⚠️ smoke-macos 的 runner（mac-office-ci）跑在**生产 daemon 宿主机**上，
-#    `/opt/homebrew/lib/node_modules/very-happy-cli` 就是生产在用的那份。所以这个
-#    job 里的 `npm install -g` / `npm uninstall -g` **必须**锁在 job 级 prefix 里，
-#    且有一步硬守卫在动手之前就挡住（见 "Isolate & guard"）——托管 runner 上这些
-#    是无害的，在这里做错一次就是把生产 CLI 卸掉。
-#
-# ⚠️ 两个 job 的 steps 是**刻意重复**的（GitHub 不允许 job 级 `if:` 读 matrix 上下文
-#    ——actionlint 会直接报 "context matrix is not allowed here"，所以没法在一个 matrix
-#    里既混 self-hosted 又按格子跳过）。改其中一个的 steps，必须同步改另一个；
-#    唯一**允许**不同的是 node/pnpm 的装配顺序与缓存（见各 job 内注释）。
+# 公开仓库不把 CI 连接到生产宿主机：三个平台均使用 GitHub 托管的临时 runner。
+# Linux 在每个相关 main push/PR 上运行；macOS 在 tag 或手动完整冒烟时运行；
+# Windows 保留为手动完整冒烟，避免普通 PR 的额外时延。
 #
 # 注：`paths` 过滤器对 **tag push 不生效**（GitHub 文档明文："Path filters are not
 # evaluated for pushes of tags."），所以打 tag 一定会触发本 workflow，不会被 paths 吃掉。
@@ -57,7 +31,6 @@ on:
         type: boolean
         default: false
 
-# 单 self-hosted worker：PR 上的旧 run 直接取消，别让唯一的 runner 排队堵住。
 concurrency:
   group: cli-smoke-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -66,28 +39,22 @@ permissions:
   contents: read
 
 jobs:
-  # ── 常态档：Linux only；PR hosted，受信 push self-hosted ─────────────────
+  # ── 常态档：Linux only，始终使用 GitHub 托管 runner ─────────────────────
   smoke-linux:
     name: smoke (linux, node ${{ matrix.node-version }})
     strategy:
       fail-fast: false
       matrix:
         node-version: [20, 24]
-    # 降级：runner 掉线时 `gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'`
-    # 切回托管；恢复用 `gh variable delete LINUX_RUNNER`。详见 docs/PROCESS.md §4。
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
       - name: Checkout code
-        # 默认 clean=true（git clean -ffdx + reset）——self-hosted 工作目录是复用的，
-        # 靠这一步保证工作树干净（node_modules/dist/*.tgz 都会被清掉）。
+        # 默认 clean=true（git clean -ffdx + reset）。
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # ⚠️ 顺序与下面 smoke-hosted 相反且是刻意的：pnpm/action-setup 默认需要现成的
-      # node/npm，self-hosted 上不能假设系统有 → 先 setup-node（它只用 runner 内置
-      # node 就能跑）。代价是用不了 setup-node 的 `cache: pnpm`，而 self-hosted 本来
-      # 就靠本地持久化 pnpm store，不需要 GitHub 缓存服务。
+      # 先固定 Node，再安装 pnpm，避免依赖 runner 的预装版本。
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -153,32 +120,21 @@ jobs:
         shell: bash
         run: npm uninstall -g very-happy-cli || true
 
-  # ── 发版档 macOS：打 tag / 手动勾选时跑，mac-office self-hosted（0 计费）──
+  # ── 发版档 macOS：打 tag / 手动完整冒烟时跑 GitHub 托管 macOS ─────────
   smoke-macos:
-    name: smoke (macOS mac-office, node ${{ matrix.node-version }})
-    # 打 tag 一定跑；手动触发按 cross_platform 输入。
-    # 逃生阀：`gh variable set SKIP_HOSTED_SMOKE --body 1` 跳过（发版信心降到
-    # Linux 级别，事后记得 `gh variable delete SKIP_HOSTED_SMOKE`）。
-    # runner 掉线（办公室那台机不在线）时同样用这个逃生阀——**别**改成
-    # macos-latest 回落：hosted 分钟数就是当初挂掉的原因（B-148）。
+    name: smoke (macos-14, node ${{ matrix.node-version }})
     if: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.cross_platform) && vars.SKIP_HOSTED_SMOKE != '1' }}
     strategy:
       fail-fast: false
-      # 只有一台 mac runner，两格会串行（各 20min 上限）——刻意不并行：
-      # 同一个 HOME 下两个 `npm install -g` 会互相踩。
-      max-parallel: 1
       matrix:
         node-version: [20, 24]
-    runs-on: [self-hosted, macOS, ARM64, mac-office]
+    runs-on: macos-14
     timeout-minutes: 20
 
     steps:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # mac-office 自己预装 node/npm，所以维持 pnpm → setup-node 的顺序。
-      # 不开 GitHub cache：self-hosted 的 pnpm store 本来就持久化，远端
-      # cache-save 在私有仓 billing/额度异常时会卡到 job timeout。
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
@@ -212,46 +168,13 @@ jobs:
           fi
           echo "OK: @slopus/happy-wire is inlined into dist."
 
-      # ⚠️ 这台 runner 就是生产 daemon 宿主机。守卫必须在**任何** install 之前跑，
-      #    而且 `exit 1` 真的挡得住（不是打印个 warning 就往下走）。三条断言：
-      #      ① job 级 prefix 必须落在 RUNNER_TEMP 里（runner 自己会回收）；
-      #      ② 当前 npm 的全局 root 不能是生产那份——setup-node 正常工作时它指向
-      #         tool-cache，可它一旦 no-op 就会落回 /opt/homebrew，那正是灾难路径；
-      #      ③ 开跑前生产安装得在（最后一步再复验一次，确保本 job 没动它）。
-      - name: Isolate & guard the global npm prefix (PRODUCTION daemon host)
-        shell: bash
-        run: |
-          set -euo pipefail
-          PROD_ROOT=/opt/homebrew/lib/node_modules
-          PREFIX="$RUNNER_TEMP/npm-global"
-          case "$PREFIX" in
-            "$RUNNER_TEMP"/*) : ;;
-            *) echo "REFUSING: prefix $PREFIX 不在 RUNNER_TEMP 下" >&2; exit 1 ;;
-          esac
-          GLOBAL_ROOT="$(npm root -g)"
-          echo "npm root -g = $GLOBAL_ROOT"
-          case "$GLOBAL_ROOT" in
-            "$PROD_ROOT"*)
-              echo "REFUSING: npm 全局 root 就是生产那份（$PROD_ROOT）；" >&2
-              echo "setup-node 没生效，再往下走会覆盖/卸掉生产 CLI。" >&2
-              exit 1 ;;
-          esac
-          if [ ! -d "$PROD_ROOT/very-happy-cli" ]; then
-            echo "REFUSING: 开跑前生产安装就不在了（$PROD_ROOT/very-happy-cli）" >&2
-            exit 1
-          fi
-          mkdir -p "$PREFIX/bin"
-          echo "NPM_PREFIX=$PREFIX" >> "$GITHUB_ENV"
-          # PATH 前置：后面的 `very-happy` 要命中 job 级安装，不是生产那个
-          echo "$PREFIX/bin" >> "$GITHUB_PATH"
-
       - name: Pack + global install (runs postinstall on this platform)
         shell: bash
         run: |
           set -euo pipefail
           pnpm --filter very-happy-cli pack --pack-destination packages/happy-cli
           PKG=$(ls packages/happy-cli/*.tgz)
-          npm install -g --prefix "$NPM_PREFIX" "./$PKG"
+          npm install -g "./$PKG"
 
       - name: Run very-happy subcommands
         shell: bash
@@ -259,14 +182,6 @@ jobs:
           HAPPY_HOME_DIR: ${{ runner.temp }}/happy-home
         run: |
           set -euo pipefail
-          # 防假绿：PATH 上要是没命中 job 级那份，这个 job 就会去验**生产**的二进制
-          # 然后一路绿——正是「测了但什么都没测」的那种失败，必须显式挡。
-          RESOLVED="$(command -v very-happy)"
-          echo "very-happy resolved to $RESOLVED"
-          case "$RESOLVED" in
-            "$NPM_PREFIX"/*) : ;;
-            *) echo "FAIL: 命中的不是本 job 装的那份（$NPM_PREFIX）" >&2; exit 1 ;;
-          esac
           # macOS 没有 GNU `timeout`（历史上两个矩阵格子因此秒挂），perl alarm 等价。
           if ! command -v timeout >/dev/null 2>&1; then
             timeout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
@@ -277,17 +192,12 @@ jobs:
           timeout 30 very-happy --help || { echo "FAIL: --help"; exit 1; }
           echo "very-happy doctor"
           timeout 60 very-happy doctor || { echo "FAIL: doctor"; exit 1; }
-          echo "Smoke test passed on macOS mac-office (node ${{ matrix.node-version }})"
+          echo "Smoke test passed on macos-14 (node ${{ matrix.node-version }})"
 
-      - name: Cleanup + verify the production install is untouched
+      - name: Cleanup global install
         if: always()
         shell: bash
-        run: |
-          # --prefix 限定：这条命令**不可能**碰到生产那份（不带 --prefix 时就会）。
-          npm uninstall -g --prefix "${NPM_PREFIX:-$RUNNER_TEMP/npm-global}" very-happy-cli || true
-          test -d /opt/homebrew/lib/node_modules/very-happy-cli \
-            || { echo "生产 CLI 不见了——本 job 破坏了生产安装" >&2; exit 1; }
-          echo "生产安装完好：$(/opt/homebrew/bin/very-happy --version 2>&1 | head -1)"
+        run: npm uninstall -g very-happy-cli || true
 
   # ── Windows：**只在手动勾 cross_platform 时跑**，托管 runner（会计费）──────
   # B-148 起不再挂在 tag 上。理由不是「Windows 不重要」，而是它挂在 tag 上时
