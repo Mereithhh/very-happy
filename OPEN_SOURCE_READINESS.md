@@ -679,13 +679,21 @@ added, and the final freeze rereview ended at **P0=0, P1=0, P2=0**.
 ## Blocking historical findings
 
 A final current-tree archive plus the readiness report processed 16.88 MB and returned **0
-findings**; every staged release increment was also scanned with no finding. An earlier all-ref
-history baseline covered 2,572 commits / about 34.75 MB and returned **45
+findings**; every staged release increment was also scanned with no finding. A fresh all-ref scan
+of the current private object database covered 2,606 commits / about 35.62 MB and returned **45
 findings** across 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT
-detections. The repository has grown since that baseline (2,853 commits were reachable across
-all refs at this review), so the public-switch procedure must repeat an all-ref scan against the
-frozen rewritten repository. The baseline is evidence of known exposure, not a claim that the
-current object database has been completely rescanned.
+detections. This is the release-freeze baseline; changing visibility before rewriting it would
+publish known session/token material.
+
+A disposable-mirror rewrite rehearsal then removed the finding paths, their historical rename
+destinations, the known environment/deployment files, and historical session fixtures from all
+commit refs. The first pass reduced 45 findings to 21, the rename-complete second pass to 6, and
+the final pass to zero. The 14 clean files that still exist on current `main` were restored from
+the current tree in one synthetic rehearsal commit. The result scanned **2,605 commits / 32.02
+MB with zero findings**, and `git ls-tree -r main` was byte-for-byte identical to current `main`.
+This proves the path manifest is sufficient for a clean staging history without changing product
+contents. The rehearsal did not alter or push the shared repository. Local Codex checkpoint refs
+whose targets are trees rather than commits must not be copied to the staging remote.
 
 The most serious object is a deleted upstream real-session JSONL containing tokens and user
 content. Historical Google/Firebase configuration and old environment/deployment files also
@@ -694,16 +702,34 @@ these known paths:
 
 ```text
 android/app/google-services.json
+cli/explore-claude-cli/v1-real-sessions-by-kirill-from-handy-cli/example-sessions/400429ba-c1e1-4ef5-a7ec-fe40608df53b.jsonl
+cli/notes/message-type-drift.md
+cli/src/commands/connect/authenticateGemini.ts
+cli/src/utils/deriveKey.appspec.ts
+cli/src/utils/expandEnvVars.test.ts
+docs/configuration.md
+docs/plans/happy-agent.md
+expo-app/android/app/google-services.json
 expo-app/google-services.json
+expo-app/ios/Podfile.lock
+expo-app/sources/encryption/deriveKey.appspec.ts
 google-services.json
-<historical real-session fixture directory>/*.jsonl
+ios/Podfile.lock
+packages/happy-app/android/app/google-services.json
+packages/happy-app/google-services.json
+packages/happy-app/ios/Podfile.lock
+packages/happy-app/sources/encryption/deriveKey.appspec.ts
+packages/happy-cli/src/commands/connect/authenticateGemini.ts
+packages/happy-cli/src/utils/deriveKey.appspec.ts
+packages/happy-cli/src/utils/expandEnvVars.test.ts
+sources/encryption/deriveKey.appspec.ts
 sources/sync/__testdata__/log_0.json
 packages/happy-server/.env.dev
 packages/happy-cli/.env.dev
 packages/happy-cli/.env.dev-local-server
 packages/happy-cli/.env.integration-test
 packages/happy-server/deploy/overlays/local/secrets.yaml
-packages/happy-cli/src/claude/utils/__fixtures__/*.jsonl
+packages/happy-cli/src/claude/utils/__fixtures__/
 ```
 
 Some scanner hits are test vectors or public mobile configuration, but they must be reviewed
@@ -716,9 +742,10 @@ These operations are intentionally not performed by this release-candidate work:
 
 1. Freeze pushes and tags. Create an offline mirror/bundle backup and record current ref→SHA
    mappings. Keep that backup private.
-2. In a disposable isolated mirror, create a reviewed `git filter-repo` path/callback manifest
-   from the complete redacted gitleaks JSON plus the known paths above. Remove session dumps,
-   environment/secrets files, and sensitive blobs from **all refs**, including tags.
+2. In a disposable isolated mirror, apply the reviewed, rename-complete path manifest proven by
+   the rehearsal above. Remove session dumps, environment/secrets files, and sensitive blobs from
+   **all commit refs**, including tags. Restore only the 14 current clean files from frozen `main`
+   and verify the resulting `main` tree is identical before publishing it.
 3. Run gitleaks across every rewritten ref and inspect packfiles for the known tokens/paths.
    The acceptance result is zero unreviewed findings—not merely a clean default branch.
 4. Revoke historical login/session tokens. Rotate any still-valid private credential and
