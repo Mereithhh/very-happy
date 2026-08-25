@@ -1,3 +1,7 @@
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 <div align="center">
   <a href="https://veryhappy.dev/welcome">
     <img src=".github/readme-hero.svg" width="100%" alt="Very Happy — one command panel for every connected machine and agent">
@@ -401,7 +405,6 @@ human has to hold.** See the [roadmap](docs/roadmap.md).
 
 - [Documentation index](docs/README.md)
 - [Getting started](docs/getting-started.md)
-- [CLI and first machine](docs/getting-started.md)
 - [Self-hosting](docs/deployment.md)
 - [Configuration](docs/configuration.md)
 - [Upgrading and rollback](docs/upgrading.md)
