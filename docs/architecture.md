@@ -49,7 +49,7 @@ field laptop   ─┘                 sessions / tasks / files
 
 ## Identity and connection
 
-Password and verified Google identities map to an `Account`. Web logins receive
+Verified email-code, optional password, and verified Google identities map to an `Account`. Web logins receive
 expiring, revocable login sessions. Existing CLI tokens remain compatible. A new
 machine begins a short-lived pairing request; the signed-in user approves it in
 the browser, then the daemon establishes an account-scoped socket.

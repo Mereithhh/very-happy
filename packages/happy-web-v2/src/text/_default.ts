@@ -1914,6 +1914,32 @@ export const en = {
         success: 'Account created. Welcome!',
     },
 
+    emailAuth: {
+        title: 'Continue with email',
+        subtitle: 'We will send a 6-digit code. No password required.',
+        email: 'Email address',
+        emailPlaceholder: 'you@example.com',
+        sendCode: 'Email me a code',
+        code: 'Verification code',
+        codePlaceholder: '6-digit code',
+        verify: 'Verify and continue',
+        sent: ({ email }: { email: string }) => `Code sent to ${email}`,
+        expiresIn: ({ seconds }: { seconds: number }) => `Expires in ${seconds}s`,
+        expired: 'This code expired. Send a new one.',
+        resend: 'Send a new code',
+        resendIn: ({ seconds }: { seconds: number }) => `Send a new code in ${seconds}s`,
+        changeEmail: 'Use a different email',
+        usePassword: 'Use username and password instead',
+        hidePassword: 'Hide password sign-in',
+        passwordDisabled: 'Password sign-in is disabled by this relay. Use an email code or Google instead.',
+        orGoogle: 'or continue with Google',
+        invalidEmail: 'Enter a valid email address.',
+        invalidCode: 'That code is invalid or expired. Request a new one and try again.',
+        deliveryUnavailable: 'Email delivery is temporarily unavailable. Try again shortly.',
+        notConfigured: 'Email sign-in is not configured on this relay.',
+        network: 'Could not reach the relay. Check your connection and try again.',
+    },
+
     // Per-agent defaults settings screen.
     settingsAgents: {
         title: 'Agent defaults',

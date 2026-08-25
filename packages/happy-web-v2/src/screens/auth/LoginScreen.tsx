@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
-import { CloudAuthError, loginWithGoogle } from '@/auth/cloudAuth';
+import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
 import { useAuth } from '@/auth/AuthContext';
 import { Button, Input, CyberMark, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -10,6 +10,8 @@ import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
 import { authReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
+import { EmailOtpForm } from './EmailOtpForm';
+import { publicAuthMethodState } from './emailOtpPresentation';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -25,6 +27,18 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [authConfig, setAuthConfig] = useState<PublicAuthConfig | null>(null);
+  const [passwordExpanded, setPasswordExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPublicAuthConfig().then((config) => {
+      if (cancelled) return;
+      setAuthConfig(config);
+      if (publicAuthMethodState(config).expandPasswordAfterLoad) setPasswordExpanded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const canSubmit = username.trim().length > 0 && password.length > 0 && !busy;
 
@@ -74,46 +88,63 @@ export function LoginScreen() {
     }
   }
 
+  async function finishLogin(creds: { token: string; secret: string }) {
+    await login(creds.token, creds.secret);
+    toast.success(t('common.success'));
+    navigate(authReturnTarget(location.state), { replace: true });
+  }
+
+  const { emailEnabled, passwordEnabled, googleEnabled } = publicAuthMethodState(authConfig);
+
   return (
     <div className="auth-page">
       <CyberBackdrop />
-      <form className="auth-card" onSubmit={onSubmit}>
+      <div className="auth-card">
         <div className="auth-brand">
           <CyberMark size={40} glow />
           <div className="auth-wordmark">very happy</div>
         </div>
         <div className="auth-eyebrow eyebrow">{t('settings.connectAccount')}</div>
 
+        {emailEnabled && <EmailOtpForm busy={busy} onBusyChange={setBusy} onCredentials={finishLogin} />}
+
         <GoogleLoginButton
           disabled={busy}
-          dividerLabel={t('signup.orPassword')}
+          leadingDividerLabel={emailEnabled ? t('emailAuth.orGoogle') : undefined}
           retryLabel={t('common.retry')}
           unavailableLabel={t('signup.errorGoogle')}
           onCredential={onGoogleCredential}
         />
         {googleError && <div className="auth-error" role="alert">{googleError}</div>}
 
-        <Input
-          label={t('common.name')}
-          autoFocus
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="username"
-        />
-        <Input
-          label={t('settingsAccount.password')}
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          error={error}
-          placeholder="••••••••"
-        />
-
-        <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
-          {t('common.continue')}
-        </Button>
+        {passwordEnabled && <>
+          {(emailEnabled || googleEnabled) && <div className="auth-divider"><span>{t('signup.orPassword')}</span></div>}
+          <button type="button" className="auth-method-toggle" aria-expanded={passwordExpanded} onClick={() => setPasswordExpanded((value) => !value)}>
+            {passwordExpanded ? t('emailAuth.hidePassword') : t('emailAuth.usePassword')}
+          </button>
+          {passwordExpanded && <form className="auth-password-form" onSubmit={onSubmit}>
+            <Input
+              label={t('common.name')}
+              autoFocus={!emailEnabled}
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="username"
+            />
+            <Input
+              label={t('settingsAccount.password')}
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              error={error}
+              placeholder="••••••••"
+            />
+            <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
+              {t('common.continue')}
+            </Button>
+          </form>}
+        </>}
 
         <button type="button" className="auth-alt" onClick={() => navigate('/signup', { state: location.state })}>
           {t('settingsAccount.createAccountTitle')}
@@ -128,7 +159,7 @@ export function LoginScreen() {
           <span aria-hidden="true">·</span>
           <Link to="/terms">Terms</Link>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

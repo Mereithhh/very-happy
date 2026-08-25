@@ -279,9 +279,14 @@ Environment variables:
   SIGNUP_MODE       open, invite, or closed (standalone default: closed)
   SIGNUP_MAX_ACCOUNTS  Global Account limit; unset or 0 means unlimited
   SIGNUP_INVITE_CODES  Comma-separated codes used in invite mode
-  LOGIN_SESSION_TTL_DAYS  Password/Google session lifetime (default: 30)
+  LOGIN_SESSION_TTL_DAYS  Email/Google/password session lifetime (default: 30)
   GOOGLE_CLIENT_ID  Enables Google Identity Services login
   GOOGLE_ALLOWED_ORIGINS  Exact comma-separated Web origins allowed for Google login
+  AUTH_EMAIL_PROVIDER  resend or cloudflare; enables passwordless email codes
+  AUTH_EMAIL_FROM      Verified sender address for email codes
+  RESEND_API_KEY       Required when AUTH_EMAIL_PROVIDER=resend
+  CLOUDFLARE_EMAIL_ACCOUNT_ID / CLOUDFLARE_EMAIL_API_TOKEN  Required for Cloudflare
+  AUTH_PASSWORD_LOGIN_DISABLED  true disables password signup/login/credential changes
   TRUST_PROXY        Trusted proxy hop count or IP/CIDR list (never unrestricted)
 `);
             process.exit(command === "--help" || command === "-h" ? 0 : 1);

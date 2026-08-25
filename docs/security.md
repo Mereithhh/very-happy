@@ -15,7 +15,7 @@ from the trust boundary.
 ## Data handled
 
 Depending on use, the relay stores or processes account identities, password
-verifiers, Google subject/email/profile claims, login sessions, machine/session
+verifiers, email-code HMAC challenges, Google subject/email/profile claims, login sessions, machine/session
 metadata, encrypted message/artifact blobs, uploaded files, push subscriptions,
 webhook URLs, and operational logs/metrics. Do not put bearer tokens, raw request
 bodies, session content, email addresses, or IP addresses in metric labels.
@@ -37,6 +37,11 @@ commands under the daemon's OS user. Treat an account token, pairing link, serve
 master secret, and server administrator access as high impact. Approve only
 requests you initiated, use short-lived links, and remove access when a machine
 or account is no longer trusted.
+
+Email-code login stores the normalized email address as plaintext account
+identity data on the trusted relay. The configured delivery provider
+(Cloudflare Email Service or Resend) receives the destination address, sender,
+and one-time code; its own processing and retention policy also applies.
 
 Fresh Web devices start sessions in review-first modes; direct CLI sessions
 without an explicit mode use the agent's approval-oriented `default`, not YOLO.

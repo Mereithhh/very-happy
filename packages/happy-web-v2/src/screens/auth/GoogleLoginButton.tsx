@@ -47,14 +47,14 @@ function loadGoogleScript(): Promise<void> {
 
 export function GoogleLoginButton({
   disabled,
-  dividerLabel,
+  leadingDividerLabel,
   retryLabel,
   unavailableLabel,
   onCredential,
   onUnavailable,
 }: {
   disabled?: boolean;
-  dividerLabel: string;
+  leadingDividerLabel?: string;
   retryLabel: string;
   unavailableLabel: string;
   onCredential: (credential: string, nonce: string) => void | Promise<void>;
@@ -130,6 +130,7 @@ export function GoogleLoginButton({
   }, [attempt, onUnavailable]);
 
   return <div className={`auth-google-block${enabled || failed ? ' is-ready' : ''}`}>
+    {leadingDividerLabel && <div className="auth-divider"><span>{leadingDividerLabel}</span></div>}
     <div className={`auth-google${disabled ? ' is-disabled' : ''}`} ref={containerRef} />
     {failed && <div className="auth-google-unavailable" role="status">
       <span>{unavailableLabel}</span>
@@ -137,6 +138,5 @@ export function GoogleLoginButton({
         {retryLabel}
       </button>
     </div>}
-    <div className="auth-divider"><span>{dividerLabel}</span></div>
   </div>;
 }

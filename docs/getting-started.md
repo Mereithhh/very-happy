@@ -155,8 +155,9 @@ for provider and recovery details.
 
 ## 2. Create or sign in to an account
 
-Open [veryhappy.dev](https://veryhappy.dev). Choose Google or a username
-and password. New registration can be open, invite-only, closed, or temporarily
+Open [veryhappy.dev](https://veryhappy.dev). Use an email verification code by
+default, choose Google, or use username/password when the relay enables it. New
+registration can be open, invite-only, closed, or temporarily
 full; an existing account can still sign in in every mode.
 
 On a phone or tablet, Very Happy proactively offers a Home Screen install after

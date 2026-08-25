@@ -57,7 +57,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'note', text: 'Doctor reports only the source category captured from the daemon, never the credential value. A service manager needs the credential in its own secret store or private environment file. Restart the daemon after changing credentials; exporting a value in an unrelated shell does not update an already-running service. The normal path keeps provider credentials local. very-happy connect is a separate relay-upload flow and is not required here.' },
       ] },
       { heading: '4. Create an account', blocks: [
-        { type: 'p', text: 'Create an account with Google or a username and password. Registration may be closed, invite-only, or at capacity; existing accounts can still sign in when registration is paused.' },
+        { type: 'p', text: 'Create an account with an email verification code (the recommended default), Google, or—when the relay enables it—a username and password. Registration may be closed, invite-only, or at capacity; existing accounts can still sign in when registration is paused.' },
         { type: 'p', text: 'On a phone or tablet, the site proactively offers to install Very Happy on your Home Screen. Android/Chromium opens its native install dialog after you tap Install; iPhone/iPad and browsers without that event show Share/browser-menu instructions. The same responsive UI remains available without installing.' },
       ] },
       { heading: '5. Connect a machine', blocks: [
@@ -153,7 +153,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'note', text: 'Use a separate HAPPY_HOME_DIR for each relay and keep all three variables in the environment that starts the daemon. Tokens and machine IDs are relay-specific; use auth login --force only when intentionally replacing an existing home. Use HTTPS in production.' },
       ] },
       { heading: 'Production operations', blocks: [
-        { type: 'p', text: 'Back up persistent volumes, pin versions, health-check the server, and rehearse rollback before upgrades. Disable Google sign-in when no OAuth client is configured; password accounts remain available.' },
+        { type: 'p', text: 'Back up persistent volumes, pin versions, health-check the server, and rehearse rollback before upgrades. Configure only the login providers you operate; never disable password login until a real email-code or Google login has passed.' },
       ] },
     ],
   },
@@ -174,7 +174,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
         { type: 'link', href: `${GITHUB_URL}/blob/main/docs/configuration.md#claude-credentials-for-structured-sessions`, label: 'Open provider and service-manager details ↗' },
       ] },
       { heading: 'Account policy', blocks: [
-        { type: 'p', text: 'The server controls password and Google registration, invite requirements, global account capacity, and rate limits. SIGNUP_MODE defaults to closed; opening registration must be explicit. Set SIGNUP_MAX_ACCOUNTS to a small reviewed capacity on a public relay.' },
+        { type: 'p', text: 'The server controls email-code, password, and Google registration, invite requirements, global account capacity, and rate limits. SIGNUP_MODE defaults to closed; opening registration must be explicit. Set SIGNUP_MAX_ACCOUNTS to a small reviewed capacity on a public relay.' },
         { type: 'list', items: ['HANDY_MASTER_SECRET protects server-held account recovery and service secrets.', 'SIGNUP_MODE / SIGNUP_MAX_ACCOUNTS / SIGNUP_INVITE_CODES control registration.', 'MAX_MACHINES_PER_ACCOUNT, MAX_SESSIONS_PER_ACCOUNT, message, attachment, artifact, and KV limits bound stored data.', 'SOCKET_MAX_PAYLOAD_BYTES, RPC limits, and TERMINAL_RELAY_* token buckets bound realtime relay traffic.'] },
       ] },
       { heading: 'Operations and metrics', blocks: [
@@ -248,6 +248,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Data handling', blocks: [
         { type: 'p', text: 'Sessions, terminal traffic, account metadata, logs, attachments, notifications, and integration data may pass through or persist on the relay depending on the feature. Operators should document retention, backups, subprocessors, and incident response for their deployment.' },
+        { type: 'p', text: 'Email-code login stores the normalized address on the trusted relay. The configured mail provider receives the destination, sender, and one-time code under that provider\'s own processing and retention terms.' },
         { type: 'p', text: 'A terminal file handoff traverses the trusted relay and lands on the selected machine under ~/.happy/uploads/terminal/. The current client caps each file at 8 MB, transfers bounded chunks, and only pastes a path quoted for the daemon default shell; it does not execute the file or press Enter. Native Windows path insertion requires the current daemon to distinguish cmd from PowerShell.' },
       ] },
     ],
@@ -256,10 +257,10 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'accounts-and-quotas', label: 'Accounts & quotas', summary: 'Registration modes, capacity messages, rate limits, and account recovery.',
     sections: [
       { heading: 'Registration outcomes', blocks: [
-        { type: 'list', items: ['At capacity: no new public account can be created; try later or self-host.', 'Registration paused: existing users may sign in; contact the operator for policy.', 'Invite required: enter an operator-provided invite before Google or password registration.', 'Rate limited: stop retrying, wait, and try once later.'] },
+        { type: 'list', items: ['At capacity: no new public account can be created; try later or self-host.', 'Registration paused: existing users may sign in; contact the operator for policy.', 'Invite required: enter an operator-provided invite before email, Google, or password registration.', 'Rate limited: stop retrying, wait, and try once later.'] },
       ] },
       { heading: 'Authentication', blocks: [
-        { type: 'p', text: 'A deployment may offer username/password, Google sign-in, or both. Google availability depends on an OAuth client configured for the exact web origin. A popup cancellation does not create an account.' },
+        { type: 'p', text: 'A deployment may offer passwordless email codes, Google, and optionally username/password. Email codes are preferred when a verified sender is configured. Google depends on an OAuth client for the exact web origin; password controls disappear when the operator disables that compatibility path.' },
       ] },
       { heading: 'Operator controls', blocks: [
         { type: 'p', text: 'Capacity is a global signup safety limit, not a usage entitlement. Separate machine, session, encrypted state, message, attachment, access-key, artifact, feed, KV, push-token, usage-report, socket, and RPC boundaries protect the relay. Persistent writers share database-backed account locks across HTTP and Socket.IO, so changing clients does not bypass a quota.' },
@@ -287,7 +288,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
     slug: 'troubleshooting', label: 'Troubleshooting', summary: 'Recover from login, pairing, offline-machine, and service failures.',
     sections: [
       { heading: 'Cannot sign in or register', blocks: [
-        { type: 'list', items: ['Check the relay health and your network before retrying.', 'For wrong credentials, verify the relay origin and account name.', 'For capacity, closed, or invite messages, follow that policy instead of repeatedly submitting.', 'If Google fails, allow the popup once or use password sign-in when enabled.'] },
+        { type: 'list', items: ['Check the relay health and your network before retrying.', 'For an invalid email code, request one new code and use only the latest message.', 'For capacity, closed, or invite messages, follow that policy instead of repeatedly submitting.', 'If Google fails, allow the popup once or use email/password sign-in when enabled.'] },
       ] },
       { heading: 'Machine does not appear', blocks: [
         { type: 'code', code: 'very-happy daemon status' },

@@ -71,7 +71,7 @@ dependency surface. Do not install the upstream-owned
   is unset (closed for `SIGNUP_CLOSED`, invite when codes exist, otherwise open).
 - `SIGNUP_MAX_ACCOUNTS`: positive global Account limit; unset or `0` means unlimited. Existing accounts can always log in when the limit is reached.
 - `SIGNUP_INVITE_CODES`: comma-separated invite codes used when `SIGNUP_MODE=invite`.
-- `LOGIN_SESSION_TTL_DAYS`: Web password/Google session lifetime, from 1 to 365 days (default `30`).
+- `LOGIN_SESSION_TTL_DAYS`: Web email/Google/password session lifetime, from 1 to 365 days (default `30`).
 - `MAX_PENDING_GOOGLE_LOGIN_CHALLENGES`: cross-replica cap for outstanding,
   five-minute Google login nonce rows (default `10000`).
 - `TRUST_PROXY`: trusted reverse-proxy hop count (for example `1`) or comma-separated proxy IP/CIDR allowlist. Never set it to an unrestricted boolean; correct client IPs are required for auth rate limiting.
@@ -100,6 +100,7 @@ dependency surface. Do not install the upstream-owned
 
 **Optional integrations**
 - Google account login: `GOOGLE_CLIENT_ID` (Web OAuth client ID) and `GOOGLE_ALLOWED_ORIGINS` (comma-separated exact browser origins). No client secret is needed for Google Identity Services ID-token login.
+- Passwordless email login: set `AUTH_EMAIL_PROVIDER=resend` with `AUTH_EMAIL_FROM` and `RESEND_API_KEY`, or `AUTH_EMAIL_PROVIDER=cloudflare` with `AUTH_EMAIL_FROM`, `CLOUDFLARE_EMAIL_ACCOUNT_ID`, and `CLOUDFLARE_EMAIL_API_TOKEN`. Verify the sender domain first. Deploy and smoke-test a real code before optionally setting `AUTH_PASSWORD_LOGIN_DISABLED=true`; the server fails startup if that would leave no email or Google login path.
 
 For the maintainer Cloud, the origin configuration is:
 
