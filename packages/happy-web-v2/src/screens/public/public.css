@@ -323,7 +323,7 @@
   .pub-fleet-row { grid-template-columns: 1fr auto; }
   .pub-fleet-row strong { grid-column: 1 / 3; grid-row: 2; }
   .pub-final { align-items: flex-start; flex-direction: column; }
-  .pub-start { width: min(100% - 2 * var(--sp-4), 1240px); }
+  .pub-start { width: min(1240px, calc(100% - 2 * var(--sp-4))); }
   .pub-footer { align-items: flex-start; flex-direction: column; }
   .pub-footer nav { flex-wrap: wrap; }
   .docs-page { background: var(--bg-0); }
