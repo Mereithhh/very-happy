@@ -74,12 +74,16 @@
    - 已有 `provider=email, providerSubject=<normalized email>`：加载原 secret、创建 login session。
    - 新 email：走 `withSignupGate(provider='email')`，生成 account secret/public key，写 AccountSecret + AccountIdentity 后创建 login session。
 3. `GET /v1/account/identities` → 当前账户可用登录方式的最小摘要。
-4. `POST /v1/account/identities/email { email, challengeId, code, secret }` → 显式关联 Email 登录。
+4. `POST /v1/account/login/refresh { secret }` → 用有效 bearer + 当前账户 seed 换取新 login session。
+   - seed 必须能推导出不可变的 `Account.publicKey`；仅有长期 bearer 不足以提升权限。
+   - 用于旧 key-only/旧 bearer 客户端在不退出工作的情况下进入敏感身份变更，并原子修复历史 `AccountSecret` 与兼容镜像漂移。
+   - 按账户分钟/日限流；不接受目标账户、public key 或 recovery secret 的替换。
+5. `POST /v1/account/identities/email { email, challengeId, code, secret }` → 显式关联 Email 登录。
    - 必须同时具备有效 bearer、10 分钟内创建且未撤销/未过期的 login session，以及与当前 Account public key 匹配的本机 secret。
    - OTP 消费与 identity insert 在同一数据库事务；冲突会回滚 OTP 消费。
    - 一个账户最多一个 Email identity；一个 Email identity 只属于一个账户。已有归属返回 409，绝不移动、替换或按 Google claim email 隐式合并。
    - 绑定成功后 Email OTP 登录返回原账户，不创建第二个账户。
-5. `POST /v1/account/identities/google { credential, nonce, secret }` → 显式关联 Google 登录。
+6. `POST /v1/account/identities/google { credential, nonce, secret }` → 显式关联 Google 登录。
    - 与 Email link 相同，要求 10 分钟内的有效登录 session 和能推导当前账户 public key 的本地 secret。
    - Google ID token 必须绑定五分钟一次性 nonce；token 先验签，nonce 消费与 identity insert 在同一事务。
    - 一个账户最多一个 Google identity；已有归属返回 409，绝不按 Google claim email 自动合并或移动身份。

@@ -73,6 +73,7 @@ import {
   linkGoogleIdentity,
   loadAccountLoginMethods,
   loadPublicAuthConfig,
+  refreshCloudLogin,
   requestEmailLoginCode,
   type AccountLoginMethods,
 } from '@/auth/cloudAuth';
@@ -759,7 +760,13 @@ function EmailIdentity() {
     setBusy(true);
     setError(null);
     try {
-      await linkEmailIdentity(normalizedEmail, challengeId, code, credentials);
+      try {
+        await linkEmailIdentity(normalizedEmail, challengeId, code, credentials);
+      } catch (errorValue) {
+        if (!(errorValue instanceof CloudAuthError) || errorValue.code !== 'reauth-required') throw errorValue;
+        const refreshed = await refreshCloudLogin(credentials);
+        await linkEmailIdentity(normalizedEmail, challengeId, code, refreshed);
+      }
       toast.success(t('emailLink.success'));
       navigate('/settings/account');
     } catch (errorValue) {
@@ -853,7 +860,13 @@ function GoogleIdentity() {
     setError(null);
     setNeedsReauth(false);
     try {
-      await linkGoogleIdentity(credential, nonce, credentials);
+      try {
+        await linkGoogleIdentity(credential, nonce, credentials);
+      } catch (errorValue) {
+        if (!(errorValue instanceof CloudAuthError) || errorValue.code !== 'reauth-required') throw errorValue;
+        const refreshed = await refreshCloudLogin(credentials);
+        await linkGoogleIdentity(credential, nonce, refreshed);
+      }
       toast.success(t('googleLink.success'));
       navigate('/settings/account');
     } catch (errorValue) {

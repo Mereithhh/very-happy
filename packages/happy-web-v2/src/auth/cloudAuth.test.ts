@@ -18,6 +18,7 @@ import {
   linkGoogleIdentity,
   loginWithGoogle,
   requestEmailLoginCode,
+  refreshCloudLogin,
   revokeCloudLogin,
 } from './cloudAuth';
 
@@ -68,6 +69,20 @@ describe('cloud auth client', () => {
       {
         email: 'owner@example.com', challengeId: 'challenge', code: '123456', secret: 'account-secret',
       },
+      { headers: expect.objectContaining({ Authorization: 'Bearer current-token' }) },
+    );
+  });
+
+  it('refreshes a cloud login with both the active bearer and account secret', async () => {
+    const credentials = { token: 'current-token', secret: 'account-secret' };
+    postMock.mockResolvedValueOnce({ data: { token: 'fresh-token', secret: 'account-secret' } });
+
+    await expect(refreshCloudLogin(credentials)).resolves.toEqual({
+      token: 'fresh-token', secret: 'account-secret',
+    });
+    expect(postMock).toHaveBeenCalledWith(
+      'https://cloud.example/v1/account/login/refresh',
+      { secret: 'account-secret' },
       { headers: expect.objectContaining({ Authorization: 'Bearer current-token' }) },
     );
   });

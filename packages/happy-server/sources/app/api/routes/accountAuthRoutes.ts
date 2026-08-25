@@ -165,19 +165,36 @@ export function enabledReplacementIdentityProviders(emailEnabled: boolean, googl
         .filter((provider): provider is 'email' | 'google' => provider !== null);
 }
 
+type LoginSessionQuery = Pick<typeof db, '$queryRawUnsafe'>;
+
+export async function hasRecentLoginSessionWithDb(
+    client: LoginSessionQuery,
+    accountId: string,
+    loginSessionId: string | undefined,
+    nowMs = Date.now(),
+): Promise<boolean> {
+    if (!loginSessionId) return false;
+    // Production intentionally bind-mounts server sources over a stable image.
+    // Keep this compatibility check on raw SQL so adding AccountLoginSession in
+    // a migration does not require a regenerated Prisma model delegate before
+    // the new source can safely run.
+    const sessions = await client.$queryRawUnsafe<Array<{ createdAt: Date }>>(
+        `SELECT "createdAt"
+         FROM "AccountLoginSession"
+         WHERE "id" = $1
+           AND "accountId" = $2
+           AND "revokedAt" IS NULL
+           AND "expiresAt" > $3
+         LIMIT 1`,
+        loginSessionId,
+        accountId,
+        new Date(nowMs),
+    );
+    return !!sessions[0] && sessions[0].createdAt.getTime() >= nowMs - 10 * 60_000;
+}
+
 async function hasRecentLoginSession(accountId: string, loginSessionId: string | undefined): Promise<boolean> {
-    const session = loginSessionId
-        ? await db.accountLoginSession.findFirst({
-            where: {
-                id: loginSessionId,
-                accountId,
-                revokedAt: null,
-                expiresAt: { gt: new Date() },
-            },
-            select: { createdAt: true },
-        })
-        : null;
-    return !!session && session.createdAt.getTime() >= Date.now() - 10 * 60_000;
+    return hasRecentLoginSessionWithDb(db, accountId, loginSessionId);
 }
 
 async function matchesAccountSecret(accountId: string, secret: string): Promise<boolean> {
@@ -464,14 +481,7 @@ export function accountAuthRoutes(app: Fastify) {
             );
             if (hasRecoverableIdentity) {
                 const loginSessionId = request.authLoginSessionId;
-                const recentSession = loginSessionId
-                    ? await db.accountLoginSession.findFirst({
-                        where: { id: loginSessionId, accountId, revokedAt: null },
-                        select: { createdAt: true },
-                    })
-                    : null;
-                const recentCutoff = Date.now() - 10 * 60 * 1000;
-                if (!recentSession || recentSession.createdAt.getTime() < recentCutoff) {
+                if (!(await hasRecentLoginSession(accountId, loginSessionId))) {
                     return reply.code(403).send({ error: 'reauth_required' as const });
                 }
             }
@@ -569,6 +579,51 @@ export function accountAuthRoutes(app: Fastify) {
         },
     }, async (request, reply) => {
         return reply.send(await getAccountLoginMethods(db, request.userId));
+    });
+
+    app.post('/v1/account/login/refresh', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                secret: z.string().min(1).max(1024),
+            }).strict(),
+            response: {
+                200: loginResponse,
+                400: z.object({ error: z.literal('invalid_secret') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+            },
+        },
+    }, async (request, reply) => {
+        const accountId = request.userId;
+        if (!(await matchesAccountSecret(accountId, request.body.secret))) {
+            return reply.code(400).send({ error: 'invalid_secret' as const });
+        }
+        const accountKey = hashPairingValue(accountId).slice(0, 32);
+        if (!(await consumeRateBucketsSequentially([
+            { key: `login-refresh:account:${accountKey}:minute`, max: 5 },
+            { key: `login-refresh:account:${accountKey}:day`, max: 20, windowMs: 24 * 60 * 60_000 },
+        ]))) {
+            return reply.code(429).send({ error: 'too_many_requests' as const });
+        }
+
+        const session = await db.$transaction(async (tx) => {
+            // Some accounts predate AccountSecret and login-session tracking. A
+            // still-authenticated client can prove possession of the immutable
+            // account seed above, so repair stale recovery material before
+            // issuing a short-lived elevation session for identity changes.
+            const secretEnc = await upsertAccountSecret(tx, accountId, request.body.secret);
+            await tx.$executeRawUnsafe(
+                'UPDATE "AccountCredential" SET "secretEnc" = $1, "updatedAt" = now() WHERE "accountId" = $2',
+                secretEnc,
+                accountId,
+            );
+            return auth.createLoginToken(accountId, tx, { cache: false });
+        });
+        return reply.send({
+            token: session.token,
+            secret: request.body.secret,
+            expiresAt: session.expiresAt.toISOString(),
+        });
     });
 
     app.post('/v1/account/identities/email', {
