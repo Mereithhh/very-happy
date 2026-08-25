@@ -13,7 +13,7 @@
   <img alt="Web and installable PWA" src="https://img.shields.io/badge/client-Web_%2F_PWA-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="Node 20, 22 and 24" src="https://img.shields.io/badge/Node-20_%7C_22_%7C_24-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
-  <img alt="Server-trusted architecture" src="https://img.shields.io/badge/security-server--trusted-788784?style=flat-square&labelColor=070a0e&color=38464d">
+  <img alt="Cloud or self-hosted deployment" src="https://img.shields.io/badge/deploy-Cloud_%2F_self--hosted-788784?style=flat-square&labelColor=070a0e&color=38464d">
 </p>
 
 <p align="center">
@@ -53,13 +53,11 @@ new session. Provider-neutral automatic routing is roadmap, not a shipped claim.
 > live in a second interface. The daemon remains required: Web-first is a UX
 > choice, not a browser-only architecture.
 
-> [!IMPORTANT]
-> **Very Happy is server-trusted, not end-to-end encrypted.** The relay operator,
-> or an attacker controlling the relay, can recover account material, access
-> relayed content, and act through capabilities exposed by connected daemons.
-> Use only an operator you trust. Self-hosting changes who you trust; it does not
-> turn the architecture into zero knowledge. Read the
-> [security model](docs/security.md) before connecting a sensitive machine.
+> [!NOTE]
+> **Choose the deployment that fits your work.** Very Happy Cloud gives you the
+> fastest multi-device setup; self-hosting gives you control of the operator,
+> access policy, storage, and backups. See the [privacy and security
+> model](docs/security.md) for sensitive environments.
 
 ## One workspace. Three layers that do different jobs.
 
@@ -122,7 +120,7 @@ Native Windows insertion requires the current daemon so the Web client can
 distinguish cmd from PowerShell.
 
 ```text
-phone / laptop clipboard  ── trusted relay ──>  selected machine
+phone / laptop clipboard  ── chosen deployment ──>  selected machine
 dragged file or screenshot                     ~/.happy/uploads/terminal/…
                                                         │
                                                         ╰─> shell-quoted path at cursor
@@ -136,9 +134,9 @@ dragged file or screenshot                     ~/.happy/uploads/terminal/…
 
 Terminal handoffs are capped at 8 MB, transferred in bounded chunks, and shown
 with progress/error feedback. Older daemons retain the previous small-file
-path; update the CLI and restart the daemon for larger files. Because the relay
-is trusted, do not transfer a file through an operator you would not trust with
-its contents.
+path; update the CLI and restart the daemon for larger files. Files pass through
+the selected deployment on their way to the machine; choose Cloud or self-hosting
+according to your environment.
 
 ## Why choose Very Happy?
 
@@ -150,7 +148,7 @@ its contents.
 | “Every session is another pile of context to remember.” | Session organization, file context, task board, todos, notes, status, and an optional coordinating meta-agent. |
 | “One model vendor should not own my whole workspace.” | Claude Code and Codex today; beta Gemini/OpenCode through Agent Client Protocol; OpenClaw through its own local gateway. |
 | “My useful terminal workflow is not a coding agent.” | The tmux/TTY path also carries shells, editors, Git clients, SSH, database consoles, and ordinary xterm-compatible text TUIs; structured agent features are additive, not required. |
-| “Remote control must fit my security boundary.” | Use the capacity-limited community Cloud or deploy the same server-trusted relay under your control. |
+| “Remote control must fit my operating model.” | Use the community Cloud for the fastest start, or deploy the same open-source stack under your control. |
 | “Keyboard speed disappears on the Web.” | A production command palette plus shortcuts for switching work, saved prompts, notes, new terminals, and navigation—with touch equivalents. |
 | “The file I need is on the device in my hand, not the machine doing the work.” | Paste a screenshot or drop a file into the browser terminal; its shell-quoted path appears on the selected machine without auto-running a command. |
 
@@ -238,9 +236,9 @@ credential source category. See
 [configuration](docs/configuration.md#claude-credentials-for-structured-sessions).
 
 Provider credentials stay local by default. `very-happy connect` is a separate,
-explicit flow that uploads a selected OpenAI, Anthropic, or Gemini OAuth
-credential to the trusted relay; it is not an end-to-end encrypted vault and is
-currently used primarily by the Gemini path.
+explicit flow that stores a selected OpenAI, Anthropic, or Gemini OAuth
+credential on your chosen deployment so Web-launched integrations can use it;
+it is currently used primarily by the Gemini path.
 
 ### Self-hosted first connection
 
@@ -371,7 +369,7 @@ rate limits, and least-privilege execution. Incoming messages are input, never
 authorization by themselves.
 
 ```text
-browser / PWA  ⇄  trusted relay + storage  ⇄  machine daemon
+browser / PWA  ⇄  Cloud or self-hosted relay  ⇄  machine daemon
                                                    │
                          ┌─────────────────────────┼───────────────┐
                          ▼                         ▼               ▼

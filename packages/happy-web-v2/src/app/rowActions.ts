@@ -21,6 +21,7 @@ import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
 import { pickNextSessionId } from './nextSession';
+import { commitSessionArchive } from './sessionArchiveFlow';
 
 /** B-111: route to land on after closing `closedId` — the most recently
  *  active other visible session, or '/' when none is left. Read the store at
@@ -32,19 +33,17 @@ export function nextSessionPathAfterClose(closedId: string): string {
   return next ? `/session/${next}` : '/';
 }
 
-/** The kill-first archive itself (no confirm). Mirrors happy-app's
- *  performArchive: server-side archive alone doesn't stick for a LIVE
- *  session — the running CLI keeps reporting itself active and flips the row
- *  back. So: optimistic local flip, then kill the CLI; only if it's already
- *  dead force-archive via the server. Rolls back on failure. */
+/** The kill-first archive itself (no confirm). A kill RPC acknowledges before
+ *  the CLI finishes cleanup, so success is not proof that the relay marked the
+ *  row inactive. Always commit the server archive after the kill attempt. */
 export async function archiveSessionNow(session: Session): Promise<void> {
   const wasActive = session.active;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
   try {
-    const killResult = await sessionKill(session.id);
-    if (!killResult.success) {
-      await sessionArchive(session.id);
-    }
+    await commitSessionArchive(
+      () => sessionKill(session.id),
+      () => sessionArchive(session.id),
+    );
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
     throw error;
@@ -60,8 +59,14 @@ export async function confirmArchiveSession(session: Session): Promise<boolean> 
     destructive: true,
   });
   if (!ok) return false;
-  await archiveSessionNow(session);
-  return true;
+  try {
+    await archiveSessionNow(session);
+    return true;
+  } catch (error) {
+    console.error('[archiveSession] archive failed', error);
+    Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+    return false;
+  }
 }
 
 /**

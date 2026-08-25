@@ -304,8 +304,8 @@ Work anywhere. Keep the thread.
 - Task board across sessions
 - Claude, Codex, Gemini, OpenClaw
 
-The relay is trusted infrastructure;
-traffic is not end-to-end encrypted.`,
+Cloud keeps multi-device access seamless;
+self-host when operator control matters.`,
   'public.css': `.pub-page {
   min-height: 100%;
   background: var(--bg-0);
@@ -405,7 +405,7 @@ function Board({ onBack, onOpenSession }: { onBack: () => void; onOpenSession: (
   const columns = [
     { title: 'WORKING', cards: [['Landing product proof', 'workstation', 'Reusing product UI contracts.']] },
     { title: 'WAITING ON ME', attention: true, cards: [['Approve production release', 'human judgment', 'All quality gates passed.']] },
-    { title: 'DONE', cards: [['Security boundary review', 'review-node', 'Trusted relay language verified.']] },
+    { title: 'DONE', cards: [['Deployment review', 'review-node', 'Cloud and self-host choices verified.']] },
   ];
   const openCard = (column: string) => onOpenSession(column === 'WORKING' ? 'terminal' : 'conversation');
   return <><p className="sr-only">A three-column task board showing work in progress, one release decision waiting for human judgment, and a completed security review.</p><div className="bd"><header className="bd-header"><button className="vh-back" type="button" aria-label="Open session list" onClick={onBack}><ArrowLeft size={18} /></button><span className="bd-title">Task board</span><span className="bd-summary-attn">1 needs you</span></header><div className="bd-cols">{columns.map((column) => <section key={column.title} className={`bd-col${column.attention ? ' bd-col--attention' : ''}`}><header className="bd-col-head"><span className="bd-col-label eyebrow">{column.title}</span><span className="bd-col-count mono">{column.cards.length}</span></header><div className="bd-col-list">{column.cards.map(([title, machine, progress]) => { const isDone = completed.includes(title); return <div key={title} className={`bd-card bd-card--${column.attention ? 'attention' : column.title === 'WORKING' ? 'working' : 'idle'}${isDone ? ' bd-card--ended' : ''}`} role="button" tabIndex={0} aria-label={`Open ${title}`} onClick={() => openCard(column.title)} onKeyDown={(event) => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openCard(column.title); } }}><div className="bd-card-head"><span className={`product-status-dot${column.title === 'WORKING' && !isDone ? ' is-live' : ''}${column.attention && !isDone ? ' is-attention' : ''}`} /><span className="bd-card-title">{title}</span><button type="button" className="bd-card-done" aria-label={isDone ? `${title} marked done` : `Mark ${title} done`} aria-pressed={isDone} onClick={(event) => { event.stopPropagation(); setCompleted((items) => items.includes(title) ? items.filter((item) => item !== title) : [...items, title]); }}><Check size={13} /></button><MessageSquare size={14} className="bd-card-kind" /></div><div className="bd-card-meta mono"><span className="bd-card-machine">{machine}</span><span className="bd-card-cwd">~/code/very-happy</span></div><div className="bd-card-progress">{isDone ? 'Marked done in this local demo.' : progress}</div><div className="bd-card-foot mono"><span className="bd-card-time">2m ago</span></div></div>; })}</div></section>)}</div></div></>;

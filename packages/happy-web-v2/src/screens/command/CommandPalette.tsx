@@ -21,8 +21,8 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
-import { sessionUpdateTitle, sessionArchive } from '@/sync/ops';
-import { nextSessionPathAfterClose } from '@/app/rowActions';
+import { sessionUpdateTitle } from '@/sync/ops';
+import { archiveSessionNow, nextSessionPathAfterClose } from '@/app/rowActions';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
@@ -150,10 +150,20 @@ export function CommandPalette() {
 
   const archiveCurrent = useCallback(async () => {
     if (!currentSessionId) return;
-    await sessionArchive(currentSessionId);
-    // B-111: leave the archived detail view onto the next session.
-    navigate(nextSessionPathAfterClose(currentSessionId));
-  }, [currentSessionId, navigate]);
+    const current = (sessions ?? []).find(
+      (session): session is Exclude<typeof session, string> =>
+        typeof session !== 'string' && session.id === currentSessionId,
+    );
+    if (!current) return;
+    try {
+      await archiveSessionNow(current);
+      // B-111: leave the archived detail view onto the next session.
+      navigate(nextSessionPathAfterClose(currentSessionId));
+    } catch (error) {
+      console.error('[commandPalette] archive failed', error);
+      Modal.alert(t('common.error'), t('sessionInfo.failedToArchiveSession'));
+    }
+  }, [currentSessionId, navigate, sessions, t]);
 
   // ── build the full item index (unfiltered) ──
   const items = useMemo<CommandItem[]>(() => {
