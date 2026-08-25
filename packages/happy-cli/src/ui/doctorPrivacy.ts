@@ -19,6 +19,21 @@ export function shareSafeProcessLine(process: DoctorProcessDisplay): string {
     return `PID ${process.pid}: command arguments hidden for privacy`;
 }
 
+/**
+ * daemon.state.json contains the bearer credential for the loopback control
+ * plane. Doctor output is routinely pasted into issues and must never echo the
+ * token; presence is enough to diagnose old/new daemon compatibility.
+ */
+export function shareSafeDaemonState(
+    state: DaemonLocallyPersistedState,
+): Omit<DaemonLocallyPersistedState, 'controlToken'> & { controlAuthentication: 'configured' | 'legacy' } {
+    const { controlToken, ...shareSafeState } = state;
+    return {
+        ...shareSafeState,
+        controlAuthentication: controlToken ? 'configured' : 'legacy',
+    };
+}
+
 /** Keep startup diagnostics useful without persisting argv, local paths, or usernames. */
 export function shareSafeEnvironmentInfo(
     env: NodeJS.ProcessEnv = process.env,
@@ -45,3 +60,4 @@ export function shareSafeEnvironmentInfo(
         terminalConfigured: Boolean(env.TERM),
     };
 }
+import type { DaemonLocallyPersistedState } from '@/persistence';
