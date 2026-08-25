@@ -238,12 +238,17 @@
   justify-content: center;
   overflow: hidden;
   border-radius: var(--r-sm);
+  background: var(--bg-2);
 }
 .auth-google > div,
 .auth-google iframe {
   width: 100% !important;
   max-width: none !important;
   margin: 0 !important;
+}
+.auth-google:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .auth-google-block.is-failed .auth-google,
 .auth-google-block.is-loading .auth-google { display: none; }

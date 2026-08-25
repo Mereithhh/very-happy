@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGoogleLoginChallenge, loadPublicAuthConfig } from '@/auth/cloudAuth';
 import { useTheme } from '@/ui';
-import { initialGoogleButtonState, reduceGoogleButtonState } from './googleButtonState';
+import {
+  initialGoogleButtonState,
+  googleButtonTheme,
+  reduceGoogleButtonState,
+  shouldShowGoogleBlock,
+  type GoogleAvailability,
+} from './googleButtonState';
 import './auth.css';
 
 type GoogleIdentity = {
@@ -72,6 +78,7 @@ export function GoogleLoginButton({
   const containerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onCredential);
   const [state, setState] = useState(initialGoogleButtonState);
+  const [availability, setAvailability] = useState<GoogleAvailability>('checking');
   const { enabled, failed, attempt } = state;
   callbackRef.current = onCredential;
 
@@ -86,9 +93,11 @@ export function GoogleLoginButton({
     void loadPublicAuthConfig().then(async (config) => {
       if (cancelled) return;
       if (!config?.googleClientId) {
+        setAvailability('absent');
         if (required) markUnavailable();
         return;
       }
+      setAvailability('configured');
       try {
         await loadGoogleScript();
         if (cancelled || !containerRef.current || !window.google?.accounts?.id) return;
@@ -114,7 +123,7 @@ export function GoogleLoginButton({
           });
           identity.renderButton(containerRef.current, {
             type: 'standard',
-            theme: resolvedTheme === 'dark' ? 'filled_black' : 'outline',
+            theme: googleButtonTheme(resolvedTheme),
             size: 'large',
             width: Math.min(400, Math.max(200, containerRef.current.clientWidth || 400)),
             text: 'continue_with',
@@ -139,11 +148,12 @@ export function GoogleLoginButton({
     };
   }, [attempt, onUnavailable, required, resolvedTheme]);
 
-  const loading = required && !enabled && !failed;
-  return <div className={`auth-google-block${enabled || failed || required ? ' is-ready' : ''}${failed ? ' is-failed' : ''}${loading ? ' is-loading' : ''}`}>
+  const visible = shouldShowGoogleBlock(availability, required, failed);
+  const loading = visible && !enabled && !failed;
+  return <div className={`auth-google-block${visible ? ' is-ready' : ''}${failed ? ' is-failed' : ''}${loading ? ' is-loading' : ''}`}>
     {leadingDividerLabel && <div className="auth-divider"><span>{leadingDividerLabel}</span></div>}
     <div className={`auth-google${disabled ? ' is-disabled' : ''}`} ref={containerRef} />
-    {loading && <div className="auth-google-loading" role="status">{loadingLabel}</div>}
+    {loading && <div className="auth-google-loading" role={loadingLabel ? 'status' : undefined} aria-hidden={loadingLabel ? undefined : true}>{loadingLabel}</div>}
     {failed && <div className="auth-google-unavailable" role="status">
       <span>{unavailableLabel}</span>
       <button type="button" disabled={disabled} onClick={() => setState((current) => reduceGoogleButtonState(current, 'retry'))}>
