@@ -10,6 +10,7 @@ export { Item, ItemGroup, ItemList } from './Item';
 export { ToastProvider, useToast, toast } from './Toast';
 export { CopyButton } from './CopyButton';
 export { CyberMark } from './CyberMark';
+export { OrbitLoader, type OrbitLoaderProps } from './OrbitLoader';
 export { TagChip, TagOverflowChip } from './TagChip';
 export { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from './Menu';
 export { ThemeProvider, useTheme, type ThemePreference } from './theme';

@@ -6,7 +6,7 @@ import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '@/screens/files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
-import { EmptyState, Button } from '@/ui';
+import { EmptyState, Button, OrbitLoader } from '@/ui';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
@@ -63,11 +63,11 @@ export function SessionDetailScreen() {
     // Session not yet in storage (still syncing or unknown id).
     if (!session) {
         return (
-            <EmptyState
-                title={t('session.chat.loadingMessages')}
-                description={`Session ${id}`}
-                actions={<Button variant="ghost" onClick={() => navigate('/')}>{t('common.back')}</Button>}
-            />
+            <div className="sd-loading">
+                <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                <span className="sd-loading__id mono">Session {id}</span>
+                <Button variant="ghost" onClick={() => navigate('/')}>{t('common.back')}</Button>
+            </div>
         );
     }
 

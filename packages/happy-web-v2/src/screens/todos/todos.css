@@ -113,12 +113,12 @@
   gap: var(--sp-3);
 }
 .td-loading {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-6) 0;
+  justify-content: center;
+  padding: var(--sp-8) 0;
   color: var(--text-dim);
-  font-size: var(--fs-13);
 }
 
 /* composer ---------------------------------------------------------------- */

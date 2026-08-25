@@ -10,7 +10,7 @@ import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useTranslation } from '@/i18n/useTranslation';
-import { Button, EmptyState, Spinner } from '@/ui';
+import { Button, EmptyState, OrbitLoader } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
@@ -229,8 +229,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     if (!isLoaded) {
         return (
             <div className="cl cl--loading">
-                <Spinner size={20} />
-                <span>{t('session.chat.loadingMessages')}</span>
+                <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
             </div>
         );
     }

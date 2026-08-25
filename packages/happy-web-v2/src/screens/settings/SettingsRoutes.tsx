@@ -23,6 +23,7 @@ import {
   BookOpen,
   ClipboardList,
   FileText,
+  Info,
 } from 'lucide-react';
 import {
   ItemList,
@@ -33,6 +34,7 @@ import {
   Spinner,
   Badge,
   StatusDot,
+  OrbitLoader,
   useToast,
 } from '@/ui';
 import { useTheme } from '@/ui';
@@ -185,6 +187,22 @@ function Toggle({
 // Overview
 // ===================================================================
 
+function AboutModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="set-about-modal">
+      <OrbitLoader
+        size="medium"
+        label={`${t('common.version')} ${__APP_VERSION__}`}
+        showWordmark
+        presentation
+      />
+      <p>{t('settings.aboutFooter')}</p>
+      <Button variant="secondary" fullWidth onClick={onClose}>{t('common.close')}</Button>
+    </div>
+  );
+}
+
 function Overview() {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -210,6 +228,13 @@ function Overview() {
             left={<BookOpen size={18} />}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/help')}
+          />
+          <Item
+            title={t('settings.about')}
+            subtitle={`Very Happy · v${__APP_VERSION__}`}
+            left={<Info size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => Modal.show({ component: AboutModal })}
           />
           <Item
             title={t('settings.account')}
@@ -2068,7 +2093,7 @@ function Usage() {
 
       {loading ? (
         <div className="set-center">
-          <Spinner size={16} /> {t('common.loading')}
+          <OrbitLoader size="compact" label={t('common.loading')} />
         </div>
       ) : error || !totals ? (
         <div className="set-center">{t('usage.noData')}</div>

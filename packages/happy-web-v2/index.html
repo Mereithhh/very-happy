@@ -23,39 +23,302 @@
     <style>
       /* pre-paint splash to avoid white flash before React mounts */
       #vh-splash {
+        --vh-splash-bg: #06080c;
+        --vh-splash-panel: #0e141b;
+        --vh-splash-raised: #181f2a;
+        --vh-splash-line: #2c3543;
+        --vh-splash-text: #e8edf4;
+        --vh-splash-dim: #9aa4b2;
+        --vh-splash-faint: #5b6675;
+        --vh-splash-live: #34e2c4;
+        --vh-splash-live-dim: rgba(52, 226, 196, 0.16);
         position: fixed;
         inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #06080c;
+        overflow: hidden;
+        background: var(--vh-splash-bg);
         z-index: 9999;
-        transition: opacity 0.25s ease;
+        transition: opacity 0.32s ease;
+        isolation: isolate;
+      }
+      #vh-splash::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(var(--vh-splash-line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--vh-splash-line) 1px, transparent 1px);
+        background-size: 44px 44px;
+        opacity: 0.14;
+        mask-image: radial-gradient(circle at center, black, transparent 72%);
       }
       @media (prefers-color-scheme: light) {
         /* light bg-0 + light accent (tokens.css) — the splash pre-paints
            before the stylesheet loads, so the values are inlined */
-        #vh-splash { background: #e8eaed; }
-        #vh-splash .mark { border-color: #0c8a76; }
+        #vh-splash {
+          --vh-splash-bg: #e8eaed;
+          --vh-splash-panel: #eff1f4;
+          --vh-splash-raised: #f6f7f9;
+          --vh-splash-line: #c2c8d1;
+          --vh-splash-text: #1a2028;
+          --vh-splash-dim: #49535f;
+          --vh-splash-faint: #5b646f;
+          --vh-splash-live: #0c8a76;
+          --vh-splash-live-dim: rgba(12, 138, 118, 0.18);
+        }
       }
-      #vh-splash .mark {
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        border: 2px solid #34e2c4;
-        animation: vh-pulse 1.4s ease-in-out infinite;
+      .vh-orbit-loader {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        justify-items: center;
+        gap: 22px;
+        color: var(--vh-splash-text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      @keyframes vh-pulse {
-        0%, 100% { opacity: 0.35; transform: scale(0.96); }
+      .vh-orbit-stage {
+        position: relative;
+        width: 324px;
+        height: 324px;
+      }
+      .vh-orbit-stage::before,
+      .vh-orbit-stage::after {
+        content: '';
+        position: absolute;
+        inset: 80px;
+        border: 1px solid var(--vh-splash-line);
+        border-radius: 50%;
+      }
+      .vh-orbit-stage::after {
+        inset: 112px;
+        border-style: dashed;
+        opacity: 0.72;
+      }
+      .vh-orbit-track {
+        position: absolute;
+        inset: 80px;
+        border-radius: 50%;
+        animation: vh-orbit 8.4s linear infinite;
+      }
+      .vh-orbit-track::before {
+        content: '';
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        background: conic-gradient(from 225deg, transparent 0 76%, var(--vh-splash-live) 86%, transparent 92%);
+        mask: radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 1px));
+        opacity: 0.8;
+      }
+      .vh-model-track {
+        position: absolute;
+        inset: 18px;
+        border-radius: 50%;
+        animation: vh-model-orbit 19s linear infinite;
+      }
+      .vh-model-track::before,
+      .vh-model-track::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+      }
+      .vh-model-track::before {
+        border: 1px dashed var(--vh-splash-line);
+        opacity: 0.5;
+      }
+      .vh-model-track::after {
+        inset: -1px;
+        background: conic-gradient(from 40deg, transparent 0 86%, var(--vh-splash-live) 93%, transparent 98%);
+        mask: radial-gradient(farthest-side, transparent calc(100% - 2px), black calc(100% - 1px));
+        opacity: 0.62;
+      }
+      .vh-model {
+        position: absolute;
+        width: 38px;
+        height: 38px;
+      }
+      .vh-model--anthropic { left: 50%; top: 0; transform: translate(-50%, -50%); }
+      .vh-model--llama { left: 97.55%; top: 34.55%; transform: translate(-50%, -50%); }
+      .vh-model--deepseek { left: 79.39%; top: 90.45%; transform: translate(-50%, -50%); }
+      .vh-model--qwen { left: 20.61%; top: 90.45%; transform: translate(-50%, -50%); }
+      .vh-model--mistral { left: 2.45%; top: 34.55%; transform: translate(-50%, -50%); }
+      .vh-model--anthropic { --vh-model-color: #d97757; }
+      .vh-model--llama { --vh-model-color: #0467df; }
+      .vh-model--deepseek { --vh-model-color: #5786fe; }
+      .vh-model--qwen { --vh-model-color: #6950ef; }
+      .vh-model--mistral { --vh-model-color: #fa520f; }
+      .vh-model-glyph {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--vh-splash-line);
+        border-radius: 11px;
+        color: var(--vh-model-color);
+        background: var(--vh-splash-panel);
+        opacity: 0.88;
+        animation: vh-model-counter-orbit 19s linear infinite;
+      }
+      .vh-model-glyph svg { width: 18px; height: 18px; }
+      .vh-agent {
+        position: absolute;
+        width: 46px;
+        height: 46px;
+      }
+      .vh-agent--claude { left: 50%; top: 0; transform: translate(-50%, -50%); }
+      .vh-agent--codex { left: 93.3%; top: 75%; transform: translate(-50%, -50%); }
+      .vh-agent--gemini { left: 6.7%; top: 75%; transform: translate(-50%, -50%); }
+      .vh-agent-face {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        place-items: center;
+        gap: 2px;
+        border: 1px solid var(--vh-splash-line);
+        border-radius: 10px;
+        background: var(--vh-splash-panel);
+        animation: vh-counter-orbit 8.4s linear infinite;
+      }
+      .vh-agent-face svg {
+        width: 22px;
+        height: 22px;
+        color: var(--vh-splash-text);
+      }
+      .vh-agent-face span {
+        color: var(--vh-splash-dim);
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .vh-orbit-core {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 60px;
+        height: 60px;
+        transform: translate(-50%, -50%);
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--vh-splash-line);
+        border-radius: 15px;
+        background: var(--vh-splash-raised);
+      }
+      .vh-orbit-core::before {
+        content: '';
+        position: absolute;
+        inset: -8px;
+        border-radius: 20px;
+        background: conic-gradient(transparent 0 78%, var(--vh-splash-live));
+        mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+        mask-composite: exclude;
+        padding: 1px;
+        animation: vh-scan 2.6s linear infinite;
+      }
+      .vh-orbit-core svg { width: 34px; height: 34px; }
+      .vh-orbit-core .vh-live-dot {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--vh-splash-live);
+        box-shadow: 0 0 0 5px var(--vh-splash-live-dim);
+        animation: vh-live-pulse 1.3s ease-in-out infinite;
+      }
+      .vh-orbit-wordmark {
+        display: grid;
+        justify-items: center;
+        gap: 7px;
+      }
+      .vh-orbit-wordmark strong {
+        color: var(--vh-splash-text);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: lowercase;
+      }
+      .vh-orbit-wordmark span {
+        color: var(--vh-splash-faint);
+        font-size: 8px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      @keyframes vh-orbit { to { transform: rotate(360deg); } }
+      @keyframes vh-counter-orbit { to { transform: rotate(-360deg); } }
+      @keyframes vh-model-orbit { to { transform: rotate(-360deg); } }
+      @keyframes vh-model-counter-orbit { to { transform: rotate(360deg); } }
+      @keyframes vh-scan { to { transform: rotate(360deg); } }
+      @keyframes vh-live-pulse {
+        0%, 100% { opacity: 0.55; transform: scale(0.82); }
         50% { opacity: 1; transform: scale(1); }
       }
       @media (prefers-reduced-motion: reduce) {
-        #vh-splash .mark { animation: none; opacity: 0.8; }
+        .vh-model-track,
+        .vh-model-glyph,
+        .vh-orbit-track,
+        .vh-agent-face,
+        .vh-orbit-core::before,
+        .vh-orbit-core .vh-live-dot { animation: none; }
+      }
+      @media (max-width: 420px) {
+        .vh-orbit-loader { transform: scale(0.86); }
       }
     </style>
   </head>
   <body>
-    <div id="vh-splash"><div class="mark"></div></div>
+    <div id="vh-splash">
+      <div class="vh-orbit-loader" role="status" aria-label="Loading Very Happy">
+        <div class="vh-orbit-stage" aria-hidden="true">
+          <div class="vh-model-track">
+            <div class="vh-model vh-model--anthropic"><div class="vh-model-glyph" title="Anthropic">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.304 3.541h-3.672l6.696 16.918H24ZM6.696 3.541 0 20.459h3.744l1.37-3.553h7.005l1.369 3.553h3.744L10.536 3.541Zm-.371 10.223 2.291-5.946 2.292 5.946Z" /></svg>
+            </div></div>
+            <div class="vh-model vh-model--llama"><div class="vh-model-glyph" title="Llama by Meta">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973.303 1.31 1.336 3.548 4.249 3.548 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.942-1.664 2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 2.194 0 4.289-1.478 4.289-5.92 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-2.337 0-4.055 2.198-4.873 3.358-1.92-2.433-3.518-3.699-5.412-3.699Zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-3.449-5.386a44.908 44.908 0 0 0-1.255-1.98c1.215-1.881 2.24-2.929 3.569-2.929Zm-10.201.553c1.894 0 3.088 1.778 3.909 3.025l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-1.097 0-1.847-1.038-1.847-2.84 0-2.221.63-4.535 1.66-6.088.908-1.374 1.826-1.818 2.621-1.818Z" /></svg>
+            </div></div>
+            <div class="vh-model vh-model--deepseek"><div class="vh-model-glyph" title="DeepSeek">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.748 4.651c-.254-.124-.364.113-.512.233-.423.444-.884.797-1.51.763-.829-.046-1.537.214-2.163.848-.133-.782-.575-1.248-1.247-1.548-.599-.264-.984-.633-1.26-1.424-.055-.16-.11-.323-.293-.35-.2-.031-.278.136-.356.276-.313.572-.434 1.202-.422 1.84.027 1.436.633 2.58 1.838 3.393.137.094.172.187.129.323l-.266.833c-.055.179-.137.218-.328.14-1.697-.69-2.755-2.13-4.334-3.3-1.378-1.022-3.132-1.54-5.077-1.322-4.873.545-7.76 4.55-7.047 8.595.403 2.284 1.568 4.175 3.36 5.653 1.857 1.533 3.997 2.284 6.438 2.14 1.482-.085 3.132-.284 4.994-1.86.47.234.962.328 1.78.398.629.058 1.235-.031 1.705-.129.735-.155.684-.836.418-.961-2.155-1.004-1.682-.595-2.112-.926 1.095-1.295 2.768-3.598 3.284-6.733.05-.346.115-.834.108-1.114-.004-.171.035-.238.23-.257 2.201-.238 3.507-1.637 3.638-3.992.02-.23-.004-.467-.247-.588M11.58 18.168c-2.088-1.642-3.101-2.183-3.52-2.16-.39.024-.32.472-.234.763.09.288.207.487.371.74.114.167.192.416-.113.603-.673.416-1.842-.14-1.897-.168-2.697-1.587-4.451-4.485-4.6-7.788-.02-.385.094-.522.477-.592 2.46-.45 4.877.451 6.997 2.736 1.69 1.823 2.742 4.099 4.682 5.805.348.291.626.513.892.677-.802.09-2.14.109-3.055-.615Z" /></svg>
+            </div></div>
+            <div class="vh-model vh-model--qwen"><div class="vh-model-glyph" title="Qwen">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="m23.919 14.545-3.102-5.375 1.47-2.544a.56.56 0 0 0 0-.566l-1.633-2.83a.57.57 0 0 0-.49-.283h-6.207L12.487.402a.57.57 0 0 0-.49-.284H8.732a.56.56 0 0 0-.49.284L5.139 5.775h-2.94a.56.56 0 0 0-.49.284L.077 8.887a.56.56 0 0 0 0 .567L3.18 14.83l-1.47 2.545a.56.56 0 0 0 0 .566l1.634 2.83a.57.57 0 0 0 .49.283h6.205l1.47 2.545a.57.57 0 0 0 .49.284h3.266a.57.57 0 0 0 .49-.284l3.104-5.375h2.94a.57.57 0 0 0 .49-.283l1.634-2.828a.55.55 0 0 0-.004-.568M8.733.686l1.634 2.828-1.634 2.828H21.8L20.164 9.17H7.425L5.63 6.06Zm1.306 19.801-6.205-.002 1.634-2.83h3.265L2.201 6.344h3.267l6.367 11.032Zm10.124-5.66L18.53 12l-6.532 11.315-1.634-2.83 6.373-11.028h3.592l3.102 5.374Z" /></svg>
+            </div></div>
+            <div class="vh-model vh-model--mistral"><div class="vh-model-glyph" title="Mistral AI">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.143 3.429v3.428h-3.429v3.429h-3.428V6.857H6.857V3.43H3.43v13.714H0v3.428h10.286v-3.428H6.857v-3.429h3.429v3.429h3.429v-3.429h3.428v3.429h-3.428v3.428H24v-3.428h-3.429V3.429Z" /></svg>
+            </div></div>
+          </div>
+          <div class="vh-orbit-core">
+            <svg viewBox="0 0 32 32" fill="none">
+              <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="currentColor" stroke-width="2" />
+              <path d="M9 9.6 12.9 12.3 9 15.1" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
+              <rect x="19.1" y="9.2" width="3.9" height="6" rx="0.9" fill="currentColor" />
+              <path d="M9.2 19.5C11 22 13.8 23.4 16 23.4s5-1.4 6.8-3.9" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" />
+            </svg>
+            <i class="vh-live-dot"></i>
+          </div>
+          <div class="vh-orbit-track">
+            <div class="vh-agent vh-agent--claude"><div class="vh-agent-face">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.8v18.4M4.1 7.4l15.8 9.2M4.1 16.6l15.8-9.2M5.8 4.8l12.4 14.4M5.8 19.2 18.2 4.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
+              <span>Claude</span>
+            </div></div>
+            <div class="vh-agent vh-agent--codex"><div class="vh-agent-face">
+              <svg viewBox="0 0 24 24" fill="none"><path d="m9 7-5 5 5 5M15 7l5 5-5 5M13.5 4 10.5 20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span>Codex</span>
+            </div></div>
+            <div class="vh-agent vh-agent--gemini"><div class="vh-agent-face">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.8c.8 5.6 3.6 8.4 9.2 9.2-5.6.8-8.4 3.6-9.2 9.2C11.2 15.6 8.4 12.8 2.8 12 8.4 11.2 11.2 8.4 12 2.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
+              <span>Gemini</span>
+            </div></div>
+          </div>
+        </div>
+        <div class="vh-orbit-wordmark"><strong>veryhappy</strong><span>agent runtime · connecting</span></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -158,6 +158,13 @@
 }
 
 :root {
+  /* third-party identity marks — only for verified model/vendor logos */
+  --brand-anthropic: #d97757;
+  --brand-meta: #0467df;
+  --brand-deepseek: #5786fe;
+  --brand-qwen: #6950ef;
+  --brand-mistral: #fa520f;
+
   /* terminal pane — stays dark in BOTH themes (the terminal is the floor).
      --term-bg = dark bg-0: the pane keeps the dark theme's vocabulary even on
      light chrome, so it reads as an intentional dark stage, not a hole. The

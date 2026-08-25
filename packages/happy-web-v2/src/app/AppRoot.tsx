@@ -9,7 +9,7 @@ import {
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
-import { ThemeProvider, ToastProvider, Spinner } from '@/ui';
+import { ThemeProvider, ToastProvider, OrbitLoader } from '@/ui';
 import { ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
@@ -26,6 +26,7 @@ import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
+import { useTranslation } from '@/i18n/useTranslation';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -46,7 +47,7 @@ function Lazy({ children }: { children: ReactNode }) {
     <Suspense
       fallback={
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Spinner size={20} color="var(--accent)" />
+          <OrbitLoader size="compact" label="Loading workspace" />
         </div>
       }
     >
@@ -78,11 +79,19 @@ function RootGate() {
 /** `/` home: the classic empty-detail placeholder, or the Task Board when the
  *  device-local homeView preference says so (Settings → Appearance). */
 function HomeGate() {
+  const { t } = useTranslation();
   const homeView = useLocalSetting('homeView');
   const dataReady = useIsDataReady();
   const machines = useAllMachines({ includeOffline: true });
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
+  if (!dataReady) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <OrbitLoader size="compact" label={t('common.loading')} />
+      </div>
+    );
+  }
   if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
   if (dataReady && (sessions?.length ?? 0) === 0 && terminalCount === 0) return <HelpScreen />;
   if (homeView === 'board') {
@@ -106,6 +115,9 @@ function RedirectIfAuthed({ children }: { children: React.ReactNode }) {
 const SidebarHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/SidebarHarness').then((m) => ({ default: m.SidebarHarness })))
   : null;
+const OrbitLoaderHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/OrbitLoaderHarness').then((m) => ({ default: m.OrbitLoaderHarness })))
+  : null;
 
 const router = createBrowserRouter(
   [
@@ -116,6 +128,9 @@ const router = createBrowserRouter(
           // DEV-only like the sidebar harness and is stripped from prod builds.
           { path: '/dev/workspace-guide', element: <HelpScreen /> },
         ]
+      : []),
+    ...(OrbitLoaderHarness
+      ? [{ path: '/dev/orbit-loader', element: <Lazy><OrbitLoaderHarness /></Lazy> }]
       : []),
     {
       path: '/login',
@@ -177,7 +192,7 @@ const router = createBrowserRouter(
 function Splash() {
   return (
     <div className="auth-page">
-      <div style={{ width: 44, height: 44, border: '2px solid var(--accent)', borderRadius: 12 }} />
+      <OrbitLoader size="medium" label="Restoring workspace" showWordmark />
     </div>
   );
 }
