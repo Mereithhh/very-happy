@@ -121,30 +121,28 @@ triage（分独立/冲突域）
 触发条件现在是 **fb-us runner 掉线且不想等**（原来的「配额打穿 / 付款失败 → job 直接不给起」
 已经被 self-hosted 化解掉了）。**优先走上面的 `LINUX_RUNNER` 降级**，只有连托管也不想用
 （或 GitHub 整体故障）才手工发。`scripts/ci/deploy-hwsg.sh` 要 `SSH_KEY`/`HWSG_*` 环境变量，本地没有；
-手工发之前必须先建立并核验 `vh-prod` SSH alias 指向当前 production origin；旧
-`hw-sg` alias 已退役，禁止继续用。然后照脚本的 `deploy_web` 手工跑同样几步：
+手工发之前必须先建立并核验 `vh-us` SSH alias 指向当前 production origin；旧
+`hw-sg` alias 不是 control origin，禁止继续用。应急发布也不再传源码：
 
 ```bash
-cd ~/code/github/very-happy && WEB=packages/happy-web-v2 V=$(date +%Y%m%d%H%M)
-pnpm --filter @slopus/happy-wire build            # wire 的 dist 是 gitignored，必须先建
-(cd $WEB && rm -rf dist && VH_VERSION=$V pnpm exec vite build)
-ssh vh-prod 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
-tar czf - -C $WEB/dist . | ssh vh-prod 'tar xzf - -C /opt/happy/webapp.new'
-# rm -rf webapp.prev 必须在 cp 之前：目录已存在时 cp -a 会拷进去（webapp.prev/webapp/…），
-# 回滚材料就永远停在第一次部署那份。备份失败要中止交换，所以整串用 && 串联。
-ssh vh-prod 'cd /opt/happy && rm -rf webapp.prev && cp -a webapp webapp.prev \
-  && find webapp -mindepth 1 -delete && cp -a webapp.new/. webapp/ && rm -rf webapp.new \
-  && docker compose restart happy-server'
+cd ~/code/github/very-happy
+SHA=$(git rev-parse HEAD)
+TAG="ghcr.io/mereithhh/very-happy-server:$SHA"
+docker build --build-arg "VH_VERSION=$SHA" -f Dockerfile.server -t "$TAG" .
+docker push "$TAG"
+DIGEST=$(docker buildx imagetools inspect "$TAG" --format '{{.Manifest.Digest}}')
+ssh vh-us "bash -s -- ghcr.io/mereithhh/very-happy-server@$DIGEST $SHA" \
+  < scripts/ci/deploy-server-remote.sh
+docker buildx imagetools create --tag ghcr.io/mereithhh/very-happy-server:latest \
+  "ghcr.io/mereithhh/very-happy-server@$DIGEST"
 # 核对两条，缺一不可：
 curl -s -o /dev/null -w '%{http_code}\n' https://veryhappy.dev/health   # 要 200
 M=$(curl -s https://veryhappy.dev/ | grep -oE '/assets/[^"]+\.js' | head -1)
 curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须是 javascript
 ```
 
-- 第二条核对是硬性的：happy-server 的静态路由在**启动时**才 glob `/webapp`，交换后不重启
-  会让 `/assets/*` 回落到 index.html 并带 immutable 头 → HTML-as-JS 被缓存一年（真事故）。
-- server 目标同理：`tar czf - -C packages/happy-server sources prisma/migrations | ssh vh-prod 'tar xzf - -C /opt/happy-src/packages/happy-server'` + restart。
-- 改 `.env`（VAPID/邀请码/密钥）只 restart 不生效，要在机器上 `docker compose up -d`。
+- Web 与 server 是同一完整镜像，不允许单独覆盖 host source、migration 或 webapp。
+- 改 `.env`（VAPID/邀请码/密钥）要 `docker compose up -d --force-recreate`。
 - macOS 的 `tar: Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'` 是 xattr 噪音，不是错误。
 - CLI 发不出去时的本地兜底：`pnpm --filter very-happy-cli build && pnpm --filter very-happy-cli pack` 后
   `npm i -g ./very-happy-cli-*.tgz`（跳过 npm registry，只救本机）。

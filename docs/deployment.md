@@ -149,7 +149,22 @@ The same origin must be listed under **Authorized JavaScript origins** in Google
   must receive the same token. Keep both unset outside a short debugging window.
 
 ## Docker image
-A production Dockerfile is provided at `Dockerfile.server`.
+
+The public, complete image is
+`ghcr.io/mereithhh/very-happy-server:latest`. It contains the current server,
+Prisma schema and generated Client, migrations, and Web V2. Pin a full commit-SHA
+tag or manifest digest instead of `latest` for reproducible production
+deployments. Maintainer CI moves `latest` only after the same digest passes
+production health and Web asset checks. Do not
+bind-mount `sources`, `prisma`, `node_modules`, or `webapp` over the image: those
+parts are one release unit and mixing their versions can make migrations succeed
+while runtime queries fail.
+
+`Dockerfile.server` remains available for source builds:
+
+```bash
+docker build -t very-happy-server -f Dockerfile.server .
+```
 
 Operators who split realtime traffic into regional data-plane processes can
 build the database-free image from `Dockerfile.relay`. Maintainer deployment
@@ -162,10 +177,9 @@ Key notes:
 - Startup applies PGlite migrations by default, or `prisma migrate deploy` to
   external Postgres when `DATABASE_URL`/`DB_PROVIDER=postgres` is configured.
 
-From the repository root:
+For a small standalone installation:
 
 ```bash
-docker build -t very-happy-server -f Dockerfile.server .
 docker run -d --name very-happy-server --restart unless-stopped \
   -p 127.0.0.1:3005:3005 \
   -e HANDY_MASTER_SECRET='replace-with-a-high-entropy-secret' \
@@ -173,7 +187,7 @@ docker run -d --name very-happy-server --restart unless-stopped \
   -e SIGNUP_INVITE_CODES='replace-with-one-time-bootstrap-code' \
   -e SIGNUP_MAX_ACCOUNTS=10 \
   -v very-happy-data:/data \
-  very-happy-server
+  ghcr.io/mereithhh/very-happy-server:latest
 ```
 
 Create the first operator account with that bootstrap code. Then replace the
@@ -191,6 +205,82 @@ closing registration after bootstrap is required.
 
 Terminate TLS at a trusted reverse proxy before accepting non-loopback clients.
 Persist `/data`, back it up together with the master secret, and test restore.
+
+For a long-lived or multi-user installation, use external PostgreSQL and keep
+both services on a private Compose network. Set `DATABASE_URL` to the Postgres
+service name, persist its data volume, and let the server image run
+`prisma migrate deploy` before serving. A minimal shape is:
+
+```yaml
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  happy:
+    image: ghcr.io/mereithhh/very-happy-server:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - postgres
+    ports:
+      - 127.0.0.1:3005:3005
+    volumes:
+      - happy-data:/data
+volumes:
+  postgres-data:
+  happy-data:
+```
+
+The `.env` must include a valid `DATABASE_URL`, Postgres credentials,
+`HANDY_MASTER_SECRET`, and an explicit signup policy. Pin the Postgres image by
+digest and add a healthcheck before treating this abbreviated example as a
+production manifest.
+
+## Connect a machine and its agents
+
+Installing the server is only half of a usable Very Happy deployment. On every
+machine that should run agents, install the current CLI and point both endpoints
+at the HTTPS origin serving the self-hosted Web and API:
+
+```bash
+npm install --global very-happy-cli
+export HAPPY_SERVER_URL=https://happy.example.com
+export HAPPY_WEBAPP_URL=https://happy.example.com
+very-happy auth login
+very-happy daemon start
+```
+
+Keep both endpoint variables in the daemon's persistent service environment, not
+only in an interactive shell. If `HAPPY_HOME_DIR` is customized, the login,
+daemon, `spawn`/`send`, and any MCP subprocess must all use the same value. Keep
+server/Web and CLI/daemon versions compatible and upgrade them together for new
+wire capabilities.
+
+Managed Claude, Codex, Gemini and ACP sessions automatically receive Very Happy's
+clipboard bridge. A plain `claude` process can opt into the narrower,
+clipboard-only MCP server:
+
+```bash
+claude mcp add --scope user very-happy-clipboard -- very-happy mcp
+```
+
+You can then ask the agent in natural language to copy text to your clipboard.
+This is an encrypted, best-effort handoff to Web/PWA clients currently online on
+the same account, not a persistent cloud clipboard. The Web page stores received
+text in that device's local clipboard history and writes the OS clipboard when
+the page is visible, focused, served over HTTPS, and the browser permits it;
+otherwise it shows a click-to-copy prompt. Offline delivery is not queued, tool
+success is not a browser acknowledgement, and payloads are capped at 256 KiB.
+Depending on the agent's permission mode, the MCP tool may still require approval.
+
+`very-happy spawn` and `very-happy send` are also available to self-hosters.
+`spawn` requires the same-machine daemon; `send` requires access to the same
+Happy home and session key. The standalone `very-happy mcp` command intentionally
+does not expose spawn/send, terminal, preview, or provider-routing tools. See
+[`channels.md`](channels.md) for the exact capability matrix.
 
 ## Kubernetes manifests
 Example manifests live in `packages/happy-server/deploy`:

@@ -15,8 +15,7 @@ commits or tags to it and do not use it as a deployment source.
 |---|---|
 | Web + server | `vh-us`, `/opt/happy/docker-compose.yml`, container `happy-server` |
 | Public endpoint | `https://veryhappy.dev`, Caddy TLS proxy to `127.0.0.1:3005` |
-| Production Web | `packages/happy-web-v2`, served from `/opt/happy/webapp` |
-| Server source overlay | `/opt/happy-src/packages/happy-server/{sources,prisma/migrations}` |
+| Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image, including Web V2 |
 | Database | External PostgreSQL in the colocated `happy-postgres` container |
 | Daemon | published `very-happy-cli` on `mac-office` |
 | Singapore relay | `sg-hw`, `https://relay-sg.veryhappy.dev`, Docker + Caddy on `hw-sg` |
@@ -48,25 +47,30 @@ gh run view <run-id> --json headSha,status,conclusion,url
 Wait at least 20 seconds after pushing, then confirm `headSha` is the intended
 commit. The workflow calls [`scripts/ci/deploy-hwsg.sh`](../scripts/ci/deploy-hwsg.sh).
 
+The first package publication is a one-time two-phase bootstrap because GHCR
+creates a new package as private. Run the workflow with `target=publish`, make
+`very-happy-server` public in GitHub package settings, verify an anonymous pull,
+then run `target=all`. Later releases build, push and deploy in one run.
+
 The emergency local path, rollback details and self-hosted runner fallback live
 in [`PROCESS.md`](PROCESS.md#ci-不可用时的本地部署应急路径). Do not maintain a
 second copy of those command sequences here.
 
-### Server overlay constraints
+### Complete-image deployment contract
 
-Only `sources` and `prisma/migrations` are bind-mounted. Mounting the whole package
-would hide image `node_modules`. Consequently:
+Server source, Prisma schema, generated Prisma Client, migrations and Web V2 are
+one versioned artifact. Production must not bind-mount any of them from the host.
+The workflow publishes a commit-SHA tag, deploys its resolved manifest digest,
+and promotes that same digest to the convenience `latest` tag only after public
+health and Web asset verification. Production Compose always stores the digest.
 
-- ordinary source/migration changes can be synced and the container restarted;
-- new server npm dependencies require rebuilding/replacing the image;
-- migrations must stay compatible with the currently deployed image and old
-  clients according to the feature spec.
-
-The image and production Compose command both apply pending migrations before
-starting the server. The deploy script verifies that contract before syncing any
-schema-dependent source and fails closed if a hand-edited deployment has removed
-it. After a server deployment, run `vh-update` on mac-office until B-001 is fixed;
-a half-open daemon connection may otherwise fail to re-register RPCs.
+Before replacing the container, the remote deploy helper verifies that the
+packaged Prisma schema exactly matches the generated Client schema. Compose is
+backed up, the image reference is replaced, obsolete source/Web mounts are
+removed, and `docker compose up -d --force-recreate` runs migrations before the
+health gate. Failure restores the previous Compose definition and image. Database
+migrations must remain forward-compatible because rollback never runs a
+destructive down migration.
 
 ### Standalone PGlite process exclusivity and incident recovery
 
@@ -104,11 +108,11 @@ its advisory-lock and durability semantics are outside this deployment contract.
 `/opt/happy/.env`, recreate the service:
 
 ```bash
-ssh vh-prod 'cd /opt/happy && docker compose up -d happy-server'
+ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
-`vh-prod` is the operator's local alias for the active production origin. The
-legacy `hw-sg` alias is retired and must not be used for deployment.
+`vh-us` is the operator's local alias for the active production origin. The
+legacy `hw-sg` alias is not a control-server deployment target.
 
 For the official Google login configuration, also confirm the exact Web origin
 in Google Cloud Console. See [`deployment.md`](deployment.md#environment-variables).
@@ -156,16 +160,12 @@ to another service; k3s keeps the relay's container port at 3010. Post-deploy
 health checks require both the configured relay id and the exact commit SHA in
 `version`; a healthy old pod is not accepted as a successful rollout.
 
-### Web static swap and cache safety
+### Web cache safety
 
-`@fastify/static` discovers hashed asset routes at server startup. A Web deploy
-must build with a fresh `VH_VERSION`, stage files, swap them, restart the server,
-and verify that the main asset has a JavaScript content type. Serving SPA HTML
-for an asset path with immutable caching can poison a browser for a year.
-
-The deploy script keeps the immediately previous Web tree in
-`/opt/happy/webapp.prev` and retains recent hashed assets so already-open clients
-can finish lazy loading. Do not simplify its copy/swap ordering casually.
+Web V2 ships inside the complete server image and changes atomically with the
+server container. After deployment, still verify that the entry asset has a
+JavaScript content type; browsers with an older service worker may need a hard
+refresh or service-worker unregister before diagnosing a mixed-version failure.
 
 ## mac-office daemon
 
@@ -221,9 +221,14 @@ sessions may return while terminal tabs are gone; that is expected.
 
 ## Rollback
 
-- Web: restore `/opt/happy/webapp.prev` and restart, or redeploy the previous SHA.
-- Server: revert and redeploy the previous source; do not invent destructive down
-  migrations during an incident.
+- Web/server: restore the exact Compose backup printed by the deploy run from
+  `/opt/happy-rollbacks/<sha>.<suffix>/docker-compose.yml`, confirm its recorded
+  previous image still exists locally, copy that file back to
+  `/opt/happy/docker-compose.yml`, then run `cd /opt/happy && docker compose up -d
+  --force-recreate happy-server`. Verify the container uses that exact image and
+  both local/public health pass. Do not restore host source, migrations or
+  `webapp` independently, and never invent a destructive down migration during
+  an incident.
 - CLI: install the previous `very-happy-cli` version and restart through launchd.
 - Environment: restore the prior `.env` value from the password manager, then
   recreate the container.
