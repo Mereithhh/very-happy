@@ -171,7 +171,7 @@ sequenceDiagram
 ```
 
 The current backend stores salted password verifiers (not plaintext passwords)
-and verified Google identities. Password/Google Web logins create expiring,
+and verified email-code/Google identities. Email/Google/password Web logins create expiring,
 revocable login sessions; legacy CLI tokens remain compatible. The trusted
 server can recover the account secret, so signed/encrypted wire formats do not
 make this deployment E2E or zero-knowledge. The signed-key `/v1/auth` route is a

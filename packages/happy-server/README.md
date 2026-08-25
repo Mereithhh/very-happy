@@ -11,11 +11,11 @@ Self-hosted synchronization relay and Web backend for Very Happy.
 
 Very Happy Server synchronizes Claude Code/Codex sessions, connects browser clients to CLI daemons, and serves the production Web UI when a static directory is configured.
 
-This fork uses a **server-trusted model**, not the upstream zero-knowledge/E2E model. Password and Google login require the server to recover the account secret. An operator—or an attacker controlling the server—may therefore read synchronized content and impersonate a Web client toward machines connected to that account. Only use a server whose operator you trust.
+This fork uses a **server-trusted model**, not the upstream zero-knowledge/E2E model. Email-code, password, and Google login require the server to recover the account secret. An operator—or an attacker controlling the server—may therefore read synchronized content and impersonate a Web client toward machines connected to that account. Only use a server whose operator you trust.
 
 ## Features
 
-- 🔑 **Password and Google login** - Multi-user Web accounts with signup policy and capacity controls
+- 🔑 **Email-code and Google login** - Passwordless-by-default multi-user Web accounts, with optional password compatibility, signup policy, and capacity controls
 - 🧭 **CLI pairing** - Existing cryptographic account/daemon flow remains compatible
 - 📖 **Open source** - Transparent implementation you can audit and self-host
 - ⚡ **Real-time Sync** - WebSocket-based synchronization across all your devices
@@ -25,7 +25,7 @@ This fork uses a **server-trusted model**, not the upstream zero-knowledge/E2E m
 
 ## How It Works
 
-The browser and CLI/daemon connect to the same account through the server. Wire payloads still use Happy's encrypted formats, but in this fork the server can recover account keys to support username/password and Google login. Encryption at rest/in transit does not remove the need to trust the server operator.
+The browser and CLI/daemon connect to the same account through the server. Wire payloads still use Happy's encrypted formats, but in this fork the server can recover account keys to support email-code, optional username/password, and Google login. Encryption at rest/in transit does not remove the need to trust the server operator.
 
 ## Hosting
 
@@ -88,13 +88,21 @@ guides.
 | `SIGNUP_MODE` | No | `closed` | Account signup mode: `open`, `invite`, or `closed`; opening registration must be explicit |
 | `SIGNUP_MAX_ACCOUNTS` | No | unlimited | Global Account limit; existing users can still sign in |
 | `SIGNUP_INVITE_CODES` | No | - | Comma-separated codes for invite mode |
-| `LOGIN_SESSION_TTL_DAYS` | No | `30` | Password/Google Web session lifetime (1–365 days) |
+| `LOGIN_SESSION_TTL_DAYS` | No | `30` | Email/Google/password Web session lifetime (1–365 days) |
 | `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | No | `20` | Active Web login sessions retained per account; a new login evicts the oldest at the cap |
 | `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | No | `5` | Database-backed per-account password/username change rate |
 | `AUTH_PAIRING_TTL_MINUTES` | No | `10` | Terminal/account pairing lifetime (1–60 minutes) |
 | `MAX_PENDING_AUTH_PAIRINGS` | No | `1000` | Global outstanding pairing cap across both pairing tables |
 | `GOOGLE_CLIENT_ID` | No | - | Enables Google Identity Services account login |
 | `GOOGLE_ALLOWED_ORIGINS` | With Google | - | Comma-separated exact Web origins allowed to request/consume Google login challenges |
+| `AUTH_EMAIL_PROVIDER` | No | - | Enables passwordless email codes: `resend` or `cloudflare` |
+| `AUTH_EMAIL_FROM` | With email | - | Verified sender, for example `Very Happy <login@example.com>` |
+| `RESEND_API_KEY` | With Resend | - | Resend API key; keep it only in deployment secrets |
+| `CLOUDFLARE_EMAIL_ACCOUNT_ID` / `CLOUDFLARE_EMAIL_API_TOKEN` | With Cloudflare | - | Cloudflare Email Service account and scoped sending token |
+| `AUTH_EMAIL_CODE_TTL_MINUTES` | No | `10` | One-time code lifetime (2–30 minutes) |
+| `MAX_PENDING_EMAIL_LOGIN_CHALLENGES` | No | `10000` | Global cap for unconsumed email challenges |
+| `AUTH_EMAIL_GLOBAL_DAILY_SEND_LIMIT` / `AUTH_EMAIL_GLOBAL_MONTHLY_SEND_LIMIT` | No | `200` / `3000` | Shared delivery budgets across replicas; keep finite to bound abuse and spend |
+| `AUTH_PASSWORD_LOGIN_DISABLED` | No | `false` | Set to `true` only after email or Google login is working; rejects password login, signup, and credential changes |
 | `TRUST_PROXY` | Behind proxy | - | Positive trusted hop count or comma-separated proxy IP/CIDR allowlist used to recover real client IPs safely |
 | `MAX_SESSION_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_SESSION_STATE_BYTES_PER_ACCOUNT` | No | `600` / `268435456` | Session metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
 | `MAX_MACHINE_STATE_WRITE_UNITS_PER_ACCOUNT_PER_MINUTE` / `MAX_MACHINE_STATE_BYTES_PER_ACCOUNT` | No | `240` / `16777216` | Machine metadata/state weighted writes and stored bytes; one unit per started 64 KiB |
@@ -111,6 +119,22 @@ guides.
 | `RPC_MAX_REGISTERED_METHODS_PER_SOCKET` | No | `256` | Unique RPC method rooms per machine socket; overflow disconnects the socket |
 
 To enable Google login, create a **Web application** OAuth client in Google Cloud Console and add every deployed Web origin (for example `https://happy.example.com`) under **Authorized JavaScript origins**. Set that client ID and the same exact origin(s) in the two variables above. The popup ID-token callback does not use an Authorized redirect URI or client secret. Do not copy the maintainer Cloud client ID for a self-hosted domain; create a client owned by your deployment.
+
+Email codes are the Web UI's preferred sign-in method when configured. Verify a
+sending domain with Resend or Cloudflare Email Service, then set the matching
+provider credentials and `AUTH_EMAIL_FROM`. The server stores only an HMAC of
+each six-digit code, expires it after ten minutes by default, permits three failed
+attempts, and consumes it once. Existing identities continue to sign in when
+signup is closed or full; a new email still obeys the normal signup policy.
+Cloudflare Email Sending is currently Beta and arbitrary recipients require the
+Workers Paid plan; Resend remains the stable alternative for operators who do
+not want that prerequisite.
+
+Do not set `AUTH_PASSWORD_LOGIN_DISABLED=true` in the same first deployment.
+First deliver and consume a real code, verify Google too if it is your fallback,
+then recreate the server with password login disabled. Startup fails closed if
+password login is disabled while neither email nor Google is configured, or if
+any password identity still has no email/Google identity on the same Account.
 
 ### Optional: External Services
 

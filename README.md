@@ -316,7 +316,8 @@ structured parity with Claude.
 - A Claude-powered coordinator with text entry, session awareness, and dispatch
   on its selected machine; voice entry is available when a compatible voice
   service is configured.
-- Password and Google sign-in, configurable signup/capacity controls, a hosted
+- Passwordless email-code and Google sign-in, optional password compatibility,
+  configurable signup/capacity controls, a hosted
   public relay, and production-oriented self-hosting.
 - A mobile-friendly, proactively installable PWA—no app store required.
 

@@ -20,6 +20,19 @@ import { signupRejectionsCounter } from '@/app/monitoring/metrics2';
 import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { decodeFixedBase64, hashPairingValue } from '@/app/auth/pairingSecurity';
 import { configuredResourceLimit } from '../resourceLimits';
+import {
+    assertUsableInteractiveAuth,
+    isPasswordLoginEnabled,
+    resolveEmailAuthConfig,
+} from '@/app/auth/emailAuthConfig';
+import {
+    consumeEmailLoginChallenge,
+    createEmailLoginChallenge,
+    deleteEmailLoginChallenge,
+    EmailLoginChallengeCapacityError,
+    normalizeEmail,
+} from '@/app/auth/emailLoginSecurity';
+import { EmailDeliveryError, sendLoginCode } from '@/app/auth/emailSender';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
@@ -57,6 +70,8 @@ const loginResponse = z.object({
 const newUsernameSchema = z.string().trim().toLowerCase().min(3).max(64);
 const loginUsernameSchema = z.string().trim().toLowerCase().min(1).max(64);
 const passwordSchema = z.string().min(8).max(256);
+const emailSchema = z.string().trim().min(3).max(254).regex(/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/);
+const emailCodeSchema = z.string().regex(/^\d{6}$/);
 
 class UsernameTakenError extends Error {}
 
@@ -78,24 +93,88 @@ export function passwordLoginRateBuckets(ip: string, username: string): Array<{ 
 }
 
 export async function consumeRateBucketsSequentially(
-    buckets: ReadonlyArray<{ key: string; max: number }>,
+    buckets: ReadonlyArray<{ key: string; max: number; windowMs?: number }>,
     consume: typeof allowAuthRequest = allowAuthRequest,
 ): Promise<boolean> {
     for (const bucket of buckets) {
-        if (!(await consume(bucket.key, { max: bucket.max, windowMs: 60_000 }))) return false;
+        if (!(await consume(bucket.key, { max: bucket.max, windowMs: bucket.windowMs ?? 60_000 }))) return false;
     }
     return true;
+}
+
+export function emailCodeRateBuckets(
+    ip: string,
+    email: string,
+    limits: { globalDailySendLimit: number; globalMonthlySendLimit: number },
+): Array<{ key: string; max: number; windowMs?: number }> {
+    const ipKey = hashPairingValue(ip).slice(0, 32);
+    const emailKey = hashPairingValue(email).slice(0, 32);
+    return [
+        { key: `email-code:ip:${ipKey}:minute`, max: 10 },
+        { key: `email-code:ip:${ipKey}:hour`, max: 20, windowMs: 60 * 60_000 },
+        { key: `email-code:ip:${ipKey}:day`, max: 50, windowMs: 24 * 60 * 60_000 },
+        { key: `email-code:email:${emailKey}:ten-minute`, max: 3, windowMs: 10 * 60_000 },
+        { key: `email-code:email:${emailKey}:day`, max: 3, windowMs: 24 * 60 * 60_000 },
+        { key: 'email-code:global:hour', max: 60, windowMs: 60 * 60_000 },
+        { key: 'email-code:global:day', max: limits.globalDailySendLimit, windowMs: 24 * 60 * 60_000 },
+        { key: 'email-code:global:month', max: limits.globalMonthlySendLimit, windowMs: 30 * 24 * 60 * 60_000 },
+    ];
+}
+
+export function emailVerifyRateBuckets(ip: string, email: string, challengeId: string): Array<{ key: string; max: number; windowMs?: number }> {
+    const ipKey = hashPairingValue(ip).slice(0, 32);
+    const emailKey = hashPairingValue(email).slice(0, 32);
+    const challengeKey = hashPairingValue(challengeId).slice(0, 32);
+    return [
+        { key: `email-verify:ip:${ipKey}:minute`, max: 30 },
+        { key: `email-verify:ip:${ipKey}:day`, max: 100, windowMs: 24 * 60 * 60_000 },
+        { key: `email-verify:email:${emailKey}:hour`, max: 6, windowMs: 60 * 60_000 },
+        { key: `email-verify:email:${emailKey}:day`, max: 9, windowMs: 24 * 60 * 60_000 },
+        { key: `email-verify:challenge:${challengeKey}`, max: 4 },
+        { key: 'email-verify:global:hour', max: 300, windowMs: 60 * 60_000 },
+    ];
+}
+
+export function enabledReplacementIdentityProviders(emailEnabled: boolean, googleEnabled: boolean): Array<'email' | 'google'> {
+    return [emailEnabled ? 'email' as const : null, googleEnabled ? 'google' as const : null]
+        .filter((provider): provider is 'email' | 'google' => provider !== null);
 }
 
 export function accountAuthRoutes(app: Fastify) {
     // Fail startup on a typo that could otherwise accidentally remove the cap.
     resolveSignupPolicy();
     const googleConfig = resolveGoogleLoginConfig();
+    const emailConfig = resolveEmailAuthConfig();
+    const passwordLoginEnabled = isPasswordLoginEnabled();
+    assertUsableInteractiveAuth({
+        email: emailConfig,
+        googleClientId: googleConfig.clientId,
+        passwordLoginEnabled,
+    });
+    app.addHook('onReady', async () => {
+        if (passwordLoginEnabled) return;
+        const replacementProviders = enabledReplacementIdentityProviders(emailConfig !== null, googleConfig.clientId !== null);
+        const providerSql = replacementProviders.map((provider) => `'${provider}'`).join(', ');
+        const rows = await db.$queryRawUnsafe<Array<{ count: bigint }>>(
+            `SELECT COUNT(*)::bigint AS count
+             FROM "AccountCredential" credential
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM "AccountIdentity" replacement
+                 WHERE replacement."accountId" = credential."accountId"
+                   AND replacement."provider" IN (${providerSql})
+               )`,
+        );
+        if (Number(rows[0]?.count ?? 0) > 0) {
+            throw new Error('AUTH_PASSWORD_LOGIN_DISABLED cannot be enabled while password-only accounts exist');
+        }
+    });
     app.get('/v1/auth/config', {
         schema: {
             response: {
                 200: z.object({
                     googleClientId: z.string().optional(),
+                    emailOtpEnabled: z.boolean(),
+                    passwordLoginEnabled: z.boolean(),
                     signup: z.object({
                         mode: z.enum(['open', 'invite', 'closed']),
                         maxAccounts: z.number().int().nullable(),
@@ -109,7 +188,57 @@ export function accountAuthRoutes(app: Fastify) {
     }, async (_request, reply) => {
         const status = await getSignupStatus();
         const googleClientId = googleConfig.clientId ?? undefined;
-        return reply.send({ googleClientId, signup: status });
+        return reply.send({
+            googleClientId,
+            emailOtpEnabled: emailConfig !== null,
+            passwordLoginEnabled,
+            signup: status,
+        });
+    });
+
+    app.post('/v1/auth/email/code', {
+        schema: {
+            body: z.object({ email: emailSchema }).strict(),
+            response: {
+                200: z.object({ challengeId: z.string(), expiresAt: z.string() }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('email_not_configured') }),
+                503: z.object({ error: z.literal('email_delivery_unavailable') }),
+            },
+        },
+    }, async (request, reply) => {
+        if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
+        const email = normalizeEmail(request.body.email);
+        const allowed = await consumeRateBucketsSequentially(emailCodeRateBuckets(request.ip, email, emailConfig));
+        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+
+        let challenge: Awaited<ReturnType<typeof createEmailLoginChallenge>>;
+        try {
+            challenge = await createEmailLoginChallenge(email, emailConfig.ttlMinutes, {
+                maxPendingChallenges: emailConfig.maxPendingChallenges,
+            });
+        } catch (error) {
+            if (error instanceof EmailLoginChallengeCapacityError) {
+                return reply.code(429).send({ error: 'too_many_requests' as const });
+            }
+            throw error;
+        }
+        try {
+            await sendLoginCode(emailConfig, {
+                to: email,
+                code: challenge.code,
+                expiresInMinutes: emailConfig.ttlMinutes,
+                idempotencyKey: challenge.id,
+            });
+        } catch (error) {
+            await deleteEmailLoginChallenge(challenge.id).catch(() => undefined);
+            if (error instanceof EmailDeliveryError) {
+                log({ module: 'email-auth', level: 'warn', provider: emailConfig.provider }, 'Email login code delivery failed');
+                return reply.code(503).send({ error: 'email_delivery_unavailable' as const });
+            }
+            throw error;
+        }
+        return reply.send({ challengeId: challenge.id, expiresAt: challenge.expiresAt.toISOString() });
     });
 
     app.post('/v1/auth/google/challenge', {
@@ -151,12 +280,13 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: loginResponse,
                 400: z.object({ error: z.literal('invalid_secret') }),
-                403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached']) }),
+                403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached', 'password_login_disabled']) }),
                 409: z.object({ error: z.literal('username_taken') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
             },
         },
     }, async (request, reply) => {
+        if (!passwordLoginEnabled) return reply.code(403).send({ error: 'password_login_disabled' as const });
         const username = request.body.username;
         const publicKey = accountPublicKeyFromSecret(request.body.secret);
         if (!publicKey) return reply.code(400).send({ error: 'invalid_secret' as const });
@@ -245,13 +375,14 @@ export function accountAuthRoutes(app: Fastify) {
                     expiresAt: z.string().optional(),
                 }),
                 400: z.object({ error: z.literal('invalid_secret') }),
-                403: z.object({ error: z.literal('reauth_required') }),
+                403: z.object({ error: z.enum(['reauth_required', 'password_login_disabled']) }),
                 409: z.object({ error: z.literal('username_taken') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
                 500: z.object({ error: z.literal('failed') }),
             },
         },
     }, async (request, reply) => {
+        if (!passwordLoginEnabled) return reply.code(403).send({ error: 'password_login_disabled' as const });
         const accountId = request.userId;
         const username = request.body.username;
         const derivedPublicKey = accountPublicKeyFromSecret(request.body.secret);
@@ -280,7 +411,7 @@ export function accountAuthRoutes(app: Fastify) {
             // last 10 minutes. A stolen 30-day bearer cannot silently become a
             // permanent attacker-selected password.
             const hasRecoverableIdentity = account.AccountIdentity.some(
-                (identity) => identity.provider === 'password' || identity.provider === 'google',
+                (identity) => identity.provider === 'password' || identity.provider === 'google' || identity.provider === 'email',
             );
             if (hasRecoverableIdentity) {
                 const loginSessionId = request.authLoginSessionId;
@@ -387,10 +518,12 @@ export function accountAuthRoutes(app: Fastify) {
             response: {
                 200: loginResponse,
                 401: z.object({ error: z.literal('invalid_credentials') }),
+                403: z.object({ error: z.literal('password_login_disabled') }),
                 429: z.object({ error: z.literal('too_many_requests') }),
             },
         },
     }, async (request, reply) => {
+        if (!passwordLoginEnabled) return reply.code(403).send({ error: 'password_login_disabled' as const });
         const username = request.body.username;
         const allowed = await consumeRateBucketsSequentially(passwordLoginRateBuckets(request.ip, username));
         if (!allowed) {
@@ -424,6 +557,80 @@ export function accountAuthRoutes(app: Fastify) {
         if (!secret) return reply.code(401).send({ error: 'invalid_credentials' as const });
         const session = await auth.createLoginToken(row.accountId);
         return reply.send({ token: session.token, secret, expiresAt: session.expiresAt.toISOString() });
+    });
+
+    app.post('/v1/account/login/email', {
+        schema: {
+            body: z.object({
+                email: emailSchema,
+                challengeId: z.string().uuid(),
+                code: emailCodeSchema,
+                inviteCode: z.string().trim().max(256).optional(),
+            }).strict(),
+            response: {
+                200: loginResponse,
+                401: z.object({ error: z.literal('invalid_email_code') }),
+                403: z.object({ error: z.enum(['signup-closed', 'invite-required', 'capacity-reached']) }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('email_not_configured') }),
+            },
+        },
+    }, async (request, reply) => {
+        if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
+        const email = normalizeEmail(request.body.email);
+        const allowed = await consumeRateBucketsSequentially(emailVerifyRateBuckets(request.ip, email, request.body.challengeId));
+        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        if (!(await consumeEmailLoginChallenge(request.body.challengeId, email, request.body.code))) {
+            return reply.code(401).send({ error: 'invalid_email_code' as const });
+        }
+
+        type EmailAccount = { accountId: string; secret: string; session: { token: string; expiresAt: Date } };
+        let result: { value: EmailAccount; created: boolean };
+        try {
+            result = await withSignupGate<EmailAccount>({
+                provider: 'email',
+                inviteCode: request.body.inviteCode,
+                findExisting: async (tx) => {
+                    const identities = await tx.$queryRawUnsafe<Array<{ accountId: string }>>(
+                        `SELECT "accountId" FROM "AccountIdentity"
+                         WHERE "provider" = 'email' AND "providerSubject" = $1 LIMIT 1`,
+                        email,
+                    );
+                    if (!identities[0]) return null;
+                    const secret = await loadAccountSecret(tx, identities[0].accountId);
+                    if (!secret) throw new Error('email-account-secret-missing');
+                    const session = await auth.createLoginToken(identities[0].accountId, tx, { cache: false });
+                    return { accountId: identities[0].accountId, secret, session };
+                },
+                create: async (tx) => {
+                    const secretBytes = randomBytes(32);
+                    const secret = secretBytes.toString('base64url');
+                    const publicKey = tweetnacl.sign.keyPair.fromSeed(secretBytes).publicKey;
+                    const account = await tx.account.create({
+                        data: { publicKey: Buffer.from(publicKey).toString('hex') },
+                    });
+                    await upsertAccountSecret(tx, account.id, secret);
+                    await tx.$executeRawUnsafe(
+                        `INSERT INTO "AccountIdentity"
+                         ("id", "accountId", "provider", "providerSubject", "email", "updatedAt")
+                         VALUES ($1, $2, 'email', $3, $3, now())`,
+                        randomUUID(), account.id, email,
+                    );
+                    const session = await auth.createLoginToken(account.id, tx, { cache: false });
+                    return { accountId: account.id, secret, session };
+                },
+                onRejected: (reason, provider) => signupRejectionsCounter.inc({ reason, provider }),
+            });
+        } catch (error) {
+            if (error instanceof SignupPolicyError) return reply.code(403).send({ error: error.reason });
+            throw error;
+        }
+        const session = result.value.session;
+        return reply.send({
+            token: session.token,
+            secret: result.value.secret,
+            expiresAt: session.expiresAt.toISOString(),
+        });
     });
 
     app.post('/v1/account/login/google', {

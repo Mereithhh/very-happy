@@ -20,6 +20,47 @@
   padding: var(--sp-8) var(--sp-6);
   box-shadow: var(--shadow-modal);
 }
+.auth-email,
+.auth-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.auth-email {
+  padding: var(--sp-4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg-2) 58%, transparent);
+}
+.auth-method-heading {
+  display: grid;
+  gap: var(--sp-1);
+}
+.auth-method-heading strong { color: var(--text); font-size: var(--fs-14); }
+.auth-method-heading span,
+.auth-email-sent { color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.auth-email-sent { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-1) var(--sp-3); }
+.auth-email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+.auth-email-actions button,
+.auth-method-toggle {
+  min-height: 44px;
+  border: 0;
+  padding: var(--sp-2) 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+.auth-email-actions button:hover,
+.auth-method-toggle:hover { color: var(--text); }
+.auth-email-actions button:disabled { cursor: default; opacity: .5; }
+.auth-method-toggle { width: 100%; text-align: center; }
 .auth-brand {
   display: flex;
   align-items: center;
@@ -125,4 +166,10 @@
 .auth-legal a:hover {
   color: var(--text-dim);
   text-decoration: underline;
+}
+@media (max-width: 480px) {
+  .auth-page { align-items: flex-start; padding-inline: var(--sp-3); }
+  .auth-card { margin-block: var(--sp-3); padding: var(--sp-6) var(--sp-4); }
+  .auth-email { padding: var(--sp-3); }
+  .auth-card input { font-size: 16px; }
 }

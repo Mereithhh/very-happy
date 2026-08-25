@@ -3,7 +3,7 @@
 This document details how client data is encrypted, how encrypted blobs are structured, and how those blobs map onto protocol fields. It is based on `packages/happy-cli/src/api/encryption.ts` and the server routes that accept/emit these values.
 
 > **Trust boundary:** the wire/storage formats below remain encrypted, but Very
-> Happy is not end-to-end encrypted. Password/Google login lets the trusted server
+> Happy is not end-to-end encrypted. Email/Google/password login lets the trusted server
 > recover the account secret, so the operator can decrypt user content. “Encrypted
 > blob” describes the encoding, not a zero-knowledge guarantee.
 

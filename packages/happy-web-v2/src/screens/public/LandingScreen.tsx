@@ -26,11 +26,14 @@ function ProductShowcase() {
 
 function StartAndTrust() {
   return <section className="pub-start" aria-labelledby="start-title">
-    <div className="pub-start-main">
+    <header className="pub-start-head">
       <div className="eyebrow">FIRST CONNECTION // THREE MOVES</div>
       <h2 id="start-title">From account to live work.</h2>
+      <p>Create the account once, connect a machine, then work from the Web or installed PWA.</p>
+    </header>
+    <div className="pub-start-main">
       <ol>
-        <li><span className="mono">01</span><div><h3>Create an account</h3><p>Use Google or username and password on your chosen relay.</p></div></li>
+        <li><span className="mono">01</span><div><h3>Create an account</h3><p>Use an email code by default, or Google. A relay may also keep username and password enabled.</p></div></li>
         <li><span className="mono">02</span><div><h3>Prepare the machine</h3><code>{`${INSTALL_COMMAND}\nvery-happy doctor`}</code><p>Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required. Configure the local agent; tmux is recommended for durable terminals.</p></div></li>
         <li><span className="mono">03</span><div><h3>Connect and keep it online</h3><code>{`${LOGIN_COMMAND}\n${DAEMON_START_COMMAND}`}</code><p>Then open Web → New session and choose the machine plus agent.</p></div></li>
       </ol>

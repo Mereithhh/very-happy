@@ -1,11 +1,12 @@
 # Accounts and quotas
 
-An Account can have password and/or Google login identities. Matching email
-addresses are not automatically merged; the verified provider subject is the
+An Account can have email-code, password, and/or Google login identities.
+Matching email strings across different providers are not automatically merged;
+the verified provider subject is the
 identity key. Web login sessions expire and can be revoked. Legacy CLI tokens are
 kept for compatibility and should be treated as account-wide bearer credentials.
-Password/username changes replace the account's prior password identity (Google
-identity is preserved), are database-rate-limited per account, and revoke the
+Password/username changes replace the account's prior password identity (email
+and Google identities are preserved), are database-rate-limited per account, and revoke the
 older Web sessions. Expired/revoked Web session rows are physically pruned; a
 bounded active-session set evicts the oldest session before issuing a new one, so
 the token returned by a successful login remains valid.
@@ -62,7 +63,8 @@ older requests expire rather than raising the limit blindly.
 
 ## Account recovery
 
-There is currently no email password-reset flow or automatic identity merge.
+Email-code login is passwordless; there is no email-based password-reset or
+automatic identity merge.
 Losing the only login method may make an account inaccessible. Self-hosters should
 document their own operator-assisted recovery policy without asking users to send
 passwords, tokens, or master secrets.

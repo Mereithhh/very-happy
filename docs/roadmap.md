@@ -43,7 +43,7 @@ release date. “Long-term concept” is product exploration.
 ### Operation
 
 - A capacity-limited community Cloud or a self-hosted trusted relay.
-- Password and Google identities, configurable signup policy and account cap,
+- Email-code, optional password, and Google identities, configurable signup policy and account cap,
   machine pairing, and explicit resource limits.
 - A server-trusted security model. Self-hosting changes the operator; it does not
   turn the protocol into end-to-end encryption.

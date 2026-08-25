@@ -122,6 +122,19 @@ model GoogleLoginChallenge {
     @@index([expiresAt])
 }
 
+model EmailLoginChallenge {
+    id         String    @id
+    email      String
+    codeHash   String
+    expiresAt  DateTime
+    consumedAt DateTime?
+    attempts   Int       @default(0)
+    createdAt  DateTime  @default(now())
+
+    @@index([email, expiresAt])
+    @@index([expiresAt])
+}
+
 model AuthRateLimitBucket {
     key       String   @id
     count     Int

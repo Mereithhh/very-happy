@@ -3,9 +3,17 @@ import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Fastify } from '../types';
 
-const { dbMock, authMock, accountSecretsMock, allowAuthRequestMock } = vi.hoisted(() => {
+const {
+    dbMock,
+    authMock,
+    accountSecretsMock,
+    allowAuthRequestMock,
+    createEmailChallengeMock,
+    consumeEmailChallengeMock,
+    sendLoginCodeMock,
+} = vi.hoisted(() => {
     const dbMock: any = {
-        account: { findUnique: vi.fn() },
+        account: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn(async () => 0) },
         accountLoginSession: { findFirst: vi.fn() },
         $queryRawUnsafe: vi.fn(),
         $executeRawUnsafe: vi.fn(),
@@ -22,6 +30,9 @@ const { dbMock, authMock, accountSecretsMock, allowAuthRequestMock } = vi.hoiste
             upsertAccountSecret: vi.fn(async () => 'encrypted-secret'),
         },
         allowAuthRequestMock: vi.fn(async () => true),
+        createEmailChallengeMock: vi.fn(),
+        consumeEmailChallengeMock: vi.fn(),
+        sendLoginCodeMock: vi.fn(),
     };
 });
 
@@ -29,11 +40,25 @@ vi.mock('@/storage/db', () => ({ db: dbMock }));
 vi.mock('@/app/auth/auth', () => ({ auth: authMock }));
 vi.mock('@/app/auth/accountSecrets', () => accountSecretsMock);
 vi.mock('@/app/auth/authRateLimiter', () => ({ allowAuthRequest: allowAuthRequestMock }));
+vi.mock('@/app/auth/emailLoginSecurity', () => ({
+    normalizeEmail: (email: string) => email.trim().toLowerCase(),
+    createEmailLoginChallenge: createEmailChallengeMock,
+    deleteEmailLoginChallenge: vi.fn(),
+    consumeEmailLoginChallenge: consumeEmailChallengeMock,
+    EmailLoginChallengeCapacityError: class EmailLoginChallengeCapacityError extends Error {},
+}));
+vi.mock('@/app/auth/emailSender', () => ({
+    sendLoginCode: sendLoginCodeMock,
+    EmailDeliveryError: class EmailDeliveryError extends Error {},
+}));
 
 import {
     accountAuthRoutes,
     accountPublicKeyFromSecret,
     consumeRateBucketsSequentially,
+    emailCodeRateBuckets,
+    emailVerifyRateBuckets,
+    enabledReplacementIdentityProviders,
     hashPassword,
     passwordLoginRateBuckets,
     verifyPassword,
@@ -57,6 +82,13 @@ const credentialSecret = Buffer.alloc(32, 7).toString('base64url');
 const credentialPublicKey = accountPublicKeyFromSecret(credentialSecret)!;
 
 beforeEach(() => {
+    delete process.env.AUTH_EMAIL_PROVIDER;
+    delete process.env.AUTH_EMAIL_FROM;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.AUTH_PASSWORD_LOGIN_DISABLED;
+    delete process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_ALLOWED_ORIGINS;
+    delete process.env.SIGNUP_MODE;
     vi.clearAllMocks();
     dbMock.account.findUnique.mockResolvedValue({ publicKey: credentialPublicKey, AccountIdentity: [] });
     dbMock.accountLoginSession.findFirst.mockResolvedValue({ createdAt: new Date() });
@@ -66,6 +98,148 @@ beforeEach(() => {
     authMock.createLoginToken.mockResolvedValue({ token: 'login-token', expiresAt: new Date('2030-01-01T00:00:00.000Z') });
     accountSecretsMock.upsertAccountSecret.mockResolvedValue('encrypted-secret');
     allowAuthRequestMock.mockResolvedValue(true);
+    createEmailChallengeMock.mockResolvedValue({
+        id: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+        email: 'person@example.com',
+        code: '123456',
+        expiresAt: new Date('2030-01-01T00:10:00.000Z'),
+    });
+    consumeEmailChallengeMock.mockResolvedValue(true);
+    sendLoginCodeMock.mockResolvedValue(undefined);
+});
+
+describe('public Email OTP and password policy', () => {
+    function enableEmail() {
+        process.env.AUTH_EMAIL_PROVIDER = 'resend';
+        process.env.AUTH_EMAIL_FROM = 'login@veryhappy.dev';
+        process.env.RESEND_API_KEY = 'test-key';
+    }
+
+    it('advertises Email OTP as the default-capable method while preserving password by default', async () => {
+        enableEmail();
+        const app = await buildApp();
+        const response = await app.inject({ method: 'GET', url: '/v1/auth/config' });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ emailOtpEnabled: true, passwordLoginEnabled: true });
+        await app.close();
+    });
+
+    it('uses long-window email, IP, and global delivery budgets', () => {
+        const send = emailCodeRateBuckets('203.0.113.1', 'person@example.com', {
+            globalDailySendLimit: 200,
+            globalMonthlySendLimit: 3_000,
+        });
+        expect(send).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: expect.stringContaining('email:'), max: 3, windowMs: 24 * 60 * 60_000 }),
+            expect.objectContaining({ key: 'email-code:global:day', max: 200 }),
+            expect.objectContaining({ key: 'email-code:global:month', max: 3_000 }),
+        ]));
+        const verify = emailVerifyRateBuckets('203.0.113.1', 'person@example.com', 'challenge');
+        expect(verify).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: expect.stringContaining('email:'), max: 9, windowMs: 24 * 60 * 60_000 }),
+            expect.objectContaining({ key: expect.stringContaining('challenge:'), max: 4 }),
+        ]));
+    });
+
+    it('refuses password shutdown while a password-only account remains', async () => {
+        enableEmail();
+        process.env.AUTH_PASSWORD_LOGIN_DISABLED = 'true';
+        dbMock.$queryRawUnsafe.mockResolvedValueOnce([{ count: 1n }]);
+        await expect(buildApp()).rejects.toThrow('password-only accounts exist');
+    });
+
+    it('counts legacy credentials and only accepts currently configured replacement providers', () => {
+        expect(enabledReplacementIdentityProviders(true, false)).toEqual(['email']);
+        expect(enabledReplacementIdentityProviders(false, true)).toEqual(['google']);
+        expect(enabledReplacementIdentityProviders(true, true)).toEqual(['email', 'google']);
+    });
+
+    it('does not treat a disabled Google identity as a usable replacement', async () => {
+        enableEmail();
+        process.env.AUTH_PASSWORD_LOGIN_DISABLED = 'true';
+        dbMock.$queryRawUnsafe.mockResolvedValueOnce([{ count: 0n }]);
+        const app = await buildApp();
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringMatching(/IN \('email'\)/));
+        expect(dbMock.$queryRawUnsafe.mock.calls[0][0]).not.toContain("'google'");
+        await app.close();
+    });
+
+    it('does not treat a disabled Email identity as a usable replacement', async () => {
+        process.env.GOOGLE_CLIENT_ID = 'google-client';
+        process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
+        process.env.AUTH_PASSWORD_LOGIN_DISABLED = 'true';
+        dbMock.$queryRawUnsafe.mockResolvedValueOnce([{ count: 0n }]);
+        const app = await buildApp();
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringMatching(/IN \('google'\)/));
+        expect(dbMock.$queryRawUnsafe.mock.calls[0][0]).not.toContain("'email'");
+        await app.close();
+    });
+
+    it('sends a normalized code without exposing it in the API response', async () => {
+        enableEmail();
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST', url: '/v1/auth/email/code', payload: { email: ' Person@Example.com ' },
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({
+            challengeId: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+        });
+        expect(sendLoginCodeMock).toHaveBeenCalledWith(expect.objectContaining({ provider: 'resend' }), {
+            to: 'person@example.com', code: '123456', expiresInMinutes: 10,
+            idempotencyKey: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+        });
+        expect(response.body).not.toContain('123456');
+        await app.close();
+    });
+
+    it('logs in an existing email identity only after consuming the matching challenge', async () => {
+        enableEmail();
+        process.env.SIGNUP_MODE = 'closed';
+        dbMock.$queryRawUnsafe.mockImplementation(async (sql: string) => {
+            if (sql.includes('"provider" = \'email\'')) return [{ accountId: 'email-account' }];
+            return [{ id: 1 }];
+        });
+        accountSecretsMock.loadAccountSecret.mockResolvedValue('account-secret');
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST', url: '/v1/account/login/email',
+            payload: {
+                email: 'person@example.com',
+                challengeId: '37ac495d-799b-4290-9048-fcf4ee37c0f0',
+                code: '123456',
+            },
+        });
+        expect(response.statusCode).toBe(200);
+        expect(consumeEmailChallengeMock).toHaveBeenCalledWith(
+            '37ac495d-799b-4290-9048-fcf4ee37c0f0', 'person@example.com', '123456',
+        );
+        expect(response.json()).toMatchObject({ token: 'login-token', secret: 'account-secret' });
+        await app.close();
+    });
+
+    it('enforces password disablement at the server boundary, not only in Web UI', async () => {
+        enableEmail();
+        process.env.AUTH_PASSWORD_LOGIN_DISABLED = 'true';
+        const app = await buildApp();
+        const config = await app.inject({ method: 'GET', url: '/v1/auth/config' });
+        expect(config.json()).toMatchObject({ emailOtpEnabled: true, passwordLoginEnabled: false });
+        const login = await app.inject({
+            method: 'POST', url: '/v1/account/login', payload: { username: 'alice', password: 'password' },
+        });
+        const signup = await app.inject({
+            method: 'POST', url: '/v1/account/signup/password',
+            payload: { username: 'alice', password: 'password', secret: credentialSecret },
+        });
+        expect(login.statusCode).toBe(403);
+        expect(signup.statusCode).toBe(403);
+        expect(login.json()).toEqual({ error: 'password_login_disabled' });
+        expect(signup.json()).toEqual({ error: 'password_login_disabled' });
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('AccountCredential'));
+        await app.close();
+    });
 });
 
 describe('password credential hashing', () => {

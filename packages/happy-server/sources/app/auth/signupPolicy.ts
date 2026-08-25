@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/storage/db';
 
 export type SignupMode = 'open' | 'invite' | 'closed';
-export type SignupProvider = 'password' | 'google' | 'key';
+export type SignupProvider = 'password' | 'google' | 'email' | 'key';
 export type SignupRejectionReason = 'signup-closed' | 'invite-required' | 'capacity-reached';
 
 export interface SignupPolicy {

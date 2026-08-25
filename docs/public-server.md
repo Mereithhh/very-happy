@@ -18,7 +18,7 @@ not equivalent to self-hosting.
 
 The operator can set registration to `open`, `invite`, or `closed`, and can set a
 global account maximum. Reaching the maximum blocks only new accounts. Existing
-password and Google identities continue to sign in. The signup page reports the
+email-code, password, and Google identities continue to sign in. The signup page reports the
 current state without exposing private account information.
 
 Capacity is an operational safety valve, not a per-user entitlement. It does not

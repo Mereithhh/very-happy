@@ -67,6 +67,7 @@ import {
   type ModeOption,
 } from '@/components/modelModeOptions';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
+import { loadPublicAuthConfig } from '@/auth/cloudAuth';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
@@ -467,6 +468,15 @@ function Account() {
   const { logout, credentials } = useAuth();
   const toast = useToast();
   const profile = useProfile();
+  const [passwordLoginEnabled, setPasswordLoginEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPublicAuthConfig().then((config) => {
+      if (!cancelled) setPasswordLoginEnabled(config?.passwordLoginEnabled !== false);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
@@ -536,12 +546,12 @@ function Account() {
           {profile.id && (
             <Item title={t('settingsAccount.publicId')} detail={profile.id} />
           )}
-          <Item
+          {passwordLoginEnabled === true && <Item
             title={t('settingsAccount.password')}
             subtitle={t('settingsAccount.passwordChange')}
             right={<ChevronRight size={16} />}
             onClick={() => navigate('/settings/password')}
-          />
+          />}
           <Item title={t('settingsAccount.server')} detail={serverInfo.hostname} />
         </ItemGroup>
 
@@ -1987,6 +1997,15 @@ function Password() {
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [touched, setTouched] = useState<{ u?: boolean; p?: boolean; c?: boolean }>({});
+  const [passwordLoginEnabled, setPasswordLoginEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPublicAuthConfig().then((config) => {
+      if (!cancelled) setPasswordLoginEnabled(config?.passwordLoginEnabled !== false);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const usernameError = touched.u && username.trim().length === 0 ? (t('profile.username')) : null;
   const passwordError =
@@ -2030,6 +2049,7 @@ function Password() {
   return (
     <Page>
       <Header title={t('settingsAccount.password')} />
+      {passwordLoginEnabled === null ? <div className="set-note"><Spinner /></div> : !passwordLoginEnabled ? <div className="set-note">{t('emailAuth.passwordDisabled')}</div> : <>
       <div className="set-note">{t('setPassword.intro')}</div>
       <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <Input
@@ -2064,6 +2084,7 @@ function Password() {
           {t('setPassword.save')}
         </Button>
       </form>
+      </>}
     </Page>
   );
 }

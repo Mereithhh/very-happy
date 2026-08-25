@@ -11,8 +11,8 @@ state. Never commit production values.
 | `SIGNUP_MODE` | `open`, `invite`, or `closed` | `closed` until the instance is verified |
 | `SIGNUP_MAX_ACCOUNTS` | Global account cap; `0`/unset is unlimited | Set an explicit small value for public service |
 | `SIGNUP_INVITE_CODES` | Comma-separated codes for invite mode | Store outside Git |
-| `LOGIN_SESSION_TTL_DAYS` | Password/Google Web login lifetime, 1–365 | `30` |
-| `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | Active Password/Google Web sessions retained per account; oldest active session is evicted before a new login | `20` |
+| `LOGIN_SESSION_TTL_DAYS` | Email/Google/password Web login lifetime, 1–365 | `30` |
+| `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | Active Email/Google/password Web sessions retained per account; oldest active session is evicted before a new login | `20` |
 | `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | Shared database-backed password/username change rate; `0` disables only for a trusted private relay | `5` |
 | `TRUST_PROXY` | Trusted hop count or proxy IP/CIDR allowlist | Exact topology; never unrestricted trust |
 | `PORT` | HTTP/WebSocket port | `3005` |
@@ -72,6 +72,46 @@ Set `GOOGLE_CLIENT_ID` and `GOOGLE_ALLOWED_ORIGINS` together. Create your own We
 OAuth client and list exact HTTPS JavaScript origins. The GIS popup flow needs no
 client secret or redirect URI. Loopback HTTP is allowed for local development;
 non-loopback origins must use HTTPS.
+
+## Passwordless email login
+
+The Web prefers a six-digit email code when a provider is configured. Choose one
+provider and verify the sender domain in that provider first:
+
+```env
+# Resend
+AUTH_EMAIL_PROVIDER=resend
+AUTH_EMAIL_FROM="Very Happy <login@example.com>"
+RESEND_API_KEY=<deployment-secret>
+
+# Or Cloudflare Email Service
+# AUTH_EMAIL_PROVIDER=cloudflare
+# AUTH_EMAIL_FROM="Very Happy <login@example.com>"
+# CLOUDFLARE_EMAIL_ACCOUNT_ID=<account-id>
+# CLOUDFLARE_EMAIL_API_TOKEN=<scoped-deployment-secret>
+```
+
+Cloudflare Email Sending is currently Beta. Sending to arbitrary recipients
+requires Workers Paid (verified test destinations alone do not); use Resend when
+you prefer a generally available provider without that Cloudflare plan dependency.
+
+Optional controls are `AUTH_EMAIL_CODE_TTL_MINUTES` (default `10`, range 2–30),
+`MAX_PENDING_EMAIL_LOGIN_CHALLENGES` (default `10000`), and the shared
+`AUTH_EMAIL_GLOBAL_DAILY_SEND_LIMIT` / `AUTH_EMAIL_GLOBAL_MONTHLY_SEND_LIMIT`
+(defaults `200` / `3000`). Codes are bound to
+the normalized email and challenge, stored as HMACs, consumed once, and locked
+after three wrong attempts. Sending and verification also use database-backed
+email/IP/global rate limits.
+
+After a real delivery-and-login smoke test, an operator may set
+`AUTH_PASSWORD_LOGIN_DISABLED=true`. That setting rejects password signup,
+login, and credential changes at the server and removes those controls from new
+Web clients. Existing email/Google accounts, CLI pairing, machines, and sessions
+remain valid. The server refuses to start if all interactive login methods would
+be disabled or any password identity still lacks email/Google on that same
+Account. Sending a code to the same-looking address does not merge identities;
+verify the Owner's replacement login reaches the original account before
+enabling this setting.
 
 GitHub connect is enabled only when its client settings and an HTTPS
 `PUBLIC_WEBAPP_URL` (or `HAPPY_WEB_URL`) are present. OAuth callbacks return to

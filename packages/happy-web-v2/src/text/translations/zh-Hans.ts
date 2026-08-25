@@ -1833,6 +1833,32 @@ export const zhHans: TranslationStructure = {
         success: '账户已创建，欢迎！',
     },
 
+    emailAuth: {
+        title: '使用邮箱继续',
+        subtitle: '我们会发送 6 位验证码，无需密码。',
+        email: '邮箱地址',
+        emailPlaceholder: 'you@example.com',
+        sendCode: '发送验证码',
+        code: '验证码',
+        codePlaceholder: '6 位验证码',
+        verify: '验证并继续',
+        sent: ({ email }: { email: string }) => `验证码已发送至 ${email}`,
+        expiresIn: ({ seconds }: { seconds: number }) => `${seconds} 秒后过期`,
+        expired: '验证码已过期，请重新发送。',
+        resend: '重新发送验证码',
+        resendIn: ({ seconds }: { seconds: number }) => `${seconds} 秒后可重新发送`,
+        changeEmail: '更换邮箱',
+        usePassword: '改用用户名和密码',
+        hidePassword: '收起密码登录',
+        passwordDisabled: '此中继已关闭密码登录，请使用邮箱验证码或 Google。',
+        orGoogle: '或使用 Google 继续',
+        invalidEmail: '请输入有效的邮箱地址。',
+        invalidCode: '验证码无效或已过期，请重新获取。',
+        deliveryUnavailable: '邮件暂时无法发送，请稍后重试。',
+        notConfigured: '此中继尚未配置邮箱登录。',
+        network: '无法连接中继，请检查网络后重试。',
+    },
+
     // Per-agent defaults settings screen.
     settingsAgents: {
         title: '智能体默认设置',
