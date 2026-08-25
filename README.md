@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Open-source candidate" src="https://img.shields.io/badge/open_source-candidate-111820?style=flat-square&labelColor=070a0e&color=2d3b42">
+  <img alt="Open source" src="https://img.shields.io/badge/open_source-public-111820?style=flat-square&labelColor=070a0e&color=2d3b42">
   <img alt="Web and installable PWA" src="https://img.shields.io/badge/client-Web_%2F_PWA-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="Node 20, 22 and 24" src="https://img.shields.io/badge/Node-20_%7C_22_%7C_24-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-34e2c4?style=flat-square&labelColor=070a0e&color=238b7b">
