@@ -294,7 +294,7 @@ function Overview() {
 // ===================================================================
 
 function Appearance() {
-  const { t, lang, setLanguage } = useTranslation();
+  const { t, setLanguage, useDeviceLanguage } = useTranslation();
   const { preference, setPreference } = useTheme();
   // NOTE: wired to `showLineNumbersInToolViews` — the key ToolView actually
   // reads. (The legacy `showLineNumbers` schema key has no web consumer.)
@@ -302,7 +302,7 @@ function Appearance() {
   // Consumed by DiffView on coarse-pointer (touch) devices only — desktop
   // diffs always use horizontal scroll (see DiffView for why).
   const [wrapDiffLines, setWrapDiffLines] = useSettingMutable('wrapLinesInDiffs');
-  const [, setPreferredLanguage] = useSettingMutable('preferredLanguage');
+  const [preferredLanguage, setPreferredLanguage] = useSettingMutable('preferredLanguage');
   // device-local: what `/` shows when nothing is open (empty detail vs board)
   const [homeView, setHomeView] = useLocalSettingMutable('homeView');
   // device-local: the two ⌘W close guards (in-app confirm / browser leave-site
@@ -335,6 +335,7 @@ function Appearance() {
     // UI updates instantly — no app restart needed on web.
     setPreferredLanguage(code);
     if (code) setLanguage(code);
+    else useDeviceLanguage();
   }
 
   return (
@@ -424,6 +425,8 @@ function Appearance() {
           <Item
             title={t('settingsLanguage.automatic')}
             subtitle={t('settingsLanguage.automaticSubtitle')}
+            selected={preferredLanguage == null}
+            right={preferredLanguage == null ? <Check size={16} /> : undefined}
             onClick={() => pickLanguage(null)}
           />
           {langCodes.map((code) => (
@@ -432,8 +435,8 @@ function Appearance() {
               title={SUPPORTED_LANGUAGES[code].nativeName}
               subtitle={SUPPORTED_LANGUAGES[code].englishName}
               detail={code}
-              selected={lang === code}
-              right={lang === code ? <Check size={16} /> : undefined}
+              selected={preferredLanguage === code}
+              right={preferredLanguage === code ? <Check size={16} /> : undefined}
               onClick={() => pickLanguage(code)}
             />
           ))}

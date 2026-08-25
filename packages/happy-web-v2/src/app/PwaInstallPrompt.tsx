@@ -1,6 +1,7 @@
 import { Download, MoreVertical, Share2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CyberMark } from '@/ui/CyberMark';
+import { usePublicI18n } from '@/i18n/publicI18n';
 import {
   PWA_INSTALL_CONFIRMED_KEY,
   PWA_INSTALL_DISMISSED_AT_KEY,
@@ -34,49 +35,12 @@ function writeStorage(key: string, value: string) {
   }
 }
 
-function copyFor(guide: PwaInstallGuide, chinese: boolean) {
-  if (chinese) {
-    return {
-      eyebrow: '随时工作 // WEB APP',
-      title: '把 Very Happy 装到手机',
-      body: guide === 'native'
-        ? '从主屏幕一键进入独立工作区，不需要先找到浏览器标签页。'
-        : '从主屏幕直接进入独立工作区；安装后仍使用同一个账号和中继。',
-      install: '安装 Web App',
-      later: '暂不',
-      done: '知道了',
-      iosOne: '点浏览器工具栏里的“分享”',
-      iosTwo: '选择“添加到主屏幕”',
-      manualOne: '打开浏览器菜单',
-      manualTwo: '选择“安装应用”或“添加到主屏幕”',
-      close: '关闭安装提示',
-      pending: '正在打开…',
-    };
-  }
-  return {
-    eyebrow: 'WORK ANYWHERE // WEB APP',
-    title: 'Install Very Happy',
-    body: guide === 'native'
-      ? 'Launch the standalone workspace from your Home Screen—no browser-tab hunt required.'
-      : 'Open the standalone workspace from your Home Screen. It uses the same account and relay.',
-    install: 'Install web app',
-    later: 'Not now',
-    done: 'Got it',
-    iosOne: 'Tap Share in your browser toolbar',
-    iosTwo: 'Choose Add to Home Screen',
-    manualOne: 'Open your browser menu',
-    manualTwo: 'Choose Install app or Add to Home screen',
-    close: 'Close install prompt',
-    pending: 'Opening…',
-  };
-}
-
 export function PwaInstallPrompt() {
   const [guide, setGuide] = useState<PwaInstallGuide | null>(null);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [prompting, setPrompting] = useState(false);
-  const chinese = useMemo(() => navigator.language.toLowerCase().startsWith('zh'), []);
-  const copy = guide ? copyFor(guide, chinese) : null;
+  const { copy: publicCopy } = usePublicI18n();
+  const copy = guide ? { ...publicCopy.pwa, body: guide === 'native' ? publicCopy.pwa.nativeBody : publicCopy.pwa.manualBody } : null;
 
   useEffect(() => {
     const mobileQuery = window.matchMedia('(max-width: 860px), (pointer: coarse)');

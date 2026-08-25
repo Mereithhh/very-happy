@@ -1900,8 +1900,30 @@ export const en = {
         showHelp: 'Show this help',
     },
 
+    // Account login screen (web).
+    login: {
+        pageTitle: 'Sign in — Very Happy',
+        accountStep: '01 / ACCOUNT',
+        consoleLabel: 'Remote agent console',
+        title: 'Pick up where you left off.',
+        subtitle: 'Your agent sessions, terminals, and machines — ready in one console.',
+        waiting: 'waiting for identity',
+    },
+
+    authCommon: {
+        helpPrefix: 'Can’t connect?',
+        troubleshooting: 'Open troubleshooting',
+        registrationHelp: 'Registration unavailable?',
+        accountPolicies: 'Review account policies',
+        home: 'Home',
+        docs: 'Docs',
+        privacy: 'Privacy',
+        terms: 'Terms',
+    },
+
     // Account signup screen (web).
     signup: {
+        pageTitle: 'Create account — Very Happy',
         title: 'Create your account',
         subtitle: 'Pick a username and password to reach your sessions from any device.',
         username: 'Username',

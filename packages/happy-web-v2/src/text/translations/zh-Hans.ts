@@ -1819,8 +1819,30 @@ export const zhHans: TranslationStructure = {
         showHelp: '显示此帮助',
     },
 
+    // Account login screen (web).
+    login: {
+        pageTitle: '登录 — Very Happy',
+        accountStep: '01 / 账户',
+        consoleLabel: '远程 Agent 控制台',
+        title: '继续上次的工作。',
+        subtitle: 'Agent 会话、终端与机器，都在同一个控制台。',
+        waiting: '等待身份验证',
+    },
+
+    authCommon: {
+        helpPrefix: '无法连接？',
+        troubleshooting: '打开故障排查',
+        registrationHelp: '无法注册？',
+        accountPolicies: '查看账户策略',
+        home: '首页',
+        docs: '文档',
+        privacy: '隐私',
+        terms: '条款',
+    },
+
     // Account signup screen (web).
     signup: {
+        pageTitle: '创建账户 — Very Happy',
         title: '创建账户',
         subtitle: '设置用户名和密码，即可在任意设备访问你的会话。',
         username: '用户名',

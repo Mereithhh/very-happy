@@ -8,9 +8,9 @@ import { ca } from './translations/ca';
 import { zhHans } from './translations/zh-Hans';
 import { zhHant } from './translations/zh-Hant';
 import { ja } from './translations/ja';
-import * as Localization from 'expo-localization';
 import { loadSettings } from '@/sync/persistence';
 import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
+import { announceLanguageChange, browserLanguageTags, LANGUAGE_CHANGE_EVENT, resolveLanguageFromTags, setDocumentLanguage } from '@/i18n/localeCore';
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -115,45 +115,14 @@ if (settings.settings.preferredLanguage && settings.settings.preferredLanguage i
 
 // Read from device
 if (!found) {
-    let locales = Localization.getLocales();
-    console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
-    for (let l of locales) {
-        if (l.languageCode) {
-            // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
-            if (l.languageCode === 'zh') {
-                let chineseVariant: string | null = null;
-
-                // We only have translations for simplified Chinese right now, but looking for help with traditional Chinese.
-                if (l.languageScriptCode === 'Hans') {
-                    chineseVariant = 'zh-Hans';
-                } else if (l.languageScriptCode === 'Hant') {
-                    chineseVariant = 'zh-Hant';
-                }
-
-                console.log(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
-
-                if (chineseVariant && chineseVariant in translations) {
-                    currentLanguage = chineseVariant as SupportedLanguage;
-                    console.log(`[i18n] Using Chinese variant: ${currentLanguage}`);
-                    break;
-                }
-
-                currentLanguage = 'zh-Hans';
-                console.log(`[i18n] Falling back to simplified Chinese: zh-Hans`);
-                break;
-            }
-
-            // Direct match for non-Chinese languages
-            if (l.languageCode in translations) {
-                currentLanguage = l.languageCode as SupportedLanguage;
-                console.log(`[i18n] Using device locale: ${currentLanguage}`);
-                break;
-            }
-        }
-    }
+    const tags = browserLanguageTags();
+    console.log(`[i18n] Device locales:`, tags);
+    currentLanguage = resolveLanguageFromTags(tags, Object.keys(translations) as SupportedLanguage[], DEFAULT_LANGUAGE);
+    console.log(`[i18n] Using device locale: ${currentLanguage}`);
 }
 
 console.log(`[i18n] Final language: ${currentLanguage}`);
+setDocumentLanguage(currentLanguage);
 
 /**
  * Main translation function with strict typing
@@ -242,10 +211,29 @@ export function getCurrentLanguage(): SupportedLanguage {
 //
 const languageListeners = new Set<() => void>();
 
+if (typeof window !== 'undefined') {
+    window.addEventListener(LANGUAGE_CHANGE_EVENT, (event) => {
+        const language = (event as CustomEvent<string>).detail as SupportedLanguage;
+        if (!(language in translations) || language === currentLanguage) return;
+        currentLanguage = language;
+        setDocumentLanguage(language);
+        languageListeners.forEach((listener) => listener());
+    });
+}
+
 export function setLanguage(lang: SupportedLanguage): void {
     if (!(lang in translations)) return;
     currentLanguage = lang;
+    announceLanguageChange(lang);
     languageListeners.forEach((l) => l());
+}
+
+export function getDeviceLanguage(): SupportedLanguage {
+    return resolveLanguageFromTags(
+        browserLanguageTags(),
+        Object.keys(translations) as SupportedLanguage[],
+        DEFAULT_LANGUAGE,
+    );
 }
 
 export function subscribeLanguage(listener: () => void): () => void {

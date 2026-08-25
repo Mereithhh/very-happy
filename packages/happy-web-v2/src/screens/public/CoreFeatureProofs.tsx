@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { AssistantLogo, type AssistantLogoState } from '../assistant/AssistantLogo';
 import { CyberMark } from '../../ui/CyberMark';
+import { usePublicI18n } from '../../i18n/publicI18n';
 
 // These are the authenticated product's visual contracts. This public proof
 // keeps only local demo state, so it never imports auth, sync, storage, or socket
@@ -50,12 +51,20 @@ const AGENT_FACTS: Record<AgentKey, { status: string; detail: string }> = {
 };
 
 function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
+  const { language } = usePublicI18n();
+  const zh = language === 'zh-Hans';
   const inputId = useId();
   const [voiceState, setVoiceState] = useState<VoicePreviewState>('idle');
   const [speakingTurn, setSpeakingTurn] = useState(0);
   const [draft, setDraft] = useState('What still blocks the release?');
   const [userText, setUserText] = useState('Check the release without making me patrol every session.');
   const [reply, setReply] = useState('Two checks remain on workstation: the mobile browser pass and the final security review. I will keep the summary here.');
+
+  useEffect(() => {
+    setDraft(zh ? '还有什么阻塞发布？' : 'What still blocks the release?');
+    setUserText(zh ? '帮我检查发布，不要让我逐个巡视会话。' : 'Check the release without making me patrol every session.');
+    setReply(zh ? 'workstation 上还剩两项检查：移动浏览器验收和最终安全审查。我会在这里持续汇总。' : 'Two checks remain on workstation: the mobile browser pass and the final security review. I will keep the summary here.');
+  }, [zh]);
 
   useEffect(() => {
     if (voiceState !== 'speaking') return;
@@ -66,8 +75,8 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
   const finishVoicePreview = () => {
     setVoiceState('speaking');
     setSpeakingTurn((turn) => turn + 1);
-    setUserText('Give me the release status.');
-    setReply('The selected workstation is healthy. One browser check remains; no other machine was contacted.');
+    setUserText(zh ? '告诉我发布状态。' : 'Give me the release status.');
+    setReply(zh ? '已选 workstation 运行正常，只剩一项浏览器检查；没有联系其他机器。' : 'The selected workstation is healthy. One browser check remains; no other machine was contacted.');
   };
 
   const onPttDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -101,36 +110,35 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
     const next = draft.trim();
     if (!next) return;
     setUserText(next);
-    setReply('I can coordinate Claude work on workstation and report back here. Fleet-wide provider routing is still roadmap.');
+    setReply(zh ? '我可以协调 workstation 上的 Claude 工作并在这里回报。跨机器、跨 provider 自动路由仍在路线图中。' : 'I can coordinate Claude work on workstation and report back here. Fleet-wide provider routing is still roadmap.');
     setDraft('');
     setVoiceState('speaking');
     setSpeakingTurn((turn) => turn + 1);
   };
 
   const stateLabel = voiceState === 'listening'
-    ? 'LISTENING · PREVIEW ONLY'
-    : voiceState === 'speaking'
-      ? 'SAMPLE REPLY'
-      : 'READY ON SELECTED MACHINE';
+      ? (zh ? '正在倾听 · 仅预览' : 'LISTENING · PREVIEW ONLY')
+      : voiceState === 'speaking'
+      ? (zh ? '示例回复' : 'SAMPLE REPLY')
+      : (zh ? '已在选定机器就绪' : 'READY ON SELECTED MACHINE');
 
   return (
     <article className="cfp-card cfp-card--voice" aria-labelledby={titleId}>
       <div className="cfp-copy">
         <div className="cfp-proof-line">
-          <span>OPTIONAL VOICE</span>
-          <span>REQUIRES VOICE CONFIGURATION</span>
+          <span>{zh ? '可选语音' : 'OPTIONAL VOICE'}</span>
+          <span>{zh ? '需要语音配置' : 'REQUIRES VOICE CONFIGURATION'}</span>
         </div>
-        <h3 id={titleId}>Talk to the work, on the machine you chose.</h3>
+        <h3 id={titleId}>{zh ? '在你选择的机器上，直接与工作对话。' : 'Talk to the work, on the machine you chose.'}</h3>
         <p>
-          The coordinator is a Claude meta-agent session on one selected machine. Hold to talk or type;
-          configured speech services add STT/TTS. Automatic cross-machine or cross-provider routing is roadmap.
+          {zh ? '协调器是选定机器上的 Claude meta-agent 会话。按住说话或直接输入；配置语音服务后可增加 STT/TTS。跨机器或跨 provider 自动路由仍在路线图中。' : 'The coordinator is a Claude meta-agent session on one selected machine. Hold to talk or type; configured speech services add STT/TTS. Automatic cross-machine or cross-provider routing is roadmap.'}
         </p>
       </div>
 
       <div className="cfp-surface" data-surface="voice">
         <div className="cfp-surface-bar" aria-hidden="true">
-          <span><i /> REAL ASSISTANT UI</span>
-          <span>LOCAL INTERACTION · NO AUDIO CAPTURE</span>
+          <span><i /> {zh ? '真实助手界面' : 'REAL ASSISTANT UI'}</span>
+          <span>{zh ? '本地交互 · 不采集音频' : 'LOCAL INTERACTION · NO AUDIO CAPTURE'}</span>
         </div>
         <div
           className="as-root cfp-voice"
@@ -139,9 +147,9 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
           <div className="as-col">
             <header className="as-header">
               <span className="as-header-title">Meta-agent</span>
-              <span className="as-header-machine">workstation · selected</span>
+              <span className="as-header-machine">workstation · {zh ? '已选择' : 'selected'}</span>
               <span className="as-header-spacer" />
-              <span className="cfp-config-chip">VOICE OPTIONAL</span>
+              <span className="cfp-config-chip">{zh ? '语音可选' : 'VOICE OPTIONAL'}</span>
             </header>
 
             <div className="as-stage">
@@ -167,8 +175,8 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
 
               <div className="as-ticker" data-running="false">
                 <Rocket size={13} className="as-ticker-icon" aria-hidden="true" />
-                <span className="as-ticker-name">Claude dispatch scope</span>
-                <span className="as-ticker-arg">workstation only</span>
+                <span className="as-ticker-name">{zh ? 'Claude 派发范围' : 'Claude dispatch scope'}</span>
+                <span className="as-ticker-arg">{zh ? '仅 workstation' : 'workstation only'}</span>
               </div>
             </div>
 
@@ -178,7 +186,7 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
                 className="as-ptt"
                 data-recording={voiceState === 'listening'}
                 aria-pressed={voiceState === 'listening'}
-                aria-label="Hold to talk in the local preview; no audio is recorded"
+                aria-label={zh ? '在本地预览中按住说话；不会录音' : 'Hold to talk in the local preview; no audio is recorded'}
                 onPointerDown={onPttDown}
                 onPointerUp={onPttUp}
                 onPointerCancel={() => setVoiceState('idle')}
@@ -193,22 +201,22 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
                   </span>
                 ) : <Mic size={28} />}
               </button>
-              <span className="as-ptt-hint">Hold to preview · microphone is not opened</span>
+              <span className="as-ptt-hint">{zh ? '按住预览 · 不会打开麦克风' : 'Hold to preview · microphone is not opened'}</span>
 
               <form className="as-input-row" onSubmit={submitText}>
-                <label className="sr-only" htmlFor={inputId}>Message the coordinator preview</label>
+                <label className="sr-only" htmlFor={inputId}>{zh ? '向协调器预览发送消息' : 'Message the coordinator preview'}</label>
                 <input
                   id={inputId}
                   className="as-input"
                   type="text"
                   value={draft}
-                  placeholder="Ask the selected-machine coordinator"
+                  placeholder={zh ? '询问选定机器上的协调器' : 'Ask the selected-machine coordinator'}
                   onChange={(event) => setDraft(event.target.value)}
                 />
                 <button
                   type="submit"
                   className="as-send-btn"
-                  aria-label="Send in the local preview"
+                  aria-label={zh ? '在本地预览中发送' : 'Send in the local preview'}
                   disabled={!draft.trim()}
                 >
                   <SendHorizontal size={16} />
@@ -223,13 +231,15 @@ function VoiceCoordinatorProof({ titleId }: { titleId: string }) {
 }
 
 function NewSessionProof({ titleId }: { titleId: string }) {
+  const { language } = usePublicI18n();
+  const zh = language === 'zh-Hans';
   const machineId = useId();
   const directoryId = useId();
   const instructionId = useId();
   const [machine, setMachine] = useState<(typeof MACHINES)[number]['id']>('workstation');
   const [directory, setDirectory] = useState<string>(PATHS[0]);
   const [agent, setAgent] = useState<AgentKey>('codex');
-  const [instruction, setInstruction] = useState('Run the release checks and summarize any blocker.');
+  const [instruction, setInstruction] = useState(zh ? '运行发布检查并汇总所有阻塞项。' : 'Run the release checks and summarize any blocker.');
   const [reviewed, setReviewed] = useState(false);
 
   const selectedMachine = useMemo(
@@ -250,27 +260,26 @@ function NewSessionProof({ titleId }: { titleId: string }) {
     <article className="cfp-card cfp-card--launch" aria-labelledby={titleId}>
       <div className="cfp-copy">
         <div className="cfp-proof-line">
-          <span>MULTI-AGENT LAUNCH</span>
-          <span>EXPLICIT MACHINE SCOPE</span>
+          <span>{zh ? '多 AGENT 启动' : 'MULTI-AGENT LAUNCH'}</span>
+          <span>{zh ? '明确的机器范围' : 'EXPLICIT MACHINE SCOPE'}</span>
         </div>
-        <h3 id={titleId}>Pick the machine, path, and agent. Then start.</h3>
+        <h3 id={titleId}>{zh ? '选好机器、路径和 Agent，然后开始。' : 'Pick the machine, path, and agent. Then start.'}</h3>
         <p>
-          The current Web launcher offers Claude, Codex, Gemini, and OpenClaw. The selected machine starts
-          the agent—or connects its configured OpenClaw gateway. Gemini uses beta ACP; OpenClaw does not.
+          {zh ? '当前 Web 启动器支持 Claude、Codex、Gemini 和 OpenClaw。选定机器会启动 Agent，或连接已配置的 OpenClaw gateway。Gemini 使用 beta ACP；OpenClaw 不使用 ACP。' : 'The current Web launcher offers Claude, Codex, Gemini, and OpenClaw. The selected machine starts the agent—or connects its configured OpenClaw gateway. Gemini uses beta ACP; OpenClaw does not.'}
         </p>
       </div>
 
       <div className="cfp-surface" data-surface="launcher">
         <div className="cfp-surface-bar" aria-hidden="true">
-          <span><i /> REAL NEW-SESSION UI</span>
-          <span>SANITIZED DEMO · NO CONNECTION</span>
+          <span><i /> {zh ? '真实新建会话界面' : 'REAL NEW-SESSION UI'}</span>
+          <span>{zh ? '脱敏演示 · 不会连接' : 'SANITIZED DEMO · NO CONNECTION'}</span>
         </div>
 
         <form className="ns-card cfp-launcher" onSubmit={onReview}>
-          <div className="cfp-ui-kicker">CURRENT WEB FLOW</div>
-          <div className="ns-title">New agent session</div>
+          <div className="cfp-ui-kicker">{zh ? '当前 WEB 流程' : 'CURRENT WEB FLOW'}</div>
+          <div className="ns-title">{zh ? '新建 Agent 会话' : 'New agent session'}</div>
 
-          <label className="ns-label" htmlFor={machineId}>Machine</label>
+          <label className="ns-label" htmlFor={machineId}>{zh ? '机器' : 'Machine'}</label>
           <select
             id={machineId}
             className="ns-select"
@@ -285,8 +294,8 @@ function NewSessionProof({ titleId }: { titleId: string }) {
             ))}
           </select>
 
-          <label className="ns-label" htmlFor={directoryId}>Directory</label>
-          <div className="ns-presets" aria-label="Example directory presets">
+          <label className="ns-label" htmlFor={directoryId}>{zh ? '目录' : 'Directory'}</label>
+          <div className="ns-presets" aria-label={zh ? '示例目录预设' : 'Example directory presets'}>
             {PATHS.map((path) => (
               <button
                 key={path}
@@ -343,7 +352,7 @@ function NewSessionProof({ titleId }: { titleId: string }) {
             <p>{agentFact.detail}</p>
           </div>
 
-          <label className="ns-label" htmlFor={instructionId}>Initial instruction</label>
+          <label className="ns-label" htmlFor={instructionId}>{zh ? '初始指令' : 'Initial instruction'}</label>
           <textarea
             id={instructionId}
             className="ns-input ns-initial"
@@ -357,20 +366,20 @@ function NewSessionProof({ titleId }: { titleId: string }) {
 
           <div className="cfp-launch-summary">
             <Server size={14} aria-hidden="true" />
-            <span><strong>{agent}</strong> on {selectedMachine.label}</span>
-            <code>{directory || 'choose a directory'}</code>
+            <span><strong>{agent}</strong> {zh ? '位于' : 'on'} {selectedMachine.label}</span>
+            <code>{directory || (zh ? '选择目录' : 'choose a directory')}</code>
           </div>
 
           <div className="ns-actions">
-            <span className="cfp-demo-note">Interactive preview only</span>
+            <span className="cfp-demo-note">{zh ? '仅交互预览' : 'Interactive preview only'}</span>
             <button className="cfp-launch-button" type="submit" disabled={!directory.trim()}>
               <TerminalSquare size={15} />
-              Review launch
+              {zh ? '检查启动配置' : 'Review launch'}
             </button>
           </div>
 
           <div className="cfp-launch-result" data-visible={reviewed} aria-live="polite">
-            {reviewed && <><Sparkles size={14} aria-hidden="true" /> Selection ready. The signed-in app would create this session on {selectedMachine.label}.</>}
+            {reviewed && <><Sparkles size={14} aria-hidden="true" /> {zh ? `选择已就绪。登录后的 App 会在 ${selectedMachine.label} 上创建该会话。` : `Selection ready. The signed-in app would create this session on ${selectedMachine.label}.`}</>}
           </div>
         </form>
       </div>
@@ -379,6 +388,8 @@ function NewSessionProof({ titleId }: { titleId: string }) {
 }
 
 export function CoreFeatureProofs() {
+  const { language } = usePublicI18n();
+  const zh = language === 'zh-Hans';
   const instanceId = useId();
   const sectionTitleId = `${instanceId}-core-feature-proofs-title`;
   const voiceTitleId = `${instanceId}-voice-proof-title`;
@@ -387,12 +398,11 @@ export function CoreFeatureProofs() {
     <section id="proofs" className="cfp" aria-labelledby={sectionTitleId}>
       <header className="cfp-heading">
         <div>
-          <div className="cfp-eyebrow">CORE CAPABILITIES // SHOWN IN PRODUCT UI</div>
-          <h2 id={sectionTitleId}>The feature claim and the interface, side by side.</h2>
+          <div className="cfp-eyebrow">{zh ? '核心能力 // 在产品界面中呈现' : 'CORE CAPABILITIES // SHOWN IN PRODUCT UI'}</div>
+          <h2 id={sectionTitleId}>{zh ? '功能主张与真实界面，并排展示。' : 'The feature claim and the interface, side by side.'}</h2>
         </div>
         <p>
-          These are lightweight, data-only renderings of the production interaction contracts—not imaginary
-          dashboards. Try the controls; nothing connects to a machine from this public page.
+          {zh ? '这些是生产交互契约的轻量、纯数据演示，不是凭空想象的仪表盘。可以尝试操作；公开页不会连接任何机器。' : 'These are lightweight, data-only renderings of the production interaction contracts—not imaginary dashboards. Try the controls; nothing connects to a machine from this public page.'}
         </p>
       </header>
 

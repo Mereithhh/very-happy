@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import {
   t,
   getCurrentLanguage,
+  getDeviceLanguage,
   setLanguage,
   subscribeLanguage,
   type SupportedLanguage,
@@ -18,6 +19,7 @@ export function useTranslation() {
     t,
     lang,
     setLanguage: (l: SupportedLanguage) => setLanguage(l),
+    useDeviceLanguage: () => setLanguage(getDeviceLanguage()),
   };
 }
 
