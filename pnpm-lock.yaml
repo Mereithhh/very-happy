@@ -241,6 +241,37 @@ importers:
       vitest:
         specifier: 3.2.6
         version: 3.2.6(@types/debug@4.1.13)(@types/node@20.19.39)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
+    optionalDependencies:
+      very-happy-tools-arm64-darwin:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/arm64-darwin
+      very-happy-tools-arm64-linux:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/arm64-linux
+      very-happy-tools-arm64-win32:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/arm64-win32
+      very-happy-tools-x64-darwin:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/x64-darwin
+      very-happy-tools-x64-linux:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/x64-linux
+      very-happy-tools-x64-win32:
+        specifier: 0.2.61
+        version: link:../happy-cli-tools/x64-win32
+
+  packages/happy-cli-tools/arm64-darwin: {}
+
+  packages/happy-cli-tools/arm64-linux: {}
+
+  packages/happy-cli-tools/arm64-win32: {}
+
+  packages/happy-cli-tools/x64-darwin: {}
+
+  packages/happy-cli-tools/x64-linux: {}
+
+  packages/happy-cli-tools/x64-win32: {}
 
   packages/happy-server:
     dependencies:

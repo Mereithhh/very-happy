@@ -60,7 +60,6 @@
     "dist",
     "bin",
     "scripts",
-    "tools/archives",
     "tools/licenses",
     "package.json",
     "README.md",
@@ -112,6 +111,14 @@
     "tweetnacl": "^1.0.3",
     "ws": "^8.21.3",
     "zod": "^4.0.0"
+  },
+  "optionalDependencies": {
+    "very-happy-tools-arm64-darwin": "0.2.61",
+    "very-happy-tools-x64-darwin": "0.2.61",
+    "very-happy-tools-arm64-linux": "0.2.61",
+    "very-happy-tools-x64-linux": "0.2.61",
+    "very-happy-tools-arm64-win32": "0.2.61",
+    "very-happy-tools-x64-win32": "0.2.61"
   },
   "devDependencies": {
     "@slopus/happy-wire": "workspace:*",

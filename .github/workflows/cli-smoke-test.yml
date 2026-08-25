@@ -1,9 +1,9 @@
 name: CLI Smoke Test
 
 # Builds, packs and globally installs very-happy-cli, then runs the binary's
-# basic subcommands. Cross-platform because the postinstall step
-# (scripts/unpack-tools.cjs) unpacks platform-specific binaries — we want to
-# catch a broken install on Linux/macOS/Windows before publishing.
+# basic subcommands. Cross-platform because the postinstall step resolves the
+# matching optional OS/CPU package and unpacks only its binaries — we want to
+# catch a broken package selection/install on Linux/macOS/Windows before publish.
 #
 # 公开仓库不把 CI 连接到生产宿主机：三个平台均使用 GitHub 托管的临时 runner。
 # Linux 在每个相关 main push/PR 上运行；macOS 在 tag 或手动完整冒烟时运行；
@@ -18,11 +18,13 @@ on:
     tags: [ 'v*' ]
     paths:
       - 'packages/happy-cli/**'
+      - 'packages/happy-cli-tools/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'packages/happy-cli/**'
+      - 'packages/happy-cli-tools/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
     inputs:
@@ -89,9 +91,15 @@ jobs:
       - name: Pack + global install (runs postinstall on this platform)
         shell: bash
         run: |
+          set -euo pipefail
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          pnpm --filter "$TOOLS_NAME" pack --pack-destination packages/happy-cli
           pnpm --filter very-happy-cli pack --pack-destination packages/happy-cli
-          PKG=$(ls packages/happy-cli/*.tgz)
-          npm install -g "./$PKG"
+          TOOLS_PKG=$(ls packages/happy-cli/"$TOOLS_NAME"-*.tgz)
+          CLI_PKG=$(ls packages/happy-cli/very-happy-cli-*.tgz)
+          CLI_BYTES=$(wc -c < "$CLI_PKG")
+          test "$CLI_BYTES" -lt 10000000 || { echo "FAIL: main CLI tarball is $CLI_BYTES bytes"; exit 1; }
+          npm install -g "./$TOOLS_PKG" "./$CLI_PKG"
 
       - name: Run very-happy subcommands
         shell: bash
@@ -118,7 +126,9 @@ jobs:
         # 冒烟就不再是"干净安装"。托管 runner 上这步是无害 no-op。
         if: always()
         shell: bash
-        run: npm uninstall -g very-happy-cli || true
+        run: |
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          npm uninstall -g very-happy-cli "$TOOLS_NAME" || true
 
   # ── 发版档 macOS：打 tag / 手动完整冒烟时跑 GitHub 托管 macOS ─────────
   smoke-macos:
@@ -172,9 +182,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          pnpm --filter "$TOOLS_NAME" pack --pack-destination packages/happy-cli
           pnpm --filter very-happy-cli pack --pack-destination packages/happy-cli
-          PKG=$(ls packages/happy-cli/*.tgz)
-          npm install -g "./$PKG"
+          TOOLS_PKG=$(ls packages/happy-cli/"$TOOLS_NAME"-*.tgz)
+          CLI_PKG=$(ls packages/happy-cli/very-happy-cli-*.tgz)
+          CLI_BYTES=$(wc -c < "$CLI_PKG")
+          test "$CLI_BYTES" -lt 10000000 || { echo "FAIL: main CLI tarball is $CLI_BYTES bytes"; exit 1; }
+          npm install -g "./$TOOLS_PKG" "./$CLI_PKG"
 
       - name: Run very-happy subcommands
         shell: bash
@@ -197,7 +212,9 @@ jobs:
       - name: Cleanup global install
         if: always()
         shell: bash
-        run: npm uninstall -g very-happy-cli || true
+        run: |
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          npm uninstall -g very-happy-cli "$TOOLS_NAME" || true
 
   # ── Windows：**只在手动勾 cross_platform 时跑**，托管 runner（会计费）──────
   # B-148 起不再挂在 tag 上。理由不是「Windows 不重要」，而是它挂在 tag 上时
@@ -256,9 +273,15 @@ jobs:
       - name: Pack + global install (runs postinstall on this platform)
         shell: bash
         run: |
+          set -euo pipefail
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          pnpm --filter "$TOOLS_NAME" pack --pack-destination packages/happy-cli
           pnpm --filter very-happy-cli pack --pack-destination packages/happy-cli
-          PKG=$(ls packages/happy-cli/*.tgz)
-          npm install -g "./$PKG"
+          TOOLS_PKG=$(ls packages/happy-cli/"$TOOLS_NAME"-*.tgz)
+          CLI_PKG=$(ls packages/happy-cli/very-happy-cli-*.tgz)
+          CLI_BYTES=$(wc -c < "$CLI_PKG")
+          test "$CLI_BYTES" -lt 10000000 || { echo "FAIL: main CLI tarball is $CLI_BYTES bytes"; exit 1; }
+          npm install -g "./$TOOLS_PKG" "./$CLI_PKG"
 
       - name: Run very-happy subcommands
         shell: bash
@@ -276,4 +299,6 @@ jobs:
       - name: Cleanup global install
         if: always()
         shell: bash
-        run: npm uninstall -g very-happy-cli || true
+        run: |
+          TOOLS_NAME=$(node -e "process.stdout.write(require('./packages/happy-cli/scripts/unpack-tools.cjs').getPlatformPackageName())")
+          npm uninstall -g very-happy-cli "$TOOLS_NAME" || true

@@ -3,8 +3,10 @@ name: Publish very-happy-cli
 # Publishes the very-happy-cli package to npm when a tag matching v* is pushed.
 # Requires repo secret NPM_TOKEN (an npm automation token with publish rights).
 #
-# This is a monorepo: we only build and publish packages/happy-cli
-# (package name: very-happy-cli) via pnpm --filter.
+# This is a monorepo: publish the six OS/CPU tool packages first, then the
+# very-happy-cli main package that references their exact version as optional
+# dependencies. Never publish the main package first: fresh installs would see
+# a version whose required platform artifact does not exist yet.
 #
 # 同一个 tag 会并行触发 cli-smoke-test.yml 的完整三系统 GitHub-hosted 矩阵——
 # **刻意不做 needs 硬依赖**：保留紧急发版通道（和 deploy-hwsg 一个口径），但发完
@@ -57,16 +59,28 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          # Strip leading "v"; write package.json directly with node. We avoid
+          # Strip leading "v"; update the CLI, all platform packages, and the
+          # CLI's exact optionalDependency pins together. We avoid
           # `npm version` here because npm can't parse the `workspace:*` spec
           # that pnpm uses for the bundled wire devDependency (EUNSUPPORTEDPROTOCOL).
           node -e '
             const fs = require("fs");
-            const f = "packages/happy-cli/package.json";
-            const p = JSON.parse(fs.readFileSync(f, "utf8"));
-            p.version = process.env.VERSION.replace(/^v/, "");
-            fs.writeFileSync(f, JSON.stringify(p, null, 2) + "\n");
-            console.log("Set version to", p.version);
+            const path = require("path");
+            const version = process.env.VERSION.replace(/^v/, "");
+            const cliFile = "packages/happy-cli/package.json";
+            const cli = JSON.parse(fs.readFileSync(cliFile, "utf8"));
+            cli.version = version;
+            for (const name of Object.keys(cli.optionalDependencies || {})) {
+              if (name.startsWith("very-happy-tools-")) cli.optionalDependencies[name] = version;
+            }
+            fs.writeFileSync(cliFile, JSON.stringify(cli, null, 2) + "\n");
+            for (const entry of fs.readdirSync("packages/happy-cli-tools")) {
+              const file = path.join("packages/happy-cli-tools", entry, "package.json");
+              const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+              pkg.version = version;
+              fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+            }
+            console.log("Set CLI and platform package versions to", version);
           '
 
       - name: Build very-happy-cli
@@ -84,9 +98,32 @@ jobs:
           fi
           echo "OK: @slopus/happy-wire is inlined into dist (no external import)."
 
-      - name: Publish to npm
+      - name: Publish platform tool packages to npm
+        run: |
+          set -euo pipefail
+          for package_json in packages/happy-cli-tools/*/package.json; do
+            package_dir=$(dirname "$package_json")
+            package_name=$(node -p "require('./$package_json').name")
+            package_version=$(node -p "require('./$package_json').version")
+            if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+              echo "Already published: $package_name@$package_version"
+            else
+              pnpm --dir "$package_dir" publish --no-git-checks --access public
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish main CLI package to npm
         # --no-git-checks because publishing from a tagged, detached state.
-        # Provenance is optional; drop it if your org disallows it.
-        run: pnpm --filter very-happy-cli publish --no-git-checks --access public
+        # A retry after a partial platform-package publication is safe.
+        run: |
+          set -euo pipefail
+          package_version=$(node -p "require('./packages/happy-cli/package.json').version")
+          if npm view "very-happy-cli@$package_version" version >/dev/null 2>&1; then
+            echo "Already published: very-happy-cli@$package_version"
+          else
+            pnpm --filter very-happy-cli publish --no-git-checks --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

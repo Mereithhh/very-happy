@@ -62,7 +62,9 @@ triage（分独立/冲突域）
 
 ## 4. 发布工程
 
-- **版本**：CLI = semver patch（推 tag 自动发 npm）；web = bundle salt 随每次部署；server 随源同步。
+- **版本**：CLI = semver patch（推 tag 自动发 npm）；同一 tag 先发布六个
+  `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
+  `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。
 - **发布顺序**：默认 server → web → CLI（tag → npm 200 → `vh-update`）；
   涉及协议字段时按实现报告里的兼容矩阵定顺序，**双向兼容（旧端忽略新字段）是设计要求**不是可选项。
 - **部署核对**：push 后 ≥20s 再触发 CI；`gh run view --json headSha` 核对构建 sha = 预期 commit
