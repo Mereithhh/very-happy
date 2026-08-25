@@ -6,12 +6,11 @@ name: Publish very-happy-cli
 # This is a monorepo: we only build and publish packages/happy-cli
 # (package name: very-happy-cli) via pnpm --filter.
 #
-# 2026-08-14：跑在 fb-us self-hosted runner 上（0 计费分钟）。同一个 tag 会并行
-# 触发 cli-smoke-test.yml 的完整三系统矩阵（macOS/Windows 托管 + Linux self-hosted）——
+# 同一个 tag 会并行触发 cli-smoke-test.yml 的完整三系统 GitHub-hosted 矩阵——
 # **刻意不做 needs 硬依赖**：保留紧急发版通道（和 deploy-hwsg 一个口径），但发完
 # 要看一眼那条 run 的结果再对外宣布版本。
 # setup-node 的 npm 凭据写在 $RUNNER_TEMP/.npmrc（NPM_CONFIG_USERCONFIG），是 job 级
-# 的，不会在 self-hosted 的 HOME 里留下 token。
+# 的，不会写入持久化宿主机。
 
 on:
   push:
@@ -28,18 +27,12 @@ permissions:
 
 jobs:
   publish:
-    # 降级：`gh variable set LINUX_RUNNER --body '["ubuntu-latest"]'`（见 PROCESS.md §4）。
-    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
-        # clean=true（默认）：self-hosted 工作目录复用；上一次 run 改过的
-        # packages/happy-cli/package.json 版本号会在这里被 reset 掉。
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # ⚠️ setup-node 先于 pnpm/action-setup：后者默认要用现成的 node/npm 装 pnpm，
-      # self-hosted 上不能假设系统装了 node。不用 `cache: pnpm`（那要求反过来的顺序），
-      # self-hosted 靠本地持久化 pnpm store。
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -50,11 +43,7 @@ jobs:
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.11.0
-          # dest 必须按 job 隔离：3 个 runner 实例共享同一个 HOME（同一个 runner
-          # 用户），而这个 action 默认装到固定的 `~/setup-pnpm`。并发 job（tag 时
-          # publish 与两格 smoke 同时跑）会互相删掉对方正 cd 着的目录，症状是
-          # `ENOENT: process.cwd failed ... directory was likely removed`
-          # （2026-08-14 v0.2.38 发版实锤：node20 格过、node24 格挂）。
+          # Keep setup isolated from concurrently running smoke jobs.
           dest: ${{ runner.temp }}/setup-pnpm
 
       - name: Install dependencies
