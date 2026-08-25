@@ -4,7 +4,7 @@ import { CyberMark } from '@/ui/CyberMark';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import {
   PWA_INSTALL_CONFIRMED_KEY,
-  PWA_INSTALL_DISMISSED_AT_KEY,
+  PWA_INSTALL_NEVER_KEY,
   canOfferPwaInstall,
   isStandalonePwa,
   manualInstallGuide,
@@ -35,6 +35,14 @@ function writeStorage(key: string, value: string) {
   }
 }
 
+function removeStorage(key: string) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // See writeStorage: strict private modes can reject storage access.
+  }
+}
+
 export function PwaInstallPrompt() {
   const [guide, setGuide] = useState<PwaInstallGuide | null>(null);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -43,17 +51,15 @@ export function PwaInstallPrompt() {
   const copy = guide ? { ...publicCopy.pwa, body: guide === 'native' ? publicCopy.pwa.nativeBody : publicCopy.pwa.manualBody } : null;
 
   useEffect(() => {
-    const mobileQuery = window.matchMedia('(max-width: 860px), (pointer: coarse)');
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');
     const nav = navigator as Navigator & { standalone?: boolean };
+    const permanentlyBlocked = () => isStandalonePwa(standaloneQuery.matches, nav.standalone)
+      || readStorage(PWA_INSTALL_NEVER_KEY) === '1';
     const eligible = () => canOfferPwaInstall({
-      isMobile: mobileQuery.matches,
       isStandalone: isStandalonePwa(standaloneQuery.matches, nav.standalone),
       installConfirmed: readStorage(PWA_INSTALL_CONFIRMED_KEY) === '1',
-      rawDismissedAt: readStorage(PWA_INSTALL_DISMISSED_AT_KEY),
+      neverPrompt: readStorage(PWA_INSTALL_NEVER_KEY) === '1',
     });
-
-    if (!eligible()) return;
 
     let revealTimer = 0;
     const scheduleReveal = (nextGuide: PwaInstallGuide, delay: number) => {
@@ -69,12 +75,15 @@ export function PwaInstallPrompt() {
       revealTimer = window.setTimeout(revealWhenIdle, delay);
     };
 
-    scheduleReveal(manualInstallGuide(navigator.userAgent, navigator.maxTouchPoints), REVEAL_DELAY_MS);
+    if (eligible()) scheduleReveal(manualInstallGuide(navigator.userAgent, navigator.maxTouchPoints), REVEAL_DELAY_MS);
 
     const onBeforeInstallPrompt = (rawEvent: Event) => {
       const event = rawEvent as BeforeInstallPromptEvent;
       event.preventDefault();
-      if (!eligible()) return;
+      if (permanentlyBlocked()) return;
+      // The browser offering installation is stronger evidence than our old
+      // acceptance marker (the app may have been uninstalled since then).
+      removeStorage(PWA_INSTALL_CONFIRMED_KEY);
       setInstallEvent(event);
       scheduleReveal('native', 0);
     };
@@ -98,7 +107,6 @@ export function PwaInstallPrompt() {
     if (!guide) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      writeStorage(PWA_INSTALL_DISMISSED_AT_KEY, String(Date.now()));
       setInstallEvent(null);
       setGuide(null);
     };
@@ -109,9 +117,13 @@ export function PwaInstallPrompt() {
   if (!guide || !copy) return null;
 
   const dismiss = () => {
-    writeStorage(PWA_INSTALL_DISMISSED_AT_KEY, String(Date.now()));
     setInstallEvent(null);
     setGuide(null);
+  };
+
+  const neverPrompt = () => {
+    writeStorage(PWA_INSTALL_NEVER_KEY, '1');
+    dismiss();
   };
 
   const install = async () => {
@@ -121,8 +133,6 @@ export function PwaInstallPrompt() {
       const outcome = await requestNativePwaInstall(installEvent);
       if (outcome === 'accepted') {
         writeStorage(PWA_INSTALL_CONFIRMED_KEY, '1');
-      } else {
-        writeStorage(PWA_INSTALL_DISMISSED_AT_KEY, String(Date.now()));
       }
       setInstallEvent(null);
       setGuide(null);
@@ -157,6 +167,7 @@ export function PwaInstallPrompt() {
             <button className="pwa-install-primary" type="button" onClick={dismiss}>{copy.done}</button>
           )}
           <button className="pwa-install-later" type="button" onClick={dismiss}>{copy.later}</button>
+          <button className="pwa-install-never" type="button" onClick={neverPrompt}>{copy.never}</button>
         </div>
       </div>
     </aside>

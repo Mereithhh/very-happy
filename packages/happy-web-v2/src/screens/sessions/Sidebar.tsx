@@ -708,9 +708,9 @@ export function Sidebar() {
       <header className="sb-header">
         {/* Mark only — the "very happy" wordmark was dropped to keep the
             header from overflowing as header-right icons accumulated. */}
-        <div className="sb-brand">
+        <button className="sb-brand sb-brand--button" type="button" onClick={() => navigate('/help')} title={t('sidebar.openHelp')} aria-label={t('sidebar.openHelp')}>
           <CyberMark size={22} />
-        </div>
+        </button>
         <div className="sb-header-right">
           <StatusDot status={socketToStatus(socket)} pulse={socket === 'connecting'} title={socket} />
           {/* Coarse pointers can't press ⌘K — this icon opens the command

@@ -1,6 +1,5 @@
-export const PWA_INSTALL_DISMISSED_AT_KEY = 'vh-pwa-install-dismissed-at-v1';
 export const PWA_INSTALL_CONFIRMED_KEY = 'vh-pwa-install-confirmed-v1';
-export const PWA_INSTALL_DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1_000;
+export const PWA_INSTALL_NEVER_KEY = 'vh-pwa-install-never-v1';
 
 export type PwaInstallGuide = 'native' | 'ios' | 'manual';
 export type PwaInstallOutcome = 'accepted' | 'dismissed';
@@ -27,24 +26,14 @@ export function manualInstallGuide(userAgent: string, maxTouchPoints: number): P
   return isAppleMobile(userAgent, maxTouchPoints) ? 'ios' : 'manual';
 }
 
-export function isInstallDismissalCoolingDown(rawDismissedAt: string | null, now = Date.now()) {
-  if (!rawDismissedAt) return false;
-  const dismissedAt = Number(rawDismissedAt);
-  if (!Number.isFinite(dismissedAt) || dismissedAt <= 0) return false;
-  return now - dismissedAt < PWA_INSTALL_DISMISS_COOLDOWN_MS;
-}
-
 export function canOfferPwaInstall(options: {
-  isMobile: boolean;
   isStandalone: boolean;
   installConfirmed: boolean;
-  rawDismissedAt: string | null;
-  now?: number;
+  neverPrompt: boolean;
 }) {
-  return options.isMobile
-    && !options.isStandalone
+  return !options.isStandalone
     && !options.installConfirmed
-    && !isInstallDismissalCoolingDown(options.rawDismissedAt, options.now);
+    && !options.neverPrompt;
 }
 
 export async function requestNativePwaInstall(event: DeferredPwaInstall): Promise<PwaInstallOutcome> {

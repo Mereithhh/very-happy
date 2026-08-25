@@ -205,6 +205,13 @@ function Overview() {
       <ItemList>
         <ItemGroup>
           <Item
+            title={t('settings.help')}
+            subtitle={t('settings.helpSubtitle')}
+            left={<BookOpen size={18} />}
+            right={<ChevronRight size={16} />}
+            onClick={() => navigate('/help')}
+          />
+          <Item
             title={t('settings.account')}
             subtitle={t('settings.accountSubtitle')}
             left={<User size={18} />}

@@ -266,12 +266,15 @@ machine stays offline.
 
 ### Tour the workspace after the machine connects
 
-The home screen becomes a reusable workspace guide as soon as the first machine
-appears. Start both paths once: **New conversation** opens a structured agent
-session, while **New terminal** opens a real shell/TUI. Open **Settings** early
-to review appearance and language, agent defaults and review mode, saved prompt
-shortcuts and terminal behavior, notifications, connected machines, channels,
-and clipboard handoffs.
+Once the first machine appears, an account with no conversation or terminal
+opens the compact **Help & getting started** page automatically, including on
+mobile. Start both paths once: **New conversation** opens a structured agent
+session, while **New terminal** opens a real shell/TUI. Return to Help at any
+time from the top-left Very Happy mark or **Settings → Help & getting started**.
+The first actions stay visible; detailed workspace capabilities are grouped in
+expandable topics. Open **Settings** early to review appearance and language,
+agent defaults and review mode, saved prompt shortcuts and terminal behavior,
+notifications, connected machines, channels, and clipboard handoffs.
 
 The guide also points to the everyday tools that are easy to miss:
 
