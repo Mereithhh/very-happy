@@ -13,6 +13,7 @@ import './auth.css';
 import { authReturnTarget } from '@/app/authReturnTarget';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -22,9 +23,9 @@ export function SignupScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
-  useEffect(() => { document.title = 'Create account — Very Happy'; }, []);
+  useEffect(() => { document.title = t('signup.pageTitle'); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -158,6 +159,7 @@ export function SignupScreen() {
           <CyberMark size={40} glow />
           <div className="auth-wordmark">very happy</div>
         </div>
+        <LanguageSwitcher className="auth-language-switcher" />
         <div className="auth-eyebrow eyebrow">{t('signup.title')}</div>
 
         {authConfig?.signup.atCapacity ? (
@@ -238,15 +240,15 @@ export function SignupScreen() {
         <button type="button" className="auth-alt" onClick={() => navigate('/login', { state: location.state })}>
           {t('signup.haveAccount')}
         </button>
-        <div className="auth-help">Registration unavailable? <Link to="/docs/accounts-and-quotas">Review account policies</Link></div>
+        <div className="auth-help">{t('authCommon.registrationHelp')} <Link to="/docs/accounts-and-quotas">{t('authCommon.accountPolicies')}</Link></div>
         <div className="auth-legal">
-          <Link to="/">Home</Link>
+          <Link to="/">{t('authCommon.home')}</Link>
           <span aria-hidden="true">·</span>
-          <Link to="/docs">Docs</Link>
+          <Link to="/docs">{t('authCommon.docs')}</Link>
           <span aria-hidden="true">·</span>
-          <Link to="/privacy">Privacy</Link>
+          <Link to="/privacy">{t('authCommon.privacy')}</Link>
           <span aria-hidden="true">·</span>
-          <Link to="/terms">Terms</Link>
+          <Link to="/terms">{t('authCommon.terms')}</Link>
         </div>
       </div>
     </div>

@@ -12,15 +12,16 @@ import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authRetur
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
 
 export function LoginScreen() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
-  useEffect(() => { document.title = 'Sign in — Very Happy'; }, []);
+  useEffect(() => { document.title = t('login.pageTitle'); }, [lang, t]);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -105,68 +106,92 @@ export function LoginScreen() {
   return (
     <div className="auth-page">
       <CyberBackdrop />
-      <div className="auth-card">
-        <div className="auth-brand">
-          <CyberMark size={40} glow />
-          <div className="auth-wordmark">very happy</div>
-        </div>
-        <div className="auth-eyebrow eyebrow">{t('settings.connectAccount')}</div>
-        {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
+      <main className="auth-card auth-card--login">
+        <section className="auth-brand-panel" aria-labelledby="login-brand-title">
+          <div className="auth-brand">
+            <CyberMark size={44} />
+            <div className="auth-wordmark">very happy</div>
+          </div>
+          <div className="auth-brand-message">
+            <div className="auth-brand-label">{t('login.consoleLabel')}</div>
+            <h1 id="login-brand-title">{t('login.title')}</h1>
+            <p>{t('login.subtitle')}</p>
+          </div>
+          <div className="auth-console" aria-hidden="true">
+            <div className="auth-console-bar">
+              <span>very-happy://web</span>
+              <span>AUTH</span>
+            </div>
+            <div className="auth-console-line">
+              <span className="auth-console-prompt">❯</span>
+              <span>{t('login.waiting')}</span>
+              <i />
+            </div>
+          </div>
+        </section>
 
-        {emailEnabled && <EmailOtpForm busy={busy} onBusyChange={setBusy} onCredentials={finishLogin} />}
+        <section className="auth-form-panel" aria-labelledby="login-form-title">
+          <LanguageSwitcher className="auth-language-switcher" />
+          <header className="auth-form-header">
+            <span>{t('login.accountStep')}</span>
+            <h2 id="login-form-title">{t('settings.connectAccount')}</h2>
+          </header>
+          {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
 
-        <GoogleLoginButton
-          disabled={busy}
-          leadingDividerLabel={emailEnabled ? t('emailAuth.orGoogle') : undefined}
-          retryLabel={t('common.retry')}
-          unavailableLabel={t('signup.errorGoogle')}
-          onCredential={onGoogleCredential}
-        />
-        {googleError && <div className="auth-error" role="alert">{googleError}</div>}
+          {emailEnabled && <EmailOtpForm busy={busy} onBusyChange={setBusy} onCredentials={finishLogin} />}
 
-        {passwordEnabled && <>
-          {(emailEnabled || googleEnabled) && <div className="auth-divider"><span>{t('signup.orPassword')}</span></div>}
-          <button type="button" className="auth-method-toggle" aria-expanded={passwordExpanded} onClick={() => setPasswordExpanded((value) => !value)}>
-            {passwordExpanded ? t('emailAuth.hidePassword') : t('emailAuth.usePassword')}
-          </button>
-          {passwordExpanded && <form className="auth-password-form" onSubmit={onSubmit}>
-            <Input
-              label={t('common.name')}
-              autoFocus={!emailEnabled}
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="username"
-            />
-            <Input
-              label={t('settingsAccount.password')}
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={error}
-              placeholder="••••••••"
-            />
-            <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
-              {t('common.continue')}
-            </Button>
-          </form>}
-        </>}
+          <GoogleLoginButton
+            disabled={busy}
+            leadingDividerLabel={emailEnabled ? t('emailAuth.orGoogle') : undefined}
+            retryLabel={t('common.retry')}
+            unavailableLabel={t('signup.errorGoogle')}
+            onCredential={onGoogleCredential}
+          />
+          {googleError && <div className="auth-error" role="alert">{googleError}</div>}
 
-        <button type="button" className="auth-alt" onClick={() => navigate('/signup', { state: location.state })}>
-          {t('settingsAccount.createAccountTitle')}
-        </button>
-        <div className="auth-help">Can’t connect? <Link to="/docs/troubleshooting">Open troubleshooting</Link></div>
-        <div className="auth-legal">
-          <Link to="/">Home</Link>
-          <span aria-hidden="true">·</span>
-          <Link to="/docs">Docs</Link>
-          <span aria-hidden="true">·</span>
-          <Link to="/privacy">Privacy</Link>
-          <span aria-hidden="true">·</span>
-          <Link to="/terms">Terms</Link>
-        </div>
-      </div>
+          {passwordEnabled && <>
+            {(emailEnabled || googleEnabled) && <div className="auth-divider"><span>{t('signup.orPassword')}</span></div>}
+            <button type="button" className="auth-method-toggle" aria-expanded={passwordExpanded} onClick={() => setPasswordExpanded((value) => !value)}>
+              {passwordExpanded ? t('emailAuth.hidePassword') : t('emailAuth.usePassword')}
+            </button>
+            {passwordExpanded && <form className="auth-password-form" onSubmit={onSubmit}>
+              <Input
+                label={t('common.name')}
+                autoFocus={!emailEnabled}
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="username"
+              />
+              <Input
+                label={t('settingsAccount.password')}
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                error={error}
+                placeholder="••••••••"
+              />
+              <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!canSubmit}>
+                {t('common.continue')}
+              </Button>
+            </form>}
+          </>}
+
+          <footer className="auth-footer">
+            <div className="auth-help">{t('authCommon.helpPrefix')} <Link to="/docs/troubleshooting">{t('authCommon.troubleshooting')}</Link></div>
+            <div className="auth-legal">
+              <Link to="/">{t('authCommon.home')}</Link>
+              <span aria-hidden="true">·</span>
+              <Link to="/docs">{t('authCommon.docs')}</Link>
+              <span aria-hidden="true">·</span>
+              <Link to="/privacy">{t('authCommon.privacy')}</Link>
+              <span aria-hidden="true">·</span>
+              <Link to="/terms">{t('authCommon.terms')}</Link>
+            </div>
+          </footer>
+        </section>
+      </main>
     </div>
   );
 }

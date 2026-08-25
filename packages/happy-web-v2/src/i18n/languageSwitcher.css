@@ -1,0 +1,25 @@
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text-2);
+}
+
+.language-switcher:focus-within {
+  border-color: var(--accent);
+}
+
+.language-switcher select {
+  max-width: 108px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

@@ -114,7 +114,7 @@ export function GoogleLoginButton({
             type: 'standard',
             theme: 'outline',
             size: 'large',
-            width: Math.min(328, Math.max(200, containerRef.current.clientWidth || 328)),
+            width: Math.min(400, Math.max(200, containerRef.current.clientWidth || 400)),
             text: 'continue_with',
           });
           setState((current) => reduceGoogleButtonState(current, 'rendered'));

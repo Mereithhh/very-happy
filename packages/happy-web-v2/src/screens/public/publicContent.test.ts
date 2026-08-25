@@ -118,7 +118,8 @@ describe('public documentation registry', () => {
     expect(keyboardDoc).not.toContain('All global shortcuts are guarded during IME composition');
     const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     expect(productPreview).toContain('window.dispatchEvent(new Event(PUBLIC_COMMAND_PROOF_EVENT))');
-    expect(productPreview).toContain('aria-label="Search actions, chats, and terminals" onClick={onSearch}');
+    expect(productPreview).toContain("'Search actions, chats, and terminals'");
+    expect(productPreview).toContain('onClick={onSearch}');
   });
 
   it('resolves known slugs and rejects unknown routes', () => {
@@ -128,30 +129,33 @@ describe('public documentation registry', () => {
 
   it('keeps public positioning honest about shipped agents and roadmap', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
+    const landingCopy = `${landing}\n${publicI18n}`;
     const productPreview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const featureProofs = readFileSync(new URL('./CoreFeatureProofs.tsx', import.meta.url), 'utf8');
     const continuityProof = readFileSync(new URL('./MobileContinuityProof.tsx', import.meta.url), 'utf8');
     const html = readFileSync(new URL('../../../index.html', import.meta.url), 'utf8');
-    expect(landing).toContain('One panel.');
-    expect(landing).toContain('Every machine.<br />Every agent.');
-    expect(landing).toContain('Claude Code');
-    expect(landing).toContain('Codex');
-    expect(landing).toContain('Gemini available from Web through a compatible ACP stdio endpoint');
-    expect(landing).toContain('OpenCode through the CLI ACP beta');
-    expect(landing).not.toContain('ACP extensible');
-    expect(landing).toContain('Pi + provider gateway');
-    expect(landing).toContain('REAL PRODUCT // SANITIZED DATA');
-    expect(landing).toContain('MULTI-MACHINE COMMAND PANEL');
-    expect(landing).toContain('FIRST CONNECTION // THREE MOVES');
-    expect(landing).toContain('<h3>Prepare the machine</h3>');
-    expect(landing).toContain('<h3>Connect and keep it online</h3>');
-    expect(landing).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
-    expect(landing).toContain('tmux is recommended for durable terminals');
-    expect(landing).toContain('SEE THE FLEET.');
-    expect(landing).toContain('DISPATCH THE WORK. STEP IN ANYWHERE.');
+    expect(landingCopy).toContain('One panel.');
+    expect(landingCopy).toContain('Every machine.');
+    expect(landingCopy).toContain('Every agent.');
+    expect(landingCopy).toContain('Claude Code');
+    expect(landingCopy).toContain('Codex');
+    expect(landingCopy).toContain('Gemini available from Web through a compatible ACP stdio endpoint');
+    expect(landingCopy).toContain('OpenCode through the CLI ACP beta');
+    expect(landingCopy).not.toContain('ACP extensible');
+    expect(landingCopy).toContain('Pi + provider gateway');
+    expect(landingCopy).toContain('REAL PRODUCT // SANITIZED DATA');
+    expect(landingCopy).toContain('MULTI-MACHINE COMMAND PANEL');
+    expect(landingCopy).toContain('FIRST CONNECTION // THREE MOVES');
+    expect(landingCopy).toContain('Prepare the machine');
+    expect(landingCopy).toContain('Connect and keep it online');
+    expect(landingCopy).toContain('Node 20.19+ within 20.x, 22.13+ within 22.x, or 24+ is required');
+    expect(landingCopy).toContain('tmux is recommended for durable terminals');
+    expect(landingCopy).toContain('SEE THE FLEET.');
+    expect(landingCopy).toContain('DISPATCH THE WORK. STEP IN ANYWHERE.');
     expect(continuityProof).toContain('STRUCTURED WHEN YOU WANT IT // NATIVE WHEN YOU NEED IT');
     expect(continuityProof).toContain('REAL TUI · TMUX-BACKED');
-    expect(continuityProof).toContain('CLAUDE · STRUCTURED MIRROR');
+    expect(continuityProof).toContain("'STRUCTURED MIRROR'");
     expect(productPreview).toContain('terminal and files');
     expect(productPreview).toContain('Open task board');
     expect(productPreview).toContain('Optional terminal hooks installed');
@@ -160,15 +164,15 @@ describe('public documentation registry', () => {
     expect(featureProofs).toContain('The coordinator is a Claude meta-agent session on one selected machine');
     expect(featureProofs).toContain('Automatic cross-machine or cross-provider routing is roadmap');
     expect(featureProofs).toContain('REQUIRES VOICE CONFIGURATION');
-    expect(landing).toContain('You get to be Very Happy.');
-    expect(landing).toContain('today you explicitly choose a Web-supported machine and agent');
+    expect(landingCopy).toContain('You get to be Very Happy.');
+    expect(landingCopy).toContain('today you explicitly choose a Web-supported machine and agent');
     expect(productPreview).toContain('Example multi-machine session command panel');
     expect(productPreview).toContain('office · codex');
     expect(html).toContain('One Web command panel for every connected machine');
-    expect(landing).not.toContain('private Tanka deployment');
-    expect(landing).toContain('ROADMAP');
-    expect(landing).not.toContain('not end-to-end encrypted');
-    expect(landing).toContain('Cloud convenience or your own infrastructure.');
+    expect(landingCopy).not.toContain('private Tanka deployment');
+    expect(landingCopy).toContain('ROADMAP');
+    expect(landingCopy).not.toContain('not end-to-end encrypted');
+    expect(landingCopy).toContain('Cloud convenience or your own infrastructure.');
     expect(html).toContain('One panel. Every machine. Every agent.');
     expect(html).not.toContain('Claude Code, from any browser.');
   });
@@ -198,6 +202,8 @@ describe('public documentation registry', () => {
   it('keeps Web-first, terminal-neutral, and MCP claims aligned with shipped paths', () => {
     const text = JSON.stringify(PUBLIC_DOCS);
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
+    const landingCopy = `${landing}\n${publicI18n}`;
     const readme = readFileSync(new URL('../../../../../README.md', import.meta.url), 'utf8');
     const gettingStarted = readFileSync(new URL('../../../../../docs/getting-started.md', import.meta.url), 'utf8');
     const architecture = readFileSync(new URL('../../../../../docs/architecture.md', import.meta.url), 'utf8');
@@ -210,14 +216,14 @@ describe('public documentation registry', () => {
     const webTerminal = readFileSync(new URL('../../../../happy-cli/src/terminal/webTerminal.ts', import.meta.url), 'utf8');
     const standaloneMcp = readFileSync(new URL('../../../../happy-cli/src/commands/mcp.ts', import.meta.url), 'utf8');
 
-    for (const source of [text, landing, readme, gettingStarted]) {
+    for (const source of [text, landingCopy, readme, gettingStarted]) {
       expect(source).toMatch(/Web(?: UI)?(?: or| \/) installable PWA|Web\s*\/\s*PWA/i);
       expect(source).toMatch(/recommended daily|everyday workspace|daily workspace/i);
     }
     expect(landing).toContain('<ProductWorkspacePreview fileTransferDemo />');
-    expect(landing).toContain('ordinary xterm-256color text TUIs—not only coding agents');
-    expect(landing).toContain('REAL PRODUCT // SANITIZED DATA');
-    expect(landing).not.toContain('LIVE PRODUCT UI');
+    expect(landingCopy).toContain('ordinary xterm-256color text TUIs—not only coding agents');
+    expect(landingCopy).toContain('REAL PRODUCT // SANITIZED DATA');
+    expect(landingCopy).not.toContain('LIVE PRODUCT UI');
     expect(architecture).toContain('terminal transport is intentionally agent-neutral');
     expect(architecture).toContain('shell / xterm-compatible text TUI');
     expect(webTerminal).toContain("env.TERM = 'xterm-256color'");
@@ -259,6 +265,8 @@ describe('public documentation registry', () => {
 
   it('backs the public ACP claim with the shipped SDK, routes, and compatibility boundary', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
+    const landingCopy = `${landing}\n${publicI18n}`;
     const cliPackage = readFileSync(new URL('../../../../happy-cli/package.json', import.meta.url), 'utf8');
     const cliIndex = readFileSync(new URL('../../../../happy-cli/src/index.ts', import.meta.url), 'utf8');
     const acpConfig = readFileSync(new URL('../../../../happy-cli/src/agent/acp/acpAgentConfig.ts', import.meta.url), 'utf8');
@@ -273,8 +281,8 @@ describe('public documentation registry', () => {
     expect(acpConfig).toContain("gemini: { command: 'gemini'");
     expect(acpConfig).toContain("opencode: { command: 'opencode'");
     expect(openClawBackend).toContain('Unlike ACP-based backends, OpenClaw uses its own protocol');
-    expect(landing).toContain('compatible ACP stdio endpoint');
-    expect(landing).toContain('BETA · IMPLEMENTED');
+    expect(landingCopy).toContain('compatible ACP stdio endpoint');
+    expect(landingCopy).toContain('BETA · IMPLEMENTED');
     expect(protocolDoc).toContain('**not** the Agent Client');
     expect(protocolDoc).toContain('share the acronym “ACP.”');
   });
@@ -378,7 +386,7 @@ describe('public documentation registry', () => {
     expect(pageOrder.indexOf('<WhyVeryHappy />')).toBeLessThan(pageOrder.indexOf('<StartAndTrust />'));
     expect(pageOrder.indexOf('<StartAndTrust />')).toBeLessThan(pageOrder.indexOf('<MobileContinuityProof />'));
     expect(pageOrder.indexOf('<MobileContinuityProof />')).toBeLessThan(pageOrder.indexOf('<CoreFeatureProofs />'));
-    expect(why).toContain('VALUE_ROUTES.map');
+    expect(why).toContain('routes.map');
     expect(why).toContain('One panel holds the fleet.');
     expect(why).toContain('Structured when useful. Native when necessary.');
     expect(why).toContain('Carry the work between screens.');
@@ -420,6 +428,7 @@ describe('public documentation registry', () => {
 
   it('makes every narrow product surface usable instead of shrinking desktop mockups', () => {
     const landing = readFileSync(new URL('./LandingScreen.tsx', import.meta.url), 'utf8');
+    const publicI18n = readFileSync(new URL('../../i18n/publicI18n.ts', import.meta.url), 'utf8');
     const preview = readFileSync(new URL('./ProductWorkspacePreview.tsx', import.meta.url), 'utf8');
     const styles = readFileSync(new URL('./productWorkspacePreview.css', import.meta.url), 'utf8');
     const publicStyles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
@@ -448,7 +457,7 @@ describe('public documentation registry', () => {
     expect(styles).toMatch(/\.product-preview \.bd-cols \{ display: block; overflow-y: auto; \}/);
     expect(styles).toContain('@container product-preview (max-width: 480px)');
     expect(publicStyles).toMatch(/\.pub-start code \{[^}]*white-space: pre-line/);
-    expect(landing).toContain('Then open Web → New session and choose the machine plus agent.');
+    expect(`${landing}\n${publicI18n}`).toContain('Then open Web → New session and choose the machine plus agent.');
     expect(landing).not.toContain('One thread. Three ways');
   });
 
@@ -485,7 +494,7 @@ describe('public documentation registry', () => {
     expect(preview).not.toContain('role="tab"');
     expect(preview).not.toContain('tabRefs');
     expect(publicStyles).not.toContain('.pub-product-tabs');
-    expect(preview).toContain('aria-label="Open task board"');
+    expect(preview).toContain("'Open task board'");
     expect(preview).toContain('onClick={onBoard}');
     expect(preview).toContain('onClick={onStructured}');
     expect(preview).toContain('onClick={onFiles}');

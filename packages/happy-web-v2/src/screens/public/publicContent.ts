@@ -1,3 +1,5 @@
+import { PUBLIC_DOCS_ZH_HANS } from './publicContent.zhHans';
+
 export const GITHUB_URL = 'https://github.com/Mereithhh/very-happy';
 export const INSTALL_COMMAND = 'npm install -g very-happy-cli';
 export const BOOTSTRAP_COMMAND = `(\n  set -eu\n  vh_installer=$(mktemp)\n  trap 'rm -f "$vh_installer"' \\\n    EXIT HUP INT TERM\n  curl -fsSL \\\n    https://veryhappy.dev/install.sh \\\n    -o "$vh_installer"\n  sh "$vh_installer"\n)`;
@@ -319,4 +321,40 @@ export const PUBLIC_DOCS: PublicDoc[] = [
 
 export function getPublicDoc(slug: string | undefined): PublicDoc | undefined {
   return PUBLIC_DOCS.find((doc) => doc.slug === slug);
+}
+
+let zhHansDocs: PublicDoc[] | null = null;
+
+function buildZhHansDocs(): PublicDoc[] {
+  return PUBLIC_DOCS.map((doc) => {
+    const translated = PUBLIC_DOCS_ZH_HANS[doc.slug];
+    if (!translated) return doc;
+    return {
+      ...doc,
+      label: translated.label,
+      summary: translated.summary,
+      sections: doc.sections.map((section, sectionIndex) => {
+        const translatedSection = translated.sections[sectionIndex];
+        if (!translatedSection) return section;
+        return {
+          ...section,
+          heading: translatedSection.heading,
+          blocks: section.blocks.map((block, blockIndex): DocBlock => {
+            const value = translatedSection.blocks[blockIndex];
+            if (block.type === 'code' || value == null) return block;
+            if (block.type === 'list') return Array.isArray(value) ? { ...block, items: value } : block;
+            if (Array.isArray(value)) return block;
+            if (block.type === 'link') return { ...block, label: value };
+            return { ...block, text: value };
+          }),
+        };
+      }),
+    };
+  });
+}
+
+export function getPublicDocs(language: string): PublicDoc[] {
+  if (language !== 'zh-Hans') return PUBLIC_DOCS;
+  zhHansDocs ??= buildZhHansDocs();
+  return zhHansDocs;
 }
