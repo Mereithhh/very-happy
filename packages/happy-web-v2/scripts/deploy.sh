@@ -16,17 +16,18 @@ set -euo pipefail
 HOST=hw-sg
 MODE="${1:-root}"
 VERSION="${VH_VERSION:-$(date +%Y%m%d%H%M)}"
+SERVER_URL="${VH_SERVER_URL:-https://veryhappy.dev}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$HERE"
 
 if [ "$MODE" = "staging" ]; then
-  VH_BASE=/v2/ VH_VERSION="$VERSION" pnpm exec vite build
+  VH_BASE=/v2/ VH_VERSION="$VERSION" VH_SERVER_URL="$SERVER_URL" pnpm exec vite build
   ssh "$HOST" 'rm -rf /opt/happy-v2.new && mkdir -p /opt/happy-v2.new'
   tar -C dist -czf - . | ssh "$HOST" 'tar -C /opt/happy-v2.new -xzf - 2>/dev/null'
   ssh "$HOST" 'cd /opt && find happy-v2 -mindepth 1 -delete 2>/dev/null; cp -a happy-v2.new/. happy-v2/ && rm -rf happy-v2.new'
   echo "staged at https://veryhappy.dev/v2/ (Caddy file_server, no restart needed)"
 else
-  VH_VERSION="$VERSION" pnpm exec vite build
+  VH_VERSION="$VERSION" VH_SERVER_URL="$SERVER_URL" pnpm exec vite build
   echo "[deploy] version=$VERSION — staging files"
   ssh "$HOST" 'rm -rf /opt/happy/webapp.new && mkdir -p /opt/happy/webapp.new'
   tar -C dist -czf - . | ssh "$HOST" 'tar -C /opt/happy/webapp.new -xzf - 2>/dev/null'

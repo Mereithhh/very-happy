@@ -31,6 +31,10 @@ WEB="packages/happy-web-v2"
 SERVER="packages/happy-server"
 # Salt asset filenames per deploy so a poisoned cache can't survive a redeploy.
 WEB_VERSION="${VH_VERSION:-$(date +%Y%m%d%H%M)}"
+# Self-hosted runners retain their login environment between jobs. Pin the
+# production origin explicitly so a stale runner-level VH_SERVER_URL cannot be
+# baked into index.html and silently route a new shell back to an old domain.
+WEB_SERVER_URL="https://veryhappy.dev"
 
 wait_health() {
     local c=000
@@ -68,7 +72,7 @@ deploy_web() {
     echo "== web: build @slopus/happy-wire =="
     pnpm --filter @slopus/happy-wire build >/dev/null
     echo "== web: vite build (version=$WEB_VERSION) =="
-    ( cd "$WEB" && rm -rf dist && VH_VERSION="$WEB_VERSION" pnpm exec vite build >/dev/null )
+    ( cd "$WEB" && rm -rf dist && VH_VERSION="$WEB_VERSION" VH_SERVER_URL="$WEB_SERVER_URL" pnpm exec vite build >/dev/null )
     [ -f "$WEB/dist/index.html" ] || { echo "  ERROR: no dist/index.html"; exit 1; }
     # CRITICAL ordering: happy-server's @fastify/static globs /webapp at STARTUP
     # (wildcard:false), so newly-hashed assets have no route until a restart. If
