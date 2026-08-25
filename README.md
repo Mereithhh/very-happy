@@ -149,18 +149,16 @@ according to your environment.
 | The friction | What carries it for you |
 |---|---|
 | “My agents and terminals are scattered across several machines.” | One account sidebar and task board aggregate their sessions and attention state; start new work on the machine and agent you choose. |
-| “I left my desk, so the work stopped being legible.” | A responsive Web/PWA workspace with mobile conversation, terminal, files, tasks, notifications, and Home Screen installation. |
 | “Structured chat is pleasant, but sometimes I need the actual tool.” | Keep SDK-backed Claude and drop into a durable, unmodified agent TTY/TUI when necessary. |
-| “Every session is another pile of context to remember.” | Session organization, file context, task board, todos, notes, status, and an optional coordinating meta-agent. |
-| “One model vendor should not own my whole workspace.” | Claude Code and Codex today; beta Gemini/OpenCode through Agent Client Protocol; OpenClaw through its own local gateway. |
-| “My useful terminal workflow is not a coding agent.” | The tmux/TTY path also carries shells, editors, Git clients, SSH, database consoles, and ordinary xterm-compatible text TUIs; structured agent features are additive, not required. |
-| “Remote control must fit my operating model.” | Use the community Cloud for the fastest start, or deploy the same open-source stack under your control. |
-| “Keyboard speed disappears on the Web.” | A production command palette plus shortcuts for switching work, saved prompts, notes, new terminals, and navigation—with touch equivalents. |
-| “The file I need is on the device in my hand, not the machine doing the work.” | Paste a screenshot or drop a file into the browser terminal; its shell-quoted path appears on the selected machine without auto-running a command. |
+| “I left my desk, so the work stopped being legible.” | A responsive Web/PWA workspace keeps conversations, terminals, files, tasks, notifications, and decisions within reach. |
+| “Remote control must fit my operating model.” | Start with Very Happy Cloud for the fastest setup, or deploy the same open-source stack under your control. |
 
 The philosophy is straightforward: stay high-level when that is faster, drop to
 the raw machine when it is necessary, and make the interface carry as much
-operational overhead as possible.
+operational overhead as possible. The sections above show the supporting detail:
+ordinary text TUIs remain compatible, the command palette preserves keyboard
+speed, and bounded file handoff moves a local file to the selected machine
+without auto-running a command.
 
 ## One command to your first machine
 

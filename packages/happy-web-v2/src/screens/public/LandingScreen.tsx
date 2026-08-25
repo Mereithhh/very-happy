@@ -7,6 +7,7 @@ import { KeyboardWorkflowProof } from './KeyboardWorkflowProof';
 import { MobileContinuityProof } from './MobileContinuityProof';
 import { ProductWorkspacePreview } from './ProductWorkspacePreview';
 import { SchedulerTopologyProof } from './SchedulerTopologyProof';
+import { WhyVeryHappy } from './WhyVeryHappy';
 import { DAEMON_START_COMMAND, GITHUB_URL, INSTALL_COMMAND, LOGIN_COMMAND } from './publicContent';
 import './public.css';
 
@@ -90,10 +91,11 @@ export function LandingScreen() {
   return <div className="pub-page"><PublicHeader /><main id="main-content">
     <section className="pub-hero" aria-labelledby="hero-title"><div className="pub-hero-copy"><div className="eyebrow">MULTI-MACHINE COMMAND PANEL</div><h1 id="hero-title" className="pub-fleet-title">One panel.<br /><span>Every machine.<br />Every agent.</span></h1><p>Open the Web or PWA, choose a connected machine and agent, then dispatch the work. Step into any live terminal, conversation, file, or task without rebuilding context.</p><div className="pub-hero-thesis mono"><span>SEE THE FLEET.</span><strong>DISPATCH THE WORK. STEP IN ANYWHERE.</strong></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect your first machine <ArrowRight size={16} /></a><Link className="pub-button" to="/docs/quickstart">See how it works</Link></div><div className="pub-meta mono"><span>Web / PWA command surface</span><span>Choose machine + agent per session</span><span>self-hostable</span></div></div><HeroProductStage /></section>
     <ProductShowcase />
-    <CoreFeatureProofs />
-    <MobileContinuityProof />
-    <KeyboardWorkflowProof compact />
+    <WhyVeryHappy />
     <StartAndTrust />
+    <MobileContinuityProof />
+    <CoreFeatureProofs />
+    <KeyboardWorkflowProof compact />
     <section className="pub-final"><div><div className="eyebrow">WHY VERY HAPPY // WORK ANYWHERE</div><h2>The interface carries the overhead.<br /><span>You get to be Very Happy.</span></h2><p>Fewer tabs to patrol, less context to rebuild, and more attention left for the decisions only you can make.</p></div><div className="pub-actions"><a className="pub-button is-primary" href={`${import.meta.env.BASE_URL}signup`}>Connect your first machine <ArrowRight size={16} /></a><a className="pub-button" href={GITHUB_URL}><Github size={16} /> View source</a></div></section>
   </main><PublicFooter /></div>;
 }
