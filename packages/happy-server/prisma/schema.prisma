@@ -93,8 +93,9 @@ model AccountIdentity {
 
     @@unique([provider, providerSubject])
     @@index([accountId])
-    // A database partial unique index also enforces one Email identity per
-    // account; Prisma schema syntax cannot express its provider predicate.
+    // Database partial unique indexes enforce one Email and one Google
+    // identity per account. Prisma cannot express their provider predicates;
+    // migrations 20260825173000 and 20260825190000 are the constraint source.
 }
 
 model AccountLoginSession {

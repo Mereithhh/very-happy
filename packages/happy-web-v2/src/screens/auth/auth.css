@@ -20,6 +20,15 @@
   padding: var(--sp-8) var(--sp-6);
   box-shadow: var(--shadow-modal);
 }
+.auth-reauth-note {
+  padding: var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
 .auth-email,
 .auth-password-form {
   display: flex;
@@ -87,6 +96,16 @@
   display: flex;
   justify-content: center;
 }
+.auth-google-block.is-failed .auth-google { display: none; }
+.auth-google-block.is-loading .auth-google { display: none; }
+.auth-google-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+}
 .auth-google.is-disabled {
   opacity: 0.5;
   pointer-events: none;
@@ -101,7 +120,9 @@
 }
 .auth-google-unavailable button {
   border: 0;
-  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--sp-2);
   background: transparent;
   color: var(--text);
   font: inherit;

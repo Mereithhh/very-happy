@@ -13,6 +13,8 @@ const {
     sendLoginCodeMock,
     getAccountLoginMethodsMock,
     linkVerifiedEmailIdentityMock,
+    verifyGoogleIdTokenMock,
+    linkVerifiedGoogleIdentityMock,
 } = vi.hoisted(() => {
     const dbMock: any = {
         account: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn(async () => 0) },
@@ -37,6 +39,8 @@ const {
         sendLoginCodeMock: vi.fn(),
         getAccountLoginMethodsMock: vi.fn(),
         linkVerifiedEmailIdentityMock: vi.fn(),
+        verifyGoogleIdTokenMock: vi.fn(),
+        linkVerifiedGoogleIdentityMock: vi.fn(),
     };
 });
 
@@ -60,6 +64,11 @@ vi.mock('@/app/auth/emailIdentityLink', () => ({
     linkVerifiedEmailIdentity: linkVerifiedEmailIdentityMock,
     EmailIdentityInUseError: class EmailIdentityInUseError extends Error {},
 }));
+vi.mock('@/app/auth/googleOidc', () => ({ verifyGoogleIdToken: verifyGoogleIdTokenMock }));
+vi.mock('@/app/auth/googleIdentityLink', () => ({
+    linkVerifiedGoogleIdentity: linkVerifiedGoogleIdentityMock,
+    GoogleIdentityInUseError: class GoogleIdentityInUseError extends Error {},
+}));
 
 import {
     accountAuthRoutes,
@@ -68,6 +77,8 @@ import {
     emailCodeRateBuckets,
     emailVerifyRateBuckets,
     enabledReplacementIdentityProviders,
+    googleChallengeRateBucket,
+    googleLoginRateBucket,
     hashPassword,
     passwordLoginRateBuckets,
     verifyPassword,
@@ -121,6 +132,11 @@ beforeEach(() => {
         passwordConfigured: true,
     });
     linkVerifiedEmailIdentityMock.mockResolvedValue('linked');
+    verifyGoogleIdTokenMock.mockResolvedValue({
+        sub: 'google-subject', email: 'owner@example.com', emailVerified: true,
+        name: 'Owner', picture: 'https://example.com/avatar.png',
+    });
+    linkVerifiedGoogleIdentityMock.mockResolvedValue('linked');
 });
 
 describe('public Email OTP and password policy', () => {
@@ -154,6 +170,16 @@ describe('public Email OTP and password policy', () => {
             expect.objectContaining({ key: expect.stringContaining('email:'), max: 9, windowMs: 24 * 60 * 60_000 }),
             expect.objectContaining({ key: expect.stringContaining('challenge:'), max: 4 }),
         ]));
+    });
+
+    it('never persists a raw client IP in Google limiter keys', () => {
+        const challenge = googleChallengeRateBucket('203.0.113.42');
+        const login = googleLoginRateBucket('203.0.113.42');
+        expect(challenge).toMatchObject({ max: 60, windowMs: 60_000 });
+        expect(login).toMatchObject({ max: 60, windowMs: 60_000 });
+        expect(challenge.key).toMatch(/^google-challenge:ip:[a-f0-9]{32}$/);
+        expect(login.key).toMatch(/^google-login:ip:[a-f0-9]{32}$/);
+        expect(`${challenge.key}${login.key}`).not.toContain('203.0.113.42');
     });
 
     it('refuses password shutdown while a password-only account remains', async () => {
@@ -604,6 +630,86 @@ describe('authenticated Email identity linking', () => {
         expect(response.statusCode).toBe(200);
         expect(linkVerifiedEmailIdentityMock).toHaveBeenCalledOnce();
         await app.close();
+    });
+});
+
+describe('authenticated Google identity linking', () => {
+    const nonce = 'n'.repeat(43);
+    const payload = { credential: 'google-id-token', nonce, secret: credentialSecret };
+
+    function enableGoogle() {
+        process.env.GOOGLE_CLIENT_ID = 'google-client';
+        process.env.GOOGLE_ALLOWED_ORIGINS = 'https://veryhappy.dev';
+    }
+
+    async function inject(payloadOverride: Record<string, unknown> = {}, origin = 'https://veryhappy.dev') {
+        enableGoogle();
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/identities/google',
+            headers: { origin },
+            payload: { ...payload, ...payloadOverride },
+        });
+        await app.close();
+        return response;
+    }
+
+    it('links a nonce-bound verified Google identity to the authenticated account', async () => {
+        const response = await inject();
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ success: true, email: 'owner@example.com' });
+        expect(verifyGoogleIdTokenMock).toHaveBeenCalledWith('google-id-token', 'google-client', {
+            expectedNonce: nonce,
+        });
+        expect(linkVerifiedGoogleIdentityMock).toHaveBeenCalledWith(dbMock, 'account-1', {
+            nonce,
+            claims: expect.objectContaining({ sub: 'google-subject' }),
+        });
+    });
+
+    it('requires an allowed browser origin', async () => {
+        const response = await inject({}, 'https://attacker.example');
+        expect(response.statusCode).toBe(403);
+        expect(response.json()).toEqual({ error: 'origin_not_allowed' });
+        expect(verifyGoogleIdTokenMock).not.toHaveBeenCalled();
+    });
+
+    it('requires a fresh login session and the current account secret', async () => {
+        dbMock.accountLoginSession.findFirst.mockResolvedValueOnce({ createdAt: new Date(Date.now() - 11 * 60_000) });
+        const stale = await inject();
+        expect(stale.statusCode).toBe(403);
+        expect(stale.json()).toEqual({ error: 'reauth_required' });
+        expect(verifyGoogleIdTokenMock).not.toHaveBeenCalled();
+
+        vi.clearAllMocks();
+        dbMock.accountLoginSession.findFirst.mockResolvedValue({ createdAt: new Date() });
+        dbMock.account.findUnique.mockResolvedValue({ publicKey: credentialPublicKey });
+        allowAuthRequestMock.mockResolvedValue(true);
+        const wrongSecret = await inject({ secret: Buffer.alloc(32, 9).toString('base64url') });
+        expect(wrongSecret.statusCode).toBe(400);
+        expect(wrongSecret.json()).toEqual({ error: 'invalid_secret' });
+        expect(verifyGoogleIdTokenMock).not.toHaveBeenCalled();
+    });
+
+    it('returns one generic credential error for invalid tokens and consumed challenges', async () => {
+        verifyGoogleIdTokenMock.mockRejectedValueOnce(new Error('bad-token'));
+        const badToken = await inject();
+        expect(badToken.statusCode).toBe(401);
+        expect(badToken.json()).toEqual({ error: 'invalid_google_credential' });
+
+        linkVerifiedGoogleIdentityMock.mockResolvedValueOnce('invalid-challenge');
+        const consumed = await inject();
+        expect(consumed.statusCode).toBe(401);
+        expect(consumed.json()).toEqual({ error: 'invalid_google_credential' });
+    });
+
+    it('never moves a Google identity between accounts', async () => {
+        const { GoogleIdentityInUseError } = await import('@/app/auth/googleIdentityLink');
+        linkVerifiedGoogleIdentityMock.mockRejectedValueOnce(new GoogleIdentityInUseError());
+        const response = await inject();
+        expect(response.statusCode).toBe(409);
+        expect(response.json()).toEqual({ error: 'google_identity_in_use' });
     });
 });
 

@@ -8,7 +8,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { CyberBackdrop } from '@/screens/common/CyberBackdrop';
 import { GoogleLoginButton } from './GoogleLoginButton';
 import './auth.css';
-import { authReturnTarget } from '@/app/authReturnTarget';
+import { authReturnTarget, peekPersistedAuthReturnTarget } from '@/app/authReturnTarget';
 import { classifyPasswordLoginFailure } from './loginErrorPresentation';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
@@ -95,6 +95,12 @@ export function LoginScreen() {
   }
 
   const { emailEnabled, passwordEnabled, googleEnabled } = publicAuthMethodState(authConfig);
+  const reauthTarget = peekPersistedAuthReturnTarget();
+  const reauthMessage = reauthTarget === '/settings/google'
+    ? t('reauth.google')
+    : reauthTarget === '/settings/email'
+      ? t('reauth.email')
+      : null;
 
   return (
     <div className="auth-page">
@@ -105,6 +111,7 @@ export function LoginScreen() {
           <div className="auth-wordmark">very happy</div>
         </div>
         <div className="auth-eyebrow eyebrow">{t('settings.connectAccount')}</div>
+        {reauthMessage && <div className="auth-reauth-note" role="status">{reauthMessage}</div>}
 
         {emailEnabled && <EmailOtpForm busy={busy} onBusyChange={setBusy} onCredentials={finishLogin} />}
 

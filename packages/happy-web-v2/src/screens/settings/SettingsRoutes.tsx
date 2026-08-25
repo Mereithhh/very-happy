@@ -70,12 +70,16 @@ import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
 import {
   CloudAuthError,
   linkEmailIdentity,
+  linkGoogleIdentity,
   loadAccountLoginMethods,
   loadPublicAuthConfig,
   requestEmailLoginCode,
   type AccountLoginMethods,
 } from '@/auth/cloudAuth';
 import { emailOtpTiming } from '@/screens/auth/emailOtpPresentation';
+import { GoogleLoginButton } from '@/screens/auth/GoogleLoginButton';
+import { persistAuthReturnTarget } from '@/app/authReturnTarget';
+import { accountIdentityAction, accountIdentityState, type AccountIdentityState } from './accountIdentityPresentation';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
@@ -478,18 +482,30 @@ function Account() {
   const profile = useProfile();
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState<boolean | null>(null);
   const [emailOtpEnabled, setEmailOtpEnabled] = useState<boolean | null>(null);
+  const [googleLoginEnabled, setGoogleLoginEnabled] = useState<boolean | null>(null);
+  const [authConfigError, setAuthConfigError] = useState(false);
   const [loginMethods, setLoginMethods] = useState<AccountLoginMethods | null>(null);
   const [loginMethodsError, setLoginMethodsError] = useState(false);
   const [loginMethodsReload, setLoginMethodsReload] = useState(0);
+  const [authConfigReload, setAuthConfigReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoginMethods(null);
     setLoginMethodsError(false);
+    setAuthConfigError(false);
+    setPasswordLoginEnabled(null);
+    setEmailOtpEnabled(null);
+    setGoogleLoginEnabled(null);
     void loadPublicAuthConfig().then((config) => {
       if (cancelled) return;
-      setPasswordLoginEnabled(config ? config.passwordLoginEnabled !== false : null);
-      setEmailOtpEnabled(config ? config.emailOtpEnabled === true : null);
+      if (!config) {
+        setAuthConfigError(true);
+        return;
+      }
+      setPasswordLoginEnabled(config.passwordLoginEnabled !== false);
+      setEmailOtpEnabled(config.emailOtpEnabled === true);
+      setGoogleLoginEnabled(!!config.googleClientId);
     });
     if (credentials) {
       void loadAccountLoginMethods(credentials).then((methods) => {
@@ -499,7 +515,7 @@ function Account() {
       });
     }
     return () => { cancelled = true; };
-  }, [credentials, loginMethodsReload]);
+  }, [credentials, loginMethodsReload, authConfigReload]);
 
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
@@ -549,6 +565,53 @@ function Account() {
   }
 
   const otherServices = (profile.connectedServices ?? []).filter((s) => s !== 'github');
+  const emailState = accountIdentityState({
+    methodsLoaded: loginMethods !== null,
+    methodsError: loginMethodsError,
+    connected: !!loginMethods?.email,
+    configEnabled: emailOtpEnabled,
+    configError: authConfigError,
+  });
+  const googleState = accountIdentityState({
+    methodsLoaded: loginMethods !== null,
+    methodsError: loginMethodsError,
+    connected: loginMethods?.google.connected === true,
+    configEnabled: googleLoginEnabled,
+    configError: authConfigError,
+  });
+
+  function identityAction(state: AccountIdentityState, linkPath: string) {
+    const action = accountIdentityAction(state);
+    if (action === 'retry-methods') return () => setLoginMethodsReload((value) => value + 1);
+    if (action === 'retry-config') return () => setAuthConfigReload((value) => value + 1);
+    if (action === 'link') return () => navigate(linkPath);
+    return undefined;
+  }
+
+  function emailSubtitle() {
+    if (emailState === 'methods-loading') return t('common.loading');
+    if (emailState === 'methods-error') return t('settingsAccount.loginMethodsUnavailable');
+    if (emailState === 'linked-config-loading') return t('settingsAccount.emailLinkedChecking', { email: loginMethods!.email! });
+    if (emailState === 'linked-config-error') return t('settingsAccount.emailLinkedConfigUnknown', { email: loginMethods!.email! });
+    if (emailState === 'linked-disabled') return t('settingsAccount.emailLinkedUnavailable', { email: loginMethods!.email! });
+    if (emailState === 'linked-enabled') return loginMethods!.email!;
+    if (emailState === 'unlinked-config-loading') return t('common.loading');
+    if (emailState === 'unlinked-config-error') return t('settingsAccount.authConfigUnavailable');
+    return emailState === 'unlinked-enabled' ? t('settingsAccount.emailNotLinked') : t('settingsAccount.emailUnavailable');
+  }
+
+  function googleSubtitle() {
+    const identity = loginMethods?.google.email ?? t('settingsAccount.googleConnected');
+    if (googleState === 'methods-loading') return t('common.loading');
+    if (googleState === 'methods-error') return t('settingsAccount.loginMethodsUnavailable');
+    if (googleState === 'linked-config-loading') return t('settingsAccount.googleLinkedChecking', { email: identity });
+    if (googleState === 'linked-config-error') return t('settingsAccount.googleLinkedConfigUnknown', { email: identity });
+    if (googleState === 'linked-disabled') return t('settingsAccount.googleLinkedUnavailable', { email: identity });
+    if (googleState === 'linked-enabled') return identity;
+    if (googleState === 'unlinked-config-loading') return t('common.loading');
+    if (googleState === 'unlinked-config-error') return t('settingsAccount.authConfigUnavailable');
+    return googleState === 'unlinked-enabled' ? t('settingsAccount.googleNotLinked') : t('settingsAccount.googleUnavailable');
+  }
 
   return (
     <Page>
@@ -571,35 +634,21 @@ function Account() {
           )}
           <Item
             title={t('settingsAccount.emailLogin')}
-            subtitle={loginMethodsError
-              ? t('settingsAccount.loginMethodsUnavailable')
-              : loginMethods === null || emailOtpEnabled === null
-                ? t('common.loading')
-                : loginMethods.email ?? (emailOtpEnabled ? t('settingsAccount.emailNotLinked') : t('settingsAccount.emailUnavailable'))}
-            right={(loginMethodsError || (emailOtpEnabled === true && loginMethods !== null && !loginMethods.email)) ? <ChevronRight size={16} /> : undefined}
-            onClick={loginMethodsError
-              ? () => setLoginMethodsReload((value) => value + 1)
-              : emailOtpEnabled === true && loginMethods !== null && !loginMethods.email
-                ? () => navigate('/settings/email')
-                : undefined}
+            subtitle={emailSubtitle()}
+            right={accountIdentityAction(emailState) ? <ChevronRight size={16} /> : undefined}
+            onClick={identityAction(emailState, '/settings/email')}
           />
           <Item
             title={t('settingsAccount.googleLogin')}
-            subtitle={loginMethodsError
-              ? t('settingsAccount.loginMethodsUnavailable')
-              : loginMethods === null
-                ? t('common.loading')
-                : loginMethods.google.connected
-              ? (loginMethods.google.email ?? t('settingsAccount.googleConnected'))
-              : t('settingsAccount.googleNotLinked')}
-            right={loginMethodsError ? <ChevronRight size={16} /> : undefined}
-            onClick={loginMethodsError ? () => setLoginMethodsReload((value) => value + 1) : undefined}
+            subtitle={googleSubtitle()}
+            right={accountIdentityAction(googleState) ? <ChevronRight size={16} /> : undefined}
+            onClick={identityAction(googleState, '/settings/google')}
           />
-          {passwordLoginEnabled === true && <Item
+          {(passwordLoginEnabled === true || passwordLoginEnabled === null) && <Item
             title={t('settingsAccount.password')}
-            subtitle={t('settingsAccount.passwordChange')}
-            right={<ChevronRight size={16} />}
-            onClick={() => navigate('/settings/password')}
+            subtitle={authConfigError ? t('settingsAccount.authConfigUnavailable') : passwordLoginEnabled === null ? t('common.loading') : t('settingsAccount.passwordChange')}
+            right={(authConfigError || passwordLoginEnabled === true) ? <ChevronRight size={16} /> : undefined}
+            onClick={authConfigError ? () => setAuthConfigReload((value) => value + 1) : passwordLoginEnabled === true ? () => navigate('/settings/password') : undefined}
           />}
           <Item title={t('settingsAccount.server')} detail={serverInfo.hostname} />
         </ItemGroup>
@@ -764,15 +813,79 @@ function EmailIdentity() {
         </button>
       </div>}
       {needsReauth && <Button type="button" variant="secondary" fullWidth onClick={() => {
-        navigate('/login', {
-          replace: true,
-          state: { from: { pathname: '/settings/email', search: '', hash: '' } },
-        });
+        persistAuthReturnTarget({ pathname: '/settings/email', search: '', hash: '' });
         void logout();
       }}>
-        {t('emailLink.signOutAndContinue')}
+        {t('emailLink.signOutAndReauth')}
       </Button>}
     </form>
+  </Page>;
+}
+
+// ===================================================================
+// Google identity
+// ===================================================================
+
+function GoogleIdentity() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { credentials, logout } = useAuth();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
+
+  function messageFor(errorValue: unknown) {
+    if (!(errorValue instanceof CloudAuthError)) return t('googleLink.network');
+    if (errorValue.code === 'google-identity-in-use') return t('googleLink.inUse');
+    if (errorValue.code === 'reauth-required') return t('googleLink.reauthRequired');
+    if (errorValue.code === 'invalid-account-secret') return t('googleLink.invalidAccount');
+    if (errorValue.code === 'origin-not-allowed') return t('googleLink.originNotAllowed');
+    if (errorValue.code === 'google-not-configured') return t('googleLink.notConfigured');
+    if (errorValue.code === 'rate-limited') return t('signup.errorRateLimited');
+    if (errorValue.code === 'invalid-credential') return t('googleLink.invalidCredential');
+    return t('googleLink.network');
+  }
+
+  async function onCredential(credential: string, nonce: string) {
+    if (!credentials || busy) return;
+    setBusy(true);
+    setError(null);
+    setNeedsReauth(false);
+    try {
+      await linkGoogleIdentity(credential, nonce, credentials);
+      toast.success(t('googleLink.success'));
+      navigate('/settings/account');
+    } catch (errorValue) {
+      const reauth = errorValue instanceof CloudAuthError && errorValue.code === 'reauth-required';
+      setNeedsReauth(reauth);
+      setError(messageFor(errorValue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Page>
+    <Header title={t('googleLink.title')} subtitle={t('googleLink.subtitle')} />
+    <div className="set-note">{t('googleLink.securityNote')}</div>
+    <div className="set-editor">
+      <GoogleLoginButton
+        required
+        disabled={busy || !credentials}
+        retryLabel={t('common.retry')}
+        unavailableLabel={t('googleLink.unavailable')}
+        loadingLabel={t('googleLink.loading')}
+        onCredential={onCredential}
+      />
+      {busy && <div className="set-google-status" role="status"><Spinner size={16} />{t('googleLink.linking')}</div>}
+      {error && <div className="set-google-error" role="alert">{error}</div>}
+      {needsReauth && <Button type="button" variant="secondary" fullWidth onClick={() => {
+        persistAuthReturnTarget({ pathname: '/settings/google', search: '', hash: '' });
+        void logout();
+      }}>
+        {t('emailLink.signOutAndReauth')}
+      </Button>}
+    </div>
   </Page>;
 }
 
@@ -2292,6 +2405,7 @@ export function SettingsRoutes() {
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />
       <Route path="email" element={<EmailIdentity />} />
+      <Route path="google" element={<GoogleIdentity />} />
     </Routes>
   );
 }

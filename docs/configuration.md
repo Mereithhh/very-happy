@@ -108,8 +108,11 @@ is enabled, sign in to the existing account, open **Settings → Account → Ema
 sign-in**, and verify the address there. Linking requires a login from the last
 10 minutes, the current device's account key, and the emailed code. If the
 address already belongs to another account—or this account already has another
-email—the server returns a conflict and changes nothing. Google identities are
-also never linked merely because Google's claim contains the same address.
+email—the server returns a conflict and changes nothing. To add Google to an
+existing account, use **Settings → Account → Google sign-in** while signed into
+that account and choose the Google identity explicitly. This uses the same recent
+login and account-key proof. Google identities are never linked merely because
+Google's claim contains the same address.
 
 After a real delivery-and-login smoke test, an operator may set
 `AUTH_PASSWORD_LOGIN_DISABLED=true`. That setting rejects password signup,

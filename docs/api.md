@@ -36,6 +36,20 @@ Auth flows:
   - Requires an allowed browser `Origin`; verifies the Google signature/claims and nonce, then atomically consumes the challenge.
   - An unknown Google subject creates an Account subject to signup mode/capacity.
 
+- `GET /v1/account/identities` (requires Bearer auth)
+  - Reports whether Email, Google, and password login methods belong to the current Account.
+
+- `POST /v1/account/identities/email` (requires Bearer auth)
+  - Body: `{ email, challengeId, code, secret }`.
+  - Requires a login session created within the last 10 minutes and a `secret` that derives the current Account public key. The OTP and insert commit in one transaction.
+  - Returns 400 invalid secret, 401 invalid/consumed code, 403 reauthentication required, 409 identity conflict, 429 rate limit, or 501 provider unavailable.
+
+- `POST /v1/account/identities/google` (requires Bearer auth)
+  - Body: `{ credential, nonce, secret }`; the browser `Origin` must be in `GOOGLE_ALLOWED_ORIGINS`.
+  - Requires a login session created within the last 10 minutes, account-key proof, a verified Google ID token bound to `nonce`, and an unconsumed five-minute challenge. Nonce consumption and insert commit in one transaction.
+  - Never merges or moves identities by matching an Email address.
+  - Returns 400 invalid secret, 401 invalid token/nonce, 403 reauthentication or Origin rejection, 409 identity conflict, 429 rate limit, or 501 provider unavailable.
+
 - `POST /v1/account/logout` (requires Bearer auth)
   - Revokes the current Web login session. Legacy CLI/daemon tokens remain compatible and are not session-managed.
 

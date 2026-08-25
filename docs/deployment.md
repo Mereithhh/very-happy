@@ -101,8 +101,24 @@ dependency surface. Do not install the upstream-owned
 **Optional integrations**
 - Google account login: `GOOGLE_CLIENT_ID` (Web OAuth client ID) and `GOOGLE_ALLOWED_ORIGINS` (comma-separated exact browser origins). No client secret is needed for Google Identity Services ID-token login.
 - Passwordless email login: set `AUTH_EMAIL_PROVIDER=resend` with `AUTH_EMAIL_FROM` and `RESEND_API_KEY`, or `AUTH_EMAIL_PROVIDER=cloudflare` with `AUTH_EMAIL_FROM`, `CLOUDFLARE_EMAIL_ACCOUNT_ID`, and `CLOUDFLARE_EMAIL_API_TOKEN`. Verify the sender domain first. Deploy and smoke-test a real code before optionally setting `AUTH_PASSWORD_LOGIN_DISABLED=true`; the server fails startup if that would leave no email or Google login path.
-  Existing accounts must explicitly link an address from **Settings → Account**
-  during a login session created within the last 10 minutes. Do not merge
+
+Before deploying the one-Google-identity-per-account constraint, run this read-only
+preflight against the production database. Zero rows is required:
+
+```sql
+SELECT "accountId", COUNT(*) AS identity_count
+FROM "AccountIdentity"
+WHERE "provider" = 'google'
+GROUP BY "accountId"
+HAVING COUNT(*) > 1;
+```
+
+If it returns rows, stop the deployment and determine ownership with the affected
+user. Never delete, move, or merge those identities based only on matching Email
+addresses. The migration intentionally fails closed with the same condition.
+  Existing accounts must explicitly link Email from **Settings → Account → Email
+  sign-in** or Google from **Settings → Account → Google sign-in** during a login
+  session created within the last 10 minutes. Do not merge
   accounts or move identities by matching Email/Google address strings.
 
 For the maintainer Cloud, the origin configuration is:

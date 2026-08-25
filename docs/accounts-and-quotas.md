@@ -19,7 +19,23 @@ verify the address. Do this before trying Email login. On an open-signup relay,
 using an unlinked address at the login screen can create a separate Account;
 matching the address on Google does not merge it. Linking requires a login from
 the last 10 minutes, so the UI may ask you to sign out, sign in again, and
-request a new code.
+request a new code. Reauthenticate with a method already linked to the current
+Account; do not use the new Email address until linking succeeds.
+
+## Link Google to an existing account
+
+Sign in with the existing account first, then open **Settings → Account → Google
+sign-in** and choose the Google account to link. Do this before using the Google
+button on the public login page. Matching Email addresses never merge accounts;
+the explicit link requires a login from the last 10 minutes and proof of the
+current account key. A Google identity already owned by another Account is left
+unchanged and returns a conflict. If reauthentication is required, use an
+already-linked method for the current Account—not the Google identity being
+added—then return to the link screen.
+The selected Google identity cannot currently be changed or unlinked in the Web
+UI, so confirm the account in Google's chooser before continuing. An operator
+can resolve a mistaken link only after verifying ownership and a safe fallback
+login method; never edit ownership by matching Email strings.
 
 ## Signup policy
 

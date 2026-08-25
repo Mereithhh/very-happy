@@ -72,6 +72,20 @@
   color: var(--text-dim);
 }
 
+.set-google-status,
+.set-google-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  color: var(--text-dim);
+  font-size: var(--fs-13);
+  line-height: 1.45;
+  text-align: center;
+}
+.set-google-error { color: var(--danger); }
+
 /* radix switch */
 .set-switch {
   all: unset;
