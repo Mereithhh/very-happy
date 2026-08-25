@@ -103,6 +103,7 @@
 
 @container keyboard-workflow (max-width: 880px) {
   .kwp-layout { grid-template-columns: minmax(0, 1fr); }
+  .kwp--compact .kwp-layout { grid-template-columns: minmax(0, 1fr); }
   .kwp-copy { max-width: 720px; }
   .kwp-stage { min-height: 620px; }
   .kwp-flow--left { left: 2%; }
