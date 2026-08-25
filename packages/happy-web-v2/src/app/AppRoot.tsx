@@ -105,7 +105,12 @@ const SidebarHarness = import.meta.env.DEV
 const router = createBrowserRouter(
   [
     ...(SidebarHarness
-      ? [{ path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> }]
+      ? [
+          { path: '/dev/sidebar', element: <Lazy><SidebarHarness /></Lazy> },
+          // Real post-connect home content without auth/store seeding. This is
+          // DEV-only like the sidebar harness and is stripped from prod builds.
+          { path: '/dev/workspace-guide', element: <EmptyDetail /> },
+        ]
       : []),
     {
       path: '/login',
