@@ -261,6 +261,7 @@ export const PUBLIC_DOCS: PublicDoc[] = [
       ] },
       { heading: 'Authentication', blocks: [
         { type: 'p', text: 'A deployment may offer passwordless email codes, Google, and optionally username/password. Email codes are preferred when a verified sender is configured. Google depends on an OAuth client for the exact web origin; password controls disappear when the operator disables that compatibility path.' },
+        { type: 'note', text: 'Already have a password or Google account? Sign in with that method first, then open Settings → Account → Email sign-in and verify your address. An unlinked Email login on an open relay can create a separate Account; the same-looking Google address is never merged automatically.' },
       ] },
       { heading: 'Operator controls', blocks: [
         { type: 'p', text: 'Capacity is a global signup safety limit, not a usage entitlement. Separate machine, session, encrypted state, message, attachment, access-key, artifact, feed, KV, push-token, usage-report, socket, and RPC boundaries protect the relay. Persistent writers share database-backed account locks across HTTP and Socket.IO, so changing clients does not bypass a quota.' },

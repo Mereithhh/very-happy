@@ -93,6 +93,8 @@ model AccountIdentity {
 
     @@unique([provider, providerSubject])
     @@index([accountId])
+    // A database partial unique index also enforces one Email identity per
+    // account; Prisma schema syntax cannot express its provider predicate.
 }
 
 model AccountLoginSession {

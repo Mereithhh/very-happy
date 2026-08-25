@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import * as Switch from '@radix-ui/react-switch';
 import {
@@ -67,7 +67,15 @@ import {
   type ModeOption,
 } from '@/components/modelModeOptions';
 import { setAccountCredentials, AccountAuthError } from '@/auth/passwordUnlock';
-import { loadPublicAuthConfig } from '@/auth/cloudAuth';
+import {
+  CloudAuthError,
+  linkEmailIdentity,
+  loadAccountLoginMethods,
+  loadPublicAuthConfig,
+  requestEmailLoginCode,
+  type AccountLoginMethods,
+} from '@/auth/cloudAuth';
+import { emailOtpTiming } from '@/screens/auth/emailOtpPresentation';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
@@ -135,7 +143,7 @@ function Header({
           is any (see app/appBack.ts). No per-page onBack any more. */}
       <BackButton />
       <div className="set-header__titles">
-        <span className="set-header__title">{title}</span>
+        <h1 className="set-header__title">{title}</h1>
         {subtitle && <span className="set-header__subtitle">{subtitle}</span>}
       </div>
       {right && <div className="set-header__right">{right}</div>}
@@ -469,14 +477,29 @@ function Account() {
   const toast = useToast();
   const profile = useProfile();
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState<boolean | null>(null);
+  const [emailOtpEnabled, setEmailOtpEnabled] = useState<boolean | null>(null);
+  const [loginMethods, setLoginMethods] = useState<AccountLoginMethods | null>(null);
+  const [loginMethodsError, setLoginMethodsError] = useState(false);
+  const [loginMethodsReload, setLoginMethodsReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoginMethods(null);
+    setLoginMethodsError(false);
     void loadPublicAuthConfig().then((config) => {
-      if (!cancelled) setPasswordLoginEnabled(config?.passwordLoginEnabled !== false);
+      if (cancelled) return;
+      setPasswordLoginEnabled(config ? config.passwordLoginEnabled !== false : null);
+      setEmailOtpEnabled(config ? config.emailOtpEnabled === true : null);
     });
+    if (credentials) {
+      void loadAccountLoginMethods(credentials).then((methods) => {
+        if (!cancelled) setLoginMethods(methods);
+      }).catch(() => {
+        if (!cancelled) setLoginMethodsError(true);
+      });
+    }
     return () => { cancelled = true; };
-  }, []);
+  }, [credentials, loginMethodsReload]);
 
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
@@ -546,6 +569,32 @@ function Account() {
           {profile.id && (
             <Item title={t('settingsAccount.publicId')} detail={profile.id} />
           )}
+          <Item
+            title={t('settingsAccount.emailLogin')}
+            subtitle={loginMethodsError
+              ? t('settingsAccount.loginMethodsUnavailable')
+              : loginMethods === null || emailOtpEnabled === null
+                ? t('common.loading')
+                : loginMethods.email ?? (emailOtpEnabled ? t('settingsAccount.emailNotLinked') : t('settingsAccount.emailUnavailable'))}
+            right={(loginMethodsError || (emailOtpEnabled === true && loginMethods !== null && !loginMethods.email)) ? <ChevronRight size={16} /> : undefined}
+            onClick={loginMethodsError
+              ? () => setLoginMethodsReload((value) => value + 1)
+              : emailOtpEnabled === true && loginMethods !== null && !loginMethods.email
+                ? () => navigate('/settings/email')
+                : undefined}
+          />
+          <Item
+            title={t('settingsAccount.googleLogin')}
+            subtitle={loginMethodsError
+              ? t('settingsAccount.loginMethodsUnavailable')
+              : loginMethods === null
+                ? t('common.loading')
+                : loginMethods.google.connected
+              ? (loginMethods.google.email ?? t('settingsAccount.googleConnected'))
+              : t('settingsAccount.googleNotLinked')}
+            right={loginMethodsError ? <ChevronRight size={16} /> : undefined}
+            onClick={loginMethodsError ? () => setLoginMethodsReload((value) => value + 1) : undefined}
+          />
           {passwordLoginEnabled === true && <Item
             title={t('settingsAccount.password')}
             subtitle={t('settingsAccount.passwordChange')}
@@ -591,6 +640,140 @@ function Account() {
       </ItemList>
     </Page>
   );
+}
+
+// ===================================================================
+// Email identity
+// ===================================================================
+
+function EmailIdentity() {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { credentials, logout } = useAuth();
+  const toast = useToast();
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [sentAt, setSentAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
+  const normalizedEmail = email.trim().toLowerCase();
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+  const { remainingSeconds, resendSeconds } = emailOtpTiming(now, sentAt, expiresAt);
+
+  useEffect(() => {
+    if (!challengeId) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [challengeId]);
+
+  function messageFor(errorValue: unknown) {
+    if (!(errorValue instanceof CloudAuthError)) return t('emailAuth.network');
+    if (errorValue.code === 'invalid-email-code') return t('emailAuth.invalidCode');
+    if (errorValue.code === 'email-identity-in-use') return t('emailLink.inUse');
+    if (errorValue.code === 'reauth-required') return t('emailLink.reauthRequired');
+    if (errorValue.code === 'invalid-account-secret') return t('emailLink.invalidAccount');
+    if (errorValue.code === 'email-delivery-unavailable') return t('emailAuth.deliveryUnavailable');
+    if (errorValue.code === 'email-not-configured') return t('emailAuth.notConfigured');
+    if (errorValue.code === 'rate-limited') return t('signup.errorRateLimited');
+    return t('emailAuth.network');
+  }
+
+  async function sendCode() {
+    if (!emailValid) { setError(t('emailAuth.invalidEmail')); return; }
+    setBusy(true);
+    setError(null);
+    setNeedsReauth(false);
+    try {
+      const challenge = await requestEmailLoginCode(normalizedEmail);
+      setChallengeId(challenge.challengeId);
+      setExpiresAt(Date.parse(challenge.expiresAt));
+      setSentAt(Date.now());
+      setNow(Date.now());
+      setCode('');
+    } catch (errorValue) {
+      setError(messageFor(errorValue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!challengeId) { await sendCode(); return; }
+    if (!credentials) { setError(t('emailLink.reauthRequired')); return; }
+    if (remainingSeconds === 0) { setError(t('emailAuth.expired')); return; }
+    if (!/^\d{6}$/.test(code)) { setError(t('emailAuth.invalidCode')); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await linkEmailIdentity(normalizedEmail, challengeId, code, credentials);
+      toast.success(t('emailLink.success'));
+      navigate('/settings/account');
+    } catch (errorValue) {
+      setNeedsReauth(errorValue instanceof CloudAuthError && errorValue.code === 'reauth-required');
+      setError(messageFor(errorValue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Page>
+    <Header title={t('emailLink.title')} subtitle={t('emailLink.subtitle')} />
+    <div className="set-note">{t('emailLink.securityNote')}</div>
+    <form className="set-editor" onSubmit={submit}>
+      {!challengeId ? <Input
+        label={t('emailAuth.email')}
+        type="email"
+        autoFocus
+        autoComplete="email"
+        inputMode="email"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder={t('emailAuth.emailPlaceholder')}
+        error={error}
+      /> : <>
+        <div className="set-email-status">
+          <span role="status">{t('emailAuth.sent', { email: normalizedEmail })}</span>
+          <span>{remainingSeconds > 0 ? t('emailAuth.expiresIn', { seconds: remainingSeconds }) : t('emailAuth.expired')}</span>
+        </div>
+        <Input
+          label={t('emailAuth.code')}
+          autoFocus
+          autoComplete="one-time-code"
+          inputMode="numeric"
+          maxLength={6}
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+          placeholder={t('emailAuth.codePlaceholder')}
+          error={error}
+        />
+      </>}
+      <Button type="submit" variant="primary" fullWidth loading={busy} disabled={busy || (!challengeId ? !emailValid : code.length !== 6 || remainingSeconds === 0)}>
+        {challengeId ? t('emailLink.verifyAndLink') : t('emailAuth.sendCode')}
+      </Button>
+      {challengeId && <div className="set-email-actions">
+        <button type="button" disabled={busy || resendSeconds > 0} onClick={() => void sendCode()}>
+          {resendSeconds > 0 ? t('emailAuth.resendIn', { seconds: resendSeconds }) : t('emailAuth.resend')}
+        </button>
+        <button type="button" disabled={busy} onClick={() => { setChallengeId(null); setExpiresAt(null); setCode(''); setError(null); }}>
+          {t('emailAuth.changeEmail')}
+        </button>
+      </div>}
+      {needsReauth && <Button type="button" variant="secondary" fullWidth onClick={() => {
+        navigate('/login', {
+          replace: true,
+          state: { from: { pathname: '/settings/email', search: '', hash: '' } },
+        });
+        void logout();
+      }}>
+        {t('emailLink.signOutAndContinue')}
+      </Button>}
+    </form>
+  </Page>;
 }
 
 // ===================================================================
@@ -2108,6 +2291,7 @@ export function SettingsRoutes() {
       <Route path="usage" element={<Usage />} />
       <Route path="diagnostics" element={<Diagnostics />} />
       <Route path="password" element={<Password />} />
+      <Route path="email" element={<EmailIdentity />} />
     </Routes>
   );
 }

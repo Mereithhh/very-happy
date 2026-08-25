@@ -33,6 +33,11 @@ import {
     normalizeEmail,
 } from '@/app/auth/emailLoginSecurity';
 import { EmailDeliveryError, sendLoginCode } from '@/app/auth/emailSender';
+import {
+    EmailIdentityInUseError,
+    getAccountLoginMethods,
+    linkVerifiedEmailIdentity,
+} from '@/app/auth/emailIdentityLink';
 
 /** Username/password + Google identity for the server-trusted Cloud model. */
 
@@ -505,6 +510,92 @@ export function accountAuthRoutes(app: Fastify) {
             log({ module: 'api', level: 'error', error }, 'Account credentials upsert failed');
             return reply.code(500).send({ error: 'failed' as const });
         }
+    });
+
+    app.get('/v1/account/identities', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    email: z.string().nullable(),
+                    google: z.object({ connected: z.boolean(), email: z.string().nullable() }),
+                    passwordConfigured: z.boolean(),
+                }),
+            },
+        },
+    }, async (request, reply) => {
+        return reply.send(await getAccountLoginMethods(db, request.userId));
+    });
+
+    app.post('/v1/account/identities/email', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                email: emailSchema,
+                challengeId: z.string().uuid(),
+                code: emailCodeSchema,
+                secret: z.string().min(1).max(1024),
+            }).strict(),
+            response: {
+                200: z.object({ success: z.literal(true), email: z.string() }),
+                400: z.object({ error: z.literal('invalid_secret') }),
+                401: z.object({ error: z.literal('invalid_email_code') }),
+                403: z.object({ error: z.literal('reauth_required') }),
+                409: z.object({ error: z.literal('email_identity_in_use') }),
+                429: z.object({ error: z.literal('too_many_requests') }),
+                501: z.object({ error: z.literal('email_not_configured') }),
+            },
+        },
+    }, async (request, reply) => {
+        if (!emailConfig) return reply.code(501).send({ error: 'email_not_configured' as const });
+        const accountId = request.userId;
+        const recentSession = request.authLoginSessionId
+            ? await db.accountLoginSession.findFirst({
+                where: {
+                    id: request.authLoginSessionId,
+                    accountId,
+                    revokedAt: null,
+                    expiresAt: { gt: new Date() },
+                },
+                select: { createdAt: true },
+            })
+            : null;
+        if (!recentSession || recentSession.createdAt.getTime() < Date.now() - 10 * 60_000) {
+            return reply.code(403).send({ error: 'reauth_required' as const });
+        }
+        const derivedPublicKey = accountPublicKeyFromSecret(request.body.secret);
+        const account = derivedPublicKey
+            ? await db.account.findUnique({ where: { id: accountId }, select: { publicKey: true } })
+            : null;
+        if (!account || account.publicKey !== derivedPublicKey) {
+            return reply.code(400).send({ error: 'invalid_secret' as const });
+        }
+
+        const email = normalizeEmail(request.body.email);
+        const accountKey = hashPairingValue(accountId).slice(0, 32);
+        const allowed = await consumeRateBucketsSequentially([
+            ...emailVerifyRateBuckets(request.ip, email, request.body.challengeId),
+            { key: `email-link:account:${accountKey}:hour`, max: 5, windowMs: 60 * 60_000 },
+            { key: `email-link:account:${accountKey}:day`, max: 10, windowMs: 24 * 60 * 60_000 },
+        ]);
+        if (!allowed) return reply.code(429).send({ error: 'too_many_requests' as const });
+        try {
+            const result = await linkVerifiedEmailIdentity(db, accountId, {
+                email,
+                challengeId: request.body.challengeId,
+                code: request.body.code,
+            });
+            if (result === 'invalid-code') {
+                return reply.code(401).send({ error: 'invalid_email_code' as const });
+            }
+        } catch (error) {
+            if (error instanceof EmailIdentityInUseError) {
+                return reply.code(409).send({ error: 'email_identity_in_use' as const });
+            }
+            throw error;
+        }
+        log({ module: 'email-auth', accountId }, 'Email login identity linked');
+        return reply.send({ success: true as const, email });
     });
 
     app.post('/v1/account/login', {

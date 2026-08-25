@@ -13,6 +13,9 @@ describe('auth growth bounds on PGlite', () => {
     let PairingCapacityError: typeof import('./pairingStore').PairingCapacityError;
     let createEmailLoginChallenge: typeof import('./emailLoginSecurity').createEmailLoginChallenge;
     let consumeEmailLoginChallenge: typeof import('./emailLoginSecurity').consumeEmailLoginChallenge;
+    let hashEmailLoginCode: typeof import('./emailLoginSecurity').hashEmailLoginCode;
+    let linkVerifiedEmailIdentity: typeof import('./emailIdentityLink').linkVerifiedEmailIdentity;
+    let EmailIdentityInUseError: typeof import('./emailIdentityLink').EmailIdentityInUseError;
 
     beforeAll(async () => {
         process.env.DB_PROVIDER = 'pglite';
@@ -27,7 +30,8 @@ describe('auth growth bounds on PGlite', () => {
         ({ db } = await import('../../storage/db'));
         ({ auth } = await import('./auth'));
         ({ createPairing, PairingCapacityError } = await import('./pairingStore'));
-        ({ createEmailLoginChallenge, consumeEmailLoginChallenge } = await import('./emailLoginSecurity'));
+        ({ createEmailLoginChallenge, consumeEmailLoginChallenge, hashEmailLoginCode } = await import('./emailLoginSecurity'));
+        ({ linkVerifiedEmailIdentity, EmailIdentityInUseError } = await import('./emailIdentityLink'));
         await auth.init();
     });
 
@@ -68,6 +72,111 @@ describe('auth growth bounds on PGlite', () => {
         const second = await createEmailLoginChallenge('person@example.com', 10, { code: '222222' });
         await expect(consumeEmailLoginChallenge(first.id, first.email, first.code)).resolves.toBe(false);
         await expect(consumeEmailLoginChallenge(second.id, second.email, second.code)).resolves.toBe(true);
+    });
+
+    it('links one verified email once and keeps login lookup on the original account', async () => {
+        const account = await db.account.create({ data: { publicKey: `email-link-${crypto.randomUUID()}` } });
+        const challenge = await createEmailLoginChallenge('owner@example.com', 10, { code: '123456' });
+        await expect(linkVerifiedEmailIdentity(db, account.id, {
+            email: ' Owner@Example.com ',
+            challengeId: challenge.id,
+            code: challenge.code,
+        })).resolves.toBe('linked');
+
+        const identity = await db.accountIdentity.findUniqueOrThrow({
+            where: { provider_providerSubject: { provider: 'email', providerSubject: challenge.email } },
+        });
+        expect(identity.accountId).toBe(account.id);
+        expect(identity.providerSubject).toBe('owner@example.com');
+        const replay = await linkVerifiedEmailIdentity(db, account.id, {
+            email: challenge.email,
+            challengeId: challenge.id,
+            code: challenge.code,
+        });
+        expect(replay).toBe('invalid-code');
+
+        const secondChallenge = await createEmailLoginChallenge('OWNER@example.com', 10, { code: '654321' });
+        await expect(linkVerifiedEmailIdentity(db, account.id, {
+            email: ' owner@EXAMPLE.com ',
+            challengeId: secondChallenge.id,
+            code: secondChallenge.code,
+        })).resolves.toBe('linked');
+        expect(await db.accountIdentity.count({
+            where: { provider: 'email', accountId: account.id },
+        })).toBe(1);
+    });
+
+    it('rolls back OTP consumption when the verified email belongs to another account', async () => {
+        const owner = await db.account.create({ data: { publicKey: `email-owner-${crypto.randomUUID()}` } });
+        const other = await db.account.create({ data: { publicKey: `email-other-${crypto.randomUUID()}` } });
+        const email = `rollback-${crypto.randomUUID()}@example.com`;
+        await db.accountIdentity.create({
+            data: {
+                accountId: owner.id,
+                provider: 'email',
+                providerSubject: email,
+                email,
+            },
+        });
+        const challenge = await createEmailLoginChallenge(email, 10, { code: '123456' });
+
+        await expect(linkVerifiedEmailIdentity(db, other.id, {
+            email,
+            challengeId: challenge.id,
+            code: challenge.code,
+        })).rejects.toBeInstanceOf(EmailIdentityInUseError);
+
+        await expect(consumeEmailLoginChallenge(
+            challenge.id,
+            email,
+            challenge.code,
+        )).resolves.toBe(true);
+    });
+
+    it('allows only one of two accounts racing to bind the same verified email', async () => {
+        const accounts = await Promise.all([
+            db.account.create({ data: { publicKey: `email-race-a-${crypto.randomUUID()}` } }),
+            db.account.create({ data: { publicKey: `email-race-b-${crypto.randomUUID()}` } }),
+        ]);
+        const email = 'race@example.com';
+        const first = { id: crypto.randomUUID(), email, code: '111111' };
+        const second = { id: crypto.randomUUID(), email, code: '222222' };
+        const expiresAt = new Date(Date.now() + 10 * 60_000);
+        for (const challenge of [first, second]) {
+            await db.$executeRawUnsafe(
+                `INSERT INTO "EmailLoginChallenge"
+                 ("id", "email", "codeHash", "expiresAt", "createdAt")
+                 VALUES ($1, $2, $3, $4, now())`,
+                challenge.id,
+                challenge.email,
+                hashEmailLoginCode(challenge.id, challenge.email, challenge.code),
+                expiresAt,
+            );
+        }
+        const results = await Promise.allSettled([
+            linkVerifiedEmailIdentity(db, accounts[0].id, { email: first.email, challengeId: first.id, code: first.code }),
+            linkVerifiedEmailIdentity(db, accounts[1].id, { email: second.email, challengeId: second.id, code: second.code }),
+        ]);
+
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        expect(rejected?.reason).toBeInstanceOf(EmailIdentityInUseError);
+        expect(await db.accountIdentity.count({ where: { provider: 'email', providerSubject: email } })).toBe(1);
+    });
+
+    it('does not silently replace an account email when two different emails race', async () => {
+        const account = await db.account.create({ data: { publicKey: `email-account-race-${crypto.randomUUID()}` } });
+        const first = await createEmailLoginChallenge('first@example.com', 10, { code: '111111' });
+        const second = await createEmailLoginChallenge('second@example.com', 10, { code: '222222' });
+        const results = await Promise.allSettled([
+            linkVerifiedEmailIdentity(db, account.id, { email: first.email, challengeId: first.id, code: first.code }),
+            linkVerifiedEmailIdentity(db, account.id, { email: second.email, challengeId: second.id, code: second.code }),
+        ]);
+
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        expect(rejected?.reason).toBeInstanceOf(EmailIdentityInUseError);
+        expect(await db.accountIdentity.count({ where: { provider: 'email', accountId: account.id } })).toBe(1);
     });
 
     it('keeps the newest issued login token inside the active-session cap', async () => {

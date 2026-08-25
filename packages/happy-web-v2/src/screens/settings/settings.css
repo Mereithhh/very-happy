@@ -172,6 +172,39 @@ input.set-value:focus {
   justify-content: flex-end;
   align-items: center;
 }
+.set-email-status {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.set-email-status span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.set-email-status span:last-child {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.set-email-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.set-email-actions button {
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  min-height: 44px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.set-email-actions button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
 /* "Run in terminal" toggle in the shortcut editor — sits left of the buttons */
 .set-editor__toggle {
   display: flex;

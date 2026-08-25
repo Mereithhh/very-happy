@@ -1308,6 +1308,13 @@ export const zhHans: TranslationStructure = {
         password: '密码',
         passwordSet: '设置密码以在网页端登录',
         passwordChange: '修改您的账户密码',
+        emailLogin: '邮箱登录',
+        emailNotLinked: '关联邮箱，使用验证码免密码登录',
+        emailUnavailable: '此中继未启用',
+        googleLogin: 'Google 登录',
+        googleConnected: '已关联',
+        googleNotLinked: '未关联',
+        loginMethodsUnavailable: '无法加载登录方式状态，点击重试。',
         profile: '个人资料',
         name: '姓名',
         github: 'GitHub',
@@ -1857,6 +1864,18 @@ export const zhHans: TranslationStructure = {
         deliveryUnavailable: '邮件暂时无法发送，请稍后重试。',
         notConfigured: '此中继尚未配置邮箱登录。',
         network: '无法连接中继，请检查网络后重试。',
+    },
+
+    emailLink: {
+        title: '关联邮箱登录',
+        subtitle: '为当前账户添加已验证的邮箱地址。',
+        securityNote: '为保护账户安全，关联操作需要最近一次登录，并验证此设备上的账户密钥。',
+        inUse: '该邮箱已关联其他账户，或当前账户已关联另一个邮箱。',
+        reauthRequired: '请退出后重新登录，并在 10 分钟内重试。',
+        invalidAccount: '此设备无法证明当前账户的所有权。请恢复正确的账户密钥后重试。',
+        success: '邮箱登录已关联。',
+        verifyAndLink: '验证并关联邮箱',
+        signOutAndContinue: '退出并继续',
     },
 
     // Per-agent defaults settings screen.

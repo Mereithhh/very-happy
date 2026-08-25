@@ -11,6 +11,16 @@ older Web sessions. Expired/revoked Web session rows are physically pruned; a
 bounded active-session set evicts the oldest session before issuing a new one, so
 the token returned by a successful login remains valid.
 
+## Link email to an existing account
+
+If you already use password or Google login, sign in with that existing method
+first. Then open **Settings → Account → Email sign-in**, request a code, and
+verify the address. Do this before trying Email login. On an open-signup relay,
+using an unlinked address at the login screen can create a separate Account;
+matching the address on Google does not merge it. Linking requires a login from
+the last 10 minutes, so the UI may ask you to sign out, sign in again, and
+request a new code.
+
 ## Signup policy
 
 - `open`: anyone may create an account until capacity is reached.

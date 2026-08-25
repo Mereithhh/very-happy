@@ -33,6 +33,9 @@ export type CloudAuthErrorCode =
     | 'invalid-email-code'
     | 'email-delivery-unavailable'
     | 'email-not-configured'
+    | 'email-identity-in-use'
+    | 'reauth-required'
+    | 'invalid-account-secret'
     | 'network';
 
 export class CloudAuthError extends Error {
@@ -63,6 +66,57 @@ export async function loadPublicAuthConfig(): Promise<PublicAuthConfig | null> {
 export interface EmailLoginChallenge {
     challengeId: string;
     expiresAt: string;
+}
+
+export interface AccountLoginMethods {
+    email: string | null;
+    google: { connected: boolean; email: string | null };
+    passwordConfigured: boolean;
+}
+
+function authenticatedHeaders(credentials: AuthCredentials) {
+    return {
+        Authorization: `Bearer ${credentials.token}`,
+        'X-Happy-Client': getHappyClientId(),
+    };
+}
+
+export async function loadAccountLoginMethods(credentials: AuthCredentials): Promise<AccountLoginMethods> {
+    const response = await axios.get<AccountLoginMethods>(`${getServerUrl()}/v1/account/identities`, {
+        headers: authenticatedHeaders(credentials),
+    });
+    return response.data;
+}
+
+export async function linkEmailIdentity(
+    email: string,
+    challengeId: string,
+    code: string,
+    credentials: AuthCredentials,
+): Promise<{ success: true; email: string }> {
+    try {
+        const response = await axios.post<{ success: true; email: string }>(
+            `${getServerUrl()}/v1/account/identities/email`,
+            {
+                email: email.trim().toLowerCase(),
+                challengeId,
+                code: code.trim(),
+                secret: credentials.secret,
+            },
+            { headers: authenticatedHeaders(credentials) },
+        );
+        return response.data;
+    } catch (error: any) {
+        const status = error?.response?.status;
+        const reason = error?.response?.data?.error;
+        if (reason === 'email_identity_in_use' || status === 409) throw new CloudAuthError('email-identity-in-use');
+        if (reason === 'reauth_required' || status === 403) throw new CloudAuthError('reauth-required');
+        if (reason === 'email_not_configured' || status === 501) throw new CloudAuthError('email-not-configured');
+        if (reason === 'invalid_email_code' || status === 401) throw new CloudAuthError('invalid-email-code');
+        if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
 }
 
 export async function requestEmailLoginCode(email: string): Promise<EmailLoginChallenge> {

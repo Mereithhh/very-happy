@@ -103,6 +103,14 @@ the normalized email and challenge, stored as HMACs, consumed once, and locked
 after three wrong attempts. Sending and verification also use database-backed
 email/IP/global rate limits.
 
+Existing password accounts are not matched or merged by address. After Email OTP
+is enabled, sign in to the existing account, open **Settings → Account → Email
+sign-in**, and verify the address there. Linking requires a login from the last
+10 minutes, the current device's account key, and the emailed code. If the
+address already belongs to another account—or this account already has another
+email—the server returns a conflict and changes nothing. Google identities are
+also never linked merely because Google's claim contains the same address.
+
 After a real delivery-and-login smoke test, an operator may set
 `AUTH_PASSWORD_LOGIN_DISABLED=true`. That setting rejects password signup,
 login, and credential changes at the server and removes those controls from new
