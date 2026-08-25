@@ -49,6 +49,8 @@ import { FsBrowser } from '../files/FsBrowser';
 import {
   reduceTermFocus,
   initialTermFocusState,
+  completeTerminalTouchTap,
+  TERMINAL_TOUCH_END_OPTIONS,
   type TermFocusState,
   type TermFocusEvent,
   type TermFocusAction,
@@ -1528,18 +1530,33 @@ export function WebTerminalScreen() {
       if (p) { touchX = p.clientX; touchY = p.clientY; }
     };
     const onTouchEnd = (e: TouchEvent) => {
-      if (selectModeRef.current) return;
       const p = e.changedTouches[0];
       if (!p) return;
       const dx = p.clientX - touchX;
       const dy = p.clientY - touchY;
+      const distanceSquared = dx * dx + dy * dy;
       // A tap is the ONE explicit gesture that may summon the keyboard — route
       // it through the focus policy (it also clears a prior dismissal). The
       // resulting term.focus() still runs synchronously inside this touchend
       // (iOS only opens the keyboard inside the user-gesture call stack). In
       // input-bar mode the same tap instead blurs the bar (tap output = "let
       // me read", normal web semantics).
-      if (dx * dx + dy * dy <= 12 * 12) dispatchFocus({ type: 'tap' });
+      // Chrome synthesizes compatibility mouse events after a touch tap. On
+      // the own-input path xterm consumes those and focuses its hidden textarea
+      // after we focus ours, creating an own -> xterm -> own bounce that closes
+      // the mobile keyboard on the first tap. Claim only the real tap; drags,
+      // select mode, and the xterm-owned path remain native.
+      completeTerminalTouchTap({
+        inputOwnership,
+        selectMode: selectModeRef.current,
+        distanceSquared,
+        threshold: 12,
+        cancelable: e.cancelable,
+      }, {
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+        dispatchTap: () => dispatchFocus({ type: 'tap' }),
+      });
     };
     // Touch drag → synthetic wheel events, so mobile can scroll back through
     // history. xterm has no useful touch handling: on desktop the wheel is
@@ -1720,7 +1737,9 @@ export function WebTerminalScreen() {
     const screenEl = screenRef.current;
     if (IS_COARSE_POINTER) {
       host.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-      host.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+      // Non-passive is load-bearing for the own-input tap: preventDefault()
+      // suppresses Chrome's compatibility mouse events and their second focus.
+      host.addEventListener('touchend', onTouchEnd, TERMINAL_TOUCH_END_OPTIONS);
       // NOT passive: we preventDefault once a drag is classified as a scroll.
       host.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
       host.addEventListener('touchend', onTouchDone, { capture: true, passive: true });

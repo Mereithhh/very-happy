@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
     reduceTermFocus,
     initialTermFocusState,
+    completeTerminalTouchTap,
+    TERMINAL_TOUCH_END_OPTIONS,
     type TermFocusState,
     type TermFocusEvent,
 } from './termFocusPolicy';
@@ -9,6 +11,47 @@ import {
 const S = (over: Partial<TermFocusState> = {}): TermFocusState => ({
     ...initialTermFocusState,
     ...over,
+});
+
+describe('completeTerminalTouchTap', () => {
+    const runTap = (overrides: Partial<Parameters<typeof completeTerminalTouchTap>[0]> = {}) => {
+        const calls: string[] = [];
+        const handled = completeTerminalTouchTap({
+            inputOwnership: 'own',
+            selectMode: false,
+            distanceSquared: 0,
+            threshold: 12,
+            cancelable: true,
+            ...overrides,
+        }, {
+            preventDefault: () => calls.push('prevent-default'),
+            stopPropagation: () => calls.push('stop-propagation'),
+            dispatchTap: () => calls.push('dispatch-focus'),
+        });
+        return { handled, calls };
+    };
+
+    it('claims the first own-input tap and focuses synchronously after suppressing Chrome compatibility mouse events', () => {
+        expect(runTap()).toEqual({
+            handled: true,
+            calls: ['prevent-default', 'stop-propagation', 'dispatch-focus'],
+        });
+        expect(runTap({ distanceSquared: 12 * 12 }).handled).toBe(true);
+        expect(TERMINAL_TOUCH_END_OPTIONS).toEqual({ capture: true, passive: false });
+    });
+
+    it('leaves scroll, selection, and the xterm-owned input path native', () => {
+        expect(runTap({ distanceSquared: 12 * 12 + 1 })).toEqual({ handled: false, calls: [] });
+        expect(runTap({ selectMode: true })).toEqual({ handled: false, calls: [] });
+        expect(runTap({ inputOwnership: 'xterm' })).toEqual({ handled: true, calls: ['dispatch-focus'] });
+    });
+
+    it('still blocks xterm focus propagation when a browser reports a non-cancelable own tap', () => {
+        expect(runTap({ cancelable: false })).toEqual({
+            handled: true,
+            calls: ['stop-propagation', 'dispatch-focus'],
+        });
+    });
 });
 
 const run = (s: TermFocusState, e: TermFocusEvent) => reduceTermFocus(s, e);

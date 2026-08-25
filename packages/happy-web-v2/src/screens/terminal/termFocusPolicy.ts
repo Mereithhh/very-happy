@@ -75,6 +75,44 @@ export type TermFocusAction =
     | 'restore-layout'
     | 'none';
 
+/**
+ * Whether the coarse-pointer terminal must consume a completed touch tap.
+ *
+ * Chrome follows a touch tap with compatibility mouse events. On the `own`
+ * input path those events make xterm focus its hidden textarea *after* we have
+ * synchronously focused our textarea, producing an own -> xterm -> own focus
+ * bounce. Mobile Chrome closes the soft keyboard during that bounce, so the
+ * first tap flashes the keyboard and a second tap is required. Claiming only a
+ * genuine tap suppresses that redundant mouse sequence; drags, selection mode,
+ * and the legacy xterm-owned input path retain their native behavior.
+ */
+export const TERMINAL_TOUCH_END_OPTIONS: AddEventListenerOptions = Object.freeze({
+    capture: true,
+    passive: false,
+});
+
+export function completeTerminalTouchTap(input: {
+    inputOwnership: 'xterm' | 'own';
+    selectMode: boolean;
+    distanceSquared: number;
+    threshold: number;
+    cancelable: boolean;
+}, effects: {
+    preventDefault(): void;
+    stopPropagation(): void;
+    dispatchTap(): void;
+}): boolean {
+    if (input.selectMode || input.distanceSquared > input.threshold * input.threshold) return false;
+    if (input.inputOwnership === 'own') {
+        if (input.cancelable) effects.preventDefault();
+        effects.stopPropagation();
+    }
+    // Deliberately synchronous: mobile browsers only open the soft keyboard
+    // when focus happens inside the original user-gesture call stack.
+    effects.dispatchTap();
+    return true;
+}
+
 export function reduceTermFocus(
     s: TermFocusState,
     e: TermFocusEvent,
