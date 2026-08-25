@@ -7,7 +7,8 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { configuration } from '@/configuration';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
+import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type CliUpdateState } from './types';
+import { withCurrentCliUpdateState } from '@/update/cliUpdate';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerFsHandlers } from '../modules/fs/fsRpc';
 import { registerTodoHandlers } from '@/modules/todo/todoRpc';
@@ -150,6 +151,8 @@ export class ApiMachineClient {
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
+    private cliUpdateState: CliUpdateState | null = null;
+    private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
@@ -248,6 +251,16 @@ export class ApiMachineClient {
         registerTodoHandlers(this.rpcHandlerManager);
         // B-150: route the auto-restore summary to the account notification.
         this.wireAutoRestoreReport();
+    }
+
+    /** Cache the latest relay policy locally and publish it now or on the next
+     * socket connect. This makes startup/offline races harmless. */
+    setCliUpdateState(state: CliUpdateState | null): void {
+        this.cliUpdateState = state;
+        if (!this.socket?.connected) return;
+        this.cliUpdatePushChain = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => withCurrentCliUpdateState(current, this.cliUpdateState)))
+            .catch((error) => logger.debug('[API MACHINE] Failed to publish CLI update policy:', error));
     }
 
     setRPCHandlers({
@@ -799,8 +812,9 @@ export class ApiMachineClient {
             this.webTerminal.primeListSignature(initialTerminals);
             this.updateDaemonState((state) => {
                 const now = Date.now();
+                const currentState = withCurrentCliUpdateState(state, this.cliUpdateState);
                 return {
-                    ...state,
+                    ...currentState,
                     status: 'running',
                     pid: process.pid,
                     httpPort: this.machine.daemonState?.httpPort,

@@ -18,6 +18,26 @@ import packageJson from '../../package.json'
 import { collectRuntimeReadiness, daemonEndpointsMatch, daemonReadiness, resolveClaudeCredentialReadiness, shareableSettingsSummary, SUPPORTED_NODE_LABEL, toolProbeLabel } from './doctorReadiness'
 import { credentialRelayProblem } from './authRelay'
 import { shareSafeDaemonState, shareSafeEnvironmentInfo, shareSafeProcessLine } from './doctorPrivacy'
+import { deriveLocalCliUpdateSummary } from '@/update/cliUpdate'
+
+function printCliUpdateStatus(state: Awaited<ReturnType<typeof readDaemonState>>): void {
+    const installed = configuration.currentCliVersion;
+    const running = state?.startedWithCliVersion ?? null;
+    const summary = deriveLocalCliUpdateSummary(installed, running, state?.cliUpdate);
+    console.log(`  Installed CLI:  ${installed}`);
+    console.log(`  Running daemon: ${running ?? 'not running'}`);
+    if (state?.cliUpdate?.recommendedVersion) console.log(`  Recommended:    ${state.cliUpdate.recommendedVersion}`);
+    if (state?.cliUpdate?.minimumVersion) console.log(`  Minimum:        ${state.cliUpdate.minimumVersion}`);
+    if (summary.daemonMismatch) {
+        console.log(chalk.yellow('  ⚠ Installed CLI and running daemon differ; run `very-happy daemon start` to hand over safely.'));
+    }
+    if (summary.installedStatus === 'required') {
+        console.log(chalk.red('  ✗ This CLI is below the relay minimum supported version.'));
+    } else if (summary.installedStatus === 'available') {
+        console.log(chalk.yellow('  △ A newer CLI is available.'));
+    }
+    if (summary.installCommand) console.log(`  Update: ${summary.installCommand}`);
+}
 
 /**
  * Get relevant environment information for debugging
@@ -59,7 +79,7 @@ export async function runDoctorDaemon(): Promise<void> {
             console.log(`  PID:     ${state.pid}`);
             console.log(`  Port:    ${state.httpPort}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-            console.log(`  Version: ${state.startedWithCliVersion}`);
+            printCliUpdateStatus(state);
             console.log(`  Relay:   ${state.serverUrl ?? 'unknown (started by an older CLI)'}`);
             console.log(`  Web UI:  ${state.webappUrl ?? 'unknown (started by an older CLI)'}`);
             console.log(`  Claude:  ${state.claudeCredentialSource ?? 'not detected at daemon start'}`);
@@ -68,8 +88,10 @@ export async function runDoctorDaemon(): Promise<void> {
             }
         } else if (state && !isRunning) {
             console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+            printCliUpdateStatus(state);
         } else {
             console.log(chalk.red('❌ Daemon is not running'));
+            printCliUpdateStatus(null);
         }
 
         if (state) {
@@ -299,7 +321,7 @@ export async function runDoctorCommand(): Promise<void> {
             console.log(`  PID:     ${state.pid}`);
             console.log(`  Port:    ${state.httpPort}`);
             console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-            console.log(`  Version: ${state.startedWithCliVersion}`);
+            printCliUpdateStatus(state);
             console.log(`  Relay:   ${state.serverUrl ?? 'unknown (started by an older CLI)'}`);
             console.log(`  Web UI:  ${state.webappUrl ?? 'unknown (started by an older CLI)'}`);
             console.log(`  Claude:  ${state.claudeCredentialSource ?? 'not detected at daemon start'}`);

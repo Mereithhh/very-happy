@@ -161,6 +161,16 @@ export const MachineMetadataSchema = z.object({
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
 
+export const CliUpdateStateSchema = z.object({
+  currentVersion: z.string(),
+  recommendedVersion: z.string().nullable(),
+  minimumVersion: z.string().nullable(),
+  status: z.enum(['current', 'available', 'required']),
+  checkedAt: z.number(),
+})
+
+export type CliUpdateState = z.infer<typeof CliUpdateStateSchema>
+
 /**
  * One web terminal in the machine's pushed terminal list (same item shape the
  * `list-terminals` RPC returns, so old polling clients and the push describe
@@ -245,6 +255,8 @@ export const DaemonStateSchema = z.object({
    * ignore the field; old daemons never write it (web renders nothing).
    */
   closedTerminals: z.array(ClosedTerminalRecordSchema).optional(),
+  /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
+  cliUpdate: CliUpdateStateSchema.optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>

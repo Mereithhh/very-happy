@@ -153,7 +153,7 @@
 | B-037 | 终端 QoL：@xterm/addon-search（Ctrl+F 搜 scrollback）+ 字号可调（iOS 12px 偏小） | ux | UX走查#7#8 | todo | |
 | B-038 | 会话内搜索 + transcript 导出；用户图片进 transcript、工具返回图片渲染 | ux | UX走查#9#10 | todo | |
 | B-039 | ⌘K 增强（machines/看板/归档/主题/模糊匹配）+ ⌘1-9 上提 layout 层（现在侧栏折叠/移动端失效） | ux | UX走查#11#12 | todo | |
-| B-040 | machine 离线 UX + CLI 版本过旧警告接线（isVersionSupported/dismissedCLIWarnings/文案全零调用） | ux | UX走查#17 | todo | 骨架全在只差接线 |
+| B-040 | **machine 离线 UX + CLI/daemon 更新提示**：区分已安装 CLI 与实际运行 daemon 的版本，对“有新版”和“最低兼容版本不满足”分级提示 | ux/feat | UX走查#17；Owner 2026-08-25 | done | 2026-08-25 已实现：relay-owned exact recommended/minimum policy（registry 默认关闭）、daemon 启动+6h 检测并上报、CLI status/doctor installed/running/policy 对照、authenticated-global Web banner + machine/Diagnostics 指引；只复制精确命令，不代执行 npm。全局提示只看在线机器，新进程清上代陈旧 policy，available 按 machine+target 忽略，required 不隐藏；三包完整门禁通过。真机/PWA overlay 与真实 npm→daemon 交接留 V-083。spec：`specs/2026-08-cli-daemon-update-notice.md`。 |
 | B-041 | 死设置清理：diffStyle(split)/expandTodos/groupToolCalls 等 12 项无消费者——实现或删除 | ux | UX走查#18 | todo | |
 | B-042 | worktree 会话 UI（NewSessionDraft 已有 sessionType 字段零 UI）+ 新建会话最近路径/目录补全 | ux | UX走查#19 | todo | 与 Owner 的 worktree 工作流直接相关 |
 | B-043 | 看板过滤/批量操作（按机器/tag；多选；清空 ended）；移动端断点统一（860/980 夹缝） | ux | UX走查#16#20 | todo | manifest 的 portrait 锁定已随 B-167 解除，不再属于本项 |

@@ -23,6 +23,7 @@ import { TerminalConnectScreen } from '@/screens/auth/TerminalConnectScreen';
 import { LandingScreen } from '@/screens/public/LandingScreen';
 import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
+import { CliUpdateBanner } from './CliUpdateBanner';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -62,14 +63,14 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <Outlet />;
+  return <><Outlet /><CliUpdateBanner /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <AppLayout />;
+  return <><AppLayout /><CliUpdateBanner /></>;
 }
 
 /** `/` home: the classic empty-detail placeholder, or the Task Board when the

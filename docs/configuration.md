@@ -19,6 +19,9 @@ state. Never commit production values.
 | `METRICS_ENABLED` / `METRICS_HOST` / `METRICS_PORT` | Prometheus endpoint | Disabled by default; enable explicitly on `127.0.0.1:9090` |
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
+| `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
+| `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
+| `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `false`; explicitly opt in only if following the dist-tag is intended |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
 | `MAX_PENDING_GOOGLE_LOGIN_CHALLENGES` | Global outstanding Google nonce rows retained inside their five-minute TTL | `10000` |
 | `ALLOW_LEGACY_KEY_SIGNUP` | Accept the legacy unauthenticated account-key signup route | Unset/`false` on public relays |
@@ -65,6 +68,14 @@ state. Never commit production values.
 | `VOICE_EXTRA_LIMIT_ACCOUNT_IDS` | Optional comma-separated account IDs that receive the legacy extra voice allowance | Unset/empty; configure only for an operator-managed migration |
 
 `SIGNUP_CLOSED` remains a legacy fallback only. Prefer explicit `SIGNUP_MODE`.
+
+The public `GET /v1/version/cli` response contains only validated semantic
+versions and never contains an install command. Registry discovery is off by
+default; when explicitly enabled it is cached by the relay, and failures are
+fail-open without affecting normal API traffic. Daemons check this policy on
+startup and every six hours, then publish it inside their encrypted machine
+state. Pin `CLI_RECOMMENDED_VERSION` after release validation to advance the
+operator-approved target.
 
 ## Google login
 

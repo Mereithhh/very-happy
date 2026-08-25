@@ -1532,12 +1532,35 @@ export const zhHans: TranslationStructure = {
         copiedToClipboard: ({ label }: { label: string }) => `${label} 已复制到剪贴板`
     },
 
+    cliUpdate: {
+        availableEyebrow: 'CLI 可更新',
+        requiredEyebrow: 'CLI 必须更新',
+        availableTitle: '新的机器端运行时已可用',
+        requiredTitle: '当前 daemon 低于 relay 最低兼容版本',
+        summary: ({ machine, current, target, count }: { machine: string; current: string; target: string; count: number }) =>
+            count > 1
+                ? `${machine} 当前为 ${current}，请升级到 ${target}。共有 ${count} 台机器需要处理。`
+                : `${machine} 当前为 ${current}，请升级到 ${target}。`,
+        copyCommand: '复制升级命令',
+        copied: '已复制精确版本的升级命令。',
+        copyFailed: '无法复制升级命令。',
+        details: '查看机器',
+        later: '忽略此版本',
+        recommended: '推荐版本',
+        minimum: '最低版本',
+        current: '已是最新',
+        available: '可更新',
+        required: '必须更新',
+        status: 'CLI 更新状态',
+        offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 在诊断页查看 relay 确认的精确版本升级命令',
+    },
+
     machine: {
         noMachines: '没有已连接的机器',
         noMachinesDescription: '在电脑上启动 Happy 守护进程后会显示在这里。',
         launchNewSessionInDirectory: '在目录中启动新会话',
         offlineUnableToSpawn: '设备离线时无法启动',
-        offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g very-happy-cli@latest` 升级',
+        offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 在诊断页查看 relay 确认的精确版本升级命令',
         daemon: '守护进程',
         status: '状态',
         stopDaemon: '停止守护进程',

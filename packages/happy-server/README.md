@@ -92,6 +92,9 @@ guides.
 | `MAX_LOGIN_SESSIONS_PER_ACCOUNT` | No | `20` | Active Web login sessions retained per account; a new login evicts the oldest at the cap |
 | `MAX_CREDENTIAL_CHANGES_PER_ACCOUNT_PER_MINUTE` | No | `5` | Database-backed per-account password/username change rate |
 | `AUTH_PAIRING_TTL_MINUTES` | No | `10` | Terminal/account pairing lifetime (1–60 minutes) |
+| `CLI_RECOMMENDED_VERSION` | No | unset | Exact CLI version advertised to connected daemons; pin for an operator-reviewed rollout |
+| `CLI_MINIMUM_VERSION` | No | - | Exact compatibility/security floor; older daemons show a required-update warning |
+| `CLI_VERSION_REGISTRY_LOOKUP` | No | `false` | Set `true` to opt into outbound npm version discovery when no recommended version is pinned |
 | `MAX_PENDING_AUTH_PAIRINGS` | No | `1000` | Global outstanding pairing cap across both pairing tables |
 | `GOOGLE_CLIENT_ID` | No | - | Enables Google Identity Services account login |
 | `GOOGLE_ALLOWED_ORIGINS` | With Google | - | Comma-separated exact Web origins allowed to request/consume Google login challenges |

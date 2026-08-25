@@ -13,6 +13,13 @@ describe('daemon state heartbeat', () => {
       serverUrl: 'https://server.example',
       webappUrl: 'https://web.example',
       daemonLogPath: '/private/log',
+      cliUpdate: {
+        currentVersion: '1.2.3',
+        recommendedVersion: '1.2.4',
+        minimumVersion: '1.0.0',
+        status: 'available',
+        checkedAt: 123,
+      },
     };
 
     expect(withDaemonHeartbeat(state, 'heartbeat')).toEqual({

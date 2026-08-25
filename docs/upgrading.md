@@ -30,6 +30,26 @@ already-connected daemons continue to work. For a mixed-version fleet:
 New public installs should leave the flag unset and deploy server → Web → CLI as
 one release; the Web explains the required CLI upgrade when pairing is rejected.
 
+## CLI and daemon update notices
+
+The relay publishes a recommended version and an optional minimum version at
+`GET /v1/version/cli`. A daemon checks on startup and every six hours. Web shows
+an available/required notice per machine, while `very-happy daemon status`
+shows the installed CLI and running daemon separately.
+
+The notice deliberately copies an exact-version command instead of executing
+remote code or following a moving tag:
+
+```bash
+npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<exact-version>
+```
+
+The existing daemon bundle-mtime watcher normally hands over to the new bundle
+within 60 seconds. Run `very-happy daemon start` to request that handoff
+immediately. This is not a zero-interruption promise for direct-shell PTYs;
+durable tmux terminals can be re-adopted, while in-process work should be allowed
+to finish before a planned upgrade.
+
 ## Verification
 
 ```bash
