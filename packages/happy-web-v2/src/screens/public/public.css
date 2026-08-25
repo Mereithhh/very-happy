@@ -416,6 +416,7 @@
   .pub-brand > span { display: none; }
 }
 @media (max-width: 480px) {
+  .pub-header .pub-nav-cta { display: none; }
   .pub-hero { padding-top: 56px; padding-bottom: 48px; }
   .pub-meta { display: none; }
 }
