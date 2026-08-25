@@ -4,11 +4,11 @@
 >
 > Public candidate base: `12861872` on `main`
 >
-> Decision: **PENDING FINAL MERGE**
+> Decision: **READY**
 
 Very Happy's product, sanitized public lineage, fork isolation, canonical clone,
-and production health checks are complete. This document intentionally remains
-pending until the verified readiness branch is merged through protected main.
+production health checks, and protected readiness merge are complete. There are
+no confirmed P0/P1 findings or remaining irreversible Owner actions in scope.
 
 ## Product delivered
 
@@ -102,7 +102,7 @@ pure regression so a transient empty probe cannot consume the badge.
 
 ## Publication closeout
 
-- [ ] This verified branch is merged into protected `main` without bypass.
+- [x] The verified readiness branch was merged into protected `main` without bypass (`52669cc2`).
 - [x] A fork-origin pull request proves hosted-runner/no-secret isolation.
 - [x] The original repository is renamed as a private archive/release plane.
 - [x] The sanitized repository has the canonical `Mereithhh/very-happy` name.
@@ -111,3 +111,5 @@ pure regression so a transient empty probe cannot consume the badge.
 
 No history force-push, production data deletion, DNS change, external ownership
 change, or credential rotation is part of this publication procedure.
+
+**Conclusion: READY.**
