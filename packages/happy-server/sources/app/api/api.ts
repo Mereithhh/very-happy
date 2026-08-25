@@ -27,6 +27,7 @@ import { v3SessionRoutes } from "./routes/v3SessionRoutes";
 import { attachmentRoutes } from "./routes/attachmentRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import * as path from "path";
+import { injectRuntimeConfig, runtimeConfigScript } from './htmlConfigInjection';
 import * as fs from "fs";
 import { resolveTrustProxy, type TrustedProxyConfig } from './trustProxy';
 import { configuredResourceLimit } from './resourceLimits';
@@ -126,7 +127,7 @@ export async function startApi(opts: StartApiOptions = {}) {
     if (opts.staticDir) {
         const fastifyStatic = (await import('@fastify/static')).default;
         const injectScript = opts.injectHtmlConfig
-            ? `<script>window.__HAPPY_CONFIG__ = ${JSON.stringify(opts.injectHtmlConfig)};</script>`
+            ? runtimeConfigScript(opts.injectHtmlConfig)
             : null;
         app.register(fastifyStatic, {
             root: opts.staticDir,
@@ -154,7 +155,7 @@ export async function startApi(opts: StartApiOptions = {}) {
                 } else {
                     return payload;
                 }
-                const injected = html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`);
+                const injected = injectRuntimeConfig(html, injectScript);
                 reply.header('content-length', Buffer.byteLength(injected));
                 return injected;
             });
@@ -173,7 +174,7 @@ export async function startApi(opts: StartApiOptions = {}) {
                 return reply.code(404).send({ error: 'Not found' });
             }
             const html = fs.readFileSync(indexPath, 'utf8');
-            const injected = injectScript ? html.replace(/<head[^>]*>/i, (m) => `${m}\n${injectScript}`) : html;
+            const injected = injectScript ? injectRuntimeConfig(html, injectScript) : html;
             reply.type('text/html').send(injected);
         });
     }
