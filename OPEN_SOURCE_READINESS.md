@@ -177,8 +177,8 @@ the exact-SHA clean Actions checkout:
 | CLI | 123 test files / 1,211 tests locally; build; isolated `HAPPY_HOME_DIR`; published runtime reports 0.2.64 |
 | Server | 57 test files / 408 tests; TypeScript 0 errors; production runtime build passed |
 | Wire / Agent | Wire 2 files / 19 tests; Agent 9 files / 229 tests, both build cleanly |
-| CI | Final fleet-panel Quality Gates `32767214395` passed at exact release SHA `bb04a436`; Server lock gate `32757748151` passed at `2300f4ab`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
-| Dependencies | `pnpm audit --prod`: 0 known vulnerabilities |
+| CI | Current candidate Quality Gates `32812283484` passed at exact SHA `a49adce7`; tag CLI smoke `32749236740` passed on Linux and macOS Node 20/24 at `v0.2.64`; setup/action pins resolve to immutable commits |
+| Dependencies | `pnpm audit --prod`: 0 known vulnerabilities; Dependabot open alerts: one accepted medium `glib` finding confined to the non-shipping experimental Linux desktop shell, zero high/critical |
 
 Server and CLI tarballs were installed into isolated locations. The server tarball migrated
 an empty PGlite database through 42 migrations. The CLI tarball executed its postinstall and
@@ -215,6 +215,15 @@ stopped afterward; the pre-existing global daemon was preserved.
   Claude mirror → terminal round-trip; browser console errors were zero. Normal viewport captures
   confirmed the Hero, architecture map, real workspace proof, and continuity arrow remain clear
   without masked text at both sizes.
+- The retained experimental Tauri shell was restored at Owner direction and dependency-refreshed
+  in `a49adce7`; macOS `cargo check --locked` and exact-SHA Quality run `32812283484` passed.
+  Dependabot recomputed from 13 findings to one accepted GTK3 `glib` medium advisory and no
+  high/critical alerts. Web-only deploy `32812476449` then published the matching desktop-roadmap
+  wording from that exact SHA. Production health and `/welcome`, `/docs`, the immutable JavaScript
+  asset `/assets/index-IwacsF_b-202608250521.js`, and the PWA manifest returned 200. Fresh 390×844
+  iPhone-shaped Chromium showed the Chinese install-to-Home-Screen prompt after 1.8 seconds, both
+  iOS steps, 16 px minimum form input, zero horizontal overflow, and zero console errors;
+  `/docs/contributing` showed the new experimental-desktop boundary without overflow.
 - The scheduler-topology Hero shipped from source `a01d1c76`. Its reducer regression tests pin
   machine/agent selection, informational side-lane inspection, route labels, and exactly two
   active-wire identities; rendered contracts pin the fixed trust chain, initial pressed state,
