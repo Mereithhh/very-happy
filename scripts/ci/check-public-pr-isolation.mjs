@@ -35,10 +35,13 @@ if (!/server-container-smoke:[\s\S]*if: github\.event_name == 'pull_request'[\s\
   errors.push('quality.yml: container smoke must run only for PRs on ubuntu-latest');
 }
 
-if (!/secret-scan:[\s\S]*runs-on: ubuntu-latest[\s\S]*fetch-depth: 0[\s\S]*scan-secrets\.sh --ci/.test(
-  workflows['quality.yml'] ?? '',
-)) {
-  errors.push('quality.yml: introduced-commit secret scan must run on ubuntu-latest with full history');
+const secretScanJob = (workflows['quality.yml'] ?? '').match(
+  /\n  secret-scan:\n([\s\S]*?)(?=\n  [a-zA-Z0-9_-]+:\n|$)/,
+)?.[1] ?? '';
+if (!secretScanJob.includes("github.event_name == 'pull_request' && '[\"ubuntu-latest\"]'")
+  || !secretScanJob.includes("vars.LINUX_RUNNER || '[\"self-hosted\",\"linux\",\"x64\"]'")
+  || !/fetch-depth: 0[\s\S]*scan-secrets\.sh --ci/.test(secretScanJob)) {
+  errors.push('quality.yml: introduced-commit secret scan must keep PRs hosted, trusted runs isolated, and full history available');
 }
 const secretScanScript = readFileSync(new URL('./scan-secrets.sh', import.meta.url), 'utf8');
 if (!/GITLEAKS_VERSION="8\.30\.0"/.test(secretScanScript)

@@ -54,9 +54,11 @@ permissions:
 jobs:
   secret-scan:
     name: secret scan (introduced commits)
-    # Always isolate this network-downloading scanner from private runners.
-    # The release archive is version- and SHA256-pinned in scan-secrets.sh.
-    runs-on: ubuntu-latest
+    # Public PR code must stay on an ephemeral hosted runner. Trusted main/manual
+    # runs use the private Linux runner so a private-repo billing incident cannot
+    # silently remove the publication gate. The downloaded scanner is version-
+    # and SHA256-pinned in scan-secrets.sh before execution.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.LINUX_RUNNER || '["self-hosted","linux","x64"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
