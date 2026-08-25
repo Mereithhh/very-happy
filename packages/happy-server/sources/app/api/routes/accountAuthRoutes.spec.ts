@@ -18,7 +18,6 @@ const {
 } = vi.hoisted(() => {
     const dbMock: any = {
         account: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn(async () => 0) },
-        accountLoginSession: { findFirst: vi.fn() },
         $queryRawUnsafe: vi.fn(),
         $executeRawUnsafe: vi.fn(),
     };
@@ -80,6 +79,7 @@ import {
     googleChallengeRateBucket,
     googleLoginRateBucket,
     hashPassword,
+    hasRecentLoginSessionWithDb,
     passwordLoginRateBuckets,
     verifyPassword,
 } from './accountAuthRoutes';
@@ -111,8 +111,9 @@ beforeEach(() => {
     delete process.env.SIGNUP_MODE;
     vi.clearAllMocks();
     dbMock.account.findUnique.mockResolvedValue({ publicKey: credentialPublicKey, AccountIdentity: [] });
-    dbMock.accountLoginSession.findFirst.mockResolvedValue({ createdAt: new Date() });
-    dbMock.$queryRawUnsafe.mockResolvedValue([]);
+    dbMock.$queryRawUnsafe.mockImplementation(async (sql: string) => (
+        sql.includes('FROM "AccountLoginSession"') ? [{ createdAt: new Date() }] : []
+    ));
     dbMock.$executeRawUnsafe.mockResolvedValue(1);
     dbMock.$transaction.mockImplementation(async (fn: (tx: any) => unknown) => fn(dbMock));
     authMock.createLoginToken.mockResolvedValue({ token: 'login-token', expiresAt: new Date('2030-01-01T00:00:00.000Z') });
@@ -137,6 +138,28 @@ beforeEach(() => {
         name: 'Owner', picture: 'https://example.com/avatar.png',
     });
     linkVerifiedGoogleIdentityMock.mockResolvedValue('linked');
+});
+
+describe('recent login session deployment compatibility', () => {
+    it('uses parameterized raw SQL without requiring a generated Prisma model delegate', async () => {
+        const nowMs = Date.parse('2026-08-25T11:30:00.000Z');
+        const queryRaw = vi.fn(async () => [{ createdAt: new Date(nowMs - 60_000) }]);
+        const client = { $queryRawUnsafe: queryRaw } as any;
+
+        await expect(hasRecentLoginSessionWithDb(
+            client,
+            'account-1',
+            'login-session-1',
+            nowMs,
+        )).resolves.toBe(true);
+        expect(queryRaw).toHaveBeenCalledWith(
+            expect.stringContaining('FROM "AccountLoginSession"'),
+            'login-session-1',
+            'account-1',
+            new Date(nowMs),
+        );
+        expect(client.accountLoginSession).toBeUndefined();
+    });
 });
 
 describe('public Email OTP and password policy', () => {
@@ -377,9 +400,11 @@ describe('authenticated account credential secret validation', () => {
             publicKey: credentialPublicKey,
             AccountIdentity: [{ provider: 'google' }],
         });
-        dbMock.accountLoginSession.findFirst.mockResolvedValue({
-            createdAt: new Date(Date.now() - 11 * 60 * 1000),
-        });
+        dbMock.$queryRawUnsafe.mockImplementation(async (sql: string) => (
+            sql.includes('FROM "AccountLoginSession"')
+                ? [{ createdAt: new Date(Date.now() - 11 * 60 * 1000) }]
+                : []
+        ));
         const app = await buildApp();
         const response = await app.inject({
             method: 'POST',
@@ -406,10 +431,12 @@ describe('authenticated account credential secret validation', () => {
         });
 
         expect(response.statusCode).toBe(200);
-        expect(dbMock.accountLoginSession.findFirst).toHaveBeenCalledWith({
-            where: { id: 'login-session-1', accountId: 'account-1', revokedAt: null },
-            select: { createdAt: true },
-        });
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('FROM "AccountLoginSession"'),
+            'login-session-1',
+            'account-1',
+            expect.any(Date),
+        );
         expect(dbMock.$executeRawUnsafe).toHaveBeenCalledWith(
             expect.stringContaining('UPDATE "AccountLoginSession"'),
             'account-1',
@@ -455,6 +482,9 @@ describe('authenticated account credential secret validation', () => {
             return result;
         });
         dbMock.$queryRawUnsafe.mockImplementation(async (sql: string, value?: string) => {
+            if (sql.includes('FROM "AccountLoginSession"')) {
+                return [{ createdAt: new Date() }];
+            }
             if (sql.includes('FROM "AccountCredential"')) {
                 return credentialUsername === value ? [{ accountId: 'account-1' }] : [];
             }
@@ -510,6 +540,40 @@ describe('authenticated Email identity linking', () => {
         process.env.RESEND_API_KEY = 'test-key';
     }
 
+    it('refreshes a legacy authenticated client only after proving the immutable account secret', async () => {
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/login/refresh',
+            payload: { secret: credentialSecret },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ token: 'login-token', secret: credentialSecret });
+        expect(accountSecretsMock.upsertAccountSecret).toHaveBeenCalledWith(dbMock, 'account-1', credentialSecret);
+        expect(dbMock.$executeRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('UPDATE "AccountCredential"'),
+            'encrypted-secret',
+            'account-1',
+        );
+        expect(authMock.createLoginToken).toHaveBeenCalledWith('account-1', dbMock, { cache: false });
+        await app.close();
+    });
+
+    it('rejects refresh with the wrong secret before repairing recovery material', async () => {
+        const app = await buildApp();
+        const response = await app.inject({
+            method: 'POST',
+            url: '/v1/account/login/refresh',
+            payload: { secret: Buffer.alloc(32, 9).toString('base64url') },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({ error: 'invalid_secret' });
+        expect(accountSecretsMock.upsertAccountSecret).not.toHaveBeenCalled();
+        await app.close();
+    });
+
     it('reports only the current account login methods without exposing provider subjects', async () => {
         getAccountLoginMethodsMock.mockResolvedValue({
             email: 'owner@example.com',
@@ -561,23 +625,22 @@ describe('authenticated Email identity linking', () => {
 
     it('requires a fresh, unrevoked login session before checking the account secret or OTP', async () => {
         enableEmail();
-        dbMock.accountLoginSession.findFirst.mockResolvedValue({
-            createdAt: new Date(Date.now() - 11 * 60_000),
-        });
+        dbMock.$queryRawUnsafe.mockImplementation(async (sql: string) => (
+            sql.includes('FROM "AccountLoginSession"')
+                ? [{ createdAt: new Date(Date.now() - 11 * 60_000) }]
+                : []
+        ));
         const app = await buildApp();
         const response = await app.inject({ method: 'POST', url: '/v1/account/identities/email', payload: linkPayload });
 
         expect(response.statusCode).toBe(403);
         expect(response.json()).toEqual({ error: 'reauth_required' });
-        expect(dbMock.accountLoginSession.findFirst).toHaveBeenCalledWith({
-            where: {
-                id: 'login-session-1',
-                accountId: 'account-1',
-                revokedAt: null,
-                expiresAt: { gt: expect.any(Date) },
-            },
-            select: { createdAt: true },
-        });
+        expect(dbMock.$queryRawUnsafe).toHaveBeenCalledWith(
+            expect.stringContaining('FROM "AccountLoginSession"'),
+            'login-session-1',
+            'account-1',
+            expect.any(Date),
+        );
         expect(dbMock.account.findUnique).not.toHaveBeenCalled();
         expect(linkVerifiedEmailIdentityMock).not.toHaveBeenCalled();
         await app.close();
@@ -676,14 +739,16 @@ describe('authenticated Google identity linking', () => {
     });
 
     it('requires a fresh login session and the current account secret', async () => {
-        dbMock.accountLoginSession.findFirst.mockResolvedValueOnce({ createdAt: new Date(Date.now() - 11 * 60_000) });
+        dbMock.$queryRawUnsafe.mockResolvedValueOnce([{ createdAt: new Date(Date.now() - 11 * 60_000) }]);
         const stale = await inject();
         expect(stale.statusCode).toBe(403);
         expect(stale.json()).toEqual({ error: 'reauth_required' });
         expect(verifyGoogleIdTokenMock).not.toHaveBeenCalled();
 
         vi.clearAllMocks();
-        dbMock.accountLoginSession.findFirst.mockResolvedValue({ createdAt: new Date() });
+        dbMock.$queryRawUnsafe.mockImplementation(async (sql: string) => (
+            sql.includes('FROM "AccountLoginSession"') ? [{ createdAt: new Date() }] : []
+        ));
         dbMock.account.findUnique.mockResolvedValue({ publicKey: credentialPublicKey });
         allowAuthRequestMock.mockResolvedValue(true);
         const wrongSecret = await inject({ secret: Buffer.alloc(32, 9).toString('base64url') });

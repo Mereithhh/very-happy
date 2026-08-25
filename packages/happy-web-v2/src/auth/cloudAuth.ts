@@ -90,6 +90,23 @@ export async function loadAccountLoginMethods(credentials: AuthCredentials): Pro
     return response.data;
 }
 
+export async function refreshCloudLogin(credentials: AuthCredentials): Promise<AuthCredentials> {
+    try {
+        const response = await axios.post<AuthCredentials>(
+            `${getServerUrl()}/v1/account/login/refresh`,
+            { secret: credentials.secret },
+            { headers: authenticatedHeaders(credentials) },
+        );
+        return { token: response.data.token, secret: response.data.secret };
+    } catch (error: any) {
+        const status = error?.response?.status;
+        const reason = error?.response?.data?.error;
+        if (reason === 'invalid_secret' || status === 400) throw new CloudAuthError('invalid-account-secret');
+        if (status === 429) throw new CloudAuthError('rate-limited');
+        throw new CloudAuthError('network');
+    }
+}
+
 export async function linkEmailIdentity(
     email: string,
     challengeId: string,
