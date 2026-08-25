@@ -139,6 +139,10 @@ procedure below is complete.
   not promise zero knowledge, operator blindness, durability, SLA, or undeletable data.
 - Fork PR code is confined to GitHub-hosted runners with read-only contents permission.
   Deploy and npm publish workflows do not accept PR triggers.
+- GitHub Actions now has repository-enforced immutable SHA pinning; the static CI contract
+  rejects every unpinned external action or container digest. Default workflow permissions stay
+  read-only and Actions cannot approve pull requests. Vulnerability alerts and Dependabot
+  automated security fixes are enabled on the private source repository.
 - Account creation is transactionally gated; password verification is asynchronous scrypt;
   authentication limiters fail fast without consuming broader buckets; Google/password
   sessions are created in their signup transaction.
@@ -686,10 +690,19 @@ added, and the final freeze rereview ended at **P0=0, P1=0, P2=0**.
 
 A final current-tree archive plus the readiness report processed 16.88 MB and returned **0
 findings**; every staged release increment was also scanned with no finding. A fresh all-ref scan
-of the current private object database covered 2,606 commits / about 35.62 MB and returned **45
+of the current private object database covered 2,609 commits / about 35.63 MB and returned **45
 findings** across 14 commits and 13 paths: 7 GCP API key, 30 generic API key, and 8 JWT
 detections. This is the release-freeze baseline; changing visibility before rewriting it would
 publish known session/token material.
+
+Those 45 detections collapse to 20 unique values. The deleted real-session JSONL accounts for
+22 detections and contains user content plus local/token material. Four distinct EdDSA JWTs are
+parseable and have `iat`, `iss`, `jti`, `nbf`, and `sub` claims but no `exp`; they therefore
+cannot be assumed expired. Other historical objects include a Gemini OAuth client secret, one
+repeated GCP mobile key, local keys, deterministic KDF/env test values, component-version strings,
+and documentation false positives. No raw secret or stable secret fingerprint was copied into
+this report. The conservative rewrite still removes every manifest path, and the JWT/session,
+OAuth, GCP, and local-key owners must explicitly confirm invalidation or restriction.
 
 A disposable-mirror rewrite rehearsal then removed the finding paths, their historical rename
 destinations, the known environment/deployment files, and historical session fixtures from all
@@ -777,6 +790,10 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   contains the 45 findings documented above. Public visibility is allowed only after the proven
   rewrite is applied to a staging history, historical credentials/sessions are invalidated, and
   fork-PR isolation plus repository protections are verified on the publish target.
+- GitHub currently returns 403 for branch-protection and ruleset administration on this private
+  repository's plan. The protections can be configured after the sanitized staging repository is
+  public (or after an Owner plan upgrade), so this platform constraint is part of the public-switch
+  ceremony rather than a reason to expose the unsanitized source repository first.
 
 ## Known non-blocking limitations
 
@@ -787,6 +804,12 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
   complex. The release remains explicitly server-trusted. A future E2EE design must preserve the
   default “sign in on a new device and continue” journey, make recovery and revocation legible,
   and complete every data/control plane before any public E2EE claim.
+- The history-only `packages/happy-app` Tauri archive is excluded from the pnpm workspace, CI,
+  production, and the supported product. Its transitive `bytes` advisory is patched at 1.11.1 and
+  `cargo check --locked` passes. Its Tauri 2/Wry GTK3 stack still resolves `glib` 0.18, which has a
+  medium advisory and no compatible 0.20 upgrade in that stack; the Dependabot alert is dismissed
+  as tolerable only while the archive remains non-shipping. Reopen and resolve it with the
+  Tauri 3/GTK4 migration, or before restoring this archive as a supported build target.
 - The server image still runs as root and is 1.55 GB. Reducing privileges and image size is a
   worthwhile defense-in-depth follow-up, not an unaddressed release P1.
 - The PostgreSQL smoke service uses a major-version tag; the shipping Node base is digest-pinned.

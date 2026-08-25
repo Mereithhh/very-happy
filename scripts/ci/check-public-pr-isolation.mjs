@@ -19,6 +19,20 @@ for (const [name, source] of Object.entries(workflows)) {
   if (/pull_request\s*:/.test(source) && !/permissions:\s*\n\s+contents:\s+read/.test(source)) {
     errors.push(`${name}: pull_request workflow must keep contents: read permissions`);
   }
+  for (const line of source.split(/\r?\n/)) {
+    const action = line.match(/^\s*-?\s*uses:\s*([^\s#]+)/)?.[1];
+    if (!action || action.startsWith('./')) continue;
+    if (action.startsWith('docker://')) {
+      if (!/@sha256:[a-f0-9]{64}$/.test(action)) {
+        errors.push(`${name}: container action ${action} must use an immutable sha256 digest`);
+      }
+      continue;
+    }
+    const ref = action.slice(action.lastIndexOf('@') + 1);
+    if (!/^[a-f0-9]{40}$/.test(ref)) {
+      errors.push(`${name}: external action ${action} must use a full 40-character commit SHA`);
+    }
+  }
 }
 
 for (const name of ['quality.yml', 'cli-smoke-test.yml']) {
