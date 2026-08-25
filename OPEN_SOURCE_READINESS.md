@@ -192,19 +192,25 @@ stopped afterward; the pre-existing global daemon was preserved.
 
 ### 2026-08-25 release-candidate freeze
 
-- The Landing hierarchy/refinement implementation commit is `b3dded54`. The complete self-hosted
-  wire/server/Web/CLI job in exact-SHA Quality run `32804099737` passed, as did the local Web
-  gate (109 files / 1,477 tests, Vite build, TypeScript 0 errors) and introduced-commit gitleaks
-  scan. The overall GitHub run is nevertheless red because the isolated `ubuntu-latest`
-  secret-scan job was refused before checkout with: “recent account payments have failed or
-  your spending limit needs to be increased” (job `97670656140`, zero runner/steps). This is an
-  external billing/capacity failure, not a scan finding, but the release rule still forbids a
-  Web deploy from a failing gate. Production therefore remains on the preceding verified Web
-  release until the Owner restores hosted Actions billing and reruns the current `main` HEAD successfully.
-  A subsequent independent claim/security review found P0=0/P1=0 and one P2: OpenCode was shown
-  as a Web-dispatch route even though it is currently a CLI ACP beta. The final source replaces
-  that route with the actually Web-supported Gemini beta and labels OpenCode's CLI boundary;
-  the complete Web gate and 390 px real-browser route/clipping pass were rerun successfully.
+- The Landing hierarchy/refinement implementation started at `b3dded54`; the release deployment
+  commit is `c568992f`. Exact-SHA Quality run `32809573250` passed the introduced-commit secret
+  scan plus every wire/server/Web/CLI type, test, build, and runtime-smoke gate. The secret scan
+  now uses the private Linux runner only for trusted `main`/manual events while every PR still
+  selects `ubuntu-latest`; `check-public-pr-isolation.mjs` pins that event-to-runner boundary.
+  This removed private-repository hosted-billing as a trusted-release dependency without letting
+  fork code reach a private runner. A subsequent independent claim/security review had found
+  P0=0/P1=0 and one P2: OpenCode was shown as a Web-dispatch route even though it is currently a
+  CLI ACP beta. The final source instead shows the actually Web-supported Gemini beta and labels
+  OpenCode's CLI boundary.
+- Web-only deploy run `32809763854` succeeded at exact SHA `c568992f`. Production health returned
+  OK and `/assets/index-CV7uT6xW-202608250439.js` returned JavaScript with immutable caching.
+  Browser GET deep links for `/welcome` and `/docs` returned the new asset. Fresh isolated
+  Chromium acceptance at 1,440×1,000 and 390×844 found zero horizontal overflow and no visible
+  input below 16 px. It exercised Remote server → Gemini selection, docs → Quick start, the
+  proactive mobile PWA install panel, signup mismatch validation, and terminal → structured
+  Claude mirror → terminal round-trip; browser console errors were zero. Normal viewport captures
+  confirmed the Hero, architecture map, real workspace proof, and continuity arrow remain clear
+  without masked text at both sizes.
 - The scheduler-topology Hero shipped from source `a01d1c76`. Its reducer regression tests pin
   machine/agent selection, informational side-lane inspection, route labels, and exactly two
   active-wire identities; rendered contracts pin the fixed trust chain, initial pressed state,
@@ -763,13 +769,14 @@ These operations are intentionally not performed by this release-candidate work:
 Recommended order: **history rewrite → credential/session invalidation → all-ref scan → new
 private staging remote → fork-PR isolation drill → Owner production acceptance → public switch**.
 
-## Current external release blocker
+## Current public-switch blocker
 
-- GitHub-hosted Actions billing is currently refusing `ubuntu-latest` jobs before a runner is
-  assigned. The mandatory public-runner secret scan is therefore externally blocked even though
-  the same pinned script passed locally for the introduced Landing commit. Restore billing/spend
-  capacity, rerun Quality Gates for the current `main` HEAD, and require a green overall
-  conclusion before deploying it.
+- The code/deploy gate is no longer blocked: trusted `main` runs have a green exact-SHA secret
+  scan and package gate, while the PR runner-selection contract remains hosted-only. The current
+  GitHub repository must nevertheless remain private because its unchanged object database still
+  contains the 45 findings documented above. Public visibility is allowed only after the proven
+  rewrite is applied to a staging history, historical credentials/sessions are invalidated, and
+  fork-PR isolation plus repository protections are verified on the publish target.
 
 ## Known non-blocking limitations
 
@@ -807,11 +814,10 @@ private staging remote → fork-PR isolation drill → Owner production acceptan
 
 ## Final decision
 
-**NOT READY only because of Owner/external hard blockers:** (1) GitHub-hosted billing must be
-restored so the mandatory isolated secret-scan job can produce a green exact-SHA Quality run and
-the final Landing commit can be Web-deployed; and (2) the Owner-controlled public-switch procedure
-has not been executed: history rewrite and all-ref rescan, credential/session invalidation,
-repository protections and fork-PR isolation drill, external OAuth/Cloud policy checks, and final
-production acceptance. The current source tree, product flow, documentation, self-host
-distribution, deployed service, and CLI release otherwise remain an open-source release candidate
-with no known in-scope P0/P1/P2.
+**NOT READY only because of Owner-controlled irreversible public-switch actions:** the shared
+history has not been replaced with the proven zero-finding rewrite; historical credentials and
+sessions have not been invalidated; and repository protections, a real fork-PR isolation drill,
+external OAuth/Cloud policy checks, and the final Owner public-release acceptance have not been
+completed on the publish target. The exact-SHA code/deploy gate is green and the Landing is live.
+The current source tree, product flow, documentation, self-host distribution, deployed service,
+and CLI release otherwise remain an open-source release candidate with no known in-scope P0/P1/P2.
