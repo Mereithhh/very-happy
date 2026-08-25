@@ -4,6 +4,14 @@ import { BOOTSTRAP_COMMAND, getPublicDoc, INSTALL_COMMAND, LOGIN_COMMAND, PROVID
 import { getProductPreviewIds } from './productPreviewIds';
 
 describe('public documentation registry', () => {
+  it('only references declared spacing tokens in the public shell', () => {
+    const styles = readFileSync(new URL('./public.css', import.meta.url), 'utf8');
+    const tokens = readFileSync(new URL('../../styles/tokens.css', import.meta.url), 'utf8');
+    const declared = new Set([...tokens.matchAll(/(--sp-\d+):/g)].map((match) => match[1]));
+    const referenced = new Set([...styles.matchAll(/var\((--sp-\d+)\)/g)].map((match) => match[1]));
+    expect([...referenced].filter((token) => !declared.has(token))).toEqual([]);
+  });
+
   it('provides every public-release topic with unique stable slugs', () => {
     expect(new Set(PUBLIC_DOCS.map((doc) => doc.slug)).size).toBe(PUBLIC_DOCS.length);
     expect(PUBLIC_DOCS.map((doc) => doc.slug)).toEqual(expect.arrayContaining([

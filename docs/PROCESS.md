@@ -154,7 +154,10 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须
 - **自动化验不了的**（真机 IME/触屏/视觉观感）：当批产出「留真机验证」清单 →
   登记 `docs/verify-queue.md`，**下一批开始前先清账**——不许无限堆积；
   验证不通过当场转 backlog.md 建 bug 项。
-- 浏览器验证注意 SW 缓存混版（硬刷新/unregister 后再判断"没生效"）。
+- 浏览器判断「没生效」前先在原标签页记录实际加载的 entry/CSS URL、目标元素
+  computed style 与关键 CSS variable，并和服务器当前 entry 对比；再用普通 reload
+  验证版本迁移。只有证据留存后才 hard refresh/unregister 做恢复；强刷后正常不能
+  单独作为发布成功证据。
 
 ## 6. 沉淀（每批必做）
 

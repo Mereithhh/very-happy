@@ -28,14 +28,20 @@
  * module exists to retire.
  */
 import { markProgrammaticReload } from '@/app/programmaticReload';
+import {
+  decideStaleBundleReload,
+  serializeStaleBundleReloadGuard,
+} from '@/app/staleBundlePolicy';
 
 const ENTRY_RE = /\/assets\/(index-[A-Za-z0-9_-]+\.js)/;
-const RELOAD_GUARD_KEY = 'vh-stale-bundle-reload-at';
+const RELOAD_GUARD_KEY = 'vh-stale-bundle-reload-v2';
 const CHECK_INTERVAL_MS = 15 * 60_000;
 const MIN_CHECK_GAP_MS = 60_000;
 
 let lastCheckAt = 0;
 let checking = false;
+let retryTimer: number | undefined;
+let retryAt = 0;
 
 function ownEntryName(): string | null {
   const el = document.querySelector<HTMLScriptElement>('script[src*="/assets/index-"]');
@@ -55,20 +61,51 @@ async function serverEntryName(): Promise<string | null> {
   }
 }
 
-async function checkOnce(own: string): Promise<void> {
+function clearRetry(): void {
+  if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+  retryTimer = undefined;
+  retryAt = 0;
+}
+
+function scheduleRetry(own: string, retryAfterMs: number): void {
+  const nextRetryAt = Date.now() + retryAfterMs;
+  if (retryTimer !== undefined && retryAt <= nextRetryAt) return;
+  clearRetry();
+  retryAt = nextRetryAt;
+  retryTimer = window.setTimeout(() => {
+    retryTimer = undefined;
+    retryAt = 0;
+    if (!document.hidden) void checkOnce(own, true);
+  }, Math.max(1_000, retryAfterMs + 100));
+}
+
+async function checkOnce(own: string, force = false): Promise<void> {
   if (checking) return;
   const now = Date.now();
-  if (now - lastCheckAt < MIN_CHECK_GAP_MS) return;
+  if (!force && now - lastCheckAt < MIN_CHECK_GAP_MS) return;
   lastCheckAt = now;
   checking = true;
   try {
     const server = await serverEntryName();
-    if (!server || server === own) return;
-    // Reload-loop guard (same shape as the vite:preloadError guard): if we
-    // reloaded recently and STILL mismatch, something is off — stay put.
-    const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || 0);
-    if (now - last < 10 * 60_000) return;
-    sessionStorage.setItem(RELOAD_GUARD_KEY, String(now));
+    if (!server) return;
+    if (server === own) {
+      clearRetry();
+      sessionStorage.removeItem(RELOAD_GUARD_KEY);
+      return;
+    }
+    // Only guard retries for the SAME target entry. A second deployment has a
+    // different hashed entry and must update immediately instead of inheriting
+    // the previous release's reload-loop window.
+    const decision = decideStaleBundleReload(sessionStorage.getItem(RELOAD_GUARD_KEY), server, now);
+    if (decision.action === 'wait') {
+      scheduleRetry(own, decision.retryAfterMs);
+      return;
+    }
+    clearRetry();
+    sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
+      entry: server,
+      attemptedAt: now,
+    }));
     try {
       const regs = await navigator.serviceWorker?.getRegistrations?.();
       await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
@@ -96,7 +133,10 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
   } catch { /* best-effort */ }
   // Manual check = explicit user intent: bypass the reload-loop guard window
   // but still stamp it so the automatic path stays throttled.
-  sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+  sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
+    entry: server,
+    attemptedAt: Date.now(),
+  }));
   markProgrammaticReload(); // explicit user intent — no leave-site dialog
   setTimeout(() => window.location.reload(), 600); // let the toast paint first
   return 'updated';

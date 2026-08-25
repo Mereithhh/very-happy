@@ -35,7 +35,10 @@ OAuth configuration exactly.
 
 ## The Web app looks mixed or an asset is HTML
 
-Hard refresh and unregister the service worker. Operators must restart the server
+Before recovery, preserve the failing tab's loaded entry/CSS URLs and relevant
+computed styles, then compare them with the current `/index.html` entry. Try a
+normal reload first. If the tab remains mixed or a hashed asset returns HTML,
+hard refresh and unregister the service worker. Operators must restart the server
 after swapping the Web tree, then verify the main asset's `Content-Type` is
 JavaScript. Do not leave an HTML response cached at a hashed asset URL.
 
