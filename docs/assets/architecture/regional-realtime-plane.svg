@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940" role="img" aria-labelledby="title desc">
+  <title id="title">Regional realtime relay plane</title>
+  <desc id="desc">The browser and daemon keep durable state on the central control and data server while machine RPC and terminal bytes prefer a daemon-selected regional relay using short-lived scoped tokens.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071116"/><stop offset="1" stop-color="#0a151c"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#43f5d0" stop-opacity=".16"/><stop offset="1" stop-color="#43f5d0" stop-opacity="0"/></radialGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity=".45"/></filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#9ab5bb" stroke-opacity=".055"/></pattern>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#43f5d0"/></marker>
+    <marker id="p" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#9189ef"/></marker>
+    <style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.title{font:700 34px ui-sans-serif,system-ui,sans-serif;fill:#effffc}.eyebrow{font-size:14px;letter-spacing:3px;fill:#43f5d0}.head{font-size:20px;font-weight:700;fill:#effffc}.body{font-size:14px;fill:#9db2b7}.code{font-size:13px;fill:#dff9f4}.dim{font-size:12px;fill:#718b91}.chip{font-size:12px;font-weight:700;fill:#dffcf6}.control{fill:none;stroke:#9189ef;stroke-width:3;marker-end:url(#p)}.realtime{fill:none;stroke:#43f5d0;stroke-width:4;marker-end:url(#a)}.dashed{fill:none;stroke:#5f7b82;stroke-width:2;stroke-dasharray:7 8;marker-end:url(#a)}</style>
+  </defs>
+  <rect width="1600" height="940" rx="30" fill="url(#bg)"/><rect width="1600" height="940" rx="30" fill="url(#grid)"/><ellipse cx="818" cy="600" rx="480" ry="250" fill="url(#halo)"/>
+  <text x="64" y="66" class="eyebrow">NETWORK ARCHITECTURE / SPLIT CONTROL + REALTIME PLANES</text>
+  <text x="64" y="112" class="title">Durable state stays central. Interactive traffic takes the fast seam.</text>
+  <text x="64" y="144" class="body">Machine-anchored routing by measured daemon RTT · finite operator candidate list · legacy control fallback</text>
+
+  <g filter="url(#shadow)"><rect x="70" y="260" width="330" height="420" rx="24" fill="#101f29" stroke="#59618f"/>
+    <text x="100" y="298" class="dim">UNIFIED CONTROL SURFACE</text><text x="100" y="340" class="head">Web V2 / PWA</text>
+    <rect x="100" y="376" width="270" height="70" rx="14" fill="#19243a" stroke="#7067db"/><text x="122" y="405" class="code">durable ApiSocket</text><text x="122" y="428" class="dim">account sync · metadata</text>
+    <rect x="100" y="464" width="270" height="92" rx="14" fill="#102e30" stroke="#43f5d0"/><text x="122" y="493" class="code">machine realtime socket</text><text x="122" y="516" class="dim">RPC · terminal events</text><text x="122" y="539" class="dim">one cache entry per machine</text>
+    <rect x="100" y="582" width="166" height="34" rx="17" fill="#173d3c"/><circle cx="122" cy="599" r="5" fill="#43f5d0"/><text x="137" y="603" class="chip">RELAY / RTT</text>
+    <text x="100" y="649" class="dim">follows machine assignment</text>
+  </g>
+
+  <g filter="url(#shadow)"><rect x="600" y="200" width="400" height="300" rx="26" fill="#171f31" stroke="#7067db"/>
+    <text x="630" y="238" class="dim">CENTRAL · STATEFUL</text><text x="630" y="278" class="head">Control / Data server</text>
+    <g transform="translate(630 310)"><rect width="106" height="38" rx="9" fill="#282847"/><text x="30" y="24" class="chip">AUTH</text><rect x="116" width="112" height="38" rx="9" fill="#282847"/><text x="151" y="24" class="chip">SYNC</text><rect x="238" width="132" height="38" rx="9" fill="#282847"/><text x="268" y="24" class="chip">POSTGRES</text></g>
+    <text x="630" y="392" class="body">candidate discovery · ownership check</text><text x="630" y="419" class="body">assignment registry · token minting</text>
+    <rect x="630" y="447" width="212" height="30" rx="15" fill="#29274c"/><text x="648" y="467" class="chip">DURABLE SOURCE OF TRUTH</text>
+  </g>
+
+  <g filter="url(#shadow)"><rect x="600" y="600" width="400" height="250" rx="26" fill="#0f292c" stroke="#43f5d0" stroke-width="2"/>
+    <text x="630" y="638" class="dim">REGIONAL · DATABASE-FREE</text><text x="630" y="678" class="head">Selected realtime relay</text>
+    <circle cx="944" cy="670" r="9" fill="#43f5d0" filter="url(#glow)"/>
+    <text x="630" y="718" class="body">allowlisted event forwarding only</text><text x="630" y="745" class="body">machine room · bounded RPC ack</text>
+    <rect x="630" y="780" width="118" height="34" rx="10" fill="#173f3d"/><text x="648" y="802" class="chip">RPC CALL</text><rect x="758" y="780" width="194" height="34" rx="10" fill="#173f3d"/><text x="777" y="802" class="chip">TERMINAL BYTES</text>
+  </g>
+
+  <g filter="url(#shadow)"><rect x="1200" y="260" width="330" height="420" rx="24" fill="#101f29" stroke="#39515a"/>
+    <text x="1230" y="298" class="dim">MACHINE-ANCHORED EDGE</text><text x="1230" y="340" class="head">very-happy daemon</text>
+    <rect x="1230" y="376" width="270" height="104" rx="14" fill="#142a32" stroke="#35505a"/><text x="1252" y="405" class="code">parallel health probes</text><text x="1252" y="431" class="body">2 s timeout · min RTT</text><text x="1252" y="457" class="body">stable config-order tie-break</text>
+    <rect x="1230" y="500" width="270" height="104" rx="14" fill="#102e30" stroke="#43f5d0"/><text x="1252" y="529" class="code">assignment heartbeat</text><text x="1252" y="555" class="body">claim every 20 s</text><text x="1252" y="581" class="body">assignment TTL 75 s</text>
+    <text x="1230" y="645" class="dim">agent + terminal processes remain local</text>
+  </g>
+
+  <path d="M400 380C480 380 510 330 600 330" class="control"/><text x="438" y="330" class="dim">HTTPS + DURABLE</text><text x="471" y="349" class="dim">SYNC SOCKET</text>
+  <path d="M1200 380C1120 380 1090 330 1000 330" class="control"/><text x="1041" y="330" class="dim">HEARTBEAT +</text><text x="1052" y="349" class="dim">DURABLE STATE</text>
+  <path d="M400 544C486 544 514 690 600 690" class="realtime"/><text x="430" y="624" class="dim">SCOPED WEB TOKEN</text>
+  <path d="M1200 544C1114 544 1086 690 1000 690" class="realtime"/><text x="1017" y="624" class="dim">SCOPED MACHINE TOKEN</text>
+  <path d="M800 500V600" class="dashed"/><rect x="677" y="528" width="246" height="44" rx="12" fill="#13252c" stroke="#3c555d"/><text x="695" y="555" class="code">signed relay assignment</text>
+
+  <g transform="translate(70 754)"><rect width="430" height="96" rx="18" fill="#0d1d24" stroke="#31474f"/><text x="22" y="29" class="dim">TOKEN SCOPE</text><text x="22" y="57" class="code">account · machine · relay · clientType</text><text x="22" y="80" class="body">short-lived · locally verified by relay</text></g>
+  <g transform="translate(1100 754)"><rect width="430" height="96" rx="18" fill="#0d1d24" stroke="#31474f"/><text x="22" y="29" class="dim">FAILURE CONTRACT</text><text x="22" y="57" class="code">stream → legacy control fallback</text><text x="22" y="80" class="body">unknown RPC result is never auto-replayed</text></g>
+  <text x="70" y="900" class="dim">Selection is nearest-to-daemon by measured healthy RTT, not GeoIP · WebRTC direct transport remains a future occupant of the same seam</text>
+</svg>

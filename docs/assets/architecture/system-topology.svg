@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920" role="img" aria-labelledby="title desc">
+  <title id="title">Very Happy control and data topology</title>
+  <desc id="desc">Multiple machines and agent runners connect through local daemons to the control and data plane, which serves one account workspace across browser devices.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071116"/><stop offset=".52" stop-color="#0b1820"/><stop offset="1" stop-color="#071015"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#43f5d0" stop-opacity=".18"/><stop offset="1" stop-color="#43f5d0" stop-opacity="0"/></radialGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#72ffe2"/><stop offset="1" stop-color="#19bda8"/></linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a9a2ff"/><stop offset="1" stop-color="#7067db"/></linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity=".42"/></filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#82a7ad" stroke-opacity=".065"/></pattern>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#43f5d0"/></marker>
+    <style>
+      text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.eyebrow{font-size:14px;letter-spacing:3px;fill:#43f5d0}.title{font:700 34px ui-sans-serif,system-ui,sans-serif;fill:#effffc}.label{font-size:20px;font-weight:700;fill:#effffc}.small{font-size:14px;fill:#91aab0}.micro{font-size:12px;fill:#729097}.chip{font-size:13px;font-weight:700;fill:#dffcf6}.zone{font-size:12px;letter-spacing:2px;fill:#7e979d}.line{fill:none;stroke:#43f5d0;stroke-width:2}.mutedLine{fill:none;stroke:#627d84;stroke-width:1.5;stroke-dasharray:7 8}
+    </style>
+  </defs>
+  <rect width="1600" height="920" rx="30" fill="url(#bg)"/>
+  <rect width="1600" height="920" rx="30" fill="url(#grid)"/>
+  <ellipse cx="805" cy="474" rx="480" ry="390" fill="url(#halo)"/>
+  <text x="72" y="72" class="eyebrow">ARCHITECTURE / ACCOUNT-LEVEL FLEET</text>
+  <text x="72" y="116" class="title">One control plane. Every machine. Every agent.</text>
+  <text x="72" y="148" class="small">Explicit machine + runner selection today · provider-neutral automatic routing remains roadmap</text>
+
+  <rect x="52" y="190" width="460" height="650" rx="22" fill="#0c1a21" stroke="#274049"/>
+  <text x="78" y="222" class="zone">EXECUTION ZONE · USER-OWNED</text>
+  <g filter="url(#shadow)">
+    <rect x="78" y="252" width="408" height="162" rx="18" fill="#10232b" stroke="#34505a"/>
+    <circle cx="108" cy="286" r="8" fill="#43f5d0" filter="url(#glow)"/><text x="128" y="293" class="label">build-machine</text>
+    <text x="104" y="326" class="small">very-happy daemon</text><rect x="274" y="308" width="88" height="28" rx="14" fill="#163a3a"/><text x="293" y="327" class="chip">ONLINE</text>
+    <rect x="104" y="354" width="92" height="34" rx="8" fill="#172c34"/><text x="123" y="376" class="chip">Claude</text>
+    <rect x="206" y="354" width="82" height="34" rx="8" fill="#172c34"/><text x="226" y="376" class="chip">Codex</text>
+    <rect x="298" y="354" width="74" height="34" rx="8" fill="#172c34"/><text x="316" y="376" class="chip">ACP</text>
+    <rect x="382" y="354" width="78" height="34" rx="8" fill="#172c34"/><text x="399" y="376" class="chip">TTY</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="78" y="438" width="408" height="162" rx="18" fill="#10232b" stroke="#34505a"/>
+    <circle cx="108" cy="472" r="8" fill="#43f5d0" filter="url(#glow)"/><text x="128" y="479" class="label">workstation</text>
+    <text x="104" y="512" class="small">very-happy daemon</text><rect x="274" y="494" width="88" height="28" rx="14" fill="#163a3a"/><text x="293" y="513" class="chip">ONLINE</text>
+    <path d="M105 547H458" stroke="#35505a"/><text x="105" y="576" class="small">runner adapters → shared session protocol</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="78" y="624" width="408" height="162" rx="18" fill="#10232b" stroke="#34505a"/>
+    <circle cx="108" cy="658" r="8" fill="#43f5d0" filter="url(#glow)"/><text x="128" y="665" class="label">field-laptop</text>
+    <text x="104" y="698" class="small">very-happy daemon</text><rect x="274" y="680" width="88" height="28" rx="14" fill="#163a3a"/><text x="293" y="699" class="chip">ONLINE</text>
+    <path d="M105 733H458" stroke="#35505a"/><text x="105" y="762" class="small">agent processes stay on this machine</text>
+  </g>
+
+  <path d="M486 333C574 333 560 408 648 408" class="line" marker-end="url(#arrow)"/>
+  <path d="M486 519H648" class="line" marker-end="url(#arrow)"/>
+  <path d="M486 705C574 705 560 630 648 630" class="line" marker-end="url(#arrow)"/>
+  <text x="520" y="491" class="micro">DURABLE SOCKET</text><text x="527" y="510" class="micro">+ REALTIME SEAM</text>
+
+  <g filter="url(#shadow)">
+    <rect x="648" y="280" width="360" height="480" rx="28" fill="#0e2428" stroke="#43f5d0" stroke-width="2"/>
+    <rect x="676" y="308" width="304" height="48" rx="12" fill="#143437"/><text x="704" y="338" class="eyebrow">CONTROL / DATA</text>
+    <circle cx="828" cy="454" r="92" fill="none" stroke="#43f5d0" stroke-opacity=".14" stroke-width="20"/>
+    <circle cx="828" cy="454" r="58" fill="#102f31" stroke="#43f5d0" filter="url(#glow)"/>
+    <path d="M805 454h46M828 431v46" stroke="#72ffe2" stroke-width="4" stroke-linecap="round"/>
+    <text x="729" y="553" class="label">happy-server</text>
+    <text x="696" y="585" class="small">identity · durable sync · files</text>
+    <g><rect x="686" y="624" width="86" height="38" rx="9" fill="#162d35"/><text x="706" y="648" class="chip">Prisma</text><rect x="782" y="624" width="86" height="38" rx="9" fill="#162d35"/><text x="804" y="648" class="chip">Files</text><rect x="878" y="624" width="86" height="38" rx="9" fill="#162d35"/><text x="895" y="648" class="chip">Redis*</text></g>
+    <text x="712" y="706" class="micro">SERVER IS INSIDE THE CONFIDENTIALITY</text><text x="739" y="726" class="micro">AND CONTROL BOUNDARY</text>
+  </g>
+
+  <path d="M1008 432C1085 432 1074 365 1148 365" class="line" marker-end="url(#arrow)"/>
+  <path d="M1148 593C1074 593 1085 526 1008 526" class="line" marker-end="url(#arrow)"/>
+  <text x="1022" y="458" class="micro">HTTPS +</text><text x="1022" y="477" class="micro">SOCKET.IO</text>
+  <text x="1022" y="505" class="micro">SYNC STATE</text>
+
+  <rect x="1148" y="190" width="400" height="650" rx="22" fill="#0c1a21" stroke="#274049"/>
+  <text x="1174" y="222" class="zone">CONTROL ZONE · ONE ACCOUNT</text>
+  <g filter="url(#shadow)"><rect x="1174" y="252" width="348" height="382" rx="20" fill="#111f2d" stroke="#7067db"/>
+    <rect x="1200" y="280" width="296" height="48" rx="10" fill="#1a2940"/><circle cx="1223" cy="304" r="6" fill="#72ffe2"/><text x="1242" y="310" class="chip">VERY HAPPY / WORKSPACE</text>
+    <text x="1200" y="370" class="label">Fleet view</text>
+    <g><rect x="1200" y="396" width="296" height="56" rx="10" fill="#172634"/><circle cx="1222" cy="424" r="5" fill="#43f5d0"/><text x="1240" y="420" class="chip">build-machine · Claude</text><text x="1240" y="439" class="micro">active · /workspace/api</text></g>
+    <g><rect x="1200" y="464" width="296" height="56" rx="10" fill="#172634"/><circle cx="1222" cy="492" r="5" fill="#43f5d0"/><text x="1240" y="488" class="chip">workstation · Codex</text><text x="1240" y="507" class="micro">waiting · ~/very-happy</text></g>
+    <g><rect x="1200" y="532" width="296" height="56" rx="10" fill="#172634"/><circle cx="1222" cy="560" r="5" fill="#759096"/><text x="1240" y="556" class="chip">field-laptop · terminal</text><text x="1240" y="575" class="micro">idle · ~/ops</text></g>
+  </g>
+  <text x="1174" y="680" class="label">Web V2 / installed PWA</text>
+  <text x="1174" y="715" class="small">desktop · tablet · phone</text>
+  <g transform="translate(1174 748)"><rect width="104" height="42" rx="10" fill="#17242e"/><text x="21" y="27" class="chip">SESSIONS</text><rect x="114" width="92" height="42" rx="10" fill="#17242e"/><text x="136" y="27" class="chip">TASKS</text><rect x="216" width="88" height="42" rx="10" fill="#17242e"/><text x="237" y="27" class="chip">FILES</text></g>
+  <path d="M536 820H1068" class="mutedLine"/><text x="654" y="853" class="micro">WIRE ENVELOPES ENCRYPTED · SERVER REMAINS TRUSTED</text>
+</svg>
