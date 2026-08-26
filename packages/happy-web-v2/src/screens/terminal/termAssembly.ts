@@ -40,7 +40,7 @@
  *   rebuilding ──noteLiveChunk──▶ rebuilding, chunk DEFERRED
  *   rebuilding ──finishRebuild──▶ done  (deferred chunks handed back to write)
  *   any ──abort(gap | snapshot-expired | page-failed | buffer-overflow |
- *              superseded | disposed)──▶ done
+ *              superseded | initial-timeout | disposed)──▶ done
  * `done`/`idle` are inert: chunks are written straight through, nothing is kept.
  * Aborting never needs an undo — the small snapshot is already on screen and
  * stays there (功能完好，仅历史浅), and seq bookkeeping went down the normal
@@ -73,6 +73,8 @@ export type AssemblyAbortReason =
     | 'buffer-overflow'
     /** a newer assembly started (new open/catch-up snapshot) */
     | 'superseded'
+    /** the first-paint stability budget expired; keep the small snapshot */
+    | 'initial-timeout'
     /** the terminal screen unmounted */
     | 'disposed';
 

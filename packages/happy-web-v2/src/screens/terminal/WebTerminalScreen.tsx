@@ -79,6 +79,7 @@ import {
 } from './termKbViewport';
 import { createTouchFling, stopSyntheticScrollForBufferChange } from './termTouchFling';
 import { formatRelayRegion } from './relayRegionLabel';
+import { createTermInitialPaintGate } from './termInitialPaint';
 import './terminal.css';
 
 function strToB64(s: string): string {
@@ -322,6 +323,13 @@ export function WebTerminalScreen() {
   // leave half of them pointing at the wrong channel. Bumping this counter
   // rebuilds the terminal effect from scratch = the remount-equivalent path.
   const [streamRemount, setStreamRemount] = useState(0);
+  // The readiness key includes the stream generation as well as the terminal
+  // id. A route change therefore hides the old xterm in the SAME render that
+  // changes the title, before the effect cleanup can expose stale rows; a
+  // daemon mode flip gets the same protection.
+  const surfaceKey = `${tid ?? ''}:${streamRemount}`;
+  const [readySurfaceKey, setReadySurfaceKey] = useState<string | null>(null);
+  const surfaceReady = readySurfaceKey === surfaceKey;
   // Paste seam, bridged out of the effect (same pattern as sendInputRef): in
   // lines mode a paste is a daemon RPC, not a local xterm bracketed paste.
   const pasteTextRef = useRef<((text: string) => Promise<void>) | null>(null);
@@ -448,6 +456,21 @@ export function WebTerminalScreen() {
     });
     const term = renderer.raw!;
     termRef.current = renderer;
+
+    const initialPaintGate = createTermInitialPaintGate({
+      // xterm writes asynchronously. An empty write callback is the supported
+      // queue barrier: reveal only after reset + snapshot/history + raced live
+      // chunks have actually reached the renderer, not merely been enqueued.
+      drainWrites: (done) => term.write('', done),
+      onReveal: () => setReadySurfaceKey(surfaceKey),
+      onTimeout: () => {
+        // Deep history is optional; a bounded stable first paint is not. The
+        // small snapshot remains fully usable, and aborting prevents a late
+        // reset/replay from manufacturing the same flash after reveal.
+        flushAssembly(assembly.abort('initial-timeout'));
+        clearQuietPoll();
+      },
+    });
 
     // Installed further down (desktop only); declared here so the focus/diag
     // closures below can read them (they only ever run on later events).
@@ -1047,9 +1070,17 @@ export function WebTerminalScreen() {
             stopped = true;
             flushAssembly(assembly.abort('page-failed'));
             clearQuietPoll();
+            initialPaintGate.historySettled();
             return;
           }
-          if (assembly.pageArrived(gen, page, r) === 'stale') { stopped = true; return; }
+          if (assembly.pageArrived(gen, page, r) === 'stale') {
+            stopped = true;
+            // The generation guard above already ruled out a superseding
+            // snapshot. A stale result here therefore means this assembly
+            // ended itself (normally the byte cap); keep the small snapshot.
+            if (assembly.state === 'done') initialPaintGate.historySettled();
+            return;
+          }
         }
       };
       await Promise.all(
@@ -1134,6 +1165,7 @@ export function WebTerminalScreen() {
       for (const b of plan.copies) term.write(b);
       flushAssembly(assembly.finishRebuild());
       term.scrollToBottom();
+      initialPaintGate.historySettled();
     };
 
     // Catch up to the daemon's authoritative screen by re-subscribing with
@@ -1381,6 +1413,9 @@ export function WebTerminalScreen() {
           term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
         }
         setConnecting(false);
+        // Errors are a final first screen too; do not leave the useful
+        // recovery message hidden behind the stability gate.
+        initialPaintGate.snapshotQueued(false);
         return;
       }
       // The create intent was consumed — strip `fresh` from the URL so a
@@ -1403,7 +1438,12 @@ export function WebTerminalScreen() {
       // Seq bookkeeping is synchronous in applyOpenResult; the restore itself
       // is serialized behind outChain so any live chunk arriving mid-restore
       // is applied after it (and seq-deduped), never interleaved.
-      outChain = outChain.then(applyOpenResult(res, 0));
+      const initialRestore = applyOpenResult(res, 0);
+      const waitsForInitialHistory = assembly.state === 'buffering'
+        || assembly.state === 'awaiting-quiet';
+      outChain = outChain
+        .then(initialRestore)
+        .finally(() => initialPaintGate.snapshotQueued(waitsForInitialHistory));
       // Flush chunks that raced the open (see earlyOutput): emitted by the
       // daemon right after it computed the snapshot, but processed here before
       // terminalId was known. They funnel through the normal seq rules, and
@@ -1964,6 +2004,7 @@ export function WebTerminalScreen() {
       // No flush on the way out — the screen is going away, and writing to a
       // disposed terminal is what we'd get for the trouble.
       assembly.abort('disposed');
+      initialPaintGate.dispose();
       bufferDisp.dispose();
       if (IS_COARSE_POINTER) {
         host.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
@@ -2152,7 +2193,7 @@ export function WebTerminalScreen() {
               : 'CONTROL'}
         </span>
         <div className="term-header-right">
-          {connecting && <span className="term-connecting mono">{t('common.loading')}</span>}
+          {(connecting || !surfaceReady) && <span className="term-connecting mono">{t('common.loading')}</span>}
           {/* B-105: structured-view toggle — header-level on purpose (mobile
               must reach it in one glance, never inside a menu). Only exists
               while the daemon reports a mirror session for this terminal. */}
@@ -2230,10 +2271,12 @@ export function WebTerminalScreen() {
             the v1 synthetic-wheel track still needs to own it. */}
         <div
           ref={hostRef}
+          aria-busy={connecting || !surfaceReady}
           className={
             `term-host${selectMode ? ' is-selecting' : ''}`
             + `${linesMode ? ' term-host--lines' : ''}`
             + `${altBuffer ? ' term-host--alt' : ''}`
+            + `${surfaceReady ? '' : ' term-host--settling'}`
           }
         >
           {selectMode && <div className="term-select-hint mono">{t('terminal.selectModeHint')}</div>}
