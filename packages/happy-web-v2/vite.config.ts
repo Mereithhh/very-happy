@@ -19,6 +19,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
+        id: BASE,
         name: 'Very Happy',
         short_name: 'Very Happy',
         description: 'An open agent workspace for your machines. Work anywhere and keep the thread.',
