@@ -19,3 +19,16 @@ export function composerHeightCap(expanded: boolean, viewportHeight: number): nu
     if (!expanded) return COMPOSER_MAX_HEIGHT;
     return Math.max(COMPOSER_MAX_HEIGHT, Math.round(viewportHeight * COMPOSER_EXPANDED_RATIO));
 }
+
+/**
+ * textarea 的实际高度。展开是一个明确的布局状态，不只是放宽自动增长的
+ * 上限：空输入和短输入也必须立即呈现展开结果。
+ */
+export function composerTextareaHeight(
+    expanded: boolean,
+    scrollHeight: number,
+    viewportHeight: number,
+): number {
+    const cap = composerHeightCap(expanded, viewportHeight);
+    return expanded ? cap : Math.min(scrollHeight, cap);
+}
