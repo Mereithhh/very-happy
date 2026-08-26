@@ -3,19 +3,23 @@ import { useEffect, useState } from 'react';
 import { CyberMark } from '@/ui/CyberMark';
 import { usePublicI18n } from '@/i18n/publicI18n';
 import {
+  clearCapturedPwaInstallPrompt,
+  getCapturedPwaInstallPrompt,
+  subscribeToPwaInstallPrompt,
+  type BeforeInstallPromptEvent,
+} from './pwaInstallCapture';
+import {
   PWA_INSTALL_CONFIRMED_KEY,
   PWA_INSTALL_NEVER_KEY,
   canOfferPwaInstall,
+  isAppleInstallGuide,
   isStandalonePwa,
   manualInstallGuide,
   requestNativePwaInstall,
   shouldDeferPwaInstall,
-  type DeferredPwaInstall,
   type PwaInstallGuide,
 } from './pwaInstallPolicy';
 import './pwaInstallPrompt.css';
-
-type BeforeInstallPromptEvent = Event & DeferredPwaInstall;
 
 const REVEAL_DELAY_MS = 1_800;
 
@@ -49,6 +53,7 @@ export function PwaInstallPrompt() {
   const [prompting, setPrompting] = useState(false);
   const { copy: publicCopy } = usePublicI18n();
   const copy = guide ? { ...publicCopy.pwa, body: guide === 'native' ? publicCopy.pwa.nativeBody : publicCopy.pwa.manualBody } : null;
+  const appleGuide = guide ? isAppleInstallGuide(guide) : false;
 
   useEffect(() => {
     const standaloneQuery = window.matchMedia('(display-mode: standalone)');
@@ -77,9 +82,7 @@ export function PwaInstallPrompt() {
 
     if (eligible()) scheduleReveal(manualInstallGuide(navigator.userAgent, navigator.maxTouchPoints), REVEAL_DELAY_MS);
 
-    const onBeforeInstallPrompt = (rawEvent: Event) => {
-      const event = rawEvent as BeforeInstallPromptEvent;
-      event.preventDefault();
+    const onBeforeInstallPrompt = (event: BeforeInstallPromptEvent) => {
       if (permanentlyBlocked()) return;
       // The browser offering installation is stronger evidence than our old
       // acceptance marker (the app may have been uninstalled since then).
@@ -88,17 +91,21 @@ export function PwaInstallPrompt() {
       scheduleReveal('native', 0);
     };
 
+    const unsubscribe = subscribeToPwaInstallPrompt(onBeforeInstallPrompt);
+    const capturedPrompt = getCapturedPwaInstallPrompt();
+    if (capturedPrompt) onBeforeInstallPrompt(capturedPrompt);
+
     const onInstalled = () => {
       writeStorage(PWA_INSTALL_CONFIRMED_KEY, '1');
+      clearCapturedPwaInstallPrompt();
       setInstallEvent(null);
       setGuide(null);
     };
 
-    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
     window.addEventListener('appinstalled', onInstalled);
     return () => {
       window.clearTimeout(revealTimer);
-      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      unsubscribe();
       window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
@@ -131,12 +138,14 @@ export function PwaInstallPrompt() {
     setPrompting(true);
     try {
       const outcome = await requestNativePwaInstall(installEvent);
+      clearCapturedPwaInstallPrompt(installEvent);
       if (outcome === 'accepted') {
         writeStorage(PWA_INSTALL_CONFIRMED_KEY, '1');
       }
       setInstallEvent(null);
       setGuide(null);
     } catch {
+      clearCapturedPwaInstallPrompt(installEvent);
       setInstallEvent(null);
       setGuide(manualInstallGuide(navigator.userAgent, navigator.maxTouchPoints));
     } finally {
@@ -154,8 +163,11 @@ export function PwaInstallPrompt() {
         <p id="pwa-install-description">{copy.body}</p>
         {guide !== 'native' && (
           <ol className="pwa-install-steps">
-            <li>{guide === 'ios' ? <Share2 size={17} /> : <MoreVertical size={17} />}<span>{guide === 'ios' ? copy.iosOne : copy.manualOne}</span></li>
-            <li><Download size={17} /><span>{guide === 'ios' ? copy.iosTwo : copy.manualTwo}</span></li>
+            <li>
+              {appleGuide ? <Share2 size={17} /> : <MoreVertical size={17} />}
+              <span>{guide === 'ios-safari' ? copy.iosSafariOne : guide === 'ios-chrome' ? copy.iosChromeOne : guide === 'ios-other' ? copy.iosOtherOne : copy.manualOne}</span>
+            </li>
+            <li><Download size={17} /><span>{appleGuide ? copy.iosTwo : copy.manualTwo}</span></li>
           </ol>
         )}
         <div className="pwa-install-actions">

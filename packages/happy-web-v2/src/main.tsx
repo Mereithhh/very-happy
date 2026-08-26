@@ -9,9 +9,14 @@ import '@fontsource/ibm-plex-mono/500.css';
 import './styles/tokens.css';
 import './styles/base.css';
 
+import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
 import { installStaleBundleReload } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 import { shouldUsePublicRoot } from './app/rootSelection.ts';
+
+// Capture Chrome's one-shot install event before the public/authenticated root
+// and their lazy chunks load. PwaInstallPrompt consumes the retained event.
+installPwaPromptCapture();
 
 // Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
 // so a client still running the previous shell hits "Failed to fetch
