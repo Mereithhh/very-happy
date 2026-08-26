@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-227 | **同一个 AskUserQuestion 含多题时，回答第一题会禁用剩余题目**：多题不得沿用单题“点选即全局提交”的交互；每题答案需独立可改，全部完成后一次提交并保持原问题顺序，单题仍保留一键回答，多选题仍支持选多个 | bug/ux | Owner 实报 2026-08-27 | done | 根因：`questions[]` 共享父级 `sent/busy`，第一题 `onSubmit` 后整组 disabled。改为每题本地受控选择、全部完成后统一提交；单题载荷与交互保持兼容。Web 全量 153 files / 1670 tests、build、tsc 均通过；纯 Web，不改协议/daemon。 |
 | B-226 | **Claude 运行中只能追问一次**：agent working 时 composer 不得用停止按钮替换发送按钮；用户应能像 Codex Desktop 一样继续发送多条 follow-up 进入既有 daemon queue，同时始终保留独立停止操作，发送失败不得丢草稿 | bug/ux | Owner 实报 2026-08-27 | done | 运行中改为并列停止 + 发送；沿用已有 `MessageQueue2` 连续入队能力，不改协议/daemon。320×720 浏览器验证双键同时可见、输入追问后发送可用且无横向溢出。 |
 | B-225 | **会话 composer 右下角明确展示 context token 进度**：有真实模型窗口时显示进度条与“当前 / 总量”，模型未知时只显示已知绝对值，不得猜分母；窄屏仍需靠右且不挤坏连接状态 | feat/ux | Owner 2026-08-27 | done | 复用 B-135 的真实模型窗口与 usage snapshot；实测 320px 显示 `72.0k / 200.0k`、meter 靠右且零正向横溢出，未知模型继续只报绝对量。 |
 | B-224 | **移动端复制 toast 暗色主题文字不可见且遮挡操作区**：普通 toast 必须显式使用主题文字 token；手机反馈改为安全区内的紧凑顶部 pill，复制成功缩短停留时间，error/action 仍保留足够阅读/操作时间 | bug/ux | Owner 实报 2026-08-27 | done | toast 显式 `color: var(--text)`，移动端移到安全区顶部并紧凑化，success 1.8s、error/info 4s；暗色浏览器实测前景 `rgb(232,237,244)` / 背景 `rgb(24,31,42)`。 |
