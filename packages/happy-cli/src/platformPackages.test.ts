@@ -81,6 +81,8 @@ describe('platform tool packages', () => {
     expect(publishWorkflow.indexOf('Publish platform tool packages to npm')).toBeLessThan(
       publishWorkflow.indexOf('Publish main CLI package to npm'),
     );
+    expect(publishWorkflow).toContain('npm pack ./packages/happy-cli');
+    expect(publishWorkflow).not.toMatch(/npm pack packages\/happy-cli\b/);
     expect(smokeWorkflow).toContain('getPlatformPackageName()');
     expect(smokeWorkflow).toContain('CLI_BYTES');
   });
