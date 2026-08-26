@@ -73,4 +73,11 @@ VH_PRODUCTION_ENV_FILE=/dev/null \
 docker compose -f "$REPO_ROOT/ops/production/docker-compose.blue-green.yml" config --quiet
 
 bash -n "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" "$REPO_ROOT/scripts/ci/deploy-hwsg.sh"
+
+# Production bootstrap contracts: Caddy must be able to traverse the release
+# directory, while both the forward path and rollback recreate only the server.
+grep -Fq 'install -d -m 755 "$RELEASE_DIR"' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh" \
+    || fail 'release directory must be traversable by the caddy service user'
+[ "$(grep -Fc -- 'up -d --no-deps' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh")" -ge 3 ] \
+    || fail 'legacy start, groundwork, and rollback must not recreate dependencies'
 echo 'blue-green state-machine fixtures: ok'

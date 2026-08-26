@@ -98,7 +98,10 @@ verify_migration_contract() {
 }
 
 initialize_release_files() {
-    install -d -m 700 "$RELEASE_DIR"
+    # Caddy's systemd service runs as the unprivileged `caddy` user and must
+    # traverse this directory to import active-upstream.caddy. Sensitive files
+    # inside remain 0600; only the generated include is 0644.
+    install -d -m 755 "$RELEASE_DIR"
     install -m 600 "$REPO_ROOT/ops/production/docker-compose.blue-green.yml" "$RELEASE_COMPOSE"
     install -m 600 "$REPO_ROOT/ops/production/legacy-release.override.yml" "$LEGACY_OVERRIDE"
     if [ ! -f "$RELEASE_DIR/admin-token" ]; then
@@ -279,7 +282,7 @@ stop_candidate() {
 
 start_old_slot() {
     if [ "$MODE" = legacy ]; then
-        docker compose -f /opt/happy/docker-compose.yml -f "$LEGACY_OVERRIDE" --env-file "$SLOT_ENV" up -d happy-server
+        docker compose -f /opt/happy/docker-compose.yml -f "$LEGACY_OVERRIDE" --env-file "$SLOT_ENV" up -d --no-deps happy-server
     else
         slot_compose up -d "happy-server-$ACTIVE_SLOT"
     fi
@@ -340,13 +343,17 @@ groundwork() {
         if [ "$failed" = true ]; then
             cp -a "$rollback_dir/docker-compose.yml" /opt/happy/docker-compose.yml
             cp -a "$rollback_dir/Caddyfile" "$CADDY_FILE"
-            docker compose -f /opt/happy/docker-compose.yml up -d --force-recreate happy-server || true
+            # The database and Redis are shared infrastructure. Recreating
+            # either during rollback extends the outage and is unnecessary.
+            docker compose -f /opt/happy/docker-compose.yml up -d --no-deps --force-recreate happy-server || true
             reload_caddy || true
         fi
         exit "$status"
     }
     trap rollback_groundwork ERR
-    docker compose -f /opt/happy/docker-compose.yml -f "$LEGACY_OVERRIDE" --env-file "$SLOT_ENV" up -d --force-recreate happy-server
+    # Groundwork intentionally recreates the legacy server once, but never its
+    # PostgreSQL/Redis dependencies.
+    docker compose -f /opt/happy/docker-compose.yml -f "$LEGACY_OVERRIDE" --env-file "$SLOT_ENV" up -d --no-deps --force-recreate happy-server
     wait_ready 3005 blue "$VERSION"
     verify_direct_asset 3005 "$VERSION"
     write_active_upstream 3005
