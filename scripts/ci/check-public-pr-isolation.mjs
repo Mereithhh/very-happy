@@ -14,6 +14,7 @@ const dockerfile = readFileSync(new URL('../../Dockerfile.server', import.meta.u
 const dockerignore = readFileSync(new URL('../../.dockerignore', import.meta.url), 'utf8');
 const deployScript = readFileSync(new URL('./deploy-hwsg.sh', import.meta.url), 'utf8');
 const remoteServerDeployScript = readFileSync(new URL('./deploy-server-remote.sh', import.meta.url), 'utf8');
+const blueGreenDeployScript = readFileSync(new URL('./deploy-blue-green-remote.sh', import.meta.url), 'utf8');
 const daemonUpdateScript = readFileSync(new URL('../update-daemon.sh', import.meta.url), 'utf8');
 
 const errors = [];
@@ -105,8 +106,8 @@ if (!/server-container-smoke:[\s\S]*smoke-server-container\.sh/.test(workflows['
 }
 if (!/SERVER_IMAGE:\?SERVER_IMAGE digest is required/.test(deployScript)
   || !/very-happy-server@sha256/.test(deployScript)
-  || !/deploy-server-remote\.sh/.test(deployScript)) {
-  errors.push('deploy-hwsg.sh: server deploy must use the immutable GHCR digest and remote deploy helper');
+  || !/deploy-blue-green-remote\.sh/.test(deployScript)) {
+  errors.push('deploy-hwsg.sh: server deploy must use the immutable GHCR digest and blue-green remote helper');
 }
 if (!/permissions:\s*\n\s+contents: read\s*\n\s+packages: write/.test(workflows['deploy-hwsg.yml'] ?? '')
   || !/test "\$GITHUB_REF" = refs\/heads\/main/.test(workflows['deploy-hwsg.yml'] ?? '')
@@ -125,6 +126,15 @@ if (!/docker pull "\$IMAGE"/.test(remoteServerDeployScript)
 }
 if (/docker compose restart happy-server/.test(remoteServerDeployScript)) {
   errors.push('deploy-server-remote.sh: source-only container restart is forbidden');
+}
+if (!/docker pull "\$IMAGE"/.test(blueGreenDeployScript)
+  || !/node_modules\/\.prisma\/client\/schema\.prisma/.test(blueGreenDeployScript)
+  || !/groundwork\|shadow\|switch/.test(blueGreenDeployScript)
+  || !/\/_vh\/release\/canary/.test(blueGreenDeployScript)
+  || !/\/_vh\/release\/cancel/.test(blueGreenDeployScript)
+  || !/write_active_upstream/.test(blueGreenDeployScript)
+  || !/reload_caddy/.test(blueGreenDeployScript)) {
+  errors.push('deploy-blue-green-remote.sh: immutable image, phased canary, drain rollback, and atomic Caddy switch are required');
 }
 
 const rewriteTestDir = mkdtempSync(join(tmpdir(), 'vh-compose-rewrite-'));
