@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
+import {
+    nextAwaySnapshot,
+    unseenRows,
+    formatUnseen,
+    shouldFollowGrowth,
+    shouldFollowShrink,
+    shouldSmoothJumpToLatest,
+} from './chatFollow';
 
 describe('nextAwaySnapshot', () => {
     it('贴底时永远没有快照', () => {
@@ -68,5 +75,18 @@ describe('shouldFollowShrink (B-114 键盘弹起保持贴底)', () => {
         expect(shouldFollowShrink(420, 800, true)).toBe(false);  // keyboard closed — browser clamps
         expect(shouldFollowShrink(800, 800, true)).toBe(false);  // no change
         expect(shouldFollowShrink(800, 420, false)).toBe(false); // reading history — never yank
+    });
+});
+
+describe('shouldSmoothJumpToLatest', () => {
+    it('smooths a nearby catch-up but jumps immediately across a long transcript', () => {
+        expect(shouldSmoothJumpToLatest(600, 500)).toBe(true);
+        expect(shouldSmoothJumpToLatest(1000, 500)).toBe(true);
+        expect(shouldSmoothJumpToLatest(1001, 500)).toBe(false);
+    });
+
+    it('does not request animation for invalid or already-bottom distances', () => {
+        expect(shouldSmoothJumpToLatest(0, 500)).toBe(false);
+        expect(shouldSmoothJumpToLatest(100, 0)).toBe(false);
     });
 });

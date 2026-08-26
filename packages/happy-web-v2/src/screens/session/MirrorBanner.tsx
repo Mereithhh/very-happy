@@ -20,7 +20,7 @@ import { ShieldAlert, TerminalSquare } from 'lucide-react';
 import { useSession, useSessionUsage, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
-import { withTerminalViewOverride } from '@/sync/terminalViewPref';
+import { TERMINAL_FACE_NAVIGATION_OPTIONS, withTerminalViewOverride } from '@/sync/terminalViewPref';
 import { useTranslation } from '@/i18n/useTranslation';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
@@ -55,7 +55,7 @@ export function MirrorBanner({ sessionId }: { sessionId: string }) {
     const goTerminal = () => {
         if (!terminalId || !machineId) return;
         setOverrides(withTerminalViewOverride(overrides, terminalId, 'xterm'));
-        navigate(`/terminal/${machineId}?tid=${terminalId}`);
+        navigate(`/terminal/${machineId}?tid=${terminalId}`, TERMINAL_FACE_NAVIGATION_OPTIONS);
     };
 
     return (

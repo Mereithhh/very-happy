@@ -18,6 +18,13 @@
 export type TerminalView = 'xterm' | 'structured';
 export const TERMINAL_VIEW_REDIRECT_WINDOW_MS = 3000;
 
+/**
+ * xterm and its structured mirror are two faces of one live terminal, not two
+ * navigation levels. Explicit face switches therefore replace the current
+ * entry; otherwise mobile Back only flips faces and appears to need two taps.
+ */
+export const TERMINAL_FACE_NAVIGATION_OPTIONS = { replace: true } as const;
+
 function asView(v: unknown): TerminalView | undefined {
   return v === 'xterm' || v === 'structured' ? v : undefined;
 }

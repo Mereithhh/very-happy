@@ -56,3 +56,12 @@ export function shouldFollowShrink(
 ): boolean {
     return atBottom && nextHeight < prevHeight;
 }
+
+/**
+ * Smooth scrolling is useful for a nearby catch-up, but across a long
+ * transcript it becomes slow and interruptible. Jump immediately when the
+ * destination is more than two visible pages away.
+ */
+export function shouldSmoothJumpToLatest(distance: number, viewportHeight: number): boolean {
+    return distance > 0 && viewportHeight > 0 && distance <= viewportHeight * 2;
+}
