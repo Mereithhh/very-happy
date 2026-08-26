@@ -17,7 +17,9 @@ deploy_complete_image() {
 
     case "$ROLLOUT_MODE" in groundwork|shadow|switch) ;; *) echo "invalid rollout mode: $ROLLOUT_MODE" >&2; exit 2 ;; esac
 
-    if [ "$ROLLOUT_MODE" = switch ]; then
+    case "${REUSE_SHADOW_IMAGE:-false}" in true|false) ;; *) echo 'invalid shadow reuse flag' >&2; exit 2 ;; esac
+
+    if [ "$ROLLOUT_MODE" = switch ] && [ "${REUSE_SHADOW_IMAGE:-false}" = true ]; then
         # Switch the exact immutable artifact that passed shadow. Rebuilding the
         # same commit can still produce a different OCI manifest digest because
         # build provenance is regenerated for every invocation.
@@ -33,6 +35,9 @@ deploy_complete_image() {
             exit 4
         }
     else
+        # Every normal post-activation switch validates and cuts over the image
+        # built by this run. Shadow reuse is deliberately opt-in above: after
+        # blue-green activation, production no longer accepts another shadow.
         test "$(git rev-parse HEAD)" = "$deploy_sha"
         image="${SERVER_IMAGE:?SERVER_IMAGE digest is required}"
     fi

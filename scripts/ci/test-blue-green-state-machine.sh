@@ -80,10 +80,15 @@ grep -Fq 'install -d -m 755 "$RELEASE_DIR"' "$REPO_ROOT/scripts/ci/deploy-blue-g
     || fail 'release directory must be traversable by the caddy service user'
 [ "$(grep -Fc -- 'up -d --no-deps' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh")" -ge 3 ] \
     || fail 'legacy start, groundwork, and rollback must not recreate dependencies'
-# A switch must reuse the digest that passed shadow. Building again is not
-# equivalent: BuildKit provenance makes OCI manifest digests invocation-bound.
-grep -Fq "if: inputs.rollout != 'switch' || inputs.target == 'publish'" "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
-    || fail 'switch must not rebuild the shadowed image'
+# Normal post-activation switches build current main. An explicit release_sha
+# is the only shadow-reuse path; rebuilding that case is unsafe because BuildKit
+# provenance makes OCI manifest digests invocation-bound.
+grep -Fq "if: inputs.target == 'publish' || inputs.rollout != 'switch' || inputs.release_sha == ''" "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
+    || fail 'normal switch must build current main while explicit shadow reuse skips rebuild'
+grep -Fq "REUSE_SHADOW_IMAGE: \${{ inputs.rollout == 'switch' && inputs.release_sha != '' }}" "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
+    || fail 'workflow must make shadow reuse explicit'
+grep -Fq 'if [ "$ROLLOUT_MODE" = switch ] && [ "${REUSE_SHADOW_IMAGE:-false}" = true ]; then' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" \
+    || fail 'deploy helper must reuse shadow only when explicitly requested'
 grep -Fq '${{ steps.deploy.outputs.image }}' "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
     || fail 'latest must promote the image actually deployed'
 grep -Fq 'SHADOW_IMAGE=//p; s/^SHADOW_RELEASE=//p' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" \
