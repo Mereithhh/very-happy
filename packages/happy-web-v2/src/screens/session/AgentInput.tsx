@@ -37,7 +37,11 @@ import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
-import { composerHeightCap, composerTextareaHeight } from './composerExpand';
+import {
+    COMPOSER_MOBILE_MIN_HEIGHT,
+    composerHeightCap,
+    composerTextareaHeight,
+} from './composerExpand';
 import './input.css';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
@@ -104,7 +108,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const cap = composerHeightCap(expanded, viewportHeight);
         ta.style.maxHeight = `${cap}px`;
         ta.style.height = 'auto';
-        ta.style.height = `${composerTextareaHeight(expanded, ta.scrollHeight, viewportHeight)}px`;
+        ta.style.height = `${composerTextareaHeight(
+            expanded,
+            ta.scrollHeight,
+            viewportHeight,
+            IS_COARSE_POINTER ? COMPOSER_MOBILE_MIN_HEIGHT : 0,
+        )}px`;
     }, [expanded]);
 
     useLayoutEffect(() => {
@@ -310,28 +319,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
             >
-                {supportsAttachments && (
-                    <button
-                        type="button"
-                        className="ci-icon-btn"
-                        onClick={onPickFiles}
-                        aria-label={t('session.chat.attach')}
-                        title={t('session.chat.attach')}
-                    >
-                        <Paperclip size={18} />
-                    </button>
-                )}
-                <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()} />
-                <button
-                    type="button"
-                    className="ci-icon-btn"
-                    onClick={toggleExpanded}
-                    aria-pressed={expanded}
-                    aria-label={expanded ? t('session.input.collapse') : t('session.input.expand')}
-                    title={expanded ? t('session.input.collapse') : t('session.input.expand')}
-                >
-                    {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                </button>
                 <input
                     ref={fileInputRef}
                     type="file"
@@ -353,29 +340,55 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     onCompositionEnd={ime.onCompositionEnd}
                     aria-label={t('common.message')}
                 />
-                {isWorking ? (
-                    <button
-                        type="button"
-                        className="ci-send ci-send--abort"
-                        onClick={() => void doAbort()}
-                        disabled={aborting}
-                        aria-label={t('session.chat.stop')}
-                        title={t('session.chat.stop')}
-                    >
-                        <Square size={16} fill="currentColor" />
-                    </button>
-                ) : (
-                    <button
-                        type="button"
-                        className="ci-send"
-                        onClick={() => void doSend()}
-                        disabled={!canSend}
-                        aria-label={t('session.chat.send')}
-                        title={t('session.chat.send')}
-                    >
-                        <Send size={16} />
-                    </button>
-                )}
+                <div className="ci-composer-toolbar">
+                    <div className="ci-composer-tools">
+                        {supportsAttachments && (
+                            <button
+                                type="button"
+                                className="ci-icon-btn"
+                                onClick={onPickFiles}
+                                aria-label={t('session.chat.attach')}
+                                title={t('session.chat.attach')}
+                            >
+                                <Paperclip size={18} />
+                            </button>
+                        )}
+                        <PresetsMenu onPick={insertPreset} onCancel={() => taRef.current?.focus()} />
+                        <button
+                            type="button"
+                            className="ci-icon-btn"
+                            onClick={toggleExpanded}
+                            aria-pressed={expanded}
+                            aria-label={expanded ? t('session.input.collapse') : t('session.input.expand')}
+                            title={expanded ? t('session.input.collapse') : t('session.input.expand')}
+                        >
+                            {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        </button>
+                    </div>
+                    {isWorking ? (
+                        <button
+                            type="button"
+                            className="ci-send ci-send--abort"
+                            onClick={() => void doAbort()}
+                            disabled={aborting}
+                            aria-label={t('session.chat.stop')}
+                            title={t('session.chat.stop')}
+                        >
+                            <Square size={16} fill="currentColor" />
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="ci-send"
+                            onClick={() => void doSend()}
+                            disabled={!canSend}
+                            aria-label={t('session.chat.send')}
+                            title={t('session.chat.send')}
+                        >
+                            <Send size={16} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* status row — connection + always-visible context meter */}

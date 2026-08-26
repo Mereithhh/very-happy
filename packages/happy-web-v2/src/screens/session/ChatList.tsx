@@ -15,7 +15,14 @@ import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
-import { nextAwaySnapshot, unseenRows, formatUnseen, shouldFollowGrowth, shouldFollowShrink } from './chatFollow';
+import {
+    nextAwaySnapshot,
+    unseenRows,
+    formatUnseen,
+    shouldFollowGrowth,
+    shouldFollowShrink,
+    shouldSmoothJumpToLatest,
+} from './chatFollow';
 import { visibleToolCalls } from './toolVisibility';
 import './chatlist.css';
 
@@ -101,7 +108,9 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
     const scrollToBottom = (smooth: boolean) => {
         const el = scrollRef.current;
         if (!el) return;
-        el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduced ? 'smooth' : 'auto' });
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const animate = smooth && !reduced && shouldSmoothJumpToLatest(distance, el.clientHeight);
+        el.scrollTo({ top: el.scrollHeight, behavior: animate ? 'smooth' : 'auto' });
     };
 
     // The live status strip sits outside this scroll container. Treat its tap
@@ -219,13 +228,19 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
         }
     }, [isLoadingOlder]);
 
-    // Initial scroll to bottom once loaded.
-    useEffect(() => {
-        if (isLoaded) {
-            requestAnimationFrame(() => scrollToBottom(false));
-        }
+    // A route can reuse this component while switching between two already
+    // cached sessions (`isLoaded` stays true). Reset the previous session's
+    // mid-history state and land at latest BEFORE paint; late markdown/tool
+    // growth is then covered by the ResizeObserver while atBottom remains true.
+    useLayoutEffect(() => {
+        if (!isLoaded) return;
+        atBottomRef.current = true;
+        awaySnapshotRef.current = null;
+        prevHeightRef.current = 0;
+        setShowJump(false);
+        scrollToBottom(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoaded]);
+    }, [sessionId, isLoaded]);
 
     if (isLoaded && messages.length === 0) {
         return (

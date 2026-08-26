@@ -17,6 +17,19 @@ export interface TouchFling {
 }
 
 /**
+ * Full-screen TUIs own alternate-screen scrolling. Claude Code documents a
+ * configurable 1..20 multiplier and calls 3 a practical baseline; tmux's own
+ * wheel recipe likewise emits three cursor steps. Scale rows before the
+ * existing 60ms RPC batcher so touch gets useful travel without extra calls.
+ */
+export const TOUCH_TUI_SCROLL_MULTIPLIER = 3;
+
+export function scaleTouchTuiScrollLines(lines: number): number {
+    if (!Number.isFinite(lines)) return 0;
+    return Math.trunc(lines) * TOUCH_TUI_SCROLL_MULTIPLIER;
+}
+
+/**
  * Buffer ownership can change while a synthetic scroll is still in flight.
  * Stop both producers at that boundary: animation frames and the unsent RPC
  * batch. Otherwise a TUI's final momentum can reach the normal shell buffer

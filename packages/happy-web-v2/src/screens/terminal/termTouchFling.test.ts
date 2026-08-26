@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { createTouchFling, stopSyntheticScrollForBufferChange } from './termTouchFling';
+import {
+    createTouchFling,
+    scaleTouchTuiScrollLines,
+    stopSyntheticScrollForBufferChange,
+} from './termTouchFling';
+
+describe('scaleTouchTuiScrollLines', () => {
+    it('amplifies alternate-screen touch rows in both directions without changing zero', () => {
+        expect(scaleTouchTuiScrollLines(2)).toBe(6);
+        expect(scaleTouchTuiScrollLines(-2)).toBe(-6);
+        expect(scaleTouchTuiScrollLines(0)).toBe(0);
+    });
+
+    it('rejects non-finite input at the touch boundary', () => {
+        expect(scaleTouchTuiScrollLines(Number.NaN)).toBe(0);
+        expect(scaleTouchTuiScrollLines(Number.POSITIVE_INFINITY)).toBe(0);
+    });
+});
 
 describe('createTouchFling', () => {
     const harness = () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     COMPOSER_MAX_HEIGHT,
+    COMPOSER_MOBILE_MIN_HEIGHT,
     composerHeightCap,
     composerTextareaHeight,
 } from './composerExpand';
@@ -32,6 +33,12 @@ describe('composerTextareaHeight', () => {
         expect(composerTextareaHeight(false, 24, 1000)).toBe(24);
         expect(composerTextareaHeight(false, 180, 1000)).toBe(180);
         expect(composerTextareaHeight(false, 420, 1000)).toBe(COMPOSER_MAX_HEIGHT);
+    });
+
+    it('gives a phone composer a useful three-line minimum without changing desktop sizing', () => {
+        expect(composerTextareaHeight(false, 24, 800, COMPOSER_MOBILE_MIN_HEIGHT)).toBe(72);
+        expect(composerTextareaHeight(false, 120, 800, COMPOSER_MOBILE_MIN_HEIGHT)).toBe(120);
+        expect(composerTextareaHeight(false, 24, 800)).toBe(24);
     });
 
     it('tracks the available viewport while expanded', () => {

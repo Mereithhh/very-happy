@@ -19,6 +19,11 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  touch-action: pan-y;
+  /* The list owns bottom-following; browser anchoring can otherwise preserve
+     a stale mid-transcript position while markdown/tool content expands. */
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
 }
 .cl-inner {
   display: flex;

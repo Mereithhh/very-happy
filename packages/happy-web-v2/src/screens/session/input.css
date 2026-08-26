@@ -56,7 +56,8 @@
 
 /* composer */
 .ci-composer {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: flex-end;
   gap: var(--sp-1);
   background: var(--bg-2);
@@ -64,6 +65,24 @@
   border-radius: var(--r-lg);
   padding: var(--sp-2);
   transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast);
+}
+.ci-textarea {
+  grid-column: 2;
+  grid-row: 1;
+}
+.ci-composer-toolbar {
+  display: contents;
+}
+.ci-composer-tools {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.ci-composer-toolbar > .ci-send {
+  grid-column: 3;
+  grid-row: 1;
 }
 .ci-composer:focus-within {
   border-color: var(--line-2);
@@ -229,17 +248,55 @@
 
 /* touch: 16px floor stops iOS focus auto-zoom; larger targets for the
  * composer's icon/send buttons (34/36px is under-sized for fingers). */
-@media (pointer: coarse) {
+@media (max-width: 600px), (pointer: coarse) {
+  .ci {
+    gap: 6px;
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .ci-modes {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 6px;
+    min-width: 0;
+  }
+  .ci-modes .mm-trigger {
+    width: 100%;
+    min-width: 0;
+  }
+  .ci-composer {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--sp-1);
+  }
   .ci-textarea {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    min-height: 72px;
     font-size: var(--fs-16);
+    padding: var(--sp-2);
+  }
+  .ci-composer-toolbar {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
+  .ci-composer-tools {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
   }
   .ci-icon-btn {
     width: 40px;
     height: 40px;
   }
   .ci-send {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
   .ci-att-remove {
     width: 24px;

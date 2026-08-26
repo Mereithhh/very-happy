@@ -248,16 +248,26 @@ pre,
   flex: none;
   border-radius: var(--r-sm);
   color: var(--text-dim);
+  touch-action: manipulation;
   transition: background var(--motion-fast), color var(--motion-fast);
 }
-.vh-back:hover {
-  background: var(--bg-2);
-  color: var(--text);
+/* Safari synthesizes a sticky :hover on touch. Keep hover feedback on actual
+   mouse/trackpad devices only, so a phone tap always remains a click rather
+   than becoming a visual intermediate state. */
+@media (hover: hover) and (pointer: fine) {
+  .vh-back:hover {
+    background: var(--bg-2);
+    color: var(--text);
+  }
 }
 /* touch: finger-sized target, inherited from the old .ch-back rule */
 @media (pointer: coarse) {
   .vh-back {
     width: 40px;
     height: 40px;
+  }
+  .vh-back:active {
+    background: var(--bg-2);
+    color: var(--text);
   }
 }

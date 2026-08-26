@@ -57,6 +57,7 @@ import {
   type TermFocusAction,
 } from './termFocusPolicy';
 import {
+  TERMINAL_FACE_NAVIGATION_OPTIONS,
   isTerminalViewRedirectWindowOpen,
   resolveTerminalView,
   withTerminalViewOverride,
@@ -78,7 +79,11 @@ import {
   MOBILE_TYPO_BASE,
   type TermTypography,
 } from './termKbViewport';
-import { createTouchFling, stopSyntheticScrollForBufferChange } from './termTouchFling';
+import {
+  createTouchFling,
+  scaleTouchTuiScrollLines,
+  stopSyntheticScrollForBufferChange,
+} from './termTouchFling';
 import { formatRelayRegion } from './relayRegionLabel';
 import { createTermInitialPaintGate } from './termInitialPaint';
 import './terminal.css';
@@ -177,7 +182,7 @@ export function WebTerminalScreen() {
   const goStructured = () => {
     if (!tid || !mirrorSessionId) return;
     setViewOverrides(withTerminalViewOverride(viewOverrides, tid, 'structured'));
-    navigate(`/session/${mirrorSessionId}`);
+    navigate(`/session/${mirrorSessionId}`, TERMINAL_FACE_NAVIGATION_OPTIONS);
   };
   // Auto-open the structured face when the device preference resolves to it
   // (常驻结构化). Only within a short window after mount: the mirror id can
@@ -1654,9 +1659,12 @@ export function WebTerminalScreen() {
       scrollAccum -= lines * lineH;
       const target = host.querySelector('.xterm-screen') ?? termEl;
       if (!target) return;
-      // finger moved down (lines > 0) → wheel up → negative deltaY.
+      // finger moved down (lines > 0) → wheel up → negative deltaY. Alternate
+      // TUIs consume wheel events themselves, so mobile touch gets the same
+      // practical 3-row baseline recommended by Claude Code/tmux.
+      const scaledLines = scaleTouchTuiScrollLines(lines);
       target.dispatchEvent(new WheelEvent('wheel', {
-        deltaY: -lines * lineH,
+        deltaY: -scaledLines * lineH,
         deltaMode: WheelEvent.DOM_DELTA_PIXEL,
         clientX: scrollClientX,
         clientY: scrollClientY,

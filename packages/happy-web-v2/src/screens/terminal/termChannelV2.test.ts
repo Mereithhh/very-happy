@@ -126,6 +126,8 @@ describe('two-track scrolling (§D2) and what must NOT be retired (§D4)', () =>
         // alt/TUI track gets bounded momentum through the same wheel batcher.
         expect(screen.includes('gestureScrolled')).toBe(true);
         expect(screen.includes('createTouchFling({ emit: dispatchScrollPixels })')).toBe(true);
+        expect(screen.includes('const scaledLines = scaleTouchTuiScrollLines(lines)')).toBe(true);
+        expect(screen.includes('deltaY: -scaledLines * lineH')).toBe(true);
     });
 
     it('the normal buffer under lines mode takes neither touch nor wheel', () => {

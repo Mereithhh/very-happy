@@ -1,11 +1,32 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
+  TERMINAL_FACE_NAVIGATION_OPTIONS,
   resolveTerminalView,
   resolveTerminalOpenPath,
   isTerminalViewRedirectWindowOpen,
   withTerminalViewOverride,
   pruneTerminalViewOverrides,
 } from './terminalViewPref';
+
+describe('terminal face navigation', () => {
+  it('replaces history because xterm and structured mirror are one navigation level', () => {
+    expect(TERMINAL_FACE_NAVIGATION_OPTIONS).toEqual({ replace: true });
+  });
+
+  it('is used by both explicit xterm ↔ structured switches', () => {
+    const terminal = readFileSync(
+      new URL('../screens/terminal/WebTerminalScreen.tsx', import.meta.url),
+      'utf8',
+    );
+    const mirror = readFileSync(
+      new URL('../screens/session/MirrorBanner.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(terminal).toContain('navigate(`/session/${mirrorSessionId}`, TERMINAL_FACE_NAVIGATION_OPTIONS)');
+    expect(mirror).toContain('navigate(`/terminal/${machineId}?tid=${terminalId}`, TERMINAL_FACE_NAVIGATION_OPTIONS)');
+  });
+});
 
 describe('resolveTerminalOpenPath', () => {
   const base = { machineId: 'm/1', terminalId: 't 1', mirrorSessionId: 's/1' };

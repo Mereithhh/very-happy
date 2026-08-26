@@ -5,6 +5,8 @@ import type { Session } from '@/sync/storageTypes';
 import { storage } from '@/sync/storage';
 import { SessionLiveStatusBar } from '@/screens/session/SessionLiveStatusBar';
 import { ToolGroupView } from '@/screens/session/ToolGroupView';
+import { AgentInput } from '@/screens/session/AgentInput';
+import '@/screens/session/session.css';
 
 function message(id: string, name: string, state: ToolCallMessage['tool']['state'], input: Record<string, unknown>): ToolCallMessage {
   return {
@@ -38,7 +40,7 @@ export function MobileChatHarness() {
       updatedAt: now,
       active: true,
       activeAt: now,
-      metadata: { machineId: 'dev-machine', path: '/repo' },
+      metadata: { machineId: 'dev-machine', path: '/repo', flavor: 'claude' },
       metadataVersion: 1,
       agentState: { requests: { permission: { tool: 'Bash', createdAt: now } } },
       agentStateVersion: 1,
@@ -72,6 +74,27 @@ export function MobileChatHarness() {
         <section data-testid="completed-tool"><ToolGroupView tools={completed} /></section>
         <section data-testid="running-tool"><ToolGroupView tools={running} /></section>
         <section data-testid="tool-run"><ToolGroupView tools={run} /></section>
+        <section
+          data-testid="mobile-composer-shell"
+          style={{ height: 560, minHeight: 0, border: '1px solid var(--line)', overflow: 'hidden' }}
+        >
+          <div className="sd">
+            <div className="sd-main">
+              <div className="sd-body">
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
+                  {Array.from({ length: 24 }, (_, index) => (
+                    <p key={index} style={{ margin: '0 0 12px' }}>
+                      Transcript line {index + 1} · mobile composer boundary fixture
+                    </p>
+                  ))}
+                </div>
+              </div>
+              <div className="sd-foot">
+                <AgentInput sessionId="mobile-chat-permission" />
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
