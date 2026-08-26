@@ -1,6 +1,6 @@
 # 生产 Server/Web 无缝发版
 
-> 状态：Draft
+> 状态：Reviewed Draft（方向可行；完成 Groundwork 门禁前不可直接启用切流）
 > 日期：2026-08-26 ｜ 关联 backlog：B-214
 
 ## 背景
@@ -18,6 +18,27 @@
 可以提供 Redis；连接值只通过生产 secret 注入，不写入 repo、文档或日志。
 
 本 spec 把“无缝”定义为用户体验和数据语义，而不是把断线后自动恢复称作零停机。
+
+## Review 结论（2026-08-26）
+
+方案在以下前提满足后可行，但当前代码和原发布脚本尚未满足，不能直接上线双 slot：
+
+- Caddy 2.10.2 的隔离实验确认 config reload 后既有 WebSocket 继续由 blue 提供，新的
+  HTTP 请求进入 green。
+- 同一实验也确认 Socket.IO polling 的既有 `sid` 若通过新 TCP 请求进入 green，会返回
+  `400 Session ID unknown`。生产 Web 主连接允许 `['websocket', 'polling']` 回退，因此
+  必须增加 slot 定向 handover/affinity，不能把 WebSocket 结论外推到 polling。
+- 使用仓库锁定的 Socket.IO/Redis Streams adapter、两个真实 Node 进程和 Redis 7.4.5
+  的隔离实验，跨实例 `fetchSockets`、RPC ack、green→blue room broadcast 均通过。
+- Server `tsc` 与 77 files / 504 tests 全绿；CLI build、139 files / 1,281 tests 和运行冒烟
+  全绿。但现有 suite 没有覆盖 Caddy 切流、polling affinity、双 slot readiness/drain 或
+  Redis lease，以上仍是实现阶段必须新增的事故回归。
+- 现有 Redis adapter 创建后立即记录“enabled”，没有等待 adapter peer discovery 的真实
+  readiness；Redis client/lag timer 的生命周期也需纳入 shutdown。仅 `PING` 成功不够。
+- Prisma 未显式设置 `connection_limit`；双跑会扩大默认 pool。启用 candidate 前必须按
+  生产 CPU、PostgreSQL `max_connections` 和其他连接者计算预算，并显式配置每 slot 上限。
+
+因此推荐先做 Groundwork + shadow rollout；shadow 证据通过前保持现有单 slot 发布。
 
 ## 目标
 
@@ -72,7 +93,7 @@
 | relay assignment lease 是单进程 `Map`，TTL 75 秒，不适合直接多副本 | `packages/happy-server/sources/app/relay/relayRegistry.ts:3-37` |
 | Server 收到 SIGTERM 后调用 `app.close()`，但尚无显式 release drain/handover 状态 | `packages/happy-server/sources/app/api/api.ts:189-198` |
 | daemon 优雅退出会 flush mirror、保留会话，重启后按持久化 PID 重新接管子进程 | `packages/happy-cli/src/daemon/run.ts:195-220,1297-1341` |
-| 多副本 RPC/广播、pod kill 和 missed-event 已有可复用 integration harness | `docs/multi-process.md`、`deploy/integration-tests/` |
+| 多副本 RPC/广播、pod kill 和 missed-event 已有可复用 integration harness | `docs/multi-process.md`、`packages/happy-server/deploy/integration-tests/` |
 
 ## 设计
 
@@ -93,8 +114,11 @@ shared dependencies
 
 - Compose 定义固定的 `happy-server-blue` / `happy-server-green` 两个 slot，各自使用唯一
   loopback host port、metrics port 与 `VH_RELEASE_SLOT`。
-- Caddy 只把**新 HTTP 请求和新 WebSocket handshake**送到 active slot。reload 本身
-  graceful，已建立到旧 slot 的 WebSocket 继续存活。
+- Caddy reload 本身 graceful，已建立到旧 slot 的 WebSocket 继续存活；这条结论不适用于
+  HTTP long-polling 的后续新请求。
+- `/v1/updates` 支持显式 `vh_slot=<blue|green>` query route，供新客户端在默认 upstream
+  仍为 old 时直连 candidate 做 make-before-break。值只允许当前两个 slot，不能变成任意
+  upstream SSRF。默认无 query 的连接仍进入 active slot。
 - 不使用 Caddy 对两个 slot 普通轮询。发布期的目标是确定性切流；随机负载均衡会让
   rollback、release asset 判定和旧连接 drain 难以证明。
 - 优先使用 Owner 提供的外部/托管 Redis，通过生产 `.env` 的 `REDIS_URL` 注入；要求
@@ -108,6 +132,8 @@ shared dependencies
 
 - Cloud 模式启动第二个 Server 前，`REDIS_URL` 必须存在且 `PING` 成功；candidate
   readiness 在 adapter 初始化完成、经过至少两个 heartbeat interval 后才为 true。
+- adapter 使用专用 `streamName`、`channelPrefix` 和 `sessionKeyPrefix`；当前 metrics 读取
+  写死的 `socket.io` stream，改 prefix 时必须共用同一配置源，避免 readiness/lag 看错流。
 - `RelayRegistry` 改为接口，Cloud 实现用 Redis key：
   `vh:relay-machine:<machineId>`，value 为 `RelayMachineLease`，`PX=75000`；standalone
   无 Redis 时保留 in-memory 实现。
@@ -173,16 +199,21 @@ GitHub workflow_dispatch(target=all, sha, immutableDigest)
 │     ├─ emit candidate → receive on active（反向也测）
 │     └─ direct candidate Web asset = target SHA
 │
-├─ switchTraffic
+├─ handoverSupportedClients（默认 upstream 仍为 old）
+│  ├─ old emits ReleaseDrainNotice(candidateSlot)
+│  ├─ new clients connect /v1/updates?...&vh_slot=candidate
+│  ├─ authenticate / resync / RPC re-register, then close old
+│  └─ old clients remain on old during compatibility grace
+│
+├─ switchDefaultTraffic
 │  ├─ write temporary Caddy include → candidate port
 │  ├─ caddy validate
 │  ├─ atomic rename + caddy reload
 │  └─ public health/release/asset must equal target SHA
 │
 ├─ drainOld
-│  ├─ old emits ReleaseDrainNotice to local sockets
-│  ├─ new clients perform make-before-break handover
-│  ├─ old clients remain during compatibility grace, then normal auto-reconnect
+│  ├─ unsupported old WebSocket clients remain until grace/deadline
+│  ├─ unsupported polling clients may reconnect + REST resync after default switch
 │  └─ wait localSockets=0 && inFlightHttp=0 && inFlightRpc=0
 │
 └─ finalize
@@ -200,11 +231,11 @@ broadcast。探针只使用临时测试账号/room，不接触真实用户 paylo
 ### 4. 长连接 handover
 
 ```txt
-old slot emits server-draining(ReleaseDrainNotice)
+old slot emits server-draining(ReleaseDrainNotice with candidateSlot)
 │
 ├─ Web apiSocket / ApiSessionClient / ApiMachineClient receives notice
 │  ├─ keep old socket alive
-│  ├─ open candidate socket to same origin with handover epoch
+│  ├─ open candidate socket to same origin with handover epoch + vh_slot query
 │  ├─ authenticate + join rooms
 │  ├─ durable cursor REST resync or recovered event replay
 │  ├─ RpcHandlerManager re-registers methods and waits rpc-registered
@@ -218,6 +249,8 @@ old slot emits server-draining(ReleaseDrainNotice)
 
 - 先启用并回归 `connectionStateRecovery`，但它只是优化；durable update 的正确性仍以
   DB cursor/REST resync 为兜底，不能依赖 Redis stream 永不裁剪。
+- 连接恢复需要单独做并发内存/Redis 压测后再开启；不能因为 adapter 声明支持就直接把
+  2 分钟窗口用于全量连接。先从较短窗口和 shadow 指标起步。
 - daemon/session runner 的 `RpcHandlerManager` 必须等所有 `rpc-registered` ack 后再关闭
   旧 socket，避免新连接“已 connect 但 RPC 尚不可用”的窗口。
 - machine offline 不能在旧 socket `disconnect` 时立即广播。延迟一个 reconnect grace，
@@ -236,8 +269,9 @@ old slot emits server-draining(ReleaseDrainNotice)
    触发 drain event。
 2. **Shadow rollout**：生产短时启动 inactive slot，只跑 readiness/cross-slot canary，
    不切 Caddy；验证 Redis lag、RPC、共享 lease、资源占用后关闭 candidate。
-3. **Blue-green passive drain**：切 Caddy，但旧 slot 保留较长兼容 grace。新客户端主动
-   handover；旧客户端自然重连。超时旧端由 Server 正常断开，仍走既有 REST resync。
+3. **Blue-green passive drain**：默认 upstream 仍指向 old 时先让新客户端经 slot query
+   主动 handover，再切默认 Caddy upstream；旧客户端保留较长兼容 grace 后自然重连，
+   超时旧端由 Server 正常断开并走既有 REST resync。
 4. **Active handover**：确认 Web/CLI adoption 与真机结果后，把 drain grace 收敛到分钟级，
    达到常态无感发布。
 
@@ -311,7 +345,8 @@ rollback metadata。
 1. groundwork Server（单 slot）→ Web → CLI/daemon；
 2. shadow rollout 验证；
 3. 开启 blue-green；
-4. 后续业务 release 继续 Server candidate → Caddy switch → drain → Web/CLI（按各业务 spec
+4. 后续业务 release 继续 Server candidate → supported-client handover → Caddy switch →
+   compatibility drain → Web/CLI（按各业务 spec
    的兼容矩阵调整）。
 
 CLI tag 仍在 Server/Web 向后兼容后发布。`vh-update` 保留 agent 子进程；machine offline
@@ -331,6 +366,13 @@ debounce 与 RPC reconnect grace 吸收 daemon 控制 socket 的短暂切换。
    不关旧连接，RPC router 需按 handover epoch 选择新 owner，而不是不确定地取数组首项。
 6. **Caddy 配置漂移。** active include 由脚本原子生成，切前 `caddy validate`，rollback
    保存 checksum；禁止手工同时改主 Caddyfile 和 release include。
+7. **polling session 丢失 affinity。** Web 为兼容受限网络保留 polling；发布 handover 用
+   slot query 定向，未来 active-active HA 的入口必须使用 cookie/IP affinity，或者经真实
+   网络覆盖率证明后才改成 WebSocket-only。
+8. **数据库连接翻倍。** Prisma 默认池大小与物理 CPU 相关；双 slot 必须显式限制 pool，
+   并给 migration/admin/监控和 PostgreSQL 自身保留余量，不能只凭内存充足判定可双跑。
+9. **共享本地附件卷只适合同机过渡。** 随机 UUID 降低同 key 冲突，但重复 PUT、删除与
+   上传状态仍可能跨进程竞态；B-214 shadow 必须覆盖这些并发路径。
 
 ## 验收标准
 
@@ -342,6 +384,8 @@ debounce 与 RPC reconnect grace 吸收 daemon 控制 socket 的短暂切换。
   workflow fail-closed 且 active slot 不变。
 - [ ] 连续 HTTP 探针覆盖完整发布，零 5xx/connection refused，public release/asset 在
   Caddy 切换后精确等于目标 SHA。
+- [ ] WebSocket-only 与 polling-only 都覆盖：既有 WebSocket 跨 reload 保持；polling
+  handover 使用 slot 定向路由，同 `sid` 不得被送到错误 slot；无 affinity 注入测试必须失败。
 - [ ] Web、machine-scoped daemon、session-scoped runner 分别完成 make-before-break；
   新 socket ready/RPC registered 前旧 socket 不关闭。
 - [ ] daemon 更新期间 machine UI 不闪 offline，正在运行的 agent 子进程 PID 不变，
@@ -352,6 +396,8 @@ debounce 与 RPC reconnect grace 吸收 daemon 控制 socket 的短暂切换。
   drain 超时、migration 失败六类注入测试均保留或恢复健康旧 slot。
 - [ ] 连续两次发布不会留下两个 old slot；rollback metadata 明确记录旧/新 digest、slot、
   Caddy checksum 和验证结果。
+- [ ] 双 slot Prisma `connection_limit` 有显式预算；生产连接峰值、candidate 启动与 migration
+  合计不触及 PostgreSQL 连接上限或保留余量。
 
 ## 留真机验证项
 
