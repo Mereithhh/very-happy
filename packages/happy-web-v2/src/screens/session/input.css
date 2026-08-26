@@ -80,9 +80,12 @@
   align-items: center;
   gap: var(--sp-1);
 }
-.ci-composer-toolbar > .ci-send {
+.ci-composer-actions {
   grid-column: 3;
   grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 .ci-composer:focus-within {
   border-color: var(--line-2);
@@ -207,6 +210,8 @@
   align-items: center;
   gap: var(--sp-2);
   font-family: var(--font-mono);
+  margin-inline-start: auto;
+  white-space: nowrap;
 }
 .ci-meter-track {
   width: 64px;
@@ -287,6 +292,11 @@
   }
   .ci-composer-tools {
     display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+  }
+  .ci-composer-actions {
+    display: inline-flex;
     align-items: center;
     gap: var(--sp-1);
   }

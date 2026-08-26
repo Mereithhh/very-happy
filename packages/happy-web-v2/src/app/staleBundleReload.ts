@@ -153,7 +153,7 @@ export function installStaleBundleReload(): void {
   setInterval(() => {
     if (!document.hidden) void checkOnce(own);
   }, CHECK_INTERVAL_MS);
-  // First check shortly after load: a tab restored from the bfcache/session
-  // restore can already be stale at startup.
-  setTimeout(() => void checkOnce(own), 20_000);
+  // Fast fallback for Safari/PWA implementations that delay SW update events.
+  // This is non-blocking, so a slow/offline network never holds startup.
+  setTimeout(() => void checkOnce(own), 3_000);
 }

@@ -127,6 +127,8 @@ describe('two-track scrolling (§D2) and what must NOT be retired (§D4)', () =>
         expect(screen.includes('gestureScrolled')).toBe(true);
         expect(screen.includes('createTouchFling({ emit: dispatchScrollPixels })')).toBe(true);
         expect(screen.includes('const scaledLines = scaleTouchTuiScrollLines(lines)')).toBe(true);
+        expect(screen.includes('if (renderer.sgrWheelRequested())')).toBe(true);
+        expect(screen.includes('encodeSgrWheelBurst(scaledLines, term.cols, term.rows)')).toBe(true);
         expect(screen.includes('deltaY: -scaledLines * lineH')).toBe(true);
     });
 
@@ -165,6 +167,13 @@ describe('mobile terminal gesture and keyboard consent boundary', () => {
         expect(screen.includes('if (totalDx * totalDx + totalDy * totalDy > 12 * 12) gestureScrolled = true;'))
             .toBe(true);
         expect(screen.includes('scrolled: gestureScrolled')).toBe(true);
+    });
+
+    it('pins both keyboard-open and keyboard-close stable layouts to latest', () => {
+        expect(screen.includes('doFit();\n      pinToLatest();')).toBe(true);
+        expect(screen.includes('scheduleFitPinned();')).toBe(true);
+        expect(screen.includes("term.buffer.active.type === 'alternate'"))
+            .toBe(true);
     });
 });
 

@@ -17,6 +17,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // main.tsx imports virtual:pwa-register explicitly. The generated
+      // registerSW.js only registers the worker; it cannot reload an open PWA
+      // when a new worker takes control.
+      injectRegister: false,
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         id: BASE,
@@ -35,6 +39,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // injectRegister:false disables the plugin's implicit autoUpdate
+        // defaults, so preserve them explicitly. Existing PWA installations
+        // need the new worker to activate and claim the open page before the
+        // update-aware client can reload it.
+        skipWaiting: true,
+        clientsClaim: true,
         // Visible half of Web Push: generateSW emits the worker,
         // so push/notificationclick handlers live in public/push-sw.js and
         // are imported here. Without this, pushes arrive and show NOTHING.
@@ -47,7 +57,7 @@ export default defineConfig({
         // assets are cached on first use instead, so public visitors fetch only
         // the public shell and authenticated users build an offline cache as
         // they use the app.
-        globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js'],
+        globPatterns: ['index.html', 'manifest.webmanifest'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/.*\.(?:js|css|woff|woff2)$/,

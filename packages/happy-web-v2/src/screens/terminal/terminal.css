@@ -107,7 +107,7 @@
 @media (pointer: coarse) {
   .term-host {
     padding-bottom: calc(8px + env(safe-area-inset-bottom));
-    /* Touch drags are handled in JS (synthetic wheel → tmux scrollback).
+    /* Touch drags are handled in JS (direct SGR or RPC → tmux/TUI scrollback).
        Without this the browser claims the gesture for native scrolling of
        .xterm-viewport and the touchmove becomes non-cancelable, so our
        preventDefault is silently ignored. Taps/focus are unaffected. */
@@ -125,10 +125,10 @@
     touch-action: pan-y;
   }
   /* …except on the ALTERNATE screen (vim, /tui fullscreen, pre-v2 claude),
-     where there is no local scrollback and the v1 synthetic-wheel →
-     terminal-scroll track is still the only way to look back. It needs the
-     gesture, so take it away again. Follows xterm's buffer live via
-     onBufferChange. */
+     where there is no local scrollback. Direct SGR wheel input is used when
+     the TUI requested it; otherwise the synthetic-wheel → terminal-scroll
+     compatibility track remains. Both need to own the gesture, so take it
+     away again. Follows xterm's buffer live via onBufferChange. */
   .term-host--lines.term-host--alt {
     touch-action: none;
   }

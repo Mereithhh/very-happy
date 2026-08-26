@@ -36,6 +36,7 @@ import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { collectAllTags, saveRowRename } from '@/app/rowActions';
 import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
@@ -84,6 +85,7 @@ import {
   scaleTouchTuiScrollLines,
   stopSyntheticScrollForBufferChange,
 } from './termTouchFling';
+import { encodeSgrWheelBurst, latestTuiInput } from './termTuiScroll';
 import { formatRelayRegion } from './relayRegionLabel';
 import { createTermInitialPaintGate } from './termInitialPaint';
 import './terminal.css';
@@ -160,6 +162,9 @@ export function WebTerminalScreen() {
   const settings = useSettings();
   const terminals = useTerminalSessions((s) => s.terminals);
   const meta = terminals.find((x) => x.id === tid);
+  const terminalAgentState = useTerminalAgentState(tid);
+  const claudeLikeRef = useRef(false);
+  claudeLikeRef.current = terminalAgentState != null && terminalAgentState !== 'shell';
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
   const [showRename, setShowRename] = useState(false);
   const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
@@ -315,10 +320,10 @@ export function WebTerminalScreen() {
   //   • NORMAL buffer (95% of reading): the browser scrolls natively —
   //     pixel-perfect, with system inertia. That gesture is the entire reason
   //     this batch exists, and it only works if `touch-action` is handed back.
-  //   • ALTERNATE buffer (vim, /tui fullscreen, pre-v2 claude sessions): the v1
-  //     machinery stays exactly as it was — wheel hijack → `terminal-scroll`
-  //     RPC, touch → synthetic wheel — because xterm's default wheel there is
-  //     "send arrow keys", i.e. claude's TUI cycling through prompt history.
+  //   • ALTERNATE buffer (vim, /tui fullscreen, pre-v2 claude sessions): there
+  //     is no local scrollback. Touch becomes direct SGR wheel input when the
+  //     TUI explicitly requested that protocol, otherwise it keeps the v1
+  //     synthetic-wheel → `terminal-scroll` compatibility path.
   // Both flags are rendered as classes (React owns the className string) and
   // `touch-action` follows them in terminal.css.
   const [linesMode, setLinesMode] = useState(false);
@@ -665,6 +670,16 @@ export function WebTerminalScreen() {
     apiSocket.onMessage('terminal-output', onOutput);
     apiSocket.onMessage('terminal-exit', onExit);
 
+    const sendTerminalBytes = (d: string) => {
+      const b64 = strToB64(d);
+      if (enc) {
+        encryptTerminalData(machineId, b64).then((c) => {
+          if (c && !disposed) apiSocket.send('terminal-input', { machineId, terminalId, data: c, enc: true });
+        });
+      } else {
+        apiSocket.send('terminal-input', { machineId, terminalId, data: b64 });
+      }
+    };
     const sendInput = (d: string) => {
       // Diagnostics: metadata only (length / CJK / control), never the text.
       diag.noteOnData(d);
@@ -684,17 +699,18 @@ export function WebTerminalScreen() {
       // lane below is unavailable (old daemon/server, socket down), "I just
       // typed here" still floats the row instantly.
       if (terminalId) stampLocalActivity(activityKeyForTerminal(terminalId));
-      const b64 = strToB64(d);
-      if (enc) {
-        encryptTerminalData(machineId, b64).then((c) => {
-          if (c && !disposed) apiSocket.send('terminal-input', { machineId, terminalId, data: c, enc: true });
-        });
-      } else {
-        apiSocket.send('terminal-input', { machineId, terminalId, data: b64 });
-      }
+      sendTerminalBytes(d);
     };
     const dataDisp = term.onData(sendInput);
     sendInputRef.current = sendInput;
+    const pinToLatest = () => {
+      term.scrollToBottom();
+      const control = latestTuiInput(
+        term.buffer.active.type === 'alternate',
+        claudeLikeRef.current,
+      );
+      if (control) sendTerminalBytes(control);
+    };
 
     // ── Mobile soft-keyboard input bridge (coarse pointer only) ─────────────
     // v2 diff-engine bridge — see ./mobileInputBridge.ts for the full mechanism
@@ -865,6 +881,7 @@ export function WebTerminalScreen() {
     // suppressed; the stabilizer's onStable runs exactly one (kbStableFit,
     // defined with the viewport handlers below). Desktop never has a burst.
     let fitRaf = 0;
+    let pinLatestAfterFit = false;
     const kbStabilizer = createViewportStabilizer({ onStable: () => kbStableFit() });
     const scheduleFit = () => {
       // Files-handle drag in flight: hold refits (see filesDragHoldRef above);
@@ -875,7 +892,15 @@ export function WebTerminalScreen() {
       fitRaf = requestAnimationFrame(() => {
         fitRaf = 0;
         doFit();
+        if (pinLatestAfterFit) {
+          pinLatestAfterFit = false;
+          pinToLatest();
+        }
       });
+    };
+    const scheduleFitPinned = () => {
+      pinLatestAfterFit = true;
+      scheduleFit();
     };
     scheduleFitRef.current = scheduleFit;
     const ro = new ResizeObserver(scheduleFit);
@@ -1266,8 +1291,8 @@ export function WebTerminalScreen() {
     // never enters it (the guard below already returns early there, because
     // xterm's local scrollback is real), while vim / `/tui fullscreen` / any
     // pre-v2 claude session still needs it. The `terminal-scroll` RPC, the
-    // 60ms wheel batching, the failure backoff and the touch→synthetic-wheel
-    // bridge are therefore NOT retired (spec §D4 M-R2-1).
+    // 60ms wheel batching and failure backoff therefore remain the fallback
+    // for desktop wheels and TUIs without exact SGR capability (spec §D4 M-R2-1).
     //
     // Verified mechanism (pty probe + xterm 5.5 src): the daemon's pty runs
     // `tmux attach`, and tmux switches the OUTER terminal to the ALTERNATE
@@ -1632,10 +1657,10 @@ export function WebTerminalScreen() {
         dispatchTap: () => dispatchFocus({ type: 'tap' }),
       });
     };
-    // Touch drag → synthetic wheel events, so mobile can scroll back through
-    // history. xterm has no useful touch handling: on desktop the wheel is
-    // what gets translated into tmux mouse sequences (tmux mouse-mode →
-    // copy-mode scrollback), and on mobile that input simply doesn't exist.
+    // Touch drag → terminal wheel input, so mobile can scroll back through
+    // history. Exact SGR-capable TUIs use the realtime terminal-input lane;
+    // other alternate-screen apps use synthetic wheel events and the daemon
+    // compatibility RPC. Mobile browsers provide no native wheel event here.
     // We reuse the tap threshold (12px) as the gesture gate: a drag beyond it
     // becomes a scroll (and the tap handler above already ignores it). Each
     // accumulated line-height of vertical movement dispatches one WheelEvent
@@ -1663,6 +1688,11 @@ export function WebTerminalScreen() {
       // TUIs consume wheel events themselves, so mobile touch gets the same
       // practical 3-row baseline recommended by Claude Code/tmux.
       const scaledLines = scaleTouchTuiScrollLines(lines);
+      if (renderer.sgrWheelRequested()) {
+        const reports = encodeSgrWheelBurst(scaledLines, term.cols, term.rows);
+        if (reports) sendTerminalBytes(reports);
+        return;
+      }
       target.dispatchEvent(new WheelEvent('wheel', {
         deltaY: -scaledLines * lineH,
         deltaMode: WheelEvent.DOM_DELTA_PIXEL,
@@ -1700,7 +1730,7 @@ export function WebTerminalScreen() {
       // batch. No preventDefault, no synthetic wheel, no RPC. (`touch-action`
       // is handed back in CSS via .term-host--lines; without both halves the
       // gesture either doesn't scroll or isn't cancelable.) The ALTERNATE
-      // buffer falls through to the v1 synthetic-wheel track below.
+      // buffer falls through to the app-input/RPC track below.
       if (linesActive && term.buffer.active.type !== 'alternate') return;
       if (!scrollActive) {
         if (!gestureScrolled) return; // still a potential tap
@@ -1791,7 +1821,7 @@ export function WebTerminalScreen() {
       applyTypography(pickTermTypography(vv.height));
       applyKbMaxHeight();
       doFit();
-      term.scrollToBottom();
+      pinToLatest();
     }
     const restoreLayout = () => {
       kbStabilizer.cancel(); // close animation ends here; nothing left to fit
@@ -1801,7 +1831,7 @@ export function WebTerminalScreen() {
       kbLayoutActive = false;
       applyTypography(MOBILE_TYPO_BASE);
       host.style.maxHeight = '';
-      scheduleFit();
+      scheduleFitPinned();
       window.scrollTo({ top: 0 });
     };
     restoreLayoutRef.current = restoreLayout;
@@ -2275,7 +2305,7 @@ export function WebTerminalScreen() {
         {/* term-host--lines / --alt drive `touch-action` (see terminal.css):
             the lines track hands the touch gesture back to the browser for
             native scrollback scrolling, except on the alternate screen where
-            the v1 synthetic-wheel track still needs to own it. */}
+            the direct-SGR/RPC track still needs to own it. */}
         <div
           ref={hostRef}
           aria-busy={connecting || !surfaceReady}

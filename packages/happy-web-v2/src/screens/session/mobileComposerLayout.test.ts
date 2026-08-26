@@ -19,6 +19,17 @@ describe('mobile composer layout contract', () => {
         expect(input).toMatch(/\.ci-composer-toolbar \{[\s\S]*grid-row: 2;[\s\S]*justify-content: space-between;/);
     });
 
+    it('keeps send available beside stop while an agent is working', () => {
+        expect(component).toContain('<div className="ci-composer-actions">');
+        expect(component).toMatch(/\{isWorking && \([\s\S]*ci-send--abort[\s\S]*\)\}[\s\S]*aria-label=\{t\('session\.chat\.send'\)\}/);
+        expect(input).toMatch(/\.ci-composer-actions \{[\s\S]*display: inline-flex;/);
+    });
+
+    it('shows explicit used and total context tokens at the right edge', () => {
+        expect(component).toContain('`${contextTokens} / ${contextTotal}`');
+        expect(input).toMatch(/\.ci-meter \{[\s\S]*margin-inline-start: auto;[\s\S]*white-space: nowrap;/);
+    });
+
     it('clips transcript painting at the in-flow footer boundary during keyboard resize', () => {
         expect(session).toMatch(/\.sd-body \{[\s\S]*overflow: hidden;/);
         expect(session).toMatch(/\.sd-foot \{[\s\S]*position: relative;[\s\S]*z-index: 1;/);

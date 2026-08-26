@@ -57,6 +57,29 @@ describe('installMouseModeFilter (real xterm 5.5 Terminal)', () => {
         term.dispose();
     });
 
+    it('exposes swallowed protocol state for realtime touch-wheel forwarding', async () => {
+        const term = new Terminal({ allowProposedApi: true });
+        const filter = installMouseModeFilter(term);
+        expect(filter.sgrWheelRequested()).toBe(false);
+        await write(term, '\x1b[?1002h\x1b[?1006h');
+        expect(filter.sgrWheelRequested()).toBe(true);
+        expect(term.modes.mouseTrackingMode).toBe('none');
+        await write(term, '\x1b[?1006l');
+        expect(filter.sgrWheelRequested()).toBe(false);
+        await write(term, '\x1b[?1002l');
+        filter.dispose();
+        term.dispose();
+    });
+
+    it('does not claim non-SGR mouse protocols for the direct wheel path', async () => {
+        const term = new Terminal({ allowProposedApi: true });
+        const filter = installMouseModeFilter(term);
+        await write(term, '\x1b[?1000h\x1b[?1005h');
+        expect(filter.sgrWheelRequested()).toBe(false);
+        filter.dispose();
+        term.dispose();
+    });
+
     it('passes unrelated private modes through untouched (return-false path)', async () => {
         const term = makeTerm();
         await write(term, '\x1b[?1049h\x1b[?2004h');

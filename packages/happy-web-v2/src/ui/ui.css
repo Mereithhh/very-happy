@@ -396,6 +396,7 @@
   width: max-content;
   max-width: calc(100vw - 32px);
   align-items: center;
+  pointer-events: none;
 }
 .vh-toast {
   pointer-events: auto;
@@ -404,10 +405,13 @@
   padding: 10px 16px;
   border-radius: var(--r-md);
   background: var(--bg-2);
+  color: var(--text);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-pop);
   border-left-width: 3px;
   animation: vh-toast-in var(--motion-fast);
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 @keyframes vh-toast-in {
   from {
@@ -449,6 +453,23 @@
 .vh-toast-x:hover {
   color: var(--text);
   background: var(--bg-2);
+}
+
+@media (max-width: 600px), (pointer: coarse) {
+  .vh-toasts {
+    top: calc(env(safe-area-inset-top) + var(--sp-2));
+    bottom: auto;
+    width: min(100% - 24px, 420px);
+  }
+  .vh-toast {
+    padding: 8px 12px;
+  }
+  @keyframes vh-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
 }
 
 /* copy button (CopyButton.tsx) — chat-wide copy affordance */

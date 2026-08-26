@@ -7,11 +7,11 @@
  * pass straight through to the outer xterm. Per spec, xterm hands the mouse to
  * the application while a tracking protocol is active — it stops making native
  * selections, so drag-select in the web terminal silently does nothing (and
- * copy-on-select with it). We don't forward mouse reports upstream anyway (the
- * web terminal's wheel is intercepted into the `terminal-scroll` RPC, and
- * clicks are used for focus/selection), so the tracking modes are useless to
- * us: swallow them before xterm's input handler sees them. Trade-off accepted:
- * the inner app never receives clicks/wheel from this client.
+ * copy-on-select with it). Swallow the modes before xterm's input handler sees
+ * them so clicks remain available for focus/selection. The screen separately
+ * tracks exact SGR capability and forwards touch-wheel reports through the
+ * realtime input lane; unsupported encodings keep the `terminal-scroll` RPC
+ * compatibility path.
  *
  * Filtered modes (set/reset alike):
  *   9 (X10), 1000 (VT200), 1002 (drag), 1003 (any-motion) — protocols
@@ -59,6 +59,8 @@ export function splitMouseModeParams(
 }
 
 export interface MouseModeFilterHandle {
+    /** The inner application currently accepts cell-coordinate SGR wheel reports. */
+    sgrWheelRequested(): boolean;
     dispose(): void;
 }
 
@@ -69,6 +71,11 @@ export interface MouseModeFilterHandle {
  * sequence and `false` defers to the default behavior.
  */
 export function installMouseModeFilter(term: Terminal): MouseModeFilterHandle {
+    // Protocol modes mean “send mouse events”; encoding-only modes such as
+    // 1006 do not. Track the swallowed requests so touch can forward SGR wheel
+    // reports without enabling xterm's click capture (native selection stays).
+    const activeMouseModes = new Set<number>();
+    const isProtocol = (mode: number) => mode === 9 || mode === 1000 || mode === 1002 || mode === 1003;
     const replay = (rest: (number | number[])[], set: boolean) => {
         const ih = (term as unknown as { _core?: any })._core?._inputHandler;
         if (!ih) return;
@@ -84,15 +91,25 @@ export function installMouseModeFilter(term: Terminal): MouseModeFilterHandle {
     const handle = (params: (number | number[])[], set: boolean): boolean => {
         const { mouse, rest } = splitMouseModeParams(params);
         if (mouse.length === 0) return false; // nothing to filter → default path
+        for (const mode of mouse) {
+            if (set) activeMouseModes.add(mode);
+            else activeMouseModes.delete(mode);
+        }
         if (rest.length > 0) replay(rest, set); // mixed sequence → partial swallow
         return true;
     };
     const h = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (p) => handle(p, true));
     const l = term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (p) => handle(p, false));
     return {
+        // 1006 is the cell-coordinate SGR encoding emitted by termTuiScroll.
+        // Do not fast-path X10/UTF-8/urxvt/pixel protocols with the wrong wire
+        // shape; those stay on the daemon's compatibility RPC.
+        sgrWheelRequested: () =>
+            activeMouseModes.has(1006) && [...activeMouseModes].some(isProtocol),
         dispose() {
             h.dispose();
             l.dispose();
+            activeMouseModes.clear();
         },
     };
 }

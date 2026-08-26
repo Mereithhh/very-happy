@@ -11,6 +11,11 @@ import {
 
 type ToastTone = 'success' | 'error' | 'info';
 
+export function toastDurationMs(tone: ToastTone): number {
+  // Success is usually lightweight feedback (especially copy actions).
+  return tone === 'success' ? 1_800 : 4_000;
+}
+
 interface ToastOptions {
   /** run when the toast body is clicked (the toast dismisses after) —
    *  the click IS a user gesture, so clipboard writes are allowed inside */
@@ -68,7 +73,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       if (!opts?.sticky) {
         timers.current.set(
           id,
-          setTimeout(() => dismiss(id), 4000),
+          setTimeout(() => dismiss(id), toastDurationMs(tone)),
         );
       }
     },

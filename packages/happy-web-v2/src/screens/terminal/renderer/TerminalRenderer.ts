@@ -86,6 +86,8 @@ export interface TerminalRenderer {
     focusInput(): void;
     blurInput(): void;
     isInputFocused(): boolean;
+    /** Inner TUI requested mouse reports, even if the renderer filters them. */
+    sgrWheelRequested(): boolean;
     /**
      * Re-emit a real keydown as a SYNTHETIC one against the renderer's own key
      * handling, so its VT encoder (DECCKM, application keypad, modifier
