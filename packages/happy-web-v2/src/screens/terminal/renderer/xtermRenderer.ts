@@ -87,6 +87,7 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
             const el = inputElement();
             return el != null && typeof document !== 'undefined' && document.activeElement === el;
         },
+        sgrWheelRequested: () => mouseFilter.sgrWheelRequested(),
         // Synthetic keydown against xterm's own textarea → its `_keyDown` runs
         // the full encoder (DECCKM / application keypad / modifier params /
         // F-keys / macOptionIsMeta / scrollOnUserInput) and the bytes land on
