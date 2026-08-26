@@ -17,7 +17,7 @@ import { FileView } from './FileView';
 import { useSessionFiles } from './useFiles';
 import './files.css';
 
-type Tab = 'changed' | 'all' | 'browse';
+export type FilesPanelTab = 'changed' | 'all' | 'browse';
 
 type TreeNode = {
     name: string;
@@ -106,11 +106,26 @@ const STATUS_CLASS: Record<GitFileStatus['status'], string> = {
     untracked: 'fp-st--unt',
 };
 
-export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export function FilesPanel({
+    sessionId,
+    onClose,
+    tab: controlledTab,
+    onTabChange,
+}: {
+    sessionId: string;
+    onClose: () => void;
+    tab?: FilesPanelTab;
+    onTabChange?: (tab: FilesPanelTab) => void;
+}) {
     const { t } = useTranslation();
     const { projectFiles, gitStatusFiles, isLoading, isFetching, refresh } = useSessionFiles(sessionId, true);
     const session = useSession(sessionId);
-    const [tab, setTab] = useState<Tab>('changed');
+    const [localTab, setLocalTab] = useState<FilesPanelTab>('changed');
+    const tab = controlledTab ?? localTab;
+    const selectTab = (next: FilesPanelTab) => {
+        if (controlledTab === undefined) setLocalTab(next);
+        onTabChange?.(next);
+    };
     const [selected, setSelected] = useState<string | null>(null);
 
     // Machine + working directory for the Browse tab (missing while metadata
@@ -133,7 +148,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
     }, [gitStatusFiles]);
 
     // default to "all" tab if there are no changes
-    const effectiveTab: Tab = tab === 'changed' && changed.length === 0 ? 'all' : tab;
+    const effectiveTab: FilesPanelTab = controlledTab === undefined && tab === 'changed' && changed.length === 0 ? 'all' : tab;
 
     return (
         <div className="fp">
@@ -142,7 +157,7 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                     <button
                         type="button"
                         className={`fp-tab${effectiveTab === 'changed' ? ' is-active' : ''}`}
-                        onClick={() => setTab('changed')}
+                        onClick={() => selectTab('changed')}
                     >
                         {t('session.chat.changedFiles')}
                         {changed.length > 0 && <span className="fp-tab-count">{changed.length}</span>}
@@ -150,14 +165,14 @@ export function FilesPanel({ sessionId, onClose }: { sessionId: string; onClose:
                     <button
                         type="button"
                         className={`fp-tab${effectiveTab === 'all' ? ' is-active' : ''}`}
-                        onClick={() => setTab('all')}
+                        onClick={() => selectTab('all')}
                     >
                         {t('session.chat.fileTree')}
                     </button>
                     <button
                         type="button"
                         className={`fp-tab${effectiveTab === 'browse' ? ' is-active' : ''}`}
-                        onClick={() => setTab('browse')}
+                        onClick={() => selectTab('browse')}
                     >
                         {t('fsBrowser.browseTab')}
                     </button>

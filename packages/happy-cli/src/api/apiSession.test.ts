@@ -191,6 +191,27 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('accumulates Claude calls idempotently into one snapshot and keeps one snapshot per agent', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        client.sendUsageData({ input_tokens: 10, output_tokens: 2 }, 'claude-3-5-sonnet-20241022', 'msg-a');
+        client.sendUsageData({ input_tokens: 20, output_tokens: 3 }, 'claude-3-5-sonnet-20241022', 'msg-b');
+        client.sendUsageData({ input_tokens: 20, output_tokens: 3 }, 'claude-3-5-sonnet-20241022', 'msg-b');
+        expect(client.sendAgentUsageSnapshot('codex', {
+            totalTokenUsage: { totalTokens: 50, inputTokens: 40, outputTokens: 10 },
+        })).toBe(true);
+
+        const reports = mockSocket.emit.mock.calls
+            .filter(([event]: [string]) => event === 'usage-report')
+            .map(([, payload]: [string, any]) => payload);
+        expect(reports.map((report: any) => report.key)).toEqual([
+            'claude-session',
+            'claude-session',
+            'usage:codex:session',
+        ]);
+        expect(reports[1]).toMatchObject({ tokens: { total: 35, input: 30, output: 5 } });
+        expect(reports[2]).toMatchObject({ tokens: { total: 50, input: 40, output: 10 }, cost: { total: 0 } });
+    });
+
     it('retries after initial socket connection error', async () => {
         vi.useFakeTimers();
         mockSocket.connected = false;

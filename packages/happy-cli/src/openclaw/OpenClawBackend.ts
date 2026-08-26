@@ -16,7 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { OpenClawSocket, type OpenClawConnectionStatus, type OpenClawSocketOptions } from './OpenClawSocket';
-import type { OpenClawGatewayConfig, OpenClawChatMessage } from './openclawTypes';
+import type { OpenClawGatewayConfig, OpenClawChatMessage, OpenClawSession } from './openclawTypes';
 import type { AgentBackend, AgentMessage, AgentMessageHandler, SessionId, StartSessionResult } from '@/agent/core/AgentBackend';
 
 interface OpenClawChatEventPayload {
@@ -167,6 +167,15 @@ export class OpenClawBackend implements AgentBackend {
 
   retryConnect(): void {
     this.socket.retryConnect();
+  }
+
+  /** Return the gateway's cumulative usage for this backend session. */
+  async getUsageSnapshot(): Promise<OpenClawSession | null> {
+    if (!this.sessionKey || !this.socket.isConnected()) return null;
+    const sessions = await this.socket.listSessions(100);
+    return sessions.find((session) => (
+      session.key === this.sessionKey || session.sessionId === this.sessionKey
+    )) ?? null;
   }
 
   private emit(msg: AgentMessage): void {

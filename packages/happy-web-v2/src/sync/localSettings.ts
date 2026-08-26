@@ -50,6 +50,10 @@ export const LocalSettingsSchema = z.object({
     // Enum values are only ever ADDED (safeParse parses the whole blob — see
     // the boardLayout note above).
     sidebarView: z.enum(['list', 'status']).describe('Sidebar display mode: manual-order list or lifecycle status groups'),
+    // B-208: one device-local lens over the already ordered list. `tag` keeps
+    // B-091; the legacy boolean remains below so old saved blobs and rollbacks
+    // stay readable. UI resolution gives an explicit legacy true precedence.
+    sidebarGroupMode: z.enum(['none', 'workspace', 'tag']).describe('Sidebar list grouping lens'),
     // B-091: 列表 view only — render the list grouped by each row's first tag
     // (untagged rows in a trailing 未分组 section). Device-local like
     // sidebarView: a display-mode preference, not account state. NO .default()
@@ -177,6 +181,9 @@ export const localSettingsDefaults: LocalSettings = {
     boardLayout: 'lifecycle',
     // Existing users keep the current sidebar (manual-order list).
     sidebarView: 'list',
+    // Workspace-first is the useful default; it is purely derived and never
+    // rewrites the user's manual row ordering.
+    sidebarGroupMode: 'workspace',
     // Flat list by default; tag grouping is an opt-in lens.
     sidebarGroupByTag: false,
     // Default to per-key mode: it's the full-fidelity terminal; users who hit

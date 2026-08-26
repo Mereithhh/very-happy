@@ -29,6 +29,7 @@ import { DocsScreen } from '@/screens/public/DocsScreen';
 import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
 import { useTranslation } from '@/i18n/useTranslation';
+import { RouteLoading } from './RouteLoading';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -44,14 +45,10 @@ const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen')
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
 
-function Lazy({ children }: { children: ReactNode }) {
+function Lazy({ children, fullViewport = false }: { children: ReactNode; fullViewport?: boolean }) {
   return (
     <Suspense
-      fallback={
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <OrbitLoader size="compact" label="Loading workspace" />
-        </div>
-      }
+      fallback={<RouteLoading fullViewport={fullViewport} />}
     >
       {children}
     </Suspense>
@@ -192,7 +189,7 @@ const router = createBrowserRouter(
         // AppLayout always renders the sidebar/rail chrome on desktop, and the
         // assistant is designed as a chromeless second form (mobile-first,
         // logo-centered). Sits inside RequireAuth so sync is restored.
-        { path: '/assistant', element: <Lazy><AssistantScreen /></Lazy> },
+        { path: '/assistant', element: <Lazy fullViewport><AssistantScreen /></Lazy> },
         {
           element: <AppLayout />,
           children: [

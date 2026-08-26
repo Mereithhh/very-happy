@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, RotateCcw } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -14,6 +14,7 @@ import { sessionUpdateTitleTags } from '@/sync/ops';
 import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
 import { groupRowsByTag } from './sidebarTagGroups';
+import { groupRowsByWorkspace, resolveSidebarGroupMode, type SidebarGroupMode, type SidebarWorkspaceGroup } from './sidebarWorkspaceGroups';
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
@@ -70,12 +71,27 @@ interface Row {
   session?: Session;
   terminalId?: string;
   machineId?: string;
+  machineName?: string;
+  workspacePath?: string;
+  /** Present only for structured sessions; powers a real Changes target. */
+  sessionId?: string;
   title: string;
   subtitle: string;
   tags?: string[];
   /** B-150: terminal rows the daemon brought back after a restart. Cleared by
    *  the daemon on first open, so the badge disappears by itself. */
   restored?: boolean;
+}
+
+interface SidebarSection {
+  id: string;
+  label: string | undefined;
+  count: number;
+  rows: Row[];
+  collapsible: boolean;
+  open: boolean;
+  detail?: string;
+  changesSessionId?: string | null;
 }
 
 function sessionRow(s: Session): Row {
@@ -86,6 +102,10 @@ function sessionRow(s: Session): Row {
     ts: s.updatedAt || s.activeAt || s.createdAt,
     createdAt: s.createdAt,
     session: s,
+    sessionId: s.id,
+    machineId: s.metadata?.machineId,
+    machineName: s.metadata?.host,
+    workspacePath: s.metadata?.path,
     title: getSessionName(s),
     subtitle: getSessionSidebarSubtitle(s),
     tags: s.metadata?.tags,
@@ -139,13 +159,21 @@ export function Sidebar() {
   /** 列表 is the only orderable view: 状态's order is the lifecycle verdict,
    *  归档 stays a plain activity list. */
   const orderable = view === 'list';
-  // ----- tag grouping (B-091, 列表 view only) -----
-  // Device-local toggle: render the list grouped by each row's FIRST tag
-  // (sidebarTagGroups.groupRowsByTag — priority group first, untagged last).
+  // ----- grouping lens (B-208, 列表 view only) -----
+  // One menu owns flat/workspace/tag. The legacy B-091 boolean gets precedence
+  // when true so devices that opted into tag grouping keep that choice.
   // While grouped, drag/move reordering is disabled: the sequence is derived
-  // from tags, so a positional drop has nothing meaningful to write.
+  // from a grouping key, so a positional drop has nothing meaningful to write.
   const [groupByTag, setGroupByTag] = useLocalSettingMutable('sidebarGroupByTag');
-  const grouped = orderable && groupByTag;
+  const [savedGroupMode, setSavedGroupMode] = useLocalSettingMutable('sidebarGroupMode');
+  const groupMode = resolveSidebarGroupMode(savedGroupMode, groupByTag);
+  const grouped = orderable && groupMode !== 'none';
+  const selectGroupMode = useCallback((mode: SidebarGroupMode) => {
+    setSavedGroupMode(mode);
+    // Mirror tag into B-091's old flag so a Web rollback keeps the user's tag
+    // choice instead of silently presenting a flat list.
+    setGroupByTag(mode === 'tag');
+  }, [setGroupByTag, setSavedGroupMode]);
   /** Surfaces whose order can shift WITHOUT the user acting — the ones the
    *  hover hold below has to protect. (Manual mode reorders only on a drag,
    *  which must apply instantly.) */
@@ -215,6 +243,8 @@ export function Sidebar() {
             createdAt: tm.createdAt,
             terminalId: tm.id,
             machineId: tm.machineId,
+            machineName: tm.machineName,
+            workspacePath: tm.cwd,
             title: tm.title || tm.machineName,
             subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
@@ -376,12 +406,20 @@ export function Sidebar() {
   // FLAT displayRows below stays the exact rendered order (⌘1-9 badges and
   // the quick-switch read it), so it must be the groups flattened.
   const tagGroups = useMemo(
-    () => (grouped && orderedRows ? groupRowsByTag(orderedRows) : null),
-    [grouped, orderedRows],
+    () => (orderable && groupMode === 'tag' && orderedRows ? groupRowsByTag(orderedRows) : null),
+    [orderable, groupMode, orderedRows],
+  );
+  const workspaceGroups = useMemo(
+    () => (orderable && groupMode === 'workspace' && orderedRows ? groupRowsByWorkspace(orderedRows) : null),
+    [orderable, groupMode, orderedRows],
   );
   const displayRows = useMemo<Row[] | null>(
-    () => (tagGroups ? tagGroups.flatMap((g) => g.rows) : orderedRows),
-    [tagGroups, orderedRows],
+    () => workspaceGroups
+      ? workspaceGroups.flatMap((g) => g.rows)
+      : tagGroups
+        ? tagGroups.flatMap((g) => g.rows)
+        : orderedRows,
+    [workspaceGroups, tagGroups, orderedRows],
   );
   // Feeds the hold's arming snapshot (assigned during render, read by the
   // pointer listeners) — always the sequence actually on screen.
@@ -663,7 +701,7 @@ export function Sidebar() {
   // Render model: list/archived = one unlabeled section; status = the three
   // lifecycle sections. `rows` holds only the VISIBLE rows (collapsed 已完成
   // → []), `count` the section's real size for the header.
-  const sections = useMemo(() => {
+  const sections = useMemo<SidebarSection[]>(() => {
     if (view === 'status' && statusGroups) {
       return [
         {
@@ -704,6 +742,18 @@ export function Sidebar() {
         open: true,
       }));
     }
+    if (workspaceGroups) {
+      return workspaceGroups.map((g: SidebarWorkspaceGroup<Row>) => ({
+        id: `workspace:${g.key}`,
+        label: (g.name ?? (t('sidebar.workspaceUnassigned') as string)) as string | undefined,
+        detail: [g.machineName, g.path].filter(Boolean).join(' · '),
+        count: g.rows.length,
+        rows: g.rows,
+        collapsible: false,
+        open: true,
+        changesSessionId: g.representativeSessionId,
+      }));
+    }
     return [
       {
         id: 'all',
@@ -714,7 +764,7 @@ export function Sidebar() {
         open: true,
       },
     ];
-  }, [view, statusGroups, completedRows, completedOpen, tagGroups, displayRows, t]);
+  }, [view, statusGroups, completedRows, completedOpen, tagGroups, workspaceGroups, displayRows, t]);
 
   return (
     <div className="sb">
@@ -751,19 +801,22 @@ export function Sidebar() {
               {sortMode === 'recent' ? <ArrowDownWideNarrow size={17} /> : <ListOrdered size={17} />}
             </button>
           )}
-          {/* Tag grouping toggle (B-091) — 列表 view only, same slot family as
-              the sort switch. Title states the CURRENT mode + what a click
-              does, matching the sort button's convention. */}
+          {/* B-208: one grouping menu instead of another permanent header icon.
+              Workspace is the default lens; tag and flat remain one tap away. */}
           {orderable && (
-            <button
-              className={`sb-icon-btn${groupByTag ? ' is-on' : ''}`}
-              title={t(groupByTag ? 'sidebar.groupByTagOn' : 'sidebar.groupByTagOff')}
-              aria-label={t(groupByTag ? 'sidebar.groupByTagOn' : 'sidebar.groupByTagOff')}
-              aria-pressed={groupByTag}
-              onClick={() => setGroupByTag(!groupByTag)}
+            <ActionDropdownMenu
+              align="end"
+              sideOffset={6}
+              items={[
+                { key: 'workspace', label: `${groupMode === 'workspace' ? '✓ ' : ''}${t('sidebar.groupWorkspace')}`, icon: FolderTree, onSelect: () => selectGroupMode('workspace') },
+                { key: 'tag', label: `${groupMode === 'tag' ? '✓ ' : ''}${t('sidebar.groupTags')}`, icon: Tags, onSelect: () => selectGroupMode('tag') },
+                { key: 'none', label: `${groupMode === 'none' ? '✓ ' : ''}${t('sidebar.groupNone')}`, icon: Rows3, onSelect: () => selectGroupMode('none') },
+              ]}
             >
-              <Tags size={17} />
-            </button>
+              <button className={`sb-icon-btn${groupMode !== 'none' ? ' is-on' : ''}`} title={t('sidebar.groupMenu')} aria-label={t('sidebar.groupMenu')}>
+                {groupMode === 'workspace' ? <FolderTree size={17} /> : groupMode === 'tag' ? <Tags size={17} /> : <Rows3 size={17} />}
+              </button>
+            </ActionDropdownMenu>
           )}
           {/* form switch: the Siri-like voice assistant (B-051). The assistant
               screen carries the mirror button in the same top-left slot. */}
@@ -893,9 +946,21 @@ export function Sidebar() {
                         <span className="sb-section-count mono">{sec.count}</span>
                       </button>
                     ) : (
-                      <div className="sb-section-head">
+                      <div className={`sb-section-head${sec.changesSessionId ? ' sb-section-head--workspace' : ''}`} title={sec.detail || undefined}>
                         <span className="sb-section-label">{sec.label}</span>
                         <span className="sb-section-count mono">{sec.count}</span>
+                        {sec.detail && <span className="sb-section-detail">{sec.detail}</span>}
+                        {sec.changesSessionId && (
+                          <button
+                            type="button"
+                            className="sb-workspace-changes"
+                            title={t('sidebar.openWorkspaceChanges')}
+                            aria-label={`${t('sidebar.openWorkspaceChanges')}: ${sec.label}`}
+                            onClick={() => navigate(`/session/${encodeURIComponent(sec.changesSessionId!)}?panel=changes`)}
+                          >
+                            <FileDiff size={14} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   {sec.rows.map((r) => {

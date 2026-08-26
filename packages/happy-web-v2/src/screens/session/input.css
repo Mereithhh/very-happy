@@ -63,11 +63,12 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: var(--sp-2);
-  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+  transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast);
 }
 .ci-composer:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: var(--line-2);
+  background: var(--bg-1);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 .ci-composer--drag {
   border-color: var(--accent);

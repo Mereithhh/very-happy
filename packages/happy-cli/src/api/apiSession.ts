@@ -22,6 +22,7 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
+import { normalizeAgentUsage, usageAgentKey } from './usageReport';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -113,6 +114,17 @@ export class ApiSessionClient extends EventEmitter {
         hiddenParentToolCalls: new Set<string>(),
         startedSubagents: new Set<string>(),
         activeSubagents: new Set<string>(),
+    };
+    private readonly seenClaudeUsageEvents = new Set<string>();
+    private claudeUsageTotals = {
+        total: 0,
+        input: 0,
+        output: 0,
+        cache_creation: 0,
+        cache_read: 0,
+        costTotal: 0,
+        costInput: 0,
+        costOutput: 0,
     };
     private lastSeq = 0;
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
@@ -670,7 +682,12 @@ export class ApiSessionClient extends EventEmitter {
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
             try {
-                this.sendUsageData(body.message.usage, body.message.model);
+                const eventId = typeof body.uuid === 'string'
+                    ? body.uuid
+                    : typeof body.message.id === 'string'
+                        ? body.message.id
+                        : undefined;
+                this.sendUsageData(body.message.usage, body.message.model, eventId);
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
@@ -846,31 +863,63 @@ export class ApiSessionClient extends EventEmitter {
     /**
      * Send usage data to the server
      */
-    sendUsageData(usage: Usage, model?: string) {
+    sendUsageData(usage: Usage, model?: string, eventId?: string) {
+        if (eventId && this.seenClaudeUsageEvents.has(eventId)) return;
+        if (eventId) this.seenClaudeUsageEvents.add(eventId);
+
         // Calculate total tokens
         const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
 
         const costs = calculateCost(usage, model);
+        this.claudeUsageTotals.total += totalTokens;
+        this.claudeUsageTotals.input += usage.input_tokens;
+        this.claudeUsageTotals.output += usage.output_tokens;
+        this.claudeUsageTotals.cache_creation += usage.cache_creation_input_tokens || 0;
+        this.claudeUsageTotals.cache_read += usage.cache_read_input_tokens || 0;
+        this.claudeUsageTotals.costTotal += costs.total;
+        this.claudeUsageTotals.costInput += costs.input;
+        this.claudeUsageTotals.costOutput += costs.output;
 
-        // Transform Claude usage format to backend expected format
+        // One cumulative upsert per Happy session prevents the account-level
+        // UsageReport quota from growing with every Claude API call. JSONL
+        // backfills can replay events; stable UUIDs keep that rebuild idempotent.
         const usageReport = {
+            // Keep the legacy key so upgrading replaces the old last-call row
+            // instead of making old + new clients double-count one session.
             key: 'claude-session',
             sessionId: this.sessionId,
             tokens: {
-                total: totalTokens,
-                input: usage.input_tokens,
-                output: usage.output_tokens,
-                cache_creation: usage.cache_creation_input_tokens || 0,
-                cache_read: usage.cache_read_input_tokens || 0
+                total: this.claudeUsageTotals.total,
+                input: this.claudeUsageTotals.input,
+                output: this.claudeUsageTotals.output,
+                cache_creation: this.claudeUsageTotals.cache_creation,
+                cache_read: this.claudeUsageTotals.cache_read,
             },
             cost: {
-                total: costs.total,
-                input: costs.input,
-                output: costs.output
+                total: this.claudeUsageTotals.costTotal,
+                input: this.claudeUsageTotals.costInput,
+                output: this.claudeUsageTotals.costOutput,
             }
         }
         logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)
         this.socket.emit('usage-report', usageReport);
+    }
+
+    /** Save a provider's cumulative session snapshot under one upsert key. */
+    sendAgentUsageSnapshot(agent: string, rawUsage: unknown): boolean {
+        const tokens = normalizeAgentUsage(rawUsage);
+        if (!tokens) return false;
+        const usageReport = {
+            key: `usage:${usageAgentKey(agent)}:session`,
+            sessionId: this.sessionId,
+            tokens,
+            // Provider token-count events do not expose reliable billed cost.
+            // The Web treats this sentinel as unknown, not as real $0.00.
+            cost: { total: 0 },
+        };
+        logger.debugLargeJson('[SOCKET] Sending agent usage snapshot:', usageReport);
+        this.socket.emit('usage-report', usageReport);
+        return true;
     }
 
     /**

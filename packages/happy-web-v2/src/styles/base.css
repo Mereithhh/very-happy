@@ -170,6 +170,56 @@ pre,
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+/* Conversation disclosures are dense transcript controls, not form fields.
+   A full glow rectangle around every thinking/tool/code toggle reads as a
+   second card border and jumps out of the scrollback. Keep keyboard focus just
+   as visible, but express it as the IDE-gutter-like active edge instead. */
+.vh-disclosure-trigger {
+  border-radius: var(--r-sm);
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+.vh-disclosure-trigger:focus-visible:not(:where(.xterm, .xterm *)) {
+  outline: none;
+  border-color: var(--line);
+  background: var(--bg-2);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.vh-disclosure-icon {
+  flex: none;
+  transition: transform var(--motion-fast);
+}
+.vh-disclosure-icon.is-open {
+  transform: rotate(180deg);
+}
+.vh-disclosure-panel {
+  animation: vh-disclosure-in 140ms cubic-bezier(.16, 1, .3, 1);
+}
+.vh-disclosure-panel[hidden] {
+  display: none;
+}
+@keyframes vh-disclosure-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-disclosure-icon,
+  .vh-disclosure-panel {
+    transition: none;
+    animation: none;
+  }
+}
+@media (pointer: coarse) {
+  /* Dense 30–32px transcript rows suit a mouse, but are too easy to miss with
+     a thumb. Grow only the hit area on touch hardware; typography and desktop
+     transcript density remain unchanged. */
+  .vh-disclosure-trigger {
+    min-height: 44px;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

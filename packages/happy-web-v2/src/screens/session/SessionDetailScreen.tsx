@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
@@ -15,6 +15,7 @@ import { FilesPanel } from './FilesPanel';
 import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
 import { isMirrorSession } from '@/assistant/assistantSession';
+import { readSessionPanel, withSessionPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -22,7 +23,12 @@ export function SessionDetailScreen() {
     const navigate = useNavigate();
     const { t } = useTranslation();
     const session = useSession(id ?? '');
-    const [filesOpen, setFilesOpen] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const panelTab = readSessionPanel(searchParams.get('panel'));
+    const filesOpen = panelTab !== null;
+    const setPanel = (tab: SessionPanelTab | null, replace = false) => {
+        setSearchParams(withSessionPanel(searchParams, tab), { replace });
+    };
     const [jumpToLatestRequest, setJumpToLatestRequest] = useState(0);
     // Desktop (>860px, matching session.css): the files panel is an inline
     // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
@@ -84,7 +90,7 @@ export function SessionDetailScreen() {
                 <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
-                    onToggleFiles={() => setFilesOpen((v) => !v)}
+                    onToggleFiles={() => filesOpen ? setPanel(null, true) : setPanel('changed')}
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
                 <div className="sd-body">
@@ -107,7 +113,7 @@ export function SessionDetailScreen() {
             </div>
             {filesOpen && (
                 <>
-                    <div className="sd-files-scrim" onClick={() => setFilesOpen(false)} aria-hidden />
+                    <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />
                     {filesResizable && (
                         <div
                             className="app-resize-handle sd-files-handle"
@@ -117,7 +123,12 @@ export function SessionDetailScreen() {
                         />
                     )}
                     <aside className="sd-files" style={filesWide ? { width: filesWidth } : undefined}>
-                        <FilesPanel sessionId={id} onClose={() => setFilesOpen(false)} />
+                        <FilesPanel
+                            sessionId={id}
+                            tab={panelTab}
+                            onTabChange={(tab) => setPanel(tab, true)}
+                            onClose={() => setPanel(null, true)}
+                        />
                     </aside>
                 </>
             )}

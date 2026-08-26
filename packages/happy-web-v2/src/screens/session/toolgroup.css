@@ -38,6 +38,8 @@
   padding: 2px 0;
   width: 100%;
   text-align: left;
+  min-height: 32px;
+  padding-inline: var(--sp-1);
 }
 .tg-summary {
   flex: none;
@@ -118,7 +120,8 @@
   color: var(--text-dim);
   min-width: 0;
   text-align: left;
-  padding: 2px 0;
+  min-height: 30px;
+  padding: 2px var(--sp-1);
 }
 /* detail 不在按钮里时，按钮只需要包住 label；detail 自己吃剩余宽度 */
 .tg-row-head-wrap > .tg-tool-detail {
@@ -147,6 +150,7 @@
 }
 /* tool body content must never overflow the spine container */
 .tg-row > .tv,
+.tg-row > .vh-disclosure-panel > .tv,
 .tg-content > .tv {
   min-width: 0;
   max-width: 100%;

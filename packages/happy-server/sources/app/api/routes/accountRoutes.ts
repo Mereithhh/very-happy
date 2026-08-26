@@ -12,6 +12,7 @@ import {
     enforceAccountSettingsWriteRate,
 } from '@/app/account/accountSettingsLimits';
 import { isAccountResourceLimitError } from '@/app/api/resourceLimits';
+import { aggregateUsageReports, serializeUsageReports } from '@/app/usage/usageQuery';
 
 export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
@@ -206,7 +207,7 @@ export function accountRoutes(app: Fastify) {
             const where: {
                 accountId: string;
                 sessionId?: string | null;
-                createdAt?: {
+                updatedAt?: {
                     gte?: Date;
                     lte?: Date;
                 };
@@ -229,12 +230,12 @@ export function accountRoutes(app: Fastify) {
             }
 
             if (startTime || endTime) {
-                where.createdAt = {};
+                where.updatedAt = {};
                 if (startTime) {
-                    where.createdAt.gte = new Date(startTime * 1000);
+                    where.updatedAt.gte = new Date(startTime * 1000);
                 }
                 if (endTime) {
-                    where.createdAt.lte = new Date(endTime * 1000);
+                    where.updatedAt.lte = new Date(endTime * 1000);
                 }
             }
 
@@ -242,75 +243,20 @@ export function accountRoutes(app: Fastify) {
             const reports = await db.usageReport.findMany({
                 where,
                 orderBy: {
-                    createdAt: 'desc'
+                    updatedAt: 'desc'
                 }
             });
-
-            // Aggregate data by time period
-            const aggregated = new Map<string, {
-                tokens: Record<string, number>;
-                cost: Record<string, number>;
-                count: number;
-                timestamp: number;
-            }>();
-
-            for (const report of reports) {
-                const data = report.data as PrismaJson.UsageReportData;
-                const date = new Date(report.createdAt);
-
-                // Calculate timestamp based on groupBy
-                let timestamp: number;
-                if (actualGroupBy === 'hour') {
-                    // Round down to hour
-                    const hourDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), 0, 0, 0);
-                    timestamp = Math.floor(hourDate.getTime() / 1000);
-                } else {
-                    // Round down to day
-                    const dayDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-                    timestamp = Math.floor(dayDate.getTime() / 1000);
-                }
-
-                const key = timestamp.toString();
-
-                if (!aggregated.has(key)) {
-                    aggregated.set(key, {
-                        tokens: {},
-                        cost: {},
-                        count: 0,
-                        timestamp
-                    });
-                }
-
-                const agg = aggregated.get(key)!;
-                agg.count++;
-
-                // Aggregate tokens
-                for (const [tokenKey, tokenValue] of Object.entries(data.tokens)) {
-                    if (typeof tokenValue === 'number') {
-                        agg.tokens[tokenKey] = (agg.tokens[tokenKey] || 0) + tokenValue;
-                    }
-                }
-
-                // Aggregate costs
-                for (const [costKey, costValue] of Object.entries(data.cost)) {
-                    if (typeof costValue === 'number') {
-                        agg.cost[costKey] = (agg.cost[costKey] || 0) + costValue;
-                    }
-                }
-            }
-
-            // Convert to array and sort by timestamp
-            const result = Array.from(aggregated.values())
-                .map(data => ({
-                    timestamp: data.timestamp,
-                    tokens: data.tokens,
-                    cost: data.cost,
-                    reportCount: data.count
-                }))
-                .sort((a, b) => a.timestamp - b.timestamp);
+            const queryReports = reports.map((report) => ({
+                key: report.key,
+                sessionId: report.sessionId,
+                updatedAt: report.updatedAt,
+                data: report.data as PrismaJson.UsageReportData,
+            }));
+            const result = aggregateUsageReports(queryReports, actualGroupBy);
 
             return reply.send({
                 usage: result,
+                reports: serializeUsageReports(queryReports),
                 groupBy: actualGroupBy,
                 totalReports: reports.length
             });

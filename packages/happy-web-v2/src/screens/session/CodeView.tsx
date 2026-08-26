@@ -9,7 +9,8 @@
  * the wheel must bubble to the transcript, never a nested scroll area.
  * File-preview surfaces pass `collapsible={false}` and render in full.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { countLines, shouldCollapseCode } from './codeCollapse';
@@ -33,6 +34,7 @@ export function CodeView({
     const { t } = useTranslation();
     const [html, setHtml] = useState<string | null>(null);
     const [expanded, setExpanded] = useState(false);
+    const bodyId = useId();
 
     useEffect(() => {
         let cancelled = false;
@@ -58,7 +60,7 @@ export function CodeView({
                 <span className="cv-lang">{lang || 'text'}</span>
                 {copyable && <CopyButton text={code} showLabel className="cv-copy" />}
             </div>
-            <div className="cv-body">
+            <div id={bodyId} className="cv-body">
                 {html ? (
                     // shiki output: a <pre class="shiki"><code>… tree with inline
                     // CSS-variable colors for light/dark. Safe — shiki escapes content.
@@ -73,13 +75,15 @@ export function CodeView({
             {canCollapse && (
                 <button
                     type="button"
-                    className="cv-expand"
+                    className="cv-expand vh-disclosure-trigger"
                     onClick={() => setExpanded((v) => !v)}
                     aria-expanded={!collapsed}
+                    aria-controls={bodyId}
                 >
-                    {collapsed
+                    <span>{collapsed
                         ? t('session.chat.expandLines', { lines: lineCount })
-                        : t('session.chat.collapseLines')}
+                        : t('session.chat.collapseLines')}</span>
+                    <ChevronDown size={13} className={`vh-disclosure-icon${!collapsed ? ' is-open' : ''}`} aria-hidden />
                 </button>
             )}
         </div>

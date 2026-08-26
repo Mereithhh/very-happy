@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
     keepAlive: vi.fn(),
     sendSessionProtocolMessage: vi.fn(),
     sendSessionEvent: vi.fn(),
+    sendAgentUsageSnapshot: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
     flush: vi.fn(async () => {}),
@@ -265,6 +266,23 @@ describe('runAcp', () => {
       'Tool: ReadFile completed (callId=tool-1)',
       'Status: idle',
     ]));
+  });
+
+  it('stores ACP token-count messages as the selected agent snapshot', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'opencode',
+      command: 'opencode',
+      args: ['--acp'],
+    });
+
+    await vi.waitFor(() => expect(mocks.backendState.listeners).toHaveLength(1));
+    const usage = { type: 'token-count', totalTokens: 30, inputTokens: 20, outputTokens: 10 };
+    mocks.backendState.listeners[0](usage);
+
+    expect(mocks.mockSession.sendAgentUsageSnapshot).toHaveBeenCalledWith('opencode', usage);
+    await mocks.getKillHandler()!();
+    await runPromise;
   });
 
   it('registers abort handler that cancels the ACP backend session', async () => {

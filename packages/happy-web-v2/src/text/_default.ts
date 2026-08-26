@@ -541,8 +541,8 @@ export const en = {
             // Long-content collapse in the transcript (B-097 code blocks /
             // B-102 user bubbles)
             expandLines: ({ lines }: { lines: number }) => `Show all (${lines} lines)`,
-            collapseLines: 'Collapse',
-            expandMessage: 'Expand',
+            collapseLines: 'Collapse details',
+            expandMessage: 'Expand full message',
         },
         permission: {
             title: 'Permission required',
@@ -1154,6 +1154,12 @@ export const en = {
         groupByTagOn: 'Grouped by tag — click for flat list',
         groupByTagOff: 'Flat list — click to group by tag',
         groupUntagged: 'Untagged',
+        groupMenu: 'Group conversations',
+        groupWorkspace: 'Group by workspace',
+        groupTags: 'Group by tag',
+        groupNone: 'Do not group',
+        workspaceUnassigned: 'No working directory',
+        openWorkspaceChanges: 'Open workspace changes',
         // B-091 priority marker (the `priority` convention tag)
         markPriority: 'Mark as priority',
         unmarkPriority: 'Clear priority',
@@ -1878,6 +1884,18 @@ export const en = {
         usageOverTime: 'Usage over time',
         byKind: 'By Token Type',
         noData: 'No usage data available',
+        summary: 'Usage summary',
+        reportedUsage: 'reported token usage',
+        notReported: 'tokens not reported',
+        estimatedCost: 'estimated from reported usage',
+        costUnavailable: 'cost unavailable',
+        chatSessions: 'Chat sessions',
+        terminalSessions: 'Terminal sessions',
+        inSelectedPeriod: 'created or used in period',
+        visibleTerminals: 'visible live + recent closed',
+        periodStart: 'period start',
+        now: 'now',
+        byAgent: 'By agent',
     },
 
     feed: {

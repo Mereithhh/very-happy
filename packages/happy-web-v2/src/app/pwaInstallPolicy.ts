@@ -1,7 +1,7 @@
 export const PWA_INSTALL_CONFIRMED_KEY = 'vh-pwa-install-confirmed-v1';
 export const PWA_INSTALL_NEVER_KEY = 'vh-pwa-install-never-v1';
 
-export type PwaInstallGuide = 'native' | 'ios' | 'manual';
+export type PwaInstallGuide = 'native' | 'ios-safari' | 'ios-chrome' | 'ios-other' | 'manual';
 export type PwaInstallOutcome = 'accepted' | 'dismissed';
 
 export interface DeferredPwaInstall {
@@ -22,8 +22,18 @@ export function isAppleMobile(userAgent: string, maxTouchPoints: number) {
     || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1);
 }
 
+export function isAppleInstallGuide(guide: PwaInstallGuide) {
+  return guide.startsWith('ios-');
+}
+
 export function manualInstallGuide(userAgent: string, maxTouchPoints: number): PwaInstallGuide {
-  return isAppleMobile(userAgent, maxTouchPoints) ? 'ios' : 'manual';
+  if (!isAppleMobile(userAgent, maxTouchPoints)) return 'manual';
+  if (/CriOS/i.test(userAgent)) return 'ios-chrome';
+  // Safari identifies itself with both Version/* and Safari/*. Other iOS
+  // browsers all use WebKit too, so defaulting an unknown UA to Safari gives
+  // Brave, DuckDuckGo, embedded browsers, etc. the wrong toolbar directions.
+  if (/Version\/[^ ]+.*Safari\//i.test(userAgent)) return 'ios-safari';
+  return 'ios-other';
 }
 
 export function canOfferPwaInstall(options: {

@@ -825,6 +825,10 @@ export async function runAcp(opts: {
       logAcp(frontendMessage.kind, frontendMessage.text);
     }
 
+    if (msg.type === 'token-count') {
+      session.sendAgentUsageSnapshot(resolveSessionFlavor(opts.agentName), msg);
+    }
+
     sendEnvelopes(sessionManager.mapMessage(msg));
   };
 
