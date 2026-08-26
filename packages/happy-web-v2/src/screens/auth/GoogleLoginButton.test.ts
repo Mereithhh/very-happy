@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   googleButtonTheme,
   initialGoogleButtonState,
   reduceGoogleButtonState,
   shouldShowGoogleBlock,
 } from './googleButtonState';
+
+const component = readFileSync(new URL('./GoogleLoginButton.tsx', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('./auth.css', import.meta.url), 'utf8');
 
 describe('GoogleLoginButton required-state transitions', () => {
   it('starts in a visible loading state and exposes failure instead of going blank', () => {
@@ -39,5 +43,12 @@ describe('GoogleLoginButton required-state transitions', () => {
   it('uses the current GIS dark theme instead of the white-tile filled-black theme', () => {
     expect(googleButtonTheme('dark')).toBe('outline_dark');
     expect(googleButtonTheme('light')).toBe('outline');
+  });
+
+  it('keeps the GIS host measurable while loading and rerenders it on host resize', () => {
+    expect(styles).toContain('.auth-google-block.is-loading .auth-google { visibility: hidden; }');
+    expect(styles).not.toMatch(/\.auth-google iframe \{[\s\S]*width: 100% !important/);
+    expect(component).toContain('new ResizeObserver');
+    expect(component).toContain('googleButtonWidth(containerRef.current.clientWidth)');
   });
 });

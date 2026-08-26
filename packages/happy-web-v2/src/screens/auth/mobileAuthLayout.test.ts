@@ -38,4 +38,11 @@ describe('mobile auth layout', () => {
     expect(styles).toMatch(/\.auth-email > \.vh-btn,[\s\S]*\.auth-alt \{ min-height: 44px; \}/);
     expect(styles).toMatch(/\.auth-card--login \.auth-method-toggle \{[\s\S]*min-height: 44px;/);
   });
+
+  it('prioritizes the auth form by removing the decorative brand section on phones', () => {
+    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-brand-panel \{ display: none; \}/);
+    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-form-panel \{[\s\S]*gap: var\(--sp-3\);[\s\S]*padding: var\(--sp-4\);/);
+    expect(styles).toMatch(/@media \(max-width: 720px\) \{[\s\S]*\.auth-language-switcher \{[\s\S]*position: absolute;/);
+    expect(login).toContain('<section className="auth-brand-panel"');
+  });
 });

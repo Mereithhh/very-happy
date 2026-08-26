@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-218 | **移动端登录首屏过高 + Google GIS 按钮窄屏右侧裁切**：手机宽度下隐藏仅作品牌氛围的左侧 section，让认证操作首屏优先；Google 官方按钮必须按可见容器真实宽度（≤400px）渲染并响应容器变化，禁止用 CSS 强压固定宽 iframe | bug/ux | Owner 实报 2026-08-26 | done | 根因：loading 时 host `display:none` 导致测宽 0→回退 400px，CSS 只压 iframe 外壳、内部仍被裁。现保留可测量 slot、按真实宽度 render，并以 ResizeObserver 重绘。320×568 登录卡 643→521px、零纵/横溢出；390×844 同样通过。Web 148 files / 1,643 tests、build、tsc 0；生产真实 GIS 见 V-088。 |
 | B-217 | **普通对话输入框的展开按钮在空/短内容时视觉无响应**：展开语义不能只是提高 `max-height`；无论当前内容多少都应立即占据展开高度，收起后恢复内容自适应，并在窗口或软键盘改变可用视口时重新计算 | bug/ux | Owner 实报 2026-08-26 | done | 根因：旧实现高度始终取 `min(scrollHeight, cap)`，展开只改变 cap。现改为展开态直接使用约 60% 可视视口，收起按内容自适应；监听 window + visualViewport resize。Web 147 files / 1,638 tests、build、tsc 0。 |
 | B-216 | **tmux 终端支持编辑 tag**：terminal 与普通结构化会话使用同一标题 + 标签交互，标签跨设备持久化，并参与侧栏展示、`#tag` 搜索和标签分组；新旧 Web/daemon 混用必须安全降级 | feat/ux/compat | Owner 2026-08-26 | doing | Final spec：`specs/2026-08-terminal-tags.md`。以 tmux `@vh_tags` 为机器侧事实源，新 daemon 的可选 push 字段作为能力标记；无数据库迁移。 |
 | B-214 | **生产 Server/Web 无缝发版**：从单容器 `force-recreate` 改为同机蓝绿双 slot；候选版本先完成 DB/Redis readiness 与跨实例 RPC/广播探针，再原子切换 Caddy，新旧长连接通过 drain/handover 收敛；发布期间 HTTP 不得出现 5xx/拒绝连接，durable update 不丢，终端与 agent 子进程不中断，失败可在不执行 down migration 的前提下切回旧 digest | feat/release/architecture | Owner 2026-08-26 | done | PR #54/#55/#56 已合并并完成首次生产切换：switch 严格复用 shadow digest，2m15s 内旧槽连接自然归零，连续 120 次公开健康探针 0 失败；green 上确认 0.2.59/0.2.71/0.2.75/0.2.77 客户端均已连接，mac-office daemon 运行 0.2.77。回滚槽保留上一生产 digest。 |
