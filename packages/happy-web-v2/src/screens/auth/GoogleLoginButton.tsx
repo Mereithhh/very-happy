@@ -8,6 +8,7 @@ import {
   shouldShowGoogleBlock,
   type GoogleAvailability,
 } from './googleButtonState';
+import { googleButtonWidth } from './googleButtonLayout';
 import './auth.css';
 
 type GoogleIdentity = {
@@ -85,6 +86,9 @@ export function GoogleLoginButton({
   useEffect(() => {
     let cancelled = false;
     let refreshTimer: number | undefined;
+    let resizeFrame: number | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let lastRenderedWidth: number | null = null;
     const markUnavailable = () => {
       if (cancelled) return;
       setState((current) => reduceGoogleButtonState(current, 'unavailable'));
@@ -121,14 +125,28 @@ export function GoogleLoginButton({
                 });
             },
           });
-          identity.renderButton(containerRef.current, {
-            type: 'standard',
-            theme: googleButtonTheme(resolvedTheme),
-            size: 'large',
-            width: Math.min(400, Math.max(200, containerRef.current.clientWidth || 400)),
-            text: 'continue_with',
+          const renderAtHostWidth = () => {
+            if (cancelled || !containerRef.current) return;
+            const width = googleButtonWidth(containerRef.current.clientWidth);
+            if (width === null || (width === lastRenderedWidth && containerRef.current.childElementCount > 0)) return;
+            containerRef.current.replaceChildren();
+            identity.renderButton(containerRef.current, {
+              type: 'standard',
+              theme: googleButtonTheme(resolvedTheme),
+              size: 'large',
+              width,
+              text: 'continue_with',
+            });
+            lastRenderedWidth = width;
+            setState((current) => reduceGoogleButtonState(current, 'rendered'));
+          };
+          resizeObserver?.disconnect();
+          resizeObserver = new ResizeObserver(() => {
+            if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
+            resizeFrame = window.requestAnimationFrame(renderAtHostWidth);
           });
-          setState((current) => reduceGoogleButtonState(current, 'rendered'));
+          resizeObserver.observe(containerRef.current);
+          renderAtHostWidth();
           const expiresAtMs = Date.parse(challenge.expiresAt);
           const refreshInMs = Number.isFinite(expiresAtMs)
             ? Math.max(1_000, expiresAtMs - Date.now() - 30_000)
@@ -145,6 +163,8 @@ export function GoogleLoginButton({
     return () => {
       cancelled = true;
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
     };
   }, [attempt, onUnavailable, required, resolvedTheme]);
 
@@ -152,8 +172,10 @@ export function GoogleLoginButton({
   const loading = visible && !enabled && !failed;
   return <div className={`auth-google-block${visible ? ' is-ready' : ''}${failed ? ' is-failed' : ''}${loading ? ' is-loading' : ''}`}>
     {leadingDividerLabel && <div className="auth-divider"><span>{leadingDividerLabel}</span></div>}
-    <div className={`auth-google${disabled ? ' is-disabled' : ''}`} ref={containerRef} />
-    {loading && <div className="auth-google-loading" role={loadingLabel ? 'status' : undefined} aria-hidden={loadingLabel ? undefined : true}>{loadingLabel}</div>}
+    <div className="auth-google-slot">
+      <div className={`auth-google${disabled ? ' is-disabled' : ''}`} ref={containerRef} />
+      {loading && <div className="auth-google-loading" role={loadingLabel ? 'status' : undefined} aria-hidden={loadingLabel ? undefined : true}>{loadingLabel}</div>}
+    </div>
     {failed && <div className="auth-google-unavailable" role="status">
       <span>{unavailableLabel}</span>
       <button type="button" disabled={disabled} onClick={() => setState((current) => reduceGoogleButtonState(current, 'retry'))}>
