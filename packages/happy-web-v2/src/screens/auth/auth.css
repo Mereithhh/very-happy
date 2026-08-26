@@ -1,12 +1,18 @@
 .auth-page {
+  width: 100%;
+  height: 100dvh;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   isolation: isolate;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: var(--sp-5);
   padding-top: max(var(--sp-5), env(safe-area-inset-top));
+  padding-right: max(var(--sp-5), env(safe-area-inset-right));
   padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom));
+  padding-left: max(var(--sp-5), env(safe-area-inset-left));
 }
 .auth-page ::selection {
   background: var(--accent-dim);
@@ -214,7 +220,7 @@
 .auth-email-actions button:disabled { cursor: default; opacity: .5; }
 .auth-method-toggle { width: 100%; text-align: center; }
 .auth-card--login .auth-method-toggle {
-  min-height: 42px;
+  min-height: 44px;
   padding: var(--sp-2) var(--sp-3);
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -317,6 +323,9 @@
   text-align: center;
 }
 .auth-alt:hover { text-decoration: underline; }
+.auth-email > .vh-btn,
+.auth-password-form > .vh-btn,
+.auth-alt { min-height: 44px; }
 .auth-footer {
   display: grid;
   gap: var(--sp-3);
@@ -346,9 +355,15 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-@media (max-width: 720px) {
-  .auth-page { align-items: flex-start; padding-inline: var(--sp-3); }
-  .auth-card { margin-block: var(--sp-3); padding: var(--sp-6) var(--sp-4); }
+@media (max-width: 720px), (max-height: 700px) {
+  .auth-page {
+    align-items: flex-start;
+    padding-top: max(var(--sp-3), env(safe-area-inset-top));
+    padding-right: max(var(--sp-3), env(safe-area-inset-right));
+    padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+    padding-left: max(var(--sp-3), env(safe-area-inset-left));
+  }
+  .auth-card { margin: 0; padding: var(--sp-6) var(--sp-4); }
   .auth-card--login {
     min-height: 0;
     grid-template-columns: 1fr;
@@ -370,6 +385,7 @@
   .auth-card--login .auth-email { padding: 0; }
   .auth-card input { font-size: 16px; }
 }
+.auth-page[data-keyboard-open='true'] { align-items: flex-start; }
 @media (max-width: 380px) {
   .auth-brand-panel,
   .auth-form-panel { padding: var(--sp-5); }

@@ -42,19 +42,24 @@ export function useKeyboardViewportPin(ref: RefObject<HTMLElement | null>) {
             if (vv.height < window.innerHeight - 50) {
                 pinned = true;
                 el.style.height = `${Math.round(vv.height)}px`;
+                el.dataset.keyboardOpen = 'true';
                 // Undo Safari's reveal-pan next frame (after it settles) so the
                 // now-fitting layout starts at the top of the visual viewport.
                 requestAnimationFrame(() => window.scrollTo(0, 0));
             } else if (pinned) {
                 pinned = false;
                 el.style.height = '';
+                delete el.dataset.keyboardOpen;
                 window.scrollTo({ top: 0 }); // clear iOS's leftover pan offset
             }
         };
         vv.addEventListener('resize', onResize);
         return () => {
             vv.removeEventListener('resize', onResize);
-            if (ref.current) ref.current.style.height = '';
+            if (ref.current) {
+                ref.current.style.height = '';
+                delete ref.current.dataset.keyboardOpen;
+            }
         };
     }, [ref]);
 }

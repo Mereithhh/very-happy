@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '@/auth/passwordUnlock';
 import { CloudAuthError, loadPublicAuthConfig, loginWithGoogle, type PublicAuthConfig } from '@/auth/cloudAuth';
@@ -13,6 +13,7 @@ import { classifyPasswordLoginFailure } from './loginErrorPresentation';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
+import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 
 export function LoginScreen() {
   const { login } = useAuth();
@@ -20,6 +21,8 @@ export function LoginScreen() {
   const location = useLocation();
   const toast = useToast();
   const { t, lang } = useTranslation();
+  const pageRef = useRef<HTMLDivElement>(null);
+  useKeyboardViewportPin(pageRef);
 
   useEffect(() => { document.title = t('login.pageTitle'); }, [lang, t]);
 
@@ -104,7 +107,7 @@ export function LoginScreen() {
       : null;
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" ref={pageRef}>
       <CyberBackdrop />
       <main className="auth-card auth-card--login">
         <section className="auth-brand-panel" aria-labelledby="login-brand-title">
