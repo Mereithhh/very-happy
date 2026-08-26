@@ -1154,6 +1154,12 @@ export const en = {
         groupByTagOn: 'Grouped by tag — click for flat list',
         groupByTagOff: 'Flat list — click to group by tag',
         groupUntagged: 'Untagged',
+        groupMenu: 'Group conversations',
+        groupWorkspace: 'Group by workspace',
+        groupTags: 'Group by tag',
+        groupNone: 'Do not group',
+        workspaceUnassigned: 'No working directory',
+        openWorkspaceChanges: 'Open workspace changes',
         // B-091 priority marker (the `priority` convention tag)
         markPriority: 'Mark as priority',
         unmarkPriority: 'Clear priority',

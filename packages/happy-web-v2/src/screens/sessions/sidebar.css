@@ -136,6 +136,57 @@
 .sb-section-count {
   color: var(--text-faint);
 }
+.sb-section-detail {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  opacity: 0.72;
+}
+.sb-section-head--workspace {
+  min-height: 32px;
+  padding-block: 2px;
+}
+.sb-section-head--workspace .sb-section-label {
+  max-width: 112px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-workspace-changes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 -6px 0 auto;
+  flex: 0 0 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-faint);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.sb-workspace-changes:hover,
+.sb-workspace-changes:focus-visible {
+  background: var(--bg-3);
+  color: var(--text);
+}
+@media (pointer: coarse) {
+  .sb-section-head--workspace {
+    min-height: 44px;
+    padding-block: 0;
+  }
+  .sb-workspace-changes {
+    width: 44px;
+    height: 44px;
+    margin: 0 -12px 0 auto;
+    flex-basis: 44px;
+  }
+}
 .sb-section-head--toggle {
   cursor: pointer;
 }
