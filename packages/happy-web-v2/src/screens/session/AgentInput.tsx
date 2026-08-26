@@ -6,7 +6,7 @@
  * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Maximize2, Minimize2, Paperclip, Send, Square, X } from 'lucide-react';
 import { sync } from '@/sync/sync';
 import { sessionAbort } from '@/sync/ops';
@@ -37,7 +37,7 @@ import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
-import { composerHeightCap } from './composerExpand';
+import { composerHeightCap, composerTextareaHeight } from './composerExpand';
 import './input.css';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
@@ -95,17 +95,33 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         ? contextTokens
         : `${contextTokens} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
 
-    // grow textarea — 高度上限的唯一事实源是 composerHeightCap（B-098 收敛了
-    // 原 JS 常量 + input.css max-height 的双定义）：上限也写回 inline style，
-    // CSS 里不再有 max-height。展开态的上限每次重算，顺带跟上窗口尺寸变化。
-    useLayoutEffect(() => {
+    // grow textarea — 收起时按内容自适应，展开时直接占满 ~60% 视口；不能只
+    // 提高 max-height，否则空/短输入点击展开后没有任何视觉反馈（B-217）。
+    const resizeTextarea = useCallback(() => {
         const ta = taRef.current;
         if (!ta) return;
-        const cap = composerHeightCap(expanded, window.innerHeight);
+        const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+        const cap = composerHeightCap(expanded, viewportHeight);
         ta.style.maxHeight = `${cap}px`;
         ta.style.height = 'auto';
-        ta.style.height = `${Math.min(ta.scrollHeight, cap)}px`;
-    }, [text, expanded]);
+        ta.style.height = `${composerTextareaHeight(expanded, ta.scrollHeight, viewportHeight)}px`;
+    }, [expanded]);
+
+    useLayoutEffect(() => {
+        resizeTextarea();
+    }, [text, resizeTextarea]);
+
+    // window.resize 覆盖桌面窗口；visualViewport.resize 覆盖移动端软键盘和
+    // 浏览器 chrome 改变可用高度。两者可能同时触发，写同一确定值是幂等的。
+    useEffect(() => {
+        const viewport = window.visualViewport;
+        window.addEventListener('resize', resizeTextarea);
+        viewport?.addEventListener('resize', resizeTextarea);
+        return () => {
+            window.removeEventListener('resize', resizeTextarea);
+            viewport?.removeEventListener('resize', resizeTextarea);
+        };
+    }, [resizeTextarea]);
 
     // 展开/收起切换：同一个 textarea，不做 modal；把焦点还给输入框（与
     // insertPreset 的 rAF refocus 手法一致），点按钮不丢焦点。
