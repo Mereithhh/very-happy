@@ -10,21 +10,34 @@ import { useState } from 'react';
 import { Check, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button } from '@/ui';
-import { joinSelectedLabels, toggleLabel, type AskQuestion } from './askUserQuestion';
+import {
+    areQuestionAnswersComplete,
+    formatQuestionAnswers,
+    joinSelectedLabels,
+    setQuestionAnswer,
+    toggleLabel,
+    type AskAnswers,
+    type AskQuestion,
+} from './askUserQuestion';
 
 function QuestionBlock({
     q,
     disabled,
     selected,
+    picked,
+    deferSubmit,
+    onChange,
     onSubmit,
 }: {
     q: AskQuestion;
     disabled: boolean;
     selected: string[];
+    picked: string[];
+    deferSubmit: boolean;
+    onChange: (labels: string[]) => void;
     onSubmit: (text: string) => void;
 }) {
     const { t } = useTranslation();
-    const [picked, setPicked] = useState<string[]>([]);
     const options = (q.options ?? []).filter(
         (o): o is { label: string; description?: string } => typeof o.label === 'string' && o.label !== '',
     );
@@ -47,16 +60,17 @@ function QuestionBlock({
                             type="button"
                             className={`tv-ask-opt${isSelected || isPicked ? ' tv-ask-opt--selected' : ''}`}
                             disabled={disabled}
-                            aria-pressed={multi ? isPicked : undefined}
+                            aria-pressed={multi || deferSubmit ? isPicked : undefined}
                             onClick={() => {
-                                if (multi) setPicked((p) => toggleLabel(p, o.label));
+                                if (multi) onChange(toggleLabel(picked, o.label));
+                                else if (deferSubmit) onChange([o.label]);
                                 else onSubmit(o.label);
                             }}
                         >
                             <span className="tv-ask-opt-label">
                                 {multi ? (
                                     isPicked ? <CheckSquare size={13} /> : <Square size={13} />
-                                ) : isSelected ? (
+                                ) : isSelected || isPicked ? (
                                     <Check size={13} />
                                 ) : null}
                                 {o.label}
@@ -66,7 +80,7 @@ function QuestionBlock({
                     );
                 })}
             </div>
-            {multi && !disabled && (
+            {multi && !deferSubmit && !disabled && (
                 <Button
                     size="sm"
                     variant="primary"
@@ -93,11 +107,34 @@ export function AskUserQuestionOptions({
     selected?: string[];
     onSubmit: (text: string) => void;
 }) {
+    const { t } = useTranslation();
+    const [answers, setAnswers] = useState<AskAnswers>({});
+    const batched = questions.length > 1;
+    const complete = areQuestionAnswersComplete(questions, answers);
     return (
         <div className="tv-ask">
             {questions.map((q, i) => (
-                <QuestionBlock key={i} q={q} disabled={disabled} selected={selected ?? []} onSubmit={onSubmit} />
+                <QuestionBlock
+                    key={i}
+                    q={q}
+                    disabled={disabled}
+                    selected={selected ?? []}
+                    picked={answers[i] ?? []}
+                    deferSubmit={batched}
+                    onChange={(labels) => setAnswers((current) => setQuestionAnswer(current, i, labels))}
+                    onSubmit={onSubmit}
+                />
             ))}
+            {batched && !disabled && (
+                <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!complete}
+                    onClick={() => onSubmit(formatQuestionAnswers(questions, answers))}
+                >
+                    {t('tools.askUserQuestion.submit')}
+                </Button>
+            )}
         </div>
     );
 }

@@ -16,6 +16,8 @@ export type AskQuestion = {
     multiSelect?: boolean;
 };
 
+export type AskAnswers = Record<number, string[]>;
+
 /**
  * Message text for a multi-select answer: picked labels joined with '、'.
  * A click on a single-select option sends the bare label — CLI integration
@@ -28,6 +30,28 @@ export function joinSelectedLabels(labels: string[]): string {
 /** Toggle a label in a multi-select picked list (immutably). */
 export function toggleLabel(picked: string[], label: string): string[] {
     return picked.includes(label) ? picked.filter((l) => l !== label) : [...picked, label];
+}
+
+/** Replace one question's answer without mutating answers from sibling questions. */
+export function setQuestionAnswer(answers: AskAnswers, index: number, labels: string[]): AskAnswers {
+    return { ...answers, [index]: labels.filter((label) => label.trim() !== '') };
+}
+
+/** A multi-question AskUserQuestion is submitted atomically once every row has an answer. */
+export function areQuestionAnswersComplete(questions: AskQuestion[], answers: AskAnswers): boolean {
+    return questions.length > 0 && questions.every((_, index) => (answers[index]?.length ?? 0) > 0);
+}
+
+/**
+ * Keep the historical bare-label payload for one question. Multiple questions
+ * are numbered in their original order so Claude can map each answer without
+ * depending on translated UI labels or repeating a potentially long prompt.
+ */
+export function formatQuestionAnswers(questions: AskQuestion[], answers: AskAnswers): string {
+    if (questions.length === 1) return joinSelectedLabels(answers[0] ?? []);
+    return questions
+        .map((_, index) => `${index + 1}. ${joinSelectedLabels(answers[index] ?? [])}`)
+        .join('\n');
 }
 
 /**
