@@ -82,4 +82,4 @@ EXPOSE 3005
 # pass /health while newer routes fail against an older schema. Keep the
 # migration command in the image itself so self-hosters do not depend on an
 # undocumented docker-compose override.
-CMD ["sh", "-c", "cd packages/happy-server && ../../node_modules/.bin/tsx sources/standalone.ts migrate && exec ../../node_modules/.bin/tsx sources/standalone.ts serve"]
+CMD ["sh", "-c", "cd packages/happy-server && PGOPTIONS=\"${MIGRATION_PGOPTIONS:--c lock_timeout=5s -c statement_timeout=60s}\" ../../node_modules/.bin/tsx sources/standalone.ts migrate && exec ../../node_modules/.bin/tsx sources/standalone.ts serve"]

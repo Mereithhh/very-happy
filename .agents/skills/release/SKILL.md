@@ -57,7 +57,7 @@ Preferred path:
 ```bash
 git push origin main
 # Wait at least 20 seconds for GitHub's ref to settle.
-gh workflow run deploy-hwsg.yml --ref main -f target=all   # or web/server
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 gh run list --workflow=deploy-hwsg.yml --limit 3
 gh run view <run-id> --json headSha,status,conclusion,url
 ```
@@ -67,26 +67,55 @@ manual and deploys only checked-out repository state. Release from merged
 `main`; do not assume pushing a feature branch changes the workflow's checkout.
 
 The workflow publishes `ghcr.io/mereithhh/very-happy-server:<commit-sha>`, resolves
-its manifest digest, and the remote host pulls that immutable digest. It promotes
-the verified digest to `latest` only after production acceptance. Never restore
-the old source-only overlay deployment: source, migrations, Prisma
-schema/generated Client and Web must move together. The remote helper checks
-Prisma consistency and force-recreates the container with a rollback copy of
-Compose.
+its manifest digest, and the remote host pulls that immutable digest. Source,
+migrations, Prisma schema/generated Client and Web move together. Choose the
+rollout phase explicitly:
+
+```bash
+# One final interrupting bootstrap; only when /opt/happy/release/state.env is absent
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=groundwork
+# Initial candidate proof; does not switch traffic or promote latest
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=shadow
+# Initial switch of the same shadowed digest, then every normal later release
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
+```
+
+Groundwork and switch promote only the verified active digest to `latest`;
+shadow never does. The remote state machine requires Redis, an explicit Prisma
+connection limit, Caddy ≥2.10.2 and host headroom. Candidate readiness includes
+DB, Redis, adapter warmup and exact Web asset. A bidirectional cross-slot canary
+is mandatory before Caddy changes. Never bypass these gates by restoring the old
+single-container helper for a normal release.
+
+If the packaged migration tree changed, review it for expand compatibility and
+set `VH_RELEASE_MIGRATIONS_REVIEWED=<target commit>` in production before the
+candidate run. The acknowledgement is commit-bound; never reuse a stale value.
+Migration lock/statement timeouts fail candidate without changing active traffic.
+
+Rollback is phase-aware: before drain, stop candidate only; after drain, cancel
+the old slot's drain state; after an include write, restore/reload the old Caddy
+include and retain both slots; after old shutdown, start old before switching
+back. Never delete the retained candidate while it may own connections.
 
 Environment changes are different: `docker compose restart` does not reread
-`env_file`. Apply them through the verified `vh-us` local alias with:
+`env_file`. Before groundwork only, the legacy command is:
 
 ```bash
 ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
+After groundwork, never use that command: deploy the active merged `main` with
+`rollout=switch`, so candidate reads the new env while old remains available.
+
 The legacy `hw-sg` SSH alias is not the control origin and must never be used
 for production deployment. If `vh-us` is absent or does not resolve to the
 current `veryhappy.dev` origin, stop and establish the exact target first.
 
-After any server deploy, run `vh-update` on mac-office until backlog B-001 is
-fixed, because a half-open daemon socket may fail to re-register RPCs.
+After publishing a CLI that changes handover behavior, run `vh-update` on
+mac-office. A normal blue-green Server/Web switch no longer requires restarting
+the daemon: it opens candidate, waits for every `rpc-registered` acknowledgement,
+then closes old. During the initial groundwork rollout, retain the old
+`vh-update` safeguard until the new CLI is installed.
 
 ## Publish CLI
 

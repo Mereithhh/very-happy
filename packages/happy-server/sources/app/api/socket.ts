@@ -6,7 +6,7 @@ import { createAdapter } from "@socket.io/redis-streams-adapter";
 import { Redis } from "ioredis";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
-import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisStreamLagMsGauge, releaseHandoverCounter, releaseHandoverDuration, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
@@ -20,13 +20,23 @@ import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
+import { resolveReleaseConfig } from '@/app/release/releaseConfig';
+import { ReleaseCoordinator } from '@/app/release/releaseCoordinator';
+import { closeCoordinationRedis, initializeCoordinationRedis } from '@/app/release/redisCoordination';
+import { DistributedSocketConnectionLimiter } from './socket/distributedSocketLimit';
+
+export const SOCKET_STREAM_NAME = 'vh:socket.io';
 
 function configuredLimit(name: string, fallback: number): number {
     const parsed = Number.parseInt(process.env[name] || '', 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function startSocket(app: Fastify) {
+export function machinePresenceRoom(userId: string, machineId: string): string {
+    return `presence:machine:${userId}:${machineId}`;
+}
+
+export async function startSocket(app: Fastify, staticDir?: string): Promise<ReleaseCoordinator | null> {
     const socketPayloadLimit = configuredLimit('SOCKET_MAX_PAYLOAD_BYTES', 1024 * 1024);
     const io = new Server(app.server, {
         cors: {
@@ -54,17 +64,44 @@ export function startSocket(app: Fastify) {
         // deploy/integration-tests/missed-events.mjs (event #2 fired during a
         // forced engine.close() arrived after auto-reconnect, recovered=true).
         // Ship parity first; turn this on as a follow-up.
-        // connectionStateRecovery: {
-        //     maxDisconnectionDuration: 2 * 60 * 1000,
-        // },
+        connectionStateRecovery: {
+            maxDisconnectionDuration: 30_000,
+            skipMiddlewares: false,
+        },
     });
     const terminalRateLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit());
     const rpcRateLimiter = new AccountTerminalRateLimiter(resolveRpcRelayLimit());
 
-    // Multi-process support: attach Redis streams adapter when REDIS_URL is set
+    const releaseConfig = resolveReleaseConfig();
+    if (releaseConfig && !process.env.REDIS_URL) {
+        throw new Error('REDIS_URL is required when release coordination is enabled');
+    }
+
+    let releaseCoordinator: ReleaseCoordinator | null = null;
+    let distributedConnectionLimiter: DistributedSocketConnectionLimiter | null = null;
+    let adapterClient: Redis | null = null;
+    let streamLagTimer: NodeJS.Timeout | null = null;
+
+    // Multi-process support: attach Redis streams adapter when REDIS_URL is set.
+    // Use a dedicated adapter connection because its blocking stream reads must
+    // never hold up coordination commands such as readiness and relay leases.
     if (process.env.REDIS_URL) {
-        const streamClient = new Redis(process.env.REDIS_URL);
-        io.adapter(createAdapter(streamClient, { maxLen: 200000, readCount: 2000 }));
+        const coordinationRedis = await initializeCoordinationRedis(process.env.REDIS_URL);
+        adapterClient = new Redis(process.env.REDIS_URL, {
+            lazyConnect: true,
+            enableReadyCheck: true,
+            maxRetriesPerRequest: null,
+        });
+        await adapterClient.connect();
+        if (await adapterClient.ping() !== 'PONG') throw new Error('Socket adapter Redis PING failed');
+        io.adapter(createAdapter(adapterClient, {
+            streamName: SOCKET_STREAM_NAME,
+            sessionKeyPrefix: 'vh:sio:session:',
+            maxLen: 200000,
+            readCount: 2000,
+            heartbeatInterval: 5_000,
+            heartbeatTimeout: 10_000,
+        }));
         log({ module: 'websocket' }, 'Redis streams adapter enabled for multi-process support');
 
         // Track stream reader lag: wrap onRawMessage to capture last-read offset,
@@ -76,15 +113,35 @@ export function startSocket(app: Fastify) {
             lastReadOffset = offset;
             return origOnRawMessage(msg, offset);
         };
-        setInterval(async () => {
+        streamLagTimer = setInterval(async () => {
             try {
-                const info = await streamClient.xinfo("STREAM", "socket.io") as any[];
+                const info = await adapterClient!.xinfo("STREAM", SOCKET_STREAM_NAME) as any[];
                 const headId = String(info[info.indexOf("last-generated-id") + 1]);
                 const headMs = parseInt(headId.split("-")[0]);
                 const readMs = parseInt(lastReadOffset.split("-")[0]);
                 redisStreamLagMsGauge.set(headMs - readMs);
             } catch { /* stream may not exist yet */ }
         }, 5000);
+
+        if (releaseConfig) {
+            releaseCoordinator = new ReleaseCoordinator({
+                app,
+                io,
+                config: releaseConfig,
+                redis: coordinationRedis,
+                adapterReadyAt: Date.now() + releaseConfig.adapterWarmupMs,
+                staticDir,
+            });
+            releaseCoordinator.register();
+            const perReplicaConnectionLimit = resolveSocketConnectionLimit();
+            distributedConnectionLimiter = new DistributedSocketConnectionLimiter(
+                coordinationRedis,
+                // Preserve the pre-cluster aggregate budget (the old limiter
+                // was process-local) and leave room for every supported client
+                // to hold old + candidate sockets during make-before-break.
+                perReplicaConnectionLimit === 0 ? 0 : perReplicaConnectionLimit * 2,
+            );
+        }
     }
 
     // Initialize event router with Socket.IO server instance
@@ -131,6 +188,21 @@ export function startSocket(app: Fastify) {
         socket.data.happyClient = socket.handshake.auth.happyClient as string
             || socket.handshake.headers['x-happy-client'] as string
             || undefined;
+        socket.data.handoverEpoch = typeof socket.handshake.auth.handoverEpoch === 'string'
+            ? socket.handshake.auth.handoverEpoch
+            : undefined;
+        if (distributedConnectionLimiter) {
+            try {
+                if (!await distributedConnectionLimiter.acquire(verified.userId, `${releaseConfig!.slot}:${socket.id}`)) {
+                    next(new Error('Socket connection limit reached'));
+                    return;
+                }
+            } catch (error) {
+                log({ module: 'websocket', userId: verified.userId, error }, 'Distributed socket admission failed closed');
+                next(new Error('Socket admission unavailable'));
+                return;
+            }
+        }
         next();
     });
 
@@ -144,12 +216,27 @@ export function startSocket(app: Fastify) {
 
         const connectionLimit = resolveSocketConnectionLimit();
         const active = activeByUser.get(userId) ?? 0;
-        if (connectionLimit > 0 && active >= connectionLimit) {
-            socket.emit('limit-reached', { resource: 'connections' });
-            socket.disconnect(true);
-            return;
+        if (!distributedConnectionLimiter) {
+            if (connectionLimit > 0 && active >= connectionLimit) {
+                socket.emit('limit-reached', { resource: 'connections' });
+                socket.disconnect(true);
+                return;
+            }
+            activeByUser.set(userId, active + 1);
         }
-        activeByUser.set(userId, active + 1);
+        const limiterMember = releaseConfig ? `${releaseConfig.slot}:${socket.id}` : null;
+        const limiterRefresh = distributedConnectionLimiter && limiterMember
+            ? setInterval(() => void distributedConnectionLimiter!.refresh(userId, limiterMember)
+                .then((acquired) => {
+                    if (acquired) return;
+                    socket.emit('limit-reached', { resource: 'connections' });
+                    socket.disconnect(true);
+                })
+                .catch((error) => {
+                    log({ module: 'websocket', userId, error }, 'Socket connection lease refresh failed');
+                }), 20_000)
+            : null;
+        limiterRefresh?.unref?.();
 
         log({
             module: 'websocket',
@@ -194,6 +281,7 @@ export function startSocket(app: Fastify) {
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
+            void socket.join(machinePresenceRoom(userId, machineId!));
             // Broadcast daemon online
             const machineActivity = buildMachineActivityEphemeral(machineId!, true, Date.now());
             eventRouter.emitEphemeral({
@@ -216,10 +304,26 @@ export function startSocket(app: Fastify) {
             socket.data.appState = data?.state === 'active' ? 'active' : 'background';
         });
 
+        socket.on('release-handover-result', (data: { result?: unknown; durationMs?: unknown }) => {
+            const result = data?.result === 'success' ? 'success' : 'failed';
+            const durationMs = typeof data?.durationMs === 'number' && Number.isFinite(data.durationMs)
+                ? Math.max(0, Math.min(data.durationMs, 60_000))
+                : 0;
+            releaseHandoverCounter.inc({ client_type: labels.client_type, result });
+            releaseHandoverDuration.observe({ client_type: labels.client_type, result }, durationMs / 1000);
+        });
+
         socket.on('disconnect', () => {
-            const remaining = (activeByUser.get(userId) ?? 1) - 1;
-            if (remaining > 0) activeByUser.set(userId, remaining);
-            else activeByUser.delete(userId);
+            if (limiterRefresh) clearInterval(limiterRefresh);
+            if (distributedConnectionLimiter && limiterMember) {
+                void distributedConnectionLimiter.release(userId, limiterMember).catch((error) => {
+                    log({ module: 'websocket', userId, error }, 'Socket connection lease release failed');
+                });
+            } else {
+                const remaining = (activeByUser.get(userId) ?? 1) - 1;
+                if (remaining > 0) activeByUser.set(userId, remaining);
+                else activeByUser.delete(userId);
+            }
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 
             // Cleanup connections
@@ -230,12 +334,26 @@ export function startSocket(app: Fastify) {
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {
-                const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, Date.now());
-                eventRouter.emitEphemeral({
-                    userId,
-                    payload: machineActivity,
-                    recipientFilter: { type: 'user-scoped-only' }
-                });
+                const timer = setTimeout(async () => {
+                    try {
+                        const peers = await io.in(machinePresenceRoom(userId, connection.machineId))
+                            .timeout(2_000)
+                            .fetchSockets();
+                        if (peers.length > 0) return;
+                        const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, Date.now());
+                        eventRouter.emitEphemeral({
+                            userId,
+                            payload: machineActivity,
+                            recipientFilter: { type: 'user-scoped-only' }
+                        });
+                    } catch (error) {
+                        // During a coordination outage, fail toward a briefly
+                        // stale online badge instead of flashing every daemon
+                        // offline while another replica may still own it.
+                        log({ module: 'websocket', machineId: connection.machineId, error }, 'Machine offline confirmation deferred');
+                    }
+                }, 15_000);
+                timer.unref?.();
             }
         });
 
@@ -250,6 +368,7 @@ export function startSocket(app: Fastify) {
                     ? connection.sessionId
                     : undefined,
             rpcRateLimiter,
+            releaseCoordinator ? { begin: () => releaseCoordinator!.beginRpc() } : undefined,
         );
         usageHandler(userId, socket);
         sessionUpdateHandler(userId, socket, connection);
@@ -266,6 +385,12 @@ export function startSocket(app: Fastify) {
     });
 
     onShutdown('api', async () => {
+        if (streamLagTimer) clearInterval(streamLagTimer);
         await io.close();
+        if (adapterClient) {
+            try { await adapterClient.quit(); } catch { adapterClient.disconnect(); }
+        }
+        await closeCoordinationRedis();
     });
+    return releaseCoordinator;
 }

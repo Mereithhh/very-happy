@@ -175,6 +175,7 @@ export function rpcHandler(
     io: Server,
     registrationScope?: string,
     accountRateLimiter?: AccountTerminalRateLimiter,
+    releaseTracking?: { begin: () => () => void },
 ) {
 
     const parsedPayloadLimit = Number.parseInt(process.env.RPC_MAX_PAYLOAD_BYTES || '', 10);
@@ -247,6 +248,7 @@ export function rpcHandler(
     });
 
     socket.on('rpc-call', async (data: any, callback: (response: any) => void) => {
+        const endReleaseTracking = releaseTracking?.begin();
         const startTime = Date.now();
         const { method, params } = data ?? {};
 
@@ -307,10 +309,14 @@ export function rpcHandler(
             }
             if (targets.length > 1) {
                 log({ module: 'websocket', level: 'warn', roomId: room, socketCount: targets.length },
-                    'Multiple RPC sockets found; using first');
+                    'Multiple RPC sockets found during handover; preferring the epoch owner');
             }
 
-            const target = targets[0];
+            const target = [...targets].sort((left, right) => {
+                const leftEpoch = typeof left.data?.handoverEpoch === 'string' ? left.data.handoverEpoch : '';
+                const rightEpoch = typeof right.data?.handoverEpoch === 'string' ? right.data.handoverEpoch : '';
+                return rightEpoch.localeCompare(leftEpoch);
+            })[0];
             if (target.id === socket.id) {
                 finish('self_call');
                 callback?.({ ok: false, error: 'Cannot call RPC on the same socket' });
@@ -367,6 +373,8 @@ export function rpcHandler(
             finish('internal_error');
             log({ module: 'websocket', level: 'error', error }, 'Error in rpc-call');
             callback?.({ ok: false, error: 'Internal error' });
+        } finally {
+            endReleaseTracking?.();
         }
     });
 

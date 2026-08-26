@@ -34,7 +34,7 @@ import {
 } from '@/claude/utils/claudeSessionFork';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
 import { discoverAndClaimRelay, type RelaySwitchTracker } from './relaySelection';
-import type { RelayAssignment } from '@slopus/happy-wire';
+import { ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import {
     CodexForkRewindPointNotFoundError,
     forkCodexThread,
@@ -56,9 +56,11 @@ interface ServerToDaemonEvents {
     'terminal-resize': (data: { terminalId: string, cols: number, rows: number }) => void;
     'terminal-close': (data: { terminalId: string }) => void;
     'session-archive': (data: { sessionId: string }) => void;
+    'server-draining': (data: ReleaseDrainNotice) => void;
 }
 
 interface DaemonToServerEvents {
+    'release-handover-result': (data: { result: 'success' | 'failed'; durationMs: number }) => void;
     // Web terminal: daemon → user (relayed by server). `seq` is the monotonic
     // output sequence number the client tracks as `lastSeq` for gap-based
     // reconnect (see open-terminal `fromSeq`).
@@ -166,6 +168,7 @@ export class ApiMachineClient {
     private stopSessionHandler: ((sessionId: string) => boolean) | null = null;
     private listTrackedSessionIds: (() => string[]) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
+    private handoverInFlight: Promise<void> | null = null;
     // Terminals negotiated with `encStream` protect the live byte payload with
     // the per-machine key. This keeps it opaque to passive storage/forwarding
     // paths, but is not an operator trust boundary: the trusted relay can
@@ -800,26 +803,53 @@ export class ApiMachineClient {
         const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
         logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
 
-        this.socket = io(serverUrl, {
+        this.socket = this.createControlSocket();
+        const controlSocket = this.socket;
+        this.bindRealtimeHandlers(controlSocket, 'control');
+
+        controlSocket.on('connect', () => {
+            if (this.socket !== controlSocket) return;
+            this.activateControlSocket(controlSocket);
+        });
+
+        controlSocket.on('disconnect', (reason) => {
+            logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
+            this.rpcHandlerManager.onSocketDisconnect(controlSocket);
+            // No web view can reach us while the socket is down → drop all terminal
+            // subscriber counts to 0 so a blip/crash can't inflate them and wedge a
+            // pty un-reapable. Views re-subscribe on reconnect (++ from 0).
+            if (!this.relaySocket?.connected) this.webTerminal.resetSubscribers();
+            this.stopKeepAlive();
+            if (this.socket === controlSocket) this.startSmartReconnect();
+        });
+
+        this.bindControlDataHandlers(controlSocket);
+    }
+
+    private createControlSocket(handover?: ReleaseDrainNotice): Socket<ServerToDaemonEvents, DaemonToServerEvents> {
+        const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
+        return io(serverUrl, {
             transports: ['websocket'],
             auth: {
                 token: this.token,
                 clientType: 'machine-scoped' as const,
                 machineId: this.machine.id,
-                happyClient: `cli-daemon/${configuration.currentCliVersion}`
+                happyClient: `cli-daemon/${configuration.currentCliVersion}`,
+                ...(handover ? { handoverEpoch: handover.epoch } : {}),
             },
+            ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),
             path: '/v1/updates',
             reconnection: false,
+            ...(handover ? { autoConnect: false } : {}),
         });
-        this.bindRealtimeHandlers(this.socket, 'control');
+    }
 
-        this.socket.on('connect', () => {
-            logger.debug('[API MACHINE] Connected to server');
-
-            if (this.reconnectInterval) {
-                clearInterval(this.reconnectInterval);
-                this.reconnectInterval = null;
-            }
+    private activateControlSocket(socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>, rpcAlreadyRegistered = false) {
+        logger.debug('[API MACHINE] Connected to server');
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
 
             // Terminal-list push channel: the CONNECT write itself carries the
             // full current snapshot, stamped with the SAME clock reading as
@@ -849,26 +879,16 @@ export class ApiMachineClient {
             // From here on, only CHANGES push (signature diff inside the manager).
             this.webTerminal.startListTracking((terminals) => this.pushTerminalList(terminals));
 
-            this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.syncResumeSessionRpcRegistration();
-            this.startKeepAlive();
-            void this.reconcileArchivedSessions();
-            void this.refreshRelayConnection();
-        });
+        if (!rpcAlreadyRegistered) this.rpcHandlerManager.onSocketConnect(socket);
+        this.syncResumeSessionRpcRegistration();
+        this.startKeepAlive();
+        void this.reconcileArchivedSessions();
+        void this.refreshRelayConnection();
+    }
 
-        this.socket.on('disconnect', (reason) => {
-            logger.debug(`[API MACHINE] Disconnected from server — reason: ${reason}`);
-            this.rpcHandlerManager.onSocketDisconnect(this.socket);
-            // No web view can reach us while the socket is down → drop all terminal
-            // subscriber counts to 0 so a blip/crash can't inflate them and wedge a
-            // pty un-reapable. Views re-subscribe on reconnect (++ from 0).
-            if (!this.relaySocket?.connected) this.webTerminal.resetSubscribers();
-            this.stopKeepAlive();
-            this.startSmartReconnect();
-        });
-
+    private bindControlDataHandlers(socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>) {
         // Handle update events from server
-        this.socket.on('update', (data: Update) => {
+        socket.on('update', (data: Update) => {
             // Machine clients should only care about machine updates
             if (data.body.t === 'update-machine' && (data.body as UpdateMachineBody).machineId === this.machine.id) {
                 // Handle machine metadata or daemon state updates from other clients (e.g., mobile app)
@@ -890,14 +910,87 @@ export class ApiMachineClient {
             }
         });
 
-        this.socket.on('connect_error', (error) => {
+        socket.on('connect_error', (error) => {
             logger.debug(`[API MACHINE] Connection error: ${error.message}`);
-            this.startSmartReconnect();
+            if (this.socket === socket) this.startSmartReconnect();
         });
 
-        this.socket.io.on('error', (error: any) => {
+        socket.io.on('error', (error: any) => {
             logger.debug('[API MACHINE] Socket error:', error);
         });
+
+        socket.on('server-draining', (data) => {
+            if (this.socket !== socket) return;
+            const parsed = ReleaseDrainNoticeSchema.safeParse(data);
+            if (!parsed.success || parsed.data.deadline <= Date.now()) return;
+            void this.startReleaseHandover(parsed.data);
+        });
+    }
+
+    private startReleaseHandover(notice: ReleaseDrainNotice): Promise<void> {
+        if (this.handoverInFlight) return this.handoverInFlight;
+        this.handoverInFlight = this.releaseHandover(notice).finally(() => { this.handoverInFlight = null; });
+        return this.handoverInFlight;
+    }
+
+    private async releaseHandover(notice: ReleaseDrainNotice): Promise<void> {
+        const startedAt = Date.now();
+        const previous = this.socket;
+        const candidate = this.createControlSocket(notice);
+        let commandsTransferred = false;
+        // RPC registration must be make-before-break: the server routes calls to
+        // the newest handover epoch once this candidate has registered. Terminal
+        // commands are different: they are broadcast to the machine room, so
+        // binding them on both sockets would duplicate keystrokes/resizes during
+        // the overlap window. Bind only RPC until the atomic listener handoff.
+        this.bindRpcRequestHandler(candidate, 'control');
+        const timeoutMs = Math.max(1, Math.min(10_000, notice.deadline - Date.now()));
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('release handover timeout')), timeoutMs);
+                candidate.once('connect', () => { clearTimeout(timer); resolve(); });
+                candidate.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
+                candidate.connect();
+            });
+            await this.rpcHandlerManager.onSocketConnectAndWait(candidate, timeoutMs);
+            if (this.socket !== previous) {
+                this.rpcHandlerManager.onSocketDisconnect(candidate);
+                candidate.close();
+                return;
+            }
+            // No socket event can interleave these synchronous listener changes.
+            // The old connection remains physically alive for rollback/output,
+            // but only the candidate consumes machine commands from this point.
+            this.unbindMachineCommandHandlers(previous);
+            this.bindMachineCommandHandlers(candidate);
+            commandsTransferred = true;
+            this.bindControlDataHandlers(candidate);
+            this.socket = candidate;
+            candidate.on('connect', () => {
+                if (this.socket === candidate) this.activateControlSocket(candidate);
+            });
+            candidate.on('disconnect', () => {
+                this.rpcHandlerManager.onSocketDisconnect(candidate);
+                if (!this.relaySocket?.connected) this.webTerminal.resetSubscribers();
+                this.stopKeepAlive();
+                if (this.socket === candidate) this.startSmartReconnect();
+            });
+            this.activateControlSocket(candidate, true);
+            candidate.emit('release-handover-result', { result: 'success', durationMs: Date.now() - startedAt });
+            this.rpcHandlerManager.onSocketDisconnect(previous);
+            previous.removeAllListeners('disconnect');
+            previous.close();
+        } catch (error) {
+            if (this.socket === candidate) this.socket = previous;
+            if (commandsTransferred) {
+                this.unbindMachineCommandHandlers(candidate);
+                this.bindMachineCommandHandlers(previous);
+            }
+            this.rpcHandlerManager.onSocketDisconnect(candidate);
+            candidate.close();
+            if (previous.connected) previous.emit('release-handover-result', { result: 'failed', durationMs: Date.now() - startedAt });
+            logger.debug(`[API MACHINE] Release handover failed: ${error instanceof Error ? error.message : error}`);
+        }
     }
 
     private startKeepAlive() {
@@ -938,11 +1031,14 @@ export class ApiMachineClient {
         logger.debug('[API MACHINE] Keep-alive started (20s interval)');
     }
 
-    private bindRealtimeHandlers(socket: Socket, transport: 'control' | 'regional-relay') {
+    private bindRpcRequestHandler(socket: Socket, transport: 'control' | 'regional-relay') {
         socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
             logger.debugLargeJson(`[API MACHINE] Received RPC request via ${transport}:`, data);
             callback(await this.rpcHandlerManager.handleRequest(data));
         });
+    }
+
+    private bindMachineCommandHandlers(socket: Socket) {
         socket.on('terminal-input', (data: any) => {
             let payload = data.data;
             if (data.enc) {
@@ -959,6 +1055,18 @@ export class ApiMachineClient {
             const stopped = this.stopSessionHandler?.(data.sessionId) ?? false;
             logger.debug(`[API MACHINE] Server archived session ${data.sessionId}; local process stopped=${stopped}`);
         });
+    }
+
+    private unbindMachineCommandHandlers(socket: Socket) {
+        socket.removeAllListeners('terminal-input');
+        socket.removeAllListeners('terminal-resize');
+        socket.removeAllListeners('terminal-close');
+        socket.removeAllListeners('session-archive');
+    }
+
+    private bindRealtimeHandlers(socket: Socket, transport: 'control' | 'regional-relay') {
+        this.bindRpcRequestHandler(socket, transport);
+        this.bindMachineCommandHandlers(socket);
     }
 
     /** Reconcile commands missed while the daemon was offline. The server

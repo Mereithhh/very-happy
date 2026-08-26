@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Update, UpdateMachineBody } from '@slopus/happy-wire';
+import type { ReleaseDrainNotice } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
 
@@ -52,6 +53,7 @@ export interface ServerToClientEvents {
   ephemeral: (data: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void
   auth: (data: { success: boolean, user: string }) => void
   error: (data: { message: string }) => void
+  'server-draining': (data: ReleaseDrainNotice) => void
 }
 
 
@@ -59,6 +61,7 @@ export interface ServerToClientEvents {
  * Socket events from client to server
  */
 export interface ClientToServerEvents {
+  'release-handover-result': (data: { result: 'success' | 'failed'; durationMs: number }) => void
   message: (data: { sid: string, message: any }) => void
   'session-alive': (data: {
     sid: string;

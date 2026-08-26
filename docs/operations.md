@@ -13,8 +13,8 @@ commits or tags to it and do not use it as a deployment source.
 
 | Role | Runtime |
 |---|---|
-| Web + server | `vh-us`, `/opt/happy/docker-compose.yml`, container `happy-server` |
-| Public endpoint | `https://veryhappy.dev`, Caddy TLS proxy to `127.0.0.1:3005` |
+| Web + server | `vh-us`; legacy `happy-server:3005` during groundwork, then fixed `happy-server-blue:3101` / `happy-server-green:3102` slots |
+| Public endpoint | `https://veryhappy.dev`; Caddy imports `/opt/happy/release/active-upstream.caddy` and switches it atomically |
 | Production artifact | Complete `ghcr.io/mereithhh/very-happy-server@sha256:<digest>` image, including Web V2 |
 | Database | External PostgreSQL in the colocated `happy-postgres` container |
 | Daemon | published `very-happy-cli` on `mac-office` |
@@ -24,6 +24,11 @@ commits or tags to it and do not use it as a deployment source.
 The hosted service is server-trusted, not E2E. The server can recover account
 secrets and relay remote execution to a user's connected daemon. Treat access to
 vh-us, its environment, backups and deploy key as high impact.
+
+As of 2026-08-26 production is still the legacy `happy-server:3005` topology.
+The blue-green code below is implemented but remains inactive until the explicit
+groundwork and shadow gates complete; do not infer rollout state from repository
+support alone.
 
 Production secret values live only on vh-us in `/opt/happy/.env`. Documentation and
 Git contain variable names only. Relevant variables include
@@ -39,7 +44,7 @@ test "$(git remote get-url origin)" = "https://github.com/Mereithhh/very-happy.g
 test "$(gh repo view Mereithhh/very-happy --json visibility --jq .visibility)" = PUBLIC
 git push origin main
 # Wait at least 20 seconds for GitHub's ref to settle.
-gh workflow run deploy-hwsg.yml -f target=all   # all | server | web
+gh workflow run deploy-hwsg.yml -f target=all -f rollout=switch
 gh run list --workflow=deploy-hwsg.yml --limit 3
 gh run view <run-id> --json headSha,status,conclusion,url
 ```
@@ -56,7 +61,7 @@ The emergency local path, rollback details and self-hosted runner fallback live
 in [`PROCESS.md`](PROCESS.md#ci-不可用时的本地部署应急路径). Do not maintain a
 second copy of those command sequences here.
 
-### Complete-image deployment contract
+### Complete-image blue-green deployment contract
 
 Server source, Prisma schema, generated Prisma Client, migrations and Web V2 are
 one versioned artifact. Production must not bind-mount any of them from the host.
@@ -64,13 +69,43 @@ The workflow publishes a commit-SHA tag, deploys its resolved manifest digest,
 and promotes that same digest to the convenience `latest` tag only after public
 health and Web asset verification. Production Compose always stores the digest.
 
-Before replacing the container, the remote deploy helper verifies that the
-packaged Prisma schema exactly matches the generated Client schema. Compose is
-backed up, the image reference is replaced, obsolete source/Web mounts are
-removed, and `docker compose up -d --force-recreate` runs migrations before the
-health gate. Failure restores the previous Compose definition and image. Database
-migrations must remain forward-compatible because rollback never runs a
-destructive down migration.
+The workflow has three explicit `rollout` phases:
+
+1. `groundwork` is the one final legacy recreation. It requires `REDIS_URL`, an
+   explicit PostgreSQL `connection_limit`, Caddy ≥2.10.2 and host headroom; it
+   installs release identity/readiness while the legacy container remains the
+   blue slot on port 3005.
+2. `shadow` starts the exact candidate digest on the inactive fixed slot, waits
+   for DB/Redis/adapter/Web readiness, runs the cross-slot canary in both
+   directions, verifies a continuous public HTTP probe, then stops candidate.
+   It never changes Caddy or promotes `latest`.
+3. `switch` requires the initial shadow evidence, repeats readiness/canary,
+   emits a drain notice, atomically swaps the Caddy include and gracefully
+   reloads Caddy. Supported clients connect to `?vh_slot=blue|green`, resync and
+   register every RPC before closing old. Old clients retain a compatibility
+   grace, then use the existing reconnect + durable resync fallback.
+
+Before starting candidate, the helper verifies the packaged Prisma schema
+matches the generated Client schema. Before drain, any failure stops only the
+candidate. After drain, rollback first cancels the old slot's drain state; if an
+active-include write may have happened, it also restores and reloads the old
+include while retaining both slots. If old was already stopped, rollback starts
+it before changing the include. Database migrations remain expand/contract and
+rollback never runs a destructive down migration.
+
+Production prerequisites are intentionally fail-closed and checked without
+printing secret values: `/opt/happy/.env` must contain `REDIS_URL`; its
+`DATABASE_URL` must have an explicit `connection_limit`; Caddy must be at least
+2.10.2. Release state and the generated admin token live mode 0600 under
+`/opt/happy/release/`; the token is not a public API credential.
+
+If the candidate's packaged migration tree differs from the active digest, the
+operator must first review it as expand-compatible and set
+`VH_RELEASE_MIGRATIONS_REVIEWED=<target-commit>` in `/opt/happy/.env`; a stale or
+missing acknowledgement fails before candidate start. The image runs migration
+connections with a 5s lock timeout and 60s statement timeout by default
+(`MIGRATION_PGOPTIONS` may be reviewed/overridden); the serving process does not
+inherit those migration-only timeouts.
 
 ### Standalone PGlite process exclusivity and incident recovery
 
@@ -104,10 +139,13 @@ its advisory-lock and durability semantics are outside this deployment contract.
 
 ### Environment changes
 
-`docker compose restart` keeps the old container environment. After editing
-`/opt/happy/.env`, recreate the service:
+`docker compose restart` keeps the old container environment. Before the one-time
+groundwork, an env edit still requires the legacy recreation below. Once release
+state exists, run a normal `rollout=switch` of merged `main`; candidate reads the
+new env while active remains available.
 
 ```bash
+# Before blue-green groundwork only:
 ssh vh-us 'cd /opt/happy && docker compose up -d --force-recreate happy-server'
 ```
 
@@ -221,14 +259,17 @@ sessions may return while terminal tabs are gone; that is expected.
 
 ## Rollback
 
-- Web/server: restore the exact Compose backup printed by the deploy run from
-  `/opt/happy-rollbacks/<sha>.<suffix>/docker-compose.yml`, confirm its recorded
-  previous image still exists locally, copy that file back to
-  `/opt/happy/docker-compose.yml`, then run `cd /opt/happy && docker compose up -d
-  --force-recreate happy-server`. Verify the container uses that exact image and
-  both local/public health pass. Do not restore host source, migrations or
-  `webapp` independently, and never invent a destructive down migration during
-  an incident.
+- Web/server after blue-green activation: read the validated rollback slot/image
+  from `/opt/happy/release/state.env`, start that stopped slot with the release
+  Compose, verify its authenticated readiness, atomically restore its recorded
+  port in `active-upstream.caddy`, validate/reload Caddy, then verify public
+  release and asset. Keep the failed slot until its sockets drain and incident
+  evidence is captured.
+- Groundwork-only rollback: use the exact Compose and Caddy snapshot printed in
+  `/opt/happy-rollbacks/<sha>.groundwork.*`; this is the only path that recreates
+  legacy `happy-server:3005`.
+- Never restore source, migrations or Web independently, and never invent a
+  destructive down migration during an incident.
 - CLI: install the previous `very-happy-cli` version and restart through launchd.
 - Environment: restore the prior `.env` value from the password manager, then
   recreate the container.

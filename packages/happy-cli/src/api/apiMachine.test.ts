@@ -35,6 +35,7 @@ vi.mock('@/modules/common/registerCommonHandlers', () => ({
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
         onSocketConnect = vi.fn();
+        onSocketConnectAndWait = vi.fn(async () => undefined);
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
         registerHandler = vi.fn();
@@ -188,5 +189,68 @@ describe('ApiMachineClient socket reconnection', () => {
             }),
         );
         expect(stopSession).toHaveBeenCalledWith('session-2');
+    });
+
+    it('hands terminal command ownership to the candidate without double-consuming input', async () => {
+        const makeHandoverSocket = () => {
+            const handlers: SocketHandlers = {};
+            const socket: any = {
+                connected: true,
+                on: vi.fn((event: string, handler: SocketHandler) => {
+                    (handlers[event] ||= []).push(handler);
+                    return socket;
+                }),
+                once: vi.fn((event: string, handler: SocketHandler) => {
+                    const onceHandler = (...args: any[]) => {
+                        handlers[event] = (handlers[event] || []).filter((item) => item !== onceHandler);
+                        handler(...args);
+                    };
+                    (handlers[event] ||= []).push(onceHandler);
+                    return socket;
+                }),
+                listeners: vi.fn((event: string) => handlers[event] || []),
+                removeAllListeners: vi.fn((event: string) => {
+                    delete handlers[event];
+                    return socket;
+                }),
+                connect: vi.fn(() => {
+                    for (const handler of [...(handlers.connect || [])]) handler();
+                    return socket;
+                }),
+                emit: vi.fn(),
+                emitWithAck: vi.fn(),
+                close: vi.fn(),
+                io: { on: vi.fn() },
+                handlers,
+            };
+            return socket;
+        };
+        const previous = makeHandoverSocket();
+        const candidate = makeHandoverSocket();
+        mockIo.mockReturnValueOnce(previous).mockReturnValueOnce(candidate);
+
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        (client as any).activateControlSocket = vi.fn();
+        const write = vi.spyOn((client as any).webTerminal, 'write');
+        client.connect();
+
+        const notice = {
+            candidateSlot: 'green',
+            epoch: '0000000002',
+            fromRelease: 'a'.repeat(40),
+            toRelease: 'b'.repeat(40),
+            deadline: Date.now() + 10_000,
+            mode: 'make-before-break',
+        };
+        for (const handler of [...previous.handlers['server-draining']]) handler(notice);
+        await (client as any).handoverInFlight;
+
+        expect(candidate.handlers['rpc-request']).toHaveLength(1);
+        expect(previous.handlers['terminal-input']).toBeUndefined();
+        expect(candidate.handlers['terminal-input']).toHaveLength(1);
+        for (const handler of previous.handlers['terminal-input'] || []) handler({ terminalId: 't1', data: 'x' });
+        for (const handler of candidate.handlers['terminal-input'] || []) handler({ terminalId: 't1', data: 'x' });
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(previous.close).toHaveBeenCalledTimes(1);
     });
 });

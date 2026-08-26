@@ -1,0 +1,15 @@
+veryhappy.dev, happy.mereith.com {
+	@vh_blue query vh_slot=blue
+	handle @vh_blue {
+		reverse_proxy 127.0.0.1:3101
+	}
+
+	@vh_green query vh_slot=green
+	handle @vh_green {
+		reverse_proxy 127.0.0.1:3102
+	}
+
+	handle {
+		import /opt/happy/release/active-upstream.caddy
+	}
+}

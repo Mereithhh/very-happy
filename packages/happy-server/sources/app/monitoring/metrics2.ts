@@ -98,6 +98,56 @@ export const httpRequestDurationHistogram = new Histogram({
     registers: [register]
 });
 
+export const releaseSlotReadyGauge = new Gauge({
+    name: 'release_slot_ready',
+    help: 'Whether this immutable release slot currently passes readiness',
+    labelNames: ['slot', 'release'] as const,
+    registers: [register]
+});
+
+export const releaseDrainingGauge = new Gauge({
+    name: 'release_draining',
+    help: 'Whether this immutable release slot is draining',
+    labelNames: ['slot', 'release'] as const,
+    registers: [register]
+});
+
+export const releaseLocalConnectionsGauge = new Gauge({
+    name: 'release_local_connections',
+    help: 'Local Socket.IO connections held by a release slot',
+    labelNames: ['slot', 'release'] as const,
+    registers: [register]
+});
+
+export const releaseInflightHttpGauge = new Gauge({
+    name: 'release_inflight_http',
+    help: 'In-flight non-admin HTTP requests on a release slot',
+    labelNames: ['slot', 'release'] as const,
+    registers: [register]
+});
+
+export const releaseInflightRpcGauge = new Gauge({
+    name: 'release_inflight_rpc',
+    help: 'In-flight RPC calls on a release slot',
+    labelNames: ['slot', 'release'] as const,
+    registers: [register]
+});
+
+export const releaseHandoverCounter = new Counter({
+    name: 'release_handover_total',
+    help: 'Client release handovers by client type and result',
+    labelNames: ['client_type', 'result'] as const,
+    registers: [register]
+});
+
+export const releaseHandoverDuration = new Histogram({
+    name: 'release_handover_duration_seconds',
+    help: 'Client-observed make-before-break handover duration',
+    labelNames: ['client_type', 'result'] as const,
+    buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+    registers: [register]
+});
+
 // Database count metrics
 export const databaseRecordCountGauge = new Gauge({
     name: 'database_records_total',

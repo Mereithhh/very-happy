@@ -98,6 +98,57 @@ export class RpcHandlerManager {
         }
     }
 
+    /**
+     * Attach a candidate transport and wait until the server confirms every
+     * method before a release handover closes the old transport.
+     */
+    async onSocketConnectAndWait(socket: Socket, timeoutMs = 10_000): Promise<void> {
+        this.sockets.add(socket);
+        const pending = new Set(this.handlers.keys());
+        const acknowledged = new Set<string>();
+        await new Promise<void>((resolve, reject) => {
+            let settleTimer: NodeJS.Timeout | null = null;
+            const timer = setTimeout(() => {
+                cleanup();
+                reject(new Error(`RPC registration timed out (${pending.size} pending)`));
+            }, timeoutMs);
+            timer.unref?.();
+            const maybeSettle = () => {
+                if (pending.size > 0 || settleTimer) return;
+                settleTimer = setTimeout(() => {
+                    settleTimer = null;
+                    for (const prefixedMethod of this.handlers.keys()) {
+                        if (acknowledged.has(prefixedMethod) || pending.has(prefixedMethod)) continue;
+                        pending.add(prefixedMethod);
+                        socket.emit('rpc-register', { method: prefixedMethod });
+                    }
+                    if (pending.size === 0) {
+                        cleanup();
+                        resolve();
+                    }
+                }, 0);
+                settleTimer.unref?.();
+            };
+            const onRegistered = (data: { method?: unknown }) => {
+                if (typeof data?.method !== 'string') return;
+                acknowledged.add(data.method);
+                pending.delete(data.method);
+                maybeSettle();
+            };
+            const cleanup = () => {
+                clearTimeout(timer);
+                if (settleTimer) clearTimeout(settleTimer);
+                socket.off('rpc-registered', onRegistered);
+            };
+            socket.on('rpc-registered', onRegistered);
+            for (const prefixedMethod of pending) socket.emit('rpc-register', { method: prefixedMethod });
+            maybeSettle();
+        }).catch((error) => {
+            this.sockets.delete(socket);
+            throw error;
+        });
+    }
+
     onSocketDisconnect(socket?: Socket): void {
         if (socket) this.sockets.delete(socket);
         else this.sockets.clear();

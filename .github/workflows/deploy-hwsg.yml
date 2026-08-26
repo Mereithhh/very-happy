@@ -22,6 +22,11 @@ on:
         type: choice
         options: [all, web, server, publish]
         default: all
+      rollout:
+        description: Blue-green rollout phase
+        type: choice
+        options: [switch, shadow, groundwork]
+        default: switch
 
 concurrency:
   group: deploy-hwsg
@@ -96,12 +101,13 @@ jobs:
           HWSG_USER: ${{ secrets.HWSG_USER }}
           SSH_KEY: ${{ runner.temp }}/hwsg_key
           SERVER_IMAGE: ghcr.io/mereithhh/very-happy-server@${{ steps.server_build.outputs.digest }}
+          ROLLOUT_MODE: ${{ inputs.rollout }}
         run: |
           chmod +x scripts/ci/deploy-hwsg.sh
-          ./scripts/ci/deploy-hwsg.sh "${{ inputs.target }}"
+          ./scripts/ci/deploy-hwsg.sh "${{ inputs.target }}" "$ROLLOUT_MODE"
 
       - name: Promote verified image to latest
-        if: inputs.target != 'publish'
+        if: inputs.target != 'publish' && inputs.rollout != 'shadow'
         run: >-
           docker buildx imagetools create
           --tag ghcr.io/mereithhh/very-happy-server:latest
