@@ -51,6 +51,7 @@ import {
   useLocalSettingMutable,
   useProfile,
   useAllMachines,
+  useAllSessions,
   useSocketStatus,
 } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -116,7 +117,9 @@ import type { SoundEvent } from '@/sync/notificationInbox';
 import { setConsoleOutputEnabled } from '@/utils/consoleLogging';
 import { fetchWebhookConfig, saveWebhookConfig, deleteWebhookConfig, type WebhookEvent } from '@/sync/apiWebhook';
 import type { NotifType } from '@/sync/feedTypes';
-import { getUsageForPeriod, calculateTotals, type UsageDataPoint } from '@/sync/apiUsage';
+import { getUsageForPeriod, type UsageDataPoint, type UsageReportPoint } from '@/sync/apiUsage';
+import { buildUsageDashboard } from '@/sync/usageDashboard';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getServerInfo } from '@/sync/serverConfig';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { VoiceSettings } from './VoiceSettings';
@@ -2033,8 +2036,12 @@ function Usage() {
   const { credentials } = useAuth();
   const [period, setPeriod] = useState<Period>('7days');
   const [data, setData] = useState<UsageDataPoint[] | null>(null);
+  const [reports, setReports] = useState<UsageReportPoint[] | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const sessions = useAllSessions();
+  const machines = useAllMachines({ includeOffline: true });
+  const liveTerminals = useTerminalSessions((state) => state.terminals);
 
   useEffect(() => {
     let cancelled = false;
@@ -2043,7 +2050,10 @@ function Usage() {
     setError(false);
     getUsageForPeriod(credentials, period)
       .then((res) => {
-        if (!cancelled) setData(res.usage);
+        if (!cancelled) {
+          setData(res.usage);
+          setReports(res.reports);
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -2056,13 +2066,40 @@ function Usage() {
     };
   }, [credentials, period]);
 
-  const totals = useMemo(() => (data ? calculateTotals(data) : null), [data]);
+  const startMs = useMemo(() => {
+    if (period === 'today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return today.getTime();
+    }
+    return Date.now() - (period === '7days' ? 7 : 30) * 24 * 60 * 60 * 1000;
+  }, [period]);
+  const terminalFacts = useMemo(() => {
+    const closed = machines.flatMap((machine) => (
+      Array.isArray(machine.daemonState?.closedTerminals)
+        ? machine.daemonState.closedTerminals.map((terminal: { id: string; createdAt?: number; closedAt?: number }) => ({
+            ...terminal,
+            id: `${machine.id}:${terminal.id}`,
+          }))
+        : []
+    ));
+    return [
+      ...liveTerminals.map((terminal) => ({ ...terminal, id: `${terminal.machineId}:${terminal.id}` })),
+      ...closed,
+    ];
+  }, [liveTerminals, machines]);
+  const dashboard = useMemo(() => (data ? buildUsageDashboard({
+    usage: data,
+    reports,
+    sessions,
+    terminals: terminalFacts,
+    startMs,
+  }) : null), [data, reports, sessions, terminalFacts, startMs]);
   const maxTokens = useMemo(() => {
     if (!data || data.length === 0) return 0;
-    return Math.max(
-      ...data.map((d) => Object.values(d.tokens).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0)),
-    );
+    return Math.max(...data.map((d) => typeof d.tokens.total === 'number' ? d.tokens.total : 0));
   }, [data]);
+  const maxAgentTokens = dashboard?.agents.reduce((max, row) => Math.max(max, row.tokens), 0) ?? 0;
 
   const periods: { key: Period; label: string }[] = [
     { key: 'today', label: t('usage.today') },
@@ -2095,39 +2132,66 @@ function Usage() {
         <div className="set-center">
           <OrbitLoader size="compact" label={t('common.loading')} />
         </div>
-      ) : error || !totals ? (
-        <div className="set-center">{t('usage.noData')}</div>
-      ) : totals.totalTokens === 0 ? (
+      ) : error || !dashboard ? (
         <div className="set-center">{t('usage.noData')}</div>
       ) : (
         <>
-          <div className="set-stat-row">
+          <div className="set-usage-ledger" aria-label={t('usage.summary')}>
             <div className="set-stat">
               <span className="set-stat__label">{t('usage.totalTokens')}</span>
-              <span className="set-stat__value">{formatCompact(totals.totalTokens)}</span>
+              <span className="set-stat__value">{formatCompact(dashboard.totalTokens)}</span>
+              <span className="set-stat__detail">{dashboard.totalTokens > 0 ? t('usage.reportedUsage') : t('usage.notReported')}</span>
             </div>
             <div className="set-stat">
               <span className="set-stat__label">{t('usage.totalCost')}</span>
-              <span className="set-stat__value">${totals.totalCost.toFixed(2)}</span>
+              <span className="set-stat__value">{dashboard.costKnown ? `$${dashboard.totalCost.toFixed(2)}` : '—'}</span>
+              <span className="set-stat__detail">{dashboard.costKnown ? t('usage.estimatedCost') : t('usage.costUnavailable')}</span>
+            </div>
+            <div className="set-stat">
+              <span className="set-stat__label">{t('usage.chatSessions')}</span>
+              <span className="set-stat__value">{dashboard.structuredSessions}</span>
+              <span className="set-stat__detail">{t('usage.inSelectedPeriod')}</span>
+            </div>
+            <div className="set-stat">
+              <span className="set-stat__label">{t('usage.terminalSessions')}</span>
+              <span className="set-stat__value">{dashboard.terminalSessions}</span>
+              <span className="set-stat__detail">{t('usage.visibleTerminals')}</span>
             </div>
           </div>
 
           <ItemGroup title={t('usage.usageOverTime')}>
-            <div style={{ padding: 'var(--sp-2) var(--sp-3) var(--sp-3)' }}>
+            <div className="set-usage-panel">
               <div className="set-chart">
                 {data!.map((d, i) => {
-                  const tok = Object.values(d.tokens).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+                  const tok = typeof d.tokens.total === 'number' ? d.tokens.total : 0;
                   const h = maxTokens > 0 ? (tok / maxTokens) * 100 : 0;
                   return (
                     <div
                       key={i}
                       className={`set-chart__bar${tok > 0 ? ' set-chart__bar--filled' : ''}`}
                       style={{ height: `${h}%` }}
-                      title={`${formatCompact(tok)} tokens`}
+                      title={`${new Date(d.timestamp * 1000).toLocaleString()} · ${formatCompact(tok)} ${t('usage.tokens').toLowerCase()}`}
                     />
                   );
                 })}
               </div>
+              <div className="set-chart__axis"><span>{t('usage.periodStart')}</span><span>{t('usage.now')}</span></div>
+            </div>
+          </ItemGroup>
+
+          <ItemGroup title={t('usage.byAgent')}>
+            <div className="set-usage-agents">
+              {dashboard.agents.map((row) => (
+                <div className="set-usage-agent" key={row.key}>
+                  <div className="set-usage-agent__meta">
+                    <span className="set-usage-agent__name">{row.key}</span>
+                    <span>{formatCompact(row.tokens)} tok · {row.sessions} sess</span>
+                  </div>
+                  <div className="set-usage-agent__track" aria-hidden="true">
+                    <span style={{ width: `${maxAgentTokens > 0 ? Math.max(2, row.tokens / maxAgentTokens * 100) : 0}%` }} />
+                  </div>
+                </div>
+              ))}
             </div>
           </ItemGroup>
 
@@ -2137,10 +2201,7 @@ function Usage() {
                 本身**已包含** cache 读写费用。原来对所有 token 类型都查 costByKind，
                 于是出现「cache_read 1.2M tokens $0.00」这种明显误导的行，而且四行
                 费用加起来还少于上面的总费用。缺失就不显示，别编一个 $0.00。 */}
-            {Object.entries(totals.tokensByKind)
-              .sort((a, b) => b[1] - a[1])
-              .map(([kind, tokens]) => {
-                const cost = totals.costByKind[kind];
+            {dashboard.tokenKinds.map(({ key: kind, tokens, cost }) => {
                 return (
                   <Item
                     key={kind}

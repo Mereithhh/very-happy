@@ -10,6 +10,14 @@ export interface UsageDataPoint {
     reportCount: number;
 }
 
+export interface UsageReportPoint {
+    key: string;
+    sessionId: string | null;
+    timestamp: number;
+    tokens: Record<string, number>;
+    cost: Record<string, number>;
+}
+
 export interface UsageQueryParams {
     sessionId?: string;
     startTime?: number; // Unix timestamp in seconds
@@ -19,6 +27,8 @@ export interface UsageQueryParams {
 
 export interface UsageResponse {
     usage: UsageDataPoint[];
+    /** Added by B-211; absent on old servers. */
+    reports?: UsageReportPoint[];
 }
 
 /**

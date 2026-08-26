@@ -751,6 +751,7 @@ export async function runGemini(opts: {
       default:
         // Handle token-count and other potential message types
         if ((msg as any).type === 'token-count') {
+          session.sendAgentUsageSnapshot('gemini', msg);
           // Forward token count to mobile app (like Codex)
           // Note: Gemini ACP may not provide token_count events directly,
           // but we handle them if they come from the backend
