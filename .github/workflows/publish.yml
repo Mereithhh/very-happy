@@ -128,7 +128,11 @@ jobs:
           if npm view "very-happy-cli@$package_version" version >/dev/null 2>&1; then
             echo "Already published: very-happy-cli@$package_version"
           else
-            npm pack packages/happy-cli --pack-destination "$RUNNER_TEMP"
+            # Keep the explicit relative-path prefix: without `./`, npm treats
+            # `packages/happy-cli` as a GitHub shorthand and tries to clone
+            # git@github.com/packages/happy-cli.git instead of packing the
+            # checked-out workspace directory.
+            npm pack ./packages/happy-cli --pack-destination "$RUNNER_TEMP"
             npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public
           fi
         env:
