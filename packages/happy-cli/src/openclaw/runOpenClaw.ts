@@ -337,6 +337,12 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
         log(`Turn ended: ${JSON.stringify(errorLogMetadata(error))}`);
         sendEnvelopes(sessionManager.endTurn('failed'));
       }
+      try {
+        const usage = await backend.getUsageSnapshot();
+        if (usage) session.sendAgentUsageSnapshot('openclaw', usage);
+      } catch (error) {
+        logger.debug('[openclaw] Failed to report usage:', errorLogMetadata(error));
+      }
       inTurn = false;
       thinking = false;
       session.keepAlive(false, 'remote');

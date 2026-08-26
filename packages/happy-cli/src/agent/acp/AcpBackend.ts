@@ -1077,7 +1077,12 @@ export class AcpBackend implements AgentBackend {
         sessionId: this.acpSessionId,
         blockCount: promptRequest.prompt.length,
       });
-      await this.connection.prompt(promptRequest);
+      const response = await this.connection.prompt(promptRequest);
+      if (response.usage) {
+        // ACP's unstable PromptResponse.usage is the one protocol-level token
+        // source shared by Gemini, OpenCode, and custom ACP agents.
+        this.emit({ type: 'token-count', ...response.usage });
+      }
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
       
       // Don't emit 'idle' here - it will be emitted after all message chunks are received

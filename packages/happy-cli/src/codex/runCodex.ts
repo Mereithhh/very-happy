@@ -580,6 +580,9 @@ export async function runCodex(opts: {
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
+        if (msg.type === 'token_count') {
+            session.sendAgentUsageSnapshot('codex', msg);
+        }
         logger.debug('[Codex] Event metadata', codexEventLogMetadata(msg));
 
         // Add messages to the ink UI buffer based on message type

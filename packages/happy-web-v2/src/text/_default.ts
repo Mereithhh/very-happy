@@ -1878,6 +1878,18 @@ export const en = {
         usageOverTime: 'Usage over time',
         byKind: 'By Token Type',
         noData: 'No usage data available',
+        summary: 'Usage summary',
+        reportedUsage: 'reported token usage',
+        notReported: 'tokens not reported',
+        estimatedCost: 'estimated from reported usage',
+        costUnavailable: 'cost unavailable',
+        chatSessions: 'Chat sessions',
+        terminalSessions: 'Terminal sessions',
+        inSelectedPeriod: 'created or used in period',
+        visibleTerminals: 'visible live + recent closed',
+        periodStart: 'period start',
+        now: 'now',
+        byAgent: 'By agent',
     },
 
     feed: {

@@ -1796,6 +1796,18 @@ export const zhHans: TranslationStructure = {
         usageOverTime: '使用趋势',
         byKind: '按 token 类型',
         noData: '暂无使用数据',
+        summary: 'Usage 汇总',
+        reportedUsage: '已上报 token 用量',
+        notReported: '尚未上报 token',
+        estimatedCost: '按已上报用量估算',
+        costUnavailable: '暂无可靠费用',
+        chatSessions: '普通会话',
+        terminalSessions: '终端会话',
+        inSelectedPeriod: '所选周期内创建或使用',
+        visibleTerminals: '当前可见与近期关闭',
+        periodStart: '周期开始',
+        now: '现在',
+        byAgent: '按 agent',
     },
 
     imageUpload: {

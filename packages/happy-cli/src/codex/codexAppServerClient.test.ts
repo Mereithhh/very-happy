@@ -1101,4 +1101,44 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(serializedLogs).toContain('valueBytes');
         expect(serializedLogs).toContain('payloadBytes');
     });
+
+    it('forwards the real thread token-usage notification shape', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events: Array<Record<string, unknown>> = [];
+        client.setEventHandler((msg) => events.push(msg as Record<string, unknown>));
+
+        (client as any).handleLine(JSON.stringify({
+            method: 'thread/tokenUsage/updated',
+            params: {
+                threadId: 'thread-usage',
+                turnId: 'turn-usage',
+                tokenUsage: {
+                    total: {
+                        totalTokens: 140,
+                        inputTokens: 100,
+                        cachedInputTokens: 60,
+                        cacheWriteInputTokens: 4,
+                        outputTokens: 40,
+                        reasoningOutputTokens: 10,
+                    },
+                    last: {
+                        totalTokens: 20,
+                        inputTokens: 15,
+                        cachedInputTokens: 5,
+                        cacheWriteInputTokens: 0,
+                        outputTokens: 5,
+                        reasoningOutputTokens: 2,
+                    },
+                    modelContextWindow: 200_000,
+                },
+            },
+        }));
+
+        expect(events).toEqual([expect.objectContaining({
+            type: 'token_count',
+            total: expect.objectContaining({ totalTokens: 140, inputTokens: 100, outputTokens: 40 }),
+            last: expect.objectContaining({ totalTokens: 20 }),
+        })]);
+    });
 });
