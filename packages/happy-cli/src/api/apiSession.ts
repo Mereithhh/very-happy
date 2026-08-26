@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { ReleaseDrainNoticeSchema, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
@@ -132,6 +133,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly receiveSync: InvalidateSync;
     private readonly directInboundLocalIds = new Set<string>();
     private readonly routedInboundLocalIds = new Set<string>();
+    private handoverInFlight: Promise<void> | null = null;
 
     constructor(token: string, session: Session) {
         super()
@@ -159,19 +161,8 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
-        this.socket = io(configuration.serverUrl, {
-            auth: {
-                token: this.token,
-                clientType: 'session-scoped' as const,
-                sessionId: this.sessionId,
-                happyClient: `cli-coding-session/${configuration.currentCliVersion}`
-            },
-            path: '/v1/updates',
-            reconnection: false,
-            transports: ['websocket'],
-            withCredentials: true,
-            autoConnect: false
-        });
+        this.socket = this.createControlSocket();
+        const controlSocket = this.socket;
 
         //
         // Handlers
@@ -183,7 +174,7 @@ export class ApiSessionClient extends EventEmitter {
                 clearInterval(this.reconnectInterval);
                 this.reconnectInterval = null;
             }
-            this.rpcHandlerManager.onSocketConnect(this.socket);
+            this.rpcHandlerManager.onSocketConnect(controlSocket);
             this.receiveSync.invalidate();
             void this.connectSessionRelay();
         })
@@ -195,13 +186,13 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('disconnect', (reason) => {
             logger.debug(`[API] Socket disconnected: ${reason}`);
-            this.rpcHandlerManager.onSocketDisconnect();
+            this.rpcHandlerManager.onSocketDisconnect(controlSocket);
             this.startSmartReconnect();
         })
 
         this.socket.on('connect_error', (error) => {
             logger.debug('[API] Socket connection error:', error);
-            this.rpcHandlerManager.onSocketDisconnect();
+            this.rpcHandlerManager.onSocketDisconnect(controlSocket);
             if (error.message === 'Session archived') {
                 logger.debug('[API] Archived session rejected during reconnect; exiting');
                 this.emit('archived');
@@ -286,11 +277,103 @@ export class ApiSessionClient extends EventEmitter {
             logger.debug('[API] Socket error:', error);
         });
 
+        this.socket.on('server-draining', (data) => {
+            const parsed = ReleaseDrainNoticeSchema.safeParse(data);
+            if (!parsed.success || parsed.data.deadline <= Date.now()) return;
+            void this.startReleaseHandover(parsed.data);
+        });
+
         //
         // Connect (after short delay to give a time to add handlers)
         //
 
         this.socket.connect();
+    }
+
+    private createControlSocket(handover?: ReleaseDrainNotice): Socket<ServerToClientEvents, ClientToServerEvents> {
+        return io(configuration.serverUrl, {
+            auth: {
+                token: this.token,
+                clientType: 'session-scoped' as const,
+                sessionId: this.sessionId,
+                happyClient: `cli-coding-session/${configuration.currentCliVersion}`,
+                ...(handover ? { handoverEpoch: handover.epoch } : {}),
+            },
+            ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),
+            path: '/v1/updates',
+            reconnection: false,
+            transports: ['websocket'],
+            withCredentials: true,
+            autoConnect: false,
+        });
+    }
+
+    private startReleaseHandover(notice: ReleaseDrainNotice): Promise<void> {
+        if (this.handoverInFlight) return this.handoverInFlight;
+        this.handoverInFlight = this.releaseHandover(notice).finally(() => { this.handoverInFlight = null; });
+        return this.handoverInFlight;
+    }
+
+    private async releaseHandover(notice: ReleaseDrainNotice): Promise<void> {
+        const startedAt = Date.now();
+        const previous = this.socket;
+        const candidate = this.createControlSocket(notice);
+        type TransferEvent = 'session-archive' | 'update' | 'error' | 'server-draining';
+        const transferredListeners = new Map<TransferEvent, any[]>();
+        for (const listener of previous.listeners('rpc-request') as any[]) candidate.on('rpc-request', listener);
+        const timeoutMs = Math.max(1, Math.min(10_000, notice.deadline - Date.now()));
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('release handover timeout')), timeoutMs);
+                candidate.once('connect', () => { clearTimeout(timer); resolve(); });
+                candidate.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
+                candidate.connect();
+            });
+            await this.rpcHandlerManager.onSocketConnectAndWait(candidate, timeoutMs);
+            if (this.socket !== previous) {
+                this.rpcHandlerManager.onSocketDisconnect(candidate);
+                candidate.close();
+                return;
+            }
+            for (const event of ['session-archive', 'update', 'error', 'server-draining'] as const) {
+                const listeners = previous.listeners(event) as any[];
+                previous.removeAllListeners(event);
+                for (const listener of listeners) candidate.on(event as any, listener);
+                transferredListeners.set(event, listeners);
+            }
+            this.socket = candidate;
+            candidate.on('connect', () => {
+                if (this.reconnectInterval) {
+                    clearInterval(this.reconnectInterval);
+                    this.reconnectInterval = null;
+                }
+                this.rpcHandlerManager.onSocketConnect(candidate);
+                this.receiveSync.invalidate();
+            });
+            candidate.on('disconnect', () => {
+                this.rpcHandlerManager.onSocketDisconnect(candidate);
+                this.startSmartReconnect();
+            });
+            candidate.on('connect_error', () => {
+                this.rpcHandlerManager.onSocketDisconnect(candidate);
+                this.startSmartReconnect();
+            });
+            this.receiveSync.invalidate();
+            candidate.emit('release-handover-result', { result: 'success', durationMs: Date.now() - startedAt });
+            this.rpcHandlerManager.onSocketDisconnect(previous);
+            previous.removeAllListeners('disconnect');
+            previous.close();
+        } catch (error) {
+            if (this.socket === candidate) this.socket = previous;
+            for (const [event, listeners] of transferredListeners) {
+                candidate.removeAllListeners(event);
+                for (const listener of listeners) previous.on(event as any, listener);
+            }
+            this.rpcHandlerManager.onSocketDisconnect(candidate);
+            candidate.close();
+            if (previous.connected) previous.emit('release-handover-result', { result: 'failed', durationMs: Date.now() - startedAt });
+            logger.debug(`[API] Release handover failed: ${error instanceof Error ? error.message : error}`);
+        }
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {

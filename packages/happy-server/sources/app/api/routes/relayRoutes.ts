@@ -37,7 +37,7 @@ export function relayRoutes(app: Fastify) {
         if (!await ownsMachine(request.userId, machineId)) return reply.code(404).send({ error: 'machine_not_found' });
         const candidate = config.candidates.find((item) => item.id === request.body.relayId);
         if (!candidate) return reply.code(400).send({ error: 'unknown_relay' });
-        relayRegistry.claim({
+        await relayRegistry.claim({
             accountId: request.userId,
             machineId,
             relayId: candidate.id,
@@ -68,13 +68,13 @@ export function relayRoutes(app: Fastify) {
         if (!config.enabled || !config.tokenSecret) return reply.send({ assignment: null });
         const { machineId } = request.params as { machineId: string };
         if (!await ownsMachine(request.userId, machineId)) return reply.code(404).send({ error: 'machine_not_found' });
-        const lease = relayRegistry.get(request.userId, machineId);
+        const lease = await relayRegistry.get(request.userId, machineId);
         if (!lease) return reply.send({ assignment: null });
         const candidate = config.candidates.find((item) => item.id === lease.relayId);
-        if (!candidate) {
-            relayRegistry.remove(machineId);
-            return reply.send({ assignment: null });
-        }
+        // During a blue-green overlap the other release may know a newly added
+        // relay id that this slot does not. Do not delete shared state from an
+        // older config; the TTL/new claim is the only cross-version-safe owner.
+        if (!candidate) return reply.send({ assignment: null });
         const signed = signRelayToken({
             secret: config.tokenSecret,
             accountId: request.userId,
@@ -109,13 +109,10 @@ export function relayRoutes(app: Fastify) {
             ownsMachine(request.userId, machineId),
         ]);
         if (!hasSession || !hasMachine) return reply.code(404).send({ error: 'session_or_machine_not_found' });
-        const lease = relayRegistry.get(request.userId, machineId);
+        const lease = await relayRegistry.get(request.userId, machineId);
         if (!lease) return reply.send({ assignment: null });
         const candidate = config.candidates.find((item) => item.id === lease.relayId);
-        if (!candidate) {
-            relayRegistry.remove(machineId);
-            return reply.send({ assignment: null });
-        }
+        if (!candidate) return reply.send({ assignment: null });
         const signed = signRelayToken({
             secret: config.tokenSecret,
             accountId: request.userId,

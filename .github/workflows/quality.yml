@@ -46,6 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: bash scripts/ci/smoke-server-container.sh
+      - name: Gate - blue-green release state machine
+        run: bash scripts/ci/test-blue-green-state-machine.sh
 
   gates:
     name: quality gates (wire / server / web-v2 / cli)

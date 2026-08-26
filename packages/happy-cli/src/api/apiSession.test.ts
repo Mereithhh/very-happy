@@ -56,6 +56,7 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
         onSocketConnect = vi.fn();
+        onSocketConnectAndWait = vi.fn(async () => undefined);
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
     }

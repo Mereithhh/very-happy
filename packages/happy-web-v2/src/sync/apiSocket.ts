@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
-import { RelayAssignmentResponseSchema, type RelayAssignment } from '@slopus/happy-wire';
+import { RelayAssignmentResponseSchema, ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
 
 export function getHappyClientId(): string {
@@ -82,7 +82,7 @@ class ApiSocket {
     private config: SyncSocketConfig | null = null;
     private encryption: Encryption | null = null;
     private messageHandlers: Map<string, (data: any) => void> = new Map();
-    private reconnectedListeners: Set<() => void> = new Set();
+    private reconnectedListeners: Set<() => void | Promise<void>> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
     private relaySockets = new Map<string, Socket>();
@@ -91,6 +91,7 @@ class ApiSocket {
     private relayStatuses = new Map<string, MachineRelayStatus>();
     private relayStatusListeners = new Set<(machineId: string, status: MachineRelayStatus) => void>();
     private sessionRelayRetryAfter = new Map<string, number>();
+    private handoverInFlight: Promise<void> | null = null;
 
     //
     // Initialization
@@ -113,14 +114,22 @@ class ApiSocket {
 
         this.updateStatus('connecting');
 
-        this.socket = io(this.config.endpoint, {
+        this.socket = this.createControlSocket();
+
+        this.setupEventHandlers(this.socket);
+    }
+
+    private createControlSocket(handover?: ReleaseDrainNotice): Socket {
+        return io(this.config!.endpoint, {
             path: '/v1/updates',
             auth: {
-                token: this.config.token,
+                token: this.config!.token,
                 clientType: 'user-scoped' as const,
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
+                ...(handover ? { handoverEpoch: handover.epoch } : {}),
             },
+            ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),
             // Allow HTTP long-polling fallback (+ try every transport on the
             // first attempt) so the socket still connects when wss is blocked by
             // a proxy/VPN (e.g. Clash TUN) — websocket-only would silently hang.
@@ -129,10 +138,9 @@ class ApiSocket {
             reconnection: true,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            reconnectionAttempts: Infinity
+            reconnectionAttempts: Infinity,
+            ...(handover ? { autoConnect: false } : {}),
         });
-
-        this.setupEventHandlers();
     }
 
     disconnect() {
@@ -512,22 +520,23 @@ class ApiSocket {
         return socket;
     }
 
-    private setupEventHandlers() {
-        if (!this.socket) return;
+    private setupEventHandlers(socket: Socket) {
 
         // Connection events
-        this.socket.on('connect', () => {
+        socket.on('connect', () => {
+            if (this.socket !== socket) return;
             if (this.isVerboseLogging()) {
-                console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
-                console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
+                console.log('🔌 SyncSocket: Connected, recovered: ' + socket.recovered);
+                console.log('🔌 SyncSocket: Socket ID:', socket.id);
             }
             this.updateStatus('connected');
-            if (!this.socket?.recovered) {
+            if (!socket.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
             }
         });
 
-        this.socket.on('disconnect', (reason) => {
+        socket.on('disconnect', (reason) => {
+            if (this.socket !== socket) return;
             if (this.isVerboseLogging()) {
                 console.log('🔌 SyncSocket: Disconnected', reason);
             }
@@ -535,14 +544,16 @@ class ApiSocket {
         });
 
         // Error events
-        this.socket.on('connect_error', (error) => {
+        socket.on('connect_error', (error) => {
+            if (this.socket !== socket) return;
             if (this.isVerboseLogging()) {
                 console.error('🔌 SyncSocket: Connection error', error);
             }
             this.updateStatus('error');
         });
 
-        this.socket.on('error', (error) => {
+        socket.on('error', (error) => {
+            if (this.socket !== socket) return;
             if (this.isVerboseLogging()) {
                 console.error('🔌 SyncSocket: Error', error);
             }
@@ -550,7 +561,15 @@ class ApiSocket {
         });
 
         // Message handling
-        this.socket.onAny((event, data) => {
+        socket.on('server-draining', (data: unknown) => {
+            if (this.socket !== socket) return;
+            const parsed = ReleaseDrainNoticeSchema.safeParse(data);
+            if (!parsed.success || parsed.data.deadline <= Date.now()) return;
+            void this.startHandover(parsed.data);
+        });
+
+        socket.onAny((event, data) => {
+            if (this.socket !== socket) return;
             if (this.isVerboseLogging()) {
                 console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
             }
@@ -561,6 +580,45 @@ class ApiSocket {
                 handler(data);
             }
         });
+    }
+
+    private startHandover(notice: ReleaseDrainNotice): Promise<void> {
+        if (this.handoverInFlight) return this.handoverInFlight;
+        this.handoverInFlight = this.handover(notice).finally(() => {
+            this.handoverInFlight = null;
+        });
+        return this.handoverInFlight;
+    }
+
+    private async handover(notice: ReleaseDrainNotice): Promise<void> {
+        if (!this.config || !this.socket || notice.deadline <= Date.now()) return;
+        const startedAt = Date.now();
+        const previous = this.socket;
+        const candidate = this.createControlSocket(notice);
+        const timeoutMs = Math.max(1, Math.min(10_000, notice.deadline - Date.now()));
+        try {
+            await new Promise<void>((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('release handover timeout')), timeoutMs);
+                candidate.once('connect', () => { clearTimeout(timer); resolve(); });
+                candidate.once('connect_error', (error) => { clearTimeout(timer); reject(error); });
+                candidate.connect();
+            });
+            if (this.socket !== previous) {
+                candidate.disconnect();
+                return;
+            }
+            this.socket = candidate;
+            this.setupEventHandlers(candidate);
+            this.updateStatus('connected');
+            await Promise.allSettled([...this.reconnectedListeners].map((listener) => Promise.resolve(listener())));
+            candidate.emit('release-handover-result', { result: 'success', durationMs: Date.now() - startedAt });
+            previous.disconnect();
+        } catch (error) {
+            if (this.socket === candidate) this.socket = previous;
+            candidate.disconnect();
+            if (previous.connected) previous.emit('release-handover-result', { result: 'failed', durationMs: Date.now() - startedAt });
+            if (this.isVerboseLogging()) console.error('🔌 SyncSocket: release handover failed', error);
+        }
     }
 }
 

@@ -1,0 +1,2 @@
+# Generated atomically by deploy-blue-green-remote.sh in production.
+reverse_proxy 127.0.0.1:3101

@@ -181,6 +181,14 @@ When `DATABASE_URL` is set, the image runs `prisma migrate deploy` against that
 database before serving. Without it, the same entrypoint applies the bundled
 SQL migrations to PGlite under `/data/pglite`.
 
+The maintainer blue-green topology sets `VH_RELEASE_SLOT`, `VH_RELEASE_SHA`,
+`VH_RELEASE_ADMIN_TOKEN`, and `VH_RELEASE_REPLICA_COUNT` through its private
+Compose environment. These are operator internals, not self-hosting knobs. When
+release identity is present, `REDIS_URL` becomes mandatory and startup fails
+closed; `/_vh/release/*` is token-protected and must remain
+reachable only through loopback/operator paths. Do not expose or reuse the admin
+token as an account credential.
+
 PGlite is strictly single-process. The server holds a kernel advisory lock on the
 canonical database directory for its full lifetime and refuses a second opener.
 Never attach another PGlite process to a running data directory for diagnostics;

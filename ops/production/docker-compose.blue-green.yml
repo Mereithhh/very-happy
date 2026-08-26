@@ -1,0 +1,52 @@
+name: happy-release
+
+x-happy-server: &happy-server
+  env_file:
+    - ${VH_PRODUCTION_ENV_FILE:-/opt/happy/.env}
+  restart: unless-stopped
+  stop_grace_period: 2m
+  networks:
+    - happy
+  volumes:
+    - happy-data:/data
+
+services:
+  happy-server-blue:
+    <<: *happy-server
+    container_name: happy-server-blue
+    image: ${VH_BLUE_IMAGE}
+    environment:
+      VH_RELEASE_SLOT: blue
+      VH_RELEASE_SHA: ${VH_BLUE_SHA}
+      VH_RELEASE_ADMIN_TOKEN: ${VH_RELEASE_ADMIN_TOKEN}
+      METRICS_ENABLED: "true"
+      METRICS_HOST: 0.0.0.0
+      METRICS_PORT: "9101"
+    ports:
+      - 127.0.0.1:3101:3005
+      - 127.0.0.1:9101:9101
+
+  happy-server-green:
+    <<: *happy-server
+    container_name: happy-server-green
+    image: ${VH_GREEN_IMAGE}
+    environment:
+      VH_RELEASE_SLOT: green
+      VH_RELEASE_SHA: ${VH_GREEN_SHA}
+      VH_RELEASE_ADMIN_TOKEN: ${VH_RELEASE_ADMIN_TOKEN}
+      METRICS_ENABLED: "true"
+      METRICS_HOST: 0.0.0.0
+      METRICS_PORT: "9102"
+    ports:
+      - 127.0.0.1:3102:3005
+      - 127.0.0.1:9102:9102
+
+networks:
+  happy:
+    external: true
+    name: happy_default
+
+volumes:
+  happy-data:
+    external: true
+    name: happy_happy-data

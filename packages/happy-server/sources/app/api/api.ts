@@ -186,6 +186,10 @@ export async function startApi(opts: StartApiOptions = {}) {
         });
     }
 
+    // Socket.IO and release-admin routes must be registered before Fastify
+    // starts listening. Candidate readiness therefore cannot race route setup.
+    await startSocket(typed, opts.staticDir);
+
     // Start HTTP
     const port = opts.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 3005);
     const host = opts.host ?? '0.0.0.0';
@@ -193,9 +197,6 @@ export async function startApi(opts: StartApiOptions = {}) {
     onShutdown('api', async () => {
         await app.close();
     });
-
-    // Start Socket
-    startSocket(typed);
 
     // End
     log(`API ready on http://${host}:${port}`);

@@ -36,6 +36,10 @@ dependency surface. Do not install the upstream-owned
      Socket.IO uses Redis-backed coordination.
    - Configure via `REDIS_URL`.
    - Managed by this repo: `packages/happy-server/deploy/happy-redis.yaml` (StatefulSet + redis-exporter sidecar).
+   - Optional for one process, mandatory for the maintainer blue-green release
+     topology. In that mode it backs Socket.IO cross-slot routing, connection
+     leases and relay assignment leases; readiness fails closed if Redis is not
+     healthy.
 
 3. **S3-compatible storage**
    - Used for avatars and other uploaded assets.

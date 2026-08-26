@@ -1,6 +1,6 @@
 # 生产 Server/Web 无缝发版
 
-> 状态：Reviewed Draft（方向可行；完成 Groundwork 门禁前不可直接启用切流）
+> 状态：Implemented，待生产 Groundwork / Shadow / 首次切流验收
 > 日期：2026-08-26 ｜ 关联 backlog：B-214
 
 ## 背景
@@ -39,6 +39,22 @@
   生产 CPU、PostgreSQL `max_connections` 和其他连接者计算预算，并显式配置每 slot 上限。
 
 因此推荐先做 Groundwork + shadow rollout；shadow 证据通过前保持现有单 slot 发布。
+
+## 实现状态（2026-08-26）
+
+代码已落地固定 blue/green Compose、Caddy slot query affinity 与原子 active include、
+release readiness/drain/canary、Redis Streams warmup、共享 relay lease 和连接租约、
+machine offline debounce，以及 Web、machine daemon、session runner 的 make-before-break。
+远端脚本把 `groundwork`、`shadow`、`switch` 做成三个显式 workflow phase；shadow 不会
+promote `latest`；drain 前失败只移除 candidate，drain 后失败先取消旧 slot 的 draining，
+include 写入后失败则恢复旧 include 并保留双 slot。
+
+自动证据包括 release admin/协议/客户端 handover 单测、真实 Redis 7.4.5 + 两个
+Socket.IO Server 的双向 server-side ack，以及 shell 回滚 phase fixture。Caddyfile 已在
+2.6.2 与 2.10.2 解析通过，但生产仍坚持升级到隔离 WebSocket reload 实验对应的
+≥2.10.2 后才启用。尚未完成的是生产外部 Redis/TLS/ACL、Prisma pool 预算、shadow
+资源与附件并发、完整 HTTP/WS/polling 连续探针和真机旧端兼容验收；因此不能把“代码
+已实现”写成“生产已无损”。
 
 ## 目标
 
@@ -378,7 +394,7 @@ debounce 与 RPC reconnect grace 吸收 daemon 控制 socket 的短暂切换。
 
 - [ ] 外部 Redis 的 TLS/ACL、专用 key prefix、延迟、连接数和内存配额核验通过；生产
   `REDIS_URL` 仅存在于 secret，且 Socket.IO adapter、relay lease、限流多副本语义有测试。
-- [ ] blue/green Compose、Caddy include、readiness/drain endpoint 和 release state 文件
+- [x] blue/green Compose、Caddy include、readiness/drain endpoint 和 release state 文件
   有纯函数/fixture 测试，不依赖修改真实生产文件才能验证。
 - [ ] candidate 切流前 cross-slot RPC + 双向 broadcast probe 必须通过；故意断 Redis 时
   workflow fail-closed 且 active slot 不变。
