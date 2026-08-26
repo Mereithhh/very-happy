@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '@/encryption/base64';
@@ -14,6 +14,7 @@ import { authReturnTarget } from '@/app/authReturnTarget';
 import { EmailOtpForm } from './EmailOtpForm';
 import { publicAuthMethodState } from './emailOtpPresentation';
 import { LanguageSwitcher } from '@/i18n/LanguageSwitcher';
+import { useKeyboardViewportPin } from '@/app/useKeyboardViewportPin';
 
 const MIN_USERNAME = 3;
 const MIN_PASSWORD = 8;
@@ -24,6 +25,8 @@ export function SignupScreen() {
   const location = useLocation();
   const toast = useToast();
   const { t, lang } = useTranslation();
+  const pageRef = useRef<HTMLDivElement>(null);
+  useKeyboardViewportPin(pageRef);
 
   useEffect(() => { document.title = t('signup.pageTitle'); }, [lang, t]);
 
@@ -152,7 +155,7 @@ export function SignupScreen() {
   const { emailEnabled, passwordEnabled, googleEnabled } = publicAuthMethodState(authConfig);
 
   return (
-    <div className="auth-page">
+    <div className="auth-page" ref={pageRef}>
       <CyberBackdrop />
       <div className="auth-card">
         <div className="auth-brand">
