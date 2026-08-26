@@ -1,19 +1,28 @@
 import { OrbitLoader } from '@/ui/OrbitLoader';
 
-export function RouteLoading({ fullViewport = false }: { fullViewport?: boolean }) {
+export function RouteLoading({
+  fullViewport = false,
+  label = 'Loading workspace',
+}: {
+  fullViewport?: boolean;
+  label?: string;
+}) {
   return (
     <div
       aria-busy="true"
       style={{
-        flex: 1,
-        width: '100%',
+        flex: fullViewport ? undefined : 1,
+        position: fullViewport ? 'fixed' : undefined,
+        inset: fullViewport ? 0 : undefined,
+        zIndex: fullViewport ? 20 : undefined,
+        width: fullViewport ? '100vw' : '100%',
         height: fullViewport ? '100dvh' : undefined,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <OrbitLoader size="compact" label="Loading workspace" />
+      <OrbitLoader size="compact" label={label} />
     </div>
   );
 }

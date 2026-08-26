@@ -12,6 +12,7 @@
 
 | id | 版本/批次 | 验证项 | 怎么验 | 登记日期 |
 |---|---|---|---|---|
+| V-089 | B-215：tag 入口 + loading 连续交接（待发布） | **PC 冷启动 loading 不闪烁、不因侧栏右移** | 发布后在桌面普通标签页与 PWA 各做一次真正冷启动：①启动 OrbitLoader 从首帧到 App 可用应锁在整个视口正中心，不得在侧栏出现后向右跳；②不得经历两次消失/重现；③直达首次加载的 `/settings` 重复确认；④会话行右键应显示“重命名 / 标签”，可增删 tag 并保存，终端行仍只显示“重命名”。自动化覆盖 splash 单次撤场、loader fixed viewport 契约、会话/终端菜单语义分流与完整 Web 门禁；动画连续观感需发布后肉眼清账。 | 2026-08-26 |
 | V-086 | B-210：Web 待发布 | **iOS Safari / Chrome 添加到主屏幕** | 用未安装 Very Happy 的 iPhone 分别在 Safari 与 Chrome 普通标签页打开 `https://veryhappy.dev`：安装卡片第一步应分别指向 Safari 工具栏分享、Chrome 地址栏旁分享；按“分享→添加到主屏幕→添加”完成后，从主屏幕启动应进入 standalone 模式且不再显示安装提示。另用 iPad Safari（桌面 UA）确认仍识别为 iOS 指引；系统分享面板属于 OS UI，若缺少“添加到主屏幕”，记录 iOS 与浏览器版本后排障。 | 2026-08-26 |
 | V-085 | B-210：Web 待发布 | **Android Chrome 原生 PWA 安装面板** | 用未安装 Very Happy 的 Android Chrome 普通标签页打开 `https://veryhappy.dev`（不要无痕模式），等待安装卡片出现：主按钮应显示“安装 Web App”，点击后立即打开 Chrome 原生安装面板；确认安装后应从主屏幕以 standalone 模式打开，刷新不再提示。再卸载 PWA、重新打开站点，Chrome 新的 install event 应覆盖旧的本地“已安装”标记并恢复原生安装按钮。若仍只有手动菜单说明，保留 Chrome 版本、页面 URL、是否无痕、站点设置中的安装状态后再排障。 | 2026-08-26 |
 | V-087 | B-211：统一 Usage（待发布） | **Usage 面板桌面/手机深浅主题与真实多 agent 口径** | 发布 Server→Web→CLI 后，先分别跑一个 Claude、Codex、Gemini/OpenCode 会话和一个纯终端，再进设置→Usage：①普通会话/终端会话数量分开且不重复；②各 agent 即使没有 token-count 也应有 session 行，有上报的显示 token；③Claude 多轮总量持续增长，刷新/daemon 重连不翻倍；④Codex 累计快照多次更新不重复累计；⑤无可靠费用的 agent 显示 `—` 而非 `$0.00`；⑥390px 与桌面、深浅主题均无横向溢出，四个 ledger 卡手机为 2×2，趋势/agent 条不使用发光或装饰性 teal。自动化已覆盖归一化、幂等 key、updatedAt 归桶、会话归因、无 token 空态及三包完整门禁；本机缺已安装 agent-browser/playwright CLI，不能冒充真实视觉验收。 | 2026-08-26 |

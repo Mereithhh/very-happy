@@ -45,6 +45,7 @@ import {
 } from './sidebarRecentSort';
 import { groupRowsByLifecycle, completedTodaySessions } from './sidebarStatusView';
 import { attentionKeysOf, rowSignalOf, type RowSignal } from './sidebarAttention';
+import { rowRenameMenuTranslationKeys } from './sidebarRowMenu';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { resolveTerminalOpenPath } from '@/sync/terminalViewPref';
 import './sidebar.css';
@@ -1139,7 +1140,12 @@ function rowMenuItems(opts: {
 }): MenuItemDef[] {
   const { t } = opts;
   const items: MenuItemDef[] = [
-    { key: 'rename', label: t('common.rename'), icon: Pencil, onSelect: opts.onRename },
+    {
+      key: 'rename',
+      label: rowRenameMenuTranslationKeys(opts.isTerminal).map((key) => t(key)).join(' / '),
+      icon: Pencil,
+      onSelect: opts.onRename,
+    },
   ];
   if (opts.onTogglePriority) {
     items.push({

@@ -30,6 +30,7 @@ import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
+import { dismissPrepaintSplash } from './prepaintSplash';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -45,7 +46,7 @@ const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen')
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
 
-function Lazy({ children, fullViewport = false }: { children: ReactNode; fullViewport?: boolean }) {
+function Lazy({ children, fullViewport = true }: { children: ReactNode; fullViewport?: boolean }) {
   return (
     <Suspense
       fallback={<RouteLoading fullViewport={fullViewport} />}
@@ -101,11 +102,7 @@ function HomeGate() {
   const sessions = useSessions();
   const terminalCount = useTerminalSessions((state) => state.terminals.length);
   if (!dataReady) {
-    return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <OrbitLoader size="compact" label={t('common.loading')} />
-      </div>
-    );
+    return <RouteLoading fullViewport label={t('common.loading')} />;
   }
   if (shouldShowFirstRun(dataReady, machines.length)) return <FirstRunScreen />;
   if (dataReady && (sessions?.length ?? 0) === 0 && terminalCount === 0) return <HelpScreen />;
@@ -243,6 +240,10 @@ export function AppRoot() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!booting) dismissPrepaintSplash();
+  }, [booting]);
 
   return (
     <ThemeProvider>

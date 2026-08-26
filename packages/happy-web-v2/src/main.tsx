@@ -13,6 +13,7 @@ import { installPwaPromptCapture } from './app/pwaInstallCapture.ts';
 import { installStaleBundleReload } from './app/staleBundleReload.ts';
 import { markProgrammaticReload } from './app/programmaticReload.ts';
 import { shouldUsePublicRoot } from './app/rootSelection.ts';
+import { dismissPrepaintSplash } from './app/prepaintSplash.ts';
 
 // Capture Chrome's one-shot install event before the public/authenticated root
 // and their lazy chunks load. PwaInstallPrompt consumes the retained event.
@@ -58,11 +59,7 @@ void rootModule.then((RootComponent) => {
     </StrictMode>,
   );
 
-  // Remove the pre-paint splash once the selected React root has mounted.
-  const splash = document.getElementById('vh-splash');
-  const keepSplashForPreview = new URLSearchParams(window.location.search).has('vh-loader-preview');
-  if (splash && !keepSplashForPreview) {
-    splash.style.opacity = '0';
-    setTimeout(() => splash.remove(), 340);
-  }
+  // Public pages have no async account bootstrap. AppRoot owns the
+  // authenticated handoff after credentials + persisted sync are restored.
+  if (usePublicRoot) dismissPrepaintSplash();
 });
