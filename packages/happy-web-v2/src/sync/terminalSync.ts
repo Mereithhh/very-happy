@@ -29,7 +29,7 @@
  * one intended caller; the refcount just makes an accidental second mount
  * (StrictMode double-effects, future layouts) harmless.
  */
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { storage } from '@/sync/storage';
 import { apiSocket } from '@/sync/apiSocket';
 import { applyRemoteTerminalActivity } from '@/sync/activityOverlayStore';
@@ -128,7 +128,11 @@ let stopLoop: (() => void) | null = null;
 
 /** Mount-scoped handle on the singleton loop (see module header). */
 export function useTerminalSync(): void {
-  useEffect(() => {
+  // Initial machine snapshots are already in the restored storage store when
+  // AppLayout mounts. Feed them in a layout effect so HomeGate is rerendered
+  // before the browser can paint a false "zero terminals" workspace guide.
+  // Later push updates still use the same ordinary store subscription.
+  useLayoutEffect(() => {
     refCount += 1;
     if (refCount === 1) stopLoop = startLoop();
     return () => {

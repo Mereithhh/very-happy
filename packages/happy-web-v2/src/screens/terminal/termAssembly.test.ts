@@ -223,7 +223,7 @@ describe('rebuilding', () => {
 });
 
 describe('abort paths (all land in done, no undo needed)', () => {
-    for (const reason of ['gap', 'snapshot-expired', 'page-failed', 'disposed', 'superseded'] as const) {
+    for (const reason of ['gap', 'snapshot-expired', 'page-failed', 'initial-timeout', 'disposed', 'superseded'] as const) {
         it(`abort(${reason}) from buffering releases everything`, () => {
             const a = createTermAssembly();
             a.start({ snapshotId: 's', totalPages: 2 });

@@ -183,6 +183,12 @@
   width: 100%;
   overflow: hidden;
 }
+/* Initial attach coalesces the small snapshot and its fast deep-history
+   rebuild behind the pane. No opacity transition: the first visible terminal
+   frame is already final, while real post-attach resize remains fully live. */
+.term-host--settling .term-host-inner {
+  visibility: hidden;
+}
 .term-host-inner .xterm {
   height: 100%;
   width: 100%;

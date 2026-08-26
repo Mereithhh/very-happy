@@ -47,6 +47,16 @@ describe('capability declaration + per-mount latch (§D3)', () => {
 });
 
 describe('assembly wiring (§D1 传输与重建)', () => {
+    it('coalesces the initial small snapshot and history rebuild behind one stable paint', () => {
+        expect(screen.includes('createTermInitialPaintGate({')).toBe(true);
+        expect(screen.includes("term.write('', done)")).toBe(true);
+        expect(screen.includes('initialPaintGate.snapshotQueued(waitsForInitialHistory)')).toBe(true);
+        expect(screen.includes('initialPaintGate.historySettled()')).toBe(true);
+        expect(screen.includes("assembly.abort('initial-timeout')")).toBe(true);
+        expect(screen.includes("' term-host--settling'")).toBe(true);
+        expect(css).toMatch(/\.term-host--settling \.term-host-inner \{\s*visibility: hidden;/);
+    });
+
     it('applied chunks reach the assembly — live AND replay', () => {
         // Both branches of applyLiveChunk plus the replay loop must write via
         // liveWrite (which takes the copy); gatedWrite alone means "not copied".
@@ -213,7 +223,7 @@ describe('geometry ownership (B-124 duplicate status line)', () => {
     it('adopts the pane size from the open response BEFORE the restore is written', () => {
         const latch = screen.indexOf("linesActive = mountStreamMode === 'lines'");
         const adopt = screen.indexOf('adoptGeometry(res.paneCols, res.paneRows)');
-        const restore = screen.indexOf('outChain = outChain.then(applyOpenResult(res, 0))');
+        const restore = screen.indexOf('const initialRestore = applyOpenResult(res, 0)');
         expect(latch).toBeGreaterThan(-1);
         expect(adopt).toBeGreaterThan(latch);
         expect(restore).toBeGreaterThan(adopt);
