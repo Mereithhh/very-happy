@@ -73,9 +73,21 @@
 
 /* touch: the mode pills are ~22px tall with 3px padding — too small to tap
  * reliably; grow padding (still compact) and menu rows get taller targets. */
-@media (pointer: coarse) {
+@media (max-width: 600px), (pointer: coarse) {
   .mm-trigger {
-    padding: 7px 11px;
+    justify-content: center;
+    padding: 8px 6px;
+    overflow: hidden;
+  }
+  .mm-k,
+  .mm-caret {
+    flex: none;
+  }
+  .mm-v {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .mm-item {
     padding: 10px var(--sp-2);

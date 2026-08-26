@@ -18,11 +18,18 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .sd-foot {
   flex: none;
+  position: relative;
+  z-index: 1;
+  min-height: 0;
   border-top: 1px solid var(--line);
   background: var(--bg-1);
+}
+.sd[data-keyboard-open='true'] {
+  overflow: hidden;
 }
 .sd-loading {
   width: 100%;
