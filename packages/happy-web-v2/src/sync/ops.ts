@@ -651,6 +651,8 @@ export type TerminalAgentState = 'working' | 'needs_input' | 'idle' | 'shell';
 export interface MachineTerminal {
     id: string;
     title?: string;
+    /** Present (including []) only when the daemon supports terminal tags. */
+    tags?: string[];
     cwd?: string;
     createdAt?: number;
     /** tmux session_activity (ms) — newer daemons only; fall back to createdAt. */
@@ -678,6 +680,19 @@ export async function machineSetTerminalTitle(machineId: string, terminalId: str
         return true;
     } catch {
         return false; // best-effort
+    }
+}
+
+/** Persist terminal tags in the owning daemon's tmux session. Never called
+ * for old daemons: their pushed terminal row has tags === undefined. */
+export async function machineSetTerminalTags(machineId: string, terminalId: string, tags: string[]): Promise<boolean> {
+    try {
+        await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string; tags: string[] }>(
+            machineId, 'set-terminal-tags', { terminalId, tags },
+        );
+        return true;
+    } catch {
+        return false;
     }
 }
 

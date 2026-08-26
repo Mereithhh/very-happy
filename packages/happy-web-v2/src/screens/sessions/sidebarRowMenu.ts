@@ -1,6 +1,6 @@
-/** Sessions open a title + tags editor; terminals only support title rename. */
+/** Capability-driven label: old terminal daemons remain title-only. */
 export function rowRenameMenuTranslationKeys(
-  isTerminal: boolean,
+  supportsTags: boolean,
 ): readonly ['common.rename'] | readonly ['common.rename', 'renameModal.tagsLabel'] {
-  return isTerminal ? ['common.rename'] : ['common.rename', 'renameModal.tagsLabel'];
+  return supportsTags ? ['common.rename', 'renameModal.tagsLabel'] : ['common.rename'];
 }

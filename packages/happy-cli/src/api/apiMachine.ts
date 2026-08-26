@@ -462,6 +462,17 @@ export class ApiMachineClient {
             return { type: 'success' };
         });
 
+        this.rpcHandlerManager.registerHandler('set-terminal-tags', async (params: any) => {
+            const { terminalId, tags } = params || {};
+            if (!terminalId || !Array.isArray(tags)) {
+                throw new Error('terminalId and tags are required');
+            }
+            if (!this.webTerminal.setTags(terminalId, tags)) {
+                throw new Error('Failed to set terminal tags (invalid tags, tmux unavailable, or session gone)');
+            }
+            return { type: 'success' };
+        });
+
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
             const { sessionId } = params || {};

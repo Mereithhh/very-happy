@@ -9,10 +9,10 @@ import './renamemodal.css';
 
 /**
  * Rename dialog (replaces the old single-line Modal.prompt): title input plus
- * — for chat sessions — a tag chips editor (Enter adds, × removes, existing
- * tags across sessions offered as suggestions). Terminal rows get the
- * title-only variant: terminal tags would need daemon-side storage (tmux
- * @vh_tags, like @vh_title) and are deferred — see the feature report.
+ * — for tag-capable rows — a tag chips editor (Enter adds, × removes, existing
+ * tags across sessions and terminals offered as suggestions). Old terminal
+ * daemons keep the title-only variant through the `tags === undefined`
+ * capability marker.
  *
  * Presentation-only: the caller persists via onSave(title, tags).
  */
@@ -24,7 +24,7 @@ export function RenameModal({
   onSave,
 }: {
   defaultTitle: string;
-  /** undefined → this row has no tag support (terminals); [] → empty editor. */
+  /** undefined → this row has no tag support; [] → supported, empty editor. */
   tags?: string[];
   /** Existing tags across all sessions (suggestion chips). */
   suggestions?: string[];

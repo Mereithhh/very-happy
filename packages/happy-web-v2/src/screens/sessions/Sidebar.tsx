@@ -247,6 +247,7 @@ export function Sidebar() {
             machineName: tm.machineName,
             workspacePath: tm.cwd,
             title: tm.title || tm.machineName,
+            tags: tm.tags,
             subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
           }));
@@ -621,8 +622,8 @@ export function Sidebar() {
 
   // ----- rename modal (title + tags) -----
   const [renameTarget, setRenameTarget] = useState<Row | null>(null);
-  // Suggestions: every tag currently in use across sessions, most-used first.
-  const allTags = useMemo(() => collectAllTags(sessions), [sessions]);
+  // Suggestions: every tag currently in use across sessions and terminals.
+  const allTags = useMemo(() => collectAllTags(sessions, terminals), [sessions, terminals]);
 
   // Quick-switch: hold ⌘/Ctrl to reveal 1-9 badges on the first rows; ⌘/Ctrl+digit
   // jumps to that conversation. Mirrors the v1 power-user shortcut. Order =
@@ -1099,16 +1100,24 @@ export function Sidebar() {
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}
-          tags={renameTarget.kind === 'session' ? renameTarget.session!.metadata?.tags ?? [] : undefined}
+          tags={
+            renameTarget.kind === 'session'
+              ? renameTarget.session!.metadata?.tags ?? []
+              : renameTarget.tags
+          }
           suggestions={allTags}
           onClose={() => setRenameTarget(null)}
           onSave={async (title, tags) => {
             const target = renameTarget;
-            // shared flow (rowActions.saveRowRename): terminals are
-            // title-only; sessions only write what actually changed.
+            // Shared flow writes only fields that actually changed.
             await saveRowRename(
               target.kind === 'terminal'
-                ? { kind: 'terminal', terminalId: target.terminalId!, currentTitle: target.title }
+                ? {
+                    kind: 'terminal',
+                    terminalId: target.terminalId!,
+                    currentTitle: target.title,
+                    currentTags: target.tags,
+                  }
                 : { kind: 'session', session: target.session!, currentTitle: target.title },
               title,
               tags,
@@ -1128,13 +1137,13 @@ export function Sidebar() {
 function rowMenuItems(opts: {
   t: ReturnType<typeof useTranslation>['t'];
   isTerminal: boolean;
+  supportsTags: boolean;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onRename: () => void;
   onMove?: (dir: -1 | 1) => void;
   onArchiveOrClose: () => void;
-  /** B-091 priority marker — sessions only (terminals have no tag storage);
-   *  undefined hides the item. */
+  /** B-091 priority marker; undefined hides it on old terminal daemons. */
   isPriority?: boolean;
   onTogglePriority?: () => void;
 }): MenuItemDef[] {
@@ -1142,7 +1151,7 @@ function rowMenuItems(opts: {
   const items: MenuItemDef[] = [
     {
       key: 'rename',
-      label: rowRenameMenuTranslationKeys(opts.isTerminal).map((key) => t(key)).join(' / '),
+      label: rowRenameMenuTranslationKeys(opts.supportsTags).map((key) => t(key)).join(' / '),
       icon: Pencil,
       onSelect: opts.onRename,
     },
@@ -1280,6 +1289,7 @@ function SidebarRow({
   const menuItems = rowMenuItems({
     t,
     isTerminal,
+    supportsTags: !isTerminal || row.tags !== undefined,
     canMoveUp,
     canMoveDown,
     onRename: onRenameRequest,
@@ -1288,9 +1298,14 @@ function SidebarRow({
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
     // update-metadata op as the rename dialog (togglePriorityTag prepends the
     // tag, so the row also lands in the priority group when grouping is on).
-    isPriority: !isTerminal && hasPriorityTag(s?.metadata?.tags),
+    isPriority: hasPriorityTag(row.tags),
     onTogglePriority: isTerminal
-      ? undefined
+      ? row.tags === undefined
+        ? undefined
+        : () =>
+            useTerminalSessions
+              .getState()
+              .update(row.terminalId!, { tags: togglePriorityTag(row.tags) })
       : () => {
           void sessionUpdateTitleTags(s!.id, { tags: togglePriorityTag(s!.metadata?.tags) }).catch(
             () => {},

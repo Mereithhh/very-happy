@@ -32,7 +32,7 @@ actual agent TUI in a Very Happy terminal.
 | Switch visible sidebar rows 1–9 | `Command+1` … `Command+9` | `Ctrl+1` … `Ctrl+9` | Tap the row |
 | Saved prompt menu | `Command+.` | `Ctrl+.` | Prompt shortcut button |
 | Toggle notes | `Command+J` | `Ctrl+J` | Notes header button |
-| Rename current work | `Command+R` | `Ctrl+R` | Row menu → Rename |
+| Edit current title/tags | `Command+R` | `Ctrl+R` | Row menu → Rename / Tags |
 | Go back | `Command+[` or `Alt+Left` outside editors | `Alt+Left` outside editors | Back button or left-edge swipe |
 | New terminal in installed PWA | `Command+N` | `Ctrl+N` outside editable/terminal input | New button |
 | New terminal in a browser tab | `Alt+N` outside editors | `Alt+N` outside editors | New button |

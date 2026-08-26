@@ -25,7 +25,7 @@ describe('groupRowsByTag (B-091)', () => {
     expect(keysOf(groups)).toEqual([['Deploy', ['a', 'b']]]);
   });
 
-  it('untagged rows (terminals included — they have no tags) tail as the null group', () => {
+  it('untagged rows tail as the null group', () => {
     const groups = groupRowsByTag([row('t1'), row('a', ['deploy']), row('t2', [])]);
     expect(keysOf(groups)).toEqual([
       ['deploy', ['a']],

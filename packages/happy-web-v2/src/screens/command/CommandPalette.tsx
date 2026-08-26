@@ -56,7 +56,7 @@ type CommandItem = {
   icon: React.ReactNode;
   /** lower-cased haystack for substring matching */
   haystack: string;
-  /** session tags — `#tag` query terms filter on these (sidebar grammar) */
+  /** chat/terminal tags — `#tag` query terms filter on these (sidebar grammar) */
   tags?: string[];
   /** optional keyboard-shortcut hint rendered on the row's right edge */
   hint?: string;
@@ -307,6 +307,7 @@ export function CommandPalette() {
         subtitle: sub,
         icon: <TerminalSquare size={16} />,
         haystack: `${term.title} ${sub}`.toLowerCase(),
+        tags: term.tags,
         run: () => navigate(`/terminal/${term.machineId}?tid=${term.id}`),
       });
     }
@@ -325,9 +326,9 @@ export function CommandPalette() {
 
   // ── filter + sort by match position (actions always kept above nav on ties) ──
   // The sidebar's `#tag` grammar applies here too (the search box the palette
-  // replaced supported it): `#foo` terms AND-filter on session tags, the
+  // replaced supported it): `#foo` terms AND-filter on row tags, the
   // free-text remainder keeps the substring match over the haystack. Items
-  // without tags (actions, terminals) simply fail any tag constraint.
+  // without tags (actions and old-daemon terminals) fail tag constraints.
   const filtered = useMemo(() => {
     const parsed = parseSidebarQuery(query);
     if (sidebarQueryIsEmpty(parsed)) return items;

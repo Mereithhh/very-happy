@@ -183,6 +183,9 @@ export type CliUpdateState = z.infer<typeof CliUpdateStateSchema>
 export const WebTerminalListItemSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
+  /** New daemons always send an array (including []); absence identifies an
+   * old daemon that cannot persist terminal tags. */
+  tags: z.array(z.string()).optional(),
   cwd: z.string().optional(),
   createdAt: z.number().optional(),
   activityAt: z.number().optional(),

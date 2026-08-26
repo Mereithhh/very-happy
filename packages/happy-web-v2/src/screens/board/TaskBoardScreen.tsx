@@ -34,6 +34,7 @@ import { ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
 import { collectAllTags, markSessionDone, saveRowRename } from '@/app/rowActions';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { RenameModal } from '@/screens/sessions/RenameModal';
+import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useBoardItems, useBoardCompleted } from './useBoardItems';
 import { BoardCard, fmtDuration } from './BoardCard';
 import { buildLifecycleColumns, groupBoardItems, type BoardItem, type CompletedEntry } from './boardItems';
@@ -623,16 +624,25 @@ export function TaskBoardScreen() {
           tags={
             renameItem.kind === 'session'
               ? storage.getState().sessions[renameItem.key]?.metadata?.tags ?? []
-              : undefined
+              : renameItem.tags
           }
-          suggestions={collectAllTags(Object.values(storage.getState().sessions))}
+          suggestions={collectAllTags(
+            Object.values(storage.getState().sessions),
+            useTerminalSessions.getState().terminals,
+          )}
           onClose={() => setRenameItem(null)}
           onSave={async (title, tags) => {
             const item = renameItem;
             if (item.kind === 'terminal') {
               await saveRowRename(
-                { kind: 'terminal', terminalId: item.key.slice(2), currentTitle: item.title },
+                {
+                  kind: 'terminal',
+                  terminalId: item.key.slice(2),
+                  currentTitle: item.title,
+                  currentTags: item.tags,
+                },
                 title,
+                tags,
               );
               return;
             }
