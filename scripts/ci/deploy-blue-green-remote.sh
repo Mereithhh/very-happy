@@ -192,7 +192,7 @@ wait_ready() {
         if printf '%s' "$body" | grep -Fq '"status":"ready"' \
             && printf '%s' "$body" | grep -Fq "\"slot\":\"$slot\"" \
             && printf '%s' "$body" | grep -Fq "\"release\":\"$release\"" \
-            && printf '%s' "$body" | grep -Fq "-$release.js"; then
+            && printf '%s' "$body" | grep -Fq -- "-$release.js"; then
             ready=true
             break
         fi

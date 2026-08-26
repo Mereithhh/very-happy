@@ -17,6 +17,18 @@ old_epoch=$(release_epoch 9 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)
 new_epoch=$(release_epoch 10 0000000000000000000000000000000000000000)
 [[ "$new_epoch" > "$old_epoch" ]] || fail 'release generation must sort ahead of commit digest'
 
+# A release SHA can make the asset suffix begin with a grep option (for
+# example "-d..."). Readiness must treat it as data, never as CLI flags.
+option_like_release=d35ba62af335e7006243ecd35ba62af335e700624
+admin_curl() {
+    printf '{"status":"ready","slot":"green","release":"%s","asset":"/assets/index-%s.js"}' \
+        "$option_like_release" "$option_like_release"
+}
+sleep() { :; }
+wait_ready 3102 green "$option_like_release" \
+    || fail 'readiness asset match must accept option-like release suffixes'
+unset -f admin_curl sleep
+
 migration_review_file=$(mktemp)
 ACTIVE_IMAGE=active-image
 IMAGE=candidate-image
