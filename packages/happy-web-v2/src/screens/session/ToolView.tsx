@@ -4,7 +4,7 @@
  * (including the long tail of MCP tools) gets an attractive default with a
  * collapsible pretty-printed input + output rather than a raw JSON blob.
  */
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
@@ -38,13 +38,16 @@ function asString(v: unknown): string | null {
 // Collapsible labelled section used by the default / search / web views.
 function Section({ label, children, defaultOpen = true }: { label: string; children: ReactNode; defaultOpen?: boolean }) {
     const [open, setOpen] = useState(defaultOpen);
+    const bodyId = useId();
     return (
         <div className="tv-section">
-            <button type="button" className="tv-section-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+            <button type="button" className="tv-section-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                 <ChevronRight size={12} className={`tg-chevron${open ? ' is-open' : ''}`} />
                 <span>{label}</span>
             </button>
-            {open && <div className="tv-section-body">{children}</div>}
+            <div id={bodyId} className="tv-section-body vh-disclosure-panel" hidden={!open}>
+                {open && children}
+            </div>
         </div>
     );
 }

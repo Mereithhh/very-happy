@@ -144,7 +144,10 @@
   background: linear-gradient(to bottom, transparent, var(--cv-surface));
 }
 .cv-expand {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
   width: 100%;
   padding: 4px var(--sp-3);
   font-family: var(--font-mono);

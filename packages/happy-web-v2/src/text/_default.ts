@@ -541,8 +541,8 @@ export const en = {
             // Long-content collapse in the transcript (B-097 code blocks /
             // B-102 user bubbles)
             expandLines: ({ lines }: { lines: number }) => `Show all (${lines} lines)`,
-            collapseLines: 'Collapse',
-            expandMessage: 'Expand',
+            collapseLines: 'Collapse details',
+            expandMessage: 'Expand full message',
         },
         permission: {
             title: 'Permission required',

@@ -3,7 +3,7 @@
  * collapsible block with a mono font and a teal accent left-spine. The spine
  * color encodes state: teal=running, danger=error, warn=mixed, line=done.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
@@ -33,6 +33,7 @@ function groupState(tools: ToolCallMessage[]): GroupState {
 function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOpen: boolean }) {
     const tool = message.tool;
     const [open, setOpen] = useState(defaultOpen);
+    const bodyId = useId();
     // 与 ToolView 同一手法（它也是 useParams），避免为了一个 id 改整条 props 链
     const { id: sessionId } = useParams();
     // B-145: 带文件路径的工具，头部的 detail 变成可点——点开预览而不是折叠这一行
@@ -50,7 +51,7 @@ function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOp
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
-                <button type="button" className="tg-row-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+                <button type="button" className="tg-row-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                     <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
                     <span className="tg-tool-label">{label}</span>
@@ -63,7 +64,9 @@ function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOp
                     <span className="tg-tool-detail">{detail}</span>
                 )}
             </div>
-            {open && <ToolView message={message} />}
+            <div id={bodyId} className="vh-disclosure-panel" hidden={!open}>
+                {open && <ToolView message={message} />}
+            </div>
         </div>
     );
 }
@@ -75,6 +78,7 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
     const compact = useMediaQuery('(max-width: 860px)');
     // collapsed by default once done; open while running.
     const [expanded, setExpanded] = useState(running || tools.length === 1);
+    const rowsId = useId();
 
     useEffect(() => {
         if (running) setExpanded(true);
@@ -107,9 +111,10 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
             <div className="tg-content">
                 <button
                     type="button"
-                    className="tg-head"
+                    className="tg-head vh-disclosure-trigger"
                     onClick={() => setExpanded((v) => !v)}
                     aria-expanded={expanded}
+                    aria-controls={rowsId}
                 >
                     <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
                     <span className="tg-summary">{t('session.chat.usedTools', { count: tools.length })}</span>
@@ -128,8 +133,8 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                         </span>
                     ) : null}
                 </button>
-                {expanded && (
-                    <div className="tg-rows">
+                <div id={rowsId} className="tg-rows vh-disclosure-panel" hidden={!expanded}>
+                    {expanded && <>
                         {tools.map((m) => (
                             <ToolRow
                                 key={m.id}
@@ -137,8 +142,8 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                                 defaultOpen={m.tool.state === 'running' || m.tool.state === 'error'}
                             />
                         ))}
-                    </div>
-                )}
+                    </>}
+                </div>
             </div>
         </div>
     );

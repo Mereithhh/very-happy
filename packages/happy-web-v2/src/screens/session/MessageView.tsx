@@ -3,8 +3,8 @@
  * upstream in ChatList; here we render the leaf kinds and (for grouped tool
  * runs) hand off to ToolGroupView.
  */
-import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, Terminal } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Brain, ChevronDown, ChevronRight, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession } from '@/sync/storage';
@@ -22,6 +22,7 @@ function UserText({ message }: { message: UserTextMessage }) {
     // Long-message collapse (B-102): clamp + fade + explicit expand replaces
     // the old 40dvh nested scroll area (wheel must bubble to the transcript).
     const [expanded, setExpanded] = useState(false);
+    const contentId = useId();
     const raw = message.displayText ?? message.text;
     const parsed = parseLocalCommandMessage(raw);
 
@@ -46,18 +47,20 @@ function UserText({ message }: { message: UserTextMessage }) {
         <div className="msg msg--user">
             <div className="msg-bubble-wrap vh-copyhost">
                 <div className="msg-bubble">
-                    <div className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
+                    <div id={contentId} className={`msg-bubble-text${clamped ? ' msg-bubble-text--clamped' : ''}`}>
                         {text}
                         {clamped && <div className="msg-bubble-fade" aria-hidden />}
                     </div>
                     {canCollapse && (
                         <button
                             type="button"
-                            className="msg-bubble-expand"
+                            className="msg-bubble-expand vh-disclosure-trigger"
                             onClick={() => setExpanded((v) => !v)}
                             aria-expanded={!clamped}
+                            aria-controls={contentId}
                         >
-                            {clamped ? t('session.chat.expandMessage') : t('session.chat.collapseLines')}
+                            <span>{clamped ? t('session.chat.expandMessage') : t('session.chat.collapseLines')}</span>
+                            <ChevronDown size={13} className={`vh-disclosure-icon${!clamped ? ' is-open' : ''}`} aria-hidden />
                         </button>
                     )}
                 </div>
@@ -94,6 +97,7 @@ function AgentText({
             now: Date.now(),
         });
     const [open, setOpen] = useState(live);
+    const thinkingId = useId();
     const userToggledRef = useRef(false);
     useEffect(() => {
         if (!userToggledRef.current) setOpen(live);
@@ -115,19 +119,19 @@ function AgentText({
         return (
             <div className="msg msg--agent">
                 <div className="msg-thinking">
-                    <button type="button" className="msg-thinking-head" onClick={toggleOpen} aria-expanded={open}>
+                    <button type="button" className="msg-thinking-head vh-disclosure-trigger" onClick={toggleOpen} aria-expanded={open} aria-controls={thinkingId}>
                         <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
-                        <span className="msg-thinking-emoji" aria-hidden>💭</span>
+                        <Brain size={13} className="msg-thinking-icon" aria-hidden />
                         <span>{durationLabel ?? t('session.chat.thinkingLabel')}</span>
                         {!open && preview && <span className="msg-thinking-preview">{preview}</span>}
                     </button>
-                    {open && (
-                        <div className="msg-thinking-body vh-copyhost">
+                    <div id={thinkingId} className="msg-thinking-body vh-copyhost vh-disclosure-panel" hidden={!open}>
+                        {open && <>
                             <Markdown text={content} />
                             {/* copies the thinking source text (wrapper stripped) */}
                             <CopyButton text={content} className="vh-copy--overlay" label={t('message.copyMessage')} />
-                        </div>
-                    )}
+                        </>}
+                    </div>
                 </div>
             </div>
         );

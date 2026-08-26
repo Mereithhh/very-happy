@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-209 | **普通结构化对话的展开/收起与 focus 视觉降噪**：长消息、思考、工具组、工具详情和代码块使用同一 disclosure 交互语言，明确展开内容与状态；移除大面积青色 glow/整圈 focus 框，改为不跳布局的底部 focus 轨，同时保留键盘可见性、`aria-expanded/controls`、运行/失败不自动折叠与 reduced-motion | ux/a11y | Owner 视觉反馈 2026-08-26 | doing | 纯 Web；沿用 Console token，不改变消息/工具状态模型。 |
 | B-208 | **工作区成为会话列表与代码上下文的一等视图**：侧栏可按 `machine + cwd` 把结构化会话和终端组织到同一项目下；每个工作区可直接进入 Changes，上下文面板的 Changes / Files / Browse 写入 URL，浏览器返回可关闭，移动端保持全屏切换。不得引入新协议、复制 Paseo AGPL 代码或打乱既有手动排序 | feat/ux | Owner 要求参考 Paseo 后直接开发 2026-08-26 | doing | 首批 spec：`specs/2026-08-workspace-context.md`；后续 turn outline / retained pane 另行评估，不塞进本批。 |
 | B-207 | **App 首页首帧短暂闪出教程内容**：首次进入工作区时，机器/会话等持久化状态尚未完成 hydration，右侧内容区不得先按“零会话”渲染教程再切换到真实首页；loading 与真实空态必须可区分，且刷新、已有数据和真正的新账号均有回归覆盖 | bug/ux | Owner 实报 2026-08-26 | done | `8dcc13cd` 将已恢复 machine terminal push 改为 layout effect，在 paint 前完成同一同步，真实零会话教程仍保留。Web 138 files / 1,605 tests、build、tsc 与 Quality `32917249129` 全绿；deploy `32917522717` 后用新 entry 全新加载首页，采样全程 `everHelp=false`，直接落到“继续上次的工作”。 |
 | B-206 | **重新进入已有 tmux/TUI 会话时首屏完成后再闪一次**：首次 attach 必须只提交一个稳定首帧，避免初始 fit、服务端 geometry 与 tmux repaint 的重复可见切换；真实容器/键盘 resize 仍需正常重绘并同步 geometry | bug/terminal | Owner 实报 2026-08-26 | done | 生产旧版采样确认字体已 ready；小快照约 319ms 可见，深历史 `reset → replay` 约 46ms 后再次改写整屏。`8dcc13cd` 新增按 `tid:stream generation` 隔离的有界首帧门：快速历史合并成一次 paint，900ms 超时则稳定展示小快照并禁止迟到重绘。新 entry 同一真实 TUI 仅出现一个新会话可见非空帧；文件侧栏触发真实 resize 后 TUI 正常连续重排，终端始终 visible、从未重进 settling。 |

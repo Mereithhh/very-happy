@@ -548,8 +548,8 @@ export const zhHans: TranslationStructure = {
             editN: ({ n, total }: { n: number; total: number }) => `第 ${n} / ${total} 处修改`,
             replaceAll: '全部替换',
             expandLines: ({ lines }: { lines: number }) => `展开全部（${lines} 行）`,
-            collapseLines: '收起',
-            expandMessage: '展开',
+            collapseLines: '收起详情',
+            expandMessage: '展开全文',
         },
         permission: {
             title: '需要权限',
