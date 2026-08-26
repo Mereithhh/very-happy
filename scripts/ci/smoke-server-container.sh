@@ -79,6 +79,28 @@ wait_for_health() {
   return 1
 }
 
+wait_for_postgres() {
+  local container="$1"
+  for _ in $(seq 1 60); do
+    if ! docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -q true; then
+      docker logs "$container" >&2
+      return 1
+    fi
+
+    # The official image briefly starts a temporary server while running its
+    # init scripts, then stops it before launching the final server. A plain
+    # pg_isready can observe that temporary server and race the restart.
+    if docker logs "$container" 2>&1 | grep -q 'PostgreSQL init process complete; ready for start up.' \
+      && docker exec "$container" psql -U postgres -d happy -Atqc 'SELECT 1' 2>/dev/null | grep -qx 1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  docker logs "$container" >&2
+  return 1
+}
+
 start_pglite
 PORT="$(wait_for_health "$APP")"
 curl -fsS -o "$DATA_DIR/landing.html" "http://127.0.0.1:${PORT}/"
@@ -108,11 +130,7 @@ grep -q '"token"' "$DATA_DIR/login.json"
 docker network create "$NET" >/dev/null
 docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=happy postgres:16-alpine >/dev/null
-for _ in $(seq 1 60); do
-  docker exec "$PG" pg_isready -U postgres -d happy >/dev/null 2>&1 && break
-  sleep 1
-done
-docker exec "$PG" pg_isready -U postgres -d happy >/dev/null
+wait_for_postgres "$PG"
 docker run -d --name "$PG_APP" --network "$NET" -p 127.0.0.1::3005 \
   -e HANDY_MASTER_SECRET='container-smoke-master-secret-not-production' \
   -e SIGNUP_MODE=open -e SIGNUP_MAX_ACCOUNTS=2 \
