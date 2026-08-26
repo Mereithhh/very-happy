@@ -89,6 +89,14 @@ describe('formatCwd', () => {
   });
 });
 
+describe('terminal tag mapping', () => {
+  it('carries tags to board actions and honors the priority convention', () => {
+    const [item] = build({ terminals: [mkTerminal({ id: 't1', tags: ['priority', 'prod'] })] });
+    expect(item.tags).toEqual(['priority', 'prod']);
+    expect(item.priority).toBe(true);
+  });
+});
+
 describe('chat session mapping', () => {
   it('online session with a pending permission request → attention, earliest request wins', () => {
     const s = mkSession({

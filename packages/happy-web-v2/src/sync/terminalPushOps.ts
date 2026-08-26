@@ -43,6 +43,8 @@ export interface TerminalSession {
   machineId: string;
   machineName: string;
   title: string;
+  /** undefined = old daemon without tag support; [] = supported, no tags. */
+  tags?: string[];
   /** Titled (manual rename or daemon auto-title): the pushed @vh_title set. */
   manual?: boolean;
   /** Pushed tmux pane cwd — the file browser's starting directory. */
@@ -72,8 +74,8 @@ export interface MachinePush {
 export interface PushOverlay {
   /** Optimistic rows for terminals created locally, keyed into pushes by id. */
   created: TerminalSession[];
-  /** id → optimistic title for renames the daemon hasn't pushed back yet. */
-  renames: Record<string, { title: string; at: number }>;
+  /** id → optimistic metadata changes the daemon hasn't pushed back yet. */
+  renames: Record<string, { title?: string; tags?: string[]; at: number }>;
   /** id → when the local kill hid this terminal. */
   removed: Record<string, number>;
 }
@@ -122,11 +124,15 @@ export function pushedMachineSnapshots(
  *  falls back to the machine name; a set title marks the row `manual`. */
 function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): TerminalSession {
   const title = (t.title ?? '').trim();
+  const tags = Array.isArray(t.tags)
+    ? t.tags.filter((tag): tag is string => typeof tag === 'string')
+    : undefined;
   return {
     id: t.id,
     machineId,
     machineName,
     title: title || machineName || 'Terminal',
+    tags,
     manual: !!title,
     cwd: t.cwd,
     createdAt: t.createdAt ?? 0,
@@ -162,7 +168,11 @@ export function composeTerminalList(
       const row = pushRowOf(t, machineId, p.machineName);
       const ren = overlay.renames[t.id];
       if (ren && now - ren.at <= RENAME_OVERLAY_TTL_MS) {
-        rows.push({ ...row, title: ren.title, manual: true });
+        rows.push({
+          ...row,
+          ...(ren.title !== undefined ? { title: ren.title, manual: true } : {}),
+          ...(ren.tags !== undefined ? { tags: ren.tags } : {}),
+        });
       } else {
         rows.push(row);
       }
@@ -200,7 +210,9 @@ export function pruneOverlay(
   for (const [id, r] of Object.entries(overlay.renames)) {
     const pushed = byId.get(id);
     if (!pushed) continue; // terminal gone → nothing left to rename
-    if ((pushed.title ?? '').trim() === r.title) continue; // daemon caught up
+    const titleDone = r.title === undefined || (pushed.title ?? '').trim() === r.title;
+    const tagsDone = r.tags === undefined || JSON.stringify(pushed.tags) === JSON.stringify(r.tags);
+    if (titleDone && tagsDone) continue; // daemon caught up
     if (now - r.at > RENAME_OVERLAY_TTL_MS) continue; // never landed → honest revert
     renames[id] = r;
   }

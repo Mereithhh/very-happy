@@ -109,11 +109,27 @@ describe('composeTerminalList', () => {
     expect(aaa.manual).toBe(true);
   });
 
+  it('preserves [] as tag capability while absence identifies an old daemon', () => {
+    const rows = composeTerminalList({
+      m: { machineName: 'box', terminals: [term({ id: 'new', tags: [] }), term({ id: 'old', tags: undefined })] },
+    }, EMPTY_OVERLAY, NOW);
+    expect(rows.find((r) => r.id === 'new')?.tags).toEqual([]);
+    expect(rows.find((r) => r.id === 'old')?.tags).toBeUndefined();
+  });
+
   it('applies an unexpired rename overlay and marks the row manual', () => {
     const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { title: 'My Name', at: NOW - 1000 } } };
     const rows = composeTerminalList(pushes, overlay, NOW);
     expect(rows.find((r) => r.id === 'aaa')!.title).toBe('My Name');
     expect(rows.find((r) => r.id === 'aaa')!.manual).toBe(true);
+  });
+
+  it('optimistically applies tags and clears only when the push confirms them', () => {
+    const overlay: PushOverlay = { ...EMPTY_OVERLAY, renames: { aaa: { tags: ['prod'], at: NOW - 1000 } } };
+    expect(composeTerminalList(pushes, overlay, NOW).find((r) => r.id === 'aaa')?.tags).toEqual(['prod']);
+    expect(pruneOverlay(overlay, pushes, NOW).renames).toEqual(overlay.renames);
+    const confirmed = { 'push-m': { machineName: 'new-box', terminals: [term({ id: 'aaa', tags: ['prod'] })] } };
+    expect(pruneOverlay(overlay, confirmed, NOW).renames).toEqual({});
   });
 
   it('an expired rename overlay stops overriding (honest revert)', () => {

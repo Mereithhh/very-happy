@@ -36,12 +36,13 @@ import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
 import { storage, useMachine, useSettings, useLocalSettingMutable } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { collectAllTags, saveRowRename } from '@/app/rowActions';
+import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
 import { resumeStartupCommand } from '@/sync/closedTerminals';
 import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
 import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
-import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
 import { TmuxHelpModal } from './TmuxHelpModal';
@@ -153,9 +154,9 @@ export function WebTerminalScreen() {
   const machine = useMachine(machineId || '');
   const settings = useSettings();
   const terminals = useTerminalSessions((s) => s.terminals);
-  const renameTerminal = useTerminalSessions((s) => s.rename);
   const meta = terminals.find((x) => x.id === tid);
   const title = meta?.title || meta?.machineName || t('newSessionModal.terminalTitle');
+  const [showRename, setShowRename] = useState(false);
   const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
     machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
   const relayLatency = relayStatus.rttMs === undefined ? '-- ms' : `${Math.round(relayStatus.rttMs)} ms`;
@@ -2107,10 +2108,8 @@ export function WebTerminalScreen() {
     void runCommand(paste).then(() => sendInputRef.current?.('\r'));
   };
 
-  const onRename = async () => {
-    if (!tid) return;
-    const next = await Modal.prompt(t('common.rename'), undefined, { defaultValue: title });
-    if (next != null) renameTerminal(tid, next);
+  const onRename = () => {
+    if (tid && meta) setShowRename(true);
   };
 
   const toggleSelectMode = () => {
@@ -2398,6 +2397,19 @@ export function WebTerminalScreen() {
         </div>
       )}
       {showHelp && hasTmuxSession && <TmuxHelpModal onClose={() => setShowHelp(false)} />}
+      {showRename && tid && meta && (
+        <RenameModal
+          defaultTitle={title}
+          tags={meta.tags}
+          suggestions={collectAllTags(Object.values(storage.getState().sessions), terminals)}
+          onClose={() => setShowRename(false)}
+          onSave={(nextTitle, tags) => saveRowRename(
+            { kind: 'terminal', terminalId: tid, currentTitle: title, currentTags: meta.tags },
+            nextTitle,
+            tags,
+          )}
+        />
+      )}
     </div>
   );
 }

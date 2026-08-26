@@ -21,7 +21,7 @@
  * (setTitle kick); the overlay renders the new title until that push lands.
  */
 import { create } from 'zustand';
-import { machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
+import { machineSetTerminalTags, machineSetTerminalTitle, type MachineTerminal } from '@/sync/ops';
 import {
   composeTerminalList,
   pruneOverlay,
@@ -72,7 +72,7 @@ interface TerminalSessionsState {
   /** Optimistic overlay for local mutations. */
   overlay: PushOverlay;
   create(machineId: string, machineName: string, title?: string): TerminalSession;
-  rename(id: string, title: string): void;
+  update(id: string, changes: { title?: string; tags?: string[] }): void;
   remove(id: string): void;
   /** Apply one machine's trusted webTerminals snapshot (terminalSync). */
   applyPush(machineId: string, machineName: string, terminals: MachineTerminal[]): void;
@@ -111,23 +111,38 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     scheduleOverlaySweep(CREATE_OVERLAY_TTL_MS);
     return t;
   },
-  rename: (id, title) => {
-    const clean = title.trim();
-    if (!clean) return;
+  update: (id, changes) => {
     const row = get().terminals.find((t) => t.id === id);
     if (!row) return;
+    const cleanTitle = changes.title?.trim();
+    if (changes.title !== undefined && !cleanTitle) return;
+    // tags === undefined is also the old-daemon capability marker. Never send
+    // an RPC that the owning daemon has not advertised support for.
+    const nextTags = changes.tags !== undefined && row.tags !== undefined ? changes.tags : undefined;
+    if (cleanTitle === undefined && nextTags === undefined) return;
     // Write the title to the machine; the daemon stamps @vh_title(+manual)
     // and pushes immediately (setTitle kick). The overlay renders the new
     // title until that push confirms it — or honestly reverts at the TTL if
     // the rename never landed (machine offline).
     const { pushes, overlay } = get();
+    const pending = overlay.renames[id];
     const nextOverlay: PushOverlay = {
       ...overlay,
-      renames: { ...overlay.renames, [id]: { title: clean, at: Date.now() } },
+      renames: {
+        ...overlay.renames,
+        [id]: {
+          ...(pending?.title !== undefined ? { title: pending.title } : {}),
+          ...(pending?.tags !== undefined ? { tags: pending.tags } : {}),
+          ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
+          ...(nextTags !== undefined ? { tags: nextTags } : {}),
+          at: Date.now(),
+        },
+      },
     };
     set({ overlay: nextOverlay, terminals: composed(pushes, nextOverlay) });
     scheduleOverlaySweep(RENAME_OVERLAY_TTL_MS);
-    void machineSetTerminalTitle(row.machineId, id, clean);
+    if (cleanTitle !== undefined) void machineSetTerminalTitle(row.machineId, id, cleanTitle);
+    if (nextTags !== undefined) void machineSetTerminalTags(row.machineId, id, nextTags);
   },
   remove: (id) => {
     // The caller already fired kill-terminal; hide the row until the push

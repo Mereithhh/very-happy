@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, type TerminalListItem } from './webTerminal';
 
 describe('tmuxKillVerified', () => {
     it('requires a successful probe proving the session is absent', () => {
@@ -400,6 +400,7 @@ describe('terminalListSignature', () => {
         expect(terminalListSignature([])).not.toBe(base);
         expect(terminalListSignature([item(), item({ id: 'b' })])).not.toBe(base);
         expect(terminalListSignature([item({ title: 'other' })])).not.toBe(base);
+        expect(terminalListSignature([item({ tags: ['prod'] })])).not.toBe(base);
         expect(terminalListSignature([item({ cwd: '/y' })])).not.toBe(base);
         expect(terminalListSignature([item({ agentState: 'working' })])).not.toBe(base);
         expect(terminalListSignature([item({ agentState: undefined })])).not.toBe(base);
@@ -437,7 +438,7 @@ describe('parseSessionListLine', () => {
     const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
 
     it('parses a full line (epoch seconds → ms, trims titles)', () => {
-        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', 'node', '✳ task');
+        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '["prod","Deploy"]', 'node', '✳ task');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: 1700000000000,
@@ -445,13 +446,14 @@ describe('parseSessionListLine', () => {
             cwd: '/Users/x/code',
             vhTitle: 'my title',
             manual: true,
+            tags: ['prod', 'Deploy'],
             paneCurrentCommand: 'node',
             paneTitle: '✳ task',
         });
     });
 
     it('empty optional fields become undefined / manual=false', () => {
-        const line = mk('vh-abc', '', '', '', '', '', '', '');
+        const line = mk('vh-abc', '', '', '', '', '', '', '', '');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: undefined,
@@ -459,6 +461,7 @@ describe('parseSessionListLine', () => {
             cwd: undefined,
             vhTitle: undefined,
             manual: false,
+            tags: [],
             paneCurrentCommand: undefined,
             paneTitle: undefined,
         });
@@ -468,15 +471,15 @@ describe('parseSessionListLine', () => {
         expect(parseSessionListLine('')).toBeUndefined();
         expect(parseSessionListLine('vh-abc\t123')).toBeUndefined();          // old tab format
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x'))).toBeUndefined(); // too few fields
-        // B-121: the 7-field (pre pane_current_command) shape is now malformed
+        // The pre-tags 8-field shape is now malformed
         // — daemon and format ship together, so a short line means a garbled
         // read, not an old daemon.
-        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', 't'))).toBeUndefined();
-        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', 'zsh', 't'))).toBeUndefined(); // no name
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 't'))).toBeUndefined();
+        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', '[]', 'zsh', 't'))).toBeUndefined(); // no name
     });
 
     it('a pathological separator inside pane_title only garbles the title, never the fields', () => {
-        const line = mk('vh-abc', '1', '2', '/x', 'v', '', 'zsh', `weird${LIST_FIELD_SEP}title`);
+        const line = mk('vh-abc', '1', '2', '/x', 'v', '', '[]', 'zsh', `weird${LIST_FIELD_SEP}title`);
         const parsed = parseSessionListLine(line)!;
         expect(parsed.name).toBe('vh-abc');
         expect(parsed.cwd).toBe('/x');
@@ -487,8 +490,24 @@ describe('parseSessionListLine', () => {
     it('pane_current_command sits BEFORE pane_title (a title with a separator cannot shift it)', () => {
         // The whole reason for the field order: if the command were last, a
         // title containing 0x1f would silently steal it.
-        const line = mk('vh-abc', '1', '2', '/x', '', '', '2.1.228', `a${LIST_FIELD_SEP}b`);
+        const line = mk('vh-abc', '1', '2', '/x', '', '', '[]', '2.1.228', `a${LIST_FIELD_SEP}b`);
         expect(parseSessionListLine(line)!.paneCurrentCommand).toBe('2.1.228');
+    });
+});
+
+describe('terminal tags', () => {
+    it('parses canonical JSON and fails closed on corrupt local tmux values', () => {
+        expect(parseTerminalTags('["prod","Deploy"]')).toEqual(['prod', 'Deploy']);
+        expect(parseTerminalTags('not-json')).toEqual([]);
+        expect(parseTerminalTags('["dup","DUP"]')).toEqual([]);
+    });
+
+    it('rejects non-canonical or oversized RPC input while accepting clear', () => {
+        expect(validateTerminalTags([])).toEqual([]);
+        expect(validateTerminalTags(['#prod'])).toBeUndefined();
+        expect(validateTerminalTags(['two words'])).toBeUndefined();
+        expect(validateTerminalTags(['x'.repeat(25)])).toBeUndefined();
+        expect(validateTerminalTags(Array.from({ length: 65 }, (_, i) => `t${i}`))).toBeUndefined();
     });
 });
 

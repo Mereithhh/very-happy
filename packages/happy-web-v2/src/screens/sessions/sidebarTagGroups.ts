@@ -3,8 +3,8 @@
  * Pure; unit-tested (sidebarTagGroups.test.ts).
  *
  * Grouping key = a row's FIRST tag (the tag list is user-ordered; the first
- * one is the identity). Rows without tags — terminals included, they have no
- * tag storage — fall into the trailing 未分组 group (`tag: null`). Group
+ * one is the identity). Rows without tags fall into the trailing 未分组 group
+ * (`tag: null`); terminals from new daemons participate like sessions. Group
  * identity is case-insensitive ("Deploy" and "deploy" share a group, first
  * seen casing labels it), matching every other tag comparison in the app.
  *

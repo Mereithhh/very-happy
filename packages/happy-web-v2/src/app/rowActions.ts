@@ -151,19 +151,20 @@ export async function closeTerminalNow(
 /** Persist a rename dialog's result for a row (chat session or terminal).
  *  Only writes what actually changed: title and tags ride the same
  *  update-metadata round-trip; a no-op save must not bump the metadata
- *  version. Terminals are title-only (tags need daemon-side tmux storage). */
+ *  version. Terminal fields persist independently in daemon-owned tmux state. */
 export async function saveRowRename(
   target:
-    | { kind: 'terminal'; terminalId: string; currentTitle: string }
+    | { kind: 'terminal'; terminalId: string; currentTitle: string; currentTags?: string[] }
     | { kind: 'session'; session: Session; currentTitle: string },
   title: string,
   tags?: string[],
 ): Promise<void> {
   if (target.kind === 'terminal') {
     const clean = title.trim();
-    if (clean && clean !== target.currentTitle) {
-      useTerminalSessions.getState().rename(target.terminalId, clean);
-    }
+    const changes: { title?: string; tags?: string[] } = {};
+    if (clean && clean !== target.currentTitle) changes.title = clean;
+    if (tags && target.currentTags !== undefined && JSON.stringify(tags) !== JSON.stringify(target.currentTags)) changes.tags = tags;
+    useTerminalSessions.getState().update(target.terminalId, changes);
     return;
   }
   const s = target.session;
@@ -178,11 +179,22 @@ export async function saveRowRename(
 
 /** Every tag currently in use across sessions (case-insensitive dedupe,
  *  first-seen casing wins), most-used first — rename-dialog suggestions. */
-export function collectAllTags(sessions: Array<Session | string> | null): string[] {
+export function collectAllTags(
+  sessions: Array<Session | string> | null,
+  terminals: Array<{ tags?: string[] }> = [],
+): string[] {
   const counts = new Map<string, { tag: string; n: number }>();
   for (const s of sessions ?? []) {
     if (typeof s === 'string') continue;
     for (const tag of s.metadata?.tags ?? []) {
+      const k = tag.toLowerCase();
+      const cur = counts.get(k);
+      if (cur) cur.n++;
+      else counts.set(k, { tag, n: 1 });
+    }
+  }
+  for (const terminal of terminals) {
+    for (const tag of terminal.tags ?? []) {
       const k = tag.toLowerCase();
       const cur = counts.get(k);
       if (cur) cur.n++;

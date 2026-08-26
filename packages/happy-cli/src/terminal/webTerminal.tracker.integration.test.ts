@@ -5,7 +5,7 @@
  *   open() → kick → list push        (membership)
  *   OSC title from inside the pane → tmux pane_title → set-titles re-emit →
  *     headless onTitleChange → kick → @vh_title follow → list push (title)
- *   setTitle() (manual rename) → immediate push + auto-follow pinned off
+ *   setTitle()/setTags() → immediate pushes
  *   killSession() → push WITHOUT the terminal (deletion-by-absence)
  *
  * The tracking interval is set absurdly long, so every observed push must have
@@ -96,6 +96,16 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         await new Promise((r) => setTimeout(r, 1500));
         const current = mgr.buildTerminalList().find((t) => t.id === TID);
         expect(current?.title).toBe('pinned name');
+
+        // ── tags: tmux persistence + immediate capability-bearing push ─────
+        const beforeTags = pushes.length;
+        expect(mgr.setTags(TID, ['prod', 'deploy'])).toBe(true);
+        await waitFor(
+            () => pushes.slice(beforeTags).some((l) => l.some((t) => t.id === TID && JSON.stringify(t.tags) === '["prod","deploy"]')),
+            15_000, 'tag push',
+        );
+        expect(mgr.setTags(TID, [])).toBe(true);
+        expect(mgr.buildTerminalList().find((t) => t.id === TID)?.tags).toEqual([]);
 
         // ── kill: deletion propagates by absence ─────────────────────────────
         const beforeKill = pushes.length;

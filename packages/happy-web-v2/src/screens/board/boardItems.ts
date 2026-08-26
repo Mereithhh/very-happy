@@ -77,6 +77,8 @@ export interface BoardItem {
   status: BoardStatus;
   /** raw title — may be '' for an unnamed chat; the card renders a fallback */
   title: string;
+  /** Terminal tags; undefined means the owning daemon lacks tag support. */
+  tags?: string[];
   machineName: string;
   cwd: string;
   /** sort driver (most recent first inside working/idle/ended) */
@@ -297,6 +299,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       kind: 'terminal',
       status,
       title: tm.title || tm.machineName,
+      tags: tm.tags,
       machineName: tm.machineName,
       cwd: formatCwd(entry?.cwd),
       lastActivityAt,
@@ -306,6 +309,7 @@ export function buildBoardItems(input: BoardInput): BoardItem[] {
       machineId: tm.machineId,
       lifecycle: 'running', // placeholder — assigned by lifecycleOf below
     };
+    if (hasPriorityTag(tm.tags)) termItem.priority = true;
     const lc = lifecycleOf(termItem);
     termItem.lifecycle = lc.lifecycle;
     if (lc.waitReason) termItem.waitReason = lc.waitReason;

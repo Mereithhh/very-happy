@@ -547,6 +547,8 @@ export type AgentState = 'working' | 'needs_input' | 'idle' | 'shell';
 export interface TerminalListItem {
     id: string;
     title?: string;
+    /** Always present in new daemon output; optional for old persisted state. */
+    tags?: string[];
     cwd?: string;
     createdAt?: number;
     activityAt?: number;
@@ -574,6 +576,7 @@ export function terminalListSignature(items: TerminalListItem[]): string {
         .map((t) => [
             t.id,
             t.title ?? '',
+            t.tags ?? [],
             t.cwd ?? '',
             t.createdAt ?? 0,
             Math.floor((t.activityAt ?? 0) / ACTIVITY_SIGNATURE_BUCKET_MS),
@@ -647,6 +650,7 @@ export const LIST_SESSIONS_FORMAT = [
     '#{pane_current_path}',
     '#{@vh_title}',
     '#{@vh_title_manual}',
+    '#{@vh_tags}',
     // B-121: the control-mode client has no `pty.process`, so the agent-state
     // fast path lost its live `#{pane_current_command}` equivalent. Carry it in
     // the ONE list-sessions call the tracker already makes — the value goes
@@ -668,6 +672,8 @@ export interface SessionListLine {
     vhTitle?: string;
     /** `@vh_title_manual` is set → the user renamed it; never auto-follow. */
     manual: boolean;
+    /** Parsed `@vh_tags`; missing or malformed local values fail closed to []. */
+    tags: string[];
     /** `#{pane_current_command}` of the active pane (B-121: the poll-cadence
      *  replacement for the pty's live foreground name). */
     paneCurrentCommand?: string;
@@ -679,8 +685,8 @@ export interface SessionListLine {
 export function parseSessionListLine(line: string): SessionListLine | undefined {
     if (!line) return undefined;
     const parts = line.split(LIST_FIELD_SEP);
-    if (parts.length < 8) return undefined;
-    const [name, created, activity, cwd, vhTitle, manual, paneCommand] = parts;
+    if (parts.length < 9) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual, vhTags, paneCommand] = parts;
     if (!name) return undefined;
     return {
         name,
@@ -689,11 +695,46 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         cwd: cwd || undefined,
         vhTitle: vhTitle.trim() || undefined,
         manual: manual.trim().length > 0,
+        tags: parseTerminalTags(vhTags),
         paneCurrentCommand: paneCommand.trim() || undefined,
         // pane_title is last, so anything after field 8 is title content that
         // contained the separator — rejoin it rather than dropping it.
-        paneTitle: parts.slice(7).join(LIST_FIELD_SEP) || undefined,
+        paneTitle: parts.slice(8).join(LIST_FIELD_SEP) || undefined,
     };
+}
+
+export const TERMINAL_TAG_MAX_COUNT = 64;
+export const TERMINAL_TAG_MAX_LENGTH = 24;
+export const TERMINAL_TAGS_MAX_BYTES = 4096;
+
+/** Validate the canonical tag shape produced by the Web editor. Returning
+ * undefined distinguishes invalid RPC input from a valid empty list. */
+export function validateTerminalTags(value: unknown): string[] | undefined {
+    if (!Array.isArray(value) || value.length > TERMINAL_TAG_MAX_COUNT) return undefined;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const valueTag of value) {
+        if (typeof valueTag !== 'string') return undefined;
+        const tag = valueTag.trim().replace(/^#+/, '').trim().replace(/\s+/g, '-').slice(0, TERMINAL_TAG_MAX_LENGTH);
+        if (!tag || tag !== valueTag) return undefined;
+        const key = tag.toLowerCase();
+        if (seen.has(key)) return undefined;
+        seen.add(key);
+        out.push(tag);
+    }
+    if (Buffer.byteLength(JSON.stringify(out), 'utf8') > TERMINAL_TAGS_MAX_BYTES) return undefined;
+    return out;
+}
+
+/** Local tmux state is user-editable; a corrupt option must never poison the
+ * whole terminal snapshot. */
+export function parseTerminalTags(raw: unknown): string[] {
+    if (typeof raw !== 'string' || !raw.trim()) return [];
+    try {
+        return validateTerminalTags(JSON.parse(raw)) ?? [];
+    } catch {
+        return [];
+    }
 }
 
 /**
@@ -2576,6 +2617,8 @@ export class WebTerminalManager {
                 out.push({
                     id,
                     title,
+                    // Always include [] so Web can feature-detect tag support.
+                    tags: s.tags,
                     cwd: s.cwd,
                     createdAt: s.created,
                     // tmux last-activity (epoch s) → ms; optional so old daemons
@@ -2734,6 +2777,25 @@ export class WebTerminalManager {
             return true;
         } catch {
             return false; // session gone
+        }
+    }
+
+    /** Persist terminal tags in tmux, parallel to @vh_title. */
+    setTags(terminalId: string, tags: unknown): boolean {
+        if (!isTmuxAvailable()) return false;
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(terminalId)) return false;
+        const valid = validateTerminalTags(tags);
+        if (!valid) return false;
+        const name = `vh-${terminalId}`;
+        try {
+            const r = spawnSync('tmux', ['set-option', '-t', name, '@vh_tags', JSON.stringify(valid)], {
+                stdio: 'ignore', env: ptyEnv(),
+            });
+            if (r.status !== 0) return false;
+            this.kickListRefresh();
+            return true;
+        } catch {
+            return false;
         }
     }
 }
