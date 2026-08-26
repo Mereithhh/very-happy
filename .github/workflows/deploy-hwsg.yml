@@ -27,6 +27,10 @@ on:
         type: choice
         options: [switch, shadow, groundwork]
         default: switch
+      release_sha:
+        description: Exact shadowed release SHA to switch (optional; switch only)
+        type: string
+        required: false
 
 concurrency:
   group: deploy-hwsg
@@ -71,6 +75,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build and push complete server image
+        if: inputs.rollout != 'switch' || inputs.target == 'publish'
         id: server_build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -94,6 +99,7 @@ jobs:
           ssh-keyscan -p "${{ secrets.HWSG_PORT }}" -H "${{ secrets.HWSG_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy
+        id: deploy
         if: inputs.target != 'publish'
         env:
           HWSG_HOST: ${{ secrets.HWSG_HOST }}
@@ -102,6 +108,7 @@ jobs:
           SSH_KEY: ${{ runner.temp }}/hwsg_key
           SERVER_IMAGE: ghcr.io/mereithhh/very-happy-server@${{ steps.server_build.outputs.digest }}
           ROLLOUT_MODE: ${{ inputs.rollout }}
+          DEPLOY_RELEASE_SHA: ${{ inputs.release_sha || github.sha }}
         run: |
           chmod +x scripts/ci/deploy-hwsg.sh
           ./scripts/ci/deploy-hwsg.sh "${{ inputs.target }}" "$ROLLOUT_MODE"
@@ -111,7 +118,7 @@ jobs:
         run: >-
           docker buildx imagetools create
           --tag ghcr.io/mereithhh/very-happy-server:latest
-          ghcr.io/mereithhh/very-happy-server@${{ steps.server_build.outputs.digest }}
+          ${{ steps.deploy.outputs.image }}
 
       - name: Cleanup SSH key
         if: always() && inputs.target != 'publish'

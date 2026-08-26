@@ -12,13 +12,31 @@ REMOTE="${HWSG_USER}@${HWSG_HOST}"
 
 deploy_complete_image() {
     local deploy_sha image remote_dir
-    deploy_sha="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+    deploy_sha="${DEPLOY_RELEASE_SHA:-${GITHUB_SHA:-$(git rev-parse HEAD)}}"
     [[ "$deploy_sha" =~ ^[0-9a-f]{40}$ ]]
-    test "$(git rev-parse HEAD)" = "$deploy_sha"
-    image="${SERVER_IMAGE:?SERVER_IMAGE digest is required}"
-    [[ "$image" =~ ^ghcr\.io/mereithhh/very-happy-server@sha256:[0-9a-f]{64}$ ]]
 
     case "$ROLLOUT_MODE" in groundwork|shadow|switch) ;; *) echo "invalid rollout mode: $ROLLOUT_MODE" >&2; exit 2 ;; esac
+
+    if [ "$ROLLOUT_MODE" = switch ]; then
+        # Switch the exact immutable artifact that passed shadow. Rebuilding the
+        # same commit can still produce a different OCI manifest digest because
+        # build provenance is regenerated for every invocation.
+        local -a shadow_state
+        mapfile -t shadow_state < <(
+            ssh ${SSH_OPTS} "${REMOTE}" \
+                "sed -n 's/^SHADOW_IMAGE=//p; s/^SHADOW_RELEASE=//p' /opt/happy/release/state.env"
+        )
+        [ "${#shadow_state[@]}" -eq 2 ] || { echo 'invalid production shadow state' >&2; exit 4; }
+        image="${shadow_state[0]}"
+        [ "${shadow_state[1]}" = "$deploy_sha" ] || {
+            echo "shadow release does not match requested release $deploy_sha" >&2
+            exit 4
+        }
+    else
+        test "$(git rev-parse HEAD)" = "$deploy_sha"
+        image="${SERVER_IMAGE:?SERVER_IMAGE digest is required}"
+    fi
+    [[ "$image" =~ ^ghcr\.io/mereithhh/very-happy-server@sha256:[0-9a-f]{64}$ ]]
 
     echo "== server + web: deploy $image =="
     remote_dir="/tmp/vh-deploy-$deploy_sha"
@@ -35,6 +53,9 @@ deploy_complete_image() {
     local status=$?
     set -e
     ssh ${SSH_OPTS} "${REMOTE}" "rm -rf '$remote_dir'"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        printf 'image=%s\nrelease=%s\n' "$image" "$deploy_sha" >> "$GITHUB_OUTPUT"
+    fi
     return "$status"
 }
 

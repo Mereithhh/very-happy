@@ -80,4 +80,12 @@ grep -Fq 'install -d -m 755 "$RELEASE_DIR"' "$REPO_ROOT/scripts/ci/deploy-blue-g
     || fail 'release directory must be traversable by the caddy service user'
 [ "$(grep -Fc -- 'up -d --no-deps' "$REPO_ROOT/scripts/ci/deploy-blue-green-remote.sh")" -ge 3 ] \
     || fail 'legacy start, groundwork, and rollback must not recreate dependencies'
+# A switch must reuse the digest that passed shadow. Building again is not
+# equivalent: BuildKit provenance makes OCI manifest digests invocation-bound.
+grep -Fq "if: inputs.rollout != 'switch' || inputs.target == 'publish'" "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
+    || fail 'switch must not rebuild the shadowed image'
+grep -Fq '${{ steps.deploy.outputs.image }}' "$REPO_ROOT/.github/workflows/deploy-hwsg.yml" \
+    || fail 'latest must promote the image actually deployed'
+grep -Fq 'SHADOW_IMAGE=//p; s/^SHADOW_RELEASE=//p' "$REPO_ROOT/scripts/ci/deploy-hwsg.sh" \
+    || fail 'switch must resolve the immutable image from production shadow state'
 echo 'blue-green state-machine fixtures: ok'
