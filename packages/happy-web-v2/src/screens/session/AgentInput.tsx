@@ -92,12 +92,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const contextSize = usage?.contextSize ?? 0;
     // 分母按 assistant 消息回传的**真实**模型定（B-135）。拿不到模型就不显示百分比
     // ——宁可只给 token 绝对数，也不给一个看着正常却是错的百分比。
-    const percentUsed = contextPercentOf(contextSize, contextWindowFor(usage?.model));
+    const contextWindow = contextWindowFor(usage?.model);
+    const percentUsed = contextPercentOf(contextSize, contextWindow);
     const contextTokens = formatTokens(contextSize);
+    const contextTotal = contextWindow === null ? null : formatTokens(contextWindow);
     const meterTone = percentUsed === null ? 'ok' : percentUsed >= 95 ? 'crit' : percentUsed >= 90 ? 'warn' : 'ok';
     const meterTitle = percentUsed === null
         ? contextTokens
-        : `${contextTokens} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
+        : `${contextTokens} / ${contextTotal} · ${t('session.chat.contextMeter', { percent: percentUsed })}`;
 
     // grow textarea — 收起时按内容自适应，展开时直接占满 ~60% 视口；不能只
     // 提高 max-height，否则空/短输入点击展开后没有任何视觉反馈（B-217）。
@@ -365,18 +367,19 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             {expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                         </button>
                     </div>
-                    {isWorking ? (
-                        <button
-                            type="button"
-                            className="ci-send ci-send--abort"
-                            onClick={() => void doAbort()}
-                            disabled={aborting}
-                            aria-label={t('session.chat.stop')}
-                            title={t('session.chat.stop')}
-                        >
-                            <Square size={16} fill="currentColor" />
-                        </button>
-                    ) : (
+                    <div className="ci-composer-actions">
+                        {isWorking && (
+                            <button
+                                type="button"
+                                className="ci-send ci-send--abort"
+                                onClick={() => void doAbort()}
+                                disabled={aborting}
+                                aria-label={t('session.chat.stop')}
+                                title={t('session.chat.stop')}
+                            >
+                                <Square size={16} fill="currentColor" />
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="ci-send"
@@ -387,7 +390,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         >
                             <Send size={16} />
                         </button>
-                    )}
+                    </div>
                 </div>
             </div>
 
@@ -411,7 +414,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     <span className="ci-meter-label">
                         {percentUsed === null
                             ? contextTokens
-                            : `${contextTokens} · ${t('session.chat.contextLeft', { percent: 100 - percentUsed })}`}
+                            : `${contextTokens} / ${contextTotal}`}
                     </span>
                 </span>
                 <span className="ci-hint">

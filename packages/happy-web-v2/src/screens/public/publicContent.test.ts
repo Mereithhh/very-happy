@@ -656,7 +656,14 @@ describe('public documentation registry', () => {
     expect(publicRoot).not.toContain('@/sync/');
     expect(publicRoot).toContain('<PwaInstallPrompt />');
     expect(appRoot).toContain('<PwaInstallPrompt />');
-    expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest', 'registerSW.js']");
+    expect(vite).toContain('injectRegister: false');
+    expect(vite).toContain('skipWaiting: true');
+    expect(vite).toContain('clientsClaim: true');
+    expect(vite).toContain("globPatterns: ['index.html', 'manifest.webmanifest']");
+    expect(main).toContain("import { registerSW } from 'virtual:pwa-register'");
+    expect(main).toContain("addEventListener('controllerchange', () => markProgrammaticReload())");
+    expect(main).toContain("worker.state === 'installed'");
+    expect(main).toContain('immediate: true');
     expect(vite).toContain("handler: 'CacheFirst'");
     expect(vite).not.toContain("orientation: 'portrait'");
   });

@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 
 import '@fontsource/ibm-plex-sans/400.css';
 import '@fontsource/ibm-plex-sans/600.css';
@@ -18,6 +19,34 @@ import { dismissPrepaintSplash } from './app/prepaintSplash.ts';
 // Capture Chrome's one-shot install event before the public/authenticated root
 // and their lazy chunks load. PwaInstallPrompt consumes the retained event.
 installPwaPromptCapture();
+
+// The generated registerSW.js does not reload an already-open page after an
+// update. The update-aware client does. Keep autoUpdate during the migration:
+// its skipWaiting + clientsClaim settings also let already-installed, older
+// versions move to this worker without user intervention.
+navigator.serviceWorker?.addEventListener('controllerchange', () => markProgrammaticReload());
+registerSW({
+  immediate: true,
+  onRegisteredSW: (_swUrl, registration) => {
+    if (registration?.waiting) markProgrammaticReload();
+    registration?.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      worker?.addEventListener('statechange', () => {
+        // Mark before activation: Workbox's autoUpdate listener reloads on
+        // `activated`, which can precede controllerchange in some WebKit runs.
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          markProgrammaticReload();
+        }
+      });
+    });
+    // A cold PWA launch should check now, not at the browser's unspecified
+    // update cadence. Best-effort and intentionally not awaited by bootstrap.
+    void registration?.update().catch(() => {});
+  },
+  onRegisterError: (error) => {
+    console.warn('[pwa] service worker registration failed', error);
+  },
+});
 
 // Stale-deploy recovery: after a redeploy the old hashed lazy chunks are gone,
 // so a client still running the previous shell hits "Failed to fetch
