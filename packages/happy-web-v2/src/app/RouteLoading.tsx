@@ -22,7 +22,7 @@ export function RouteLoading({
         justifyContent: 'center',
       }}
     >
-      <OrbitLoader size="compact" label={label} />
+      <OrbitLoader size="medium" label={label} showWordmark />
     </div>
   );
 }
