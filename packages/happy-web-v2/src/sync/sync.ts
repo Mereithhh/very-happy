@@ -63,7 +63,7 @@ import { stampSeenOnArrival } from './seenOnArrival';
 import { soundEventOfNotifType } from './notificationInbox';
 import { dispatchKvChanges } from './kvUpdates';
 import { UserProfile } from './friendTypes';
-import { resolveMessageModeMeta } from './messageMeta';
+import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
@@ -108,6 +108,8 @@ type SendMessageOptions = {
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */
     attachments?: AttachmentPreview[];
+    /** Internal composer queue override: preserve the mode selected at enqueue time. */
+    modeMeta?: MessageModeMeta;
 };
 
 class Sync {
@@ -626,7 +628,7 @@ class Sync {
             }
         }
 
-        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(session, storage.getState().settings);
         const { displayText, source = 'chat', attachments } = options ?? {};
         // Question/permission answers have their own request/response path and
         // must not wait behind the ordinary chat queue. For normal input, keep

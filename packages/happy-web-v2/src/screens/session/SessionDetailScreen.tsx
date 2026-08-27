@@ -102,6 +102,9 @@ export function SessionDetailScreen() {
                             sessionId={id}
                             onActivate={() => setJumpToLatestRequest((request) => request + 1)}
                         />
+                        {/* Queue/draft/attachment ownership is session-scoped.
+                            Force a clean composer instance when route params change so
+                            an unsent item can never cross into another session. */}
                         <AgentInput key={id} sessionId={id} />
                     </div>
                 )}
