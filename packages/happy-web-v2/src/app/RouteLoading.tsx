@@ -10,6 +10,7 @@ export function RouteLoading({
   return (
     <div
       aria-busy="true"
+      data-vh-route-loading="true"
       style={{
         flex: fullViewport ? undefined : 1,
         position: fullViewport ? 'fixed' : undefined,

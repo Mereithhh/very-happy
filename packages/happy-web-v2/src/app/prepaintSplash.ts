@@ -17,3 +17,39 @@ export function dismissPrepaintSplash(
   schedule(() => splash.remove(), 340);
   return true;
 }
+
+export const REACT_ROUTE_LOADING_SELECTOR = '[data-vh-route-loading="true"]';
+
+/**
+ * Keep the single HTML loader alive while the first authenticated route is
+ * still suspended or restoring its snapshot. Otherwise its fade briefly
+ * reveals a second, independently animated React loader underneath.
+ */
+export function dismissPrepaintSplashWhenRouteReady(
+  root: Element | null = document.getElementById('root'),
+  createObserver: (callback: MutationCallback) => Pick<MutationObserver, 'observe' | 'disconnect'> =
+    (callback) => new MutationObserver(callback),
+  dismiss: () => boolean = () => dismissPrepaintSplash(),
+): () => void {
+  if (!root) {
+    dismiss();
+    return () => {};
+  }
+
+  let observer: Pick<MutationObserver, 'observe' | 'disconnect'> | null = null;
+  const releaseIfReady = () => {
+    if (root.querySelector(REACT_ROUTE_LOADING_SELECTOR)) return false;
+    observer?.disconnect();
+    dismiss();
+    return true;
+  };
+
+  if (releaseIfReady()) return () => {};
+
+  observer = createObserver(releaseIfReady);
+  observer.observe(root, { childList: true, subtree: true });
+  // Close the small race between the initial query and observer attachment.
+  releaseIfReady();
+
+  return () => observer?.disconnect();
+}
