@@ -1,6 +1,6 @@
 # 任意文件附件与 50 MB 边界
 
-> 状态：Final
+> 状态：Shipped（commit `1024073e4`）
 > 日期：2026-08-27 ｜ 关联 backlog：B-241 ｜ 前身：`2026-08-session-continuity-attachments-capabilities.md`
 
 ## 背景
