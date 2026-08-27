@@ -419,6 +419,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Mark as processed to prevent duplication but don't add to messages
             state.messageIds.set(msg.id, msg.id);
             hasReadyEvent = true;
+            if (msg.content.status === 'failed') {
+                convertedEvents.push({
+                    message: msg,
+                    event: {
+                        type: 'message',
+                        message: msg.content.error?.trim() || 'Claude turn failed',
+                    },
+                });
+            }
             // A ready event carrying turn metadata marks turn completion. Defer
             // stamping until after Phase 1 (which creates the agent-text
             // messages) so bulk history loads — where all events are handled

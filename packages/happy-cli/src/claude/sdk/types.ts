@@ -11,7 +11,14 @@ export type {
     SDKSystemMessage,
     SDKResultMessage,
     PermissionResult,
+    PermissionUpdate,
     CanUseTool,
+    ElicitationRequest,
+    ElicitationResult,
+    OnElicitation,
+    OnUserDialog,
+    UserDialogRequest,
+    UserDialogResult,
 } from '@anthropic-ai/claude-agent-sdk'
 
 // Re-export AbortError class
@@ -42,6 +49,9 @@ export interface QueryOptions {
     fallbackModel?: string
     strictMcpConfig?: boolean
     canCallTool?: CanCallToolCallback
+    onElicitation?: import('@anthropic-ai/claude-agent-sdk').OnElicitation
+    onUserDialog?: import('@anthropic-ai/claude-agent-sdk').OnUserDialog
+    supportedDialogKinds?: string[]
     /** Path to a settings JSON file to pass to Claude via --settings */
     settingsPath?: string
     /**
@@ -57,5 +67,5 @@ export interface QueryOptions {
 /**
  * Query prompt types
  */
-import type { SDKMessage as _SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-export type QueryPrompt = string | AsyncIterable<_SDKMessage>
+import type { SDKUserMessage as _SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+export type QueryPrompt = string | AsyncIterable<_SDKUserMessage>

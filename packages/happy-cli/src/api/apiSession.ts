@@ -788,11 +788,11 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
+    closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed', meta?: { error?: string }) {
         // Turn-end tap (boardAnalyzer): single choke point both launchers
         // (local + remote) route through, for every end status.
         this.emit('turn-ended', status);
-        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
+        const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status, meta);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
         for (const envelope of mapped.envelopes) {
             this.sendSessionProtocolMessage(envelope);

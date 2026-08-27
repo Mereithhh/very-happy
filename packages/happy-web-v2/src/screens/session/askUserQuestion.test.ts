@@ -95,8 +95,14 @@ describe('AskUserQuestion submission wiring', () => {
     });
 
     it('does not expose generic approval paths that would submit an empty answer', () => {
-        expect(permissionCard).toContain('{!isAskUserQuestion && (');
+        expect(permissionCard).toContain('{!isAskUserQuestion && !isElicitation && (');
         expect(permissionCard).toContain('{!hasInteractiveQuestion && (');
+    });
+
+    it('only offers session approval when the SDK supplied scoped suggestions', () => {
+        expect(permissionCard).toContain("'approved_for_session'");
+        expect(permissionCard).toContain('(req.permissionSuggestions?.length ?? 0) > 0');
+        expect(permissionCard).not.toContain('[req.tool], \'approved_for_session\'');
     });
 });
 

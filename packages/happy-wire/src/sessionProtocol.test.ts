@@ -34,6 +34,7 @@ describe('session protocol schemas', () => {
       { t: 'turn-start' },
       { t: 'start', title: 'Research agent' },
       { t: 'turn-end', status: 'completed' },
+      { t: 'turn-end', status: 'failed', error: 'model request failed' },
       { t: 'stop' },
     ];
 

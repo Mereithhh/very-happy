@@ -18,6 +18,7 @@ import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
+import { applyClaudeResultLifecycle } from './utils/remoteResultLifecycle';
 
 interface PermissionsField {
     date: number;
@@ -324,6 +325,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     hookSettingsPath: session.hookSettingsPath,
                     jsRuntime: session.jsRuntime,
                     canCallTool: permissionHandler.handleToolCall,
+                    onElicitation: permissionHandler.handleElicitation,
+                    onUserDialog: permissionHandler.handleUserDialog,
                     isAborted: (toolCallId: string) => {
                         return permissionHandler.isAborted(toolCallId);
                     },
@@ -430,24 +433,30 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: () => {
-                        session.client.closeClaudeSessionTurn('completed');
-                        const idle = !pending && session.queue.size() === 0;
-                        // Account-encrypted feed notification on turn end:
-                        // reply_done if Claude produced output, else input_needed
-                        // when the session is idle awaiting the user (best-effort).
-                        session.onTurnEnd(idle);
-                        if (idle) {
-                            session.api.push().sendSessionNotification({
-                                kind: 'done',
-                                metadata: session.client.getMetadata(),
-                                data: {
-                                    sessionId: session.client.sessionId,
-                                    type: 'ready',
-                                    provider: 'claude',
+                    onReady: (result) => {
+                        applyClaudeResultLifecycle(result, {
+                            closeCompleted: () => session.client.closeClaudeSessionTurn('completed'),
+                            closeFailed: (error) => session.client.closeClaudeSessionTurn('failed', { error }),
+                            onFailed: (error) => session.onSessionError(error),
+                            onCompleted: () => {
+                                const idle = !pending && session.queue.size() === 0;
+                                // Account-encrypted feed notification on turn end:
+                                // reply_done if Claude produced output, else input_needed
+                                // when the session is idle awaiting the user (best-effort).
+                                session.onTurnEnd(idle);
+                                if (idle) {
+                                    session.api.push().sendSessionNotification({
+                                        kind: 'done',
+                                        metadata: session.client.getMetadata(),
+                                        data: {
+                                            sessionId: session.client.sessionId,
+                                            type: 'ready',
+                                            provider: 'claude',
+                                        }
+                                    });
                                 }
-                            });
-                        }
+                            },
+                        });
                     },
                     signal: abortController.signal,
                 });

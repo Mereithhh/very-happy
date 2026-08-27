@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
-import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage } from './sdk';
+import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, type SDKUserMessage } from './sdk';
 import { createPlanModeFixture } from '@/testing/planModeTestFixture';
 
 const MODEL = 'claude-sonnet-4-20250514';
@@ -93,7 +93,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
             },
         };
 
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const run = query({ prompt: promptStream, options });
 
         promptStream.push({
@@ -152,7 +152,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
             },
         };
 
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const run = query({ prompt: promptStream, options });
 
         promptStream.push({
@@ -205,7 +205,7 @@ describe.skipIf(!(await claudeAvailable))('Plan Mode Integration', { timeout: 18
             },
         };
 
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const run = query({ prompt: promptStream, options });
 
         promptStream.push({

@@ -28,6 +28,8 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     endsAt: z.number(),
 }), z.object({
     type: z.literal('ready'),
+    status: z.enum(['completed', 'failed', 'cancelled']).optional(),
+    error: z.string().optional(),
     // Optional per-turn metadata carried from the SDK result message (via the
     // session-protocol turn-end envelope). Lets the app render cost / duration
     // / turn count / cumulative usage at the end of the completed turn.
@@ -104,6 +106,7 @@ const sessionTurnUsageSchema = z.object({
 const sessionTurnEndEventSchema = z.object({
     t: z.literal('turn-end'),
     status: z.enum(['completed', 'failed', 'cancelled']),
+    error: z.string().optional(),
     // Optional per-turn metadata sourced from the Claude Code SDK result
     // message. Present only on turns ended by a result event.
     costUsd: z.number().optional(),
@@ -622,7 +625,12 @@ function normalizeSessionEnvelope(
             createdAt: messageCreatedAt,
             role: 'event',
             isSidechain: false,
-            content: turnMeta ? { type: 'ready', turnMeta } : { type: 'ready' },
+            content: {
+                type: 'ready',
+                status: ev.status,
+                ...(ev.error ? { error: ev.error } : {}),
+                ...(turnMeta ? { turnMeta } : {}),
+            },
             meta
         } satisfies NormalizedMessage;
     }

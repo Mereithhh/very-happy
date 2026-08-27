@@ -13,10 +13,18 @@ import { Button } from '@/ui';
 import { CodeView } from './CodeView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
-import { isMutableTool, knownTools } from '@/components/tools/knownTools';
+import { ElicitationRequestView } from './ElicitationRequestView';
+import { knownTools } from '@/components/tools/knownTools';
 import './permission.css';
 
-type Pending = { id: string; tool: string; arguments: any; createdAt?: number | null };
+type Pending = {
+    id: string;
+    tool: string;
+    arguments: any;
+    createdAt?: number | null;
+    kind?: 'tool' | 'elicitation' | 'user_dialog';
+    permissionSuggestions?: unknown[];
+};
 
 function describeArgs(tool: string, args: any): string | null {
     if (!args || typeof args !== 'object') return null;
@@ -33,7 +41,8 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
     const { t } = useTranslation();
     const [busy, setBusy] = useState<null | 'approve' | 'session' | 'deny'>(null);
     const detail = describeArgs(req.tool, req.arguments);
-    const mutable = isMutableTool(req.tool);
+    const isElicitation = req.kind === 'elicitation';
+    const isUserDialog = req.kind === 'user_dialog';
 
     // ExitPlanMode: show the plan as Markdown, not an arguments JSON blob.
     // AskUserQuestion: show the actual options — picking one approves the
@@ -60,7 +69,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
             if (kind === 'deny') {
                 await sessionDeny(sessionId, req.id, undefined, undefined, 'denied');
             } else if (kind === 'session') {
-                await sessionAllow(sessionId, req.id, undefined, [req.tool], 'approved_for_session');
+                await sessionAllow(sessionId, req.id, undefined, undefined, 'approved_for_session');
             } else {
                 await sessionAllow(sessionId, req.id, undefined, undefined, 'approved');
             }
@@ -80,6 +89,15 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
         }
     };
 
+    const answerElicitation = async (content: Record<string, string | number | boolean | string[]>) => {
+        setBusy('approve');
+        try {
+            await sessionAllow(sessionId, req.id, undefined, undefined, 'approved', content);
+        } finally {
+            setBusy(null);
+        }
+    };
+
     return (
         <div className="perm-req">
             <div className="perm-req-head">
@@ -92,16 +110,18 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
                 </div>
             ) : questions ? (
                 <AskUserQuestionOptions questions={questions} disabled={!!busy} onSubmit={(answers) => void answer(answers)} />
+            ) : isElicitation ? (
+                <ElicitationRequestView request={req.arguments ?? {}} disabled={!!busy} submitLabel={t('session.permission.approve')} onSubmit={(content) => void answerElicitation(content)} />
             ) : (
                 detail && <CodeView code={detail} lang={req.tool === 'Bash' ? 'bash' : null} />
             )}
             <div className="perm-actions">
-                {!isAskUserQuestion && (
+                {!isAskUserQuestion && !isElicitation && (
                     <Button size="sm" variant="primary" loading={busy === 'approve'} disabled={!!busy} onClick={() => act('approve')}>
                         {t('session.permission.approve')}
                     </Button>
                 )}
-                {!isAskUserQuestion && mutable && (
+                {!isAskUserQuestion && !isElicitation && !isUserDialog && (req.permissionSuggestions?.length ?? 0) > 0 && (
                     <Button size="sm" variant="secondary" loading={busy === 'session'} disabled={!!busy} onClick={() => act('session')}>
                         {t('session.permission.approveForSession')}
                     </Button>
@@ -129,9 +149,11 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
         tool: (r as any).tool,
         arguments: (r as any).arguments,
         createdAt: (r as any).createdAt,
+        kind: (r as any).kind,
+        permissionSuggestions: (r as any).permissionSuggestions,
     }));
     if (requests.length === 0) return null;
-    const hasInteractiveQuestion = requests.some((request) => request.tool === 'AskUserQuestion');
+    const hasInteractiveQuestion = requests.some((request) => request.tool === 'AskUserQuestion' || request.kind === 'elicitation' || request.kind === 'user_dialog');
 
     const batch = async (kind: 'approve' | 'deny') => {
         setBusyAll(kind);

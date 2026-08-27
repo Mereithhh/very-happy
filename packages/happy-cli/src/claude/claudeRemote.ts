@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { query, type QueryOptions, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
@@ -10,7 +10,7 @@ import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
-import { PermissionResult } from "./sdk/types";
+import type { CanUseTool, OnElicitation, OnUserDialog, PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 
@@ -24,7 +24,9 @@ export async function claudeRemote(opts: {
     claudeArgs?: string[],
     allowedTools: string[],
     signal?: AbortSignal,
-    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }) => Promise<PermissionResult>,
+    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: Parameters<CanUseTool>[2]) => Promise<PermissionResult>,
+    onElicitation?: OnElicitation,
+    onUserDialog?: OnUserDialog,
     /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
     onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
@@ -34,7 +36,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
-    onReady: () => void,
+    onReady: (result?: SDKResultMessage) => void,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -133,7 +135,10 @@ export async function claudeRemote(opts: {
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
         effort: initial.mode.effort,
-        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal; toolUseID: string }) => opts.canCallTool(toolName, input, mode, options),
+        canCallTool: (toolName, input, options) => opts.canCallTool(toolName, input, mode, options),
+        onElicitation: opts.onElicitation,
+        onUserDialog: opts.onUserDialog,
+        supportedDialogKinds: opts.onUserDialog ? ['refusal_fallback_prompt'] : undefined,
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,
     }
@@ -238,15 +243,18 @@ export async function claudeRemote(opts: {
 
                 // Send completion messages
                 if (isCompactCommand) {
-                    logger.debug('[claudeRemote] Compaction completed');
+                    const compactSucceeded = message.subtype === 'success';
+                    logger.debug(`[claudeRemote] Compaction ${compactSucceeded ? 'completed' : 'failed'}`);
                     if (opts.onCompletionEvent) {
-                        opts.onCompletionEvent('Compaction completed');
+                        opts.onCompletionEvent(message.subtype === 'success'
+                            ? 'Compaction completed'
+                            : `Compaction failed: ${message.errors?.join('\n') || message.subtype}`);
                     }
                     isCompactCommand = false;
                 }
 
                 // Send ready event
-                opts.onReady();
+                opts.onReady(message);
 
                 // Wait for next user message without blocking the message loop.
                 // Background task messages (task_started, task_progress, task_notification)

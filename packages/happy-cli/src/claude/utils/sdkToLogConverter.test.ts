@@ -226,6 +226,17 @@ describe('SDKToLogConverter', () => {
             expect(logMessage.total_cost_usd).toBe(0.1)
             expect(logMessage.num_turns).toBe(10)
         })
+
+        it('preserves SDK error details and ignores advisory frames', () => {
+            const error = converter.convert({
+                type: 'result', subtype: 'error_during_execution', is_error: true,
+                errors: ['upstream failed'], terminal_reason: 'error',
+            } as unknown as SDKResultMessage) as any
+            expect(error.errors).toEqual(['upstream failed'])
+            expect(error.terminal_reason).toBe('error')
+
+            expect(converter.convert({ type: 'tool_progress' } as SDKMessage)).toBeNull()
+        })
     })
 
     describe('Parent-child relationships', () => {
