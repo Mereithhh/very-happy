@@ -54,7 +54,6 @@ import {
     useAttachments,
     getFilesFromClipboard,
     getFilesFromDrop,
-    isPdfAttachment,
     SUPPORTED_IMAGE_MIME_TYPES,
 } from './useAttachments';
 import { Modal } from '@/modal';
@@ -122,7 +121,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const flavor = session?.metadata?.flavor as any;
     const metadata = session?.metadata ?? null;
-    const supportsPdfAttachments = metadata?.attachmentKinds?.includes('application/pdf') === true;
+    const attachmentKinds = metadata?.attachmentKinds ?? [];
+    const supportsAnyAttachments = attachmentKinds.includes('*/*');
+    const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
     const online = session?.presence === 'online';
     const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
@@ -384,14 +385,21 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const onPickFiles = () => fileInputRef.current?.click();
 
     const addAttachmentFiles = async (files: File[]) => {
-        const blockedPdfs = files.filter(isPdfAttachment).filter(() => !supportsPdfAttachments);
-        const result = await addFiles(files.filter((file) => !blockedPdfs.includes(file)));
+        const allowedFiles = supportsAnyAttachments
+            ? files
+            : files.filter((file) => {
+                const type = file.type.toLowerCase();
+                return SUPPORTED_IMAGE_MIME_TYPES.includes(type as typeof SUPPORTED_IMAGE_MIME_TYPES[number])
+                    || (supportsPdfAttachments && (type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')));
+            });
+        const blockedFiles = files.filter((file) => !allowedFiles.includes(file));
+        const result = await addFiles(allowedFiles);
         if (result.tooLarge.length > 0) {
             Modal.alert(
                 t('imageUpload.fileTooLargeTitle'),
-                t('imageUpload.fileTooLargeMessage', { name: result.tooLarge[0].name, maxMb: 10 }),
+                t('imageUpload.fileTooLargeMessage', { name: result.tooLarge[0].name, maxMb: 50 }),
             );
-        } else if (blockedPdfs.length > 0) {
+        } else if (blockedFiles.length > 0) {
             Modal.alert(
                 t('imageUpload.pdfRequiresCliTitle'),
                 t('imageUpload.pdfRequiresCliMessage'),
@@ -547,7 +555,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <div className="ci-attachments">
                     {attachments.map((a) => (
                         <div key={a.id} className="ci-att">
-                            {a.mimeType === 'application/pdf' ? (
+                            {a.width === 0 || a.height === 0 ? (
                                 <div className="ci-att-file" title={a.name}>
                                     <FileText size={20} />
                                     <span>{a.name}</span>
@@ -683,7 +691,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept={[
+                    accept={supportsAnyAttachments ? undefined : [
                         ...SUPPORTED_IMAGE_MIME_TYPES,
                         ...(supportsPdfAttachments ? ['application/pdf', '.pdf'] : []),
                     ].join(',')}

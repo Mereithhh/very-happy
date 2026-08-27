@@ -16,12 +16,14 @@ import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { MessageParam } from '@anthropic-ai/sdk/resources';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { applyClaudeResultLifecycle } from './utils/remoteResultLifecycle';
 import { applyClaudeSdkMetadata } from './claudeSdkMetadata';
 import { createTurnSteeringController } from './turnSteering';
-import { attachmentToClaudeContentBlock } from './utils/attachmentContent';
+import { appendStagedAttachmentsToPrompt, chatAttachmentDirectory, stageClaudeAttachments } from './utils/attachmentContent';
+import { configuration } from '@/configuration';
+import { ensurePrivateDirectory } from '@/utils/secureFiles';
 
 interface PermissionsField {
     date: number;
@@ -327,9 +329,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             let modeHash: string | null = null;
             let mode: EnhancedMode | null = null;
             try {
+                const attachmentDirectory = chatAttachmentDirectory(configuration.happyHomeDir, session.client.sessionId);
+                await ensurePrivateDirectory(attachmentDirectory);
                 const remoteResult = await claudeRemote({
                     sessionId: session.sessionId,
                     path: session.path,
+                    additionalDirectories: [attachmentDirectory],
                     allowedTools: session.allowedTools ?? [],
                     mcpServers: session.mcpServers,
                     hookSettingsPath: session.hookSettingsPath,
@@ -366,33 +371,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             // to wait out here — just consume what travelled with the batch.
                             const attachments = msg.attachments ?? [];
                             if (attachments.length > 0) {
-                                const contentBlocks: ContentBlockParam[] = [];
-                                let acceptedAttachments = 0;
-                                for (const att of attachments) {
-                                    // Detect media type from the decrypted bytes' magic header
-                                    // rather than trusting the wire-supplied mimeType. iOS image
-                                    // pickers happily report things like "image/heic" or no
-                                    // mimeType at all, which the Anthropic API rejects with a
-                                    // strict enum validation error. Convert supported image or
-                                    // PDF magic bytes to the native Claude content block;
-                                    // otherwise skip the attachment with a debug log.
-                                    const block = attachmentToClaudeContentBlock(att.data);
-                                    if (!block) {
-                                        logger.debug(`[remote] Skipping unsupported attachment (no magic-byte match): ${att.name}, claimed mimeType=${att.mimeType}`);
-                                        continue;
-                                    }
-                                    contentBlocks.push(block);
-                                    acceptedAttachments++;
-                                }
-                                if (msg.message.trim().length > 0) {
-                                    contentBlocks.push({ type: 'text' as const, text: msg.message });
-                                }
-                                if (contentBlocks.length === 0) {
-                                    throw new Error('No supported attachment content was available to send');
-                                }
-                                logger.debug(`[remote] Combined ${acceptedAttachments} attachment(s) with${msg.message.trim() ? '' : 'out'} text message`);
+                                const staged = await stageClaudeAttachments(attachments, {
+                                    happyHomeDir: configuration.happyHomeDir,
+                                    sessionId: session.client.sessionId,
+                                });
+                                logger.debug(`[remote] Staged ${staged.length} attachment(s) for the coding agent`);
                                 return {
-                                    message: contentBlocks,
+                                    message: appendStagedAttachmentsToPrompt(msg.message, staged),
                                     mode: msg.mode,
                                 };
                             }

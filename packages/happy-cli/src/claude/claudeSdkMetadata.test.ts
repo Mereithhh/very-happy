@@ -8,7 +8,7 @@ describe('applyClaudeSdkMetadata', () => {
     it('advertises the attachment blocks supported by this daemon', () => {
         const metadata = applyClaudeSdkMetadata(base, { modelIsDefault: true });
         expect(metadata.attachmentKinds)
-            .toEqual(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+            .toEqual(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', '*/*']);
         expect(metadata.queueCancellation).toBe(true);
     });
 

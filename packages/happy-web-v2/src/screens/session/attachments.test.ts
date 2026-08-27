@@ -5,16 +5,17 @@ describe('composer attachments', () => {
     it.each([
         [{ type: 'image/png', name: 'capture' }, true],
         [{ type: 'image/webp', name: 'capture' }, true],
-        [{ type: 'image/heic', name: 'photo.heic' }, false],
-        [{ type: 'image/svg+xml', name: 'diagram.svg' }, false],
+        [{ type: 'image/heic', name: 'photo.heic' }, true],
+        [{ type: 'image/svg+xml', name: 'diagram.svg' }, true],
         [{ type: 'application/pdf', name: 'spec.bin' }, true],
         [{ type: '', name: 'SPEC.PDF' }, true],
-        [{ type: 'text/plain', name: 'notes.txt' }, false],
+        [{ type: 'text/plain', name: 'notes.txt' }, true],
+        [{ type: '', name: 'archive.unknown' }, true],
     ])('classifies $0', (file, expected) => {
         expect(isSupportedAttachment(file)).toBe(expected);
     });
 
-    it('leaves encryption overhead below the server 10MB ceiling', () => {
-        expect(MAX_ATTACHMENT_SOURCE_BYTES).toBeLessThan(10 * 1024 * 1024);
+    it('caps the original file at exactly 50 MiB', () => {
+        expect(MAX_ATTACHMENT_SOURCE_BYTES).toBe(50 * 1024 * 1024);
     });
 });

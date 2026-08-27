@@ -34,15 +34,11 @@ export function getFilesFromDrop(event: DragEvent): File[] {
     return result;
 }
 
-export const MAX_ATTACHMENT_SOURCE_BYTES = 10 * 1024 * 1024 - 64;
+export const MAX_ATTACHMENT_SOURCE_BYTES = 50 * 1024 * 1024;
 export const SUPPORTED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
 
-export function isSupportedAttachment(file: Pick<File, 'type' | 'name'>): boolean {
-    const type = file.type.toLowerCase();
-    const name = file.name.toLowerCase();
-    return SUPPORTED_IMAGE_MIME_TYPES.includes(type as typeof SUPPORTED_IMAGE_MIME_TYPES[number])
-        || type === 'application/pdf'
-        || name.endsWith('.pdf');
+export function isSupportedAttachment(_file: Pick<File, 'type' | 'name'>): boolean {
+    return true;
 }
 
 export function isPdfAttachment(file: Pick<File, 'type' | 'name'>): boolean {
@@ -63,16 +59,18 @@ async function fileToPreview(
     const uri = URL.createObjectURL(file);
     ownUrl(uri);
     try {
-        const isPdf = isPdfAttachment(file);
-        if (isPdf) {
+        const isPreviewableImage = SUPPORTED_IMAGE_MIME_TYPES.includes(
+            file.type.toLowerCase() as typeof SUPPORTED_IMAGE_MIME_TYPES[number],
+        );
+        if (!isPreviewableImage) {
             return {
                 id: `att-${attachmentSeq++}-${Date.now()}`,
                 uri,
                 width: 0,
                 height: 0,
                 size: file.size,
-                name: file.name || `document_${Date.now()}.pdf`,
-                mimeType: 'application/pdf',
+                name: file.name || `attachment_${Date.now()}`,
+                mimeType: file.type || 'application/octet-stream',
             };
         }
         const { width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
@@ -107,7 +105,7 @@ async function fileToPreview(
 }
 
 /**
- * Composer attachment state. Converts picked/pasted/dropped images and PDFs
+ * Composer attachment state. Converts picked/pasted/dropped files
  * into AttachmentPreview items ready for sync.sendMessage({ attachments }).
  */
 export function useAttachments() {

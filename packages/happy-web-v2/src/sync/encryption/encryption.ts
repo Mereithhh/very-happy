@@ -120,7 +120,7 @@ export class Encryption {
 
     /**
      * Get the 32-byte NaCl secretbox key for encrypting binary blobs
-     * (image attachments) in a session. Distinct from the message encryption
+     * (opaque file attachments) in a session. Distinct from message encryption
      * key to maintain cryptographic separation.
      * Returns null if the session has not been initialized.
      */
