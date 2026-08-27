@@ -164,7 +164,7 @@ export interface Session {
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server
-    permissionMode?: string | null; // Local permission mode key, not synced to server
+    permissionMode?: string | null; // Pending local mode, rehydrated cross-device from latest sent message meta
     modelMode?: string | null; // Local model key, not synced to server
     effortLevel?: string | null; // Local effort level key, not synced to server
     // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.

@@ -68,7 +68,7 @@ import os from 'node:os';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { logger } from '@/ui/logger';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync, statSync, accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
 import { ControlClient } from './controlClient';
 import {
@@ -950,9 +950,41 @@ function pasteSpoolDir(): string {
     return dir;
 }
 
+export function resolveDefaultShell(
+    platform: NodeJS.Platform,
+    env: NodeJS.ProcessEnv,
+    isExecutable: (path: string) => boolean = (path) => {
+        try {
+            accessSync(path, constants.X_OK);
+            return true;
+        } catch {
+            return false;
+        }
+    },
+): string {
+    if (platform === 'win32') return env.COMSPEC || 'powershell.exe';
+    for (const candidate of [env.SHELL, '/bin/bash', '/bin/sh']) {
+        if (candidate && isExecutable(candidate)) return candidate;
+    }
+    return '/bin/sh';
+}
+
 function defaultShell(): string {
-    if (process.platform === 'win32') return process.env.COMSPEC || 'powershell.exe';
-    return process.env.SHELL || '/bin/bash';
+    return resolveDefaultShell(process.platform, process.env);
+}
+
+export function tmuxNewSessionArgs(
+    session: string,
+    cols: number,
+    rows: number,
+    cwd: string,
+    envFlags: readonly string[],
+    shell: string,
+): string[] {
+    // Explicitly provide the command. tmux otherwise caches `default-shell`
+    // when its server starts; hosted containers can inherit a host-only SHELL
+    // (for example /opt/homebrew/bin/zsh), making every new pane exit instantly.
+    return ['new-session', '-d', ...envFlags, '-s', session, '-x', String(cols), '-y', String(rows), '-c', cwd, shell];
 }
 
 /** Ensure ~/.local/bin is on PATH so `claude` and friends are findable. */
@@ -1987,7 +2019,7 @@ export class WebTerminalManager {
                     // pass it too — harmless once the server runs (env doesn't
                     // re-stick), correct when one of them is the first to boot it.
                     const created = spawnSync('tmux',
-                        ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                        tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell()),
                         { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                     createdNew = created.status === 0;
                 } catch {
@@ -2097,7 +2129,7 @@ export class WebTerminalManager {
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
                 if (!alive) {
                     const retry = spawnSync('tmux',
-                        ['new-session', '-d', ...envFlags, '-s', tmuxSession, '-x', String(cols), '-y', String(rows), '-c', cwd],
+                        tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell()),
                         { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                     createdNew = retry.status === 0;
                     if (createdNew) {

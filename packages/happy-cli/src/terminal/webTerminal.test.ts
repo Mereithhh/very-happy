@@ -4,7 +4,28 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, type TerminalListItem } from './webTerminal';
+
+describe('resolveDefaultShell', () => {
+    it('uses an executable configured shell', () => {
+        expect(resolveDefaultShell('linux', { SHELL: '/custom/zsh' }, (path) => path === '/custom/zsh')).toBe('/custom/zsh');
+    });
+
+    it('falls back for DSW/container environments that inherit a missing host shell', () => {
+        expect(resolveDefaultShell('linux', { SHELL: '/opt/homebrew/bin/zsh' }, (path) => path === '/bin/bash')).toBe('/bin/bash');
+        expect(resolveDefaultShell('linux', { SHELL: '/missing/zsh' }, (path) => path === '/bin/sh')).toBe('/bin/sh');
+    });
+
+    it('retains the Windows COMSPEC behavior', () => {
+        expect(resolveDefaultShell('win32', { COMSPEC: 'C:\\Windows\\cmd.exe' })).toBe('C:\\Windows\\cmd.exe');
+    });
+
+    it('passes the validated shell explicitly when creating a tmux pane', () => {
+        expect(tmuxNewSessionArgs('vh-test', 80, 24, '/workspace', ['-e', 'A=B'], '/bin/sh')).toEqual([
+            'new-session', '-d', '-e', 'A=B', '-s', 'vh-test', '-x', '80', '-y', '24', '-c', '/workspace', '/bin/sh',
+        ]);
+    });
+});
 
 describe('tmuxKillVerified', () => {
     it('requires a successful probe proving the session is absent', () => {

@@ -62,6 +62,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const ime = useImeGuard();
     const [text, setText] = useState(session?.draft ?? '');
+    const draftRef = useRef(text);
+    draftRef.current = text;
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
     const [dragOver, setDragOver] = useState(false);
@@ -147,6 +149,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         return () => clearTimeout(id);
     }, [text, sessionId]);
 
+    // Route switches remount the composer by session id. Flush the latest
+    // value before unmount so a sub-debounce draft stays with its own session.
+    useEffect(() => () => {
+        storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
+    }, [sessionId]);
+
     const doSend = async () => {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
@@ -162,6 +170,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         // can't be summoned. Mobile-only; desktop always refocuses.
         const hadFocus = document.activeElement === taRef.current;
         setSending(true);
+        draftRef.current = '';
         setText('');
         clear();
         storage.getState().updateSessionDraft(sessionId, null);
@@ -169,6 +178,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             await sync.sendMessage(sessionId, value, { source: 'chat', attachments: atts });
         } catch {
             // restore text on failure so the user doesn't lose it
+            draftRef.current = value;
             setText(value);
         } finally {
             setSending(false);

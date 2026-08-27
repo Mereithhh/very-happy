@@ -15,6 +15,7 @@ import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { compareMessagesNewestFirst } from "./messageOrder";
+import { resolveIncomingPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
@@ -670,6 +671,7 @@ export const storage = create<StorageState>()((set, get) => {
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
+            let appliedPermissionMode: string | undefined;
 
             // Track plan mode transitions through the batch in order.
             // Set true on EnterPlanMode, false on ExitPlanMode. The final value
@@ -709,6 +711,7 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Messages are already normalized, no need to process them again
                 const normalizedMessages = messages;
+                const incomingPermissionMode = resolveIncomingPermissionMode(existingSession.messages, normalizedMessages);
 
                 // Run reducer with agentState
                 const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
@@ -737,7 +740,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode) && session;
+                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage || shouldEnterPlanMode || incomingPermissionMode !== undefined) && session;
 
                 if (needsUpdate) {
                     updatedSessions = {
@@ -750,9 +753,11 @@ export const storage = create<StorageState>()((set, get) => {
                                 ...existingSession.reducerState.latestUsage
                             } : session.latestUsage,
                             // Auto-switch to plan mode when EnterPlanMode tool call is detected
+                            ...(incomingPermissionMode !== undefined && { permissionMode: incomingPermissionMode }),
                             ...(shouldEnterPlanMode && { permissionMode: 'plan' })
                         }
                     };
+                    appliedPermissionMode = shouldEnterPlanMode ? 'plan' : incomingPermissionMode;
                 }
 
                 return {
@@ -772,7 +777,7 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Persist plan mode change
-            if (shouldEnterPlanMode) {
+            if (shouldEnterPlanMode || appliedPermissionMode !== undefined) {
                 const allModes: Record<string, string> = {};
                 const currentState = get();
                 Object.entries(currentState.sessions).forEach(([id, sess]) => {
