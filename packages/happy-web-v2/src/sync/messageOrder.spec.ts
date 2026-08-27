@@ -114,4 +114,15 @@ describe('compareMessagesNewestFirst', () => {
             expect(ids([...history, optimistic])).toEqual(['local', 'm2', 'm1']);
         });
     });
+
+    it('places consumed queued input at its turn-end display boundary without mutating source seq', () => {
+        const queued = msg('queued', { seq: 5, createdAt: 500 });
+        queued.displaySeq = 9;
+        queued.displayAt = 900;
+        const laterTool = msg('tool', { seq: 8, createdAt: 800 });
+        const nextReply = msg('reply', { seq: 10, createdAt: 1000 });
+
+        expect(ids([laterTool, nextReply, queued])).toEqual(['reply', 'queued', 'tool']);
+        expect(queued.seq).toBe(5);
+    });
 });

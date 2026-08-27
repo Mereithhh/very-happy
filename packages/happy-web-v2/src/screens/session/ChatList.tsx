@@ -89,7 +89,17 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
     // bottom = oldest→newest, so reverse into chronological order once here.
     // (Rendering the raw newest-first array is what showed the whole conversation
     // upside-down.) buildRows + the streaming signal below both consume this.
-    const chronological = useMemo(() => [...messages].reverse(), [messages]);
+    const queuedMessages = useMemo(
+        () => [...messages]
+            .reverse()
+            .filter((message) => message.inputState === 'queued'),
+        [messages],
+    );
+    const chronological = useMemo(
+        () => [...messages].reverse().filter((message) =>
+            message.inputState !== 'queued'),
+        [messages],
+    );
     const rows = useMemo(() => buildRows(chronological), [chronological]);
 
     // Streaming signal: the last (newest) message's text grows in place (same
@@ -301,7 +311,43 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
                     <PermissionCard sessionId={sessionId} />
                 </div>
             </div>
-            {showJump && (
+            {queuedMessages.length > 0 && (
+                <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
+                    <div className="cl-queue-head">
+                        <div className="cl-queue-labels">
+                            <span>{t('session.chat.queuedTitle', { count: queuedMessages.length })}</span>
+                            <span className="cl-queue-hint">{t('session.chat.queuedHint')}</span>
+                        </div>
+                        {showJump && (
+                            <button
+                                type="button"
+                                className="cl-queue-jump"
+                                onClick={() => scrollToBottom(true)}
+                                aria-label={t('session.chat.jumpToLatest')}
+                                title={t('session.chat.jumpToLatest')}
+                            >
+                                {unseenLabel !== null && <span>{unseenLabel}</span>}
+                                <ChevronDown size={16} />
+                            </button>
+                        )}
+                    </div>
+                    <div className="cl-queue-items">
+                        {queuedMessages.map((message, index) => (
+                            <div className="cl-queue-item" key={('localId' in message ? message.localId : null) ?? message.id}>
+                                <span className="cl-queue-index">{index + 1}</span>
+                                <span className="cl-queue-text">
+                                    {message.kind === 'user-text'
+                                        ? (message.displayText ?? message.text)
+                                        : message.kind === 'tool-call' && message.tool.name === 'file'
+                                            ? t('session.chat.queuedFile', { name: String(message.tool.input?.name ?? '') })
+                                            : ''}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+            {showJump && queuedMessages.length === 0 && (
                 <button
                     type="button"
                     className="cl-jump"

@@ -74,6 +74,7 @@ import {
     emitFirstMachineConnected,
     shouldAnnounceFirstMachine,
 } from '@/screens/onboarding/firstMachineWelcome';
+import { queuedAtForSend } from './queuedInput';
 
 type V3GetSessionMessagesResponse = {
     messages: ApiMessage[];
@@ -627,6 +628,14 @@ class Sync {
 
         const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
         const { displayText, source = 'chat', attachments } = options ?? {};
+        // Question/permission answers have their own request/response path and
+        // must not wait behind the ordinary chat queue. For normal input, keep
+        // sending durably right away but tell the Web that the current turn has
+        // not consumed it yet. Old CLIs safely strip this optional meta field.
+        const hasRunningTool = storage.getState().sessionMessages[sessionId]?.messages.some(
+            (message) => message.kind === 'tool-call' && message.tool.state === 'running',
+        ) ?? false;
+        const queuedAt = queuedAtForSend(session.thinking || hasRunningTool, source);
 
         // Image attachments are wired into the Claude pipeline only; Codex /
         // Gemini / OpenClaw runners read message.content.text and ignore
@@ -666,6 +675,7 @@ class Sync {
                 for (const att of uploaded) {
                     const fileRecord: RawRecord = {
                         role: 'session',
+                        ...(queuedAt !== undefined ? { meta: { queuedAt } } : {}),
                         content: {
                             type: 'session',
                             data: {
@@ -740,7 +750,8 @@ class Sync {
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
-                ...(displayText && { displayText }) // Add displayText if provided
+                ...(displayText && { displayText }), // Add displayText if provided
+                ...(queuedAt !== undefined ? { queuedAt } : {})
             }
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);
