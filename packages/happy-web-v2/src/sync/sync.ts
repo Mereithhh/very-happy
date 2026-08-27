@@ -790,6 +790,44 @@ class Sync {
         this.maybeStartBackgroundSendWatchdog();
     }
 
+    /** Persist an invisible queue-cancel tombstone after the CLI removed it. */
+    async recordQueueCancellation(sessionId: string, targetLocalKeys: string[]): Promise<void> {
+        let encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            await this.sessionsSync.awaitQueue();
+            encryption = this.encryption.getSessionEncryption(sessionId);
+        }
+        if (!encryption || targetLocalKeys.length === 0) {
+            throw new Error('Session encryption unavailable');
+        }
+
+        const localId = randomUUID();
+        const now = Date.now();
+        const content: RawRecord = {
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: randomUUID(),
+                    time: now,
+                    role: 'user',
+                    ev: { t: 'queue-cancel', targetLocalKeys },
+                },
+            },
+        };
+        const encrypted = await encryption.encryptRawRecord(content);
+        const normalized = normalizeRawMessage(localId, localId, now, content);
+        if (normalized) this.enqueueMessages(sessionId, [normalized]);
+        let pending = this.pendingOutbox.get(sessionId);
+        if (!pending) {
+            pending = [];
+            this.pendingOutbox.set(sessionId, pending);
+        }
+        pending.push({ localId, content: encrypted });
+        this.getSendSync(sessionId).invalidate();
+        this.maybeStartBackgroundSendWatchdog();
+    }
+
     /** Server sent us settings — merge any pending local changes on top, then apply as one update. */
     private applyServerSettings = (serverSettings: Settings, version: number) => {
         const merged = Object.keys(this.pendingSettings).length > 0

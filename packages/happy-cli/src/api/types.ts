@@ -411,6 +411,8 @@ export type Metadata = {
   skills?: string[],
   /** Attachment content blocks this daemon can forward to the active SDK. */
   attachmentKinds?: string[],
+  /** Pending user messages can be canceled by stable transport id. */
+  queueCancellation?: boolean,
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,

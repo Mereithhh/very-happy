@@ -49,6 +49,9 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     id: z.string(),
     title: z.string().optional(),
     status: z.enum(['running', 'completed']),
+}), z.object({
+    type: z.literal('queue-cancel'),
+    targetLocalKeys: z.array(z.string().min(1)).min(1),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -125,6 +128,11 @@ const sessionStopEventSchema = z.object({
     t: z.literal('stop'),
 });
 
+const sessionQueueCancelEventSchema = z.object({
+    t: z.literal('queue-cancel'),
+    targetLocalKeys: z.array(z.string().min(1)).min(1),
+});
+
 const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTextEventSchema,
     sessionServiceMessageEventSchema,
@@ -135,6 +143,7 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionStartEventSchema,
     sessionTurnEndEventSchema,
     sessionStopEventSchema,
+    sessionQueueCancelEventSchema,
 ]);
 
 const sessionEnvelopeSchema = z.object({
@@ -599,6 +608,21 @@ function normalizeSessionEnvelope(
 
     if (envelope.ev.t === 'turn-start') {
         return null;
+    }
+
+    if (envelope.ev.t === 'queue-cancel') {
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: {
+                type: 'queue-cancel',
+                targetLocalKeys: envelope.ev.targetLocalKeys,
+            },
+            meta,
+        } satisfies NormalizedMessage;
     }
 
     if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {

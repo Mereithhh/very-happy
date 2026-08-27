@@ -145,7 +145,7 @@ type ReducerMessage = {
     sortOrder: number;
     role: 'user' | 'agent';
     localId?: string | null;
-    inputState?: 'queued';
+    inputState?: 'queued' | 'canceled';
     displaySeq?: number | null;
     displayAt?: number;
     text: string | null;
@@ -212,6 +212,8 @@ export type ReducerState = {
     nextSortOrder: number; // Monotonic counter feeding ReducerMessage.sortOrder
     /** Durable turn boundaries used to place queued input at first consumption. */
     turnEnds: TurnEndBoundary[];
+    /** Durable queue-cancel tombstones; independent of history page order. */
+    canceledQueuedLocalKeys: Set<string>;
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -242,6 +244,7 @@ export function createReducer(): ReducerState {
         tracerState: createTracer(),
         nextSortOrder: 0,
         turnEnds: [],
+        canceledQueuedLocalKeys: new Set(),
     }
 };
 
@@ -421,6 +424,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             continue;
         }
         if (state.messageIds.has(msg.id)) {
+            continue;
+        }
+
+        if (msg.role === 'event' && msg.content.type === 'queue-cancel') {
+            state.messageIds.set(msg.id, msg.id);
+            for (const localKey of msg.content.targetLocalKeys) {
+                state.canceledQueuedLocalKeys.add(localKey);
+                const targetId = state.localIds.get(localKey);
+                const target = targetId ? state.messages.get(targetId) : undefined;
+                if (target && target.inputState !== 'canceled') {
+                    target.inputState = 'canceled';
+                    changed.add(target.id);
+                }
+            }
             continue;
         }
 
@@ -964,6 +981,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             id: mid,
                             realID: msg.id,
                             role: 'agent',
+                            localId: msg.localId,
                             createdAt: msg.createdAt,
                             seq: msg.seq,
                             sortOrder: state.nextSortOrder++,
@@ -974,6 +992,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         });
 
                         state.toolIdToMessageId.set(c.id, mid);
+                        if (msg.localId) state.localIds.set(msg.localId, mid);
                         changed.add(mid);
 
                     }
@@ -1334,7 +1353,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             { queuedAt, seq: message.seq },
             state.turnEnds,
         );
-        const nextInputState = boundary ? undefined : 'queued';
+        const nextInputState = message.localId && state.canceledQueuedLocalKeys.has(message.localId)
+            ? 'canceled'
+            : boundary ? undefined : 'queued';
         const nextDisplaySeq = boundary?.seq;
         const nextDisplayAt = boundary?.createdAt;
         if (
@@ -1425,7 +1446,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
-            ...(reducerMsg.inputState === 'queued' ? { inputState: 'queued' as const } : {}),
+            ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
             ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
             ...(reducerMsg.codexItemId && { codexItemId: reducerMsg.codexItemId }),
             meta: reducerMsg.meta
@@ -1459,7 +1480,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
 
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             seq: reducerMsg.seq,
             sortOrder: reducerMsg.sortOrder,
@@ -1469,7 +1490,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             tool: { ...reducerMsg.tool },
             children: childMessages,
             meta: reducerMsg.meta,
-            ...(reducerMsg.inputState === 'queued' ? { inputState: 'queued' as const } : {}),
+            ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
         return {

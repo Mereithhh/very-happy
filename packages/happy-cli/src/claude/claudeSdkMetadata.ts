@@ -18,6 +18,7 @@ export function applyClaudeSdkMetadata(current: Metadata, update: ClaudeSdkMetad
         mcpServers: update.mcpServers,
         skills: update.skills,
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
+        queueCancellation: true,
         ...(update.modelIsDefault && update.model
             ? { defaultModelCode: update.model }
             : {}),

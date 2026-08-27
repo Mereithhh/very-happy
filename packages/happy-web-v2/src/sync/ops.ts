@@ -1164,6 +1164,22 @@ export async function sessionSteer(sessionId: string): Promise<void> {
     await apiSocket.sessionRPC(sessionId, 'steer', {});
 }
 
+export async function sessionCancelQueuedMessage(
+    sessionId: string,
+    localKey: string,
+    text: string,
+    targetLocalKeys: string[],
+): Promise<boolean> {
+    const response = await apiSocket.sessionRPC<{ removed: boolean }, { localKey: string; text: string }>(
+        sessionId,
+        'cancelQueuedMessage',
+        { localKey, text },
+    );
+    if (!response?.removed) return false;
+    await sync.recordQueueCancellation(sessionId, targetLocalKeys);
+    return true;
+}
+
 /**
  * Allow a permission request
  */

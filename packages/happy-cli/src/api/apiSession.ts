@@ -237,7 +237,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body);
+                    this.routeIncomingMessage(body, localId);
                     if (localId) this.rememberRoutedInbound(localId);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
@@ -482,8 +482,11 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
-    private routeIncomingMessage(message: unknown) {
-        const userResult = UserMessageSchema.safeParse(message);
+    private routeIncomingMessage(message: unknown, sourceLocalId?: string | null) {
+        const messageWithSource = sourceLocalId && typeof message === 'object' && message !== null
+            ? { ...message, localKey: (message as { localKey?: unknown }).localKey ?? sourceLocalId }
+            : message;
+        const userResult = UserMessageSchema.safeParse(messageWithSource);
         if (userResult.success) {
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
@@ -550,7 +553,7 @@ export class ApiSessionClient extends EventEmitter {
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body);
+                    this.routeIncomingMessage(body, message.localId);
                     if (message.localId) this.rememberRoutedInbound(message.localId);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
@@ -691,7 +694,7 @@ export class ApiSessionClient extends EventEmitter {
                     for (const item of batch) {
                         if (this.routedInboundLocalIds.has(item.localId)) continue;
                         const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(item.content));
-                        this.routeIncomingMessage(body);
+                        this.routeIncomingMessage(body, item.localId);
                         this.rememberRoutedInbound(item.localId);
                     }
                     callback({ ok: true, messages: stored });

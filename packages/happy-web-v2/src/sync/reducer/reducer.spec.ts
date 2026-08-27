@@ -186,6 +186,43 @@ describe('reducer', () => {
             expect(ended.messages[0]).not.toHaveProperty('inputState');
         });
 
+        it('applies a durable cancellation after the queued input arrives', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'queued-cancel-later', localId: 'local-cancel-later', createdAt: 2000,
+                role: 'user', content: { type: 'text', text: 'cancel me' }, isSidechain: false,
+                meta: { queuedAt: 2000 },
+            }]);
+
+            const result = reducer(state, [{
+                id: 'cancel-event-later', localId: 'cancel-local', createdAt: 2100,
+                role: 'event', isSidechain: false,
+                content: { type: 'queue-cancel', targetLocalKeys: ['local-cancel-later'] },
+            }]);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0]).toMatchObject({
+                kind: 'user-text', localId: 'local-cancel-later', inputState: 'canceled',
+            });
+        });
+
+        it('keeps a cancellation tombstone when newest-first history reveals the target later', () => {
+            const state = createReducer();
+            expect(reducer(state, [{
+                id: 'cancel-event-first', localId: 'cancel-local', createdAt: 2100,
+                role: 'event', isSidechain: false,
+                content: { type: 'queue-cancel', targetLocalKeys: ['local-cancel-first'] },
+            }]).messages).toHaveLength(0);
+
+            const result = reducer(state, [{
+                id: 'queued-cancel-first', localId: 'local-cancel-first', createdAt: 2000,
+                role: 'user', content: { type: 'text', text: 'cancel me too' }, isSidechain: false,
+                meta: { queuedAt: 2000 },
+            }]);
+            expect(result.messages[0]).toMatchObject({
+                kind: 'user-text', localId: 'local-cancel-first', inputState: 'canceled',
+            });
+        });
+
         it('should process user messages with localId', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

@@ -41,6 +41,8 @@ export const MetadataSchema = z.object({
     mcpServers: z.array(z.object({ name: z.string(), status: z.string() })).optional(),
     skills: z.array(z.string()).optional(),
     attachmentKinds: z.array(z.string()).optional(),
+    /** The connected Claude runner can remove pending queue items by local id. */
+    queueCancellation: z.boolean().optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     startedFromDaemon: z.boolean().optional(),

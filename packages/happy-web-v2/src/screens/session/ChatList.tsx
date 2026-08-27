@@ -5,12 +5,13 @@
  * single ToolGroupView. "Load older" appears when hasMoreOlder.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
-import { useSessionMessages } from '@/sync/storage';
+import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
-import { Button, EmptyState, OrbitLoader } from '@/ui';
+import { Button, EmptyState, OrbitLoader, Spinner, useToast } from '@/ui';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
@@ -75,11 +76,14 @@ function buildRows(messages: Message[]): Row[] {
 
 export function ChatList({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
+    const toast = useToast();
+    const session = useSession(sessionId);
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
     const atBottomRef = useRef(true);
     const [showJump, setShowJump] = useState(false);
+    const [cancelingLocalKey, setCancelingLocalKey] = useState<string | null>(null);
     const prevHeightRef = useRef(0);
     // B-099 ②：离底时刻的 rows.length 快照（贴底时为 null）。之后新到的 row 数
     // = rows.length - 快照，渲染成 .cl-jump 上的数字 badge；回底清零。
@@ -98,10 +102,35 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     );
     const chronological = useMemo(
         () => [...messages].reverse().filter((message) =>
-            message.inputState !== 'queued'),
+            message.inputState === undefined),
         [messages],
     );
     const rows = useMemo(() => buildRows(chronological), [chronological]);
+
+    const cancelQueued = async (index: number) => {
+        const message = queuedMessages[index];
+        if (message?.kind !== 'user-text' || !message.localId || cancelingLocalKey) return;
+        const targetLocalKeys = [message.localId];
+        for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+            const previous = queuedMessages[cursor];
+            if (previous.kind !== 'tool-call' || previous.tool.name !== 'file') break;
+            if (previous.localId) targetLocalKeys.unshift(previous.localId);
+        }
+        setCancelingLocalKey(message.localId);
+        try {
+            const removed = await sessionCancelQueuedMessage(
+                sessionId,
+                message.localId,
+                message.text,
+                targetLocalKeys,
+            );
+            if (!removed) toast.error(t('session.chat.queueCancelTooLate'));
+        } catch {
+            toast.error(t('session.chat.queueCancelFailed'));
+        } finally {
+            setCancelingLocalKey(null);
+        }
+    };
 
     // Streaming signal: the last (newest) message's text grows in place (same
     // message id, so rows.length stays constant) while the agent streams. Auto-
@@ -341,6 +370,19 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                                             ? t('session.chat.queuedFile', { name: String(message.tool.input?.name ?? '') })
                                             : ''}
                                 </span>
+                                {session?.metadata?.queueCancellation === true && message.kind === 'user-text' && message.localId && (
+                                    <button
+                                        type="button"
+                                        className="cl-queue-cancel"
+                                        disabled={cancelingLocalKey !== null}
+                                        aria-busy={cancelingLocalKey === message.localId}
+                                        aria-label={t('session.chat.queueCancel')}
+                                        title={t('session.chat.queueCancel')}
+                                        onClick={() => void cancelQueued(index)}
+                                    >
+                                        {cancelingLocalKey === message.localId ? <Spinner size={14} /> : <Trash2 size={15} />}
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
