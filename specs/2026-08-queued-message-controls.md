@@ -1,6 +1,6 @@
 # Queued message controls
 
-> 状态：Final
+> 状态：Shipped
 > 日期：2026-08-27 ｜ 关联 backlog：B-234
 
 ## 背景
@@ -57,8 +57,8 @@ UI 是 composer 上方的紧凑 command buffer：一条 header（Queued + 数量
 - [ ] 立即干预先 abort，再优先发送选中项，其他项顺序不变。
 - [ ] 正常 turn 结束后逐项释放，不合批。
 - [ ] 刷新恢复纯文本队列，session 之间隔离。
-- [ ] 390/320px 无横向溢出，触摸操作目标 ≥40px，桌面键盘焦点可见。
-- [ ] Web vitest、vite build、tsc 全绿。
+- [x] 390/320px 无横向溢出，触摸操作目标 ≥40px，桌面键盘焦点可见。
+- [x] Web vitest、vite build、tsc 全绿。
 
 ## 留真机验证项
 
