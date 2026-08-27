@@ -34,6 +34,116 @@ describe('reducer', () => {
     // });
 
     describe('user message handling', () => {
+        it('keeps working-turn input queued until an incremental turn-end arrives', () => {
+            const state = createReducer();
+            const queued: NormalizedMessage = {
+                id: 'queued-1',
+                localId: 'local-queued-1',
+                createdAt: 2000,
+                role: 'user',
+                content: { type: 'text', text: 'status?' },
+                isSidechain: false,
+                meta: { queuedAt: 2000 },
+            };
+
+            const first = reducer(state, [queued]);
+            expect(first.messages[0]).toMatchObject({
+                kind: 'user-text',
+                localId: 'local-queued-1',
+                inputState: 'queued',
+            });
+
+            const ended = reducer(state, [{
+                id: 'turn-end-1',
+                localId: null,
+                createdAt: 2100,
+                role: 'event',
+                content: { type: 'ready' },
+                isSidechain: false,
+            }]);
+            expect(ended.messages).toHaveLength(1);
+            expect(ended.messages[0]).toMatchObject({
+                kind: 'user-text',
+                localId: 'local-queued-1',
+            });
+            expect(ended.messages[0]).not.toHaveProperty('inputState');
+            expect(ended.messages[0]).toMatchObject({ displayAt: 2100 });
+        });
+
+        it('derives the same consumed state when history includes user input and turn-end together', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'queued-history',
+                localId: 'local-history',
+                createdAt: 2000,
+                role: 'user',
+                content: { type: 'text', text: 'status?' },
+                isSidechain: false,
+                meta: { queuedAt: 2000 },
+            }, {
+                id: 'turn-end-history',
+                localId: null,
+                createdAt: 2100,
+                role: 'event',
+                content: { type: 'ready' },
+                isSidechain: false,
+            }]);
+
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0]).not.toHaveProperty('inputState');
+        });
+
+        it('places backfilled queued input at the first following turn-end, not the newest one loaded first', () => {
+            const state = createReducer();
+            reducer(state, [{
+                id: 'latest-end', localId: null, createdAt: 5000, seq: 50,
+                role: 'event', content: { type: 'ready' }, isSidechain: false,
+            }, {
+                id: 'first-end', localId: null, createdAt: 3000, seq: 30,
+                role: 'event', content: { type: 'ready' }, isSidechain: false,
+            }]);
+
+            const result = reducer(state, [{
+                id: 'backfilled-queued', localId: 'local-backfill', createdAt: 2000, seq: 20,
+                role: 'user', content: { type: 'text', text: 'queued' }, isSidechain: false,
+                meta: { queuedAt: 2000 },
+            }]);
+
+            expect(result.messages[0]).toMatchObject({
+                kind: 'user-text',
+                seq: 20,
+                displaySeq: 30,
+                displayAt: 3000,
+            });
+        });
+
+        it('keeps an attachment event in the same queue until turn-end', () => {
+            const state = createReducer();
+            const first = reducer(state, [{
+                id: 'queued-file', localId: 'local-file', createdAt: 2000, seq: 20,
+                role: 'agent', isSidechain: false, meta: { queuedAt: 2000 },
+                content: [{
+                    type: 'tool-call', id: 'file-call', name: 'file',
+                    input: { name: 'result.png' }, description: 'Attached file',
+                    uuid: 'file-uuid', parentUUID: null,
+                }],
+            }]);
+            expect(first.messages[0]).toMatchObject({
+                kind: 'tool-call', inputState: 'queued',
+                tool: { name: 'file' },
+            });
+
+            const ended = reducer(state, [{
+                id: 'file-turn-end', localId: null, createdAt: 3000, seq: 30,
+                role: 'event', content: { type: 'ready' }, isSidechain: false,
+            }]);
+            expect(ended.messages[0]).toMatchObject({
+                kind: 'tool-call', displaySeq: 30,
+                tool: { name: 'file' },
+            });
+            expect(ended.messages[0]).not.toHaveProperty('inputState');
+        });
+
         it('should process user messages with localId', () => {
             const state = createReducer();
             const messages: NormalizedMessage[] = [

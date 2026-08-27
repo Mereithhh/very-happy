@@ -33,6 +33,12 @@ export type MessageOrdering = {
     seq?: number | null;
     /** Monotonic reducer creation counter; last-resort ordering tiebreaker. */
     sortOrder?: number;
+    /** Visual consumption boundary for queued input; source seq remains immutable. */
+    displaySeq?: number | null;
+    /** Timestamp fallback for an optimistic queued input without a server seq. */
+    displayAt?: number;
+    /** Persisted input/file item waiting for the preceding turn to finish. */
+    inputState?: 'queued';
 }
 
 // Flattened message types - each message represents a single block

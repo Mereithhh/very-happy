@@ -21,11 +21,15 @@ import type { Message } from './typesMessage';
  * Returning 0 keeps the (stable) sort's existing relative order.
  */
 export function compareMessagesNewestFirst(a: Message, b: Message): number {
-    if (typeof a.seq === 'number' && typeof b.seq === 'number' && a.seq !== b.seq) {
-        return b.seq - a.seq;
+    const aSeq = typeof a.displaySeq === 'number' ? a.displaySeq : a.seq;
+    const bSeq = typeof b.displaySeq === 'number' ? b.displaySeq : b.seq;
+    if (typeof aSeq === 'number' && typeof bSeq === 'number' && aSeq !== bSeq) {
+        return bSeq - aSeq;
     }
-    if (a.createdAt !== b.createdAt) {
-        return b.createdAt - a.createdAt;
+    const aTime = a.displayAt ?? a.createdAt;
+    const bTime = b.displayAt ?? b.createdAt;
+    if (aTime !== bTime) {
+        return bTime - aTime;
     }
     if (typeof a.sortOrder === 'number' && typeof b.sortOrder === 'number' && a.sortOrder !== b.sortOrder) {
         return b.sortOrder - a.sortOrder;

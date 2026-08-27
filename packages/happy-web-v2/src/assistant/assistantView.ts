@@ -31,7 +31,7 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
     let tool: AssistantExchange['tool'] = null;
     let latestRole: AssistantExchange['latestRole'] = null;
     for (const m of sorted) {
-        if (userText === null && m.kind === 'user-text') {
+        if (userText === null && m.kind === 'user-text' && m.inputState !== 'queued') {
             userText = m.displayText ?? m.text;
             latestRole = latestRole ?? 'user';
         } else if (assistantText === null && m.kind === 'agent-text' && !m.isThinking && m.text.trim()) {
@@ -156,7 +156,7 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
     const sorted = [...messages].sort(compareMessagesNewestFirst).reverse(); // oldest first
     const out: TranscriptEntry[] = [];
     for (const m of sorted) {
-        if (m.kind === 'user-text') {
+        if (m.kind === 'user-text' && m.inputState !== 'queued') {
             const text = (m.displayText ?? m.text).trim();
             if (text) out.push({ id: m.id, role: 'user', text });
         } else if (m.kind === 'agent-text') {

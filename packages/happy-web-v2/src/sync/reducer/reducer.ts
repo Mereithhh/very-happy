@@ -116,6 +116,7 @@ import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
+import { firstTurnEndForQueuedInput, TurnEndBoundary } from "../queuedInput";
 
 type TurnUsage = {
     inputTokens: number;
@@ -143,6 +144,10 @@ type ReducerMessage = {
      */
     sortOrder: number;
     role: 'user' | 'agent';
+    localId?: string | null;
+    inputState?: 'queued';
+    displaySeq?: number | null;
+    displayAt?: number;
     text: string | null;
     isThinking?: boolean;
     event: AgentEvent | null;
@@ -204,6 +209,8 @@ export type ReducerState = {
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
     nextSortOrder: number; // Monotonic counter feeding ReducerMessage.sortOrder
+    /** Durable turn boundaries used to place queued input at first consumption. */
+    turnEnds: TurnEndBoundary[];
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -231,7 +238,8 @@ export function createReducer(): ReducerState {
         messageIds: new Map(),
         sidechains: new Map(),
         tracerState: createTracer(),
-        nextSortOrder: 0
+        nextSortOrder: 0,
+        turnEnds: [],
     }
 };
 
@@ -428,6 +436,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     },
                 });
             }
+            state.turnEnds.push({ createdAt: msg.createdAt, seq: msg.seq });
             // A ready event carrying turn metadata marks turn completion. Defer
             // stamping until after Phase 1 (which creates the agent-text
             // messages) so bulk history loads — where all events are handled
@@ -800,6 +809,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 id: mid,
                 realID: msg.id,
                 role: 'user',
+                localId: msg.localId,
                 createdAt: msg.createdAt,
                 seq: msg.seq,
                 sortOrder: state.nextSortOrder++,
@@ -1281,6 +1291,32 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         }
     }
 
+    // Reconcile every marked user/file input against the earliest known
+    // turn-end. History pages arrive newest-first, so a later backfill may
+    // reveal an earlier boundary and must be allowed to reposition the item.
+    for (const message of state.messages.values()) {
+        const queuedAt = message.meta?.queuedAt;
+        const isInputItem = message.role === 'user' || message.tool?.name === 'file';
+        if (!isInputItem || typeof queuedAt !== 'number') continue;
+        const boundary = firstTurnEndForQueuedInput(
+            { queuedAt, seq: message.seq },
+            state.turnEnds,
+        );
+        const nextInputState = boundary ? undefined : 'queued';
+        const nextDisplaySeq = boundary?.seq;
+        const nextDisplayAt = boundary?.createdAt;
+        if (
+            message.inputState !== nextInputState
+            || message.displaySeq !== nextDisplaySeq
+            || message.displayAt !== nextDisplayAt
+        ) {
+            message.inputState = nextInputState;
+            message.displaySeq = nextDisplaySeq;
+            message.displayAt = nextDisplayAt;
+            changed.add(message.id);
+        }
+    }
+
     //
     // Collect changed messages (only root-level messages)
     //
@@ -1348,13 +1384,16 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
-            localId: null,
+            localId: reducerMsg.localId ?? null,
             createdAt: reducerMsg.createdAt,
             seq: reducerMsg.seq,
             sortOrder: reducerMsg.sortOrder,
+            displaySeq: reducerMsg.displaySeq,
+            displayAt: reducerMsg.displayAt,
             kind: 'user-text',
             text: reducerMsg.text,
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
+            ...(reducerMsg.inputState === 'queued' ? { inputState: 'queued' as const } : {}),
             ...(reducerMsg.claudeUuid && { claudeUuid: reducerMsg.claudeUuid }),
             ...(reducerMsg.codexItemId && { codexItemId: reducerMsg.codexItemId }),
             meta: reducerMsg.meta
@@ -1392,10 +1431,13 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             createdAt: reducerMsg.createdAt,
             seq: reducerMsg.seq,
             sortOrder: reducerMsg.sortOrder,
+            displaySeq: reducerMsg.displaySeq,
+            displayAt: reducerMsg.displayAt,
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
             children: childMessages,
-            meta: reducerMsg.meta
+            meta: reducerMsg.meta,
+            ...(reducerMsg.inputState === 'queued' ? { inputState: 'queued' as const } : {}),
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
         return {
