@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-229 | **AskUserQuestion 点选后 Claude 仍判定“用户未回答”**：Web 必须把选项作为当前工具调用的 `updatedInput.answers`（问题原文→答案）回传，不得先空批准工具再发一条普通用户消息 | bug/incident | Owner 截图实报 2026-08-27 | done | 根因：B-100/B-227 只做了选项 UI 与多题批量，`sessionAllow` 却未携带答案，SDK 因而用空 `answers` 结束工具；后发的 `sync.sendMessage` 已是下一条用户消息。修为精确 question-text-keyed answers map，multi-select 依 SDK 契约用逗号分隔；转录卡/权限卡两个入口同步，并隐藏会产生空答案的单条/批量通用 Approve。Web 153 files / 1,672 tests、build、tsc 0 全绿。 |
 | B-228 | **Blue-green readiness 对特定 SHA 误判并阻断发布**：Web asset 后缀以 `-d...` 开头时不得被 GNU grep 当成 `--directories` 参数；候选失败必须停在 before-switch 并保留线上 active slot | incident/release | 2026-08-27 发布 PR #64 时发现 | done | Run 33000452879 在 `wait_ready` 失败；根因是 `grep -Fq "-$release.js"` 缺少 `--`，已改为 `grep -Fq --` 并新增 option-like SHA 回归测试。线上仍为旧资产 `3e6f277a`，health 正常，未切流量、未 promote latest。 |
 | B-227 | **同一个 AskUserQuestion 含多题时，回答第一题会禁用剩余题目**：多题不得沿用单题“点选即全局提交”的交互；每题答案需独立可改，全部完成后一次提交并保持原问题顺序，单题仍保留一键回答，多选题仍支持选多个 | bug/ux | Owner 实报 2026-08-27 | done | 根因：`questions[]` 共享父级 `sent/busy`，第一题 `onSubmit` 后整组 disabled。改为每题本地受控选择、全部完成后统一提交；单题载荷与交互保持兼容。Web 全量 153 files / 1670 tests、build、tsc 均通过；纯 Web，不改协议/daemon。 |
 | B-226 | **Claude 运行中只能追问一次**：agent working 时 composer 不得用停止按钮替换发送按钮；用户应能像 Codex Desktop 一样继续发送多条 follow-up 进入既有 daemon queue，同时始终保留独立停止操作，发送失败不得丢草稿 | bug/ux | Owner 实报 2026-08-27 | done | 运行中改为并列停止 + 发送；沿用已有 `MessageQueue2` 连续入队能力，不改协议/daemon。320×720 浏览器验证双键同时可见、输入追问后发送可用且无横向溢出。 |

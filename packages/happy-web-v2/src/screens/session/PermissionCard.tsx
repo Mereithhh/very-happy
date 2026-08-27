@@ -6,7 +6,6 @@
 import { useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
-import { sync } from '@/sync/sync';
 import { useSession } from '@/sync/storage';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -38,16 +37,18 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
 
     // ExitPlanMode: show the plan as Markdown, not an arguments JSON blob.
     // AskUserQuestion: show the actual options — picking one approves the
-    // request AND sends the label as a plain user message. Both parse through
-    // the knownTools zod schema and fall back to the JSON detail on failure.
+    // request with the SDK's question-text-keyed answers map. Both parse
+    // through the knownTools zod schema and fall back to JSON on failure.
     const isPlan = req.tool === 'ExitPlanMode' || req.tool === 'exit_plan_mode';
     const planParsed = isPlan ? knownTools['ExitPlanMode'].input.safeParse(req.arguments ?? {}) : null;
     const plan =
         planParsed?.success && typeof planParsed.data.plan === 'string' && planParsed.data.plan.trim() !== ''
             ? planParsed.data.plan
             : null;
-    const askParsed =
-        req.tool === 'AskUserQuestion' ? knownTools['AskUserQuestion'].input.safeParse(req.arguments ?? {}) : null;
+    const isAskUserQuestion = req.tool === 'AskUserQuestion';
+    const askParsed = isAskUserQuestion
+        ? knownTools['AskUserQuestion'].input.safeParse(req.arguments ?? {})
+        : null;
     const questions =
         askParsed?.success && Array.isArray(askParsed.data.questions) && askParsed.data.questions.length > 0
             ? askParsed.data.questions
@@ -68,13 +69,12 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
         }
     };
 
-    // Answering a question = approve the pending request, then send the picked
-    // label(s) as a normal user message (the model consumes exactly that).
-    const answer = async (text: string) => {
+    // AskUserQuestion is itself the blocking interaction. Supplying answers in
+    // updatedInput lets the SDK produce the tool result before Claude resumes.
+    const answer = async (answers: Record<string, string>) => {
         setBusy('approve');
         try {
-            await sessionAllow(sessionId, req.id, undefined, undefined, 'approved');
-            await sync.sendMessage(sessionId, text, { source: 'question' });
+            await sessionAllow(sessionId, req.id, undefined, undefined, 'approved', { answers });
         } finally {
             setBusy(null);
         }
@@ -91,15 +91,17 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
                     <Markdown text={plan} />
                 </div>
             ) : questions ? (
-                <AskUserQuestionOptions questions={questions} disabled={!!busy} onSubmit={(text) => void answer(text)} />
+                <AskUserQuestionOptions questions={questions} disabled={!!busy} onSubmit={(answers) => void answer(answers)} />
             ) : (
                 detail && <CodeView code={detail} lang={req.tool === 'Bash' ? 'bash' : null} />
             )}
             <div className="perm-actions">
-                <Button size="sm" variant="primary" loading={busy === 'approve'} disabled={!!busy} onClick={() => act('approve')}>
-                    {t('session.permission.approve')}
-                </Button>
-                {mutable && (
+                {!isAskUserQuestion && (
+                    <Button size="sm" variant="primary" loading={busy === 'approve'} disabled={!!busy} onClick={() => act('approve')}>
+                        {t('session.permission.approve')}
+                    </Button>
+                )}
+                {!isAskUserQuestion && mutable && (
                     <Button size="sm" variant="secondary" loading={busy === 'session'} disabled={!!busy} onClick={() => act('session')}>
                         {t('session.permission.approveForSession')}
                     </Button>
@@ -129,6 +131,7 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
         createdAt: (r as any).createdAt,
     }));
     if (requests.length === 0) return null;
+    const hasInteractiveQuestion = requests.some((request) => request.tool === 'AskUserQuestion');
 
     const batch = async (kind: 'approve' | 'deny') => {
         setBusyAll(kind);
@@ -159,9 +162,11 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
             </div>
             {requests.length > 1 && (
                 <div className="perm-batch">
-                    <Button size="sm" variant="primary" loading={busyAll === 'approve'} disabled={!!busyAll} onClick={() => batch('approve')}>
-                        {t('session.permission.approveAll')}
-                    </Button>
+                    {!hasInteractiveQuestion && (
+                        <Button size="sm" variant="primary" loading={busyAll === 'approve'} disabled={!!busyAll} onClick={() => batch('approve')}>
+                            {t('session.permission.approveAll')}
+                        </Button>
+                    )}
                     <Button size="sm" variant="ghost" loading={busyAll === 'deny'} disabled={!!busyAll} onClick={() => batch('deny')}>
                         {t('session.permission.denyAll')}
                     </Button>

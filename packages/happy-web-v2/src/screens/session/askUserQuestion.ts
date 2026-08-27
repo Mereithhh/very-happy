@@ -4,9 +4,9 @@
  * The INPUT parser is the zod schema in components/tools/knownTools.tsx —
  * consumed via safeParse at the render sites (ToolView / PermissionCard), with
  * a fallback to the default JSON view when it rejects. These helpers cover the
- * answer-side logic (what message a click sends, which options an existing
- * result already picked) so it stays unit-testable without the React/icon
- * imports knownTools drags in.
+ * answer-side logic (the answers map injected into updatedInput, and which
+ * options an existing result already picked) so it stays unit-testable without
+ * the React/icon imports knownTools drags in.
  */
 export type AskOption = { label?: string; description?: string };
 export type AskQuestion = {
@@ -17,14 +17,14 @@ export type AskQuestion = {
 };
 
 export type AskAnswers = Record<number, string[]>;
+export type AskAnswerPayload = Record<string, string>;
 
 /**
- * Message text for a multi-select answer: picked labels joined with '、'.
- * A click on a single-select option sends the bare label — CLI integration
- * testing showed the model consumes a plain user message with the label text.
+ * AskUserQuestion's SDK contract represents multi-select answers as a
+ * comma-separated string.
  */
 export function joinSelectedLabels(labels: string[]): string {
-    return labels.filter((l) => l.trim() !== '').join('、');
+    return labels.filter((l) => l.trim() !== '').join(', ');
 }
 
 /** Toggle a label in a multi-select picked list (immutably). */
@@ -43,15 +43,20 @@ export function areQuestionAnswersComplete(questions: AskQuestion[], answers: As
 }
 
 /**
- * Keep the historical bare-label payload for one question. Multiple questions
- * are numbered in their original order so Claude can map each answer without
- * depending on translated UI labels or repeating a potentially long prompt.
+ * Build the exact AskUserQuestion `answers` payload expected by the Claude SDK:
+ * each key is the original question text and each value is the selected label
+ * (or comma-separated labels for a multi-select question).
  */
-export function formatQuestionAnswers(questions: AskQuestion[], answers: AskAnswers): string {
-    if (questions.length === 1) return joinSelectedLabels(answers[0] ?? []);
-    return questions
-        .map((_, index) => `${index + 1}. ${joinSelectedLabels(answers[index] ?? [])}`)
-        .join('\n');
+export function buildQuestionAnswers(questions: AskQuestion[], answers: AskAnswers): AskAnswerPayload {
+    const payload: AskAnswerPayload = {};
+    questions.forEach((question, index) => {
+        const key = question.question;
+        const value = joinSelectedLabels(answers[index] ?? []);
+        if (typeof key === 'string' && key.trim() !== '' && value !== '') {
+            payload[key] = value;
+        }
+    });
+    return payload;
 }
 
 /**

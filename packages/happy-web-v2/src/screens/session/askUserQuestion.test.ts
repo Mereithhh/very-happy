@@ -1,13 +1,12 @@
 /**
- * askUserQuestion helper tests — B-100: option clicks send plain user messages,
- * so the label-joining and answered-detection logic is locked down here.
+ * AskUserQuestion helper tests — B-100/B-227/B-229.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     areQuestionAnswersComplete,
     detectSelectedLabels,
-    formatQuestionAnswers,
+    buildQuestionAnswers,
     joinSelectedLabels,
     setQuestionAnswer,
     toggleLabel,
@@ -15,8 +14,8 @@ import {
 } from './askUserQuestion';
 
 describe('joinSelectedLabels', () => {
-    it('joins picked labels with 、', () => {
-        expect(joinSelectedLabels(['A', 'B'])).toBe('A、B');
+    it('uses the SDK comma-separated format for multi-select answers', () => {
+        expect(joinSelectedLabels(['A', 'B'])).toBe('A, B');
     });
 
     it('single label passes through bare', () => {
@@ -59,12 +58,18 @@ describe('multi-question answers', () => {
         expect(areQuestionAnswersComplete(questions, both)).toBe(true);
     });
 
-    it('submits all answers once in stable question order', () => {
-        expect(formatQuestionAnswers(questions, { 0: ['B'], 1: ['C', 'D'] })).toBe('1. B\n2. C、D');
+    it('builds the SDK answers map with exact question-text keys', () => {
+        expect(buildQuestionAnswers(questions, { 0: ['B'], 1: ['C', 'D'] })).toEqual({
+            'First?': 'B',
+            'Second?': 'C, D',
+        });
     });
 
-    it('preserves the legacy bare-label payload for a single question', () => {
-        expect(formatQuestionAnswers([questions[0]], { 0: ['A'] })).toBe('A');
+    it('omits blank or structurally invalid answers', () => {
+        expect(buildQuestionAnswers([
+            questions[0],
+            { options: [{ label: 'orphan' }] },
+        ], { 0: [' '], 1: ['orphan'] })).toEqual({});
     });
 });
 
@@ -74,7 +79,24 @@ describe('multi-question component wiring', () => {
     it('keeps single-option picks local until the whole form is submitted', () => {
         expect(source).toContain('else if (deferSubmit) onChange([o.label]);');
         expect(source).toContain('multi && !deferSubmit && !disabled');
-        expect(source).toContain('onSubmit(formatQuestionAnswers(questions, answers))');
+        expect(source).toContain('onSubmit(buildQuestionAnswers(questions, answers))');
+    });
+});
+
+describe('AskUserQuestion submission wiring', () => {
+    const toolView = readFileSync(new URL('./ToolView.tsx', import.meta.url), 'utf8');
+    const permissionCard = readFileSync(new URL('./PermissionCard.tsx', import.meta.url), 'utf8');
+
+    it('answers the pending tool through updatedInput instead of a later chat message', () => {
+        expect(toolView).toContain("'approved',\n                    { answers },");
+        expect(permissionCard).toContain("'approved', { answers });");
+        expect(toolView).not.toContain('sync.sendMessage');
+        expect(permissionCard).not.toContain('sync.sendMessage');
+    });
+
+    it('does not expose generic approval paths that would submit an empty answer', () => {
+        expect(permissionCard).toContain('{!isAskUserQuestion && (');
+        expect(permissionCard).toContain('{!hasInteractiveQuestion && (');
     });
 });
 

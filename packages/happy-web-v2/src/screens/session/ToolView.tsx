@@ -10,7 +10,7 @@ import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
-import { sync } from '@/sync/sync';
+import { sessionAllow } from '@/sync/ops';
 import { CopyButton } from '@/ui/CopyButton';
 import { trimIdent } from '@/utils/trimIdent';
 import { knownTools } from '@/components/tools/knownTools';
@@ -248,10 +248,10 @@ function PlanView({ tool }: { tool: ToolCall }) {
 }
 
 // ── AskUserQuestion ───────────────────────────────────────────────────────────
-// header chip + question + clickable options (B-100). A click sends the option
-// label as a PLAIN user message via sync.sendMessage — that is what the model
-// consumes. Once the tool has a result the options render inert, with the
-// chosen label highlighted when the result reveals it.
+// header chip + question + clickable options (B-100/B-229). A click answers the
+// pending AskUserQuestion tool by injecting its `answers` map into updatedInput.
+// Once the tool has a result the options render inert, with the chosen label
+// highlighted when the result reveals it.
 function QuestionView({ tool }: { tool: ToolCall }) {
     // ChatList doesn't thread sessionId through ToolGroupView (frozen file for
     // this batch) — the session route param IS the sessionId.
@@ -264,6 +264,7 @@ function QuestionView({ tool }: { tool: ToolCall }) {
             : null;
     if (!questions || !sessionId) return <DefaultView tool={tool} />;
     const answered = tool.result != null || tool.state === 'completed' || tool.state === 'error';
+    const pendingRequestId = tool.permission?.status === 'pending' ? tool.permission.id : null;
     const selected = answered
         ? detectSelectedLabels(
               resultToText(tool.result),
@@ -273,11 +274,19 @@ function QuestionView({ tool }: { tool: ToolCall }) {
     return (
         <AskUserQuestionOptions
             questions={questions}
-            disabled={answered || sent}
+            disabled={answered || sent || !pendingRequestId}
             selected={selected}
-            onSubmit={(text) => {
+            onSubmit={(answers) => {
+                if (!pendingRequestId) return;
                 setSent(true);
-                void sync.sendMessage(sessionId, text, { source: 'question' });
+                void sessionAllow(
+                    sessionId,
+                    pendingRequestId,
+                    undefined,
+                    undefined,
+                    'approved',
+                    { answers },
+                ).catch(() => setSent(false));
             }}
         />
     );
