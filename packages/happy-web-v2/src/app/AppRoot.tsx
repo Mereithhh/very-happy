@@ -10,7 +10,7 @@ import {
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
-import { ThemeProvider, ToastProvider, OrbitLoader } from '@/ui';
+import { ThemeProvider, ToastProvider } from '@/ui';
 import { Modal, ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
@@ -220,11 +220,7 @@ const router = createBrowserRouter(
 );
 
 function Splash() {
-  return (
-    <div className="auth-page">
-      <OrbitLoader size="medium" label="Restoring workspace" showWordmark />
-    </div>
-  );
+  return <RouteLoading fullViewport />;
 }
 
 export function AppRoot() {

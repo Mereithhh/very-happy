@@ -74,14 +74,22 @@
         z-index: 1;
         display: grid;
         justify-items: center;
-        gap: 22px;
+        gap: 8px;
         color: var(--vh-splash-text);
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      .vh-orbit-stage {
+      .vh-orbit-viewport {
         position: relative;
+        width: 234px;
+        height: 234px;
+      }
+      .vh-orbit-stage {
+        position: absolute;
+        left: 50%;
+        top: 50%;
         width: 324px;
         height: 324px;
+        transform: translate(-50%, -50%) scale(0.72);
       }
       .vh-orbit-stage::before,
       .vh-orbit-stage::after {
@@ -232,21 +240,22 @@
         animation: vh-live-pulse 1.3s ease-in-out infinite;
       }
       .vh-orbit-wordmark {
-        display: grid;
-        justify-items: center;
-        gap: 7px;
+        display: contents;
       }
       .vh-orbit-wordmark strong {
         color: var(--vh-splash-text);
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.22em;
+        line-height: 1;
         text-transform: lowercase;
       }
       .vh-orbit-wordmark span {
         color: var(--vh-splash-faint);
-        font-size: 8px;
-        letter-spacing: 0.18em;
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        line-height: 1.4;
+        text-align: center;
         text-transform: uppercase;
       }
       @keyframes vh-orbit { to { transform: rotate(360deg); } }
@@ -266,15 +275,13 @@
         .vh-orbit-core::before,
         .vh-orbit-core .vh-live-dot { animation: none; }
       }
-      @media (max-width: 420px) {
-        .vh-orbit-loader { transform: scale(0.86); }
-      }
     </style>
   </head>
   <body>
     <div id="vh-splash">
       <div class="vh-orbit-loader" role="status" aria-label="Loading Very Happy">
-        <div class="vh-orbit-stage" aria-hidden="true">
+        <div class="vh-orbit-viewport" aria-hidden="true">
+          <div class="vh-orbit-stage">
           <div class="vh-model-track">
             <div class="vh-model vh-model--anthropic"><div class="vh-model-glyph" title="Anthropic">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.304 3.541h-3.672l6.696 16.918H24ZM6.696 3.541 0 20.459h3.744l1.37-3.553h7.005l1.369 3.553h3.744L10.536 3.541Zm-.371 10.223 2.291-5.946 2.292 5.946Z" /></svg>
@@ -314,6 +321,7 @@
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.8c.8 5.6 3.6 8.4 9.2 9.2-5.6.8-8.4 3.6-9.2 9.2C11.2 15.6 8.4 12.8 2.8 12 8.4 11.2 11.2 8.4 12 2.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
               <span>Gemini</span>
             </div></div>
+          </div>
           </div>
         </div>
         <div class="vh-orbit-wordmark"><strong>veryhappy</strong><span>agent runtime · connecting</span></div>
