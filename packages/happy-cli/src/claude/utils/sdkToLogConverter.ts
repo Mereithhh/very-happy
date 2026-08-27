@@ -152,6 +152,7 @@ export class SDKToLogConverter {
                     requestId: (assistantMsg as any).requestId,
                     ...((assistantMsg as any).isCompactSummary ? { isCompactSummary: true } : {}),
                     ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),
+                    ...(assistantMsg.error ? { error: assistantMsg.error } : {}),
                 }
                 // if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
                 //     for (const content of assistantMsg.message.content) {
@@ -201,17 +202,31 @@ export class SDKToLogConverter {
                     duration_ms: resultMsg.duration_ms,
                     num_turns: resultMsg.num_turns,
                     usage: resultMsg.usage as any,
+                    ...('errors' in resultMsg ? { errors: resultMsg.errors } : {}),
+                    ...('terminal_reason' in resultMsg && resultMsg.terminal_reason
+                        ? { terminal_reason: resultMsg.terminal_reason }
+                        : {}),
                 } as any
                 break
             }
 
-            default:
-                // Unknown message type - pass through with all fields
-                logMessage = {
-                    ...baseFields,
-                    ...sdkMessage,
-                    type: (sdkMessage as any).type // Override type last to ensure it's set
-                } as any
+            // These SDK lifecycle/advisory frames are intentionally not part
+            // of the persisted Claude transcript. Enumerating them keeps SDK
+            // upgrades type-visible instead of silently passing new frames
+            // through as conversation messages.
+            case 'stream_event':
+            case 'tool_progress':
+            case 'auth_status':
+            case 'tool_use_summary':
+            case 'rate_limit_event':
+            case 'prompt_suggestion':
+            case 'conversation_reset':
+                return null
+
+            default: {
+                const exhaustive: never = sdkMessage
+                return exhaustive
+            }
         }
 
         // Update last UUID for parent tracking. Skip summary and result

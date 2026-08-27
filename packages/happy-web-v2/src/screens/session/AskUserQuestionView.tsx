@@ -1,10 +1,10 @@
 /**
  * AskUserQuestionOptions — shared interactive option list for the
  * AskUserQuestion tool (B-100), used by both the transcript ToolView and the
- * PermissionCard. Clicking an option submits the option LABEL as a plain user
- * message (the model consumes exactly that); multiSelect batches picked labels
- * behind a submit button. Input parsing happens at the CALL SITES via the
- * knownTools zod schema — this component receives already-validated questions.
+ * PermissionCard. Clicking an option submits an answers map keyed by the exact
+ * question text; callers inject it into the pending tool's updatedInput.
+ * Input parsing happens at the CALL SITES via the knownTools zod schema — this
+ * component receives already-validated questions.
  */
 import { useState } from 'react';
 import { Check, CheckSquare, Square } from 'lucide-react';
@@ -12,10 +12,10 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { Button } from '@/ui';
 import {
     areQuestionAnswersComplete,
-    formatQuestionAnswers,
-    joinSelectedLabels,
+    buildQuestionAnswers,
     setQuestionAnswer,
     toggleLabel,
+    type AskAnswerPayload,
     type AskAnswers,
     type AskQuestion,
 } from './askUserQuestion';
@@ -35,7 +35,7 @@ function QuestionBlock({
     picked: string[];
     deferSubmit: boolean;
     onChange: (labels: string[]) => void;
-    onSubmit: (text: string) => void;
+    onSubmit: (labels: string[]) => void;
 }) {
     const { t } = useTranslation();
     const options = (q.options ?? []).filter(
@@ -64,7 +64,7 @@ function QuestionBlock({
                             onClick={() => {
                                 if (multi) onChange(toggleLabel(picked, o.label));
                                 else if (deferSubmit) onChange([o.label]);
-                                else onSubmit(o.label);
+                                else onSubmit([o.label]);
                             }}
                         >
                             <span className="tv-ask-opt-label">
@@ -85,7 +85,7 @@ function QuestionBlock({
                     size="sm"
                     variant="primary"
                     disabled={picked.length === 0}
-                    onClick={() => onSubmit(joinSelectedLabels(picked))}
+                    onClick={() => onSubmit(picked)}
                 >
                     {t('tools.askUserQuestion.submit')}
                 </Button>
@@ -105,7 +105,7 @@ export function AskUserQuestionOptions({
     disabled: boolean;
     /** Labels detected as chosen in the tool result (highlight only). */
     selected?: string[];
-    onSubmit: (text: string) => void;
+    onSubmit: (answers: AskAnswerPayload) => void;
 }) {
     const { t } = useTranslation();
     const [answers, setAnswers] = useState<AskAnswers>({});
@@ -122,7 +122,9 @@ export function AskUserQuestionOptions({
                     picked={answers[i] ?? []}
                     deferSubmit={batched}
                     onChange={(labels) => setAnswers((current) => setQuestionAnswer(current, i, labels))}
-                    onSubmit={onSubmit}
+                    onSubmit={(labels) =>
+                        onSubmit(buildQuestionAnswers(questions, setQuestionAnswer({}, i, labels)))
+                    }
                 />
             ))}
             {batched && !disabled && (
@@ -130,7 +132,7 @@ export function AskUserQuestionOptions({
                     size="sm"
                     variant="primary"
                     disabled={!complete}
-                    onClick={() => onSubmit(formatQuestionAnswers(questions, answers))}
+                    onClick={() => onSubmit(buildQuestionAnswers(questions, answers))}
                 >
                     {t('tools.askUserQuestion.submit')}
                 </Button>

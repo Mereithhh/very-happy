@@ -415,7 +415,13 @@ Messages are encrypted as `MessageContent` and then base64 encoded:
 {
   "controlledByUser": true,
   "requests": {
-    "<id>": { "tool": "...", "arguments": {}, "createdAt": 123 }
+    "<id>": {
+      "tool": "...",
+      "arguments": {},
+      "createdAt": 123,
+      "kind": "tool | elicitation | user_dialog",
+      "permissionSuggestions": [{ "type": "addRules", "destination": "session", "rules": [] }]
+    }
   },
   "completedRequests": {
     "<id>": {
@@ -427,7 +433,7 @@ Messages are encrypted as `MessageContent` and then base64 encoded:
       "reason": "...",
       "mode": "default | acceptEdits | bypassPermissions | plan | read-only | safe-yolo | yolo",
       "decision": "approved | approved_for_session | denied | abort",
-      "allowTools": ["..."]
+      "allowedTools": ["..."]
     }
   }
 }

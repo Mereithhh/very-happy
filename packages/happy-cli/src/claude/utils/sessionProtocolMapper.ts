@@ -8,6 +8,7 @@ import {
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
+    pendingAssistantError?: string;
     uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
     providerSubagentToSessionSubagent?: Map<string, string>;
@@ -404,6 +405,7 @@ function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelop
 }
 
 type TurnEndMeta = {
+    error?: string;
     costUsd?: number;
     durationMs?: number;
     numTurns?: number;
@@ -428,12 +430,14 @@ function closeTurn(
     envelopes.push(createEnvelope('agent', {
         t: 'turn-end',
         status,
+        ...(meta?.error ? { error: meta.error } : {}),
         ...(typeof meta?.costUsd === 'number' ? { costUsd: meta.costUsd } : {}),
         ...(typeof meta?.durationMs === 'number' ? { durationMs: meta.durationMs } : {}),
         ...(typeof meta?.numTurns === 'number' ? { numTurns: meta.numTurns } : {}),
         ...(meta?.usage ? { usage: meta.usage } : {}),
     }, { turn: state.currentTurnId }));
     state.currentTurnId = null;
+    state.pendingAssistantError = undefined;
     clearSubagentTracking(state);
 }
 
@@ -460,9 +464,10 @@ function toToolArgs(input: unknown): Record<string, unknown> {
 export function closeClaudeTurnWithStatus(
     state: ClaudeSessionProtocolState,
     status: SessionTurnEndStatus,
+    meta?: TurnEndMeta,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
-    closeTurn(state, status, envelopes);
+    closeTurn(state, status, envelopes, meta);
     return {
         currentTurnId: state.currentTurnId,
         envelopes,
@@ -518,6 +523,10 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'assistant') {
+        const assistantError = (message as RawJSONLines & { error?: unknown }).error;
+        if (!message.isSidechain && typeof assistantError === 'string' && assistantError.trim()) {
+            state.pendingAssistantError = assistantError.trim();
+        }
         const turnId = ensureTurn(state, envelopes);
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const usage = pickAssistantUsage(message);
@@ -665,6 +674,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         const raw = message as RawJSONLines & {
             subtype?: string;
             is_error?: boolean;
+            errors?: string[];
             total_cost_usd?: number;
             duration_ms?: number;
             num_turns?: number;
@@ -676,6 +686,18 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             };
         };
         const status: SessionTurnEndStatus = raw.is_error === true ? 'failed' : 'completed';
+        const error = status === 'failed'
+            ? raw.errors?.filter((item) => typeof item === 'string' && item.trim()).join('\n')
+                || state.pendingAssistantError
+                || raw.subtype
+                || 'Claude turn failed'
+            : undefined;
+        // Startup/transport failures can produce a result before any
+        // assistant frame. Create a minimal turn so the failed lifecycle and
+        // its error are still visible instead of being dropped by closeTurn.
+        if (status === 'failed' && !state.currentTurnId) {
+            ensureTurn(state, envelopes);
+        }
         const usage = raw.usage && typeof raw.usage.input_tokens === 'number' && typeof raw.usage.output_tokens === 'number'
             ? {
                 input_tokens: raw.usage.input_tokens,
@@ -685,6 +707,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             }
             : undefined;
         closeTurn(state, status, envelopes, {
+            error,
             costUsd: typeof raw.total_cost_usd === 'number' ? raw.total_cost_usd : undefined,
             durationMs: typeof raw.duration_ms === 'number' ? raw.duration_ms : undefined,
             numTurns: typeof raw.num_turns === 'number' ? raw.num_turns : undefined,

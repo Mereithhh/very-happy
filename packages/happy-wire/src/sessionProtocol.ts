@@ -77,6 +77,9 @@ export type SessionTurnUsage = z.infer<typeof sessionTurnUsageSchema>;
 export const sessionTurnEndEventSchema = z.object({
   t: z.literal('turn-end'),
   status: sessionTurnEndStatusSchema,
+  // Human-readable SDK failure detail. Optional for backward compatibility;
+  // successful and cancelled turns normally omit it.
+  error: z.string().optional(),
   // Optional per-turn metadata sourced from the SDK result message. Present
   // only on turns ended by a result event; absent on lazily-closed turns.
   costUsd: z.number().optional(),

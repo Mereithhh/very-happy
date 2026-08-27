@@ -110,7 +110,12 @@ export const AgentStateSchema = z.object({
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),
-        createdAt: z.number().nullish()
+        createdAt: z.number().nullish(),
+        kind: z.enum(['tool', 'elicitation', 'user_dialog']).optional(),
+        permissionSuggestions: z.array(z.object({
+            type: z.string(),
+            destination: z.string(),
+        }).passthrough()).optional()
     })).nullish(),
     completedRequests: z.record(z.string(), z.object({
         tool: z.string(),

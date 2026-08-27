@@ -4,8 +4,7 @@
  */
 
 import { query as sdkQuery, type Options, type Query } from '@anthropic-ai/claude-agent-sdk'
-import type { QueryOptions, QueryPrompt, SDKMessage } from './types'
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { QueryOptions, QueryPrompt } from './types'
 import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { pinSmallFastModel } from '../utils/smallFastModel'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
@@ -37,6 +36,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         fallbackModel: opts?.fallbackModel,
         maxTurns: opts?.maxTurns,
         permissionMode: opts?.permissionMode,
+        allowDangerouslySkipPermissions: opts?.permissionMode === 'bypassPermissions',
         allowedTools: opts?.allowedTools,
         disallowedTools: opts?.disallowedTools,
         mcpServers: opts?.mcpServers as Options['mcpServers'],
@@ -56,12 +56,19 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+        onElicitation: opts?.onElicitation,
+        onUserDialog: opts?.onUserDialog,
+        supportedDialogKinds: opts?.onUserDialog ? opts.supportedDialogKinds : undefined,
     }
 
     // Map abort signal -> AbortController
     if (opts?.abort) {
         const controller = new AbortController()
-        opts.abort.addEventListener('abort', () => controller.abort(), { once: true })
+        if (opts.abort.aborted) {
+            controller.abort(opts.abort.reason)
+        } else {
+            opts.abort.addEventListener('abort', () => controller.abort(opts.abort?.reason), { once: true })
+        }
         sdkOptions.abortController = controller
     }
 
@@ -93,7 +100,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     }
 
     return sdkQuery({
-        prompt: params.prompt as string | AsyncIterable<SDKUserMessage>,
+        prompt: params.prompt,
         options: sdkOptions,
     })
 }

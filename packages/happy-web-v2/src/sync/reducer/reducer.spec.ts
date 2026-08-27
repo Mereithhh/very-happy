@@ -304,6 +304,20 @@ describe('reducer', () => {
                 expect(textMsg.numTurns).toBe(1);
             }
         });
+
+        it('renders a failed ready event as a visible agent event', () => {
+            const state = createReducer();
+            const result = reducer(state, [{
+                id: 'failed1', localId: null, createdAt: 2000, role: 'event', isSidechain: false,
+                content: { type: 'ready', status: 'failed', error: 'provider overloaded' },
+            } as NormalizedMessage]);
+            expect(result.messages).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    kind: 'agent-event',
+                    event: { type: 'message', message: 'provider overloaded' },
+                }),
+            ]));
+        });
     });
 
     describe('mixed message processing', () => {

@@ -71,3 +71,27 @@
   color: var(--text);
   min-width: 0;
 }
+
+.perm-elicitation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  color: var(--text);
+  font-size: var(--fs-13);
+}
+.perm-elicitation label {
+  display: grid;
+  gap: var(--sp-1);
+}
+.perm-elicitation input,
+.perm-elicitation select {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-1);
+  color: var(--text);
+  padding: var(--sp-2);
+}
+.perm-elicitation small,
+.perm-elicitation a {
+  color: var(--text-dim);
+}

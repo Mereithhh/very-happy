@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { getIntegrationEnv } from '@/testing/currentIntegrationEnv';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
-import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage } from './sdk';
+import { query, type QueryOptions, type SDKAssistantMessage, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, type SDKUserMessage } from './sdk';
 import { startHappyServer } from './utils/startHappyServer';
 import { systemPrompt } from './utils/systemPrompt';
 
@@ -222,7 +222,7 @@ class ClaudeQueryDriver {
         prompt: string;
         resume?: string;
     }): Promise<ClaudeTurn> {
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const run = query({
             prompt: promptStream,
             options: this.buildOptions(options),
@@ -270,7 +270,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
     it('should clarify natively, resume across a model switch, use TodoWrite, and cross the project boundary with native tools', async () => {
         seedSiblingDir();
 
-        const clarificationPrompt = new PushableAsyncIterable<SDKMessage>();
+        const clarificationPrompt = new PushableAsyncIterable<SDKUserMessage>();
         const clarificationMessages: SDKMessage[] = [];
         let answeredClarification = false;
 
@@ -392,7 +392,7 @@ describe.skipIf(!claudeAvailable)('Claude Integration (SDK/query)', { timeout: 1
 
     it('should stop a pending AskUserQuestion turn when the caller aborts it', async () => {
         const abortController = new AbortController();
-        const promptStream = new PushableAsyncIterable<SDKMessage>();
+        const promptStream = new PushableAsyncIterable<SDKUserMessage>();
         const messages: SDKMessage[] = [];
         let abortError: unknown = null;
 

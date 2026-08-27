@@ -363,6 +363,47 @@ describe('closeClaudeTurnWithStatus', () => {
         expect(result.envelopes).toHaveLength(1);
         expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'cancelled' });
     });
+
+    it('includes a failure reason when supplied', () => {
+        const result = closeClaudeTurnWithStatus({ currentTurnId: 'turn-1' }, 'failed', { error: 'upstream failed' });
+        expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'failed', error: 'upstream failed' });
+    });
+});
+
+describe('Claude SDK failure mapping', () => {
+    it('preserves result errors on the failed turn-end envelope', () => {
+        const state = { currentTurnId: 'turn-1' };
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'result', subtype: 'error_during_execution', is_error: true,
+            errors: ['provider overloaded', 'retry later'],
+        } as any, state);
+        expect(result.envelopes[0].ev).toEqual({
+            t: 'turn-end', status: 'failed', error: 'provider overloaded\nretry later',
+        });
+    });
+
+    it('creates a failed turn when startup fails before assistant output', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'result', subtype: 'error_during_execution', is_error: true,
+            errors: ['startup failed'],
+        } as any, { currentTurnId: null });
+        expect(result.envelopes.map((envelope) => envelope.ev)).toEqual([
+            { t: 'turn-start' },
+            { t: 'turn-end', status: 'failed', error: 'startup failed' },
+        ]);
+    });
+
+    it('falls back to the preceding assistant error code', () => {
+        const state = { currentTurnId: null as string | null };
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', error: 'rate_limit', isSidechain: false,
+            message: { role: 'assistant', content: [] },
+        } as any, state);
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'result', subtype: 'error_during_execution', is_error: true, errors: [],
+        } as any, state);
+        expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'failed', error: 'rate_limit' });
+    });
 });
 
 describe('assistant usage stamping (B-108)', () => {

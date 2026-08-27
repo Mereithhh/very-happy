@@ -461,7 +461,9 @@ export type AgentState = {
     [id: string]: {
       tool: string,
       arguments: any,
-      createdAt: number
+      createdAt: number,
+      kind?: 'tool' | 'elicitation' | 'user_dialog',
+      permissionSuggestions?: import('@anthropic-ai/claude-agent-sdk').PermissionUpdate[]
     }
   }
   completedRequests?: {
@@ -474,7 +476,7 @@ export type AgentState = {
       reason?: string,
       mode?: PermissionMode,
       decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort',
-      allowTools?: string[]
+      allowedTools?: string[]
     }
   }
 }

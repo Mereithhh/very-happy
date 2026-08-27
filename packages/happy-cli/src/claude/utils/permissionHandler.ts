@@ -6,7 +6,15 @@
  */
 
 import { logger } from "@/lib";
-import { PermissionResult } from "../sdk/types";
+import type {
+    CanUseTool,
+    ElicitationRequest,
+    ElicitationResult,
+    PermissionResult,
+    PermissionUpdate,
+    UserDialogRequest,
+    UserDialogResult,
+} from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
@@ -20,14 +28,46 @@ interface PermissionResponse {
     allowTools?: string[];
     updatedInput?: Record<string, unknown>;
     receivedAt?: number;
+    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
-
-interface PendingRequest {
-    resolve: (value: PermissionResult) => void;
+interface PendingRequestBase {
+    kind: 'tool' | 'elicitation' | 'user_dialog';
     reject: (error: Error) => void;
+}
+
+interface PendingToolRequest extends PendingRequestBase {
+    kind: 'tool';
+    resolve: (value: PermissionResult) => void;
     toolName: string;
     input: unknown;
+    suggestions?: PermissionUpdate[];
+}
+
+interface PendingElicitationRequest extends PendingRequestBase {
+    kind: 'elicitation';
+    resolve: (value: ElicitationResult) => void;
+    request: ElicitationRequest;
+}
+
+interface PendingUserDialogRequest extends PendingRequestBase {
+    kind: 'user_dialog';
+    resolve: (value: UserDialogResult) => void;
+    request: UserDialogRequest;
+}
+
+type PendingRequest = PendingToolRequest | PendingElicitationRequest | PendingUserDialogRequest;
+
+function elicitationContent(input?: Record<string, unknown>): Record<string, string | number | boolean | string[]> | undefined {
+    if (!input) return undefined;
+    const content: Record<string, string | number | boolean | string[]> = {};
+    for (const [key, value] of Object.entries(input)) {
+        if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean'
+            || (Array.isArray(value) && value.every((item) => typeof item === 'string'))) {
+            content[key] = value as string | number | boolean | string[];
+        }
+    }
+    return content;
 }
 
 export class PermissionHandler {
@@ -69,26 +109,10 @@ export class PermissionHandler {
     /**
      * Handler response
      */
-    private handlePermissionResponse(
+    private async handlePermissionResponse(
         response: PermissionResponse,
-        pending: PendingRequest
-    ): void {
-
-        // Update allowed tools
-        if (response.allowTools && response.allowTools.length > 0) {
-            response.allowTools.forEach(tool => {
-                if (tool.startsWith('Bash(') || tool === 'Bash') {
-                    this.parseBashPermission(tool);
-                } else {
-                    this.allowedTools.add(tool);
-                }
-            });
-        }
-
-        // Update permission mode
-        if (response.mode) {
-            this.permissionMode = response.mode;
-        }
+        pending: PendingToolRequest
+    ): Promise<PermissionResponse> {
 
         // Handle
         if (pending.toolName === 'exit_plan_mode' || pending.toolName === 'ExitPlanMode') {
@@ -107,10 +131,14 @@ export class PermissionHandler {
 
                 logger.debug(`Plan approved - switching to ${newMode} mode and allowing ExitPlanMode`);
 
-                if (this.setPermissionModeCallback) {
-                    this.setPermissionModeCallback(newMode).catch((err) => {
-                        logger.debug('Failed to set permission mode via SDK:', err);
-                    });
+                try {
+                    if (!this.setPermissionModeCallback) throw new Error('permission mode updater unavailable');
+                    await this.setPermissionModeCallback(newMode);
+                } catch (err) {
+                    const reason = `Failed to switch permission mode: ${err instanceof Error ? err.message : String(err)}`;
+                    logger.debug(reason);
+                    pending.resolve({ behavior: 'deny', message: reason });
+                    return { ...response, approved: false, reason };
                 }
                 this.permissionMode = newMode;
 
@@ -119,30 +147,63 @@ export class PermissionHandler {
                 pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
             }
         } else {
+            if (response.approved && response.mode) {
+                try {
+                    if (!this.setPermissionModeCallback) throw new Error('permission mode updater unavailable');
+                    await this.setPermissionModeCallback(response.mode);
+                    this.permissionMode = response.mode;
+                } catch (err) {
+                    const reason = `Failed to switch permission mode: ${err instanceof Error ? err.message : String(err)}`;
+                    pending.resolve({ behavior: 'deny', message: reason });
+                    return { ...response, approved: false, reason };
+                }
+            }
+
+            // Legacy clients may still send allowTools. Apply them only after
+            // all other approval side effects have succeeded. Prefer the
+            // SDK-authored suggestions whenever available because they
+            // preserve rule scope.
+            if (response.approved && !pending.suggestions?.length && response.allowTools?.length) {
+                response.allowTools.forEach((tool) => {
+                    if (tool.startsWith('Bash(') || tool === 'Bash') {
+                        this.parseBashPermission(tool);
+                    } else {
+                        this.allowedTools.add(tool);
+                    }
+                });
+            }
+
             // Handle default case for all other tools
             const originalInput = (pending.input as Record<string, unknown>) || {};
             const updatedInput = response.updatedInput
                 ? { ...originalInput, ...response.updatedInput }
                 : originalInput;
             const result: PermissionResult = response.approved
-                ? { behavior: 'allow', updatedInput }
+                ? {
+                    behavior: 'allow',
+                    updatedInput,
+                    ...(response.decision === 'approved_for_session' && pending.suggestions?.length
+                        ? { updatedPermissions: pending.suggestions }
+                        : {}),
+                }
                 : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
 
             pending.resolve(result);
         }
+        return response;
     }
 
     /**
      * Creates the canCallTool callback for the SDK.
      * Uses toolUseID from official SDK callback options directly.
      */
-    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal; toolUseID: string }): Promise<PermissionResult> => {
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: Parameters<CanUseTool>[2]): Promise<PermissionResult> => {
         const toolCallId = options.toolUseID;
 
         // AskUserQuestion requires user interaction — never auto-approve, even in bypassPermissions mode.
         // This mirrors Claude SDK's internal requiresUserInteraction() check.
         if (toolName === 'AskUserQuestion') {
-            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.suggestions);
         }
 
         // Check if tool is explicitly allowed
@@ -169,7 +230,7 @@ export class PermissionHandler {
 
         // ExitPlanMode always requires user approval — never auto-approve it.
         if (descriptor.exitPlan) {
-            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+            return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.suggestions);
         }
 
         //
@@ -194,7 +255,7 @@ export class PermissionHandler {
         // Approval flow
         //
 
-        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
+        return this.handlePermissionRequest(toolCallId, toolName, input, options.signal, options.suggestions);
     }
 
     /**
@@ -204,18 +265,25 @@ export class PermissionHandler {
         id: string,
         toolName: string,
         input: unknown,
-        signal: AbortSignal
+        signal: AbortSignal,
+        suggestions?: PermissionUpdate[]
     ): Promise<PermissionResult> {
         return new Promise<PermissionResult>((resolve, reject) => {
+            if (signal.aborted) {
+                reject(new Error('Permission request aborted', { cause: signal.reason }));
+                return;
+            }
             // Set up abort signal handling
             const abortHandler = () => {
                 this.pendingRequests.delete(id);
+                this.cancelRequestInAgentState(id, 'Permission request aborted');
                 reject(new Error('Permission request aborted'));
             };
             signal.addEventListener('abort', abortHandler, { once: true });
 
             // Store the pending request
             this.pendingRequests.set(id, {
+                kind: 'tool',
                 resolve: (result: PermissionResult) => {
                     signal.removeEventListener('abort', abortHandler);
                     resolve(result);
@@ -225,7 +293,8 @@ export class PermissionHandler {
                     reject(error);
                 },
                 toolName,
-                input
+                input,
+                suggestions,
             });
 
             // Trigger callback to send delayed messages immediately
@@ -254,7 +323,9 @@ export class PermissionHandler {
                     [id]: {
                         tool: toolName,
                         arguments: input,
-                        createdAt: Date.now()
+                        createdAt: Date.now(),
+                        kind: 'tool',
+                        ...(suggestions?.length ? { permissionSuggestions: suggestions } : {}),
                     }
                 }
             }));
@@ -268,6 +339,137 @@ export class PermissionHandler {
             this.session.reportEventToDaemon('needs_input');
 
             logger.debug(`Permission request sent for tool call ${id}: ${toolName}`);
+        });
+    }
+
+    handleElicitation = async (
+        request: ElicitationRequest,
+        options: { signal: AbortSignal; requestId: string },
+    ): Promise<ElicitationResult> => {
+        return this.handleInteractionRequest(options.requestId, 'elicitation', request, options.signal);
+    };
+
+    handleUserDialog = async (
+        request: UserDialogRequest,
+        options: { signal: AbortSignal; requestId: string },
+    ): Promise<UserDialogResult> => {
+        // The SDK explicitly requires unknown open-union kinds to fail closed.
+        if (request.dialogKind !== 'refusal_fallback_prompt') {
+            return { behavior: 'cancelled' };
+        }
+        return this.handleInteractionRequest(options.requestId, 'user_dialog', request, options.signal);
+    };
+
+    private handleInteractionRequest(
+        id: string,
+        kind: 'elicitation',
+        request: ElicitationRequest,
+        signal: AbortSignal,
+    ): Promise<ElicitationResult>;
+    private handleInteractionRequest(
+        id: string,
+        kind: 'user_dialog',
+        request: UserDialogRequest,
+        signal: AbortSignal,
+    ): Promise<UserDialogResult>;
+    private handleInteractionRequest(
+        id: string,
+        kind: 'elicitation' | 'user_dialog',
+        request: ElicitationRequest | UserDialogRequest,
+        signal: AbortSignal,
+    ): Promise<ElicitationResult | UserDialogResult> {
+        return new Promise((resolve, reject) => {
+            if (signal.aborted) {
+                reject(new Error('Interaction request aborted', { cause: signal.reason }));
+                return;
+            }
+            const abortHandler = () => {
+                this.pendingRequests.delete(id);
+                this.cancelRequestInAgentState(id, 'Interaction request aborted');
+                reject(new Error('Interaction request aborted', { cause: signal.reason }));
+            };
+            signal.addEventListener('abort', abortHandler, { once: true });
+
+            const finishResolve = (value: ElicitationResult | UserDialogResult) => {
+                signal.removeEventListener('abort', abortHandler);
+                resolve(value);
+            };
+            const finishReject = (error: Error) => {
+                signal.removeEventListener('abort', abortHandler);
+                reject(error);
+            };
+            if (kind === 'elicitation') {
+                this.pendingRequests.set(id, {
+                    kind,
+                    request: request as ElicitationRequest,
+                    resolve: finishResolve as (value: ElicitationResult) => void,
+                    reject: finishReject,
+                });
+            } else {
+                this.pendingRequests.set(id, {
+                    kind,
+                    request: request as UserDialogRequest,
+                    resolve: finishResolve as (value: UserDialogResult) => void,
+                    reject: finishReject,
+                });
+            }
+
+            // AskUserQuestion is a legacy fail-closed sentinel: old Web builds
+            // already suppress generic approve/batch-approve for this tool.
+            // Modern Web builds use `kind` to render the actual interaction.
+            const tool = 'AskUserQuestion';
+            this.publishRequest(id, tool, request, kind);
+        });
+    }
+
+    private publishRequest(
+        id: string,
+        tool: string,
+        args: unknown,
+        kind: 'elicitation' | 'user_dialog',
+    ): void {
+        this.session.api.push().sendSessionNotification({
+            kind: 'permission',
+            metadata: this.session.client.getMetadata(),
+            data: {
+                sessionId: this.session.client.sessionId,
+                requestId: id,
+                tool,
+                type: 'permission_request',
+                provider: 'claude',
+            },
+        });
+        this.session.client.updateAgentState((currentState) => ({
+            ...currentState,
+            requests: {
+                ...currentState.requests,
+                [id]: { tool, arguments: args, createdAt: Date.now(), kind },
+            },
+        }));
+        this.session.notificationProducer?.permissionRequest(tool);
+        this.session.reportEventToDaemon('needs_input');
+        logger.debug(`${kind} request sent: ${id}`);
+    }
+
+    private cancelRequestInAgentState(id: string, reason: string): void {
+        this.session.client.updateAgentState((currentState) => {
+            const request = currentState.requests?.[id];
+            if (!request) return currentState;
+            const requests = { ...currentState.requests };
+            delete requests[id];
+            return {
+                ...currentState,
+                requests,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: 'canceled',
+                        reason,
+                    },
+                },
+            };
         });
     }
 
@@ -375,12 +577,21 @@ export class PermissionHandler {
                 return;
             }
 
-            // Store the response with timestamp
-            this.responses.set(id, { ...message, receivedAt: Date.now() });
             this.pendingRequests.delete(id);
 
-            // Handle the permission response based on tool type
-            this.handlePermissionResponse(message, pending);
+            let effectiveResponse = message;
+            if (pending.kind === 'tool') {
+                effectiveResponse = await this.handlePermissionResponse(message, pending);
+                this.responses.set(id, { ...effectiveResponse, receivedAt: Date.now() });
+            } else if (pending.kind === 'elicitation') {
+                pending.resolve(message.approved
+                    ? { action: 'accept', content: elicitationContent(message.updatedInput) }
+                    : { action: message.decision === 'abort' ? 'cancel' : 'decline' });
+            } else {
+                pending.resolve(message.approved
+                    ? { behavior: 'completed', result: message.updatedInput?.result ?? 'retry_fallback' }
+                    : { behavior: 'cancelled' });
+            }
 
             // Move processed request to completedRequests
             this.session.client.updateAgentState((currentState) => {
@@ -396,10 +607,11 @@ export class PermissionHandler {
                         [id]: {
                             ...request,
                             completedAt: Date.now(),
-                            status: message.approved ? 'approved' : 'denied',
-                            reason: message.reason,
-                            mode: message.mode,
-                            allowTools: message.allowTools
+                            status: effectiveResponse.approved ? 'approved' : 'denied',
+                            reason: effectiveResponse.reason,
+                            mode: effectiveResponse.mode,
+                            decision: effectiveResponse.decision,
+                            allowedTools: effectiveResponse.allowTools
                         }
                     }
                 };
