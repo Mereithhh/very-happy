@@ -16,6 +16,7 @@ import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { ElicitationRequestView } from './ElicitationRequestView';
 import { isMutableTool, knownTools } from '@/components/tools/knownTools';
 import { sessionApprovalPolicy } from './permissionCompatibility';
+import { planApprovalMode } from './planApprovalMode';
 import './permission.css';
 
 type Pending = {
@@ -40,6 +41,7 @@ function describeArgs(tool: string, args: any): string | null {
 
 function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pending }) {
     const { t } = useTranslation();
+    const session = useSession(sessionId);
     const [busy, setBusy] = useState<null | 'approve' | 'session' | 'deny'>(null);
     const detail = describeArgs(req.tool, req.arguments);
     const isElicitation = req.kind === 'elicitation';
@@ -71,9 +73,9 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
             if (kind === 'deny') {
                 await sessionDeny(sessionId, req.id, undefined, undefined, 'denied');
             } else if (kind === 'session') {
-                await sessionAllow(sessionId, req.id, undefined, sessionApproval.allowedTools, 'approved_for_session');
+                await sessionAllow(sessionId, req.id, planApprovalMode(req.tool, session?.permissionMode), sessionApproval.allowedTools, 'approved_for_session');
             } else {
-                await sessionAllow(sessionId, req.id, undefined, undefined, 'approved');
+                await sessionAllow(sessionId, req.id, planApprovalMode(req.tool, session?.permissionMode), undefined, 'approved');
             }
         } finally {
             setBusy(null);
@@ -162,7 +164,7 @@ export function PermissionCard({ sessionId }: { sessionId: string }) {
         try {
             for (const r of requests) {
                 if (kind === 'approve') {
-                    await sessionAllow(sessionId, r.id, undefined, undefined, 'approved');
+                    await sessionAllow(sessionId, r.id, planApprovalMode(r.tool, session?.permissionMode), undefined, 'approved');
                 } else {
                     await sessionDeny(sessionId, r.id, undefined, undefined, 'denied');
                 }
