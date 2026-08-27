@@ -297,6 +297,13 @@
 .vh-item.is-interactive:hover {
   background: var(--bg-2);
 }
+.vh-item.is-interactive:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+.vh-item.is-interactive:disabled:hover {
+  background: none;
+}
 .vh-item.is-selected {
   background: var(--bg-2);
   box-shadow: inset 3px 0 0 var(--accent);

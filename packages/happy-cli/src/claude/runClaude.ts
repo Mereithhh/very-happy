@@ -40,6 +40,7 @@ import { bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { withAssistantDenylist } from '@/assistant/dispatcherTools';
 import { DEFAULT_CLAUDE_PERMISSION_MODE } from '@/utils/defaultPermissionMode';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
+import { CLAUDE_ATTACHMENT_KINDS } from './utils/attachmentContent';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -174,6 +175,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        // Advertise composer support before the first SDK response. Otherwise
+        // a brand-new session cannot pick a PDF until after sending once.
+        attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),

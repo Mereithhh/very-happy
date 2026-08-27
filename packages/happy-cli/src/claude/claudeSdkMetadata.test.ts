@@ -5,6 +5,11 @@ import { applyClaudeSdkMetadata } from './claudeSdkMetadata';
 const base = { path: '/repo', host: 'machine' } as Metadata;
 
 describe('applyClaudeSdkMetadata', () => {
+    it('advertises the attachment blocks supported by this daemon', () => {
+        expect(applyClaudeSdkMetadata(base, { modelIsDefault: true }).attachmentKinds)
+            .toEqual(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+    });
+
     it('records the resolved model only when the SDK query followed machine defaults', () => {
         expect(applyClaudeSdkMetadata(base, {
             model: 'claude-opus-5[1m]',

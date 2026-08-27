@@ -10,7 +10,7 @@ import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
-import { StatusDot, type Status } from '@/ui';
+import { Spinner, StatusDot, type Status } from '@/ui';
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { getServerUrl } from '@/sync/serverConfig';
@@ -105,10 +105,10 @@ export function ChatHeader({
                             onKeyDown={onKey}
                             disabled={saving}
                         />
-                        <button type="button" className="ch-icon" onClick={() => void save()} aria-label={t('common.save')}>
-                            <Check size={16} />
+                        <button type="button" className="ch-icon" onClick={() => void save()} disabled={saving} aria-busy={saving} aria-label={t('common.save')}>
+                            {saving ? <Spinner size={14} /> : <Check size={16} />}
                         </button>
-                        <button type="button" className="ch-icon" onClick={() => setEditing(false)} aria-label={t('common.cancel')}>
+                        <button type="button" className="ch-icon" onClick={() => setEditing(false)} disabled={saving} aria-label={t('common.cancel')}>
                             <X size={16} />
                         </button>
                     </div>

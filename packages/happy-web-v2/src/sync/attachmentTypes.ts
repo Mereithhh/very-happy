@@ -1,5 +1,5 @@
 /**
- * Shared types for image attachment upload pipeline.
+ * Shared types for attachment upload pipeline.
  * Defined here (not in hooks/) to avoid circular dependencies:
  * hooks/ imports from sync/, so sync/ cannot import from hooks/.
  */
@@ -22,6 +22,7 @@ export type UploadedAttachment = {
     ref: string;
     name: string;
     size: number;
+    mimeType: string;
     width: number;
     height: number;
     thumbhash?: string;

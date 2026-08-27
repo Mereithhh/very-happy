@@ -7,6 +7,48 @@ import { compareMessagesNewestFirst } from '../messageOrder';
 import type { Message } from '../typesMessage';
 
 describe('reducer', () => {
+    it('folds a sub-agent start and stop into one completed row with its title', () => {
+        const state = createReducer();
+        const start: NormalizedMessage = {
+            id: 'sub-start', localId: null, createdAt: 1000, role: 'event', isSidechain: false,
+            content: { type: 'subagent', id: 'worker-1', title: 'Review uploads', status: 'running' },
+        };
+        const stop: NormalizedMessage = {
+            id: 'sub-stop', localId: null, createdAt: 2000, role: 'event', isSidechain: false,
+            content: { type: 'subagent', id: 'worker-1', status: 'completed' },
+        };
+
+        reducer(state, [start]);
+        const result = reducer(state, [stop]);
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0]).toMatchObject({
+            kind: 'agent-event',
+            event: { type: 'subagent', id: 'worker-1', title: 'Review uploads', status: 'completed' },
+        });
+    });
+
+    it('does not regress a completed sub-agent during newest-first history backfill', () => {
+        const state = createReducer();
+        const stop: NormalizedMessage = {
+            id: 'sub-stop-newest', localId: null, createdAt: 2000, seq: 20, role: 'event', isSidechain: false,
+            content: { type: 'subagent', id: 'worker-2', status: 'completed' },
+        };
+        const start: NormalizedMessage = {
+            id: 'sub-start-oldest', localId: null, createdAt: 1000, seq: 10, role: 'event', isSidechain: false,
+            content: { type: 'subagent', id: 'worker-2', title: 'Audit history', status: 'running' },
+        };
+
+        reducer(state, [stop]);
+        const result = reducer(state, [start]);
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0]).toMatchObject({
+            createdAt: 2000,
+            seq: 20,
+            kind: 'agent-event',
+            event: { type: 'subagent', id: 'worker-2', title: 'Audit history', status: 'completed' },
+        });
+    });
+
     // it('should process golden cases', () => {
     //     for (let i = 0; i <= 3; i++) {
 

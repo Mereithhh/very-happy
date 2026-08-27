@@ -27,14 +27,23 @@ describe('changelog releases', () => {
     const notices = changelogCliNotices([
       { id: 'old', active: true, metadata: { displayName: 'Desk', happyCliVersion: '0.2.80' } },
       { id: 'current', active: true, metadata: { host: 'Laptop', happyCliVersion: '0.2.81' } },
+      { id: 'latest', active: true, metadata: { host: 'Studio', happyCliVersion: '0.2.82' } },
       { id: 'offline', active: false, metadata: { host: 'Server', happyCliVersion: '0.2.70' } },
       { id: 'unknown', active: true, metadata: { host: 'Unknown' } },
     ]);
-    expect(notices).toEqual([{
-      machineId: 'old',
-      machineName: 'Desk',
-      currentVersion: '0.2.80',
-      targetVersion: '0.2.81',
-    }]);
+    expect(notices).toEqual([
+      {
+        machineId: 'old',
+        machineName: 'Desk',
+        currentVersion: '0.2.80',
+        targetVersion: '0.2.82',
+      },
+      {
+        machineId: 'current',
+        machineName: 'Laptop',
+        currentVersion: '0.2.81',
+        targetVersion: '0.2.82',
+      },
+    ]);
   });
 });

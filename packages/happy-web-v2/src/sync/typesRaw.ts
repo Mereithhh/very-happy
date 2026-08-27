@@ -44,6 +44,11 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
             cacheRead: z.number().optional(),
         }).optional(),
     }).optional(),
+}), z.object({
+    type: z.literal('subagent'),
+    id: z.string(),
+    title: z.string().optional(),
+    status: z.enum(['running', 'completed']),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -77,6 +82,7 @@ const sessionFileEventSchema = z.object({
     ref: z.string(),
     name: z.string(),
     size: z.number(),
+    mimeType: z.string().optional(),
     image: z.object({
         width: z.number(),
         height: z.number(),
@@ -596,8 +602,21 @@ function normalizeSessionEnvelope(
     }
 
     if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
-        // Lifecycle marker for subagent boundaries; currently not rendered as chat content.
-        return null;
+        if (!envelope.subagent) return null;
+        return {
+            id: messageId,
+            localId,
+            createdAt: messageCreatedAt,
+            role: 'event',
+            isSidechain: false,
+            content: {
+                type: 'subagent',
+                id: envelope.subagent,
+                ...(envelope.ev.t === 'start' && envelope.ev.title ? { title: envelope.ev.title } : {}),
+                status: envelope.ev.t === 'start' ? 'running' : 'completed',
+            },
+            meta,
+        } satisfies NormalizedMessage;
     }
 
     if (envelope.ev.t === 'turn-end') {
@@ -772,6 +791,7 @@ function normalizeSessionEnvelope(
                         ref: envelope.ev.ref,
                         name: envelope.ev.name,
                         size: envelope.ev.size,
+                        mimeType: envelope.ev.mimeType,
                         ...maybeImageMetadata
                     },
                     description: envelope.ev.image

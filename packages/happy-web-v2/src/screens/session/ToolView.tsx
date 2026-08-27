@@ -6,7 +6,7 @@
  */
 import { useId, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { BookOpen, CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
+import { BookOpen, CheckSquare, ChevronRight, Circle, FileText, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
@@ -146,6 +146,26 @@ function SkillView({ tool }: { tool: ToolCall }) {
                     <OutputText text={out} />
                 </Section>
             )}
+        </div>
+    );
+}
+
+function AttachmentFileView({ tool }: { tool: ToolCall }) {
+    const name = asString(tool.input?.name) ?? 'attachment';
+    const mimeType = asString(tool.input?.mimeType);
+    const size = typeof tool.input?.size === 'number' ? tool.input.size : null;
+    const sizeLabel = size === null
+        ? null
+        : size >= 1024 * 1024
+            ? `${(size / (1024 * 1024)).toFixed(1)} MB`
+            : `${Math.max(1, Math.round(size / 1024))} KB`;
+    return (
+        <div className="tv-attachment">
+            <FileText size={18} />
+            <div className="tv-attachment-copy">
+                <strong>{name}</strong>
+                {(mimeType || sizeLabel) && <span>{[mimeType, sizeLabel].filter(Boolean).join(' · ')}</span>}
+            </div>
         </div>
     );
 }
@@ -381,6 +401,9 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
         case 'Skill':
         case 'read_skill':
             body = <SkillView tool={tool} />;
+            break;
+        case 'file':
+            body = <AttachmentFileView tool={tool} />;
             break;
         case 'TodoWrite':
             body = <TodoView tool={tool} />;

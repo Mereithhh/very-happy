@@ -356,6 +356,10 @@ export const en = {
             : `${count} images could not be uploaded and were not sent.`,
         notSupportedTitle: 'Images Not Supported',
         notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
+        unsupportedFileTitle: 'Unsupported File',
+        unsupportedFileMessage: 'Attach an image or PDF file.',
+        pdfRequiresCliTitle: 'CLI Update Required',
+        pdfRequiresCliMessage: 'Update the daemon CLI to attach PDFs in Claude conversations.',
     },
 
     errors: {
@@ -1493,6 +1497,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            aug27b: {
+                title: 'Keep the work in view',
+                summary: 'Active Claude work now stays continuous across navigation, with richer documents and agent state.',
+                continuity: 'Thinking state no longer disappears when you switch sessions, refocus the app, or reload message history.',
+                documents: 'Claude conversations accept PDF and image attachments through the picker, paste, and drag-and-drop.',
+                agents: 'Plan mode remains fully interactive, and sub-agent start and completion are now visible in the conversation.',
+                loading: 'Network-backed actions show local progress and block accidental duplicate submissions.',
+            },
             aug27: {
                 title: 'More control, less interface noise',
                 summary: 'The workspace now stays legible while agents run, ask questions, queue follow-ups, and move between machines.',
@@ -1827,6 +1839,9 @@ export const en = {
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `Switched to ${mode} mode`,
         unknownEvent: 'Unknown event',
+        subagent: 'Sub-agent',
+        subagentStarted: ({ name }: { name: string }) => `${name} started`,
+        subagentCompleted: ({ name }: { name: string }) => `${name} completed`,
         copyMessage: 'Copy message',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',

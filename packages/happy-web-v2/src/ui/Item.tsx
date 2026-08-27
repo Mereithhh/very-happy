@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Spinner } from './Spinner';
 
 /**
  * Settings/list row primitives (the v1 ItemList/ItemGroup/Item system, web).
@@ -29,6 +30,8 @@ interface ItemProps {
   selected?: boolean;
   destructive?: boolean;
   multiline?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 export function Item({
@@ -41,6 +44,8 @@ export function Item({
   selected,
   destructive,
   multiline,
+  loading = false,
+  disabled = false,
 }: ItemProps) {
   const interactive = !!onClick;
   const Cmp: any = interactive ? 'button' : 'div';
@@ -57,6 +62,8 @@ export function Item({
         .join(' ')}
       onClick={onClick}
       type={interactive ? 'button' : undefined}
+      disabled={interactive ? disabled || loading : undefined}
+      aria-busy={loading || undefined}
     >
       {left && <span className="vh-item__left">{left}</span>}
       <span className="vh-item__text">
@@ -64,7 +71,7 @@ export function Item({
         {subtitle && <span className="vh-item__subtitle">{subtitle}</span>}
         {detail && <span className="vh-item__detail">{detail}</span>}
       </span>
-      {right && <span className="vh-item__right">{right}</span>}
+      {(loading || right) && <span className="vh-item__right">{loading ? <Spinner size={14} /> : right}</span>}
     </Cmp>
   );
 }

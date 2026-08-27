@@ -11,6 +11,7 @@ import {
   Item,
   Badge,
   StatusDot,
+  Spinner,
 } from '@/ui';
 import { Modal } from '@/modal';
 import { useToast } from '@/ui';
@@ -48,6 +49,8 @@ export function MachineScreen() {
   const ime = useImeGuard();
   const [spawning, setSpawning] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const online = machine ? isMachineOnline(machine) : false;
   const name = machine?.metadata?.displayName || machine?.metadata?.host || id || '';
@@ -84,6 +87,7 @@ export function MachineScreen() {
     if (next === null) return;
     const trimmed = next.trim();
     if (!machine.metadata) return;
+    setRenaming(true);
     try {
       await machineUpdateMetadata(
         machine.id,
@@ -94,6 +98,8 @@ export function MachineScreen() {
       toast.success(t('common.success'));
     } catch {
       toast.error(t('common.error'));
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -159,11 +165,18 @@ export function MachineScreen() {
       { confirmText: t('machine.delete'), destructive: true },
     );
     if (!ok) return;
-    const res = await machineDelete(machine.id);
-    if (res.success) {
-      navigate('/settings/diagnostics');
-    } else {
-      toast.error(res.message || (t('machine.deleteFailed')));
+    setDeleting(true);
+    try {
+      const res = await machineDelete(machine.id);
+      if (res.success) {
+        navigate('/settings/diagnostics');
+      } else {
+        toast.error(res.message || (t('machine.deleteFailed')));
+      }
+    } catch {
+      toast.error(t('machine.deleteFailed'));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -195,8 +208,8 @@ export function MachineScreen() {
           </div>
           <div className="set-header__right">
             <StatusDot status={online ? 'connected' : 'offline'} pulse={online} />
-            <button type="button" className="set-header__back" onClick={rename} aria-label={t('common.rename')}>
-              <Pencil size={16} />
+            <button type="button" className="set-header__back" onClick={rename} disabled={renaming} aria-busy={renaming} aria-label={t('common.rename')}>
+              {renaming ? <Spinner size={14} /> : <Pencil size={16} />}
             </button>
           </div>
         </div>
@@ -295,7 +308,7 @@ export function MachineScreen() {
             )}
             <Item title={t('machine.daemonStateVersion')} detail={String(machine.daemonStateVersion)} />
             {online && (
-              <Item title={t('machine.stopDaemon')} destructive onClick={stopDaemon} right={stopping ? undefined : <ChevronRight size={16} />} />
+              <Item title={t('machine.stopDaemon')} destructive onClick={stopDaemon} loading={stopping} right={<ChevronRight size={16} />} />
             )}
           </ItemGroup>
 
@@ -348,7 +361,7 @@ export function MachineScreen() {
           </ItemGroup>
 
           <ItemGroup title={t('machine.dangerZone')} footer={t('machine.deleteFooter')}>
-            <Item title={t('machine.delete')} destructive onClick={del} />
+            <Item title={t('machine.delete')} destructive onClick={del} loading={deleting} />
           </ItemGroup>
         </ItemList>
       </div>

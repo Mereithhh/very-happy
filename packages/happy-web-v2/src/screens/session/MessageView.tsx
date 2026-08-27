@@ -4,7 +4,7 @@
  * runs) hand off to ToolGroupView.
  */
 import { useEffect, useId, useRef, useState } from 'react';
-import { AlertTriangle, Brain, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
+import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession } from '@/sync/storage';
@@ -200,6 +200,17 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
             // 'ready' carries turn metadata that the reducer already folds into the
             // final agent-text MessageMetaRow — nothing to render as an event line.
             return null;
+        case 'subagent':
+            return (
+                <div className="msg msg--event">
+                    <span className={`msg-event-line msg-event-line--subagent msg-event-line--${ev.status}`}>
+                        {ev.status === 'running' ? <Bot size={13} /> : <Check size={13} />}
+                        {ev.status === 'running'
+                            ? t('message.subagentStarted', { name: ev.title ?? t('message.subagent') })
+                            : t('message.subagentCompleted', { name: ev.title ?? t('message.subagent') })}
+                    </span>
+                </div>
+            );
         default:
             label = t('message.unknownEvent');
     }
