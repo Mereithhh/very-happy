@@ -1,6 +1,6 @@
 # Durable queued message cancellation
 
-> 状态：Final
+> 状态：Shipped（commit `964f9308ccf565faf6bbb43d69d64757a8bb9f8a`）
 > 日期：2026-08-27 ｜ 关联 backlog：B-240 ｜ 前身：`specs/2026-08-queued-message-controls.md`
 
 ## 背景
@@ -68,13 +68,13 @@ durable queue 改为 composer 同款的轻量 command-buffer surface：弱化外
 
 ## 验收标准
 
-- [ ] CLI 队列可按 source id 删除；legacy item 可按完整文本 fallback；已被取走时返回失败。
-- [ ] 三条 CLI 入站路径都保留 server localId，去重逻辑不回归。
-- [ ] durable queued 文本可取消，有 loading；失败保留并 toast。
-- [ ] 取消墓碑在目标前/后到达都能隐藏目标，且自身不渲染。
-- [ ] local queue 三项操作在桌面不 hover 也可见。
+- [x] CLI 队列可按 source id 删除；legacy item 可按完整文本 fallback；已被取走时返回失败。
+- [x] 三条 CLI 入站路径都保留 server localId，去重逻辑不回归。
+- [x] durable queued 文本可取消，有 loading；失败保留并 toast。
+- [x] 取消墓碑在目标前/后到达都能隐藏目标，且自身不渲染。
+- [x] local queue 三项操作在桌面不 hover 也可见。
 - [ ] 中英文文案、亮暗主题、320/390px 无溢出。
-- [ ] Web vitest/build/tsc 与 CLI test/runtime smoke 全绿。
+- [x] Web vitest/build/tsc 与 CLI test/runtime smoke 全绿。
 
 ## 留真机验证项
 
