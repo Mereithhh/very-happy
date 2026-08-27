@@ -4,7 +4,7 @@
  * runs) hand off to ToolGroupView.
  */
 import { useEffect, useId, useRef, useState } from 'react';
-import { Brain, ChevronDown, ChevronRight, Terminal } from 'lucide-react';
+import { AlertTriangle, Brain, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { useSession } from '@/sync/storage';
@@ -15,6 +15,7 @@ import { MessageMetaRow } from './MessageMetaRow';
 import { stripHarnessBlocks, parseLocalCommandMessage } from './harness';
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
+import { presentServiceEvent } from './serviceEvent';
 import './message.css';
 
 function UserText({ message }: { message: UserTextMessage }) {
@@ -178,10 +179,18 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
             label = t('message.switchedToMode', { mode: ev.mode });
             break;
         case 'message':
-            // Title-change / plan-mode / turn / compaction system notes — keep subtle.
-            label = ev.message;
-            subtle = true;
-            break;
+            {
+                const presentation = presentServiceEvent(ev.message);
+                if (presentation.kind === 'stopped') {
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
+                }
+                if (presentation.kind === 'error') {
+                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t(presentation.textKey)}</span></div>;
+                }
+                label = presentation.text;
+                subtle = true;
+                break;
+            }
         case 'limit-reached':
             label = t('message.usageLimitUntil', {
                 time: formatUnixTime(ev.endsAt) || t('message.unknownTime'),

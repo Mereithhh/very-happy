@@ -10,7 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Check, CornerDownRight, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionSteer } from '@/sync/ops';
 import {
     useSession,
     useSessionUsage,
@@ -24,11 +24,14 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
+    compactResolvedModelCode,
+    relabelDefaultModel,
 } from '@/components/modelModeOptions';
 import { useImeGuard } from '@/utils/ime';
 import { onInsertToInput } from '@/app/insertToInput';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { ModeMenu } from './ModeMenu';
+import { SessionOptionsDialog } from './SessionOptionsDialog';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
@@ -50,6 +53,8 @@ import { PresetsMenu } from './PresetsMenu';
 import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
+import { getAllCommands } from '@/sync/suggestionCommands';
+import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
     composerHeightCap,
@@ -84,7 +89,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     );
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editingText, setEditingText] = useState('');
+    const [slashIndex, setSlashIndex] = useState(0);
+    const [dismissedSlashText, setDismissedSlashText] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
+    const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
     const { attachments, addFiles, remove, clear, take } = useAttachments();
@@ -108,6 +116,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const online = session?.presence === 'online';
     const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
+    const slashSuggestions = dismissedSlashText === text
+        ? []
+        : filterSlashSuggestions(getAllCommands(sessionId), text);
+
+    useEffect(() => {
+        setSlashIndex(0);
+    }, [text, sessionId]);
 
     useEffect(() => {
         const all = loadQueuedMessages();
@@ -118,14 +133,31 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     }, [queued, sessionId]);
 
     // selectors
-    const models = getAvailableModels(flavor, metadata, t as any);
-    const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const modelKey = session?.modelMode ?? null;
+    const resolvedDefaultModel = metadata?.defaultModelCode
+        ?? (modelKey === null || modelKey === 'default' ? usage?.model : undefined);
+    const defaultModelLabel = resolvedDefaultModel
+        ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
+        : t('session.chat.defaultModelUnknown');
+    const models = relabelDefaultModel(
+        getAvailableModels(flavor, metadata, t as any),
+        defaultModelLabel,
+    );
+    const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default');
     const permKey = session?.permissionMode ?? null;
     const effortKey = session?.effortLevel ?? null;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
+    const effortOptions = isClaudeFlavor
+        ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
+        : efforts;
+    const selectedEffortKey = isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey;
+    const selectedModel = models.find((option) => option.key === modelKey) ?? models[0];
+    const selectedPermission = permModes.find((option) => option.key === permKey) ?? permModes[0];
+    const sessionOptionsSummary = [selectedModel?.name, selectedPermission?.name]
+        .filter(Boolean)
+        .join(' · ');
 
     // context meter — always visible when we have a usage snapshot.
     const contextSize = usage?.contextSize ?? 0;
@@ -223,6 +255,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    const redirectCurrentTurn = async (): Promise<boolean> => {
+        try {
+            await sessionSteer(sessionId);
+            return true;
+        } catch {
+            // Older daemons and non-Claude adapters may not expose the optional
+            // steer RPC; retain the explicit abort path as a compatibility fallback.
+            return doAbort();
+        }
+    };
+
     const doSend = async (intervene = false) => {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
@@ -257,7 +300,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
         setSending(true);
         try {
-            if (intervene && isWorking && !(await doAbort())) throw new Error('interrupt failed');
+            if (intervene && isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
             await sendQueuedItem(item);
         } catch {
             // restore text on failure so the user doesn't lose it
@@ -279,7 +322,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         deliveryPhaseRef.current = 'intervening';
         setQueued((current) => removeQueuedMessage(current, id));
         try {
-            if (isWorking && !(await doAbort())) throw new Error('interrupt failed');
+            if (isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
             await sendQueuedItem(item);
             deliveryPhaseRef.current = 'waiting-start';
         } catch {
@@ -355,6 +398,27 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         // useImeGuard combines the local composing flag, isComposing/'Process'
         // on the event, and the post-compositionend window (Safari fires the
         // committing Enter AFTER compositionend with isComposing false).
+        if (slashSuggestions.length > 0 && !ime.isGuarded(e)) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const delta = e.key === 'ArrowDown' ? 1 : -1;
+                setSlashIndex((current) => (current + delta + slashSuggestions.length) % slashSuggestions.length);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setDismissedSlashText(text);
+                return;
+            }
+            if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                e.preventDefault();
+                const next = slashCommandText(slashSuggestions[slashIndex] ?? slashSuggestions[0]);
+                setText(next);
+                setDismissedSlashText(next);
+                requestAnimationFrame(() => taRef.current?.focus());
+                return;
+            }
+        }
         if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
             if (enterToSend) {
                 e.preventDefault();
@@ -365,6 +429,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const setMode = (fn: 'updateSessionModelMode' | 'updateSessionPermissionMode' | 'updateSessionEffortLevel', key: string) => {
         storage.getState()[fn](sessionId, key);
+    };
+
+    const setEffort = (key: string) => {
+        if (isClaudeFlavor && key === EFFORT_DEFAULT_KEY) {
+            storage.getState().updateSessionEffortLevel(sessionId, null);
+        } else {
+            setMode('updateSessionEffortLevel', key);
+        }
     };
 
     const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending;
@@ -393,19 +465,41 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         // default). Before this, a null effortLevel fell back
                         // to options[0] and the UI showed "low" while the CLI
                         // actually ran its own default — a straight-up lie.
-                        options={isClaudeFlavor
-                            ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
-                            : efforts}
-                        value={isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey}
-                        onChange={(k) => {
-                            if (isClaudeFlavor && k === EFFORT_DEFAULT_KEY) {
-                                storage.getState().updateSessionEffortLevel(sessionId, null);
-                            } else {
-                                setMode('updateSessionEffortLevel', k);
-                            }
-                        }}
+                        options={effortOptions}
+                        value={selectedEffortKey}
+                        onChange={setEffort}
                     />
                 )}
+            </div>
+
+            <div className="ci-mobile-options">
+                <SessionOptionsDialog
+                    open={sessionOptionsOpen}
+                    onOpenChange={setSessionOptionsOpen}
+                    triggerLabel={t('session.chat.sessionSettings')}
+                    triggerSummary={sessionOptionsSummary}
+                    title={t('session.chat.sessionSettingsTitle')}
+                    description={t('session.chat.sessionSettingsDescription')}
+                    closeLabel={t('common.close')}
+                    model={{
+                        label: t('session.chat.modelLabel'),
+                        options: models,
+                        value: modelKey,
+                        onChange: (key) => setMode('updateSessionModelMode', key),
+                    }}
+                    permission={{
+                        label: t('session.chat.permissionLabel'),
+                        options: permModes,
+                        value: permKey,
+                        onChange: (key) => setMode('updateSessionPermissionMode', key),
+                    }}
+                    effort={{
+                        label: t('session.chat.effortLabel'),
+                        options: effortOptions,
+                        value: selectedEffortKey,
+                        onChange: setEffort,
+                    }}
+                />
             </div>
 
             {/* attachment previews */}
@@ -498,6 +592,31 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         ))}
                     </div>
                 </section>
+            )}
+
+            {slashSuggestions.length > 0 && (
+                <div className="ci-slash" role="listbox" aria-label={t('session.chat.slashCommands')}>
+                    <div className="ci-slash-head">{t('session.chat.slashCommands')}</div>
+                    {slashSuggestions.map((item, index) => (
+                        <button
+                            key={item.command}
+                            type="button"
+                            role="option"
+                            aria-selected={index === slashIndex}
+                            className={`ci-slash-item${index === slashIndex ? ' ci-slash-item--active' : ''}`}
+                            onMouseEnter={() => setSlashIndex(index)}
+                            onClick={() => {
+                                const next = slashCommandText(item);
+                                setText(next);
+                                setDismissedSlashText(next);
+                                requestAnimationFrame(() => taRef.current?.focus());
+                            }}
+                        >
+                            <span className="ci-slash-command">/{item.command}</span>
+                            {item.description && <span className="ci-slash-desc">{item.description}</span>}
+                        </button>
+                    ))}
+                </div>
             )}
 
             {/* composer */}

@@ -987,6 +987,10 @@ export function tmuxNewSessionArgs(
     return ['new-session', '-d', ...envFlags, '-s', session, '-x', String(cols), '-y', String(rows), '-c', cwd, shell];
 }
 
+export function shouldUseDirectPtyFallback(attachOnly: boolean, createdNew: boolean, sessionAlive: boolean): boolean {
+    return !attachOnly && !createdNew && !sessionAlive;
+}
+
 /** Ensure ~/.local/bin is on PATH so `claude` and friends are findable. */
 function ptyEnv(): Record<string, string> {
     const env: Record<string, string> = {};
@@ -1761,7 +1765,7 @@ export class WebTerminalManager {
         // Geometry is provisional — the first web open resizes the pane. These
         // numbers only decide how claude's first paint wraps.
         const created = spawnSync('tmux',
-            ['new-session', '-d', ...envFlags, '-s', name, '-x', '120', '-y', '30', '-c', plan.cwd],
+            tmuxNewSessionArgs(name, 120, 30, plan.cwd, envFlags, defaultShell()),
             { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
         // Some tmux builds have returned status 0 even when the server socket
         // could not be created. Verify the durable session itself before
@@ -2127,7 +2131,7 @@ export class WebTerminalManager {
             if (!attachOnly && !createdNew) {
                 const alive = spawnSync('tmux', ['has-session', '-t', `=${tmuxSession}:`],
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
-                if (!alive) {
+                if (shouldUseDirectPtyFallback(attachOnly, createdNew, alive)) {
                     const retry = spawnSync('tmux',
                         tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell()),
                         { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
@@ -2140,6 +2144,17 @@ export class WebTerminalManager {
                             }
                         }
                     }
+                }
+            }
+            // A hosted notebook can expose a tmux binary but still reject
+            // session creation. Fall back to a direct PTY instead of opening a
+            // control client for a session that never existed.
+            if (!attachOnly && !createdNew) {
+                const alive = spawnSync('tmux', ['has-session', '-t', `=${tmuxSession}:`],
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+                if (!alive) {
+                    logger.info(`[WEB TERMINAL] tmux session creation unavailable; using direct PTY for ${id}`);
+                    tmuxSession = undefined;
                 }
             }
         } else {

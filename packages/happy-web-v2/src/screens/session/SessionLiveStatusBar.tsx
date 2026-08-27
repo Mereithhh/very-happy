@@ -1,9 +1,8 @@
 /**
- * SessionLiveStatusBar — thin status strip above the composer. Precedence:
- * permission > running tool > thinking. Shows a live elapsed timer and a
- * pulsing dot while the agent works; a warning when approval is needed.
+ * SessionLiveStatusBar — compact live activity indicator in the transcript
+ * area. Permission requests have their own actionable PermissionCard.
  */
-import { ChevronDown, ShieldAlert } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useSession, useSessionRunningTool } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
@@ -16,13 +15,9 @@ export function SessionLiveStatusBar({ sessionId, onActivate }: { sessionId: str
     const session = useSession(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
 
-    const hasPermission =
-        !!session?.agentState?.requests && Object.keys(session.agentState.requests).length > 0;
     const isThinking = session?.thinking === true;
 
-    const kind: 'permission' | 'tool' | 'thinking' | null = hasPermission
-        ? 'permission'
-        : runningTool
+    const kind: 'tool' | 'thinking' | null = runningTool
             ? 'tool'
             : isThinking
                 ? 'thinking'
@@ -33,24 +28,6 @@ export function SessionLiveStatusBar({ sessionId, onActivate }: { sessionId: str
     const elapsed = useElapsedSeconds(anchor);
 
     if (!kind) return null;
-
-    if (kind === 'permission') {
-        return (
-            <button
-                type="button"
-                className="lsb lsb--permission"
-                onClick={onActivate}
-                aria-label={`${t('session.chat.needsPermission')}. ${t('session.chat.jumpToLatest')}`}
-                title={t('session.chat.jumpToLatest')}
-            >
-                <span className="lsb-content" role="status" aria-live="polite">
-                    <ShieldAlert size={14} />
-                    <span>{t('session.chat.needsPermission')}</span>
-                </span>
-                <ChevronDown className="lsb-action" size={15} aria-hidden />
-            </button>
-        );
-    }
 
     const label =
         kind === 'tool'
@@ -66,12 +43,12 @@ export function SessionLiveStatusBar({ sessionId, onActivate }: { sessionId: str
     return (
         <button
             type="button"
-            className="lsb lsb--live"
+            className="lsb"
             onClick={onActivate}
             aria-label={accessibleLabel}
             title={t('session.chat.jumpToLatest')}
         >
-            <span className="lsb-content">
+            <span className="lsb-content" role="status" aria-live="polite">
                 <StatusDot status="thinking" size={8} pulse />
                 <span className="lsb-label">{label}</span>
             </span>

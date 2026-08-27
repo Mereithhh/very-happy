@@ -31,6 +31,7 @@ import { CliUpdateBanner } from './CliUpdateBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
 import { dismissPrepaintSplash } from './prepaintSplash';
+import { ChangelogNotice } from './ChangelogNotice';
 import './appFonts';
 
 // Heavy screens are code-split so the initial bundle stays lean (chat pulls the
@@ -45,6 +46,7 @@ const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').the
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
 const TodosScreen = lazy(() => import('@/screens/todos/TodosScreen').then((m) => ({ default: m.TodosScreen })));
+const ChangelogScreen = lazy(() => import('@/screens/changelog/ChangelogScreen').then((m) => ({ default: m.ChangelogScreen })));
 
 function Lazy({ children, fullViewport = true }: { children: ReactNode; fullViewport?: boolean }) {
   return (
@@ -66,14 +68,14 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /></>;
+  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /></>;
+  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /></>;
 }
 
 function FirstMachineWelcome() {
@@ -133,6 +135,9 @@ const OrbitLoaderHarness = import.meta.env.DEV
 const MobileChatHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/MobileChatHarness').then((m) => ({ default: m.MobileChatHarness })))
   : null;
+const ChangelogHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/ChangelogHarness').then((m) => ({ default: m.ChangelogHarness })))
+  : null;
 
 const router = createBrowserRouter(
   [
@@ -149,6 +154,12 @@ const router = createBrowserRouter(
       : []),
     ...(MobileChatHarness
       ? [{ path: '/dev/mobile-chat', element: <Lazy><MobileChatHarness /></Lazy> }]
+      : []),
+    ...(ChangelogHarness
+      ? [
+          { path: '/dev/changelog', element: <Lazy><ChangelogHarness /></Lazy> },
+          { path: '/dev/changelog-history', element: <Lazy><ChangelogScreen /></Lazy> },
+        ]
       : []),
     {
       path: '/login',
@@ -170,6 +181,7 @@ const router = createBrowserRouter(
     },
     { path: '/privacy', element: <PrivacyScreen /> },
     { path: '/terms', element: <TermsScreen /> },
+    { path: '/changelog', element: <Lazy><ChangelogScreen /></Lazy> },
     { path: '/welcome', element: <LandingScreen /> },
     { path: '/docs', element: <DocsScreen /> },
     { path: '/docs/:slug', element: <DocsScreen /> },

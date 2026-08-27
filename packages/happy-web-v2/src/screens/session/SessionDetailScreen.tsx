@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -9,7 +9,6 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { EmptyState, Button, OrbitLoader } from '@/ui';
 import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
-import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
 import { MirrorBanner } from './MirrorBanner';
@@ -29,7 +28,6 @@ export function SessionDetailScreen() {
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
     };
-    const [jumpToLatestRequest, setJumpToLatestRequest] = useState(0);
     // Desktop (>860px, matching session.css): the files panel is an inline
     // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
     // (shared with the terminal's file browser, B-088). Narrow viewports keep
@@ -94,14 +92,10 @@ export function SessionDetailScreen() {
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
                 <div className="sd-body">
-                    <ChatList key={id} sessionId={id} jumpRequest={jumpToLatestRequest} />
+                    <ChatList key={id} sessionId={id} />
                 </div>
                 {!mirror && (
                     <div className="sd-foot">
-                        <SessionLiveStatusBar
-                            sessionId={id}
-                            onActivate={() => setJumpToLatestRequest((request) => request + 1)}
-                        />
                         {/* Queue/draft/attachment ownership is session-scoped.
                             Force a clean composer instance when route params change so
                             an unsent item can never cross into another session. */}

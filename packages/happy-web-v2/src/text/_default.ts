@@ -504,8 +504,10 @@ export const en = {
             queueEdit: 'Edit queued message',
             queueSave: 'Save edit',
             queueDelete: 'Delete queued message',
-            queueIntervene: 'Interrupt current turn and send now',
+            queueIntervene: 'Redirect current turn and send now',
             queueEditingPlaceholder: 'Edit message',
+            stoppedByYou: 'Stopped by you',
+            processFailed: 'The agent process exited unexpectedly',
             enterToSend: 'Enter to send · Shift+Enter for newline',
             shiftEnterToSend: 'Shift+Enter to send · Enter for newline',
             offlineHint: 'Session is offline — messages will send when it reconnects.',
@@ -528,6 +530,13 @@ export const en = {
             modelLabel: 'model',
             permissionLabel: 'mode',
             effortLabel: 'effort',
+            sessionSettings: 'Session settings',
+            sessionSettingsTitle: 'Session settings',
+            sessionSettingsDescription: 'Changes apply to the next message in this conversation.',
+            defaultModelUnknown: 'CLI default',
+            defaultModelResolved: ({ model }: { model: string }) => `${model} (default)`,
+            slashCommands: 'Commands and skills',
+            relayRegion: 'Realtime relay region',
             effortDefault: 'default',
             effortDefaultDesc: "engine default (currently high; may downgrade per model)",
             attach: 'Attach image',
@@ -1247,12 +1256,13 @@ export const en = {
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
             question: 'Question',
+            skillLoaded: 'Loaded skill',
         },
         askUserQuestion: {
             submit: 'Submit Answer',
             multipleQuestions: ({ count }: { count: number }) => `${count} questions`,
-            other: 'Other',
-            otherDescription: 'Type your own answer',
+            other: 'Talk about it',
+            otherDescription: 'Reply in your own words',
             otherPlaceholder: 'Type your answer...',
         },
         desc: {
@@ -1469,9 +1479,73 @@ export const en = {
     },
 
     changelog: {
-        // Used by the changelog screen
+        eyebrow: 'Release signal',
+        historyTitle: 'What’s new in Very Happy',
+        viewAll: 'View release history',
+        done: 'Got it',
+        webBuild: ({ version }: { version: string }) => `Web build ${version}`,
+        companionCli: ({ version }: { version: string }) => `Companion CLI release v${version}`,
+        cliTitle: 'Update the CLI on affected machines',
+        cliBody: ({ count, version, machines }: { count: number; version: string; machines: string }) =>
+            `${count} connected ${count === 1 ? 'machine is' : 'machines are'} below v${version}: ${machines}. This command installs the exact release and safely refreshes the daemon.`,
+        commandCopied: 'CLI update command copied',
+        commandCopyFailed: 'Could not copy the CLI update command',
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
+        releases: {
+            aug27: {
+                title: 'More control, less interface noise',
+                summary: 'The workspace now stays legible while agents run, ask questions, queue follow-ups, and move between machines.',
+                composer: 'A calmer chat composer, with mobile session settings in one focused sheet and the actual default model shown.',
+                queue: 'Queued follow-ups stay editable and can intervene in the active turn without masquerading as a user abort.',
+                questions: 'Agent questions support multiple answers and discussion, then preserve the submitted answer in the conversation.',
+                terminal: 'Hosted terminals recover more reliably across shells, containers, sessions, and long output.',
+                visuals: 'The authenticated app, release surfaces, tool cards, loading states, and status events share one refined Console language.',
+            },
+            aug26: {
+                title: 'Regional relay and safer releases',
+                summary: 'Long-running work became faster to reach and much harder to interrupt during a deployment.',
+                relay: 'Structured sessions and terminals prefer the nearest healthy realtime relay and show the route they are using.',
+                release: 'Blue-green releases verify a candidate before switching traffic and retain an immediate rollback slot.',
+                mobile: 'iOS PWA startup, keyboard, scrolling, and mobile navigation were stabilized.',
+                usage: 'Usage reporting now covers structured sessions, terminals, agents, token types, and cost without inventing missing values.',
+            },
+            aug24: {
+                title: 'A complete public workspace',
+                summary: 'Very Happy became a self-hostable, Web-first product with a coherent first-run path.',
+                onboarding: 'A reviewed one-command setup connects the first machine and hands off directly to the workspace.',
+                workspace: 'The product now explains its structured-agent and universal-terminal paths with real UI and operational boundaries.',
+                security: 'Authentication, pairing, diagnostics, public documentation, and relay trust boundaries were hardened for public use.',
+            },
+            aug15: {
+                title: 'Claude terminals become readable conversations',
+                summary: 'A running Claude Code TUI can now be mirrored into a structured, searchable Web conversation.',
+                mirror: 'Global hooks bind terminal activity to a read-only structured mirror that survives reconnects.',
+                files: 'Files mentioned or produced by agents can be opened directly from the conversation.',
+                models: 'Model and effort choices follow the machine default instead of silently substituting a Web guess.',
+            },
+            aug12: {
+                title: 'Remote workflows, not just remote screens',
+                summary: 'Sessions gained stronger control surfaces for handoff, messaging, and work across devices.',
+                channels: 'Webhook and command channels can route a message back into the exact running session.',
+                input: 'Input ownership prevents duplicated keystrokes and stale controls when devices reconnect.',
+                mobile: 'Mobile session controls, navigation, and terminal interaction became practical for daily use.',
+            },
+            aug04: {
+                title: 'Messages and terminals stay in order',
+                summary: 'The realtime core was rebuilt around monotonic message order and daemon-authoritative terminal state.',
+                ordering: 'Queued messages flush in order and tool results no longer become detached from their calls.',
+                terminal: 'Terminal snapshots, replay, and reconnect converge on one authoritative screen state.',
+                navigation: 'Command search and session navigation make large workspaces faster to move through.',
+            },
+            jun30: {
+                title: 'Very Happy Web V2',
+                summary: 'The fork’s production client moved to a purpose-built React workspace for sessions, machines, and terminals.',
+                workspace: 'A responsive workspace shell brings machines, sessions, files, settings, and status into one browser surface.',
+                chat: 'Structured conversations render Markdown, code, tools, permissions, attachments, and streaming state natively.',
+                terminal: 'Encrypted Web terminals connect through the daemon while preserving a real tmux and TTY workflow.',
+            },
+        },
     },
 
     terminal: {
@@ -2213,21 +2287,15 @@ export type Translations = typeof en;
  * Generic translation type that matches the structure of Translations
  * but allows different string values (for other languages)
  */
-export type TranslationStructure = {
-    readonly [K in keyof Translations]: {
-        readonly [P in keyof Translations[K]]: Translations[K][P] extends string
-            ? string
-            : Translations[K][P] extends (...args: any[]) => string
-                ? Translations[K][P]
-                : Translations[K][P] extends object
-                    ? {
-                        readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
-                            ? string
-                            : Translations[K][P][Q]
-                      }
-                    : Translations[K][P]
-    }
-};
+type TranslationShape<T> = T extends string
+    ? string
+    : T extends (...args: any[]) => string
+        ? T
+        : T extends object
+            ? { readonly [K in keyof T]: TranslationShape<T[K]> }
+            : T;
+
+export type TranslationStructure = TranslationShape<Translations>;
 
 /**
  * Deep-partial variant of TranslationStructure for minor languages.

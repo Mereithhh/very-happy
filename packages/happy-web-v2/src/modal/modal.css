@@ -67,8 +67,8 @@
   border: 1px solid transparent;
 }
 .vh-modal-btn.is-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--text);
+  color: var(--bg-0);
 }
 .vh-modal-btn.is-cancel {
   color: var(--text-dim);

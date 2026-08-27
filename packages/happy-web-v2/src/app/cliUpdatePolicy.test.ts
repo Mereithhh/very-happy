@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cliUpdateInstallCommand, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
+import { cliUpdateInstallCommand, isCliVersionBelow, machineCliUpdateNotice, visibleCliUpdateNotices } from './cliUpdatePolicy';
 
 const machine = (id: string, current: string, recommended: string | null, minimum: string | null = null) => ({
   id,
@@ -32,11 +32,19 @@ describe('CLI update notices', () => {
 
   it('builds an exact fixed-package command only for a valid target', () => {
     expect(cliUpdateInstallCommand('0.2.68')).toContain('very-happy-cli@0.2.68');
+    expect(cliUpdateInstallCommand('0.2.68')).toMatch(/&& very-happy daemon start$/);
     expect(machineCliUpdateNotice(machine('pre', '0.2.68-beta.1', '0.2.68'))?.severity).toBe('available');
     expect(cliUpdateInstallCommand('latest')).toBeNull();
     expect(cliUpdateInstallCommand('0.2.68+build.1')).toContain('@0.2.68+build.1');
     expect(cliUpdateInstallCommand('0.2.68-01')).toBeNull();
     expect(machineCliUpdateNotice(machine('pre-order', '0.2.68-beta.2', '0.2.68-beta.10'))?.severity).toBe('available');
+  });
+
+  it('compares exact CLI versions without treating malformed values as old', () => {
+    expect(isCliVersionBelow('0.2.67', '0.2.68')).toBe(true);
+    expect(isCliVersionBelow('0.2.68-beta.1', '0.2.68')).toBe(true);
+    expect(isCliVersionBelow('0.2.68', '0.2.68')).toBe(false);
+    expect(isCliVersionBelow('latest', '0.2.68')).toBe(false);
   });
 
   it('never raises a global banner for an offline cached machine', () => {

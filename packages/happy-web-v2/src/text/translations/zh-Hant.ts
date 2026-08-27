@@ -367,6 +367,13 @@ export const zhHant: PartialTranslationStructure = {
         forkErrorMissingMetadata: '缺少分叉所需的會話元資料。',
         forkErrorGeneric: '分叉會話失敗。',
         forkClaudeOnly: '目前僅支援 Claude 會話的分叉。',
+        chat: {
+            sessionSettings: '工作階段設定',
+            sessionSettingsTitle: '工作階段設定',
+            sessionSettingsDescription: '變更會套用到這個對話的下一則訊息。',
+            defaultModelUnknown: 'CLI 預設',
+            defaultModelResolved: ({ model }: { model: string }) => `${model}（預設）`,
+        },
     },
 
     commandPalette: {
@@ -680,12 +687,13 @@ export const zhHant: PartialTranslationStructure = {
             applyChanges: '更新檔案',
             viewDiff: '目前檔案更改',
             question: '問題',
+            skillLoaded: '已載入 Skill',
         },
         askUserQuestion: {
             submit: '提交答案',
             multipleQuestions: ({ count }: { count: number }) => `${count} 個問題`,
-            other: '其他',
-            otherDescription: '輸入您自己的答案',
+            other: '聊聊這個',
+            otherDescription: '用你自己的話回覆',
             otherPlaceholder: '輸入您的答案...',
         },
         desc: {

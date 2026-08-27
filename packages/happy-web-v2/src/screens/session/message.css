@@ -134,6 +134,22 @@
   opacity: 0.8;
   padding: 1px var(--sp-1);
 }
+.msg-event-line--stopped,
+.msg-event-line--error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+  padding: 2px var(--sp-2);
+}
+.msg-event-line--stopped { color: var(--text-dim); }
+.msg-event-line--error {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-dim);
+}
 
 /* thinking block */
 .msg-thinking {

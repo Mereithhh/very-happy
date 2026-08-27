@@ -1159,6 +1159,11 @@ export async function sessionAbort(sessionId: string): Promise<void> {
     });
 }
 
+/** Gracefully redirect a live Claude turn while preserving the long-lived query. */
+export async function sessionSteer(sessionId: string): Promise<void> {
+    await apiSocket.sessionRPC(sessionId, 'steer', {});
+}
+
 /**
  * Allow a permission request
  */

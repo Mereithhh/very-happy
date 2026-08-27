@@ -104,11 +104,14 @@
   flex: none;
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
   padding-right: var(--sp-1);
 }
+.ch-relay { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-2); color: var(--text-dim); padding: 1px 7px; font: var(--fs-10)/1.5 var(--font-mono); letter-spacing: .04em; white-space: nowrap; }
 .ch-files-toggle {
   flex: none;
 }
+@media (max-width: 420px) { .ch-relay { padding-inline: 5px; } }
 .ch-files-toggle.is-active {
   color: var(--accent-2);
   background: var(--accent-dim);

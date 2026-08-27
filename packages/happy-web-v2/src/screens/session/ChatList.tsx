@@ -15,6 +15,7 @@ import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
+import { SessionLiveStatusBar } from './SessionLiveStatusBar';
 import {
     nextAwaySnapshot,
     unseenRows,
@@ -72,7 +73,7 @@ function buildRows(messages: Message[]): Row[] {
     return rows;
 }
 
-export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; jumpRequest?: number }) {
+export function ChatList({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,14 +123,6 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
         const animate = smooth && !reduced && shouldSmoothJumpToLatest(distance, el.clientHeight);
         el.scrollTo({ top: el.scrollHeight, behavior: animate ? 'smooth' : 'auto' });
     };
-
-    // The live status strip sits outside this scroll container. Treat its tap
-    // exactly like the local jump button so permission/thinking/tool activity
-    // is one gesture away even while the user is reading older history.
-    useEffect(() => {
-        if (jumpRequest > 0) scrollToBottom(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [jumpRequest]);
 
     // Touch-scrolling the transcript dismisses the composer keyboard — the
     // native `keyboardDismissMode="onDrag"` convention (iOS Messages, Telegram,
@@ -259,6 +252,8 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
                     title={t('session.chat.emptyTitle')}
                     description={t('session.chat.emptyDescription')}
                 />
+                <SessionLiveStatusBar sessionId={sessionId} onActivate={() => scrollToBottom(true)} />
+                <PermissionCard sessionId={sessionId} />
             </div>
         );
     }
@@ -311,6 +306,7 @@ export function ChatList({ sessionId, jumpRequest = 0 }: { sessionId: string; ju
                     <PermissionCard sessionId={sessionId} />
                 </div>
             </div>
+            <SessionLiveStatusBar sessionId={sessionId} onActivate={() => scrollToBottom(true)} />
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
                     <div className="cl-queue-head">

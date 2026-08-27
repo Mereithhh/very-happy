@@ -12,6 +12,8 @@
     "scripts": {
         "cli": "pnpm --filter very-happy-cli cli",
         "release": "node ./scripts/release.cjs",
+        "changelog:draft": "node ./scripts/changelog/generate-draft.mjs",
+        "test:changelog-draft": "node --test ./scripts/changelog/generate-draft.test.mjs",
         "web": "pnpm --filter @slopus/happy-web-v2 dev",
         "app-logs": "pnpm --filter happy-app-logs start",
         "postinstall": "node ./scripts/postinstall.cjs",

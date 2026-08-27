@@ -13,6 +13,7 @@ import { systemPrompt } from "./utils/systemPrompt";
 import type { CanUseTool, OnElicitation, OnUserDialog, PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
+import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
 
 export async function claudeRemote(opts: {
 
@@ -28,7 +29,10 @@ export async function claudeRemote(opts: {
     onElicitation?: OnElicitation,
     onUserDialog?: OnUserDialog,
     /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
-    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
+    onQueryReady?: (query: {
+        setPermissionMode: (mode: string) => Promise<void>;
+        interrupt: () => Promise<void>;
+    }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -45,7 +49,7 @@ export async function claudeRemote(opts: {
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void,
-    onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
+    onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void
 }) {
 
     // Check if session is valid
@@ -176,6 +180,7 @@ export async function claudeRemote(opts: {
     if (opts.onQueryReady) {
         opts.onQueryReady({
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+            interrupt: async () => { await response.interrupt(); },
         });
     }
 
@@ -211,6 +216,8 @@ export async function claudeRemote(opts: {
                         slashCommands: systemInit.slash_commands,
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
                         skills: systemInit.skills,
+                        model: systemInit.model,
+                        modelIsDefault: initial.mode.model == null,
                     });
                 }
 

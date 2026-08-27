@@ -1,5 +1,24 @@
 # Releasing `very-happy-cli`
 
+## Draft the user-facing changelog
+
+Before a Web or CLI release, generate a reviewable draft from the commits since
+the previous tag:
+
+```sh
+pnpm changelog:draft
+# Explicit range when the release train does not start at the latest tag:
+pnpm changelog:draft -- --from v0.2.80 --to HEAD
+```
+
+The command includes only conventional `feat`, `fix`, and `perf` subjects and
+groups them into a Markdown draft. It deliberately does **not** edit the product
+changelog or publish raw commit messages. Rewrite the draft for users, add the
+English and Simplified Chinese copy plus a stable release id to
+`packages/happy-web-v2/src/app/changelogRelease.ts`, then run the Web gates.
+The popup shows only the latest unseen release; `/changelog` retains the full
+fork-era history.
+
 The published artifact is the npm package **`very-happy-cli`** (source:
 `packages/happy-cli`). Once set up, releasing is one command: **push a tag**.
 

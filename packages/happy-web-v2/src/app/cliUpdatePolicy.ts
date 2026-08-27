@@ -61,10 +61,16 @@ function below(left: Version, right: Version): boolean {
   return false;
 }
 
+export function isCliVersionBelow(currentVersion: string, targetVersion: string): boolean {
+  const current = version(currentVersion);
+  const target = version(targetVersion);
+  return Boolean(current && target && below(current, target));
+}
+
 export function cliUpdateInstallCommand(targetVersion: string): string | null {
   const target = version(targetVersion);
   return target
-    ? `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@${target.exact}`
+    ? `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@${target.exact} && very-happy daemon start`
     : null;
 }
 
