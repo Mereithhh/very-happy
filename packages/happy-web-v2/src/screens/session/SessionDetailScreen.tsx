@@ -102,7 +102,7 @@ export function SessionDetailScreen() {
                             sessionId={id}
                             onActivate={() => setJumpToLatestRequest((request) => request + 1)}
                         />
-                        <AgentInput sessionId={id} />
+                        <AgentInput key={id} sessionId={id} />
                     </div>
                 )}
                 {/* B-107: the mirror's only interactive surface — a pty-channel
