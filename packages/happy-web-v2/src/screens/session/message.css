@@ -145,6 +145,15 @@
   padding: 2px var(--sp-2);
 }
 .msg-event-line--stopped { color: var(--text-dim); }
+.msg-event-line--subagent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-style: solid;
+  background: var(--bg-1);
+}
+.msg-event-line--running { color: var(--accent); }
+.msg-event-line--completed { color: var(--text-dim); }
 .msg-event-line--error {
   color: var(--danger);
   border-color: var(--danger);

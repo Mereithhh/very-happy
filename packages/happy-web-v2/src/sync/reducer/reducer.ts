@@ -205,6 +205,7 @@ export type ReducerState = {
     permissions: Map<string, StoredPermission>; // Store permission details by ID for quick lookup
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
+    subagentIdToMessageId: Map<string, string>; // lifecycle id -> single visible status row
     messages: Map<string, ReducerMessage>;
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
@@ -236,6 +237,7 @@ export function createReducer(): ReducerState {
         messages: new Map(),
         localIds: new Map(),
         messageIds: new Map(),
+        subagentIdToMessageId: new Map(),
         sidechains: new Map(),
         tracerState: createTracer(),
         nextSortOrder: 0,
@@ -1239,6 +1241,33 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     for (let msg of nonSidechainMessages) {
         if (msg.role === 'event') {
+            if (msg.content.type === 'subagent') {
+                const existingId = state.subagentIdToMessageId.get(msg.content.id);
+                const existing = existingId ? state.messages.get(existingId) : undefined;
+                if (existing?.event?.type === 'subagent') {
+                    const existingEvent = existing.event;
+                    const isNewer = msg.seq != null && existing.seq != null
+                        ? msg.seq >= existing.seq
+                        : msg.createdAt >= existing.createdAt;
+                    existing.event = {
+                        ...existingEvent,
+                        // Backfill arrives newest-first. An older start may
+                        // supply the title, but completed is terminal and must
+                        // never regress to running.
+                        ...(msg.content.title && !existingEvent.title ? { title: msg.content.title } : {}),
+                        status: existingEvent.status === 'completed' || msg.content.status === 'completed'
+                            ? 'completed'
+                            : 'running',
+                    };
+                    if (isNewer) {
+                        existing.createdAt = msg.createdAt;
+                        existing.seq = msg.seq;
+                        existing.meta = msg.meta;
+                    }
+                    changed.add(existing.id);
+                    continue;
+                }
+            }
             let mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
@@ -1252,6 +1281,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 text: null,
                 meta: msg.meta,
             });
+            if (msg.content.type === 'subagent') {
+                state.subagentIdToMessageId.set(msg.content.id, mid);
+            }
             changed.add(mid);
         }
     }

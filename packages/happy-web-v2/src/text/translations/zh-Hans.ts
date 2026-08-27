@@ -1476,6 +1476,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            aug27b: {
+                title: '始终看得见正在发生的工作',
+                summary: 'Claude 的运行状态在页面切换时保持连贯，并补齐文档与子代理体验。',
+                continuity: '切换 session、重新聚焦 App 或重载消息历史时，thinking 不再短暂消失。',
+                documents: 'Claude 普通对话现在可通过选择、粘贴和拖放附加 PDF 与图片。',
+                agents: 'Plan mode 保持完整交互，子代理的开始与完成状态也会展示在对话中。',
+                loading: '等待网络接口的操作统一显示局部进度，并阻止重复提交。',
+            },
             aug27: {
                 title: '更多掌控，更少界面噪音',
                 summary: 'agent 运行、提问、接收追问和跨机器切换时，工作区依然清晰、连贯。',
@@ -1747,6 +1755,9 @@ export const zhHans: TranslationStructure = {
     message: {
         switchedToMode: ({ mode }: { mode: string }) => `已切换到 ${mode} 模式`,
         unknownEvent: '未知事件',
+        subagent: '子代理',
+        subagentStarted: ({ name }: { name: string }) => `${name} 已开始`,
+        subagentCompleted: ({ name }: { name: string }) => `${name} 已完成`,
         copyMessage: '复制消息',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
@@ -1913,6 +1924,10 @@ export const zhHans: TranslationStructure = {
             : `${count} 张图片上传失败，未发送。`,
         notSupportedTitle: '不支持图片',
         notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
+        unsupportedFileTitle: '不支持此文件',
+        unsupportedFileMessage: '请选择图片或 PDF 文件。',
+        pdfRequiresCliTitle: '需要升级 CLI',
+        pdfRequiresCliMessage: '请先升级并刷新 daemon，再在 Claude 对话中附加 PDF。',
     },
 
     feed: {

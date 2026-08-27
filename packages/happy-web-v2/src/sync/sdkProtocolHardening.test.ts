@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgentStateSchema } from './storageTypes';
 import { normalizeRawMessage } from './typesRaw';
+import { createId } from '@paralleldrive/cuid2';
 
 describe('Claude SDK protocol compatibility', () => {
     it('preserves optional SDK permission suggestions in agent state', () => {
@@ -34,6 +35,26 @@ describe('Claude SDK protocol compatibility', () => {
         expect(normalized).toEqual(expect.objectContaining({
             role: 'event',
             content: expect.objectContaining({ type: 'ready', status: 'failed', error: 'provider overloaded' }),
+        }));
+    });
+
+    it.each([
+        [{ t: 'start' as const, title: 'Explore auth flow' }, 'running'],
+        [{ t: 'stop' as const }, 'completed'],
+    ])('keeps sub-agent lifecycle %s visible', (ev, status) => {
+        const subagent = createId();
+        const normalized = normalizeRawMessage(`raw-${status}`, null, 1, {
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: `envelope-${status}`, time: 2, role: 'agent', turn: 'turn-1', subagent, ev,
+                },
+            },
+        });
+        expect(normalized).toEqual(expect.objectContaining({
+            role: 'event',
+            content: expect.objectContaining({ type: 'subagent', id: subagent, status }),
         }));
     });
 });

@@ -65,6 +65,7 @@ import { dispatchKvChanges } from './kvUpdates';
 import { UserProfile } from './friendTypes';
 import { resolveMessageModeMeta, type MessageModeMeta } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import { preserveSessionBatchActivityFromStore } from './sessionSnapshot';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
@@ -579,6 +580,7 @@ class Sync {
                     ref,
                     name: attachment.name,
                     size: attachment.size,
+                    mimeType: attachment.mimeType,
                     width: attachment.width,
                     height: attachment.height,
                     thumbhash: attachment.thumbhash,
@@ -653,6 +655,9 @@ class Sync {
                 t('imageUpload.notSupportedMessage'),
                 [{ text: t('common.ok'), style: 'cancel' }],
             );
+            if (text.trim().length === 0) {
+                throw new Error('This session does not support attachments');
+            }
         }
 
         // Upload attachments and queue file events before the text message.
@@ -665,6 +670,10 @@ class Sync {
                     t('imageUpload.uploadFailedMessage', { count: failed }),
                     [{ text: t('common.ok'), style: 'cancel' }],
                 );
+            }
+
+            if (uploaded.length === 0 && text.trim().length === 0) {
+                throw new Error('All attachments failed to upload');
             }
 
             if (uploaded.length > 0) {
@@ -689,6 +698,7 @@ class Sync {
                                     ref: att.ref,
                                     name: att.name,
                                     size: att.size,
+                                    mimeType: att.mimeType,
                                     // Include image metadata when we have dimensions; thumbhash is
                                     // optional. The native iOS picker can't generate a thumbhash
                                     // without Canvas, so requiring it here would reduce the chat
@@ -1066,8 +1076,14 @@ class Sync {
             decryptedSessions.push(processedSession);
         }
 
-        // Apply to storage
-        this.applySessions(decryptedSessions);
+        // Take exactly one current snapshot immediately before the synchronous
+        // apply. Reading inside the decrypt loop can resurrect an activity
+        // state that a later realtime event already ended.
+        const mergedSessions = preserveSessionBatchActivityFromStore(
+            decryptedSessions,
+            storage.getState().sessions,
+        );
+        this.applySessions(mergedSessions);
         log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
 
     }

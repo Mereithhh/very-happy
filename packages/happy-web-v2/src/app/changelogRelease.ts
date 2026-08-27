@@ -15,9 +15,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
-    id: '2026-08-27-session-control',
+    id: '2026-08-27-continuity-and-documents',
     date: '2026-08-27',
     buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.82',
+    titleKey: 'changelog.releases.aug27b.title',
+    summaryKey: 'changelog.releases.aug27b.summary',
+    itemKeys: [
+      'changelog.releases.aug27b.continuity',
+      'changelog.releases.aug27b.documents',
+      'changelog.releases.aug27b.agents',
+      'changelog.releases.aug27b.loading',
+    ],
+  },
+  {
+    id: '2026-08-27-session-control',
+    date: '2026-08-27',
     cliVersion: '0.2.81',
     titleKey: 'changelog.releases.aug27.title',
     summaryKey: 'changelog.releases.aug27.summary',

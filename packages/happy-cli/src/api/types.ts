@@ -409,6 +409,8 @@ export type Metadata = {
   slashCommands?: string[],
   mcpServers?: Array<{ name: string; status: string }>,
   skills?: string[],
+  /** Attachment content blocks this daemon can forward to the active SDK. */
+  attachmentKinds?: string[],
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,

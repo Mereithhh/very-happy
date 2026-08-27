@@ -36,6 +36,27 @@
   object-fit: cover;
   display: block;
 }
+.ci-att-file {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px;
+  background: var(--bg-2);
+  color: var(--text-dim);
+}
+.ci-att-file span {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+}
 .ci-att-remove {
   position: absolute;
   top: 2px;

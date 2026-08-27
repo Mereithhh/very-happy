@@ -17,7 +17,7 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
-import { useToast } from '@/ui';
+import { CyberMark, Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { SimpleTranslationKey } from '@/text';
 import { useImeGuard } from '@/utils/ime';
@@ -40,7 +40,6 @@ import { TtsPlayer } from '@/assistant/ttsPlayer';
 import { unlockAudioPlayback, releaseAudioKeepAlive } from '@/assistant/iosAudioUnlock';
 import { useAssistantStore, deriveVoiceState } from '@/assistant/assistantStore';
 import { AssistantLogo, type AssistantLogoState } from './AssistantLogo';
-import { CyberMark } from '@/ui';
 import './assistant.css';
 
 // ── B-092: tool presentation (friendly name + icon; logic in toolDisplay.ts) ──
@@ -387,18 +386,25 @@ export function AssistantScreen() {
     );
 
     // ── audio unlock (per page visit; released on leave) ──
+    const [unlocking, setUnlocking] = useState(false);
     const onUnlock = useCallback(async () => {
-        const ok = await unlockAudioPlayback();
-        if (!ok) {
-            // context refused to run — do NOT mark unlocked: keep the button
-            // visible so the user can retry with a fresh gesture. STT still works.
-            console.warn('[assistant] audio unlock failed — context not running');
-            const env = playerEnvRef.current;
-            env.toast.error(env.t('assistant.audioUnlockFailed'));
-            return;
+        if (unlocking) return;
+        setUnlocking(true);
+        try {
+            const ok = await unlockAudioPlayback();
+            if (!ok) {
+                // context refused to run — do NOT mark unlocked: keep the button
+                // visible so the user can retry with a fresh gesture. STT still works.
+                console.warn('[assistant] audio unlock failed — context not running');
+                const env = playerEnvRef.current;
+                env.toast.error(env.t('assistant.audioUnlockFailed'));
+                return;
+            }
+            useAssistantStore.getState().setAudioUnlocked(true);
+        } finally {
+            setUnlocking(false);
         }
-        useAssistantStore.getState().setAudioUnlocked(true);
-    }, []);
+    }, [unlocking]);
     useEffect(() => {
         // fresh probe per visit: an 'unsupported' verdict from a previous visit
         // (old server / unconfigured) must not outlive the screen — W3
@@ -687,8 +693,10 @@ export function AssistantScreen() {
                                     className="as-unlock-btn"
                                     title={t('assistant.enableVoiceHint')}
                                     onClick={() => void onUnlock()}
+                                    disabled={unlocking}
+                                    aria-busy={unlocking}
                                 >
-                                    <Volume2 size={15} />
+                                    {unlocking ? <Spinner size={14} /> : <Volume2 size={15} />}
                                     {t('assistant.enableVoice')}
                                 </button>
                             )}
@@ -749,8 +757,9 @@ export function AssistantScreen() {
                                     className="as-reset-btn"
                                     disabled={!machine || resetting}
                                     onClick={() => void onNewConversation()}
+                                    aria-busy={resetting}
                                 >
-                                    <RotateCcw size={14} />
+                                    {resetting ? <Spinner size={14} /> : <RotateCcw size={14} />}
                                     {t('assistant.newConversation')}
                                 </button>
                             </div>

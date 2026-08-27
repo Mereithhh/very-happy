@@ -210,6 +210,7 @@ function Overview() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { t } = useTranslation();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   async function onLogout() {
     const ok = await Modal.confirm(
@@ -217,7 +218,13 @@ function Overview() {
       t('settingsAccount.logoutConfirm'),
       { confirmText: t('common.logout'), destructive: true },
     );
-    if (ok) await logout();
+    if (!ok) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
   }
 
   return (
@@ -318,6 +325,7 @@ function Overview() {
             left={<LogOut size={18} />}
             destructive
             onClick={onLogout}
+            loading={loggingOut}
           />
         </ItemGroup>
       </ItemList>
@@ -528,6 +536,7 @@ function Account() {
   const [loginMethodsError, setLoginMethodsError] = useState(false);
   const [loginMethodsReload, setLoginMethodsReload] = useState(0);
   const [authConfigReload, setAuthConfigReload] = useState(0);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -569,12 +578,15 @@ function Account() {
       { confirmText: t('modals.disconnect'), destructive: true },
     );
     if (!ok) return;
+    setBusyAction('github');
     try {
       await disconnectGitHub(credentials);
       await sync.refreshProfile();
       toast.success(t('common.success'));
     } catch {
       toast.error(t('common.error'));
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -586,12 +598,15 @@ function Account() {
       { confirmText: t('modals.disconnect'), destructive: true },
     );
     if (!ok) return;
+    setBusyAction(`service:${service}`);
     try {
       await disconnectService(credentials, service);
       await sync.refreshProfile();
       toast.success(t('common.success'));
     } catch {
       toast.error(t('common.error'));
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -601,7 +616,13 @@ function Account() {
       t('settingsAccount.logoutConfirm'),
       { confirmText: t('common.logout'), destructive: true },
     );
-    if (ok) await logout();
+    if (!ok) return;
+    setBusyAction('logout');
+    try {
+      await logout();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   const otherServices = (profile.connectedServices ?? []).filter((s) => s !== 'github');
@@ -703,6 +724,7 @@ function Account() {
                 detail={t('settingsAccount.tapToDisconnect')}
                 left={<Github size={18} />}
                 onClick={onDisconnectGithub}
+                loading={busyAction === 'github'}
               />
             )}
             {otherServices.map((s) => (
@@ -712,6 +734,7 @@ function Account() {
                 detail={t('settingsAccount.tapToDisconnect')}
                 left={<ServerIcon size={18} />}
                 onClick={() => onDisconnectService(s)}
+                loading={busyAction === `service:${s}`}
               />
             ))}
           </ItemGroup>
@@ -724,6 +747,7 @@ function Account() {
             left={<LogOut size={18} />}
             destructive
             onClick={onLogout}
+            loading={busyAction === 'logout'}
           />
         </ItemGroup>
       </ItemList>
@@ -1435,7 +1459,8 @@ function WebhookGroup() {
   const [savedUrl, setSavedUrl] = useState('');
   const [completedOn, setCompletedOn] = useState(true);
   const [permissionOn, setPermissionOn] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<'save' | 'remove' | 'completed' | 'permission' | null>(null);
+  const busy = busyAction !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -1463,12 +1488,18 @@ function WebhookGroup() {
   }, [credentials]);
 
   /** Save `nextUrl` + events; returns whether the server accepted it. */
-  async function persist(nextUrl: string, nextCompleted: boolean, nextPermission: boolean, announce: boolean): Promise<boolean> {
+  async function persist(
+    nextUrl: string,
+    nextCompleted: boolean,
+    nextPermission: boolean,
+    announce: boolean,
+    action: 'save' | 'completed' | 'permission' = 'save',
+  ): Promise<boolean> {
     if (!credentials) return false;
     const events: WebhookEvent[] = [];
     if (nextCompleted) events.push('completed');
     if (nextPermission) events.push('permission');
-    setBusy(true);
+    setBusyAction(action);
     try {
       await saveWebhookConfig(credentials, { url: nextUrl, events });
       setExisting(true);
@@ -1481,7 +1512,7 @@ function WebhookGroup() {
       toast.error(e instanceof Error ? e.message : (t('common.error')));
       return false;
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -1492,7 +1523,7 @@ function WebhookGroup() {
   function toggleCompleted(v: boolean) {
     setCompletedOn(v);
     if (existing && savedUrl.length > 0) {
-      void persist(savedUrl, v, permissionOn, false).then((ok) => {
+      void persist(savedUrl, v, permissionOn, false, 'completed').then((ok) => {
         if (!ok) setCompletedOn(!v);
       });
     }
@@ -1501,7 +1532,7 @@ function WebhookGroup() {
   function togglePermission(v: boolean) {
     setPermissionOn(v);
     if (existing && savedUrl.length > 0) {
-      void persist(savedUrl, completedOn, v, false).then((ok) => {
+      void persist(savedUrl, completedOn, v, false, 'permission').then((ok) => {
         if (!ok) setPermissionOn(!v);
       });
     }
@@ -1509,7 +1540,7 @@ function WebhookGroup() {
 
   async function remove() {
     if (!credentials) return;
-    setBusy(true);
+    setBusyAction('remove');
     try {
       await deleteWebhookConfig(credentials);
       setExisting(false);
@@ -1519,7 +1550,7 @@ function WebhookGroup() {
     } catch {
       toast.error(t('common.error'));
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -1542,14 +1573,14 @@ function WebhookGroup() {
         />
         <div className="set-webhook__row">
           {existing && (
-            <Button variant="ghost" disabled={!loaded || busy} onClick={remove}>
+            <Button variant="ghost" loading={busyAction === 'remove'} disabled={!loaded || busy} onClick={remove}>
               {t('notifications.webhookRemove')}
             </Button>
           )}
           <Button
             variant="primary"
-            loading={busy}
-            disabled={!loaded || url.trim().length === 0}
+            loading={busyAction === 'save'}
+            disabled={!loaded || busy || url.trim().length === 0}
             onClick={() => void persist(url.trim(), completedOn, permissionOn, true)}
           >
             {t('common.save')}
@@ -2275,6 +2306,7 @@ function WebBuildGroup() {
       <Item
         title={checking ? t('diagnostics.webBuildChecking') : t('diagnostics.webBuildCheck')}
         onClick={() => void check()}
+        loading={checking}
       />
     </ItemGroup>
   );

@@ -261,7 +261,10 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     if (!isLoaded) {
         return (
             <div className="cl cl--loading">
-                <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                <div className="cl-scroll">
+                    <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
+                </div>
+                <SessionLiveStatusBar sessionId={sessionId} onActivate={() => undefined} />
             </div>
         );
     }

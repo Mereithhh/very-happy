@@ -7,7 +7,7 @@
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, CornerDownRight, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
+import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSteer } from '@/sync/ops';
@@ -50,7 +50,15 @@ import {
 // collide); picking it clears effortLevel and the wire carries effort:null.
 const EFFORT_DEFAULT_KEY = 'default';
 import { PresetsMenu } from './PresetsMenu';
-import { useAttachments, getImagesFromClipboard, getImagesFromDrop } from './useAttachments';
+import {
+    useAttachments,
+    getFilesFromClipboard,
+    getFilesFromDrop,
+    isPdfAttachment,
+    SUPPORTED_IMAGE_MIME_TYPES,
+} from './useAttachments';
+import { Modal } from '@/modal';
+import { Spinner } from '@/ui';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
@@ -84,6 +92,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     draftRef.current = text;
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
+    const [interveningId, setInterveningId] = useState<string | null>(null);
     const [queued, setQueued] = useState<QueuedMessage[]>(() =>
         parsePersistedQueuedMessages(loadQueuedMessages()[sessionId]),
     );
@@ -95,7 +104,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
-    const { attachments, addFiles, remove, clear, take } = useAttachments();
+    const { attachments, processing: processingAttachments, addFiles, remove, clear, take, restore } = useAttachments();
     const queuedRef = useRef(queued);
     queuedRef.current = queued;
     const deliveryPhaseRef = useRef<QueueDeliveryPhase>('idle');
@@ -113,6 +122,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const flavor = session?.metadata?.flavor as any;
     const metadata = session?.metadata ?? null;
+    const supportsPdfAttachments = metadata?.attachmentKinds?.includes('application/pdf') === true;
     const online = session?.presence === 'online';
     const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
@@ -303,9 +313,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             if (intervene && isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
             await sendQueuedItem(item);
         } catch {
-            // restore text on failure so the user doesn't lose it
+            // Restore the complete draft on failure so attachment-only sends
+            // do not disappear after an upload or relay error.
             draftRef.current = value;
             setText(value);
+            if (item.attachments) restore(item.attachments);
         } finally {
             setSending(false);
             if (hadFocus || !IS_COARSE_POINTER) {
@@ -320,6 +332,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (index < 0) return;
         const item = queuedRef.current[index];
         deliveryPhaseRef.current = 'intervening';
+        setInterveningId(id);
         setQueued((current) => removeQueuedMessage(current, id));
         try {
             if (isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
@@ -328,6 +341,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         } catch {
             setQueued((current) => [...current.slice(0, index), item, ...current.slice(index)]);
             deliveryPhaseRef.current = 'idle';
+        } finally {
+            setInterveningId(null);
         }
     };
 
@@ -368,28 +383,53 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     const onPickFiles = () => fileInputRef.current?.click();
 
+    const addAttachmentFiles = async (files: File[]) => {
+        const blockedPdfs = files.filter(isPdfAttachment).filter(() => !supportsPdfAttachments);
+        const result = await addFiles(files.filter((file) => !blockedPdfs.includes(file)));
+        if (result.tooLarge.length > 0) {
+            Modal.alert(
+                t('imageUpload.fileTooLargeTitle'),
+                t('imageUpload.fileTooLargeMessage', { name: result.tooLarge[0].name, maxMb: 10 }),
+            );
+        } else if (blockedPdfs.length > 0) {
+            Modal.alert(
+                t('imageUpload.pdfRequiresCliTitle'),
+                t('imageUpload.pdfRequiresCliMessage'),
+            );
+        } else if (result.unsupported.length > 0) {
+            Modal.alert(
+                t('imageUpload.unsupportedFileTitle'),
+                t('imageUpload.unsupportedFileMessage'),
+            );
+        }
+    };
+
     const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files ? Array.from(e.target.files) : [];
-        if (files.length) void addFiles(files);
+        if (files.length) void addAttachmentFiles(files);
         e.target.value = '';
     };
 
     const onPaste = (e: React.ClipboardEvent) => {
         if (!supportsAttachments) return;
-        const images = getImagesFromClipboard(e.nativeEvent);
-        if (images.length) {
+        const files = getFilesFromClipboard(e.nativeEvent);
+        if (files.length) {
             e.preventDefault();
-            void addFiles(images);
+            void addAttachmentFiles(files);
         }
     };
 
     const onDrop = (e: React.DragEvent) => {
         setDragOver(false);
-        if (!supportsAttachments) return;
-        const images = getImagesFromDrop(e.nativeEvent);
-        if (images.length) {
+        const hasFiles = Array.from(e.dataTransfer.types).includes('Files');
+        if (hasFiles) {
             e.preventDefault();
-            void addFiles(images);
+            if (!supportsAttachments) {
+                Modal.alert(t('imageUpload.notSupportedTitle'), t('imageUpload.notSupportedMessage'));
+                return;
+            }
+            const files = getFilesFromDrop(e.nativeEvent);
+            if (files.length) void addAttachmentFiles(files);
         }
     };
 
@@ -439,7 +479,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending;
+    const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending && !processingAttachments;
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
@@ -507,7 +547,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <div className="ci-attachments">
                     {attachments.map((a) => (
                         <div key={a.id} className="ci-att">
-                            <img className="ci-att-img" src={a.uri} alt={a.name} />
+                            {a.mimeType === 'application/pdf' ? (
+                                <div className="ci-att-file" title={a.name}>
+                                    <FileText size={20} />
+                                    <span>{a.name}</span>
+                                </div>
+                            ) : (
+                                <img className="ci-att-img" src={a.uri} alt={a.name} />
+                            )}
                             <button
                                 type="button"
                                 className="ci-att-remove"
@@ -584,9 +631,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                         type="button"
                                         className="ci-queue-action ci-queue-action--intervene"
                                         onClick={() => void interveneQueued(item.id)}
+                                        disabled={interveningId !== null}
+                                        aria-busy={interveningId === item.id}
                                         aria-label={t('session.chat.queueIntervene')}
                                         title={t('session.chat.queueIntervene')}
-                                    ><CornerDownRight size={16} /></button>
+                                    >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}</button>
                                 </div>
                             </div>
                         ))}
@@ -623,7 +672,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             <div
                 className={`ci-composer${dragOver ? ' ci-composer--drag' : ''}`}
                 onDragOver={(e) => {
-                    if (supportsAttachments) {
+                    if (Array.from(e.dataTransfer.types).includes('Files')) {
                         e.preventDefault();
                         setDragOver(true);
                     }
@@ -634,7 +683,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept={[
+                        ...SUPPORTED_IMAGE_MIME_TYPES,
+                        ...(supportsPdfAttachments ? ['application/pdf', '.pdf'] : []),
+                    ].join(',')}
                     multiple
                     style={{ display: 'none' }}
                     onChange={onFileInputChange}
@@ -684,10 +736,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                 className="ci-send ci-send--abort"
                                 onClick={() => void doAbort()}
                                 disabled={aborting}
+                                aria-busy={aborting}
                                 aria-label={t('session.chat.stop')}
                                 title={t('session.chat.stop')}
                             >
-                                <Square size={16} fill="currentColor" />
+                                {aborting ? <Spinner size={14} /> : <Square size={16} fill="currentColor" />}
                             </button>
                         )}
                         <button
@@ -695,10 +748,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             className="ci-send"
                             onClick={() => void doSend(false)}
                             disabled={!canSend}
+                            aria-busy={sending || processingAttachments}
                             aria-label={t('session.chat.send')}
                             title={t('session.chat.send')}
                         >
-                            <Send size={16} />
+                            {sending || processingAttachments ? <Spinner size={16} /> : <Send size={16} />}
                         </button>
                     </div>
                 </div>

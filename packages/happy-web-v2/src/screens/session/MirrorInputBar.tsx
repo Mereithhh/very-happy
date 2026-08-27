@@ -20,7 +20,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import { useTerminalAgentState } from '@/sync/terminalAgentState';
 import { machineMirrorTerminalSend } from '@/sync/ops';
 import { useImeGuard } from '@/utils/ime';
-import { useToast } from '@/ui';
+import { Spinner, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
 import './mirror.css';
 
@@ -93,10 +93,11 @@ export function MirrorInputBar({ sessionId }: { sessionId: string }) {
                 className="mri-send"
                 onClick={() => void send()}
                 disabled={sending || text.trim().length === 0}
+                aria-busy={sending}
                 aria-label={t('session.mirror.send')}
                 title={t('session.mirror.sendHint')}
             >
-                <SendHorizontal size={16} />
+                {sending ? <Spinner size={14} /> : <SendHorizontal size={16} />}
             </button>
         </div>
     );
