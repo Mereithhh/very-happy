@@ -27,7 +27,9 @@
 }
 .cmd-cmd {
   color: var(--text);
-  white-space: pre;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .cmd-out {
   max-height: 360px;
@@ -37,9 +39,10 @@
 .cmd-stream {
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   color: var(--text-dim);
-  min-width: max-content;
+  min-width: 0;
 }
 .cmd-stream--err {
   color: var(--danger);

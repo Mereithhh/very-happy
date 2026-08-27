@@ -60,6 +60,7 @@ jobs:
         run: |
           node scripts/ci/check-public-pr-isolation.mjs
           node scripts/ci/check-trust-model.mjs
+          node --test scripts/changelog/generate-draft.test.mjs
 
       # ⚠️ 顺序：setup-node 在 pnpm/action-setup **之前**。pnpm/action-setup 默认要用
       # 现成的 node/npm 装 pnpm（README: "This action does not setup Node.js for you"），

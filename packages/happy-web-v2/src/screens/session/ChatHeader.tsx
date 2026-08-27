@@ -2,7 +2,7 @@
  * ChatHeader — title (editable rename), machine·cwd breadcrumb, connection dot,
  * and the global back button.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StickyNote, Check, FolderTree, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
@@ -12,6 +12,9 @@ import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot, type Status } from '@/ui';
 import { useImeGuard } from '@/utils/ime';
+import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
+import { getServerUrl } from '@/sync/serverConfig';
+import { relayRegionLabel } from './relayLabel';
 import './header.css';
 
 // Session is "connected" when its agent is online AND our relay socket is up.
@@ -45,6 +48,17 @@ export function ChatHeader({
     const host = meta?.host;
     const cwd = meta?.path;
     const status = connectionStatus(session?.presence, socketStatus);
+    const machineId = meta?.machineId;
+    const [relayStatus, setRelayStatus] = useState<MachineRelayStatus>(() =>
+        machineId ? apiSocket.getMachineRelayStatus(machineId) : { transport: 'legacy', state: 'fallback' });
+    useEffect(() => {
+        if (!machineId) return;
+        setRelayStatus(apiSocket.getMachineRelayStatus(machineId));
+        return apiSocket.onMachineRelayStatus((changedMachineId, next) => {
+            if (changedMachineId === machineId) setRelayStatus(next);
+        });
+    }, [machineId]);
+    const relayLabel = relayRegionLabel(relayStatus, getServerUrl());
 
     const startEdit = () => {
         setDraft(meta?.summary?.text ?? '');
@@ -113,6 +127,7 @@ export function ChatHeader({
                 )}
             </div>
             <div className="ch-status">
+                <span className="ch-relay" title={t('session.chat.relayRegion')}>{relayLabel}</span>
                 <StatusDot status={status} size={9} pulse={status === 'connected'} />
             </div>
             {/* B-115: quick notes entry — the dock's only reachable entry on

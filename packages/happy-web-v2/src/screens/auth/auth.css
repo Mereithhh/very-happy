@@ -318,9 +318,11 @@
 }
 .auth-alt {
   padding: var(--sp-1);
-  color: var(--accent-2);
+  color: var(--text-dim);
   font-size: var(--fs-13);
   text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .auth-alt:hover { text-decoration: underline; }
 .auth-email > .vh-btn,

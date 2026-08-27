@@ -1,38 +1,37 @@
 .lsb {
-  width: 100%;
+  width: fit-content;
+  max-width: calc(100% - (2 * var(--sp-4)));
+  align-self: center;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-4);
+  margin: var(--sp-2) auto 0;
+  padding: var(--sp-1) var(--sp-3);
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   text-align: left;
   cursor: pointer;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  transition: filter var(--motion-fast);
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-lift);
+  transition: background var(--motion-fast), border-color var(--motion-fast);
 }
 .lsb:hover {
-  filter: brightness(1.08);
+  background: var(--bg-2);
+  border-color: var(--line-2);
 }
 .lsb:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 .lsb-content {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-}
-.lsb--live {
-  color: var(--accent-2);
-  background: var(--accent-dim);
-}
-.lsb--permission {
-  color: var(--warn);
-  background: var(--warn-dim);
 }
 .lsb-label {
   color: var(--text);
@@ -47,6 +46,6 @@
 
 @media (pointer: coarse) {
   .lsb {
-    min-height: 44px;
+    min-height: 40px;
   }
 }

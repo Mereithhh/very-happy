@@ -71,10 +71,12 @@ pnpm -C packages/happy-server exec vitest run
 
 ## UI 设计约束（Console 设计语言）
 
-very-happy 是「穿在浏览器里的终端」：所有表面坐在 bg token 台阶上
+视觉设计的唯一契约见 `docs/design-language.md`，改 Landing、登录、App、弹窗或
+全局组件前必须先读。very-happy 是「穿在浏览器里的终端」：所有表面坐在 bg token 台阶上
 （`--bg-0..3`/`--line`/text 三阶），组件里**禁止裸色值**；唯一强调色
 phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent 在跑），
-绝不当装饰；等宽体是机器层身份（会话 id、机器名、chip、时间戳、终端全 mono）；
+绝不当普通 CTA 或装饰；主 CTA 使用 ink/canvas 高反差关系；等宽体是机器层身份
+（会话 id、机器名、chip、时间戳、终端全 mono）；
 **终端 pane 在两个主题里都保持深色**。着色纪律全文与豁免清单见
 `packages/happy-web-v2/src/styles/tokens.css` 头部注释（token 事实源；
 详细纪律同样以该文件为准，避免依赖仓库外知识）。

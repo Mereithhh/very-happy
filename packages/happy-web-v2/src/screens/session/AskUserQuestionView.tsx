@@ -7,7 +7,7 @@
  * component receives already-validated questions.
  */
 import { useState } from 'react';
-import { Check, CheckSquare, Square } from 'lucide-react';
+import { Check, CheckSquare, MessageCircle, Square } from 'lucide-react';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Button } from '@/ui';
 import {
@@ -38,6 +38,8 @@ function QuestionBlock({
     onSubmit: (labels: string[]) => void;
 }) {
     const { t } = useTranslation();
+    const [showOther, setShowOther] = useState(false);
+    const [otherText, setOtherText] = useState('');
     const options = (q.options ?? []).filter(
         (o): o is { label: string; description?: string } => typeof o.label === 'string' && o.label !== '',
     );
@@ -64,7 +66,10 @@ function QuestionBlock({
                             onClick={() => {
                                 if (multi) onChange(toggleLabel(picked, o.label));
                                 else if (deferSubmit) onChange([o.label]);
-                                else onSubmit([o.label]);
+                                else {
+                                    onChange([o.label]);
+                                    onSubmit([o.label]);
+                                }
                             }}
                         >
                             <span className="tv-ask-opt-label">
@@ -79,7 +84,49 @@ function QuestionBlock({
                         </button>
                     );
                 })}
+                <button
+                    type="button"
+                    className={`tv-ask-opt tv-ask-opt--other${showOther ? ' tv-ask-opt--selected' : ''}`}
+                    disabled={disabled}
+                    aria-expanded={showOther}
+                    onClick={() => setShowOther((current) => !current)}
+                >
+                    <span className="tv-ask-opt-label">
+                        <MessageCircle size={13} />
+                        {t('tools.askUserQuestion.other')}
+                    </span>
+                    <span className="tv-ask-opt-desc">{t('tools.askUserQuestion.otherDescription')}</span>
+                </button>
             </div>
+            {showOther && !disabled && (
+                <div className="tv-ask-other">
+                    <textarea
+                        value={otherText}
+                        rows={3}
+                        autoFocus
+                        placeholder={t('tools.askUserQuestion.otherPlaceholder')}
+                        onChange={(event) => {
+                            const value = event.target.value;
+                            setOtherText(value);
+                            if (deferSubmit) onChange(value.trim() ? [value.trim()] : []);
+                        }}
+                    />
+                    {!deferSubmit && (
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={!otherText.trim()}
+                            onClick={() => {
+                                const answer = otherText.trim();
+                                onChange([answer]);
+                                onSubmit([answer]);
+                            }}
+                        >
+                            {t('tools.askUserQuestion.submit')}
+                        </Button>
+                    )}
+                </div>
+            )}
             {multi && !deferSubmit && !disabled && (
                 <Button
                     size="sm"

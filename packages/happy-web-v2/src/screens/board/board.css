@@ -309,8 +309,13 @@
   color: var(--text);
 }
 .bd-btn--primary {
-  color: var(--accent, var(--text));
-  border-color: var(--accent, var(--line-2));
+  color: var(--bg-0);
+  border-color: var(--text);
+  background: var(--text);
+}
+.bd-btn--primary:hover {
+  color: var(--bg-0);
+  background: var(--text-dim);
 }
 .bd-btn:disabled {
   opacity: 0.5;

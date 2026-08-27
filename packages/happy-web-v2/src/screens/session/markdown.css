@@ -54,7 +54,7 @@
   word-break: break-word;
 }
 .md-link {
-  color: var(--accent-2);
+  color: var(--text);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -83,7 +83,7 @@
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
 .md-option--clickable:hover {
-  border-color: var(--accent);
+  border-color: var(--text-faint);
   background: var(--bg-2);
 }
 

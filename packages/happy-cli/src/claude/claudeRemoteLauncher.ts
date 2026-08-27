@@ -19,6 +19,8 @@ import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
 import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import { applyClaudeResultLifecycle } from './utils/remoteResultLifecycle';
+import { applyClaudeSdkMetadata } from './claudeSdkMetadata';
+import { createTurnSteeringController } from './turnSteering';
 
 interface PermissionsField {
     date: number;
@@ -74,6 +76,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let exitReason: 'switch' | 'exit' | null = null;
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
+    const turnSteering = createTurnSteeringController();
 
     async function abort() {
         if (abortController && !abortController.signal.aborted) {
@@ -98,6 +101,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // When to abort
     session.client.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
+    // Steering ends only the foreground turn and keeps the streaming query
+    // alive, so the queued follow-up remains in this session without emitting
+    // the explicit "Aborted by user" lifecycle event.
+    session.client.rpcHandlerManager.registerHandler('steer', async () => {
+        await turnSteering.steer();
+    });
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
@@ -408,15 +417,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             mcpServerCount: metadata.mcpServers?.length ?? 0,
                             skillCount: metadata.skills?.length ?? 0,
                         });
-                        session.client.updateMetadata((currentMetadata) => ({
-                            ...currentMetadata,
-                            tools: metadata.tools,
-                            slashCommands: metadata.slashCommands,
-                            mcpServers: metadata.mcpServers,
-                            skills: metadata.skills,
-                        }));
+                        session.client.updateMetadata((currentMetadata) =>
+                            applyClaudeSdkMetadata(currentMetadata, metadata));
                     },
                     onQueryReady: (q) => {
+                        turnSteering.setInterrupt(q.interrupt);
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
@@ -434,6 +439,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         session.clearSessionId();
                     },
                     onReady: (result) => {
+                        if (turnSteering.consumeReady()) {
+                            session.client.closeClaudeSessionTurn('cancelled');
+                            return;
+                        }
                         applyClaudeResultLifecycle(result, {
                             closeCompleted: () => session.client.closeClaudeSessionTurn('completed'),
                             closeFailed: (error) => session.client.closeClaudeSessionTurn('failed', { error }),
@@ -478,6 +487,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     continue;
                 }
             } finally {
+
+                turnSteering.reset();
 
                 logger.debug('[remote]: launch finally');
 

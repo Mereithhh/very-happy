@@ -47,6 +47,16 @@ export function mapMetadataOptions(options?: MetadataOption[] | null): ModeOptio
     }));
 }
 
+export function compactResolvedModelCode(modelCode: string): string {
+    return modelCode.replace(/^claude-/, '');
+}
+
+export function relabelDefaultModel(options: ModelMode[], label: string): ModelMode[] {
+    return options.map((option) => option.key === 'default'
+        ? { ...option, name: label }
+        : option);
+}
+
 export function getClaudePermissionModes(translate: Translate): PermissionMode[] {
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },

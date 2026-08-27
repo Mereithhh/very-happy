@@ -14,6 +14,7 @@
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
+.ci-mobile-options { display: none; }
 
 /* attachment previews */
 .ci-attachments {
@@ -180,6 +181,13 @@
 }
 
 /* composer */
+.ci-slash { display: flex; flex-direction: column; max-height: min(280px, 35vh); overflow-y: auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-1); }
+.ci-slash-head { padding: var(--sp-1) var(--sp-2); color: var(--text-faint); font: var(--fs-11)/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+.ci-slash-item { display: flex; align-items: center; gap: var(--sp-3); min-height: 36px; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); color: var(--text); text-align: left; }
+.ci-slash-item--active, .ci-slash-item:hover { background: var(--bg-2); }
+.ci-slash-command { flex: none; font-family: var(--font-mono); color: var(--text); }
+.ci-slash-desc { min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--fs-12); text-overflow: ellipsis; white-space: nowrap; }
+
 .ci-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -274,12 +282,12 @@
   width: 36px;
   height: 36px;
   border-radius: var(--r-pill);
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--text);
+  color: var(--bg-0);
   transition: background var(--motion-fast), transform var(--motion-fast), opacity var(--motion-fast);
 }
 .ci-send:not(:disabled):hover {
-  background: var(--accent-press);
+  background: var(--text-dim);
 }
 .ci-send:disabled {
   opacity: 0.4;
@@ -352,7 +360,7 @@
   transition: width var(--motion-fast);
 }
 .ci-meter--ok .ci-meter-fill {
-  background: var(--accent);
+  background: var(--text-dim);
 }
 .ci-meter--warn .ci-meter-fill {
   background: var(--warn);
@@ -407,14 +415,10 @@
     padding: var(--sp-2) var(--sp-3);
   }
   .ci-modes {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    gap: 6px;
-    min-width: 0;
+    display: none;
   }
-  .ci-modes .mm-trigger {
-    width: 100%;
+  .ci-mobile-options {
+    display: flex;
     min-width: 0;
   }
   .ci-composer {
@@ -456,6 +460,7 @@
     width: 44px;
     height: 44px;
   }
+  .ci-slash-item { min-height: 44px; }
   .ci-att-remove {
     width: 24px;
     height: 24px;

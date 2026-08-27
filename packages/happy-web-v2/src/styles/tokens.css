@@ -1,10 +1,10 @@
 /*
- * very-happy "Console" design system — token source of truth (CSS custom properties).
- * Ported verbatim from happy/references/very-happy-design-tokens.md.
+ * very-happy "Console" design system — token implementation source of truth.
+ * Visual semantics and art direction live in docs/design-language.md.
  *
  * Rules baked into these names:
- *  - --accent (phosphor teal) means LIVE only (focus / active session / connected / agent running).
- *    Never a generic "clickable" color.
+ *  - --accent (restrained teal) means LIVE only (focus / active session / connected / agent running).
+ *    Never a generic "clickable" or primary-action color.
  *  - --accent-2 is teal-as-text/border (dark: same as accent; light: darkened for contrast).
  *  - Dark is the brand default; light is "the terminal by day".
  *  - Surfaces are matte black, layered by lightness — no shadows in dark mode.
@@ -33,26 +33,25 @@
 
 :root,
 :root[data-theme='dark'] {
-  /* surfaces (matte black, 4 levels, lightness-only) */
-  --bg-0: #06080c; /* app floor / deepest */
-  --bg-1: #0e141b; /* sidebar / panel */
-  --bg-2: #181f2a; /* raised card / input */
-  --bg-3: #232c3a; /* hover / pressed */
-  --line: #2c3543; /* hairline divider / border */
-  --line-2: #2a3340; /* stronger border */
+  /* neutral-black surfaces, matching the landing/update material */
+  --bg-0: #111210;
+  --bg-1: #171815;
+  --bg-2: #20211e;
+  --bg-3: #292a26;
+  --line: #30322d;
+  --line-2: #41433d;
 
   /* ink */
-  --text: #e8edf4;
-  --text-dim: #9aa4b2;
-  --text-faint: #5b6675; /* tertiary / placeholder / metadata */
+  --text: #ecede8;
+  --text-dim: #b2b4ad;
+  --text-faint: #92958d;
 
-  /* accent = live (phosphor teal) */
-  --accent: #34e2c4;
-  --accent-2: #34e2c4; /* teal-as-text/border */
-  --accent-press: #27c7ab;
-  --accent-dim: #15433b; /* weak fill / badge bg / strong border */
-  --accent-ink: #04110e; /* text on accent fill */
-  --accent-glow: rgba(52, 226, 196, 0.16);
+  --accent: #56b8a7;
+  --accent-2: #75c8b9;
+  --accent-press: #419c8d;
+  --accent-dim: rgba(86, 184, 167, 0.14);
+  --accent-ink: #07130f;
+  --accent-glow: rgba(86, 184, 167, 0.13);
 
   /* status (ANSI-ish, used sparingly) */
   --warn: #e6b450;
@@ -71,36 +70,35 @@
   --shadow-modal: 0 24px 64px -24px rgba(0, 0, 0, 0.7); /* modal / palette / auth card */
 
   /* backdrop (grid + glow + vignette) */
-  --bd-glow: rgba(52, 226, 196, 0.16);
-  --bd-grid: rgba(122, 162, 214, 0.05);
+  --bd-glow: rgba(86, 184, 167, 0.1);
+  --bd-grid: rgba(236, 237, 232, 0.035);
   --bd-vig: rgba(0, 0, 0, 0.55);
 
   color-scheme: dark;
 }
 
-/* Light = macOS-native gray chrome (cmux by day), NOT paper-white. Every
-   surface is a cool-neutral gray; panels layer by a step of gray, not by
-   white + shadow. Text is dark slate, never pure black. All text/bg pairs
+/* Light = restrained editorial gray, shared with landing/update surfaces.
+   Panels layer by a step of neutral value, not by shadow. All text/bg pairs
    pass WCAG AA (4.5:1) on every surface bg-0..bg-3; accent as a non-text
    indicator passes 3:1. */
 :root[data-theme='light'] {
-  --bg-0: #e8eaed; /* app floor — deepest gray */
-  --bg-1: #eff1f4; /* sidebar / panel — one gray step up */
-  --bg-2: #f6f7f9; /* raised card / input — lightest, still not white */
-  --bg-3: #e0e3e8; /* hover / pressed — dips below the floor */
-  --line: #d6dae0; /* hairline divider on gray */
-  --line-2: #c2c8d1; /* stronger border */
+  --bg-0: #f4f4f1;
+  --bg-1: #fafaf7;
+  --bg-2: #fffefa;
+  --bg-3: #e9eae5;
+  --line: #dedfd9;
+  --line-2: #c7c9c2;
 
-  --text: #1a2028; /* dark slate, not pure black */
-  --text-dim: #49535f;
-  --text-faint: #5b646f; /* ≥4.5:1 on every surface incl. bg-3 */
+  --text: #171715;
+  --text-dim: #555650;
+  --text-faint: #666762;
 
-  --accent: #0c8a76; /* deep teal: ≥3:1 on all grays (focus/live indicator) */
-  --accent-2: #096a5a; /* teal-as-text/border, ≥4.5:1 on all grays */
-  --accent-press: #0a7263;
-  --accent-dim: rgba(12, 138, 118, 0.13);
-  --accent-ink: #021009; /* text on accent fill (4.5:1 on --accent) */
-  --accent-glow: rgba(12, 138, 118, 0.24);
+  --accent: #167d70;
+  --accent-2: #126b61;
+  --accent-press: #10685d;
+  --accent-dim: rgba(22, 125, 112, 0.11);
+  --accent-ink: #f7fffc;
+  --accent-glow: rgba(22, 125, 112, 0.16);
 
   --warn: #845c09;
   --danger: #b52f35;
@@ -109,16 +107,16 @@
   --danger-ink: #ffffff; /* light danger fill is dark red — white reads ≥7:1 */
 
   /* gray-on-gray layering carries depth by value; shadow is a whisper */
-  --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
+  --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
 
   /* overlays: slate-tinted (same hue family as --text), never pure black */
-  --scrim: rgba(26, 32, 40, 0.32);
-  --shadow-pop: 0 2px 6px rgba(26, 32, 40, 0.08), 0 12px 32px -12px rgba(26, 32, 40, 0.25);
-  --shadow-modal: 0 2px 8px rgba(26, 32, 40, 0.08), 0 32px 80px -28px rgba(26, 32, 40, 0.35);
+  --scrim: rgba(23, 23, 21, 0.28);
+  --shadow-pop: 0 2px 6px rgba(23, 23, 21, 0.07), 0 12px 32px -12px rgba(23, 23, 21, 0.22);
+  --shadow-modal: 0 2px 8px rgba(23, 23, 21, 0.07), 0 32px 80px -28px rgba(23, 23, 21, 0.3);
 
-  --bd-glow: rgba(12, 138, 118, 0.08);
-  --bd-grid: rgba(40, 70, 110, 0.05);
-  --bd-vig: rgba(80, 90, 110, 0.045);
+  --bd-glow: rgba(22, 125, 112, 0.06);
+  --bd-grid: rgba(23, 23, 21, 0.04);
+  --bd-vig: rgba(23, 23, 21, 0.04);
 
   color-scheme: light;
 }
@@ -126,33 +124,33 @@
 /* follow system when no explicit data-theme is set */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg-0: #e8eaed;
-    --bg-1: #eff1f4;
-    --bg-2: #f6f7f9;
-    --bg-3: #e0e3e8;
-    --line: #d6dae0;
-    --line-2: #c2c8d1;
-    --text: #1a2028;
-    --text-dim: #49535f;
-    --text-faint: #5b646f;
-    --accent: #0c8a76;
-    --accent-2: #096a5a;
-    --accent-press: #0a7263;
-    --accent-dim: rgba(12, 138, 118, 0.13);
-    --accent-ink: #021009;
-    --accent-glow: rgba(12, 138, 118, 0.24);
+    --bg-0: #f4f4f1;
+    --bg-1: #fafaf7;
+    --bg-2: #fffefa;
+    --bg-3: #e9eae5;
+    --line: #dedfd9;
+    --line-2: #c7c9c2;
+    --text: #171715;
+    --text-dim: #555650;
+    --text-faint: #666762;
+    --accent: #167d70;
+    --accent-2: #126b61;
+    --accent-press: #10685d;
+    --accent-dim: rgba(22, 125, 112, 0.11);
+    --accent-ink: #f7fffc;
+    --accent-glow: rgba(22, 125, 112, 0.16);
     --warn: #845c09;
     --danger: #b52f35;
     --warn-dim: rgba(132, 92, 9, 0.12);
     --danger-dim: rgba(181, 47, 53, 0.1);
     --danger-ink: #ffffff;
-    --shadow-lift: 0 1px 2px rgba(26, 32, 40, 0.05), 0 8px 24px -18px rgba(26, 32, 40, 0.3);
-    --scrim: rgba(26, 32, 40, 0.32);
-    --shadow-pop: 0 2px 6px rgba(26, 32, 40, 0.08), 0 12px 32px -12px rgba(26, 32, 40, 0.25);
-    --shadow-modal: 0 2px 8px rgba(26, 32, 40, 0.08), 0 32px 80px -28px rgba(26, 32, 40, 0.35);
-    --bd-glow: rgba(12, 138, 118, 0.08);
-    --bd-grid: rgba(40, 70, 110, 0.05);
-    --bd-vig: rgba(80, 90, 110, 0.045);
+    --shadow-lift: 0 1px 2px rgba(23, 23, 21, 0.05), 0 8px 24px -18px rgba(23, 23, 21, 0.26);
+    --scrim: rgba(23, 23, 21, 0.28);
+    --shadow-pop: 0 2px 6px rgba(23, 23, 21, 0.07), 0 12px 32px -12px rgba(23, 23, 21, 0.22);
+    --shadow-modal: 0 2px 8px rgba(23, 23, 21, 0.07), 0 32px 80px -28px rgba(23, 23, 21, 0.3);
+    --bd-glow: rgba(22, 125, 112, 0.06);
+    --bd-grid: rgba(23, 23, 21, 0.04);
+    --bd-vig: rgba(23, 23, 21, 0.04);
     color-scheme: light;
   }
 }

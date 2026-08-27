@@ -6,7 +6,7 @@
  */
 import { useId, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
+import { BookOpen, CheckSquare, ChevronRight, Circle, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
@@ -127,6 +127,27 @@ function ReadView({ tool }: { tool: ToolCall }) {
         return filePath ? <div className="tv-path"><ToolPath path={filePath} /></div> : <DefaultView tool={tool} />;
     }
     return <CodeView code={content} lang={langForPath(filePath)} showLineNumbers />;
+}
+
+function SkillView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
+    const input = tool.input ?? {};
+    const name = asString(input.skill) ?? asString(input.name) ?? asString(input.path) ?? tool.name;
+    const out = resultToText(tool.result);
+    return (
+        <div className="tv-stack">
+            <div className="tv-skill">
+                <BookOpen size={13} />
+                <span>{t('tools.names.skillLoaded')}</span>
+                <strong>{name}</strong>
+            </div>
+            {out.trim() && (
+                <Section label={t('tools.fullView.output')} defaultOpen={false}>
+                    <OutputText text={out} />
+                </Section>
+            )}
+        </div>
+    );
 }
 
 // ── NotebookEdit ──────────────────────────────────────────────────────────────
@@ -357,6 +378,10 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
         case 'read':
             body = <ReadView tool={tool} />;
             break;
+        case 'Skill':
+        case 'read_skill':
+            body = <SkillView tool={tool} />;
+            break;
         case 'TodoWrite':
             body = <TodoView tool={tool} />;
             break;
@@ -385,7 +410,9 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
             break;
         default:
             // All MCP + unrecognized tools land here with a clean collapsible view.
-            body = <DefaultView tool={tool} />;
+            body = tool.name.toLowerCase().endsWith('__read_skill')
+                ? <SkillView tool={tool} />
+                : <DefaultView tool={tool} />;
             handlesOwnError = true;
     }
     return (

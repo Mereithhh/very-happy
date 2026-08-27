@@ -50,6 +50,21 @@
   color: var(--text-dim);
   word-break: break-all;
 }
+.tv-skill {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+.tv-skill strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* query/search/web rows */
 .tv-query {
@@ -97,7 +112,8 @@
   background: var(--bg-0);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* todo checklist */
@@ -179,8 +195,6 @@
   flex-direction: column;
   gap: var(--sp-2);
   min-width: 0;
-  border-left: 2px solid var(--line-2);
-  padding-left: var(--sp-3);
 }
 .tv-plan-head {
   font-family: var(--font-mono);
@@ -267,4 +281,29 @@
 .tv-ask-opt-desc {
   font-size: var(--fs-12);
   color: var(--text-dim);
+}
+.tv-ask-opt--other {
+  border-style: dashed;
+}
+.tv-ask-other {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+.tv-ask-other textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-0);
+  color: var(--text);
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  line-height: 1.5;
+}
+.tv-ask-other textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent-dim);
 }

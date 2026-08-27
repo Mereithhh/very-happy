@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const input = readFileSync(new URL('./input.css', import.meta.url), 'utf8');
-const modeMenu = readFileSync(new URL('./modemenu.css', import.meta.url), 'utf8');
 const session = readFileSync(new URL('./session.css', import.meta.url), 'utf8');
 const component = readFileSync(new URL('./AgentInput.tsx', import.meta.url), 'utf8');
 
 describe('mobile composer layout contract', () => {
-    it('keeps settings in one stable equal-width row with truncated values', () => {
-        expect(input).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.ci-modes \{[\s\S]*grid-auto-flow: column;[\s\S]*grid-auto-columns: minmax\(0, 1fr\);/);
-        expect(modeMenu).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.mm-v \{[\s\S]*text-overflow: ellipsis;[\s\S]*white-space: nowrap;/);
+    it('replaces wrapping mode controls with one compact settings trigger', () => {
+        expect(input).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.ci-modes \{[\s\S]*display: none;/);
+        expect(input).toMatch(/@media \(max-width: 600px\), \(pointer: coarse\)[\s\S]*\.ci-mobile-options \{[\s\S]*display: flex;/);
+        expect(component).toContain('<SessionOptionsDialog');
     });
 
     it('gives the text its own row and keeps controls in a fixed toolbar below it', () => {

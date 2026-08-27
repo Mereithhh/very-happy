@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, type TerminalListItem } from './webTerminal';
 
 describe('resolveDefaultShell', () => {
     it('uses an executable configured shell', () => {
@@ -24,6 +24,13 @@ describe('resolveDefaultShell', () => {
         expect(tmuxNewSessionArgs('vh-test', 80, 24, '/workspace', ['-e', 'A=B'], '/bin/sh')).toEqual([
             'new-session', '-d', '-e', 'A=B', '-s', 'vh-test', '-x', '80', '-y', '24', '-c', '/workspace', '/bin/sh',
         ]);
+    });
+
+    it('falls back to a direct PTY only when a new hosted tmux session cannot exist', () => {
+        expect(shouldUseDirectPtyFallback(false, false, false)).toBe(true);
+        expect(shouldUseDirectPtyFallback(false, true, false)).toBe(false);
+        expect(shouldUseDirectPtyFallback(false, false, true)).toBe(false);
+        expect(shouldUseDirectPtyFallback(true, false, false)).toBe(false);
     });
 });
 

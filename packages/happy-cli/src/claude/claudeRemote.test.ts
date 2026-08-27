@@ -105,4 +105,48 @@ describe('claudeRemote', () => {
             isCompactSummary: true,
         }));
     });
+
+    it.each([
+        { selectedModel: undefined, expectedDefault: true },
+        { selectedModel: 'haiku', expectedDefault: false },
+    ])('reports whether the resolved SDK model came from machine defaults', async ({ selectedModel, expectedDefault }) => {
+        vi.mocked(query).mockReturnValue({
+            setPermissionMode: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                yield {
+                    type: 'system',
+                    subtype: 'init',
+                    model: 'claude-opus-5[1m]',
+                };
+                yield { type: 'result', subtype: 'success' };
+            },
+        } as any);
+
+        const onSDKMetadata = vi.fn();
+        let messageCount = 0;
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => {
+                messageCount += 1;
+                return messageCount === 1
+                    ? { message: 'hello', mode: { ...mode, model: selectedModel } }
+                    : null;
+            },
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onSDKMetadata,
+        });
+
+        expect(onSDKMetadata).toHaveBeenCalledWith(expect.objectContaining({
+            model: 'claude-opus-5[1m]',
+            modelIsDefault: expectedDefault,
+        }));
+    });
 });

@@ -29,6 +29,15 @@ export function toolDetail(tool: ToolCall): string | null {
                 : typeof input.subagent_type === 'string'
                     ? input.subagent_type
                     : null;
+        case 'Skill':
+        case 'read_skill':
+            return typeof input.skill === 'string'
+                ? input.skill
+                : typeof input.name === 'string'
+                    ? input.name
+                    : typeof input.path === 'string'
+                        ? input.path
+                        : null;
         default: {
             // Common MCP detail fields.
             for (const key of ['query', 'url', 'path', 'file_path', 'pattern', 'prompt']) {
@@ -47,6 +56,9 @@ export function toolLabel(tool: ToolCall): string {
         case 'Task':
         case 'Agent':
             return 'Task';
+        case 'Skill':
+        case 'read_skill':
+            return 'Skill';
         default:
             return prettyToolName(tool.name);
     }

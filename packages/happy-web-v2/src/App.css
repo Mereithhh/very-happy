@@ -149,11 +149,11 @@
   cursor: default;
 }
 .btn-primary {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--text);
+  color: var(--bg-0);
 }
 .btn-primary:not(:disabled):hover {
-  background: var(--accent-press);
+  background: var(--text-dim);
 }
 .btn-secondary {
   border-color: var(--line-2);
