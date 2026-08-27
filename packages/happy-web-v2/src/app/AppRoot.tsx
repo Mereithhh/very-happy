@@ -30,7 +30,7 @@ import { PwaInstallPrompt } from './PwaInstallPrompt';
 import { CliUpdateBanner } from './CliUpdateBanner';
 import { useTranslation } from '@/i18n/useTranslation';
 import { RouteLoading } from './RouteLoading';
-import { dismissPrepaintSplash } from './prepaintSplash';
+import { dismissPrepaintSplashWhenRouteReady } from './prepaintSplash';
 import { ChangelogNotice } from './ChangelogNotice';
 import './appFonts';
 
@@ -250,7 +250,7 @@ export function AppRoot() {
   }, []);
 
   useEffect(() => {
-    if (!booting) dismissPrepaintSplash();
+    if (!booting) return dismissPrepaintSplashWhenRouteReady();
   }, [booting]);
 
   return (
