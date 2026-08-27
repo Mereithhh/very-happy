@@ -24,6 +24,7 @@ import {
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
 import { normalizeAgentUsage, usageAgentKey } from './usageReport';
+import { MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES } from '@/utils/attachmentLimits';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -434,7 +435,8 @@ export class ApiSessionClient extends EventEmitter {
             responseType: 'arraybuffer',
             timeout: 60000,
             maxRedirects: 5,
-            maxContentLength: 10 * 1024 * 1024,
+            maxContentLength: MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES,
+            maxBodyLength: MAX_CHAT_ATTACHMENT_ENCRYPTED_BYTES,
         });
         return new Uint8Array(response.data);
     }
@@ -496,7 +498,7 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        // Check for file events (image attachments from app)
+        // Check for opaque file events from the app.
         const fileResult = FileEventMessageSchema.safeParse(message);
         if (fileResult.success) {
             logger.debug(`[API] Received file event: ${fileResult.data.content.data.ev.name} (ref: ${fileResult.data.content.data.ev.ref})`);

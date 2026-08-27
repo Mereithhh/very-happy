@@ -1,5 +1,5 @@
 /**
- * Attachment upload/download routes for image attachments in chat sessions.
+ * Attachment upload/download routes for opaque files in chat sessions.
  *
  * Two storage modes:
  * - S3: Returns presigned PUT/GET URLs. Server never touches file bytes.
@@ -19,7 +19,9 @@ import { allowAuthRequest } from '@/app/auth/authRateLimiter';
 import { assertAccountResourceQuota, configuredResourceLimit, isAccountResourceLimitError, lockAccountResources } from '../resourceLimits';
 import { inTx } from '@/storage/inTx';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_SOURCE_FILE_SIZE = 50 * 1024 * 1024;
+const ENCRYPTED_BLOB_OVERHEAD = 40; // secretbox nonce (24) + auth tag (16)
+const MAX_FILE_SIZE = MAX_SOURCE_FILE_SIZE + ENCRYPTED_BLOB_OVERHEAD;
 const PRESIGNED_TTL_SECONDS = 15 * 60; // 15 minutes (design spec)
 
 const UPLOAD_RATE_WINDOW_MS = 60_000;
@@ -224,7 +226,7 @@ export function attachmentRoutes(app: Fastify) {
         await pruneAbandonedReservations(userId);
 
         if (size > MAX_FILE_SIZE) {
-            return reply.code(413).send({ error: 'File too large (max 10MB)' });
+            return reply.code(413).send({ error: 'File too large (max 50MB before encryption)' });
         }
 
         // Always .enc — encrypted opaque blobs, never trust client filename for path.
@@ -327,7 +329,7 @@ export function attachmentRoutes(app: Fastify) {
 
         const body = request.body as Buffer;
         if (body.length > MAX_FILE_SIZE) {
-            return reply.code(413).send({ error: 'File too large (max 10MB)' });
+            return reply.code(413).send({ error: 'File too large (max 50MB before encryption)' });
         }
 
         const ref = `sessions/${sessionId}/attachments/${attachmentFile}`;

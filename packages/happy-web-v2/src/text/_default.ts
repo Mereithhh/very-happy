@@ -352,14 +352,14 @@ export const en = {
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}" exceeds the ${maxMb}MB limit and was not added.`,
         uploadFailedTitle: 'Upload Failed',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
-            ? 'One image could not be uploaded and was not sent.'
-            : `${count} images could not be uploaded and were not sent.`,
-        notSupportedTitle: 'Images Not Supported',
-        notSupportedMessage: 'This agent does not support image attachments. Only the text was sent.',
+            ? 'One file could not be uploaded and was not sent.'
+            : `${count} files could not be uploaded and were not sent.`,
+        notSupportedTitle: 'Files Not Supported',
+        notSupportedMessage: 'This agent does not support file attachments. Only the text was sent.',
         unsupportedFileTitle: 'Unsupported File',
         unsupportedFileMessage: 'Attach an image or PDF file.',
         pdfRequiresCliTitle: 'CLI Update Required',
-        pdfRequiresCliMessage: 'Update the daemon CLI to attach PDFs in Claude conversations.',
+        pdfRequiresCliMessage: 'Update and restart the daemon CLI to attach this file type.',
     },
 
     errors: {
@@ -1500,6 +1500,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            aug27c: {
+                title: 'Bring the file, not the format rules',
+                summary: 'Claude conversations now hand opaque files to the coding agent instead of guessing what the browser can parse.',
+                files: 'Attach any file type from the picker, clipboard, or drag-and-drop, up to 50 MB per original file.',
+                delivery: 'Files land in a private machine-local directory and the agent receives the exact path to inspect with its own tools.',
+                queue: 'Delivered queued messages use the compact command-buffer design and can be genuinely canceled on supported daemons.',
+            },
             aug27b: {
                 title: 'Keep the work in view',
                 summary: 'Active Claude work now stays continuous across navigation, with richer documents and agent state.',

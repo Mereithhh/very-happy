@@ -41,4 +41,9 @@ describe('Claude SDK query adapter', () => {
             supportedDialogKinds: ['refusal_fallback_prompt'],
         }));
     });
+
+    it('grants the SDK access to staged attachment directories', () => {
+        query({ prompt: 'hello', options: { additionalDirectories: ['/private/chat-files'] } });
+        expect(sdkQuery.mock.calls[0][0].options.additionalDirectories).toEqual(['/private/chat-files']);
+    });
 });

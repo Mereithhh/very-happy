@@ -39,6 +39,7 @@ export interface QueryOptions {
     appendSystemPrompt?: string
     customSystemPrompt?: string
     cwd?: string
+    additionalDirectories?: string[]
     disallowedTools?: string[]
     maxTurns?: number
     mcpServers?: Record<string, unknown>

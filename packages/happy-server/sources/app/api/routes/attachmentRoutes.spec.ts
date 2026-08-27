@@ -288,7 +288,7 @@ describe("attachmentRoutes — request-upload", () => {
         expect(res.statusCode).toBe(401);
     });
 
-    it("returns 413 when the declared size exceeds the 10MB limit", async () => {
+    it("returns 413 when the encrypted blob exceeds the 50MiB source limit plus overhead", async () => {
         seedSession("s1", "u1");
         app = await createApp();
 
@@ -296,10 +296,23 @@ describe("attachmentRoutes — request-upload", () => {
             method: "POST",
             url: "/v1/sessions/s1/attachments/request-upload",
             headers: { "x-user-id": "u1" },
-            payload: { filename: "huge.bin", size: 10 * 1024 * 1024 + 1 },
+            payload: { filename: "huge.bin", size: 50 * 1024 * 1024 + 41 },
         });
-        // Zod schema rejects size > 10MB at validation stage with 400.
+        // Zod may reject the oversized declaration before the handler runs.
         expect([400, 413]).toContain(res.statusCode);
+    });
+
+    it("reserves an encrypted blob at the exact 50MiB source boundary", async () => {
+        seedSession("s1", "u1");
+        app = await createApp();
+
+        const res = await app.inject({
+            method: "POST",
+            url: "/v1/sessions/s1/attachments/request-upload",
+            headers: { "x-user-id": "u1" },
+            payload: { filename: "boundary.bin", size: 50 * 1024 * 1024 + 40 },
+        });
+        expect(res.statusCode).toBe(200);
     });
 
     it("serializes attachment row capacity independently from the byte quota", async () => {

@@ -1479,6 +1479,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            aug27c: {
+                title: '带上文件，不替 agent 猜格式',
+                summary: 'Claude 普通对话现在把 opaque 文件交给 coding agent，不再由浏览器决定能否解析。',
+                files: '文件选择、剪贴板与拖放均支持任意文件类型，单个原文件上限 50 MB。',
+                delivery: '文件落到机器本地的私有目录，agent 会收到准确路径并自行选择工具解析。',
+                queue: '已投递的排队消息使用紧凑 command-buffer 样式；新 daemon 上可以真正撤销。',
+            },
             aug27b: {
                 title: '始终看得见正在发生的工作',
                 summary: 'Claude 的运行状态在页面切换时保持连贯，并补齐文档与子代理体验。',
@@ -1923,14 +1930,14 @@ export const zhHans: TranslationStructure = {
         fileTooLargeMessage: ({ name, maxMb }: { name: string; maxMb: number }) => `"${name}"超过了 ${maxMb}MB 的限制，未能添加。`,
         uploadFailedTitle: '上传失败',
         uploadFailedMessage: ({ count }: { count: number }) => count === 1
-            ? '一张图片上传失败，未发送。'
-            : `${count} 张图片上传失败，未发送。`,
-        notSupportedTitle: '不支持图片',
-        notSupportedMessage: '该代理不支持图片附件。仅发送了文本。',
+            ? '一个文件上传失败，未发送。'
+            : `${count} 个文件上传失败，未发送。`,
+        notSupportedTitle: '不支持文件',
+        notSupportedMessage: '该 agent 不支持文件附件。仅发送了文本。',
         unsupportedFileTitle: '不支持此文件',
         unsupportedFileMessage: '请选择图片或 PDF 文件。',
         pdfRequiresCliTitle: '需要升级 CLI',
-        pdfRequiresCliMessage: '请先升级并刷新 daemon，再在 Claude 对话中附加 PDF。',
+        pdfRequiresCliMessage: '请先升级并重启 daemon CLI，再附加这种文件。',
     },
 
     feed: {

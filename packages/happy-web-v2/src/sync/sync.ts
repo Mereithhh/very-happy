@@ -107,7 +107,7 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
-    /** Optional image attachments to send before the text message. */
+    /** Optional opaque file attachments to send before the text message. */
     attachments?: AttachmentPreview[];
     /** Internal composer queue override: preserve the mode selected at enqueue time. */
     modeMeta?: MessageModeMeta;
@@ -542,7 +542,7 @@ class Sync {
     }
 
     /**
-     * Upload image attachments for a session: read bytes → encrypt → upload to server.
+     * Upload file attachments for a session: read bytes → encrypt → upload to server.
      * Returns UploadedAttachment records to embed as file events before the text message.
      * Failures are logged and skipped rather than aborting the whole message send.
      */
@@ -641,7 +641,7 @@ class Sync {
         ) ?? false;
         const queuedAt = queuedAtForSend(session.thinking || hasRunningTool, source);
 
-        // Image attachments are wired into the Claude pipeline only; Codex /
+        // File attachments are wired into the Claude pipeline only; Codex /
         // Gemini / OpenClaw runners read message.content.text and ignore
         // file events, so dropping attachments silently would leave the user
         // wondering why the image was skipped. Warn and send text only.

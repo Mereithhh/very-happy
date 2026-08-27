@@ -19,6 +19,7 @@
 
 | id | 标题 | 类型 | 来源 | 状态 | 备注 |
 |---|---|---|---|---|---|
+| B-241 | **普通对话附件放开为任意文件、单文件 50 MB**：Web 不按 MIME/扩展名判断 coding agent 能否解析；新 daemon 将 opaque 附件安全落盘并把绝对路径交给 agent，旧 daemon 仍按显式能力降级，选择/拖放/粘贴必须使用同一限制 | feat/compat | Owner 2026-08-27 | doing | 跨 Web/server/CLI，Final spec：`specs/2026-08-any-file-attachments.md`。50 MB 指原文件，加密传输额外预留固定开销；终端文件交接的独立 8 MB 限制不变。 |
 | B-240 | **已投递 queued message 仍是旧卡片且无法撤销**：durable CLI queue 必须使用 Console command-buffer 样式，并在 CLI 明确支持时提供真正取消（含 loading、失败不假消失、刷新/跨设备不复活）；本地 queue 的操作按钮桌面端也不得再依赖 hover | bug/ux | Owner 截图实报 2026-08-27 | done | **Shipped 2026-08-27**：CLI 以 transport local id 寻址真实 pending item，Web 成功后写加密取消墓碑并在两种分页顺序下隐藏目标；durable queue 对齐紧凑 Console surface，所有操作常显且异步删除有 loading。PR #74 / `964f9308c`；CLI `v0.2.83` publish+smoke 全绿，mac-office installed/running 均 0.2.83；Web deploy `33055540698` exact asset SHA。真机清账 V-098。 |
 | B-239 | **所有等待接口返回的 App 操作必须立即给出局部 loading**：按钮进入 busy、阻止重复提交并保留动作文案/可访问状态；长等待要有超时或错误恢复，不能用全屏遮罩掩盖仍可操作的页面 | ux/a11y/debt | Owner 2026-08-27 | done | 通用 Item 补齐 loading/disabled/aria-busy，并覆盖 composer send/abort/intervene、标题、机器、账号、Webhook、更新检查与语音助手等真实异步操作；复制/展开等本地动作不显示假进度。Web 170 files / 1,737 tests、build、tsc 0。 |
 | B-238 | **Claude SDK 普通对话补齐 sub-agent 与 plan mode 能力面**：核对 SDK 原生能力、协议透传、权限状态与 Web 展示，已支持的不重复造协议，缺失链路按旧端可忽略原则补齐 | feat/compat | Owner 2026-08-27 | done | 审计确认 Plan/ExitPlanMode/permission suggestions 已完整支持；保留 settings 自动发现 agents 与既有子消息/子工具嵌套，补齐 Web 曾丢弃的 sub-agent start/stop 可见生命周期；不把不可稳定关联的 advisory frame 伪造成聊天状态。兼容矩阵见 spec。 |

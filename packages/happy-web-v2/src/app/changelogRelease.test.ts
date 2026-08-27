@@ -36,13 +36,19 @@ describe('changelog releases', () => {
         machineId: 'old',
         machineName: 'Desk',
         currentVersion: '0.2.80',
-        targetVersion: '0.2.82',
+        targetVersion: '0.2.84',
       },
       {
         machineId: 'current',
         machineName: 'Laptop',
         currentVersion: '0.2.81',
-        targetVersion: '0.2.82',
+        targetVersion: '0.2.84',
+      },
+      {
+        machineId: 'latest',
+        machineName: 'Studio',
+        currentVersion: '0.2.82',
+        targetVersion: '0.2.84',
       },
     ]);
   });

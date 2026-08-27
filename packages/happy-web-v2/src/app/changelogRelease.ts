@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-08-27-any-file-attachments',
+    date: '2026-08-27',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.84',
+    titleKey: 'changelog.releases.aug27c.title',
+    summaryKey: 'changelog.releases.aug27c.summary',
+    itemKeys: [
+      'changelog.releases.aug27c.files',
+      'changelog.releases.aug27c.delivery',
+      'changelog.releases.aug27c.queue',
+    ],
+  },
+  {
     id: '2026-08-27-continuity-and-documents',
     date: '2026-08-27',
     buildVersion: __APP_VERSION__,
