@@ -9,6 +9,35 @@ describe('MessageQueue2', () => {
         expect(queue.isClosed()).toBe(false);
     });
 
+    it('cancels a pending message by stable source id', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('same text', 'local', undefined, 'message-a');
+        queue.push('same text', 'local', undefined, 'message-b');
+
+        expect(queue.cancelPending('message-b', 'same text')).toBe(true);
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('same text');
+        expect(queue.size()).toBe(0);
+    });
+
+    it('falls back to exact text only for legacy items without a source id', () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('legacy', 'local');
+        queue.push('legacy', 'local', undefined, 'new-item');
+
+        expect(queue.cancelPending('missing', 'legacy')).toBe(true);
+        expect(queue.queue).toHaveLength(1);
+        expect(queue.queue[0]?.sourceId).toBe('new-item');
+        expect(queue.cancelPending('missing', 'legacy')).toBe(false);
+    });
+
+    it('cannot cancel a message after the agent loop collected it', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('already running', 'local', undefined, 'message-a');
+        await queue.waitForMessagesAndGetAsString();
+
+        expect(queue.cancelPending('message-a', 'already running')).toBe(false);
+    });
+
     it('should push and retrieve messages with same mode', async () => {
         const queue = new MessageQueue2<string>(mode => mode);
         

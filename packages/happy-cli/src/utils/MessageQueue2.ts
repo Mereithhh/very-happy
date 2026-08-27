@@ -9,6 +9,8 @@ interface QueueItem<T> {
     isolate?: boolean; // If true, this message must be processed alone
     /** Decoded image attachments owned by *this* message (per-message ownership). */
     attachments?: PendingAttachment[];
+    /** Stable source message id supplied by the session transport. */
+    sourceId?: string;
 }
 
 /**
@@ -42,7 +44,7 @@ export class MessageQueue2<T> {
      * Push a message to the queue with a mode and an optional list of
      * attachments that travel with this message.
      */
-    push(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    push(message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -56,6 +58,7 @@ export class MessageQueue2<T> {
             modeHash,
             isolate: false,
             attachments,
+            sourceId,
         });
 
         // Trigger message handler if set
@@ -114,7 +117,7 @@ export class MessageQueue2<T> {
      * Clears any pending messages and ensures this message is never batched with others.
      * Used for special commands that require dedicated processing.
      */
-    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    pushIsolateAndClear(message: string, mode: T, attachments?: PendingAttachment[], sourceId?: string): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -131,6 +134,7 @@ export class MessageQueue2<T> {
             modeHash,
             isolate: true,
             attachments,
+            sourceId,
         });
 
         // Trigger message handler if set
@@ -222,6 +226,24 @@ export class MessageQueue2<T> {
      */
     size(): number {
         return this.queue.length;
+    }
+
+    /**
+     * Remove one message that has not yet been collected by the agent loop.
+     * Source id is authoritative. Exact-text fallback only covers items that
+     * entered this live process before transport ids were introduced.
+     */
+    cancelPending(sourceId?: string, exactText?: string): boolean {
+        let index = sourceId
+            ? this.queue.findIndex((item) => item.sourceId === sourceId)
+            : -1;
+        if (index < 0 && exactText !== undefined) {
+            index = this.queue.findIndex((item) => item.sourceId === undefined && item.message === exactText);
+        }
+        if (index < 0) return false;
+        this.queue.splice(index, 1);
+        logger.debug(`[MessageQueue2] Cancelled pending item. Queue size: ${this.queue.length}`);
+        return true;
     }
 
     /**

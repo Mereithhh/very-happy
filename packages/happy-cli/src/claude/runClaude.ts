@@ -178,6 +178,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Advertise composer support before the first SDK response. Otherwise
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
+        queueCancellation: true,
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -299,6 +300,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             ...meta,
             lifecycleState: 'running',
             archivedBy: undefined,
+            queueCancellation: true,
         }));
     }
 
@@ -521,6 +523,16 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         effort: mode.effort,
     }));
 
+    session.rpcHandlerManager.registerHandler<
+        { localKey?: unknown; text?: unknown },
+        { removed: boolean }
+    >('cancelQueuedMessage', async (params) => ({
+        removed: messageQueue.cancelPending(
+            typeof params?.localKey === 'string' ? params.localKey : undefined,
+            typeof params?.text === 'string' ? params.text : undefined,
+        ),
+    }));
+
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
@@ -709,7 +721,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 disallowedTools: messageDisallowedTools,
                 effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
             logger.debug('[start] /compact command pushed to queue:', {
                 ...contentLogMetadata(message.content.text),
                 attachmentCount: attachmentsForThisMessage?.length ?? 0,
@@ -730,7 +742,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 disallowedTools: messageDisallowedTools,
                 effort: messageEffort,
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage);
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
             logger.debug('[start] /clear command pushed to queue:', {
                 ...contentLogMetadata(message.content.text),
                 attachmentCount: attachmentsForThisMessage?.length ?? 0,
@@ -792,7 +804,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             disallowedTools: messageDisallowedTools,
             effort: messageEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
+        messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
         logger.debug('User message pushed to queue:', {
             ...contentLogMetadata(message.content.text),
             attachmentCount: attachmentsForThisMessage?.length ?? 0,

@@ -6,8 +6,10 @@ const base = { path: '/repo', host: 'machine' } as Metadata;
 
 describe('applyClaudeSdkMetadata', () => {
     it('advertises the attachment blocks supported by this daemon', () => {
-        expect(applyClaudeSdkMetadata(base, { modelIsDefault: true }).attachmentKinds)
+        const metadata = applyClaudeSdkMetadata(base, { modelIsDefault: true });
+        expect(metadata.attachmentKinds)
             .toEqual(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+        expect(metadata.queueCancellation).toBe(true);
     });
 
     it('records the resolved model only when the SDK query followed machine defaults', () => {

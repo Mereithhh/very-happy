@@ -627,6 +627,23 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect((client as any).lastSeq).toBe(1);
     });
 
+    it('injects the stable transport local id into routed user messages', () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+
+        (client as any).routeIncomingMessage({
+            role: 'user',
+            content: { type: 'text', text: 'addressable' },
+        }, 'transport-local-id');
+
+        expect(onUserMessage).toHaveBeenCalledWith({
+            role: 'user',
+            content: { type: 'text', text: 'addressable' },
+            localKey: 'transport-local-id',
+        });
+    });
+
     it('fetchMessages uses incremental cursor and paginates while hasMore is true', async () => {
         const client = new ApiSessionClient('fake-token', session);
         const onUserMessage = vi.fn();

@@ -38,6 +38,23 @@ describe('Claude SDK protocol compatibility', () => {
         }));
     });
 
+    it('normalizes a user queue-cancel envelope as an invisible control event', () => {
+        const normalized = normalizeRawMessage('raw-cancel', 'cancel-local', 1, {
+            role: 'session',
+            content: {
+                type: 'session',
+                data: {
+                    id: 'cancel-envelope', time: 2, role: 'user',
+                    ev: { t: 'queue-cancel', targetLocalKeys: ['queued-local'] },
+                },
+            },
+        });
+        expect(normalized).toEqual(expect.objectContaining({
+            role: 'event',
+            content: { type: 'queue-cancel', targetLocalKeys: ['queued-local'] },
+        }));
+    });
+
     it.each([
         [{ t: 'start' as const, title: 'Explore auth flow' }, 'running'],
         [{ t: 'stop' as const }, 'completed'],

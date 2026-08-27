@@ -38,7 +38,7 @@ export type MessageOrdering = {
     /** Timestamp fallback for an optimistic queued input without a server seq. */
     displayAt?: number;
     /** Persisted input/file item waiting for the preceding turn to finish. */
-    inputState?: 'queued';
+    inputState?: 'queued' | 'canceled';
 }
 
 // Flattened message types - each message represents a single block

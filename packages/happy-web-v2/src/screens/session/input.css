@@ -169,11 +169,6 @@
   align-items: center;
   gap: 2px;
   margin-left: var(--sp-2);
-  opacity: 0;
-  transition: opacity var(--motion-fast);
-}
-.ci-queue-item:hover .ci-queue-actions,
-.ci-queue-item:focus-within .ci-queue-actions {
   opacity: 1;
 }
 .ci-queue-action {
