@@ -1,6 +1,6 @@
 # 会话默认模型真实值标签
 
-> 状态：Final
+> 状态：Shipped（`main@99decb3f3`，Web deploy `33049596577`，CLI `v0.2.81`）
 > 日期：2026-08-27 ｜ 关联 backlog：B-233
 
 ## 背景与目标
