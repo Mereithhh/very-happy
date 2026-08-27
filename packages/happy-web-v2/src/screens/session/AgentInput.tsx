@@ -7,7 +7,8 @@
  * inserts a newline. IME-safe: never sends while a composition is active.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Maximize2, Minimize2, Paperclip, Send, Square, X } from 'lucide-react';
+import { Check, CornerDownRight, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
+import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
 import { sessionAbort } from '@/sync/ops';
 import {
@@ -28,6 +29,18 @@ import { useImeGuard } from '@/utils/ime';
 import { onInsertToInput } from '@/app/insertToInput';
 import { normalizeAgentKey } from '@/sync/agentDefaults';
 import { ModeMenu } from './ModeMenu';
+import { resolveMessageModeMeta } from '@/sync/messageMeta';
+import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
+import {
+    advanceQueueDeliveryPhase,
+    canReleaseQueuedMessage,
+    parsePersistedQueuedMessages,
+    persistableQueuedMessages,
+    removeQueuedMessage,
+    updateQueuedMessage,
+    type QueuedMessage,
+    type QueueDeliveryPhase,
+} from './queuedMessages';
 
 // Sentinel key for the「默认」effort entry — not a real SDK effort level
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
@@ -66,10 +79,26 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     draftRef.current = text;
     const [sending, setSending] = useState(false);
     const [aborting, setAborting] = useState(false);
+    const [queued, setQueued] = useState<QueuedMessage[]>(() =>
+        parsePersistedQueuedMessages(loadQueuedMessages()[sessionId]),
+    );
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState('');
     const [dragOver, setDragOver] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
-    const { attachments, addFiles, remove, clear } = useAttachments();
+    const { attachments, addFiles, remove, clear, take } = useAttachments();
+    const queuedRef = useRef(queued);
+    queuedRef.current = queued;
+    const deliveryPhaseRef = useRef<QueueDeliveryPhase>('idle');
+
+    useEffect(() => () => {
+        for (const item of queuedRef.current) {
+            for (const attachment of item.attachments ?? []) {
+                if (attachment.uri?.startsWith('blob:')) URL.revokeObjectURL(attachment.uri);
+            }
+        }
+    }, []);
 
     const flavorForAttach = session?.metadata?.flavor;
     const supportsAttachments = !flavorForAttach || flavorForAttach === 'claude';
@@ -79,6 +108,14 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const online = session?.presence === 'online';
     const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
+
+    useEffect(() => {
+        const all = loadQueuedMessages();
+        const persisted = persistableQueuedMessages(queued);
+        if (persisted.length > 0) all[sessionId] = persisted;
+        else delete all[sessionId];
+        saveQueuedMessages(all);
+    }, [queued, sessionId]);
 
     // selectors
     const models = getAvailableModels(flavor, metadata, t as any);
@@ -155,10 +192,41 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
     }, [sessionId]);
 
-    const doSend = async () => {
+    const releaseQueuedAttachments = (item: QueuedMessage) => {
+        for (const attachment of item.attachments ?? []) {
+            if (attachment.uri?.startsWith('blob:')) URL.revokeObjectURL(attachment.uri);
+        }
+    };
+
+    const sendQueuedItem = async (item: QueuedMessage) => {
+        await sync.sendMessage(sessionId, item.text, {
+            source: 'chat',
+            attachments: item.attachments,
+            modeMeta: item.modeMeta,
+        });
+        releaseQueuedAttachments(item);
+    };
+
+    const doAbort = async (): Promise<boolean> => {
+        if (aborting) return false;
+        setAborting(true);
+        const started = Date.now();
+        try {
+            await sessionAbort(sessionId);
+            return true;
+        } catch {
+            return false;
+        } finally {
+            const elapsed = Date.now() - started;
+            if (elapsed < 300) await new Promise((r) => setTimeout(r, 300 - elapsed));
+            setAborting(false);
+        }
+    };
+
+    const doSend = async (intervene = false) => {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
-        if ((!value && !atts) || sending) return;
+        if ((!value && !atts) || sending || !session) return;
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for
@@ -169,13 +237,28 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         // dead state where the next tap fires no focus event and the keyboard
         // can't be summoned. Mobile-only; desktop always refocuses.
         const hadFocus = document.activeElement === taRef.current;
-        setSending(true);
         draftRef.current = '';
+        const item: QueuedMessage = {
+            id: randomUUID(),
+            text: value,
+            createdAt: Date.now(),
+            modeMeta: resolveMessageModeMeta(session, storage.getState().settings),
+            attachments: atts ? take() : undefined,
+        };
         setText('');
-        clear();
+        if (!atts) clear();
         storage.getState().updateSessionDraft(sessionId, null);
+
+        if (isWorking && !intervene) {
+            setQueued((current) => [...current, item]);
+            if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
+            return;
+        }
+
+        setSending(true);
         try {
-            await sync.sendMessage(sessionId, value, { source: 'chat', attachments: atts });
+            if (intervene && isWorking && !(await doAbort())) throw new Error('interrupt failed');
+            await sendQueuedItem(item);
         } catch {
             // restore text on failure so the user doesn't lose it
             draftRef.current = value;
@@ -187,6 +270,46 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             }
         }
     };
+
+    const interveneQueued = async (id: string) => {
+        if (deliveryPhaseRef.current === 'intervening' || sending) return;
+        const index = queuedRef.current.findIndex((item) => item.id === id);
+        if (index < 0) return;
+        const item = queuedRef.current[index];
+        deliveryPhaseRef.current = 'intervening';
+        setQueued((current) => removeQueuedMessage(current, id));
+        try {
+            if (isWorking && !(await doAbort())) throw new Error('interrupt failed');
+            await sendQueuedItem(item);
+            deliveryPhaseRef.current = 'waiting-start';
+        } catch {
+            setQueued((current) => [...current.slice(0, index), item, ...current.slice(index)]);
+            deliveryPhaseRef.current = 'idle';
+        }
+    };
+
+    const deleteQueued = (id: string) => {
+        const item = queuedRef.current.find((candidate) => candidate.id === id);
+        if (item) releaseQueuedAttachments(item);
+        setQueued((current) => removeQueuedMessage(current, id));
+        if (editingId === id) setEditingId(null);
+    };
+
+    // Release one queued message per agent turn. Removing the item before the
+    // async send makes the action idempotent across renders; a failed send is
+    // restored at the head for an explicit retry.
+    useEffect(() => {
+        deliveryPhaseRef.current = advanceQueueDeliveryPhase(deliveryPhaseRef.current, isWorking);
+        if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking) || queued.length === 0) return;
+
+        const item = queued[0];
+        deliveryPhaseRef.current = 'waiting-start';
+        setQueued((current) => current.slice(1));
+        void sendQueuedItem(item).catch(() => {
+            setQueued((current) => [item, ...current]);
+            deliveryPhaseRef.current = 'idle';
+        });
+    }, [isWorking, queued, sessionId]);
 
     const insertPreset = (presetText: string) => {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
@@ -227,21 +350,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    const doAbort = async () => {
-        if (aborting) return;
-        setAborting(true);
-        const started = Date.now();
-        try {
-            await sessionAbort(sessionId);
-        } catch {
-            /* ignore */
-        } finally {
-            const elapsed = Date.now() - started;
-            if (elapsed < 300) await new Promise((r) => setTimeout(r, 300 - elapsed));
-            setAborting(false);
-        }
-    };
-
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         // IME guard — never send mid-composition (critical for Chinese input).
         // useImeGuard combines the local composing flag, isComposing/'Process'
@@ -250,7 +358,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
             if (enterToSend) {
                 e.preventDefault();
-                void doSend();
+                void doSend(isWorking && (e.metaKey || e.ctrlKey));
             }
         }
     };
@@ -317,6 +425,79 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         </div>
                     ))}
                 </div>
+            )}
+
+            {queued.length > 0 && (
+                <section className="ci-queue" aria-label={t('session.chat.queueTitle')}>
+                    <div className="ci-queue-head">
+                        <span>{t('session.chat.queueTitle')}</span>
+                        <span className="ci-queue-count">{queued.length}</span>
+                        <span className="ci-queue-device">{t('session.chat.queueDeviceHint')}</span>
+                    </div>
+                    <div className="ci-queue-list">
+                        {queued.map((item, index) => (
+                            <div className="ci-queue-item" key={item.id}>
+                                <span className="ci-queue-index">{String(index + 1).padStart(2, '0')}</span>
+                                {editingId === item.id ? (
+                                    <textarea
+                                        className="ci-queue-edit"
+                                        value={editingText}
+                                        rows={2}
+                                        autoFocus
+                                        placeholder={t('session.chat.queueEditingPlaceholder')}
+                                        onChange={(event) => setEditingText(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Escape') setEditingId(null);
+                                            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && editingText.trim()) {
+                                                setQueued((current) => updateQueuedMessage(current, item.id, editingText));
+                                                setEditingId(null);
+                                            }
+                                        }}
+                                    />
+                                ) : (
+                                    <span className="ci-queue-text">{item.text || t('session.chat.attach')}</span>
+                                )}
+                                <div className="ci-queue-actions">
+                                    {editingId === item.id ? (
+                                        <button
+                                            type="button"
+                                            className="ci-queue-action"
+                                            disabled={!editingText.trim()}
+                                            onClick={() => {
+                                                setQueued((current) => updateQueuedMessage(current, item.id, editingText));
+                                                setEditingId(null);
+                                            }}
+                                            aria-label={t('session.chat.queueSave')}
+                                            title={t('session.chat.queueSave')}
+                                        ><Check size={15} /></button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="ci-queue-action"
+                                            onClick={() => { setEditingId(item.id); setEditingText(item.text); }}
+                                            aria-label={t('session.chat.queueEdit')}
+                                            title={t('session.chat.queueEdit')}
+                                        ><Pencil size={14} /></button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        className="ci-queue-action"
+                                        onClick={() => deleteQueued(item.id)}
+                                        aria-label={t('session.chat.queueDelete')}
+                                        title={t('session.chat.queueDelete')}
+                                    ><Trash2 size={15} /></button>
+                                    <button
+                                        type="button"
+                                        className="ci-queue-action ci-queue-action--intervene"
+                                        onClick={() => void interveneQueued(item.id)}
+                                        aria-label={t('session.chat.queueIntervene')}
+                                        title={t('session.chat.queueIntervene')}
+                                    ><CornerDownRight size={16} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
             )}
 
             {/* composer */}
@@ -393,7 +574,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         <button
                             type="button"
                             className="ci-send"
-                            onClick={() => void doSend()}
+                            onClick={() => void doSend(false)}
                             disabled={!canSend}
                             aria-label={t('session.chat.send')}
                             title={t('session.chat.send')}

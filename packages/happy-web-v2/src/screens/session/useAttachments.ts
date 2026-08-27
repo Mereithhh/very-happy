@@ -112,5 +112,14 @@ export function useAttachments() {
         });
     }, []);
 
-    return { attachments, addFiles, remove, clear };
+    // Transfer ownership to the queued-message buffer without revoking Blob
+    // URLs. The queue releases them after send/delete; clear() remains the
+    // destructive composer-only operation.
+    const take = useCallback(() => {
+        const current = attachments;
+        setAttachments([]);
+        return current;
+    }, [attachments]);
+
+    return { attachments, addFiles, remove, clear, take };
 }

@@ -54,6 +54,131 @@
   background: rgba(0, 0, 0, 0.8);
 }
 
+/* Local queued-message buffer. It reads as a compact command lane, not a
+ * second transcript or nested card stack. */
+.ci-queue {
+  overflow: hidden;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.ci-queue-head {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ci-queue-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--bg-3);
+  color: var(--text);
+}
+.ci-queue-device {
+  margin-left: auto;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ci-queue-list {
+  max-height: min(220px, 28vh);
+  overflow-y: auto;
+}
+.ci-queue-item {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 46px;
+  padding: 4px 6px 4px var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.ci-queue-item:last-child {
+  border-bottom: none;
+}
+.ci-queue-item:focus-within,
+.ci-queue-item:hover {
+  background: var(--bg-2);
+}
+.ci-queue-index {
+  align-self: start;
+  padding-top: 9px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.ci-queue-text {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-14);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.ci-queue-edit {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-14);
+  line-height: 1.45;
+  padding: 7px var(--sp-2);
+}
+.ci-queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--sp-2);
+  opacity: 0;
+  transition: opacity var(--motion-fast);
+}
+.ci-queue-item:hover .ci-queue-actions,
+.ci-queue-item:focus-within .ci-queue-actions {
+  opacity: 1;
+}
+.ci-queue-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.ci-queue-action:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.ci-queue-action:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.ci-queue-action--intervene {
+  color: var(--accent-2);
+}
+.ci-queue-action--intervene:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--accent-2);
+}
+
 /* composer */
 .ci-composer {
   display: grid;
@@ -249,6 +374,29 @@
   .ci-hint {
     display: none;
   }
+  .ci {
+    padding-inline: var(--sp-3);
+  }
+  .ci-queue-device {
+    display: none;
+  }
+  .ci-queue-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding-left: var(--sp-2);
+  }
+  .ci-queue-actions {
+    grid-column: 2;
+    justify-content: flex-end;
+    margin: 0;
+    opacity: 1;
+  }
+  .ci-queue-action {
+    width: 40px;
+    height: 40px;
+  }
+  .ci-queue-index {
+    grid-row: 1 / span 2;
+  }
 }
 
 /* touch: 16px floor stops iOS focus auto-zoom; larger targets for the
@@ -311,5 +459,12 @@
   .ci-att-remove {
     width: 24px;
     height: 24px;
+  }
+  .ci-queue-actions {
+    opacity: 1;
+  }
+  .ci-queue-action {
+    width: 40px;
+    height: 40px;
   }
 }

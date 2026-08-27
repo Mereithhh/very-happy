@@ -11,6 +11,7 @@ const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
+const QUEUED_MESSAGES_KEY = 'queued-messages-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -141,6 +142,21 @@ export function loadSessionDrafts(): Record<string, string> {
 
 export function saveSessionDrafts(drafts: Record<string, string>) {
     mmkv.set('session-drafts', JSON.stringify(drafts));
+}
+
+export function loadQueuedMessages(): Record<string, unknown> {
+    const raw = mmkv.getString(QUEUED_MESSAGES_KEY);
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveQueuedMessages(queues: Record<string, unknown>) {
+    mmkv.set(QUEUED_MESSAGES_KEY, JSON.stringify(queues));
 }
 
 export function loadNewSessionDraft(): NewSessionDraft | null {
