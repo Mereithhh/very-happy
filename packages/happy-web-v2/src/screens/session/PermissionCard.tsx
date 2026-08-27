@@ -14,7 +14,8 @@ import { CodeView } from './CodeView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { ElicitationRequestView } from './ElicitationRequestView';
-import { knownTools } from '@/components/tools/knownTools';
+import { isMutableTool, knownTools } from '@/components/tools/knownTools';
+import { sessionApprovalPolicy } from './permissionCompatibility';
 import './permission.css';
 
 type Pending = {
@@ -43,6 +44,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
     const detail = describeArgs(req.tool, req.arguments);
     const isElicitation = req.kind === 'elicitation';
     const isUserDialog = req.kind === 'user_dialog';
+    const sessionApproval = sessionApprovalPolicy(req, isMutableTool(req.tool));
 
     // ExitPlanMode: show the plan as Markdown, not an arguments JSON blob.
     // AskUserQuestion: show the actual options — picking one approves the
@@ -54,7 +56,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
         planParsed?.success && typeof planParsed.data.plan === 'string' && planParsed.data.plan.trim() !== ''
             ? planParsed.data.plan
             : null;
-    const isAskUserQuestion = req.tool === 'AskUserQuestion';
+    const isAskUserQuestion = req.tool === 'AskUserQuestion' && !isElicitation && !isUserDialog;
     const askParsed = isAskUserQuestion
         ? knownTools['AskUserQuestion'].input.safeParse(req.arguments ?? {})
         : null;
@@ -69,7 +71,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
             if (kind === 'deny') {
                 await sessionDeny(sessionId, req.id, undefined, undefined, 'denied');
             } else if (kind === 'session') {
-                await sessionAllow(sessionId, req.id, undefined, undefined, 'approved_for_session');
+                await sessionAllow(sessionId, req.id, undefined, sessionApproval.allowedTools, 'approved_for_session');
             } else {
                 await sessionAllow(sessionId, req.id, undefined, undefined, 'approved');
             }
@@ -121,7 +123,7 @@ function PermissionRequestRow({ sessionId, req }: { sessionId: string; req: Pend
                         {t('session.permission.approve')}
                     </Button>
                 )}
-                {!isAskUserQuestion && !isElicitation && !isUserDialog && (req.permissionSuggestions?.length ?? 0) > 0 && (
+                {!isAskUserQuestion && !isElicitation && !isUserDialog && sessionApproval.visible && (
                     <Button size="sm" variant="secondary" loading={busy === 'session'} disabled={!!busy} onClick={() => act('session')}>
                         {t('session.permission.approveForSession')}
                     </Button>

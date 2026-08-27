@@ -105,6 +105,7 @@ describe('PermissionHandler SDK protocol', () => {
             requestedSchema: { type: 'object' },
         }, { signal: new AbortController().signal, requestId: 'elicit-1' });
         expect(getState().requests?.['elicit-1']?.kind).toBe('elicitation');
+        expect(getState().requests?.['elicit-1']?.tool).toBe('AskUserQuestion');
         await respond({ id: 'elicit-1', approved: true, updatedInput: { name: 'Ada' } });
         await expect(pending).resolves.toEqual({ action: 'accept', content: { name: 'Ada' } });
     });
@@ -124,6 +125,7 @@ describe('PermissionHandler SDK protocol', () => {
             dialogKind: 'refusal_fallback_prompt', payload: { fallbackModel: 'fallback-model' },
         }, { signal: new AbortController().signal, requestId: 'dialog-2' });
         expect(getState().requests?.['dialog-2']?.kind).toBe('user_dialog');
+        expect(getState().requests?.['dialog-2']?.tool).toBe('AskUserQuestion');
         await respond({ id: 'dialog-2', approved: true, decision: 'approved' });
         await expect(pending).resolves.toEqual({ behavior: 'completed', result: 'retry_fallback' });
     });

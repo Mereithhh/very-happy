@@ -45,8 +45,10 @@ B-229 暴露了一个系统性问题：Web 已完成一次交互，不代表 Cla
 ### 权限 suggestions
 
 CLI 把 `canUseTool.options.suggestions` 作为 pending request 的可选
-`permissionSuggestions` 放入 agent-state。Web 只有看到非空 suggestions 才展示
-“本会话允许”，点击后只发送既有 `decision: approved_for_session`。CLI 收到后把原始
+`permissionSuggestions` 放入 agent-state。现代 request（带 `kind: tool`）只有看到非空
+suggestions 才展示“本会话允许”，点击后只发送既有 `decision: approved_for_session`。
+旧 CLI 的 request 没有 `kind`，Web 保留原先的 mutable-tool + `allowTools` 行为，避免
+托管 Web 先升级后让长期未升级的 CLI 丢功能。CLI 收到现代请求后把原始
 suggestions 原样返回为 `PermissionResult.updatedPermissions`；不再把 toolName 扩成
 本地永久 allow。旧客户端发送的 `allowTools` 仅作为没有 suggestions 时的兼容路径。
 
@@ -61,6 +63,10 @@ user_dialog。新增 agent-state request 可选字段 `kind`，参数仍放在�
   `refusal_fallback_prompt` 返回当前 CLI 已确认的 `retry_fallback` choice token；deny/abort → cancelled。
 - 未识别 dialog kind fail-closed 返回 cancelled；只声明 Web 已实现的
   `refusal_fallback_prompt`。
+
+新 CLI 在 agent-state 中把 elicitation/dialog 的 legacy `tool` 写成
+`AskUserQuestion`：旧 Web 已知该工具必须有结构化答案，因此会隐藏普通批准和批量批准，
+只能拒绝，不会把表单空批准；新 Web 通过可选 `kind` 区分并渲染真正的交互组件。
 
 ### 错误与生命周期
 
@@ -82,13 +88,14 @@ reply_done/input_needed、通用 done push 或 assistant completed 汇报。
 | 组合 | 行为 |
 |---|---|
 | 新 Web + 新 CLI | 完整 suggestions、elicitation、dialog 与错误显示 |
-| 旧 Web + 新 CLI | 旧 Web 的 `approved_for_session + allowTools` 仍可用；新 CLI 优先使用自己保存的 suggestions |
-| 新 Web + 旧 CLI | pending request 没有 `permissionSuggestions/kind`；Web 隐藏 session approval 和新交互，不会伪造支持 |
+| 旧 Web + 新 CLI | permission suggestions 由新 CLI 自己保存并原样应用；新交互使用 `AskUserQuestion` 哨兵，旧 Web 只能拒绝，不能空批准 |
+| 新 Web + 旧 CLI | 没有 `kind` 时保留旧 mutable-tool + `allowTools` 的 session approval；AskUserQuestion 结构化答案仍走旧 RPC；elicitation/dialog 不可用但不影响既有功能 |
 | 旧 Web + 新 `turn-end.error` | 额外可选字段被忽略，原有 failed turn-end 仍可解析 |
 | 新 Web + 旧 `turn-end` | `error` 缺失时维持旧显示，不影响正常 turn |
 
-发布顺序：Web → CLI。server 不识别加密 agent-state 内容和 session envelope 内部字段，
-无需改动。回滚任一端时可选字段均被忽略；无需数据迁移。
+推荐发布顺序：Web → CLI，以便新交互立即可用；但正确性不依赖顺序。server 不识别加密
+agent-state 内容和 session envelope 内部字段，无需改动。回滚任一端时可选字段均被
+忽略或由 legacy 哨兵 fail-closed；无需数据迁移。
 
 ## 风险
 

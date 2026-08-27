@@ -414,7 +414,10 @@ export class PermissionHandler {
                 });
             }
 
-            const tool = kind === 'elicitation' ? 'McpElicitation' : 'ClaudeUserDialog';
+            // AskUserQuestion is a legacy fail-closed sentinel: old Web builds
+            // already suppress generic approve/batch-approve for this tool.
+            // Modern Web builds use `kind` to render the actual interaction.
+            const tool = 'AskUserQuestion';
             this.publishRequest(id, tool, request, kind);
         });
     }

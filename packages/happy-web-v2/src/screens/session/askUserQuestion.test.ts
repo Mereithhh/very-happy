@@ -86,6 +86,7 @@ describe('multi-question component wiring', () => {
 describe('AskUserQuestion submission wiring', () => {
     const toolView = readFileSync(new URL('./ToolView.tsx', import.meta.url), 'utf8');
     const permissionCard = readFileSync(new URL('./PermissionCard.tsx', import.meta.url), 'utf8');
+    const permissionCompatibility = readFileSync(new URL('./permissionCompatibility.ts', import.meta.url), 'utf8');
 
     it('answers the pending tool through updatedInput instead of a later chat message', () => {
         expect(toolView).toContain("'approved',\n                    { answers },");
@@ -101,8 +102,14 @@ describe('AskUserQuestion submission wiring', () => {
 
     it('only offers session approval when the SDK supplied scoped suggestions', () => {
         expect(permissionCard).toContain("'approved_for_session'");
-        expect(permissionCard).toContain('(req.permissionSuggestions?.length ?? 0) > 0');
+        expect(permissionCompatibility).toContain("request.kind === 'tool'");
+        expect(permissionCompatibility).toContain('(request.permissionSuggestions?.length ?? 0) > 0');
         expect(permissionCard).not.toContain('[req.tool], \'approved_for_session\'');
+    });
+
+    it('keeps the old CLI session-approval contract when kind is absent', () => {
+        expect(permissionCompatibility).toContain('request.kind === undefined');
+        expect(permissionCompatibility).toContain('allowedTools: [request.tool]');
     });
 });
 
