@@ -13,7 +13,12 @@ import type {
     SDKResultMessage
 } from '@/claude/sdk'
 import type { RawJSONLines } from '@/claude/types'
-import { isClaudeEdeOnlyResult, isClaudeInterruptSentinelContent } from './interruptNoise'
+import {
+    isClaudeEdeOnlyResult,
+    isClaudeInterruptSentinelContent,
+    stripClaudeEdeDiagnosticErrors,
+    stripClaudeEdeDiagnosticText,
+} from './interruptNoise'
 
 /**
  * Context for converting SDK messages to log format
@@ -53,6 +58,8 @@ export class SDKToLogConverter {
     private responses?: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>
     private sidechainLastUUID = new Map<string, string>();
     private sawInterruptSentinel = false
+    private sawEdeOnlyAssistantError = false
+    private sawVisibleAssistantError = false
 
     constructor(
         context: Omit<ConversionContext, 'parentUuid'>,
@@ -85,6 +92,8 @@ export class SDKToLogConverter {
     /** Drop per-query markers that must never leak into the next SDK query. */
     resetTransientState(): void {
         this.sawInterruptSentinel = false
+        this.sawEdeOnlyAssistantError = false
+        this.sawVisibleAssistantError = false
     }
 
     /**
@@ -155,6 +164,12 @@ export class SDKToLogConverter {
 
             case 'assistant': {
                 const assistantMsg = sdkMessage as SDKAssistantMessage
+                const assistantError = stripClaudeEdeDiagnosticText(assistantMsg.error)
+                if (typeof assistantMsg.error === 'string' && assistantMsg.error.trim() && !assistantError) {
+                    this.sawEdeOnlyAssistantError = true
+                } else if (assistantError) {
+                    this.sawVisibleAssistantError = true
+                }
                 logMessage = {
                     ...baseFields,
                     type: 'assistant',
@@ -163,7 +178,7 @@ export class SDKToLogConverter {
                     requestId: (assistantMsg as any).requestId,
                     ...((assistantMsg as any).isCompactSummary ? { isCompactSummary: true } : {}),
                     ...(assistantMsg.parent_tool_use_id ? { parent_tool_use_id: assistantMsg.parent_tool_use_id } : {}),
-                    ...(assistantMsg.error ? { error: assistantMsg.error } : {}),
+                    ...(assistantError ? { error: assistantError } : {}),
                 }
                 // if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
                 //     for (const content of assistantMsg.message.content) {
@@ -203,8 +218,20 @@ export class SDKToLogConverter {
                 // usage) so the app can render it at the end of the turn.
                 // SDKResultSuccess additionally carries a `result` string.
                 const resultMsg = sdkMessage as SDKResultMessage
-                const interrupted = this.sawInterruptSentinel || isClaudeEdeOnlyResult(resultMsg)
+                const visibleErrors = stripClaudeEdeDiagnosticErrors(
+                    'errors' in resultMsg ? resultMsg.errors : undefined,
+                )
+                const interruptionSignal = this.sawInterruptSentinel
+                    || this.sawEdeOnlyAssistantError
+                    || isClaudeEdeOnlyResult(resultMsg)
+                // A real adjacent failure always wins. EDE is only a clean
+                // cancellation signal when it is the complete error payload.
+                const interrupted = interruptionSignal
+                    && !this.sawVisibleAssistantError
+                    && visibleErrors.length === 0
                 this.sawInterruptSentinel = false
+                this.sawEdeOnlyAssistantError = false
+                this.sawVisibleAssistantError = false
                 logMessage = {
                     ...baseFields,
                     type: 'result',
@@ -215,7 +242,7 @@ export class SDKToLogConverter {
                     duration_ms: resultMsg.duration_ms,
                     num_turns: resultMsg.num_turns,
                     usage: resultMsg.usage as any,
-                    ...('errors' in resultMsg ? { errors: resultMsg.errors } : {}),
+                    ...(visibleErrors.length > 0 ? { errors: visibleErrors } : {}),
                     ...('terminal_reason' in resultMsg && resultMsg.terminal_reason
                         ? { terminal_reason: resultMsg.terminal_reason }
                         : {}),

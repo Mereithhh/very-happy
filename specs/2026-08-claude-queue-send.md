@@ -111,6 +111,8 @@ Queue 与 Steer 共用 `buildClaudeMessageContent`，避免附件在两条路径
 - sentinel 不生成消息记录、不更新 parent chain；
 - interruption result 关闭 turn 为 `cancelled`；
 - 纯 EDE error 不产生可见“Process exited unexpectedly”；
+- assistant `error` 暂存与已持久化 lifecycle event 同样过滤纯 EDE，避免
+  `stop_reason=tool_use` 作为普通事件回显；
 - 混有其他错误的真实失败仍走 `failed`。
 
 ## 兼容矩阵与发布顺序
