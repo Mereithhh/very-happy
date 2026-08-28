@@ -1,7 +1,6 @@
 /**
- * AgentInput — the composer. A big rounded auto-growing textarea + circular
- * send button, a clean status row (connection + always-visible context meter),
- * and model/permission/effort selectors on their own row.
+ * AgentInput — the composer. A rounded auto-growing textarea + circular send
+ * button, followed by one compact row for controls, context, and input hints.
  *
  * Sending: Enter sends (configurable via agentInputEnterToSend), Shift+Enter
  * inserts a newline. IME-safe: never sends while a composition is active.
@@ -18,7 +17,6 @@ import {
     useSetting,
     storage,
 } from '@/sync/storage';
-import { useSocketStatus } from '@/app/useConnection';
 import { useTranslation } from '@/i18n/useTranslation';
 import {
     getAvailableModels,
@@ -80,7 +78,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const session = useSession(sessionId);
     const usage = useSessionUsage(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
-    const socketStatus = useSocketStatus();
     const enterToSend = useSetting('agentInputEnterToSend');
 
     const taRef = useRef<HTMLTextAreaElement>(null);
@@ -124,8 +121,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const attachmentKinds = metadata?.attachmentKinds ?? [];
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
     const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
-    const online = session?.presence === 'online';
-    const connected = online && socketStatus === 'connected';
     const isWorking = session?.thinking === true || !!runningTool;
     const slashSuggestions = dismissedSlashText === text
         ? []
@@ -482,35 +477,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
     return (
         <div className="ci" style={{ paddingBottom: 'max(var(--sp-3), env(safe-area-inset-bottom))' }}>
-            {/* selector row */}
-            <div className="ci-modes">
-                <ModeMenu
-                    label={t('session.chat.modelLabel')}
-                    options={models}
-                    value={modelKey}
-                    onChange={(k) => setMode('updateSessionModelMode', k)}
-                />
-                <ModeMenu
-                    label={t('session.chat.permissionLabel')}
-                    options={permModes}
-                    value={permKey}
-                    onChange={(k) => setMode('updateSessionPermissionMode', k)}
-                />
-                {efforts.length > 0 && (
-                    <ModeMenu
-                        label={t('session.chat.effortLabel')}
-                        // B-103: claude gets an explicit「默认」entry (= send
-                        // nothing to the SDK → the machine's own adaptive
-                        // default). Before this, a null effortLevel fell back
-                        // to options[0] and the UI showed "low" while the CLI
-                        // actually ran its own default — a straight-up lie.
-                        options={effortOptions}
-                        value={selectedEffortKey}
-                        onChange={setEffort}
-                    />
-                )}
-            </div>
-
             <div className="ci-mobile-options">
                 <SessionOptionsDialog
                     open={sessionOptionsOpen}
@@ -759,16 +725,31 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 </div>
             </div>
 
-            {/* status row — connection + always-visible context meter */}
+            {/* Desktop controls share one compact row with context and hints.
+                Mobile keeps the touch-friendly SessionOptionsDialog above. */}
             <div className="ci-status">
-                <span className={`ci-conn ci-conn--${connected ? 'on' : 'off'}`}>
-                    <span className="ci-conn-dot" />
-                    {connected
-                        ? t('session.chat.connected')
-                        : online
-                            ? t('session.chat.reconnecting')
-                            : t('session.chat.disconnected')}
-                </span>
+                <div className="ci-modes">
+                    <ModeMenu
+                        label={t('session.chat.modelLabel')}
+                        options={models}
+                        value={modelKey}
+                        onChange={(key) => setMode('updateSessionModelMode', key)}
+                    />
+                    <ModeMenu
+                        label={t('session.chat.permissionLabel')}
+                        options={permModes}
+                        value={permKey}
+                        onChange={(key) => setMode('updateSessionPermissionMode', key)}
+                    />
+                    {efforts.length > 0 && (
+                        <ModeMenu
+                            label={t('session.chat.effortLabel')}
+                            options={effortOptions}
+                            value={selectedEffortKey}
+                            onChange={setEffort}
+                        />
+                    )}
+                </div>
                 <span className="ci-spacer" />
                 <span className={`ci-meter ci-meter--${meterTone}`} title={meterTitle}>
                     {percentUsed !== null && (

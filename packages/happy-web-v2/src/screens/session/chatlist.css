@@ -146,6 +146,15 @@
   justify-content: center;
   padding-bottom: var(--sp-2);
 }
+/* Live state follows the latest transcript content instead of occupying a
+   fixed lane above the composer. */
+.cl-inner > .lsb {
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 0;
+  border-radius: var(--r-md);
+  box-shadow: none;
+}
 .cl-jump {
   position: absolute;
   right: var(--sp-4);

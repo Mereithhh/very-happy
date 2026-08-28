@@ -3,7 +3,7 @@
  * collapsible block with a mono font and a teal accent left-spine. The spine
  * color encodes state: teal=running, danger=error, warn=mixed, line=done.
  */
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronRight, AlertTriangle } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
@@ -30,9 +30,18 @@ function groupState(tools: ToolCallMessage[]): GroupState {
     return 'done';
 }
 
-function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOpen: boolean }) {
+function ToolRow({
+    message,
+    defaultOpen,
+    collapseOnComplete = false,
+}: {
+    message: ToolCallMessage;
+    defaultOpen: boolean;
+    collapseOnComplete?: boolean;
+}) {
     const tool = message.tool;
     const [open, setOpen] = useState(defaultOpen);
+    const wasRunningRef = useRef(tool.state === 'running');
     const bodyId = useId();
     // 与 ToolView 同一手法（它也是 useParams），避免为了一个 id 改整条 props 链
     const { id: sessionId } = useParams();
@@ -43,11 +52,13 @@ function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOp
     const label = toolLabel(tool);
     const detail = toolDetail(tool);
     // A live or failed operation must surface itself even when the mobile
-    // overview initially collapsed this row. Completed rows never auto-close:
-    // content the user was watching must not disappear under their finger.
+    // overview initially collapsed this row. Turn activity rows fold exactly
+    // once on running→completed; legacy tool groups preserve their old state.
     useEffect(() => {
         if (tool.state === 'running' || tool.state === 'error') setOpen(true);
-    }, [tool.state]);
+        if (collapseOnComplete && tool.state === 'completed' && wasRunningRef.current) setOpen(false);
+        wasRunningRef.current = tool.state === 'running';
+    }, [collapseOnComplete, tool.state]);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
@@ -71,7 +82,13 @@ function ToolRow({ message, defaultOpen }: { message: ToolCallMessage; defaultOp
     );
 }
 
-export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
+export function ToolGroupView({
+    tools,
+    collapseCompleted = false,
+}: {
+    tools: ToolCallMessage[];
+    collapseCompleted?: boolean;
+}) {
     const { t } = useTranslation();
     const state = groupState(tools);
     const running = state === 'running';
@@ -98,7 +115,8 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                 <div className="tg-content">
                     <ToolRow
                         message={tools[0]}
-                        defaultOpen={!compact || running || state === 'error'}
+                        defaultOpen={collapseCompleted ? running || state === 'error' : !compact || running || state === 'error'}
+                        collapseOnComplete={collapseCompleted}
                     />
                 </div>
             </div>
@@ -140,6 +158,7 @@ export function ToolGroupView({ tools }: { tools: ToolCallMessage[] }) {
                                 key={m.id}
                                 message={m}
                                 defaultOpen={m.tool.state === 'running' || m.tool.state === 'error'}
+                                collapseOnComplete={collapseCompleted}
                             />
                         ))}
                     </>}

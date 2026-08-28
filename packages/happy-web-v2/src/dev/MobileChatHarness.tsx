@@ -1,5 +1,5 @@
 /** DEV-only visual harness for the real structured-chat tool presentation. */
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import type { NormalizedMessage } from '@/sync/typesRaw';
 import type { Session } from '@/sync/storageTypes';
@@ -33,7 +33,6 @@ function message(id: string, name: string, state: ToolCallMessage['tool']['state
 
 export function MobileChatHarness() {
   const toast = useToast();
-  const [statusActivated, setStatusActivated] = useState(0);
   useEffect(() => {
     const now = Date.now();
     storage.getState().applySessions([{
@@ -77,12 +76,9 @@ export function MobileChatHarness() {
         <h1 style={{ margin: 0, fontSize: 16 }}>Structured chat · mobile QA</h1>
         <button type="button" onClick={() => toast.show('Copied to clipboard', 'success', { sticky: true })}>Show copy toast</button>
         <section data-testid="live-status" style={{ border: '1px solid var(--line)' }}>
-          <SessionLiveStatusBar
-            sessionId="mobile-chat-permission"
-            onActivate={() => setStatusActivated((count) => count + 1)}
-          />
+          <SessionLiveStatusBar sessionId="mobile-chat-permission" />
           <output data-testid="live-status-result" style={{ display: 'block', padding: 8, fontSize: 12 }}>
-            jump requests: {statusActivated}
+            inline transcript status
           </output>
         </section>
         <section data-testid="completed-tool"><ToolGroupView tools={completed} /></section>

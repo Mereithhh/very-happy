@@ -92,7 +92,7 @@ export function SessionDetailScreen() {
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
                 <div className="sd-body">
-                    <ChatList key={id} sessionId={id} />
+                    <ChatList key={id} sessionId={id} showLiveStatus={!mirror} />
                 </div>
                 {!mirror && (
                     <div className="sd-foot">

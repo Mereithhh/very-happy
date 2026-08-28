@@ -546,6 +546,12 @@ export const zhHans: TranslationStructure = {
             toolError: '出错',
             toolDone: '完成',
             usedTools: ({ count }: { count: number }) => `${count} 次工具调用`,
+            activityElapsed: ({ seconds }: { seconds: number }) => {
+                if (seconds < 60) return `耗时 ${seconds} 秒`;
+                const minutes = Math.floor(seconds / 60);
+                const remainder = seconds % 60;
+                return remainder === 0 ? `耗时 ${minutes} 分钟` : `耗时 ${minutes} 分钟 ${remainder} 秒`;
+            },
             modelLabel: '模型',
             permissionLabel: '模式',
             effortLabel: '强度',

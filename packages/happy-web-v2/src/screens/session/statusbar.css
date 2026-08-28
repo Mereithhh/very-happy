@@ -11,21 +11,12 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   color: var(--text-dim);
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   box-shadow: var(--shadow-lift);
-  transition: background var(--motion-fast), border-color var(--motion-fast);
-}
-.lsb:hover {
-  background: var(--bg-2);
-  border-color: var(--line-2);
-}
-.lsb:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .lsb-content {
   min-width: 0;
@@ -38,10 +29,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.lsb-action {
-  flex: 0 0 auto;
-  opacity: 0.72;
 }
 
 @media (pointer: coarse) {
