@@ -1,6 +1,6 @@
 # Claude Code Queue + Steer 输入语义
 
-> 状态：Final
+> 状态：Shipped（Web/Server `main@a2d0bdd2`，CLI `v0.2.87`）
 > 日期：2026-08-28 ｜ 关联 backlog：B-244
 
 ## 背景
