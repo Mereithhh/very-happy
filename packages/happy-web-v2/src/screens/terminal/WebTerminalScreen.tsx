@@ -31,6 +31,7 @@ import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './term
 import { installTermInputDiag } from './termInputDiag';
 import { isTerminalInputElement } from './termInputElement';
 import { TermInputBar } from './TermInputBar';
+import { TermWebKeyboard } from './TermWebKeyboard';
 import { TermPresetsMenu } from './TermPresetsMenu';
 import { presetPasteText } from './termPresetPaste';
 import { onInsertToInput } from '@/app/insertToInput';
@@ -348,6 +349,10 @@ export function WebTerminalScreen() {
   // which makes claude/shell/vim painful. `ctrlSticky` is a one-shot modifier —
   // tap Ctrl, then the next letter is sent as Ctrl+<letter> (\x01..\x1a).
   const [ctrlSticky, setCtrlSticky] = useState(false);
+  // Pure Web keyboard: a focusless, English-only ASCII surface whose buttons
+  // emit PTY bytes directly. It is mutually exclusive with native system input
+  // and line-input mode through termFocusPolicy below.
+  const [webKeyboardOpen, setWebKeyboardOpen] = useState(false);
   const navigateTo = navigate;
 
   // Line-input mode (mobile): compose whole lines in a plain textarea below
@@ -424,8 +429,10 @@ export function WebTerminalScreen() {
     }
   };
   const dispatchFocus = (e: TermFocusEvent): TermFocusAction => {
+    const previous = focusStateRef.current;
     const { state, action } = reduceTermFocus(focusStateRef.current, e);
     focusStateRef.current = state;
+    if (previous.webKeyboard !== state.webKeyboard) setWebKeyboardOpen(state.webKeyboard);
     runFocusAction(action);
     return action;
   };
@@ -1646,6 +1653,7 @@ export function WebTerminalScreen() {
       completeTerminalTouchTap({
         inputOwnership,
         barMode: focusStateRef.current.barMode,
+        webKeyboard: focusStateRef.current.webKeyboard,
         selectMode: selectModeRef.current,
         distanceSquared,
         threshold: 12,
@@ -2176,9 +2184,24 @@ export function WebTerminalScreen() {
     dispatchFocus({ type: 'bar-key' });
   };
   const toggleSoftKeyboard = () => {
+    // When Web input owns the surface, this button is an explicit handoff to
+    // the system keyboard (rather than a generic close action).
+    if (focusStateRef.current.webKeyboard) {
+      dispatchFocus({ type: 'show-keyboard' });
+      return;
+    }
     const active = document.activeElement;
     const ownsKeyboard = isTerminalInputElement(active) || inputBarRef.current === active;
     dispatchFocus({ type: ownsKeyboard ? 'dismiss-key' : 'show-keyboard' });
+  };
+  const toggleWebKeyboard = () => {
+    const opening = !focusStateRef.current.webKeyboard;
+    // Direct-byte Web input cannot truthfully coexist with the whole-line
+    // composer. Turn that remembered mode off before its DOM is removed.
+    if (opening && focusStateRef.current.barMode) {
+      flushSync(() => setInputBarMode(false));
+    }
+    dispatchFocus({ type: 'web-keyboard', on: opening });
   };
   // A literal key from the bar. If Ctrl is armed and this is a single ASCII
   // letter, fold it to its control code (Ctrl+A=\x01 … Ctrl+Z=\x1a) and consume
@@ -2199,6 +2222,7 @@ export function WebTerminalScreen() {
   const BAR_KEYS: Array<{ label: string; seq: string; aria: string; wide?: boolean }> = [
     { label: 'Esc', seq: '\x1b', aria: 'Escape', wide: true },
     { label: 'Tab', seq: '\t', aria: 'Tab', wide: true },
+    { label: 'Enter', seq: '\r', aria: 'Enter', wide: true },
     { label: '↑', seq: '\x1b[A', aria: 'Arrow up' },
     { label: '↓', seq: '\x1b[B', aria: 'Arrow down' },
     { label: '←', seq: '\x1b[D', aria: 'Arrow left' },
@@ -2369,8 +2393,8 @@ export function WebTerminalScreen() {
             <button
               type="button"
               className="term-keybar-key term-keybar-sys"
-              aria-label={t('terminal.toggleKeyboard')}
-              title={t('terminal.toggleKeyboard')}
+              aria-label={webKeyboardOpen ? t('terminal.systemKeyboard') : t('terminal.toggleKeyboard')}
+              title={webKeyboardOpen ? t('terminal.systemKeyboard') : t('terminal.toggleKeyboard')}
               // preventDefault keeps the focus where it is for the click's
               // duration; the policy then blurs everything explicitly (no
               // focus flicker through the button).
@@ -2378,6 +2402,17 @@ export function WebTerminalScreen() {
               onClick={toggleSoftKeyboard}
             >
               <Keyboard size={16} />
+            </button>
+            <button
+              type="button"
+              className={`term-keybar-key term-keybar-sys${webKeyboardOpen ? ' is-armed' : ''}`}
+              aria-pressed={webKeyboardOpen}
+              aria-label={t('terminal.webKeyboard')}
+              title={t('terminal.webKeyboard')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleWebKeyboard}
+            >
+              WEB
             </button>
             <button
               type="button"
@@ -2423,7 +2458,10 @@ export function WebTerminalScreen() {
               </button>
             ))}
           </div>
-          {inputBarMode && (
+          {/* Reuse sendBarKey rather than bypassing it: the assistive Ctrl key
+              remains a one-shot modifier for Web-keyboard letters too. */}
+          {webKeyboardOpen && <TermWebKeyboard onBytes={sendBarKey} />}
+          {inputBarMode && !webKeyboardOpen && (
             <TermInputBar
               inputRef={inputBarRef}
               // Whole-line send: newlines (pasted multi-line) become CRs, plus
