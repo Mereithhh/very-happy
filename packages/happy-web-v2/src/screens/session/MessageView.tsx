@@ -181,6 +181,7 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
         case 'message':
             {
                 const presentation = presentServiceEvent(ev.message);
+                if (presentation.kind === 'hidden') return null;
                 if (presentation.kind === 'stopped') {
                     return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
                 }

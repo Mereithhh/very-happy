@@ -3,6 +3,8 @@ import {
     isClaudeEdeOnlyResult,
     isClaudeEdeOnlySdkError,
     isClaudeInterruptSentinelContent,
+    stripClaudeEdeDiagnosticErrors,
+    stripClaudeEdeDiagnosticText,
 } from './interruptNoise';
 
 describe('Claude interrupt noise', () => {
@@ -39,5 +41,21 @@ describe('Claude interrupt noise', () => {
             'Claude Code returned an error result: [ede_diagnostic] result_type=user; actual failure',
         ))).toBe(false);
         expect(isClaudeEdeOnlySdkError(new Error('network failed'))).toBe(false);
+    });
+
+    it('removes internal EDE entries without hiding a real adjacent failure', () => {
+        expect(stripClaudeEdeDiagnosticText(
+            '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use',
+        )).toBeUndefined();
+        expect(stripClaudeEdeDiagnosticText(
+            '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use; permission bridge crashed',
+        )).toBe('permission bridge crashed');
+        expect(stripClaudeEdeDiagnosticText('network failed; retry exhausted'))
+            .toBe('network failed; retry exhausted');
+
+        expect(stripClaudeEdeDiagnosticErrors([
+            '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use',
+            'permission bridge crashed',
+        ])).toEqual(['permission bridge crashed']);
     });
 });

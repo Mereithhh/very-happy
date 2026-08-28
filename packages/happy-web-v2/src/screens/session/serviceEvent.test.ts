@@ -10,4 +10,17 @@ describe('presentServiceEvent', () => {
     it('keeps unknown service notes intact', () => {
         expect(presentServiceEvent('Context was reset')).toEqual({ kind: 'subtle', text: 'Context was reset' });
     });
+
+    it('hides internal EDE-only lifecycle events, including the SDK wrapper', () => {
+        const diagnostic = '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use';
+        expect(presentServiceEvent(diagnostic)).toEqual({ kind: 'hidden' });
+        expect(presentServiceEvent(`Claude Code returned an error result: ${diagnostic}`))
+            .toEqual({ kind: 'hidden' });
+    });
+
+    it('removes EDE diagnostics but preserves an adjacent real failure', () => {
+        expect(presentServiceEvent(
+            '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use; permission bridge crashed',
+        )).toEqual({ kind: 'subtle', text: 'permission bridge crashed' });
+    });
 });

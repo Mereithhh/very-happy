@@ -274,6 +274,61 @@ describe('SDKToLogConverter', () => {
             } as unknown as SDKResultMessage) as any
             expect(result.interrupted).toBeUndefined()
             expect(result.is_error).toBe(true)
+            expect(result.errors).toEqual(['permission bridge crashed'])
+        })
+
+        it('carries an EDE-only assistant error into the result as cancellation metadata', () => {
+            const assistant = converter.convert({
+                type: 'assistant',
+                error: '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use',
+                message: { role: 'assistant', content: [] },
+            } as unknown as SDKAssistantMessage) as any
+            expect(assistant.error).toBeUndefined()
+
+            const interrupted = converter.convert({
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+            } as unknown as SDKResultMessage) as any
+            expect(interrupted.interrupted).toBe(true)
+            expect(interrupted.errors).toBeUndefined()
+        })
+
+        it('keeps a real assistant failure adjacent to an EDE diagnostic', () => {
+            const assistant = converter.convert({
+                type: 'assistant',
+                error: '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use; permission bridge crashed',
+                message: { role: 'assistant', content: [] },
+            } as unknown as SDKAssistantMessage) as any
+            expect(assistant.error).toBe('permission bridge crashed')
+
+            const failed = converter.convert({
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+            } as unknown as SDKResultMessage) as any
+            expect(failed.interrupted).toBeUndefined()
+        })
+
+        it('does not let a later EDE frame hide an earlier real assistant failure', () => {
+            converter.convert({
+                type: 'assistant',
+                error: 'permission bridge crashed',
+                message: { role: 'assistant', content: [] },
+            } as unknown as SDKAssistantMessage)
+            converter.convert({
+                type: 'assistant',
+                error: '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use',
+                message: { role: 'assistant', content: [] },
+            } as unknown as SDKAssistantMessage)
+
+            const failed = converter.convert({
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                errors: ['[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use'],
+            } as unknown as SDKResultMessage) as any
+            expect(failed.interrupted).toBeUndefined()
         })
 
         it('does not carry an unmatched interrupt sentinel into a later SDK query', () => {
