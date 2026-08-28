@@ -192,6 +192,26 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockSocket.connect).toHaveBeenCalledTimes(1);
     });
 
+    it('retries a hard agent-state error instead of dropping the update', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        mockSocket.emitWithAck
+            .mockResolvedValueOnce({ result: 'error' })
+            .mockImplementationOnce(async (_event: string, payload: { agentState: string }) => ({
+                result: 'success',
+                version: 1,
+                agentState: payload.agentState,
+            }));
+
+        client.updateAgentState((current) => ({ ...current, requests: {
+            permission: { tool: 'ExitPlanMode', arguments: {}, createdAt: 1 },
+        } }));
+
+        await waitForCheck(() => {
+            expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+            expect(client.getAgentState()?.requests).toHaveProperty('permission');
+        });
+    });
+
     it('accumulates Claude calls idempotently into one snapshot and keeps one snapshot per agent', () => {
         const client = new ApiSessionClient('fake-token', session);
         client.sendUsageData({ input_tokens: 10, output_tokens: 2 }, 'claude-3-5-sonnet-20241022', 'msg-a');

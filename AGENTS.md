@@ -129,3 +129,6 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 9. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
    旧 commit、push 静默失败两种事故）。
 10. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。
+11. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
+    会表现为 `P2010` + SQLSTATE `40001`；事务层必须同时重试。CLI 对 session
+    metadata/agent-state 的 server `result:error` 也不得静默吞掉，否则权限请求会永久丢失。
