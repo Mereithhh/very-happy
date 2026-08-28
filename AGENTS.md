@@ -41,6 +41,11 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   AI 并行开发下测试稳定性的支柱。
 - 常规发布只认 canonical `origin/main` 已合入且必需 quality gates 全绿的精确 SHA；旧
   worktree、detached HEAD 或 rebase/squash 后的改动必须先移植/合入最新 main，再重新锁定 SHA。
+- 每次任务或发布收尾都主动判断是否产生了值得跨会话保留的经验：只有能防止后续 agent
+  重踩、可在多个任务复用、且不能仅靠邻近代码明显推导的稳定事实或方法论，才更新根
+  `AGENTS.md`，并优先修订既有条目而非追加重复规则。一次性版本/SHA/run id、临时排障过程、
+  单点实现细节、琐碎偏好和未经验证的猜测不进；机制细节仍放最贴近的 spec、代码注释或
+  owner doc，`AGENTS.md` 只保留入口与硬门禁。
 
 ## 质量门禁（任何 merge 前，硬性）
 
@@ -120,15 +125,19 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    改动影响 handover/daemon，或初次 groundwork 明确要求时才更新 mac-office。
 6. **CLI 的 npm 包与 tag 是不可变外部发布**：平台包先于主包；任一步失败都不移动或复用
    已推 tag，修复后递增版本；npm 已可见不等于跨平台 smoke 已通过。
-7. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
+7. **面向用户的 CLI 更新命令必须固定目标版本并窄放行安装脚本**：使用
+   `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。
+   `daemon start` 是幂等的 version/endpoint-aware handover：不在线则启动，不匹配则优雅接管；
+   当前没有 `daemon restart` 子命令，禁止凭名字臆造或改成可能把机器留离线的 `stop && start`。
+8. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得
    渲染成普通 assistant 回复。
-8. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史
+9. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史
    （`bf07e4aa`/`fe5172b6`/`4849fb5e`）。
-9. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
+10. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
    旧 commit、push 静默失败两种事故）。
-10. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。
-11. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
+11. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。
+12. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
     会表现为 `P2010` + SQLSTATE `40001`；事务层必须同时重试。CLI 对 session
     metadata/agent-state 的 server `result:error` 也不得静默吞掉，否则权限请求会永久丢失。
