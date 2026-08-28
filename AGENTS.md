@@ -129,6 +129,8 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。
    `daemon start` 是幂等的 version/endpoint-aware handover：不在线则启动，不匹配则优雅接管；
    当前没有 `daemon restart` 子命令，禁止凭名字臆造或改成可能把机器留离线的 `stop && start`。
+   handover 只替换 daemon；已经运行的 agent session wrapper / SDK Query 仍是旧进程，CLI 新能力必须用
+   升级后新建或明确续接重启的会话验收，不得把 daemon 版本等同于存量会话已热升级。
 8. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得

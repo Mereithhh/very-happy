@@ -147,6 +147,13 @@ Then update mac-office with `vh-update` (repository fallback:
 not only npm metadata. Never use `npm publish`, bare `npx`, `--ignore-scripts`,
 or move/force an existing tag.
 
+`vh-update` replaces the daemon but intentionally leaves already-running agent
+session wrappers alive. A wrapper and its active SDK Query keep the CLI code
+loaded when that wrapper started. Verify CLI session features with a session
+started after the upgrade; do not claim an older live session hot-loaded the new
+package. Stopping/resuming a business session is a separate interrupting action,
+not an implicit release step.
+
 ## Production verification
 
 ```bash
