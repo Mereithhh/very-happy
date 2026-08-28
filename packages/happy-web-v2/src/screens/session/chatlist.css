@@ -13,6 +13,10 @@
   color: var(--text-dim);
   font-size: var(--fs-13);
 }
+.cl--loading .cl-scroll {
+  display: grid;
+  place-items: center;
+}
 .cl-scroll {
   flex: 1;
   min-height: 0;
