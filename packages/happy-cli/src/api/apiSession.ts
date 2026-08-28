@@ -1053,7 +1053,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {
-                    // Hard error - ignore
+                    throw new Error('Metadata update failed');
                 }
             });
         });
@@ -1080,8 +1080,11 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     throw new Error('Agent state version mismatch');
                 } else if (answer.result === 'error') {
-                    // console.error('Agent state update error', answer);
-                    // Hard error - ignore
+                    // A transient server/transaction failure must not silently
+                    // drop the newest state (notably permission requests).
+                    // Throw so the enclosing backoff retries the same reducer
+                    // against the last acknowledged version.
+                    throw new Error('Agent state update failed');
                 }
             });
         });
