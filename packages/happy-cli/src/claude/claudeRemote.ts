@@ -29,10 +29,11 @@ export async function claudeRemote(opts: {
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: Parameters<CanUseTool>[2]) => Promise<PermissionResult>,
     onElicitation?: OnElicitation,
     onUserDialog?: OnUserDialog,
-    /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
+    /** Called when the Query object is ready — exposes live query controls. */
     onQueryReady?: (query: {
         setPermissionMode: (mode: string) => Promise<void>;
         interrupt: () => Promise<void>;
+        steer: (message: MessageParam['content'], mode: EnhancedMode) => void;
     }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
@@ -166,6 +167,7 @@ export async function claudeRemote(opts: {
     messages.push({
         type: 'user',
         parent_tool_use_id: null,
+        origin: { kind: 'human' },
         message: {
             role: 'user',
             content: initial.message,
@@ -183,6 +185,16 @@ export async function claudeRemote(opts: {
         opts.onQueryReady({
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
             interrupt: async () => { await response.interrupt(); },
+            steer: (message, nextMode) => {
+                mode = nextMode;
+                messages.push({
+                    type: 'user',
+                    parent_tool_use_id: null,
+                    priority: 'now',
+                    origin: { kind: 'human' },
+                    message: { role: 'user', content: message },
+                });
+            },
         });
     }
 
@@ -273,7 +285,13 @@ export async function claudeRemote(opts: {
                         messages.end();
                     } else {
                         mode = next.mode;
-                        messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } });
+                        updateThinking(true);
+                        messages.push({
+                            type: 'user',
+                            parent_tool_use_id: null,
+                            origin: { kind: 'human' },
+                            message: { role: 'user', content: next.message },
+                        });
                     }
                 }).catch(() => {
                     messages.end();

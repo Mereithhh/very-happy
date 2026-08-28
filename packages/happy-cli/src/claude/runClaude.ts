@@ -179,6 +179,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
+        capabilities: ['claude-steer-v1'],
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -804,6 +805,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             disallowedTools: messageDisallowedTools,
             effort: messageEffort,
         };
+
+        if (message.meta?.delivery === 'steer' && currentRunMode === 'remote') {
+            const accepted = await currentSession?.trySteer({
+                message: message.content.text,
+                mode: enhancedMode,
+                attachments: attachmentsForThisMessage,
+            }) === true;
+            if (accepted) {
+                logger.debug('User message steered into current turn:', {
+                    ...contentLogMetadata(message.content.text),
+                    attachmentCount: attachmentsForThisMessage?.length ?? 0,
+                });
+                return;
+            }
+            logger.debug('[start] Steer arrived without a compatible live turn; falling back to queue');
+        }
+
         messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localKey);
         logger.debug('User message pushed to queue:', {
             ...contentLogMetadata(message.content.text),

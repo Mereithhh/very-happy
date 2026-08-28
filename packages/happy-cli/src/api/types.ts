@@ -289,7 +289,9 @@ export const MessageMetaSchema = z.object({
   customSystemPrompt: z.string().nullable().optional(), // Custom system prompt for this message (null = reset)
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
   allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
-  disallowedTools: z.array(z.string()).nullable().optional() // Disallowed tools for this message (null = reset)
+  disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
+  /** Omitted/queue waits for the current turn; steer targets the live turn. */
+  delivery: z.enum(['queue', 'steer']).optional()
 })
 
 export type MessageMeta = z.infer<typeof MessageMetaSchema>
@@ -413,6 +415,8 @@ export type Metadata = {
   attachmentKinds?: string[],
   /** Pending user messages can be canceled by stable transport id. */
   queueCancellation?: boolean,
+  /** Explicit feature negotiation; old CLIs omit this field. */
+  capabilities?: string[],
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,

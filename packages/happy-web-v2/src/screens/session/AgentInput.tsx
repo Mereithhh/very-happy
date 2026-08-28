@@ -10,7 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionSteer } from '@/sync/ops';
+import { sessionAbort } from '@/sync/ops';
 import {
     useSession,
     useSessionUsage,
@@ -160,6 +160,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const effortKey = session?.effortLevel ?? null;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
+    const supportsSteer = isClaudeFlavor
+        && metadata?.capabilities?.includes('claude-steer-v1') === true
+        && session?.agentState?.controlledByUser === false;
     const effortOptions = isClaudeFlavor
         ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
         : efforts;
@@ -241,9 +244,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    const sendQueuedItem = async (item: QueuedMessage) => {
+    const sendQueuedItem = async (item: QueuedMessage, delivery: 'queue' | 'steer' = 'queue') => {
         await sync.sendMessage(sessionId, item.text, {
             source: 'chat',
+            delivery,
             attachments: item.attachments,
             modeMeta: item.modeMeta,
         });
@@ -266,18 +270,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    const redirectCurrentTurn = async (): Promise<boolean> => {
-        try {
-            await sessionSteer(sessionId);
-            return true;
-        } catch {
-            // Older daemons and non-Claude adapters may not expose the optional
-            // steer RPC; retain the explicit abort path as a compatibility fallback.
-            return doAbort();
-        }
-    };
-
-    const doSend = async (intervene = false) => {
+    const doSend = async (delivery: 'queue' | 'steer' = 'queue') => {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending || !session) return;
@@ -303,7 +296,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (!atts) clear();
         storage.getState().updateSessionDraft(sessionId, null);
 
-        if (isWorking && !intervene) {
+        if (isWorking && delivery === 'queue') {
             setQueued((current) => [...current, item]);
             if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
             return;
@@ -311,8 +304,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
         setSending(true);
         try {
-            if (intervene && isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
-            await sendQueuedItem(item);
+            await sendQueuedItem(item, delivery);
         } catch {
             // Restore the complete draft on failure so attachment-only sends
             // do not disappear after an upload or relay error.
@@ -328,7 +320,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     };
 
     const interveneQueued = async (id: string) => {
-        if (deliveryPhaseRef.current === 'intervening' || sending) return;
+        if (!supportsSteer || deliveryPhaseRef.current === 'intervening' || sending) return;
         const index = queuedRef.current.findIndex((item) => item.id === id);
         if (index < 0) return;
         const item = queuedRef.current[index];
@@ -336,8 +328,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         setInterveningId(id);
         setQueued((current) => removeQueuedMessage(current, id));
         try {
-            if (isWorking && !(await redirectCurrentTurn())) throw new Error('redirect failed');
-            await sendQueuedItem(item);
+            await sendQueuedItem(item, 'steer');
             deliveryPhaseRef.current = 'waiting-start';
         } catch {
             setQueued((current) => [...current.slice(0, index), item, ...current.slice(index)]);
@@ -470,7 +461,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
             if (enterToSend) {
                 e.preventDefault();
-                void doSend(isWorking && (e.metaKey || e.ctrlKey));
+                void doSend(isWorking && supportsSteer && (e.metaKey || e.ctrlKey) ? 'steer' : 'queue');
             }
         }
     };
@@ -635,15 +626,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                                         aria-label={t('session.chat.queueDelete')}
                                         title={t('session.chat.queueDelete')}
                                     ><Trash2 size={15} /></button>
-                                    <button
-                                        type="button"
-                                        className="ci-queue-action ci-queue-action--intervene"
-                                        onClick={() => void interveneQueued(item.id)}
-                                        disabled={interveningId !== null}
-                                        aria-busy={interveningId === item.id}
-                                        aria-label={t('session.chat.queueIntervene')}
-                                        title={t('session.chat.queueIntervene')}
-                                    >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}</button>
+                                    {supportsSteer && isWorking && (
+                                        <button
+                                            type="button"
+                                            className="ci-queue-action ci-queue-action--intervene"
+                                            onClick={() => void interveneQueued(item.id)}
+                                            disabled={interveningId !== null}
+                                            aria-busy={interveningId === item.id}
+                                            aria-label={t('session.chat.queueIntervene')}
+                                            title={t('session.chat.queueIntervene')}
+                                        >{interveningId === item.id ? <Spinner size={14} /> : <CornerDownRight size={16} />}</button>
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -754,11 +747,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         <button
                             type="button"
                             className="ci-send"
-                            onClick={() => void doSend(false)}
+                            onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
-                            aria-label={t('session.chat.send')}
-                            title={t('session.chat.send')}
+                            aria-label={isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
+                            title={isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <Send size={16} />}
                         </button>
@@ -790,7 +783,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                     </span>
                 </span>
                 <span className="ci-hint">
-                    {enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}
+                    {isWorking
+                        ? supportsSteer ? t('session.chat.queueSteerHint') : t('session.chat.queueHint')
+                        : enterToSend ? t('session.chat.enterToSend') : t('session.chat.shiftEnterToSend')}
                 </span>
             </div>
         </div>

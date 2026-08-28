@@ -11,6 +11,7 @@ export const MessageMetaSchema = z.object({
     allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
     disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
     effort: z.string().nullable().optional(), // Reasoning / thinking effort for this message (null = reset)
+    delivery: z.enum(['queue', 'steer']).optional(), // Omitted/queue = next turn; steer = current live turn
     displayText: z.string().optional(), // Optional text to display in UI instead of actual message text
     // Web-only compatibility hint: this ordinary chat input was submitted
     // while the current agent turn was still running. Old CLIs strip this

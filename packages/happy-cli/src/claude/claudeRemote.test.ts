@@ -149,4 +149,111 @@ describe('claudeRemote', () => {
             modelIsDefault: expectedDefault,
         }));
     });
+
+    it('does not read a queued follow-up until the current result arrives', async () => {
+        let releaseFirstResult!: () => void;
+        const firstResultGate = new Promise<void>((resolve) => { releaseFirstResult = resolve; });
+        const observedInputs: string[] = [];
+        const interrupt = vi.fn();
+
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt,
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                observedInputs.push((await input.next()).value.message.content);
+                yield { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'working' }] } };
+                await firstResultGate;
+                yield { type: 'result', subtype: 'success', is_error: false };
+                observedInputs.push((await input.next()).value.message.content);
+                yield { type: 'result', subtype: 'success', is_error: false };
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+
+        const nextMessage = vi.fn()
+            .mockResolvedValueOnce({ message: 'first', mode })
+            .mockResolvedValueOnce({ message: 'queued follow-up', mode })
+            .mockResolvedValueOnce(null);
+        const onThinkingChange = vi.fn();
+        const running = claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage,
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange,
+            onMessage: vi.fn(),
+        });
+
+        await vi.waitFor(() => expect(observedInputs).toEqual(['first']));
+        expect(nextMessage).toHaveBeenCalledTimes(1);
+        expect(interrupt).not.toHaveBeenCalled();
+        releaseFirstResult();
+        await running;
+
+        expect(observedInputs).toEqual(['first', 'queued follow-up']);
+        expect(nextMessage).toHaveBeenCalledTimes(3);
+        expect(onThinkingChange.mock.calls.map(([thinking]) => thinking)).toEqual([true, false, true, false]);
+        expect(interrupt).not.toHaveBeenCalled();
+    });
+
+    it('streams Steer into the current turn with priority now and never calls interrupt', async () => {
+        const observedInputs: any[] = [];
+        const interrupt = vi.fn();
+        let controls!: { steer: (message: string, mode: EnhancedMode) => void };
+
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt,
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                observedInputs.push((await input.next()).value);
+                yield { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'working' }] } };
+                observedInputs.push((await input.next()).value);
+                yield { type: 'result', subtype: 'success', is_error: false };
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+
+        const nextMessage = vi.fn()
+            .mockResolvedValueOnce({ message: 'first', mode })
+            .mockResolvedValueOnce(null);
+        const running = claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage,
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onQueryReady: (queryControls) => { controls = queryControls; },
+        });
+
+        await vi.waitFor(() => expect(observedInputs).toHaveLength(1));
+        controls.steer('adjust direction', mode);
+        await running;
+
+        expect(observedInputs[0]).toMatchObject({
+            type: 'user',
+            origin: { kind: 'human' },
+            message: { content: 'first' },
+        });
+        expect(observedInputs[1]).toMatchObject({
+            type: 'user',
+            priority: 'now',
+            origin: { kind: 'human' },
+            message: { content: 'adjust direction' },
+        });
+        expect(nextMessage).toHaveBeenCalledTimes(2);
+        expect(interrupt).not.toHaveBeenCalled();
+    });
 });

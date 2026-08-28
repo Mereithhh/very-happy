@@ -107,6 +107,8 @@ type OutboxMessage = {
 type SendMessageOptions = {
     displayText?: string;
     source?: MessageSentSource;
+    /** Default/queue starts after the current turn; steer targets the live Claude turn. */
+    delivery?: 'queue' | 'steer';
     /** Optional opaque file attachments to send before the text message. */
     attachments?: AttachmentPreview[];
     /** Internal composer queue override: preserve the mode selected at enqueue time. */
@@ -631,7 +633,7 @@ class Sync {
         }
 
         const modeMeta = options?.modeMeta ?? resolveMessageModeMeta(session, storage.getState().settings);
-        const { displayText, source = 'chat', attachments } = options ?? {};
+        const { displayText, source = 'chat', delivery = 'queue', attachments } = options ?? {};
         // Question/permission answers have their own request/response path and
         // must not wait behind the ordinary chat queue. For normal input, keep
         // sending durably right away but tell the Web that the current turn has
@@ -639,7 +641,9 @@ class Sync {
         const hasRunningTool = storage.getState().sessionMessages[sessionId]?.messages.some(
             (message) => message.kind === 'tool-call' && message.tool.state === 'running',
         ) ?? false;
-        const queuedAt = queuedAtForSend(session.thinking || hasRunningTool, source);
+        const queuedAt = delivery === 'steer'
+            ? undefined
+            : queuedAtForSend(session.thinking || hasRunningTool, source);
 
         // File attachments are wired into the Claude pipeline only; Codex /
         // Gemini / OpenClaw runners read message.content.text and ignore
@@ -762,6 +766,7 @@ class Sync {
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),
                 ...(modeMeta.model !== undefined ? { model: modeMeta.model } : {}),
                 ...(modeMeta.effort !== undefined ? { effort: modeMeta.effort } : {}),
+                ...(delivery === 'steer' ? { delivery } : {}),
                 ...(displayText && { displayText }), // Add displayText if provided
                 ...(queuedAt !== undefined ? { queuedAt } : {})
             }

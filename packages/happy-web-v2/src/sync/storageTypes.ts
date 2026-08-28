@@ -43,6 +43,8 @@ export const MetadataSchema = z.object({
     attachmentKinds: z.array(z.string()).optional(),
     /** The connected Claude runner can remove pending queue items by local id. */
     queueCancellation: z.boolean().optional(),
+    /** Explicit daemon/CLI feature negotiation. Optional; never default it. */
+    capabilities: z.array(z.string()).optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     startedFromDaemon: z.boolean().optional(),

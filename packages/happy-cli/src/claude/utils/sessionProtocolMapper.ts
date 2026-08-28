@@ -674,6 +674,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         const raw = message as RawJSONLines & {
             subtype?: string;
             is_error?: boolean;
+            interrupted?: boolean;
             errors?: string[];
             total_cost_usd?: number;
             duration_ms?: number;
@@ -685,7 +686,9 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 cache_read_input_tokens?: number;
             };
         };
-        const status: SessionTurnEndStatus = raw.is_error === true ? 'failed' : 'completed';
+        const status: SessionTurnEndStatus = raw.interrupted === true
+            ? 'cancelled'
+            : raw.is_error === true ? 'failed' : 'completed';
         const error = status === 'failed'
             ? raw.errors?.filter((item) => typeof item === 'string' && item.trim()).join('\n')
                 || state.pendingAssistantError

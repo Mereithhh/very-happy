@@ -1,11 +1,17 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
-import { MessageQueue2 } from "@/utils/MessageQueue2";
+import { MessageQueue2, type PendingAttachment } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
 import { NotificationProducer } from "./notificationProducer";
 import { notifyDaemonSessionEvent } from "@/daemon/controlClient";
+
+export type ClaudeSteerInput = {
+    message: string;
+    mode: EnhancedMode;
+    attachments?: PendingAttachment[];
+};
 
 export class Session {
     readonly path: string;
@@ -44,6 +50,9 @@ export class Session {
     private hadAssistantOutputThisTurn = false;
     /** Last assistant text snippet seen this turn, used as the reply_done body. */
     private lastAssistantSnippet: string | undefined;
+
+    /** Live remote-query input sink. Absent in local mode and between SDK queries. */
+    private steerHandler: ((input: ClaudeSteerInput) => Promise<boolean>) | null = null;
 
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
@@ -113,7 +122,23 @@ export class Session {
     cleanup = (): void => {
         clearInterval(this.keepAliveInterval);
         this.sessionFoundCallbacks = [];
+        this.steerHandler = null;
         logger.debug('[Session] Cleaned up resources');
+    }
+
+    /** Register the current remote query's Steer sink; null removes it. */
+    setSteerHandler = (handler: ((input: ClaudeSteerInput) => Promise<boolean>) | null): void => {
+        this.steerHandler = handler;
+    }
+
+    /**
+     * Attempt same-turn delivery. A stale Web "working" snapshot must never
+     * lose a message: once the turn is no longer thinking, return false and
+     * let runClaude fall back to the ordinary next-turn queue.
+     */
+    trySteer = async (input: ClaudeSteerInput): Promise<boolean> => {
+        if (!this.thinking || !this.steerHandler) return false;
+        return this.steerHandler(input);
     }
 
     onThinkingChange = (thinking: boolean) => {

@@ -57,17 +57,19 @@ describe('PermissionHandler SDK protocol', () => {
         });
     });
 
-    it('denies ExitPlanMode when the SDK mode switch fails', async () => {
+    it('allows ExitPlanMode without issuing a nested SDK mode switch', async () => {
         const { handler, getState, respond } = fixture();
-        handler.setPermissionModeUpdater(async () => { throw new Error('bridge unavailable'); });
+        const setPermissionMode = vi.fn(async () => undefined);
+        handler.setPermissionModeUpdater(setPermissionMode);
         const pending = handler.handleToolCall('ExitPlanMode', { plan: 'ship it' }, { permissionMode: 'plan' }, {
             signal: new AbortController().signal,
             toolUseID: 'plan-1',
             requestId: 'request-plan-1',
         });
         await respond({ id: 'plan-1', approved: true, mode: 'default', decision: 'approved' });
-        await expect(pending).resolves.toEqual(expect.objectContaining({ behavior: 'deny' }));
-        expect(getState().completedRequests?.['plan-1']?.status).toBe('denied');
+        await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: { plan: 'ship it' } });
+        expect(setPermissionMode).not.toHaveBeenCalled();
+        expect(getState().completedRequests?.['plan-1']?.status).toBe('approved');
     });
 
     it('rejects an already-aborted permission without publishing it', async () => {
