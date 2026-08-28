@@ -179,7 +179,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1'],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -952,6 +952,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             currentSession = sessionInstance;
         },
         onAbort: resetCurrentModeDefaults,
+        onPermissionModeChange: (mode) => {
+            currentPermissionMode = mode;
+            logger.debug(`[loop] Permission mode updated from live session RPC to: ${mode}`);
+        },
         mcpServers: {
             'happy': {
                 type: 'http' as const,

@@ -100,6 +100,105 @@ describe('PermissionHandler SDK protocol', () => {
         expect(getState().completedRequests?.['tool-inflight']?.status).toBe('canceled');
     });
 
+    it('live bypass resolves an already-pending ordinary tool and updates the SDK query', async () => {
+        const { handler, getState } = fixture();
+        const setPermissionMode = vi.fn(async () => undefined);
+        handler.setPermissionModeUpdater(setPermissionMode);
+        const pending = handler.handleToolCall('Write', { file_path: '/tmp/a', content: 'x' }, { permissionMode: 'default' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'write-1',
+            requestId: 'request-write-1',
+        });
+
+        await handler.setLivePermissionMode('bypassPermissions');
+
+        await expect(pending).resolves.toEqual({
+            behavior: 'allow',
+            updatedInput: { file_path: '/tmp/a', content: 'x' },
+        });
+        expect(setPermissionMode).toHaveBeenCalledWith('bypassPermissions');
+        expect(getState().requests).toEqual({});
+        expect(getState().completedRequests?.['write-1']?.status).toBe('approved');
+    });
+
+    it('does not auto-resolve ExitPlanMode or interaction requests during live bypass', async () => {
+        const { handler, getState, respond } = fixture();
+        const setPermissionMode = vi.fn(async () => undefined);
+        handler.setPermissionModeUpdater(setPermissionMode);
+        const plan = handler.handleToolCall('ExitPlanMode', { plan: 'ship it' }, { permissionMode: 'plan' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'plan-live',
+            requestId: 'request-plan-live',
+        });
+        const interaction = handler.handleElicitation({
+            serverName: 'calendar', message: 'Choose', mode: 'form', requestedSchema: { type: 'object' },
+        }, { signal: new AbortController().signal, requestId: 'elicit-live' });
+
+        await handler.setLivePermissionMode('bypassPermissions');
+
+        expect(getState().requests?.['plan-live']).toBeDefined();
+        expect(getState().requests?.['elicit-live']).toBeDefined();
+        expect(setPermissionMode).not.toHaveBeenCalled();
+        await respond({ id: 'plan-live', approved: false, reason: 'stop' });
+        await respond({ id: 'elicit-live', approved: false });
+        await expect(plan).resolves.toEqual({ behavior: 'deny', message: 'stop' });
+        await expect(interaction).resolves.toEqual({ action: 'decline' });
+        await vi.waitFor(() => expect(setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+    });
+
+    it('rolls the handler back when the SDK rejects a live mode change', async () => {
+        const { handler } = fixture();
+        handler.setPermissionModeUpdater(vi.fn(async () => { throw new Error('sdk failed'); }));
+        await expect(handler.setLivePermissionMode('bypassPermissions')).rejects.toThrow('sdk failed');
+
+        const pending = handler.handleToolCall('Bash', { command: 'pwd' }, { permissionMode: 'default' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'after-failure',
+            requestId: 'request-after-failure',
+        });
+        let settled = false;
+        void pending.then(() => { settled = true; }, () => undefined);
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        const rejected = expect(pending).rejects.toThrow('Session reset');
+        handler.reset();
+        await rejected;
+    });
+
+    it('serializes rapid live mode updates in request order', async () => {
+        const { handler } = fixture();
+        const first = createDeferred<void>();
+        const calls: string[] = [];
+        handler.setPermissionModeUpdater(vi.fn(async (mode) => {
+            calls.push(mode);
+            if (mode === 'acceptEdits') await first.promise;
+        }));
+
+        const one = handler.setLivePermissionMode('acceptEdits');
+        const two = handler.setLivePermissionMode('bypassPermissions');
+        await vi.waitFor(() => expect(calls).toEqual(['acceptEdits']));
+        first.resolve();
+        await Promise.all([one, two]);
+        expect(calls).toEqual(['acceptEdits', 'bypassPermissions']);
+    });
+
+    it('does not let a deferred interaction update overwrite a newer live mode', async () => {
+        const { handler, respond } = fixture();
+        const calls: string[] = [];
+        handler.setPermissionModeUpdater(vi.fn(async (mode) => { calls.push(mode); }));
+        const interaction = handler.handleElicitation({
+            serverName: 'calendar', message: 'Choose', mode: 'form', requestedSchema: { type: 'object' },
+        }, { signal: new AbortController().signal, requestId: 'elicit-race' });
+
+        await handler.setLivePermissionMode('acceptEdits');
+        await respond({ id: 'elicit-race', approved: false });
+        await handler.setLivePermissionMode('bypassPermissions');
+        await expect(interaction).resolves.toEqual({ action: 'decline' });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(calls).toEqual(['bypassPermissions']);
+    });
+
     it('round-trips MCP elicitation form content', async () => {
         const { handler, getState, respond } = fixture();
         const pending = handler.handleElicitation({
@@ -132,3 +231,9 @@ describe('PermissionHandler SDK protocol', () => {
         await expect(pending).resolves.toEqual({ behavior: 'completed', result: 'retry_fallback' });
     });
 });
+
+function createDeferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((res) => { resolve = res; });
+    return { promise, resolve };
+}

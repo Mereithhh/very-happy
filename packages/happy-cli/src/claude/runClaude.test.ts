@@ -307,7 +307,9 @@ describe('runClaude remote JSONL scanner', () => {
             expect(sessionClient.onUserMessage).toHaveBeenCalled();
         });
         expect(api.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
-            metadata: expect.objectContaining({ capabilities: ['claude-steer-v1'] }),
+            metadata: expect.objectContaining({
+                capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
+            }),
         }));
 
         const trySteer = vi.fn(async () => true);
@@ -336,6 +338,19 @@ describe('runClaude remote JSONL scanner', () => {
         expect(queuePush).toHaveBeenCalledWith(
             'late steering message',
             expect.objectContaining({ permissionMode: 'default' }),
+            [],
+            undefined,
+        );
+
+        loopOptions.onPermissionModeChange('bypassPermissions');
+        await userMessageHandler({
+            role: 'user',
+            content: { type: 'text', text: 'follow live permission mode' },
+            meta: { sentFrom: 'web' },
+        });
+        expect(queuePush).toHaveBeenLastCalledWith(
+            'follow live permission mode',
+            expect.objectContaining({ permissionMode: 'bypassPermissions' }),
             [],
             undefined,
         );

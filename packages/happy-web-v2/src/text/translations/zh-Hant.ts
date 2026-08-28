@@ -370,7 +370,7 @@ export const zhHant: PartialTranslationStructure = {
         chat: {
             sessionSettings: '工作階段設定',
             sessionSettingsTitle: '工作階段設定',
-            sessionSettingsDescription: '變更會套用到這個對話的下一則訊息。',
+            sessionSettingsDescription: 'Claude 執行中可即時切換權限；其他變更會套用到下一則訊息。',
             defaultModelUnknown: 'CLI 預設',
             defaultModelResolved: ({ model }: { model: string }) => `${model}（預設）`,
         },

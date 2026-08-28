@@ -27,6 +27,12 @@ interface SessionModeChangeRequest {
     to: 'remote' | 'local';
 }
 
+export type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+interface SessionPermissionModeChangeResponse {
+    mode: ClaudePermissionMode;
+}
+
 // Bash operation types
 interface SessionBashRequest {
     command: string;
@@ -1162,6 +1168,18 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 /** Gracefully redirect a live Claude turn while preserving the long-lived query. */
 export async function sessionSteer(sessionId: string): Promise<void> {
     await apiSocket.sessionRPC(sessionId, 'steer', {});
+}
+
+/** Change the permission mode of the active Claude SDK Query. */
+export async function sessionSetPermissionMode(
+    sessionId: string,
+    mode: string,
+): Promise<SessionPermissionModeChangeResponse> {
+    return apiSocket.sessionRPC<SessionPermissionModeChangeResponse, { mode: string }>(
+        sessionId,
+        'set-permission-mode',
+        { mode },
+    );
 }
 
 export async function sessionCancelQueuedMessage(

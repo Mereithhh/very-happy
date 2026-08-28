@@ -25,6 +25,7 @@ import { appendStagedAttachmentsToPrompt, chatAttachmentDirectory, stageClaudeAt
 import { configuration } from '@/configuration';
 import { ensurePrivateDirectory } from '@/utils/secureFiles';
 import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './utils/interruptNoise';
+import { parseClaudePermissionMode, type ClaudeSdkPermissionMode } from './utils/permissionMode';
 
 interface PermissionsField {
     date: number;
@@ -33,7 +34,10 @@ interface PermissionsField {
     allowedTools?: string[];
 }
 
-export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
+export async function claudeRemoteLauncher(
+    session: Session,
+    onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void,
+): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
 
     // Check if we have a TTY for UI rendering
@@ -113,6 +117,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     });
     session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
+
+    let livePermissionModeHandler: ((mode: ClaudeSdkPermissionMode) => Promise<ClaudeSdkPermissionMode>) | null = null;
+    session.client.rpcHandlerManager.registerHandler<{ mode?: unknown }, { mode: ClaudeSdkPermissionMode }>(
+        'set-permission-mode',
+        async (request) => {
+            const requestedMode = parseClaudePermissionMode(request?.mode);
+            if (!requestedMode) throw new Error('Invalid Claude permission mode');
+            if (!livePermissionModeHandler) throw new Error('No active Claude query');
+            return { mode: await livePermissionModeHandler(requestedMode) };
+        },
+    );
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
@@ -442,6 +457,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
+                        livePermissionModeHandler = async (nextMode) => {
+                            await permissionHandler.setLivePermissionMode(nextMode);
+                            if (mode) {
+                                mode = { ...mode, permissionMode: nextMode };
+                                modeHash = session.queue.modeHasher(mode);
+                            }
+                            onPermissionModeChange?.(nextMode);
+                            return nextMode;
+                        };
                     },
                     onThinkingChange: session.onThinkingChange,
                     claudeEnvVars: session.claudeEnvVars,
@@ -511,6 +535,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
                 turnSteering.reset();
                 session.setSteerHandler(null);
+                livePermissionModeHandler = null;
+                permissionHandler.setPermissionModeUpdater(undefined);
                 sdkToLogConverter.resetTransientState();
 
                 logger.debug('[remote]: launch finally');

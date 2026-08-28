@@ -50,15 +50,16 @@ export async function createChatOrConfigure(
     inFlight = true;
     try {
         const agent = normalizeAgentKey(state.settings.newSessionAgent);
+        const permissionMode = resolveNewSessionPermissionMode(
+            state.settings.agentDefaultOverrides,
+            agent,
+            state.localSettings.newSessionReviewFirst,
+        );
         const res = await machineSpawnNewSession({
             machineId: decision.machineId,
             directory: decision.directory,
             agent,
-            permissionMode: resolveNewSessionPermissionMode(
-                state.settings.agentDefaultOverrides,
-                agent,
-                state.localSettings.newSessionReviewFirst,
-            ),
+            permissionMode,
         });
         if (res.type === 'requestToApproveDirectoryCreation') {
             // The remembered directory vanished — never silently mkdir from the
@@ -70,6 +71,7 @@ export async function createChatOrConfigure(
             Modal.alert(t('common.error'), res.errorMessage || t('errors.networkError'));
             return;
         }
+        storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
         recordRecentMachinePath(decision.machineId, decision.directory);
         navigate(`/session/${res.sessionId}`);
     } catch (e) {

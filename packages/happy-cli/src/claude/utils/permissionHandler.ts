@@ -19,6 +19,7 @@ import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
+import { mapToClaudeMode, type ClaudeSdkPermissionMode } from './permissionMode';
 
 interface PermissionResponse {
     id: string;
@@ -77,10 +78,12 @@ export class PermissionHandler {
     private allowedTools = new Set<string>();
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
-    private permissionMode: PermissionMode = 'default';
+    private permissionMode: ClaudeSdkPermissionMode = 'default';
     private onPermissionRequestCallback?: (toolCallId: string) => void;
     /** Callback to change permission mode on the active query (set by claudeRemote) */
-    private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
+    private setPermissionModeCallback?: (mode: ClaudeSdkPermissionMode) => Promise<void>;
+    private modeChangeQueue: Promise<void> = Promise.resolve();
+    private deferredPermissionMode?: ClaudeSdkPermissionMode;
 
     constructor(session: Session) {
         this.session = session;
@@ -95,15 +98,102 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
-        this.permissionMode = mode;
+        this.permissionMode = mapToClaudeMode(mode);
     }
 
     /**
      * Set callback to dynamically change permission mode on the active query.
      * Called by claudeRemote after the Query object is created.
      */
-    setPermissionModeUpdater(callback: (mode: PermissionMode) => Promise<void>) {
+    setPermissionModeUpdater(callback: ((mode: ClaudeSdkPermissionMode) => Promise<void>) | undefined) {
         this.setPermissionModeCallback = callback;
+    }
+
+    /**
+     * Apply a user-requested mode to the active SDK Query. Mode changes are
+     * serialized so rapid menu selections cannot finish out of order.
+     *
+     * A live Query can be blocked inside canUseTool. When the requested mode
+     * would have auto-allowed that ordinary tool, finish the callback first;
+     * interactive prompts and ExitPlanMode deliberately remain pending.
+     */
+    setLivePermissionMode(mode: ClaudeSdkPermissionMode): Promise<void> {
+        const task = this.modeChangeQueue.then(() => this.applyLivePermissionMode(mode));
+        this.modeChangeQueue = task.catch(() => undefined);
+        return task;
+    }
+
+    private async applyLivePermissionMode(mode: ClaudeSdkPermissionMode): Promise<void> {
+        if (!this.setPermissionModeCallback) {
+            throw new Error('active Claude query is not ready');
+        }
+
+        const previousMode = this.permissionMode;
+        this.permissionMode = mode;
+        this.deferredPermissionMode = undefined;
+
+        try {
+            const autoApproved = [...this.pendingRequests.entries()].filter(([, pending]) =>
+                pending.kind === 'tool' && this.modeAutoAllowsTool(mode, pending.toolName));
+            for (const [id, pending] of autoApproved) {
+                if (pending.kind !== 'tool' || !this.pendingRequests.delete(id)) continue;
+                const response: PermissionResponse = {
+                    id,
+                    approved: true,
+                    decision: 'approved',
+                    reason: `Approved by live permission mode ${mode}`,
+                };
+                const effectiveResponse = await this.handlePermissionResponse(response, pending);
+                this.responses.set(id, { ...effectiveResponse, receivedAt: Date.now() });
+                this.recordCompletedRequest(id, effectiveResponse);
+            }
+
+            if (this.pendingRequests.size > 0) {
+                // The Query is still parked inside a canUseTool/interaction
+                // callback. Sending another SDK control request now can wait
+                // behind that callback indefinitely. The local handler already
+                // enforces the requested mode; update the Query after the last
+                // pending callback completes.
+                this.deferredPermissionMode = mode;
+                return;
+            }
+
+            // Give an auto-resolved canUseTool continuation one event-loop turn
+            // to send its response before issuing the mode control request.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            await this.setPermissionModeCallback(mode);
+        } catch (error) {
+            this.permissionMode = previousMode;
+            if (this.deferredPermissionMode === mode) this.deferredPermissionMode = undefined;
+            throw error;
+        }
+    }
+
+    private scheduleDeferredPermissionModeUpdate(): void {
+        const mode = this.deferredPermissionMode;
+        if (!mode || this.pendingRequests.size > 0) return;
+        this.deferredPermissionMode = undefined;
+        setImmediate(() => {
+            const task = this.modeChangeQueue.then(async () => {
+                // A newer live selection may have been queued after the
+                // interaction completed but before this deferred update ran.
+                // Never let the older control request overwrite it in the SDK.
+                if (!this.setPermissionModeCallback || this.permissionMode !== mode) return;
+                await this.setPermissionModeCallback(mode);
+            });
+            this.modeChangeQueue = task.catch((error) => {
+                logger.debug('[PermissionHandler] Deferred SDK permission mode update failed', error);
+            });
+        });
+    }
+
+    private modeAutoAllowsTool(mode: ClaudeSdkPermissionMode, toolName: string): boolean {
+        if (toolName === 'AskUserQuestion') return false;
+        const descriptor = getToolDescriptor(toolName);
+        if (descriptor.exitPlan) return false;
+        if (mode === 'bypassPermissions') return true;
+        if (mode === 'acceptEdits') return descriptor.edit;
+        return mode === 'plan' && !descriptor.dangerous;
     }
 
     /**
@@ -465,6 +555,31 @@ export class PermissionHandler {
         });
     }
 
+    private recordCompletedRequest(id: string, response: PermissionResponse): void {
+        this.session.client.updateAgentState((currentState) => {
+            const request = currentState.requests?.[id];
+            if (!request) return currentState;
+            const requests = { ...currentState.requests };
+            delete requests[id];
+            return {
+                ...currentState,
+                requests,
+                completedRequests: {
+                    ...currentState.completedRequests,
+                    [id]: {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: response.approved ? 'approved' : 'denied',
+                        reason: response.reason,
+                        mode: response.mode,
+                        decision: response.decision,
+                        allowedTools: response.allowTools,
+                    },
+                },
+            };
+        });
+    }
+
 
     /**
      * Parses Bash permission strings into literal and prefix sets
@@ -517,6 +632,7 @@ export class PermissionHandler {
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
         this.permissionMode = 'default';
+        this.deferredPermissionMode = undefined;
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
@@ -585,29 +701,8 @@ export class PermissionHandler {
                     : { behavior: 'cancelled' });
             }
 
-            // Move processed request to completedRequests
-            this.session.client.updateAgentState((currentState) => {
-                const request = currentState.requests?.[id];
-                if (!request) return currentState;
-                let r = { ...currentState.requests };
-                delete r[id];
-                return {
-                    ...currentState,
-                    requests: r,
-                    completedRequests: {
-                        ...currentState.completedRequests,
-                        [id]: {
-                            ...request,
-                            completedAt: Date.now(),
-                            status: effectiveResponse.approved ? 'approved' : 'denied',
-                            reason: effectiveResponse.reason,
-                            mode: effectiveResponse.mode,
-                            decision: effectiveResponse.decision,
-                            allowedTools: effectiveResponse.allowTools
-                        }
-                    }
-                };
-            });
+            this.recordCompletedRequest(id, effectiveResponse);
+            this.scheduleDeferredPermissionModeUpdate();
         });
     }
 

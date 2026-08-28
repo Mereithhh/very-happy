@@ -16,7 +16,7 @@ import {
 import { Modal } from '@/modal';
 import { useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
-import { useMachine, useAllSessions, useLocalSetting, useSetting } from '@/sync/storage';
+import { storage, useMachine, useAllSessions, useLocalSetting, useSetting } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { sync } from '@/sync/sync';
 import {
@@ -128,6 +128,7 @@ export function MachineScreen() {
         });
       }
       if (result.type === 'success') {
+        storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
         setPathInput('');
         navigate(`/session/${result.sessionId}`);
       } else if (result.type === 'error') {

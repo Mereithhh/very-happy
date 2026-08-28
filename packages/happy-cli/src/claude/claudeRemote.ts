@@ -134,6 +134,10 @@ export async function claudeRemote(opts: {
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         permissionMode: mapToClaudeMode(initial.mode.permissionMode),
+        // This is only the SDK safety opt-in; permissionMode/canUseTool still
+        // enforce the selected policy. It must be enabled at Query creation so
+        // a later explicit live switch to bypassPermissions can succeed.
+        allowDangerouslySkipPermissions: true,
         model: initial.mode.model,
         fallbackModel: initial.mode.fallbackModel,
         customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,

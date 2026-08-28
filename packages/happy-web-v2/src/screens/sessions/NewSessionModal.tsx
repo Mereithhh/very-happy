@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bookmark, Check, X } from 'lucide-react';
-import { useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
+import { storage, useAllMachines, useLocalSetting, useSetting, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, pickDefaultMachineId } from '@/utils/machineUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { recordRecentMachinePath } from '@/app/newChat';
@@ -155,11 +155,12 @@ export function NewSessionModal({
   }
 
   async function spawn(approve = false) {
+    const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst);
     const res = await machineSpawnNewSession({
       machineId,
       directory: resolveDir(trimmed),
       agent,
-      permissionMode: resolveNewSessionPermissionMode(agentDefaultOverrides, agent, reviewFirst),
+      permissionMode,
       approvedNewDirectoryCreation: approve,
     });
     if (res.type === 'requestToApproveDirectoryCreation') {
@@ -175,6 +176,7 @@ export function NewSessionModal({
       toast.error(res.errorMessage || t('errors.networkError'));
       return null;
     }
+    storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
     return res.sessionId;
   }
 

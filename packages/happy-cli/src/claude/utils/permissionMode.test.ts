@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, parseClaudePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -49,6 +49,15 @@ describe('mapToClaudeMode', () => {
                 expect(validClaudeModes).toContain(result);
             });
         });
+    });
+});
+
+describe('parseClaudePermissionMode', () => {
+    it('normalizes valid Happy modes and rejects untrusted values', () => {
+        expect(parseClaudePermissionMode('yolo')).toBe('bypassPermissions');
+        expect(parseClaudePermissionMode('plan')).toBe('plan');
+        expect(parseClaudePermissionMode('not-a-mode')).toBeNull();
+        expect(parseClaudePermissionMode(42)).toBeNull();
     });
 });
 
