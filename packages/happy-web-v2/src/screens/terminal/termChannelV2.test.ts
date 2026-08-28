@@ -175,6 +175,14 @@ describe('mobile terminal gesture and keyboard consent boundary', () => {
         expect(screen.includes("term.buffer.active.type === 'alternate'"))
             .toBe(true);
     });
+
+    it('exposes Enter on the assistive bar and a mutually exclusive Web keyboard', () => {
+        expect(screen.includes("{ label: 'Enter', seq: '\\r', aria: 'Enter', wide: true }")).toBe(true);
+        expect(screen.includes("dispatchFocus({ type: 'web-keyboard', on: opening })")).toBe(true);
+        expect(screen.includes('webKeyboard: focusStateRef.current.webKeyboard')).toBe(true);
+        expect(screen.includes('<TermWebKeyboard onBytes={sendBarKey} />')).toBe(true);
+        expect(css).toMatch(/\.term-webkbd \{[\s\S]{0,400}overflow: hidden;/);
+    });
 });
 
 describe('paste routing (§D1b 粘贴专路)', () => {

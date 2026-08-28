@@ -1635,6 +1635,16 @@ export const en = {
         // Mobile key bar: hide the soft keyboard (blur the terminal)
         hideKeyboard: 'Hide keyboard',
         toggleKeyboard: 'Show or hide keyboard',
+        systemKeyboard: 'Switch to system keyboard',
+        webKeyboard: 'Web keyboard',
+        webKeyboardLabel: 'English Web keyboard',
+        webKeyboardShift: 'Shift',
+        webKeyboardCapsLock: 'Caps lock',
+        webKeyboardSymbols: 'Numbers and symbols',
+        webKeyboardLetters: 'Letters',
+        webKeyboardBackspace: 'Backspace',
+        webKeyboardSpace: 'Space',
+        webKeyboardEnter: 'Enter',
         // Mobile key bar: toggle line-input mode (compose a whole line in a
         // plain textarea — IME/dictation friendly — and send it on Enter)
         inputBarToggle: 'Line input',

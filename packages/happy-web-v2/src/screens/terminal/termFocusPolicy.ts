@@ -25,6 +25,8 @@
  *  - dismissed:  user closed the keyboard; suppress automatic terminal refocus.
  *  - barMode:    line-input mode — a real <textarea> below the key bar owns
  *                typing; the terminal body must never steal its focus.
+ *  - webKeyboard: our focusless Web keyboard owns typing; native input must
+ *                 stay blurred until the user explicitly switches back.
  *  - selectMode: freeze-output select/copy mode; no focus changes at all.
  *
  * Events → actions are pure data; WebTerminalScreen executes the actions
@@ -36,6 +38,8 @@ export interface TermFocusState {
     dismissed: boolean;
     /** Line-input mode: the input bar owns typing; terminal is read-only. */
     barMode: boolean;
+    /** Pure Web keyboard mode: key buttons emit bytes; native inputs stay down. */
+    webKeyboard: boolean;
     /** Select/copy mode: output frozen, focus left alone entirely. */
     selectMode: boolean;
 }
@@ -60,6 +64,8 @@ export type TermFocusEvent =
     | { type: 'focus-settled'; target: 'terminal' | 'input-bar' | 'none' }
     /** Key bar toggle between per-key mode and line-input mode. */
     | { type: 'toggle-bar-mode' }
+    /** Show/hide the focusless, fully controlled Web keyboard. */
+    | { type: 'web-keyboard'; on: boolean }
     /** Select/copy mode toggled. */
     | { type: 'select-mode'; on: boolean };
 
@@ -95,6 +101,7 @@ export const TERMINAL_TOUCH_END_OPTIONS: AddEventListenerOptions = Object.freeze
 export function completeTerminalTouchTap(input: {
     inputOwnership: 'xterm' | 'own';
     barMode: boolean;
+    webKeyboard: boolean;
     selectMode: boolean;
     distanceSquared: number;
     threshold: number;
@@ -109,7 +116,7 @@ export function completeTerminalTouchTap(input: {
     // The line-input bar also needs to claim the touch. Its tap action blurs
     // the bar; allowing Chrome's compatibility mousedown through would then
     // focus xterm's hidden textarea and reopen the keyboard immediately.
-    if (input.inputOwnership === 'own' || input.barMode) {
+    if (input.inputOwnership === 'own' || input.barMode || input.webKeyboard) {
         if (input.cancelable) effects.preventDefault();
         effects.stopPropagation();
     }
@@ -127,6 +134,10 @@ export function reduceTermFocus(
         case 'tap':
             // Select mode: the gesture belongs to the OS text selection.
             if (s.selectMode) return { state: s, action: 'none' };
+            // The Web keyboard sends bytes from its own buttons. A terminal
+            // tap must not focus the hidden textarea and raise the OS keyboard
+            // behind it.
+            if (s.webKeyboard) return { state: s, action: 'none' };
             // Bar mode: the terminal body is read-only — a tap means "let me
             // see the output", i.e. put the keyboard away (normal web
             // semantics: tapping a non-editable area blurs).
@@ -136,12 +147,12 @@ export function reduceTermFocus(
             return { state: { ...s, dismissed: false }, action: 'focus-terminal' };
 
         case 'dismiss-key':
-            return { state: { ...s, dismissed: true }, action: 'blur-all' };
+            return { state: { ...s, dismissed: true, webKeyboard: false }, action: 'blur-all' };
 
         case 'show-keyboard':
             if (s.selectMode) return { state: s, action: 'none' };
             return {
-                state: { ...s, dismissed: false },
+                state: { ...s, dismissed: false, webKeyboard: false },
                 action: s.barMode ? 'focus-input-bar' : 'focus-terminal',
             };
 
@@ -176,16 +187,38 @@ export function reduceTermFocus(
             // opens on it). Leaving: back to per-key — focus the terminal.
             // Both are explicit gestures, so they clear a dismissal.
             return {
-                state: { ...s, barMode, dismissed: false },
+                state: { ...s, barMode, dismissed: false, webKeyboard: false },
                 action: barMode ? 'focus-input-bar' : 'focus-terminal',
             };
         }
+
+        case 'web-keyboard':
+            if (s.selectMode) return { state: s, action: 'none' };
+            if (e.on) {
+                // Direct-byte mode and the whole-line input bar cannot both be
+                // active: visually leaving the line bar mounted would imply
+                // that Web-key presses edit it, when they intentionally go to
+                // the PTY. Activating Web mode therefore returns to per-key.
+                return {
+                    state: { ...s, barMode: false, webKeyboard: true, dismissed: true },
+                    action: 'blur-all',
+                };
+            }
+            // Closing the Web keyboard maximizes the terminal without raising
+            // the OS keyboard. The explicit system-key button owns that switch.
+            return {
+                state: { ...s, webKeyboard: false, dismissed: true },
+                action: 'blur-all',
+            };
 
         case 'select-mode':
             if (e.on) {
                 // Entering select mode intentionally drops the keyboard so the
                 // OS long-press selection isn't fighting the caret.
-                return { state: { ...s, selectMode: true, dismissed: true }, action: 'blur-all' };
+                return {
+                    state: { ...s, selectMode: true, webKeyboard: false, dismissed: true },
+                    action: 'blur-all',
+                };
             }
             // Leaving selection is a view-mode action, not a request to type.
             // Keep the keyboard down until the explicit toggle/tap.
@@ -196,5 +229,6 @@ export function reduceTermFocus(
 export const initialTermFocusState: TermFocusState = Object.freeze({
     dismissed: false,
     barMode: false,
+    webKeyboard: false,
     selectMode: false,
 });

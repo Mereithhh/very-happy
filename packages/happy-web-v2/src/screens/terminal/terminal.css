@@ -453,6 +453,78 @@
   border-color: var(--term-accent);
   font-weight: 600;
 }
+
+/* ── Fully controlled mobile Web keyboard (B-255) ─────────────────────────
+   Unlike the system-keyboard path, this surface never focuses an input and
+   never invokes IME/autocorrect. Every button maps straight to PTY bytes. The
+   five compact rows cover printable ASCII without horizontal overflow at the
+   390px contract viewport; the terminal remains the same always-dark stage. */
+.term-webkbd {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 7px 6px;
+  background: var(--term-chrome-bg);
+  border-top: 1px solid var(--term-chrome-line);
+  touch-action: manipulation;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.term-webkbd-row {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+.term-webkbd-gutter {
+  flex: var(--term-webkbd-inset) 1 0;
+  min-width: 0;
+}
+.term-webkbd-key {
+  flex: var(--term-webkbd-units) 1 0;
+  min-width: 0;
+  height: 36px;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--term-chrome-line);
+  border-radius: 7px;
+  background: var(--term-chrome-panel);
+  color: var(--term-chrome-fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.term-webkbd-key:active {
+  background: color-mix(in srgb, var(--term-chrome-fg) 16%, var(--term-chrome-panel));
+  transform: translateY(1px);
+}
+.term-webkbd-key:focus-visible {
+  outline: 2px solid var(--term-accent);
+  outline-offset: 1px;
+}
+.term-webkbd-key.is-armed {
+  background: var(--term-accent);
+  border-color: var(--term-accent);
+  color: var(--term-accent-ink);
+  font-weight: 600;
+}
+.term-webkbd-key.is-primary {
+  background: var(--term-chrome-fg);
+  border-color: var(--term-chrome-fg);
+  color: var(--term-chrome-bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.term-webkbd-key.is-space::after {
+  content: '';
+  width: min(48px, 50%);
+  height: 1px;
+  background: var(--term-chrome-dim);
+}
 /* Drag overlay sits ON the always-dark pane — like the xterm THEME and the
    pane scrollbar above, it keeps dark-theme constants (phosphor teal) instead
    of theme vars: light-theme --accent/--accent-2 are darkened teals that would

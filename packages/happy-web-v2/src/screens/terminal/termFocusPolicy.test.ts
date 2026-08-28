@@ -19,6 +19,7 @@ describe('completeTerminalTouchTap', () => {
         const handled = completeTerminalTouchTap({
             inputOwnership: 'own',
             barMode: false,
+            webKeyboard: false,
             selectMode: false,
             distanceSquared: 0,
             threshold: 12,
@@ -51,6 +52,13 @@ describe('completeTerminalTouchTap', () => {
 
     it('claims a body tap in line-input mode so Chrome cannot reopen xterm after the bar blurs', () => {
         expect(runTap({ inputOwnership: 'xterm', barMode: true })).toEqual({
+            handled: true,
+            calls: ['prevent-default', 'stop-propagation', 'dispatch-focus'],
+        });
+    });
+
+    it('claims a body tap in Web-keyboard mode so xterm cannot raise the OS keyboard behind it', () => {
+        expect(runTap({ inputOwnership: 'xterm', webKeyboard: true })).toEqual({
             handled: true,
             calls: ['prevent-default', 'stop-propagation', 'dispatch-focus'],
         });
@@ -91,6 +99,12 @@ describe('termFocusPolicy', () => {
             const { state, action } = run(S({ barMode: true }), { type: 'tap' });
             expect(action).toBe('blur-input-bar');
             expect(state.barMode).toBe(true); // mode itself is sticky
+        });
+
+        it('does not summon the OS keyboard while the Web keyboard owns input', () => {
+            const { state, action } = run(S({ webKeyboard: true, dismissed: true }), { type: 'tap' });
+            expect(action).toBe('none');
+            expect(state.webKeyboard).toBe(true);
         });
     });
 
@@ -174,8 +188,9 @@ describe('termFocusPolicy', () => {
 
     describe('explicit keyboard control', () => {
         it('shows the active per-key input surface', () => {
-            const { state, action } = run(S({ dismissed: true }), { type: 'show-keyboard' });
+            const { state, action } = run(S({ dismissed: true, webKeyboard: true }), { type: 'show-keyboard' });
             expect(state.dismissed).toBe(false);
+            expect(state.webKeyboard).toBe(false);
             expect(action).toBe('focus-terminal');
         });
 
@@ -184,6 +199,34 @@ describe('termFocusPolicy', () => {
                 .toBe('focus-input-bar');
             expect(run(S({ selectMode: true, dismissed: true }), { type: 'show-keyboard' }).action)
                 .toBe('none');
+        });
+    });
+
+    describe('Web keyboard', () => {
+        it('takes direct-byte ownership, closes line mode, and blurs native inputs', () => {
+            const { state, action } = run(S({ barMode: true }), { type: 'web-keyboard', on: true });
+            expect(state).toEqual(S({ dismissed: true, webKeyboard: true }));
+            expect(action).toBe('blur-all');
+        });
+
+        it('can close without unexpectedly raising the system keyboard', () => {
+            const { state, action } = run(
+                S({ dismissed: true, webKeyboard: true }),
+                { type: 'web-keyboard', on: false },
+            );
+            expect(state.webKeyboard).toBe(false);
+            expect(state.dismissed).toBe(true);
+            expect(action).toBe('blur-all');
+        });
+
+        it('is dismissed when line-input or selection mode takes over', () => {
+            const line = run(S({ webKeyboard: true, dismissed: true }), { type: 'toggle-bar-mode' });
+            expect(line.state.webKeyboard).toBe(false);
+            expect(line.action).toBe('focus-input-bar');
+
+            const select = run(S({ webKeyboard: true }), { type: 'select-mode', on: true });
+            expect(select.state.webKeyboard).toBe(false);
+            expect(select.action).toBe('blur-all');
         });
     });
 
