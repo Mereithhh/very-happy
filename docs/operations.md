@@ -25,10 +25,10 @@ The hosted service is server-trusted, not E2E. The server can recover account
 secrets and relay remote execution to a user's connected daemon. Treat access to
 vh-us, its environment, backups and deploy key as high impact.
 
-As of 2026-08-26 production is still the legacy `happy-server:3005` topology.
-The blue-green code below is implemented but remains inactive until the explicit
-groundwork and shadow gates complete; do not infer rollout state from repository
-support alone.
+Production has completed the explicit groundwork and shadow gates and now uses
+the fixed-slot blue-green topology. `/opt/happy/release/state.env` is the
+authority for the active/rollback slot, image digest and release; never infer
+the current slot from repository support or a historical release note.
 
 Production secret values live only on vh-us in `/opt/happy/.env`. Documentation and
 Git contain variable names only. Relevant variables include
@@ -214,6 +214,13 @@ vh-update
 # Repository-owned equivalent/fallback:
 bash scripts/update-daemon.sh
 ```
+
+`vh-update` performs a daemon handover; it deliberately does not kill agent
+session wrapper processes that were already running. Those wrappers and their
+active SDK Query keep the CLI code loaded at their own start time. Verify a new
+CLI capability with a session started after the upgrade, or explicitly stop and
+resume the target session when interrupting it is acceptable; daemon version
+alone is not evidence that an existing session hot-loaded the new capability.
 
 The daemon needs `~/.local/bin` in PATH to find Claude Code. SSH and launchd do
 not source interactive `.zshrc`, so the LaunchAgent wrapper sets PATH explicitly.

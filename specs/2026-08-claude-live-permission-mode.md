@@ -1,8 +1,9 @@
 # Claude SDK live permission mode
 
-**Status:** Final
+**Status:** Shipped
 **Date:** 2026-08-28
 **Backlog:** B-254
+**Release:** PR #94 / `main@8644d360e`; Server/Web deploy `33174016123`; CLI `v0.2.89` publish `33174434739`, tag smoke `33174434738`; mac-office daemon installed/running `0.2.89`.
 
 ## Problem
 
