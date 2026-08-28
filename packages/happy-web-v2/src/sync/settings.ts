@@ -99,9 +99,8 @@ export const SettingsSchema = z.object({
     })).describe('Saved working-directory presets for new sessions'),
     // Legacy "remember last selection" fields. Kept in the schema for wire
     // compatibility with old clients/stored blobs, but deliberately NOT read
-    // anywhere: new-session defaults come from agentDefaultOverrides (explicit
-    // settings) only, so a one-off model pick can never silently become the
-    // default for every future session.
+    // anywhere: new-session defaults come from agentDefaultOverrides, which is
+    // updated by both Settings → Agents and the conversation mode selectors.
     lastUsedAgent: z.string().nullable().describe('Legacy; unused. New sessions use newSessionAgent'),
     lastUsedPermissionMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),
     lastUsedModelMode: z.string().nullable().describe('Legacy; unused. New sessions use agentDefaultOverrides'),

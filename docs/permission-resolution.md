@@ -40,9 +40,10 @@ Do not infer a stronger sandbox than the selected agent actually provides.
 The production entry points—quick create, the New Session dialog, and machine
 detail—resolve the initial mode in this order:
 
-1. If the device's **Review Changes First** toggle is on, use the agent-specific
-   review-first mode.
-2. Otherwise use the explicit per-agent override from **Settings → Agents**.
+1. Use the explicit per-agent default chosen in **Settings → Agents** or in
+   that agent's conversation composer.
+2. Otherwise, if the device's **Review Changes First** toggle is on, use the
+   agent-specific review-first mode.
 3. Otherwise use the established code default (`bypassPermissions` for Claude,
    `yolo` for Codex, adapter default for the others). This third branch is for
    devices that explicitly kept historical auto-apply behavior.
@@ -52,10 +53,12 @@ daemon allowlists it before adding `--permission-mode` to the child process.
 
 ## During a session
 
-The session input's permission selector updates the per-session mode. Outbound
-messages prefer that per-session value, then an explicit per-agent override.
-The CLI validates incoming mode values before applying them. A crafted unknown
-mode cannot widen access.
+The session input's model, permission, and effort selectors update both the
+current session and that agent's synced default. New sessions therefore inherit
+the latest explicit choice on every device. Outbound messages prefer the
+per-session value, then the explicit per-agent default. The CLI validates
+incoming mode values before applying them. A crafted unknown mode cannot widen
+access.
 
 ## Managed sandbox exception
 
