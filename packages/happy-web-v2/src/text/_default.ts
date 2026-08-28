@@ -537,6 +537,12 @@ export const en = {
             toolError: 'Error',
             toolDone: 'Done',
             usedTools: ({ count }: { count: number }) => count === 1 ? '1 tool call' : `${count} tool calls`,
+            activityElapsed: ({ seconds }: { seconds: number }) => {
+                if (seconds < 60) return `Elapsed ${seconds}s`;
+                const minutes = Math.floor(seconds / 60);
+                const remainder = seconds % 60;
+                return remainder === 0 ? `Elapsed ${minutes}m` : `Elapsed ${minutes}m ${remainder}s`;
+            },
             modelLabel: 'model',
             permissionLabel: 'mode',
             effortLabel: 'effort',

@@ -6,7 +6,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useSession, useSessionMessages, useSessionRunningTool } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -16,6 +16,8 @@ import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
+import { TurnActivityView } from './TurnActivityView';
+import { buildChatRows } from './chatTurns';
 import {
     nextAwaySnapshot,
     unseenRows,
@@ -24,13 +26,20 @@ import {
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
 } from './chatFollow';
-import { buildChatRows } from './chatRows';
+import { isHiddenToolName } from './toolVisibility';
 import './chatlist.css';
 
-export function ChatList({ sessionId }: { sessionId: string }) {
+export function ChatList({
+    sessionId,
+    showLiveStatus = true,
+}: {
+    sessionId: string;
+    showLiveStatus?: boolean;
+}) {
     const { t } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
+    const runningTool = useSessionRunningTool(sessionId);
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
@@ -55,10 +64,16 @@ export function ChatList({ sessionId }: { sessionId: string }) {
     );
     const chronological = useMemo(
         () => [...messages].reverse().filter((message) =>
-            message.inputState === undefined),
+            message.inputState === undefined &&
+            (message.kind !== 'tool-call' || !isHiddenToolName(message.tool.name))),
         [messages],
     );
-    const rows = useMemo(() => buildChatRows(chronological), [chronological]);
+    const sessionLive = session?.thinking === true || !!runningTool;
+    const rows = useMemo(
+        () => buildChatRows(chronological, sessionLive),
+        [chronological, sessionLive],
+    );
+    const hasLiveActivity = rows.some((row) => row.type === 'activity' && row.live);
 
     const cancelQueued = async (index: number) => {
         const message = queuedMessages[index];
@@ -234,7 +249,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                     title={t('session.chat.emptyTitle')}
                     description={t('session.chat.emptyDescription')}
                 />
-                <SessionLiveStatusBar sessionId={sessionId} onActivate={() => scrollToBottom(true)} />
+                <SessionLiveStatusBar sessionId={sessionId} />
                 <PermissionCard sessionId={sessionId} />
             </div>
         );
@@ -246,7 +261,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                 <div className="cl-scroll">
                     <OrbitLoader size="compact" label={t('session.chat.loadingMessages')} />
                 </div>
-                <SessionLiveStatusBar sessionId={sessionId} onActivate={() => undefined} />
+                <SessionLiveStatusBar sessionId={sessionId} />
             </div>
         );
     }
@@ -276,7 +291,15 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                         </div>
                     )}
                     {rows.map((row) =>
-                        row.type === 'toolgroup' ? (
+                        row.type === 'activity' ? (
+                            <TurnActivityView
+                                key={row.key}
+                                messages={row.messages}
+                                live={row.live}
+                                sessionId={sessionId}
+                                durationSeconds={row.durationSeconds}
+                            />
+                        ) : row.type === 'toolgroup' ? (
                             <ToolGroupView key={row.key} tools={row.tools} />
                         ) : (
                             <MessageView
@@ -288,10 +311,10 @@ export function ChatList({ sessionId }: { sessionId: string }) {
                             />
                         ),
                     )}
+                    {showLiveStatus && !hasLiveActivity && <SessionLiveStatusBar sessionId={sessionId} />}
                     <PermissionCard sessionId={sessionId} />
                 </div>
             </div>
-            <SessionLiveStatusBar sessionId={sessionId} onActivate={() => scrollToBottom(true)} />
             {queuedMessages.length > 0 && (
                 <section className="cl-queue" aria-label={t('session.chat.queuedTitle', { count: queuedMessages.length })}>
                     <div className="cl-queue-head">

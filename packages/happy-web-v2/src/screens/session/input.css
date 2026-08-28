@@ -8,11 +8,12 @@
   width: 100%;
 }
 
-/* selector row */
+/* desktop selectors share the compact metadata row below the composer */
 .ci-modes {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+  min-width: 0;
 }
 .ci-mobile-options { display: none; }
 
@@ -318,7 +319,7 @@
   transform: scale(1.04);
 }
 
-/* status row */
+/* compact controls + context row */
 .ci-status {
   display: flex;
   align-items: center;
@@ -330,29 +331,6 @@
 .ci-spacer {
   flex: 1;
 }
-.ci-conn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono);
-}
-.ci-conn-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-.ci-conn--on {
-  color: var(--accent-2);
-}
-.ci-conn--on .ci-conn-dot {
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--accent-glow);
-}
-.ci-conn--off {
-  color: var(--text-faint);
-}
-
 /* always-visible context meter */
 .ci-meter {
   display: inline-flex;
