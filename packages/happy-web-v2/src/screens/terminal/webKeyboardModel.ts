@@ -4,7 +4,7 @@
  * The keyboard deliberately emits bytes instead of editing a hidden input:
  * the browser/OS never gets a chance to autocorrect, capitalize, compose, or
  * reinterpret a key. Together the two layouts cover every printable ASCII
- * character (English terminal input), plus DEL and CR.
+ * character (English terminal input), plus DEL, CR, and ANSI cursor keys.
  */
 
 export type WebKeyboardLayout = 'alpha' | 'symbols';
@@ -18,6 +18,7 @@ export interface WebKeyboardState {
 export type WebKeyboardKey =
     | { id: string; kind: 'text'; value: string; shifted?: string; units?: number }
     | { id: string; kind: 'space' | 'backspace' | 'enter'; units?: number }
+    | { id: string; kind: 'arrow'; direction: 'up' | 'down' | 'left' | 'right'; units?: number }
     | { id: string; kind: 'shift' | 'layout'; units?: number };
 
 export interface WebKeyboardRow {
@@ -35,6 +36,17 @@ const text = (value: string, shifted?: string): WebKeyboardKey => ({
 
 const letters = (value: string): WebKeyboardKey[] =>
     [...value].map((letter) => text(letter, letter.toUpperCase()));
+
+const NAVIGATION_ROW = Object.freeze<WebKeyboardRow>({
+    id: 'navigation',
+    inset: 1.45,
+    keys: [
+        { id: 'arrow-left', kind: 'arrow', direction: 'left' },
+        { id: 'arrow-down', kind: 'arrow', direction: 'down' },
+        { id: 'arrow-up', kind: 'arrow', direction: 'up' },
+        { id: 'arrow-right', kind: 'arrow', direction: 'right' },
+    ],
+});
 
 export const ALPHA_WEB_KEYBOARD_ROWS: readonly WebKeyboardRow[] = Object.freeze([
     { id: 'qwerty', keys: letters('qwertyuiop') },
@@ -66,6 +78,7 @@ export const ALPHA_WEB_KEYBOARD_ROWS: readonly WebKeyboardRow[] = Object.freeze(
             { id: 'enter', kind: 'enter', units: 1.65 },
         ],
     },
+    NAVIGATION_ROW,
 ]);
 
 export const SYMBOL_WEB_KEYBOARD_ROWS: readonly WebKeyboardRow[] = Object.freeze([
@@ -77,12 +90,14 @@ export const SYMBOL_WEB_KEYBOARD_ROWS: readonly WebKeyboardRow[] = Object.freeze
         id: 'symbol-controls',
         keys: [
             { id: 'letters', kind: 'layout', units: 1.45 },
+            { id: 'backspace', kind: 'backspace', units: 1.45 },
             { id: 'space', kind: 'space', units: 4.1 },
             text('/'),
             text('?'),
             { id: 'enter', kind: 'enter', units: 1.65 },
         ],
     },
+    NAVIGATION_ROW,
 ]);
 
 export const initialWebKeyboardState: WebKeyboardState = Object.freeze({
@@ -131,6 +146,9 @@ export function pressWebKeyboardKey(
         case 'space':
             bytes = ' ';
             break;
+        case 'arrow':
+            bytes = `\x1b[${({ up: 'A', down: 'B', right: 'C', left: 'D' } as const)[key.direction]}`;
+            break;
         case 'text':
             bytes = state.layout === 'alpha' && state.shift !== 'off' && key.shifted
                 ? key.shifted
@@ -156,6 +174,8 @@ export function webKeyboardKeyLabel(key: WebKeyboardKey, state: WebKeyboardState
             return 'Enter';
         case 'space':
             return '';
+        case 'arrow':
+            return ({ up: '↑', down: '↓', left: '←', right: '→' } as const)[key.direction];
         case 'text':
             return state.layout === 'alpha' && state.shift !== 'off' && key.shifted
                 ? key.shifted

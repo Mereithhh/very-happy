@@ -457,7 +457,7 @@
 /* ── Fully controlled mobile Web keyboard (B-255) ─────────────────────────
    Unlike the system-keyboard path, this surface never focuses an input and
    never invokes IME/autocorrect. Every button maps straight to PTY bytes. The
-   five compact rows cover printable ASCII without horizontal overflow at the
+   six compact rows cover printable ASCII and cursor movement without overflow at the
    390px contract viewport; the terminal remains the same always-dark stage. */
 .term-webkbd {
   display: flex;
@@ -501,6 +501,9 @@
 .term-webkbd-key:active {
   background: color-mix(in srgb, var(--term-chrome-fg) 16%, var(--term-chrome-panel));
   transform: translateY(1px);
+}
+.term-webkbd-key.is-repeatable {
+  touch-action: none;
 }
 .term-webkbd-key:focus-visible {
   outline: 2px solid var(--term-accent);

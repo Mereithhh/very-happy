@@ -1645,6 +1645,10 @@ export const en = {
         webKeyboardBackspace: 'Backspace',
         webKeyboardSpace: 'Space',
         webKeyboardEnter: 'Enter',
+        webKeyboardArrowUp: 'Up arrow',
+        webKeyboardArrowDown: 'Down arrow',
+        webKeyboardArrowLeft: 'Left arrow',
+        webKeyboardArrowRight: 'Right arrow',
         // Mobile key bar: toggle line-input mode (compose a whole line in a
         // plain textarea — IME/dictation friendly — and send it on Enter)
         inputBarToggle: 'Line input',
