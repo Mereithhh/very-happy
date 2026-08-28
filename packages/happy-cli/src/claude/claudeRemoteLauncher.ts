@@ -24,6 +24,7 @@ import { createTurnSteeringController } from './turnSteering';
 import { appendStagedAttachmentsToPrompt, chatAttachmentDirectory, stageClaudeAttachments } from './utils/attachmentContent';
 import { configuration } from '@/configuration';
 import { ensurePrivateDirectory } from '@/utils/secureFiles';
+import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './utils/interruptNoise';
 
 interface PermissionsField {
     date: number;
@@ -149,6 +150,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     let notifiedQuestionToolCalls = new Set<string>();
 
     function onMessage(message: SDKMessage) {
+
+        // Claude Code emits this synthetic user frame for an interrupted
+        // query. It is engine bookkeeping, not conversation content.
+        if (message.type === 'user'
+            && isClaudeInterruptSentinelContent((message as SDKUserMessage).message.content)) {
+            sdkToLogConverter.convert(message);
+            return;
+        }
 
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
@@ -408,6 +417,28 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     onQueryReady: (q) => {
                         turnSteering.setInterrupt(q.interrupt);
+                        session.setSteerHandler(async (input) => {
+                            // A live query cannot atomically switch model,
+                            // prompt, tools, effort, or permission mode.
+                            const expectedHash = session.queue.modeHasher(input.mode);
+                            if (!modeHash || expectedHash !== modeHash) return false;
+
+                            let message: MessageParam['content'] = input.message;
+                            if (input.attachments?.length) {
+                                const staged = await stageClaudeAttachments(input.attachments, {
+                                    happyHomeDir: configuration.happyHomeDir,
+                                    sessionId: session.client.sessionId,
+                                });
+                                message = appendStagedAttachmentsToPrompt(input.message, staged);
+                            }
+
+                            // Staging can outlive the turn. Recheck before
+                            // touching the live input stream; false falls back
+                            // to the ordinary durable queue in runClaude.
+                            if (!session.thinking || modeHash !== expectedHash) return false;
+                            q.steer(message, input.mode);
+                            return true;
+                        });
                         permissionHandler.setPermissionModeUpdater(async (mode) => {
                             await q.setPermissionMode(mode);
                         });
@@ -466,6 +497,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } catch (e) {
                 logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
+                    if (isClaudeEdeOnlySdkError(e)) {
+                        session.client.closeClaudeSessionTurn('cancelled');
+                        continue;
+                    }
                     session.client.closeClaudeSessionTurn('failed');
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     // Account-encrypted feed notification (best-effort).
@@ -475,6 +510,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             } finally {
 
                 turnSteering.reset();
+                session.setSteerHandler(null);
+                sdkToLogConverter.resetTransientState();
 
                 logger.debug('[remote]: launch finally');
 

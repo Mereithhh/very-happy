@@ -237,6 +237,60 @@ describe('SDKToLogConverter', () => {
 
             expect(converter.convert({ type: 'tool_progress' } as SDKMessage)).toBeNull()
         })
+
+        it('filters the interrupt sentinel and marks its result as cancelled metadata', () => {
+            expect(converter.convert({
+                type: 'user',
+                parent_tool_use_id: null,
+                message: {
+                    role: 'user',
+                    content: [{ type: 'text', text: '[Request interrupted by user]' }],
+                },
+            } as unknown as SDKUserMessage)).toBeNull()
+
+            const interrupted = converter.convert({
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                errors: ['[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null'],
+            } as unknown as SDKResultMessage) as any
+            expect(interrupted.interrupted).toBe(true)
+
+            const laterSuccess = converter.convert({
+                type: 'result', subtype: 'success', is_error: false,
+            } as unknown as SDKResultMessage) as any
+            expect(laterSuccess.interrupted).toBeUndefined()
+        })
+
+        it('does not classify a mixed EDE and real failure as an interruption', () => {
+            const result = converter.convert({
+                type: 'result',
+                subtype: 'error_during_execution',
+                is_error: true,
+                errors: [
+                    '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null',
+                    'permission bridge crashed',
+                ],
+            } as unknown as SDKResultMessage) as any
+            expect(result.interrupted).toBeUndefined()
+            expect(result.is_error).toBe(true)
+        })
+
+        it('does not carry an unmatched interrupt sentinel into a later SDK query', () => {
+            converter.convert({
+                type: 'user',
+                parent_tool_use_id: null,
+                message: {
+                    role: 'user',
+                    content: [{ type: 'text', text: '[Request interrupted by user]' }],
+                },
+            } as unknown as SDKUserMessage)
+            converter.resetTransientState()
+            const laterResult = converter.convert({
+                type: 'result', subtype: 'success', is_error: false,
+            } as unknown as SDKResultMessage) as any
+            expect(laterResult.interrupted).toBeUndefined()
+        })
     })
 
     describe('Parent-child relationships', () => {

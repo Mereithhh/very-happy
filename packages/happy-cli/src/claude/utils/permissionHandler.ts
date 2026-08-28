@@ -124,22 +124,14 @@ export class PermissionHandler {
                 updatedInput: contentLogMetadata(response.updatedInput),
             });
             if (response.approved) {
-                // Switch permission mode via SDK before allowing ExitPlanMode
+                // ExitPlanMode owns the mode transition after its canUseTool
+                // response resolves. A nested setPermissionMode control request
+                // here is queued ahead of that response and can park the turn.
                 const newMode = (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode))
                     ? response.mode
                     : 'default';
 
-                logger.debug(`Plan approved - switching to ${newMode} mode and allowing ExitPlanMode`);
-
-                try {
-                    if (!this.setPermissionModeCallback) throw new Error('permission mode updater unavailable');
-                    await this.setPermissionModeCallback(newMode);
-                } catch (err) {
-                    const reason = `Failed to switch permission mode: ${err instanceof Error ? err.message : String(err)}`;
-                    logger.debug(reason);
-                    pending.resolve({ behavior: 'deny', message: reason });
-                    return { ...response, approved: false, reason };
-                }
+                logger.debug(`Plan approved - allowing ExitPlanMode with ${newMode} as the local follow-up mode`);
                 this.permissionMode = newMode;
 
                 pending.resolve({ behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} });

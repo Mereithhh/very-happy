@@ -13,6 +13,7 @@ import type {
     SDKResultMessage
 } from '@/claude/sdk'
 import type { RawJSONLines } from '@/claude/types'
+import { isClaudeEdeOnlyResult, isClaudeInterruptSentinelContent } from './interruptNoise'
 
 /**
  * Context for converting SDK messages to log format
@@ -51,6 +52,7 @@ export class SDKToLogConverter {
     private context: ConversionContext
     private responses?: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>
     private sidechainLastUUID = new Map<string, string>();
+    private sawInterruptSentinel = false
 
     constructor(
         context: Omit<ConversionContext, 'parentUuid'>,
@@ -78,6 +80,11 @@ export class SDKToLogConverter {
     resetParentChain(): void {
         this.lastUuid = null
         this.context.parentUuid = null
+    }
+
+    /** Drop per-query markers that must never leak into the next SDK query. */
+    resetTransientState(): void {
+        this.sawInterruptSentinel = false
     }
 
     /**
@@ -111,6 +118,10 @@ export class SDKToLogConverter {
         switch (sdkMessage.type) {
             case 'user': {
                 const userMsg = sdkMessage as SDKUserMessage
+                if (isClaudeInterruptSentinelContent(userMsg.message.content)) {
+                    this.sawInterruptSentinel = true
+                    return null
+                }
                 // The SDK marks context-only injections (e.g. Skill tool
                 // feeding the skill body back into the conversation) as
                 // `isSynthetic: true` in memory; on disk claude writes the
@@ -192,6 +203,8 @@ export class SDKToLogConverter {
                 // usage) so the app can render it at the end of the turn.
                 // SDKResultSuccess additionally carries a `result` string.
                 const resultMsg = sdkMessage as SDKResultMessage
+                const interrupted = this.sawInterruptSentinel || isClaudeEdeOnlyResult(resultMsg)
+                this.sawInterruptSentinel = false
                 logMessage = {
                     ...baseFields,
                     type: 'result',
@@ -206,6 +219,7 @@ export class SDKToLogConverter {
                     ...('terminal_reason' in resultMsg && resultMsg.terminal_reason
                         ? { terminal_reason: resultMsg.terminal_reason }
                         : {}),
+                    ...(interrupted ? { interrupted: true } : {}),
                 } as any
                 break
             }

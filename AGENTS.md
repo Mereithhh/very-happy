@@ -2,8 +2,9 @@
 
 自托管的 Claude Code web 客户端 + 中继，fork 自 slopus/happy 并深度魔改
 （自有账号密码登录、服务端可信非 e2e、只用 web 不用官方 App）。
-单人 Owner（jojo）+ AI agent 集群开发；repo 私有。生产：veryhappy.dev
-（server+web 在 hw-sg，daemon/CLI 跑在 mac-office）。
+单人 Owner（jojo）+ AI agent 集群开发；唯一主开发/发布源是公开仓库
+`Mereithhh/very-happy`，旧私有仓只读归档，禁止向其推发布 commit/tag 或从中部署。
+生产：veryhappy.dev（server+web 在 vh-us、以同一完整镜像发布；daemon/CLI 跑在 mac-office）。
 
 ## 包结构
 
@@ -23,7 +24,7 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   │    └─ docs/verify-queue.md ── 验收层：留真机验证项登记 / 清账
   ├─ docs/channels.md ─────── 对外契约：webhook 出站 + spawn/send/MCP 入站
   ├─ docs/development.md ──── 本地：Web V2 + standalone server + CLI
-  ├─ docs/operations.md ───── 生产：hw-sg/mac-office 发布、恢复与回滚
+  ├─ docs/operations.md ───── 生产：vh-us/mac-office 发布、恢复与回滚
   ├─ .agents/skills/ ──────── Codex/Claude 共用的 repo-local dev/release 操作入口
   ├─ docs/*.md ────────────── 架构事实（protocol / backend / cli，多为上游遗留，以代码为准）
   └─ docs/plans/ ──────────── 上游遗留 plan 档案（只读；新设计一律进 specs/）
@@ -38,10 +39,16 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
 - 事故修复必附覆盖该机制的回归测试，否则不许合并。
 - 新逻辑尽量抽纯函数模块（`termWriteHold`/`termStreamSync`/`boardTaskOps` 先例）——
   AI 并行开发下测试稳定性的支柱。
+- 常规发布只认 canonical `origin/main` 已合入且必需 quality gates 全绿的精确 SHA；旧
+  worktree、detached HEAD 或 rebase/squash 后的改动必须先移植/合入最新 main，再重新锁定 SHA。
 
 ## 质量门禁（任何 merge 前，硬性）
 
 ```sh
+# happy-wire：clean checkout 先构建 gitignored dist，再跑测试
+pnpm -C packages/happy-wire build
+pnpm -C packages/happy-wire exec vitest run
+
 # happy-web-v2：测试 + 构建 + tsc **零错误**（2026-08-18 实测已是 0，不再有存量债）
 pnpm -C packages/happy-web-v2 exec vitest run
 pnpm -C packages/happy-web-v2 exec vite build
@@ -54,7 +61,7 @@ pnpm -C packages/happy-cli test        # = build + vitest unit
 node packages/happy-cli/dist/index.mjs --version
 # 已知环境例外：daemon.integration "second daemon" 用例
 
-# happy-server：类型 + 测试（零新 npm 依赖——bind-mount 部署约束）
+# happy-server：类型 + 测试
 pnpm -C packages/happy-server exec tsc --noEmit
 pnpm -C packages/happy-server exec vitest run
 ```
@@ -63,11 +70,17 @@ pnpm -C packages/happy-server exec vitest run
 
 - 自动化能验的当批验掉（E2E 冒烟有先例脚本手法）；验不了的（真机 IME/触屏/
   视觉观感）登记 `docs/verify-queue.md`，下一批开始前 Owner 清账。
+- 窄屏、主题或第三方嵌入组件的视觉改动，除测试/build/tsc 外，还要在受影响的真实浏览器
+  视口验证交互、溢出与布局；本地浏览器能验的当批验，只有真机专属项才留 verify queue。
 - 浏览器判断「发布没生效」前先保留现场：在原标签页记录实际加载的 entry/CSS URL、
   目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry；再用普通 reload
   验证版本迁移。只有证据留存后才 hard refresh / unregister 做恢复；强刷后正常不能单独
   作为发布成功证据。
-- 发布顺序默认 server → web → CLI；涉及协议字段按 spec 兼容矩阵定顺序。
+- 发布成功必须闭环核对线上版本身份与行为：运行镜像/静态资源对应目标 SHA、`/health`
+  正常，并验证本次改动的关键真实路径；包含 CLI/daemon handover 时再确认 daemon 版本与
+  RPC 重注册。workflow 绿或普通页面能打开都不能单独作为发布成功证据。
+- server 与 web 是同一完整镜像；默认发布顺序为 server/web → CLI，涉及协议字段按 spec
+  兼容矩阵定顺序。
 
 ## UI 设计约束（Console 设计语言）
 
@@ -101,9 +114,18 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    版本化 plugin/skill runtime，或 `pnpm dlx <package>@<精确版本>`；禁止 `@latest`、
    未固定版本的临时下载，以及因此改动 `package.json` / `pnpm-lock.yaml`。
 4. **双向兼容（旧端忽略新字段）是设计要求**不是可选项；协议改动写兼容矩阵。
-5. **server 部署后必须 `vh-update`** 重启 daemon（RPC 重注册 bug，backlog B-001）。
-6. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史
+5. **server/Web 只能随同一完整、不可变镜像发布**，source、migration、Prisma Client 与
+   Web 不得在主机上分别覆盖；蓝绿是否已激活及 rollout phase 以 `docs/operations.md` 当前状态
+   为准，禁止因仓库已有实现就假定生产已启用。正常蓝绿切换不需要 `vh-update`；只有 CLI
+   改动影响 handover/daemon，或初次 groundwork 明确要求时才更新 mac-office。
+6. **CLI 的 npm 包与 tag 是不可变外部发布**：平台包先于主包；任一步失败都不移动或复用
+   已推 tag，修复后递增版本；npm 已可见不等于跨平台 smoke 已通过。
+7. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
+   等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
+   当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得
+   渲染成普通 assistant 回复。
+8. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史
    （`bf07e4aa`/`fe5172b6`/`4849fb5e`）。
-7. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
+9. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
    旧 commit、push 静默失败两种事故）。
-8. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。
+10. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。

@@ -354,6 +354,28 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.currentTurnId).toBe('turn-1');
         expect(result.envelopes).toHaveLength(0);
     });
+
+    it('closes an interrupted SDK result as cancelled while preserving real failures', () => {
+        const interrupted = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'result',
+            interrupted: true,
+            is_error: true,
+        } as any, { currentTurnId: 'turn-interrupted' });
+
+        expect(interrupted.currentTurnId).toBeNull();
+        expect(interrupted.envelopes).toHaveLength(1);
+        expect(interrupted.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'cancelled' });
+
+        const failed = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'result',
+            is_error: true,
+        } as any, { currentTurnId: 'turn-failed' });
+        expect(failed.envelopes[0].ev).toEqual({
+            t: 'turn-end',
+            status: 'failed',
+            error: 'Claude turn failed',
+        });
+    });
 });
 
 describe('closeClaudeTurnWithStatus', () => {

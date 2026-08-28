@@ -252,4 +252,99 @@ describe('runClaude remote JSONL scanner', () => {
         await expect(runPromise).rejects.toThrow('process.exit');
         exitSpy.mockRestore();
     });
+
+    it('routes delivery=steer to the live Session and does not enqueue it', async () => {
+        let userMessageHandler!: (message: any) => Promise<void>;
+        const sessionClient = {
+            sessionId: 'happy-session-steer',
+            suppressNextArchiveSignal: vi.fn(),
+            skipExistingMessages: vi.fn(),
+            updateMetadata: vi.fn(),
+            sendClaudeSessionMessage: vi.fn(),
+            onUserMessage: vi.fn((handler) => { userMessageHandler = handler; }),
+            onFileEvent: vi.fn(),
+            on: vi.fn(),
+            trackAttachmentDownload: vi.fn(),
+            drainAttachmentsForUserMessage: vi.fn(async () => []),
+            downloadAndDecryptAttachment: vi.fn(),
+            getMetadata: vi.fn(() => ({ summary: { text: 'Existing title' } })),
+            sendSessionEvent: vi.fn(),
+            updateAgentState: vi.fn(),
+            rpcHandlerManager: { registerHandler: vi.fn() },
+            sendSessionDeath: vi.fn(),
+            flush: vi.fn(async () => {}),
+            close: vi.fn(async () => {}),
+        };
+        const api = {
+            getOrCreateMachine: vi.fn(async () => ({})),
+            getOrCreateSession: vi.fn(async () => ({
+                id: 'happy-session-steer',
+                seq: 0,
+                metadata: {},
+                metadataVersion: 0,
+                agentState: {},
+                agentStateVersion: 0,
+                encryptionKey: new Uint8Array(32),
+                encryptionVariant: 'legacy' as const,
+            })),
+            sessionSyncClient: vi.fn(() => sessionClient),
+            deactivateSession: vi.fn(async () => {}),
+        };
+        mockApiClientCreate.mockResolvedValue(api);
+
+        const loopDeferred = createDeferred<number>();
+        mockLoop.mockReturnValue(loopDeferred.promise);
+        const runPromise = runClaude({
+            token: 'token',
+            encryption: { type: 'legacy', secret: new Uint8Array(32) },
+        } as any, {
+            startingMode: 'remote',
+            shouldStartDaemon: false,
+        });
+
+        await vi.waitFor(() => {
+            expect(mockLoop).toHaveBeenCalled();
+            expect(sessionClient.onUserMessage).toHaveBeenCalled();
+        });
+        expect(api.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
+            metadata: expect.objectContaining({ capabilities: ['claude-steer-v1'] }),
+        }));
+
+        const trySteer = vi.fn(async () => true);
+        const loopOptions = mockLoop.mock.calls[0][0];
+        loopOptions.onSessionReady({ trySteer, cleanup: vi.fn() });
+        const queuePush = vi.spyOn(loopOptions.messageQueue, 'push');
+
+        await userMessageHandler({
+            role: 'user',
+            content: { type: 'text', text: 'focus on the failing test' },
+            meta: { sentFrom: 'web', delivery: 'steer' },
+        });
+
+        expect(trySteer).toHaveBeenCalledWith(expect.objectContaining({
+            message: 'focus on the failing test',
+            mode: expect.objectContaining({ permissionMode: 'default' }),
+        }));
+        expect(queuePush).not.toHaveBeenCalled();
+
+        trySteer.mockResolvedValue(false);
+        await userMessageHandler({
+            role: 'user',
+            content: { type: 'text', text: 'late steering message' },
+            meta: { sentFrom: 'web', delivery: 'steer' },
+        });
+        expect(queuePush).toHaveBeenCalledWith(
+            'late steering message',
+            expect.objectContaining({ permissionMode: 'default' }),
+            [],
+            undefined,
+        );
+
+        loopDeferred.resolve(0);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+            throw new Error('process.exit');
+        }) as never);
+        await expect(runPromise).rejects.toThrow('process.exit');
+        exitSpy.mockRestore();
+    });
 });
