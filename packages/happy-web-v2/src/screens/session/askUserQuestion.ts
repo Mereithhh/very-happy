@@ -19,6 +19,43 @@ export type AskQuestion = {
 export type AskAnswers = Record<number, string[]>;
 export type AskAnswerPayload = Record<string, string>;
 
+function answerPairsFromText(text: string): AskAnswerPayload | null {
+    const answers: AskAnswerPayload = {};
+    const pair = /"((?:\\.|[^"\\])*)"="((?:\\.|[^"\\])*)"/g;
+    for (const match of text.matchAll(pair)) {
+        try {
+            const question = JSON.parse(`"${match[1]}"`) as unknown;
+            const answer = JSON.parse(`"${match[2]}"`) as unknown;
+            if (typeof question === 'string' && typeof answer === 'string' && answer.trim()) {
+                answers[question] = answer;
+            }
+        } catch {
+            // A malformed pair is ignored; another valid pair may still exist.
+        }
+    }
+    return Object.keys(answers).length > 0 ? answers : null;
+}
+
+function asAnswerPayload(result: unknown): AskAnswerPayload | null {
+    let value = result;
+    if (typeof value === 'string') {
+        const text = value;
+        try {
+            value = JSON.parse(text);
+        } catch {
+            return answerPairsFromText(text);
+        }
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const answers = (value as { answers?: unknown }).answers;
+    if (!answers || typeof answers !== 'object' || Array.isArray(answers)) return null;
+    return Object.fromEntries(
+        Object.entries(answers).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== '',
+        ),
+    );
+}
+
 /**
  * AskUserQuestion's SDK contract represents multi-select answers as a
  * comma-separated string.
@@ -57,6 +94,27 @@ export function buildQuestionAnswers(questions: AskQuestion[], answers: AskAnswe
         }
     });
     return payload;
+}
+
+/**
+ * Project the persisted AskUserQuestion tool output back into the transcript as
+ * the user's visible reply. This is display-only: sending another chat message
+ * here would make Claude consume the same answer twice.
+ */
+export function askUserQuestionDisplayAnswer(questions: AskQuestion[], result: unknown): string | null {
+    const answers = asAnswerPayload(result);
+    if (!answers) return null;
+
+    const rows = questions.flatMap((question) => {
+        const key = question.question;
+        if (!key) return [];
+        const answer = answers[key]?.trim();
+        if (!answer) return [];
+        return [{ label: question.header?.trim() || key, answer }];
+    });
+    if (rows.length === 0) return null;
+    if (rows.length === 1) return rows[0].answer;
+    return rows.map(({ label, answer }) => `${label}: ${answer}`).join('\n');
 }
 
 /**

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     areQuestionAnswersComplete,
+    askUserQuestionDisplayAnswer,
     detectSelectedLabels,
     buildQuestionAnswers,
     joinSelectedLabels,
@@ -70,6 +71,43 @@ describe('multi-question answers', () => {
             questions[0],
             { options: [{ label: 'orphan' }] },
         ], { 0: [' '], 1: ['orphan'] })).toEqual({});
+    });
+});
+
+describe('answered-question transcript projection', () => {
+    const questions: AskQuestion[] = [
+        { question: 'Library?', header: 'Library', options: [{ label: 'date-fns' }] },
+        { question: 'Features?', header: 'Features', options: [{ label: 'UTC' }], multiSelect: true },
+    ];
+
+    it('shows a single answer as the user reply without repeating the question', () => {
+        expect(askUserQuestionDisplayAnswer([questions[0]], {
+            questions: [questions[0]],
+            answers: { 'Library?': 'date-fns' },
+        })).toBe('date-fns');
+    });
+
+    it('shows multiple answers in stable question order', () => {
+        expect(askUserQuestionDisplayAnswer(questions, {
+            answers: { 'Features?': 'UTC, locale data', 'Library?': 'date-fns' },
+        })).toBe('Library: date-fns\nFeatures: UTC, locale data');
+    });
+
+    it('parses both Claude transcript templates, including escaped quotes', () => {
+        expect(askUserQuestionDisplayAnswer(
+            [questions[0]],
+            'Your questions have been answered: "Library?"="Luxon". You can now continue.',
+        )).toBe('Luxon');
+        expect(askUserQuestionDisplayAnswer(
+            [questions[0]],
+            'The user answered: "Library?"="Use \\"Temporal\\"". Read the answers carefully.',
+        )).toBe('Use "Temporal"');
+    });
+
+    it('accepts a JSON-encoded result and rejects malformed or empty results', () => {
+        expect(askUserQuestionDisplayAnswer([questions[0]], '{"answers":{"Library?":"Luxon"}}')).toBe('Luxon');
+        expect(askUserQuestionDisplayAnswer(questions, 'not json')).toBeNull();
+        expect(askUserQuestionDisplayAnswer(questions, { answers: {} })).toBeNull();
     });
 });
 

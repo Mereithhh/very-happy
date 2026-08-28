@@ -6,7 +6,6 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
-import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionCancelQueuedMessage } from '@/sync/ops';
@@ -25,54 +24,8 @@ import {
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
 } from './chatFollow';
-import { visibleToolCalls } from './toolVisibility';
+import { buildChatRows } from './chatRows';
 import './chatlist.css';
-
-type Row =
-    | { type: 'message'; key: string; message: Message; showMeta: boolean; thinkingDurationMs?: number }
-    | { type: 'toolgroup'; key: string; tools: ToolCallMessage[] };
-
-function buildRows(messages: Message[]): Row[] {
-    const rows: Row[] = [];
-    // index of the last agent-text message (the turn's final answer) so we only
-    // show the meta row there.
-    let lastAgentTextIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].kind === 'agent-text' && !(messages[i] as any).isThinking) {
-            lastAgentTextIdx = i;
-            break;
-        }
-    }
-
-    let i = 0;
-    while (i < messages.length) {
-        const m = messages[i];
-        if (m.kind === 'tool-call') {
-            const tools: ToolCallMessage[] = [];
-            while (i < messages.length && messages[i].kind === 'tool-call') {
-                tools.push(messages[i] as ToolCallMessage);
-                i++;
-            }
-            const visibleTools = visibleToolCalls(tools);
-            if (visibleTools.length > 0) {
-                rows.push({ type: 'toolgroup', key: `tg-${visibleTools[0].id}`, tools: visibleTools });
-            }
-            continue;
-        }
-        // Approximate thinking duration: from this thinking message's createdAt
-        // to the next message's createdAt (the moment output started).
-        let thinkingDurationMs: number | undefined;
-        if (m.kind === 'agent-text' && (m as any).isThinking) {
-            const next = messages[i + 1];
-            if (next && next.createdAt > m.createdAt) {
-                thinkingDurationMs = next.createdAt - m.createdAt;
-            }
-        }
-        rows.push({ type: 'message', key: m.id, message: m, showMeta: i === lastAgentTextIdx, thinkingDurationMs });
-        i++;
-    }
-    return rows;
-}
 
 export function ChatList({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
@@ -105,7 +58,7 @@ export function ChatList({ sessionId }: { sessionId: string }) {
             message.inputState === undefined),
         [messages],
     );
-    const rows = useMemo(() => buildRows(chronological), [chronological]);
+    const rows = useMemo(() => buildChatRows(chronological), [chronological]);
 
     const cancelQueued = async (index: number) => {
         const message = queuedMessages[index];
