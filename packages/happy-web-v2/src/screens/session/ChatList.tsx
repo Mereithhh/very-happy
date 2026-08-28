@@ -73,7 +73,6 @@ export function ChatList({
         () => buildChatRows(chronological, sessionLive),
         [chronological, sessionLive],
     );
-    const hasLiveActivity = rows.some((row) => row.type === 'activity' && row.live);
 
     const cancelQueued = async (index: number) => {
         const message = queuedMessages[index];
@@ -311,7 +310,11 @@ export function ChatList({
                             />
                         ),
                     )}
-                    {showLiveStatus && !hasLiveActivity && <SessionLiveStatusBar sessionId={sessionId} />}
+                    {/* Keep a dedicated running pulse at the end of the transcript for
+                        the whole turn. Activity rows can contain streamed assistant text
+                        and tools, but they are content rather than a persistent liveness
+                        signal and may be visually quiet between SDK events. */}
+                    {showLiveStatus && <SessionLiveStatusBar sessionId={sessionId} />}
                     <PermissionCard sessionId={sessionId} />
                 </div>
             </div>
