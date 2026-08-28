@@ -69,9 +69,13 @@ export function resolveNewSessionPermissionMode(
     flavor: string | null | undefined,
     reviewFirst: boolean,
 ): string {
+    const explicitDefault = getAgentDefaultOverride(overrides, flavor).permissionMode;
+    if (explicitDefault !== undefined) {
+        return explicitDefault;
+    }
     return reviewFirst
         ? getReviewFirstPermissionMode(flavor)
-        : resolveAgentDefaultConfig(overrides, flavor).permissionMode;
+        : getCodeAgentDefaults(flavor).permissionMode;
 }
 
 export function getAgentDefaultOverride(

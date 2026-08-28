@@ -28,4 +28,11 @@ describe('new-session permission resolution', () => {
         expect(resolveNewSessionPermissionMode({}, 'claude', false)).toBe('bypassPermissions');
         expect(resolveNewSessionPermissionMode({ codex: { permissionMode: 'safe-yolo' } }, 'codex', false)).toBe('safe-yolo');
     });
+
+    it('lets an explicit persisted default win over the review-first fallback', () => {
+        expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'bypassPermissions' } }, 'claude', true))
+            .toBe('bypassPermissions');
+        expect(resolveNewSessionPermissionMode({ codex: { permissionMode: 'yolo' } }, 'codex', true))
+            .toBe('yolo');
+    });
 });

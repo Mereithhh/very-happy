@@ -27,7 +27,12 @@ import {
 } from '@/components/modelModeOptions';
 import { useImeGuard } from '@/utils/ime';
 import { onInsertToInput } from '@/app/insertToInput';
-import { normalizeAgentKey } from '@/sync/agentDefaults';
+import {
+    normalizeAgentKey,
+    resolveAgentDefaultConfig,
+    setAgentDefaultOverride,
+    type AgentDefaultField,
+} from '@/sync/agentDefaults';
 import { ModeMenu } from './ModeMenu';
 import { SessionOptionsDialog } from './SessionOptionsDialog';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
@@ -79,6 +84,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const usage = useSessionUsage(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
     const enterToSend = useSetting('agentInputEnterToSend');
+    const agentDefaultOverrides = useSetting('agentDefaultOverrides');
 
     const taRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,9 +145,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     }, [queued, sessionId]);
 
     // selectors
-    const modelKey = session?.modelMode ?? null;
+    const agentDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, flavor);
+    const modelKey = session?.modelMode ?? agentDefaults.modelMode;
     const resolvedDefaultModel = metadata?.defaultModelCode
-        ?? (modelKey === null || modelKey === 'default' ? usage?.model : undefined);
+        ?? (modelKey === 'default' ? usage?.model : undefined);
     const defaultModelLabel = resolvedDefaultModel
         ? t('session.chat.defaultModelResolved', { model: compactResolvedModelCode(resolvedDefaultModel) })
         : t('session.chat.defaultModelUnknown');
@@ -151,8 +158,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     );
     const permModes = getAvailablePermissionModes(flavor, metadata, t as any);
     const efforts = getEffortLevelsForModel(flavor, modelKey ?? 'default');
-    const permKey = session?.permissionMode ?? null;
-    const effortKey = session?.effortLevel ?? null;
+    const permKey = session?.permissionMode ?? agentDefaults.permissionMode;
+    const effortKey = session?.effortLevel ?? agentDefaults.effortLevel;
     // claude-ish flavors (incl. no flavor) support the explicit「默认」effort
     const isClaudeFlavor = normalizeAgentKey(flavor) === 'claude';
     const supportsSteer = isClaudeFlavor
@@ -461,15 +468,23 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    const setMode = (fn: 'updateSessionModelMode' | 'updateSessionPermissionMode' | 'updateSessionEffortLevel', key: string) => {
+    const setMode = (
+        fn: 'updateSessionModelMode' | 'updateSessionPermissionMode' | 'updateSessionEffortLevel',
+        field: AgentDefaultField,
+        key: string | null,
+    ) => {
         storage.getState()[fn](sessionId, key);
+        const currentOverrides = storage.getState().settings.agentDefaultOverrides;
+        sync.applySettings({
+            agentDefaultOverrides: setAgentDefaultOverride(currentOverrides, flavor, field, key),
+        });
     };
 
     const setEffort = (key: string) => {
         if (isClaudeFlavor && key === EFFORT_DEFAULT_KEY) {
-            storage.getState().updateSessionEffortLevel(sessionId, null);
+            setMode('updateSessionEffortLevel', 'effortLevel', null);
         } else {
-            setMode('updateSessionEffortLevel', key);
+            setMode('updateSessionEffortLevel', 'effortLevel', key);
         }
     };
 
@@ -490,13 +505,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         label: t('session.chat.modelLabel'),
                         options: models,
                         value: modelKey,
-                        onChange: (key) => setMode('updateSessionModelMode', key),
+                        onChange: (key) => setMode('updateSessionModelMode', 'modelMode', key),
                     }}
                     permission={{
                         label: t('session.chat.permissionLabel'),
                         options: permModes,
                         value: permKey,
-                        onChange: (key) => setMode('updateSessionPermissionMode', key),
+                        onChange: (key) => setMode('updateSessionPermissionMode', 'permissionMode', key),
                     }}
                     effort={{
                         label: t('session.chat.effortLabel'),
@@ -733,13 +748,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         label={t('session.chat.modelLabel')}
                         options={models}
                         value={modelKey}
-                        onChange={(key) => setMode('updateSessionModelMode', key)}
+                        onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
                     />
                     <ModeMenu
                         label={t('session.chat.permissionLabel')}
                         options={permModes}
                         value={permKey}
-                        onChange={(key) => setMode('updateSessionPermissionMode', key)}
+                        onChange={(key) => setMode('updateSessionPermissionMode', 'permissionMode', key)}
                     />
                     {efforts.length > 0 && (
                         <ModeMenu
