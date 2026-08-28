@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-08-28-claude-queue-steer',
+    date: '2026-08-28',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.87',
+    titleKey: 'changelog.releases.aug28.title',
+    summaryKey: 'changelog.releases.aug28.summary',
+    itemKeys: [
+      'changelog.releases.aug28.queue',
+      'changelog.releases.aug28.plan',
+      'changelog.releases.aug28.reliability',
+      'changelog.releases.aug28.cli',
+    ],
+  },
+  {
     id: '2026-08-27-any-file-attachments',
     date: '2026-08-27',
     buildVersion: __APP_VERSION__,

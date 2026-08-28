@@ -1482,6 +1482,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            aug28: {
+                title: '该排队时排队，该改向时改向',
+                summary: 'Claude 对话现在明确区分“下一轮再做”和“立刻调整当前方向”，批准 Plan 后也会继续推进当前工作。',
+                queue: 'Claude 运行中普通发送默认进入下一轮 Queue；Steer（调整方向）会直接注入当前 turn，不再显示成“用户打断”。',
+                plan: '批准 ExitPlanMode 后会立即续跑同一 turn，并保留你选择的权限模式，包括 YOLO。',
+                reliability: '临时 session 状态冲突会自动重试，首屏 loading 保持居中，Claude 内部 EDE 诊断也不再冒充聊天消息。',
+                cli: '请把每台运行 daemon 的机器更新到 Very Happy CLI v0.2.87，才能使用原生 Queue/Steer 与源头诊断过滤；只更新 Web 不完整。',
+            },
             aug27c: {
                 title: '带上文件，不替 agent 猜格式',
                 summary: 'Claude 普通对话现在把 opaque 文件交给 coding agent，不再由浏览器决定能否解析。',

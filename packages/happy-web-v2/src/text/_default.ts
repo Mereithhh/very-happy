@@ -1503,6 +1503,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            aug28: {
+                title: 'Queue when you can, steer when you need to',
+                summary: 'Claude conversations now separate the next turn from a live course correction, while plan approval keeps the current work moving.',
+                queue: 'Sending while Claude runs queues the next turn by default; Steer redirects the active turn without presenting it as a user abort.',
+                plan: 'Approving ExitPlanMode resumes the same turn immediately and preserves the permission mode you selected, including YOLO.',
+                reliability: 'Transient session conflicts retry automatically, startup stays centered, and Claude internal EDE diagnostics no longer appear as chat messages.',
+                cli: 'Update every daemon machine to Very Happy CLI v0.2.87 for native Queue/Steer and source-side diagnostic filtering; updating Web alone is not enough.',
+            },
             aug27c: {
                 title: 'Bring the file, not the format rules',
                 summary: 'Claude conversations now hand opaque files to the coding agent instead of guessing what the browser can parse.',
