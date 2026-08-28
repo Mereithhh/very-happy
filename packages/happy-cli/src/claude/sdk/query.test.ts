@@ -19,6 +19,14 @@ describe('Claude SDK query adapter', () => {
         }));
     });
 
+    it('can opt in to a later live bypass without starting in bypass mode', () => {
+        query({ prompt: 'hello', options: { permissionMode: 'plan', allowDangerouslySkipPermissions: true } });
+        expect(sdkQuery.mock.calls[0][0].options).toEqual(expect.objectContaining({
+            permissionMode: 'plan',
+            allowDangerouslySkipPermissions: true,
+        }));
+    });
+
     it('latches a source signal that was already aborted', () => {
         const source = new AbortController();
         source.abort('already stopped');

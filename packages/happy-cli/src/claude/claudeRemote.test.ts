@@ -54,6 +54,33 @@ describe('claudeRemote', () => {
         expect(callbackOrder).toEqual(['event:Context was reset', 'reset', 'ready']);
     });
 
+    it('opts the remote Query into a later user-requested live bypass', async () => {
+        vi.mocked(query).mockReturnValue({
+            setPermissionMode: vi.fn(),
+            async *[Symbol.asyncIterator]() {},
+        } as any);
+        let messageCount = 0;
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage: async () => (++messageCount === 1 ? { message: 'hello', mode: { permissionMode: 'plan' } } : null),
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+        });
+
+        expect(vi.mocked(query).mock.calls[0][0].options).toEqual(expect.objectContaining({
+            permissionMode: 'plan',
+            allowDangerouslySkipPermissions: true,
+        }));
+    });
+
     it('marks assistant messages from /compact as compact summaries', async () => {
         const setPermissionMode = vi.fn();
         vi.mocked(query).mockReturnValue({

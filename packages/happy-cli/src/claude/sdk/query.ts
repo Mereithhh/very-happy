@@ -37,7 +37,8 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         fallbackModel: opts?.fallbackModel,
         maxTurns: opts?.maxTurns,
         permissionMode: opts?.permissionMode,
-        allowDangerouslySkipPermissions: opts?.permissionMode === 'bypassPermissions',
+        allowDangerouslySkipPermissions: opts?.allowDangerouslySkipPermissions
+            ?? opts?.permissionMode === 'bypassPermissions',
         allowedTools: opts?.allowedTools,
         disallowedTools: opts?.disallowedTools,
         mcpServers: opts?.mcpServers as Options['mcpServers'],

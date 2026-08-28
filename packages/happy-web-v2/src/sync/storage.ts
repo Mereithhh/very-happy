@@ -37,6 +37,7 @@ import {
     holdSessionInactive,
     releaseSessionInactive,
 } from './sessionArchiveHold';
+import { withSessionPermissionMode } from './sessionPermissionPreference';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -436,7 +437,11 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
-            const savedPermissionModes = isInitialLoad ? sessionPermissionModes : {};
+            // Permission preferences may be recorded immediately after spawn,
+            // before the new session snapshot reaches this store. Consult the
+            // in-memory persisted map for every newly arriving session, not
+            // only during the first bulk load.
+            const savedPermissionModes = sessionPermissionModes;
             const savedModelModes = isInitialLoad ? sessionModelModes : {};
             const savedEffortLevels = isInitialLoad ? sessionEffortLevels : {};
 
@@ -785,7 +790,8 @@ export const storage = create<StorageState>()((set, get) => {
                         allModes[id] = sess.permissionMode;
                     }
                 });
-                saveSessionPermissionModes(allModes);
+                sessionPermissionModes = allModes;
+                saveSessionPermissionModes(sessionPermissionModes);
             }
 
             return { changed: Array.from(changed), hasReadyEvent };
@@ -1083,6 +1089,14 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         updateSessionPermissionMode: (sessionId: string, mode: string | null) => set((state) => {
             const session = state.sessions[sessionId];
+
+            // Spawn returns the id before its session snapshot necessarily
+            // lands in Zustand. Persist the explicit mode now so applySessions
+            // can attach it when that snapshot arrives and the first message
+            // cannot fall back to a different code default.
+            sessionPermissionModes = withSessionPermissionMode(sessionPermissionModes, sessionId, mode);
+            saveSessionPermissionModes(sessionPermissionModes);
+
             if (!session) return state;
 
             // Update the session with the new permission mode
@@ -1093,17 +1107,6 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: mode
                 }
             };
-
-            // Collect all permission modes for persistence
-            const allModes: Record<string, string> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode) {
-                    allModes[id] = sess.permissionMode;
-                }
-            });
-
-            // Persist only explicit overrides; null/missing means code default.
-            saveSessionPermissionModes(allModes);
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
@@ -1187,7 +1190,8 @@ export const storage = create<StorageState>()((set, get) => {
                 if (sess.modelMode) modelModes[id] = sess.modelMode;
                 if (sess.effortLevel) effortLevels[id] = sess.effortLevel;
             });
-            saveSessionPermissionModes(permissionModes);
+            sessionPermissionModes = permissionModes;
+            saveSessionPermissionModes(sessionPermissionModes);
             saveSessionModelModes(modelModes);
             saveSessionEffortLevels(effortLevels);
 
@@ -1339,7 +1343,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
-            saveSessionPermissionModes(modes);
+            sessionPermissionModes = modes;
+            saveSessionPermissionModes(sessionPermissionModes);
 
             const modelModes = loadSessionModelModes();
             delete modelModes[sessionId];

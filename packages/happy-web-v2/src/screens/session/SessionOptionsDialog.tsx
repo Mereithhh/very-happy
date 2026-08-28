@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import type { ModeOption } from '@/components/modelModeOptions';
+import { Spinner } from '@/ui';
 import './sessionOptionsDialog.css';
 
 type OptionFieldProps = {
@@ -8,9 +9,10 @@ type OptionFieldProps = {
     options: ModeOption[];
     value: string | null;
     onChange: (key: string) => void;
+    busy?: boolean;
 };
 
-function OptionField({ label, options, value, onChange }: OptionFieldProps) {
+function OptionField({ label, options, value, onChange, busy = false }: OptionFieldProps) {
     if (options.length === 0) return null;
     const selectedValue = options.some((option) => option.key === value)
         ? value ?? options[0].key
@@ -24,13 +26,15 @@ function OptionField({ label, options, value, onChange }: OptionFieldProps) {
                     className="so-select"
                     aria-label={label}
                     value={selectedValue}
+                    disabled={busy}
+                    aria-busy={busy}
                     onChange={(event) => onChange(event.target.value)}
                 >
                     {options.map((option) => (
                         <option key={option.key} value={option.key}>{option.name}</option>
                     ))}
                 </select>
-                <ChevronDown size={15} aria-hidden="true" />
+                {busy ? <Spinner size={15} /> : <ChevronDown size={15} aria-hidden="true" />}
             </span>
         </label>
     );

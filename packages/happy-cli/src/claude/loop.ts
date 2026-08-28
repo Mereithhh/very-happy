@@ -7,6 +7,7 @@ import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
+import type { ClaudeSdkPermissionMode } from './utils/permissionMode'
 
 // Re-export permission mode type from api/types
 // Single unified type with 7 modes - Codex modes mapped at SDK boundary
@@ -43,6 +44,7 @@ interface LoopOptions {
     sandboxConfig?: SandboxConfig
     onSessionReady?: (session: Session) => void
     onAbort?: () => void
+    onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -94,7 +96,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
             }
 
             case 'remote': {
-                const reason = await claudeRemoteLauncher(session);
+                const reason = await claudeRemoteLauncher(session, opts.onPermissionModeChange);
                 switch (reason) {
                     case 'exit':
                         return 0;

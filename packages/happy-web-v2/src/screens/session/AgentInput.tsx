@@ -9,7 +9,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Check, CornerDownRight, FileText, Maximize2, Minimize2, Paperclip, Pencil, Send, Square, Trash2, X } from 'lucide-react';
 import { randomUUID } from 'expo-crypto';
 import { sync } from '@/sync/sync';
-import { sessionAbort } from '@/sync/ops';
+import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
 import {
     useSession,
     useSessionUsage,
@@ -71,6 +71,7 @@ import {
     composerTextareaHeight,
 } from './composerExpand';
 import './input.css';
+import { shouldApplyPermissionModeLive } from './livePermissionMode';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -104,6 +105,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const [dismissedSlashText, setDismissedSlashText] = useState<string | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [sessionOptionsOpen, setSessionOptionsOpen] = useState(false);
+    const [permissionModeBusy, setPermissionModeBusy] = useState(false);
     // B-098 手动展开态：上限 200px ↔ ~60% 视口高。会话内状态，刻意不持久化。
     const [expanded, setExpanded] = useState(false);
     const { attachments, processing: processingAttachments, addFiles, remove, clear, take, restore } = useAttachments();
@@ -128,6 +130,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
     const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
     const isWorking = session?.thinking === true || !!runningTool;
+    const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
     const slashSuggestions = dismissedSlashText === text
         ? []
         : filterSlashSuggestions(getAllCommands(sessionId), text);
@@ -165,6 +168,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const supportsSteer = isClaudeFlavor
         && metadata?.capabilities?.includes('claude-steer-v1') === true
         && session?.agentState?.controlledByUser === false;
+    const supportsLivePermissionMode = shouldApplyPermissionModeLive({
+        isClaude: isClaudeFlavor,
+        isWorking: isWorking || hasPendingPermission,
+        isRemote: session?.agentState?.controlledByUser === false,
+        capabilities: metadata?.capabilities,
+    });
     const effortOptions = isClaudeFlavor
         ? [{ key: EFFORT_DEFAULT_KEY, name: t('session.chat.effortDefault'), description: t('session.chat.effortDefaultDesc') }, ...efforts]
         : efforts;
@@ -488,6 +497,24 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    const setPermissionMode = async (key: string) => {
+        if (permissionModeBusy) return;
+        let appliedKey = key;
+        if (supportsLivePermissionMode) {
+            setPermissionModeBusy(true);
+            try {
+                const response = await sessionSetPermissionMode(sessionId, key);
+                appliedKey = response.mode;
+            } catch {
+                Modal.alert(t('common.error'), t('session.chat.permissionModeChangeFailed'));
+                return;
+            } finally {
+                setPermissionModeBusy(false);
+            }
+        }
+        setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
+    };
+
     const canSend = (text.trim().length > 0 || attachments.length > 0) && !sending && !processingAttachments;
 
     return (
@@ -511,7 +538,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         label: t('session.chat.permissionLabel'),
                         options: permModes,
                         value: permKey,
-                        onChange: (key) => setMode('updateSessionPermissionMode', 'permissionMode', key),
+                        onChange: (key) => { void setPermissionMode(key); },
+                        busy: permissionModeBusy,
                     }}
                     effort={{
                         label: t('session.chat.effortLabel'),
@@ -754,7 +782,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         label={t('session.chat.permissionLabel')}
                         options={permModes}
                         value={permKey}
-                        onChange={(key) => setMode('updateSessionPermissionMode', 'permissionMode', key)}
+                        onChange={(key) => { void setPermissionMode(key); }}
+                        busy={permissionModeBusy}
                     />
                     {efforts.length > 0 && (
                         <ModeMenu

@@ -39,6 +39,13 @@ function isPermissionMode(value: string | undefined): value is PermissionMode {
     return !!value && VALID_PERMISSION_MODES.includes(value as PermissionMode);
 }
 
+/** Validate an untrusted RPC value and normalize it to an SDK-supported mode. */
+export function parseClaudePermissionMode(value: unknown): ClaudeSdkPermissionMode | null {
+    return typeof value === 'string' && isPermissionMode(value)
+        ? mapToClaudeMode(value)
+        : null;
+}
+
 /**
  * Extract permission mode override from Claude CLI args.
  * Supports both:

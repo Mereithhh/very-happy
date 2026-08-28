@@ -44,6 +44,7 @@ export interface QueryOptions {
     maxTurns?: number
     mcpServers?: Record<string, unknown>
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+    allowDangerouslySkipPermissions?: boolean
     continue?: boolean
     resume?: string
     model?: string
