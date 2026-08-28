@@ -65,6 +65,42 @@ describe('buildChatRows', () => {
         expect(rows.map((row) => row.type)).toEqual(['message', 'message']);
     });
 
+    it('does not create an empty activity group for a persisted empty thinking block', () => {
+        const emptyThinking: Message = {
+            kind: 'agent-text',
+            id: 'empty-thinking',
+            localId: null,
+            createdAt: 2,
+            text: '**',
+            isThinking: true,
+        };
+        const rows = buildChatRows([
+            user('u1', 1),
+            emptyThinking,
+            finalAgent('final', 3, 58_000),
+        ], false);
+
+        expect(rows.map((row) => row.type)).toEqual(['message', 'message']);
+        expect(rows.map((row) => row.key)).toEqual(['u1', 'final']);
+    });
+
+    it('keeps the live-status fallback free of an empty activity disclosure', () => {
+        const emptyThinking: Message = {
+            kind: 'agent-text',
+            id: 'empty-thinking-live',
+            localId: null,
+            createdAt: 2,
+            text: '**',
+            isThinking: true,
+        };
+        const rows = buildChatRows([
+            user('u1', 1),
+            emptyThinking,
+        ], true);
+
+        expect(rows.map((row) => row.type)).toEqual(['message']);
+    });
+
     it('uses a stable turn key when live work becomes completed history', () => {
         const live = buildChatRows([user('u1', 1), agent('thinking', 2, true)], true);
         const done = buildChatRows([user('u1', 1), agent('thinking', 2, true), agent('final', 3)], false);

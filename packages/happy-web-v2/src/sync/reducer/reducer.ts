@@ -872,6 +872,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Process text and thinking content (tool calls handled in Phase 2)
             for (let c of msg.content) {
                 if (c.type === 'text' || c.type === 'thinking') {
+                    const content = c.type === 'thinking' ? c.thinking : c.text;
+                    // Claude SDK can emit an empty thinking block for a turn
+                    // that has no exposed reasoning. Persisted history contains
+                    // these records, so the Web must ignore them even after the
+                    // CLI producer stops writing new ones; otherwise the turn
+                    // projection creates an expandable activity row whose body
+                    // renders to null.
+                    if (content.trim().length === 0) {
+                        continue;
+                    }
                     let mid = allocateId();
                     const isThinking = c.type === 'thinking';
                     state.messages.set(mid, {
@@ -881,7 +891,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         createdAt: msg.createdAt,
                         seq: msg.seq,
                         sortOrder: state.nextSortOrder++,
-                        text: isThinking ? `*${c.thinking}*` : c.text,
+                        text: isThinking ? `*${content}*` : content,
                         isThinking,
                         tool: null,
                         event: null,
@@ -1091,6 +1101,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             for (let c of msg.content) {
                 if (c.type === 'text' || c.type === 'thinking') {
                     const text = c.type === 'thinking' ? c.thinking : c.text;
+                    if (text.trim().length === 0) {
+                        continue;
+                    }
                     if (c.type === 'text' && isDuplicateSidechainPrompt(existingSidechain, ownerPrompt, text)) {
                         continue;
                     }

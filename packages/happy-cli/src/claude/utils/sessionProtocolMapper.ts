@@ -533,12 +533,12 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
 
         for (const block of blocks) {
-            if (block.type === 'text' && typeof block.text === 'string') {
+            if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
                 envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid, usage }));
                 continue;
             }
 
-            if (block.type === 'thinking' && typeof block.thinking === 'string') {
+            if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim().length > 0) {
                 envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid, usage }));
                 continue;
             }
