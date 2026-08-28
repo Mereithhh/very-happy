@@ -418,6 +418,25 @@ describe('reducer', () => {
                 expect(result.messages[1].text).toBe('Part 2');
             }
         });
+
+        it('ignores empty text and thinking blocks from persisted Claude turns', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [{
+                id: 'agent-empty',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [
+                    { type: 'text', text: '', uuid: 'empty-text', parentUUID: null },
+                    { type: 'thinking', thinking: '  \n', uuid: 'empty-thinking', parentUUID: null },
+                ],
+            }];
+
+            const result = reducer(state, messages);
+
+            expect(result.messages).toHaveLength(0);
+        });
     });
 
     describe('per-turn result metadata', () => {

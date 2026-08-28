@@ -1,5 +1,8 @@
 import type { Message, ToolCallMessage } from '@/sync/typesMessage';
 import { askUserQuestionDisplayAnswer, type AskQuestion } from './askUserQuestion';
+import { stripHarnessBlocks } from './harness';
+import { presentServiceEvent } from './serviceEvent';
+import { stripThinkingWrapper } from './thinking';
 
 export type LeafRow =
     | { type: 'message'; key: string; message: Message; showMeta: boolean; thinkingDurationMs?: number }
@@ -53,9 +56,26 @@ function askAnswerRows(messages: Message[]): LeafRow[] {
 function lastFinalAgentId(messages: Message[]): string | null {
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i];
-        if (message.kind === 'agent-text' && !message.isThinking) return message.id;
+        if (message.kind === 'agent-text' && !message.isThinking && renderableAgentText(message)) return message.id;
     }
     return null;
+}
+
+function renderableAgentText(message: Extract<Message, { kind: 'agent-text' }>): boolean {
+    const content = stripHarnessBlocks(message.text);
+    return message.isThinking ? stripThinkingWrapper(content).length > 0 : content.trim().length > 0;
+}
+
+/** Keep the activity disclosure in lockstep with what its leaf views can render. */
+export function isRenderableActivityMessage(message: Message): boolean {
+    if (message.kind === 'agent-text') return renderableAgentText(message);
+    if (message.kind !== 'agent-event') return true;
+    if (message.event.type === 'ready') return false;
+    if (message.event.type === 'message') {
+        const presentation = presentServiceEvent(message.event.message);
+        return presentation.kind !== 'hidden' && (presentation.kind !== 'subtle' || presentation.text.trim().length > 0);
+    }
+    return true;
 }
 
 /** Render leaf messages, optionally keeping consecutive tools in a compact group. */
@@ -134,11 +154,12 @@ export function buildChatRows(messages: Message[], sessionLive: boolean): ChatRo
         const live = sessionLive && turnEnd === messages.length;
 
         if (live) {
-            if (turnMessages.length > 0) {
+            const activity = turnMessages.filter(isRenderableActivityMessage);
+            if (activity.length > 0) {
                 rows.push({
                     type: 'activity',
                     key: `activity-${message.id}`,
-                    messages: turnMessages,
+                    messages: activity,
                     live: true,
                 });
                 rows.push(...askAnswerRows(turnMessages));
@@ -147,25 +168,28 @@ export function buildChatRows(messages: Message[], sessionLive: boolean): ChatRo
             let finalIndex = -1;
             for (let j = turnMessages.length - 1; j >= 0; j--) {
                 const candidate = turnMessages[j];
-                if (candidate.kind === 'agent-text' && !candidate.isThinking) {
+                if (candidate.kind === 'agent-text' && !candidate.isThinking && renderableAgentText(candidate)) {
                     finalIndex = j;
                     break;
                 }
             }
 
             if (finalIndex < 0) {
-                if (turnMessages.length > 0) {
+                const activity = turnMessages.filter(isRenderableActivityMessage);
+                if (activity.length > 0) {
                     rows.push({
                         type: 'activity',
                         key: `activity-${message.id}`,
-                        messages: turnMessages,
+                        messages: activity,
                         live: false,
-                        durationSeconds: activityDurationSeconds(turnMessages),
+                        durationSeconds: activityDurationSeconds(activity),
                     });
                     rows.push(...askAnswerRows(turnMessages));
                 }
             } else {
-                const activity = turnMessages.slice(0, finalIndex);
+                const activity = turnMessages
+                    .slice(0, finalIndex)
+                    .filter(isRenderableActivityMessage);
                 if (activity.length > 0) {
                     const finalMessage = turnMessages[finalIndex];
                     const durationSeconds = finalMessage.kind === 'agent-text' && finalMessage.totalDurationMs != null

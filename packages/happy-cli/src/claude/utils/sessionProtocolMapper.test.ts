@@ -46,6 +46,26 @@ describe('mapClaudeLogMessageToSessionEnvelopes', () => {
         expect(result.envelopes[2].ev).toEqual({ t: 'text', text: 'internal', thinking: true });
     });
 
+    it('does not persist empty assistant text or thinking blocks', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-empty',
+            message: {
+                role: 'assistant',
+                content: [
+                    { type: 'text', text: '' },
+                    { type: 'text', text: '  \n ' },
+                    { type: 'thinking', thinking: '' },
+                    { type: 'thinking', thinking: '\n  ' },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: null });
+
+        expect(result.currentTurnId).not.toBeNull();
+        expect(result.envelopes.map((envelope) => envelope.ev.t)).toEqual(['turn-start']);
+    });
+
     it('maps tool use and tool result blocks to tool-call lifecycle', () => {
         const started = mapClaudeLogMessageToSessionEnvelopes({
             type: 'assistant',
