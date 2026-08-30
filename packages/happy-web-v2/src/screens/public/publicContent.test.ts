@@ -254,7 +254,7 @@ describe('public documentation registry', () => {
     expect(terminalManager).toContain('tmux ≥3.2');
     expect(terminalTests).toContain('accepts tmux ≥3.2');
     expect(terminalTests).toContain('rejects older tmux and unparseable output');
-    expect(mirrorManager).toContain("spawnSync('tmux', ['has-session'");
+    expect(mirrorManager).toContain("spawnSync('tmux', tmuxArgs(['has-session'");
     expect(architecture).toContain('Structured agent path and universal terminal path');
     expect(architecture).toContain('not a screenshot or a browser reimplementation');
   });

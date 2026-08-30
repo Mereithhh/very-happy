@@ -40,6 +40,7 @@ import {
     type TerminalHookEvent,
 } from './mirrorProtocol';
 import { createMirrorScanner, type MirrorScanner } from './mirrorScanner';
+import { scrubTmuxClientEnv, tmuxArgs } from '@/terminal/tmuxSocket';
 
 export const TERMINAL_MIRROR_FLAVOR = 'terminal-mirror';
 
@@ -96,7 +97,7 @@ export function createMirrorManager(deps: {
 
     const isTerminalAlive = deps.isTerminalAlive ?? ((terminalId: string): boolean => {
         try {
-            return spawnSync('tmux', ['has-session', '-t', `=vh-${terminalId}:`], { stdio: 'ignore', timeout: 3000 }).status === 0;
+            return spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${terminalId}:`]), { stdio: 'ignore', timeout: 3000, env: scrubTmuxClientEnv({ ...process.env }) }).status === 0;
         } catch {
             return false;
         }

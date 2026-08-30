@@ -106,6 +106,7 @@ import {
     sanitizeClosedTerminals,
     type ClosedTerminalRecord,
 } from './closedTerminals';
+import { scrubTmuxClientEnv, tmuxArgs } from './tmuxSocket';
 
 // ── Kill tombstones ──────────────────────────────────────────────────────────
 // A deleted terminal's id is remembered here so that a STALE CLIENT (an old
@@ -911,7 +912,7 @@ let tmuxAvailableCache: boolean | null = null;
 function isTmuxAvailable(): boolean {
     if (tmuxAvailableCache !== null) return tmuxAvailableCache;
     try {
-        const r = spawnSync('tmux', ['-V'], { stdio: 'ignore', env: ptyEnv() });
+        const r = spawnSync('tmux', tmuxArgs(['-V']), { stdio: 'ignore', env: ptyEnv() });
         tmuxAvailableCache = r.status === 0;
     } catch {
         tmuxAvailableCache = false;
@@ -925,7 +926,7 @@ let tmuxEnvFlagCache: boolean | null = null;
 function tmuxSupportsEnvFlag(): boolean {
     if (tmuxEnvFlagCache !== null) return tmuxEnvFlagCache;
     try {
-        const r = spawnSync('tmux', ['-V'], { encoding: 'utf8', env: ptyEnv() });
+        const r = spawnSync('tmux', tmuxArgs(['-V']), { encoding: 'utf8', env: ptyEnv() });
         tmuxEnvFlagCache = r.status === 0 && tmuxSupportsNewSessionEnv(r.stdout || '');
     } catch {
         tmuxEnvFlagCache = false;
@@ -997,6 +998,9 @@ function ptyEnv(): Record<string, string> {
     for (const [k, v] of Object.entries(process.env)) {
         if (typeof v === 'string') env[k] = v;
     }
+    // Never let an inherited $TMUX steer our client at a foreign server (the
+    // daemon may have been started from inside a tmux pane) — see tmuxSocket.ts.
+    scrubTmuxClientEnv(env);
     const local = `${os.homedir()}/.local/bin`;
     if (!(env.PATH || '').split(':').includes(local)) {
         env.PATH = `${local}:${env.PATH || ''}`;
@@ -1754,7 +1758,7 @@ export class WebTerminalManager {
         const name = `vh-${plan.terminalId}`;
         // Idempotence guard #2 (after the live-set filter): if it exists, leave
         // it alone. Two daemons racing must not double-create.
-        const exists = spawnSync('tmux', ['has-session', '-t', `=${name}:`],
+        const exists = spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${name}:`]),
             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
         if (exists) return false;
         const envFlags = tmuxSupportsEnvFlag() ? [
@@ -1764,13 +1768,12 @@ export class WebTerminalManager {
         ] : [];
         // Geometry is provisional — the first web open resizes the pane. These
         // numbers only decide how claude's first paint wraps.
-        const created = spawnSync('tmux',
-            tmuxNewSessionArgs(name, 120, 30, plan.cwd, envFlags, defaultShell()),
+        const created = spawnSync('tmux', tmuxArgs(tmuxNewSessionArgs(name, 120, 30, plan.cwd, envFlags, defaultShell())),
             { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
         // Some tmux builds have returned status 0 even when the server socket
         // could not be created. Verify the durable session itself before
         // recording a restore or reporting success.
-        const live = created.status === 0 && spawnSync('tmux', ['has-session', '-t', `=${name}:`],
+        const live = created.status === 0 && spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${name}:`]),
             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
         if (!live) {
             logger.debug(`[WEB TERMINAL] auto-restore: tmux create failed for ${plan.terminalId}`);
@@ -1779,11 +1782,11 @@ export class WebTerminalManager {
         if (plan.title) {
             // No `@vh_title_manual`: let the normal auto-follow take over as soon
             // as the resumed claude sets its own pane title.
-            spawnSync('tmux', ['set-option', '-t', `=${name}:`, '@vh_title', plan.title],
+            spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_title', plan.title]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
         }
         for (const argv of startupInjectionArgs(name, plan.command)) {
-            spawnSync('tmux', argv, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+            spawnSync('tmux', tmuxArgs(argv), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
         }
         logger.info(`[WEB TERMINAL] auto-restored ${plan.terminalId} in ${plan.cwd}`);
         return true;
@@ -1948,8 +1951,7 @@ export class WebTerminalManager {
         // honestly and let the client drop the row. ('terminal-gone' is the
         // contract string the web matches on — see machineOpenTerminal.)
         if (opts.attachOnly || opts.resub) {
-            const alive = isTmuxAvailable() && spawnSync(
-                'tmux', ['has-session', '-t', `=vh-${id}:`],
+            const alive = isTmuxAvailable() && spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${id}:`]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() },
             ).status === 0;
             if (!alive) throw new Error('terminal-gone');
@@ -1959,8 +1961,7 @@ export class WebTerminalManager {
             // ids). If the tmux session somehow exists (resurrected before
             // this guard shipped) attach honestly; otherwise refuse — the
             // terminal stays deleted no matter how old the client is.
-            const alive = isTmuxAvailable() && spawnSync(
-                'tmux', ['has-session', '-t', `=vh-${id}:`],
+            const alive = isTmuxAvailable() && spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${id}:`]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() },
             ).status === 0;
             if (!alive) {
@@ -2022,8 +2023,7 @@ export class WebTerminalManager {
                     // pty.spawn, so both creation paths agree. Later tmux calls
                     // pass it too — harmless once the server runs (env doesn't
                     // re-stick), correct when one of them is the first to boot it.
-                    const created = spawnSync('tmux',
-                        tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell()),
+                    const created = spawnSync('tmux', tmuxArgs(tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell())),
                         { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                     createdNew = created.status === 0;
                 } catch {
@@ -2067,7 +2067,7 @@ export class WebTerminalManager {
                 ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
             ];
             for (const a of optArgs) {
-                try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
+                try { spawnSync('tmux', tmuxArgs(a), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
             }
             if (createdNew) {
                 // Startup command — ONLY into the session we just created. tmux
@@ -2077,7 +2077,7 @@ export class WebTerminalManager {
                 if (startup) {
                     try {
                         for (const a of startupInjectionArgs(tmuxSession, startup)) {
-                            spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+                            spawnSync('tmux', tmuxArgs(a), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
                         }
                         logger.debug(`[WEB TERMINAL] injected startup command into new session ${tmuxSession}`);
                     } catch { /* injection is best-effort, never blocks the open */ }
@@ -2129,18 +2129,17 @@ export class WebTerminalManager {
             // and only for opens that are ALLOWED to create (an attach-only
             // open racing a kill must fail, not resurrect).
             if (!attachOnly && !createdNew) {
-                const alive = spawnSync('tmux', ['has-session', '-t', `=${tmuxSession}:`],
+                const alive = spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${tmuxSession}:`]),
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
                 if (shouldUseDirectPtyFallback(attachOnly, createdNew, alive)) {
-                    const retry = spawnSync('tmux',
-                        tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell()),
+                    const retry = spawnSync('tmux', tmuxArgs(tmuxNewSessionArgs(tmuxSession, cols, rows, cwd, envFlags, defaultShell())),
                         { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
                     createdNew = retry.status === 0;
                     if (createdNew) {
                         const startup = normalizeStartupCommand(opts.startupCommand);
                         if (startup) {
                             for (const a of startupInjectionArgs(tmuxSession, startup)) {
-                                try { spawnSync('tmux', a, { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
+                                try { spawnSync('tmux', tmuxArgs(a), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }); } catch { /* best-effort */ }
                             }
                         }
                     }
@@ -2150,7 +2149,7 @@ export class WebTerminalManager {
             // session creation. Fall back to a direct PTY instead of opening a
             // control client for a session that never existed.
             if (!attachOnly && !createdNew) {
-                const alive = spawnSync('tmux', ['has-session', '-t', `=${tmuxSession}:`],
+                const alive = spawnSync('tmux', tmuxArgs(['has-session', '-t', `=${tmuxSession}:`]),
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
                 if (!alive) {
                     logger.info(`[WEB TERMINAL] tmux session creation unavailable; using direct PTY for ${id}`);
@@ -2570,8 +2569,8 @@ export class WebTerminalManager {
         // spawnSync returning is not enough: the old implementation ignored a
         // non-zero exit code and acknowledged kills that never happened.
         const target = `=vh-${terminalId}:`;
-        const killed = spawnSync('tmux', ['kill-session', '-t', target], { stdio: 'ignore', env: ptyEnv() });
-        const verified = spawnSync('tmux', ['has-session', '-t', target], { stdio: 'ignore', env: ptyEnv() });
+        const killed = spawnSync('tmux', tmuxArgs(['kill-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
+        const verified = spawnSync('tmux', tmuxArgs(['has-session', '-t', target]), { stdio: 'ignore', env: ptyEnv() });
         if (!tmuxKillVerified(killed, verified)) {
             logger.debug(`[WEB TERMINAL] failed to verify tmux session removal ${target}`);
             return false;
@@ -2638,8 +2637,7 @@ export class WebTerminalManager {
         if (!isTmuxAvailable()) return [];
         try {
             const env = ptyEnv();
-            const r = spawnSync('tmux',
-                ['list-sessions', '-F', LIST_SESSIONS_FORMAT],
+            const r = spawnSync('tmux', tmuxArgs(['list-sessions', '-F', LIST_SESSIONS_FORMAT]),
                 { encoding: 'utf8', env });
             if (r.status !== 0 || !r.stdout) return [];
             const hostname = os.hostname();
@@ -2656,7 +2654,7 @@ export class WebTerminalManager {
                     // task); a manual rename (flag) is never touched. Best-effort:
                     // on failure we just report the stored title this round.
                     try {
-                        const w = spawnSync('tmux', ['set-option', '-t', `=${s.name}:`, '@vh_title', auto],
+                        const w = spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${s.name}:`, '@vh_title', auto]),
                             { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
                         if (w.status === 0) title = auto;
                     } catch { /* keep the stored title */ }
@@ -2708,12 +2706,10 @@ export class WebTerminalManager {
      *  timeout → undefined (the field is omitted), never an error. */
     private probeAgentStateViaTmux(sessionName: string): AgentState | undefined {
         try {
-            const cmd = spawnSync('tmux',
-                ['display-message', '-p', '-t', sessionName, '#{pane_current_command}'],
+            const cmd = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', sessionName, '#{pane_current_command}']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cmd.status !== 0 || typeof cmd.stdout !== 'string') return undefined;
-            const cap = spawnSync('tmux',
-                ['capture-pane', '-p', '-t', sessionName, '-S', '-40'],
+            const cap = spawnSync('tmux', tmuxArgs(['capture-pane', '-p', '-t', sessionName, '-S', '-40']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (cap.status !== 0 || typeof cap.stdout !== 'string') return undefined;
             return classifyPane(cmd.stdout.trim(), cap.stdout);
@@ -2738,8 +2734,7 @@ export class WebTerminalManager {
         const session = this.terminals.get(terminalId);
         if (session) session.lastTouch = Date.now();
         try {
-            const probe = spawnSync('tmux',
-                ['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}'],
+            const probe = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
             const [inMode, altOn, wantsMouse, paneW, paneH, paneCmd] = probe.stdout.trim().split('\t');
@@ -2753,7 +2748,7 @@ export class WebTerminalManager {
                 // would edit its input box instead of scrolling. `-H` writes
                 // the raw bytes; one call carries the whole burst.
                 const hex = sgrWheelHexBytes(action.dir, action.count, Number(paneW) || 80, Number(paneH) || 24);
-                spawnSync('tmux', ['send-keys', '-t', name, '-H', ...hex],
+                spawnSync('tmux', tmuxArgs(['send-keys', '-t', name, '-H', ...hex]),
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
                 return;
             }
@@ -2761,22 +2756,21 @@ export class WebTerminalManager {
                 // Fullscreen Claude Code without mouse reporting: PageUp/PageDown
                 // are its documented scroll keys; arrows would open the input
                 // box's prompt-history browser instead of scrolling.
-                spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
+                spawnSync('tmux', tmuxArgs(['send-keys', '-t', name, '-N', String(action.count), action.key]),
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
                 return;
             }
             if (action.kind === 'keys') {
-                spawnSync('tmux', ['send-keys', '-t', name, '-N', String(action.count), action.key],
+                spawnSync('tmux', tmuxArgs(['send-keys', '-t', name, '-N', String(action.count), action.key]),
                     { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
                 return;
             }
             // copy-scroll: enter copy-mode idempotently (-e → auto-exit at the
             // bottom, so wheel-down naturally returns to the live view).
-            spawnSync('tmux', ['copy-mode', '-e', '-t', name],
+            spawnSync('tmux', tmuxArgs(['copy-mode', '-e', '-t', name]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
-            spawnSync('tmux',
-                ['send-keys', '-X', '-t', name, '-N', String(action.count),
-                    action.dir === 'up' ? 'scroll-up' : 'scroll-down'],
+            spawnSync('tmux', tmuxArgs(['send-keys', '-X', '-t', name, '-N', String(action.count),
+                    action.dir === 'up' ? 'scroll-up' : 'scroll-down']),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
         } catch {
             // tmux gone / session dead — nothing to scroll
@@ -2811,13 +2805,13 @@ export class WebTerminalManager {
         const name = `vh-${terminalId}`;
         try {
             if (ifAbsent) {
-                const cur = spawnSync('tmux', ['show-options', '-t', name, '-v', '@vh_title'], { encoding: 'utf8', env: ptyEnv() });
+                const cur = spawnSync('tmux', tmuxArgs(['show-options', '-t', name, '-v', '@vh_title']), { encoding: 'utf8', env: ptyEnv() });
                 if (cur.status === 0 && cur.stdout && cur.stdout.trim()) return true; // already titled
             }
-            const r = spawnSync('tmux', ['set-option', '-t', name, '@vh_title', title], { stdio: 'ignore', env: ptyEnv() });
+            const r = spawnSync('tmux', tmuxArgs(['set-option', '-t', name, '@vh_title', title]), { stdio: 'ignore', env: ptyEnv() });
             if (r.status !== 0) return false;
             if (!ifAbsent) {
-                try { spawnSync('tmux', ['set-option', '-t', name, '@vh_title_manual', '1'], { stdio: 'ignore', env: ptyEnv() }); } catch { /* best-effort */ }
+                try { spawnSync('tmux', tmuxArgs(['set-option', '-t', name, '@vh_title_manual', '1']), { stdio: 'ignore', env: ptyEnv() }); } catch { /* best-effort */ }
             }
             // A rename must reach other devices immediately, not at tick cadence.
             this.kickListRefresh();
@@ -2835,7 +2829,7 @@ export class WebTerminalManager {
         if (!valid) return false;
         const name = `vh-${terminalId}`;
         try {
-            const r = spawnSync('tmux', ['set-option', '-t', name, '@vh_tags', JSON.stringify(valid)], {
+            const r = spawnSync('tmux', tmuxArgs(['set-option', '-t', name, '@vh_tags', JSON.stringify(valid)]), {
                 stdio: 'ignore', env: ptyEnv(),
             });
             if (r.status !== 0) return false;
