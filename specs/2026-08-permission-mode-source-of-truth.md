@@ -1,6 +1,6 @@
 # Claude 会话权限模式唯一事实源（CLI 上报 + Web 只读显示）
 
-> 状态：Final
+> 状态：Shipped（`main@1def266e` #102；发布 `main@a0ce972c` + CLI v0.2.90，2026-08-31）
 > 日期：2026-08-31 ｜ 关联 backlog：B-258 ｜ 出处：会话「Tanka 待办提取（shanda + apodex）」权限模式显示与实际不一致事故
 
 ## 背景
