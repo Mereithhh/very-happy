@@ -154,7 +154,10 @@ ping + 60s 的僵尸连接在回前台的第一次 emit 就会被关掉并自动
       ⇒ `recovered=false`、transport 掉线窗口内 ⇒ `recovered=true`。
 - [ ] `onReconnected` 重拉当前会话消息；`onRecovered` 有界集；web 上 AppState 'active' 不再 invalidate。
 - [ ] 门禁：web vitest / vite build / tsc 0；server tsc。
-- [ ] 本地浏览器：Chromium 打开终端 + Claude 会话，切 tab 回来只见一组 REST + 一次 `ping`，无重连。
+- [x] 本地 E2E（headless Chrome 151 + standalone server + 隔离 daemon，CDP 观测 console/REST/WS 帧 + 截图对照 tmux，2026-08-31）：
+      短后台健康 → 一组 REST + `ping` ack、无重连；renderer SIGSTOP 25s → 同上不误杀；server SIGSTOP（死链路）→ 5.3s 恰一次强制重连、恢复后全量集 + 终端补齐；
+      renderer SIGSTOP 70s（iOS 式长后台）→ 1.7s 重连 recovered=false 全量集；CDP 冻结 15s（Android 式）→ 1.8s 重连 **recovered=true** 走 `onRecovered` 有界集 + catch-up，终端与 tmux 一致。
+      未覆盖：真实 iOS/Android（V-105）、Claude 会话消息 forward-fetch（本地无会话）。
 
 ## 留真机验证项
 
