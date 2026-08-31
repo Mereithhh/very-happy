@@ -12,9 +12,13 @@ describe('planApprovalMode', () => {
         expect(planApprovalMode('ExitPlanMode', 'read-only')).toBe('default');
     });
 
-    it('does not attach a mode to ordinary tool approvals or an unresolved plan selection', () => {
+    it('does not attach a mode to ordinary tool approvals', () => {
         expect(planApprovalMode('Bash', 'bypassPermissions')).toBeUndefined();
-        expect(planApprovalMode('ExitPlanMode', 'plan')).toBeUndefined();
-        expect(planApprovalMode('ExitPlanMode', null)).toBeUndefined();
+    });
+
+    it('runs an approved plan in yolo when the selection is plan or unresolved', () => {
+        expect(planApprovalMode('ExitPlanMode', 'plan')).toBe('bypassPermissions');
+        expect(planApprovalMode('ExitPlanMode', null)).toBe('bypassPermissions');
+        expect(planApprovalMode('ExitPlanMode', undefined)).toBe('bypassPermissions');
     });
 });

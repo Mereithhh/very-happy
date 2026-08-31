@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { CLAUDE_LIVE_PERMISSION_CAPABILITY, shouldApplyPermissionModeLive } from './livePermissionMode';
+import { CLAUDE_LIVE_PERMISSION_CAPABILITY, CLAUDE_LIVE_PERMISSION_V2_CAPABILITY, shouldApplyPermissionModeLive } from './livePermissionMode';
 
 describe('shouldApplyPermissionModeLive', () => {
     it('uses the live RPC only for a running Claude session that advertises support', () => {
@@ -33,6 +33,32 @@ describe('shouldApplyPermissionModeLive', () => {
             isWorking: true,
             isRemote: false,
             capabilities: [CLAUDE_LIVE_PERMISSION_CAPABILITY],
+        })).toBe(false);
+    });
+});
+
+describe('shouldApplyPermissionModeLive v2', () => {
+    it('uses the RPC for an idle but online v2 Claude session', () => {
+        expect(shouldApplyPermissionModeLive({
+            isClaude: true,
+            isWorking: false,
+            isRemote: true,
+            isOnline: true,
+            capabilities: [CLAUDE_LIVE_PERMISSION_V2_CAPABILITY],
+        })).toBe(true);
+        expect(shouldApplyPermissionModeLive({
+            isClaude: true,
+            isWorking: false,
+            isRemote: true,
+            isOnline: false,
+            capabilities: [CLAUDE_LIVE_PERMISSION_V2_CAPABILITY],
+        })).toBe(false);
+        expect(shouldApplyPermissionModeLive({
+            isClaude: true,
+            isWorking: false,
+            isRemote: false,
+            isOnline: true,
+            capabilities: [CLAUDE_LIVE_PERMISSION_V2_CAPABILITY],
         })).toBe(false);
     });
 });

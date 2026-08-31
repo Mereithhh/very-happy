@@ -48,3 +48,22 @@ export function resolveIncomingPermissionMode(
     }
     return next.createdAt > current.createdAt ? next.permissionMode : undefined;
 }
+
+/**
+ * Claude CLIs (capability claude-live-permission-v2) publish the mode they
+ * actually enforce in session metadata. That value is the truth for display
+ * and for every outbound meta/plan approval. It overrides the device-local
+ * selection whenever the CLI reports a *change* (or the device has nothing);
+ * an unchanged published value must not clobber an optimistic local pick that
+ * is still round-tripping through the set-permission-mode RPC.
+ */
+export function resolveSessionPermissionMode(input: {
+    publishedMode: string | null | undefined;
+    previousPublishedMode: string | null | undefined;
+    localMode: string | null;
+}): string | null {
+    const { publishedMode, previousPublishedMode, localMode } = input;
+    if (!publishedMode) return localMode;
+    if (localMode === null || publishedMode !== previousPublishedMode) return publishedMode;
+    return localMode;
+}

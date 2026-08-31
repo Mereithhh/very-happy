@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from './typesMessage';
 import type { NormalizedMessage } from './typesRaw';
-import { resolveIncomingPermissionMode } from './sessionModeSync';
+import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 
 const existing = (id: string, seq: number, mode?: string): Message => ({
     kind: 'user-text', id, localId: null, createdAt: seq * 100, seq, text: id,
@@ -27,5 +27,25 @@ describe('resolveIncomingPermissionMode', () => {
 
     it('accepts metadata added to the same server message', () => {
         expect(resolveIncomingPermissionMode([existing('a', 1)], [incoming('a', 1, 'yolo')])).toBe('yolo');
+    });
+});
+
+describe('resolveSessionPermissionMode', () => {
+    it('shows the CLI-published mode when the device has no local selection', () => {
+        expect(resolveSessionPermissionMode({ publishedMode: 'plan', previousPublishedMode: undefined, localMode: null })).toBe('plan');
+    });
+
+    it('lets a published change override a stale device-local selection (cross-device sync)', () => {
+        expect(resolveSessionPermissionMode({ publishedMode: 'plan', previousPublishedMode: 'bypassPermissions', localMode: 'bypassPermissions' })).toBe('plan');
+        expect(resolveSessionPermissionMode({ publishedMode: 'bypassPermissions', previousPublishedMode: undefined, localMode: 'plan' })).toBe('bypassPermissions');
+    });
+
+    it('keeps an optimistic local pick while the published value is unchanged', () => {
+        expect(resolveSessionPermissionMode({ publishedMode: 'plan', previousPublishedMode: 'plan', localMode: 'bypassPermissions' })).toBe('bypassPermissions');
+    });
+
+    it('falls back to local resolution for CLIs that do not publish a mode', () => {
+        expect(resolveSessionPermissionMode({ publishedMode: undefined, previousPublishedMode: undefined, localMode: 'acceptEdits' })).toBe('acceptEdits');
+        expect(resolveSessionPermissionMode({ publishedMode: undefined, previousPublishedMode: undefined, localMode: null })).toBeNull();
     });
 });
