@@ -1,5 +1,6 @@
 /**
- * B-150 auto-restore, against a REAL tmux server (isolated via TMUX_TMPDIR) and
+ * B-150 auto-restore, against a REAL tmux server (private socket via
+ * src/testing/isolatedTmux.ts — never TMUX_TMPDIR, see the 2026-08-31 incident) and
  * an isolated HAPPY_HOME_DIR — both set before importing webTerminal, because
  * `configuration` is a singleton built at import time.
  *
@@ -12,19 +13,16 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
 
-const tmuxAvailable = spawnSync('tmux', ['-V'], { stdio: 'ignore' }).status === 0;
 
 const happyHome = mkdtempSync(join(tmpdir(), 'vh-ar-home-'));
-const tmuxDir = mkdtempSync(join(tmpdir(), 'vh-ar-tmux-'));
+const iso = createIsolatedTmux('vh-ar-tmux');
 const workDir = mkdtempSync(join(tmpdir(), 'vh-ar-work-'));
 const binDir = mkdtempSync(join(tmpdir(), 'vh-ar-bin-'));
 const prevHome = process.env.HAPPY_HOME_DIR;
-const prevTmux = process.env.TMUX_TMPDIR;
 const prevPath = process.env.PATH;
 process.env.HAPPY_HOME_DIR = happyHome;
-process.env.TMUX_TMPDIR = tmuxDir;
 // Keep the restored pane alive independent of whether the host has Claude
 // installed. The test verifies command injection, not the provider runtime.
 const fakeClaude = join(binDir, 'claude');
@@ -77,9 +75,7 @@ writeFileSync(join(happyHome, 'sessions.json'), JSON.stringify({
 
 const { WebTerminalManager } = await import('./webTerminal');
 
-function tmux(...args: string[]) {
-    return spawnSync('tmux', args, { encoding: 'utf8', env: { ...process.env } });
-}
+const tmux = (...args: string[]) => iso.run(...args);
 function sessionExists(id: string): boolean {
     return tmux('has-session', '-t', `=vh-${id}:`).status === 0;
 }
@@ -92,10 +88,9 @@ describe.skipIf(!tmuxAvailable)('terminal auto-restore (B-150, real tmux)', () =
     afterAll(() => {
         mgr.stopListTracking();
         for (const id of [FRESH, STALE, GONEDIR, SHELL]) tmux('kill-session', '-t', `=vh-${id}:`);
-        tmux('kill-server');
-        for (const d of [happyHome, tmuxDir, workDir, binDir]) rmSync(d, { recursive: true, force: true });
+        iso.dispose();
+        for (const d of [happyHome, workDir, binDir]) rmSync(d, { recursive: true, force: true });
         if (prevHome === undefined) delete process.env.HAPPY_HOME_DIR; else process.env.HAPPY_HOME_DIR = prevHome;
-        if (prevTmux === undefined) delete process.env.TMUX_TMPDIR; else process.env.TMUX_TMPDIR = prevTmux;
         if (prevPath === undefined) delete process.env.PATH; else process.env.PATH = prevPath;
     });
 

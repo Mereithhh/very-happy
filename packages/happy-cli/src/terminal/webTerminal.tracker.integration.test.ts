@@ -1,6 +1,6 @@
 /**
  * End-to-end test of the daemon-side terminal-list PUSH chain against a REAL
- * tmux server (isolated via TMUX_TMPDIR — never touches the user's sessions):
+ * tmux server (private socket via src/testing/isolatedTmux.ts — never the user's):
  *
  *   open() → kick → list push        (membership)
  *   OSC title from inside the pane → tmux pane_title → set-titles re-emit →
@@ -13,13 +13,10 @@
  * out instead of being silently rescued by the periodic tick.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
 import { WebTerminalManager, type TerminalListItem } from './webTerminal';
 
-const tmuxAvailable = spawnSync('tmux', ['-V'], { stdio: 'ignore' }).status === 0;
+const iso = createIsolatedTmux('vh-tracker');
 
 /** Poll until `probe` returns a truthy value or the timeout hits. */
 async function waitFor<T>(probe: () => T | undefined | false, timeoutMs = 15_000, label = 'condition'): Promise<T> {
@@ -33,8 +30,6 @@ async function waitFor<T>(probe: () => T | undefined | false, timeoutMs = 15_000
 }
 
 describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isolated server)', () => {
-    let dir: string;
-    let savedTmpdir: string | undefined;
     let mgr: WebTerminalManager;
     const pushes: TerminalListItem[][] = [];
     /** Every ephemeral `terminal-activity` frame, with arrival time. */
@@ -42,11 +37,8 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
     const TID = 'trkpush1';
 
     beforeAll(() => {
-        dir = mkdtempSync(join(tmpdir(), 'vh-tracker-'));
-        savedTmpdir = process.env.TMUX_TMPDIR;
-        // Isolated tmux server: every tmux invocation in the manager builds its
-        // env from process.env (ptyEnv), so this redirects the server socket.
-        process.env.TMUX_TMPDIR = dir;
+        // Isolated tmux server: the manager reads VH_TMUX_SOCKET (set by
+        // createIsolatedTmux) and prefixes every tmux argv with -S.
         mgr = new WebTerminalManager((event, payload) => {
             // Byte stream not under test; the ephemeral activity lane IS.
             if (event === 'terminal-activity') activity.push({ at: Date.now(), terminals: payload.terminals });
@@ -58,15 +50,12 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
     afterAll(() => {
         mgr?.stopListTracking();
         try { mgr?.killSession(TID); } catch { /* already gone */ }
-        spawnSync('tmux', ['kill-server'], { stdio: 'ignore', env: { ...process.env, TMUX_TMPDIR: dir } as any });
-        if (savedTmpdir === undefined) delete process.env.TMUX_TMPDIR;
-        else process.env.TMUX_TMPDIR = savedTmpdir;
-        rmSync(dir, { recursive: true, force: true });
+        iso.dispose();
     });
 
     it('pushes on open, live OSC title change, manual rename, and kill', async () => {
         // ── open: membership push ────────────────────────────────────────────
-        const result = await mgr.open({ terminalId: TID, cols: 80, rows: 24, cwd: dir });
+        const result = await mgr.open({ terminalId: TID, cols: 80, rows: 24, cwd: iso.dir });
         expect(result.terminalId).toBe(TID);
         expect(result.tmuxSession).toBe(`vh-${TID}`);
         await waitFor(
@@ -127,7 +116,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // The tracking interval here is 10 MINUTES, so nothing in this test can
         // be rescued by a periodic tick — every frame is output-driven.
         const TID5 = 'trkact1';
-        await mgr.open({ terminalId: TID5, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID5, cols: 80, rows: 24, cwd: iso.dir });
         try {
             const start = activity.length;
             const t0 = Date.now();
@@ -165,16 +154,16 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
 
     it('open() applies the native-feel session options (status bar off)', async () => {
         const TID4 = 'trkopts1';
-        await mgr.open({ terminalId: TID4, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID4, cols: 80, rows: 24, cwd: iso.dir });
         try {
             // Session-scoped `status off` is part of the per-open option batch
             // (native-terminal feel: the web header owns the title, the green
             // bar is tmux noise). `show-options -t` prints the session value.
-            const r = spawnSync('tmux', ['show-options', '-t', `=vh-${TID4}:`, 'status'], { encoding: 'utf8' });
+            const r = iso.spawn(['show-options', '-t', `=vh-${TID4}:`, 'status'], { encoding: 'utf8' });
             expect(r.status).toBe(0);
             expect(r.stdout.trim()).toBe('status off');
             // And the pane got the full client height back (no bar row eaten).
-            const h = spawnSync('tmux', ['display-message', '-p', '-t', `=vh-${TID4}:`, '#{pane_height}'], { encoding: 'utf8' });
+            const h = iso.spawn(['display-message', '-p', '-t', `=vh-${TID4}:`, '#{pane_height}'], { encoding: 'utf8' });
             expect(h.stdout.trim()).toBe('24');
         } finally {
             mgr.killSession(TID4);
@@ -183,7 +172,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
 
     it('attach-only opens never resurrect a killed terminal (the delete-resurrection bug)', async () => {
         const TID2 = 'trkgone1';
-        await mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir });
+        await mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: iso.dir });
         await waitFor(
             () => pushes.some((l) => l.some((t) => t.id === TID2)),
             15_000, `open() membership push for ${TID2}`,
@@ -197,17 +186,17 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // A lingering screen's catch-up (`resub`) and any attach-only open must
         // FAIL — with create-or-attach they used to recreate `vh-<id>` and the
         // push re-adopted the "deleted" terminal everywhere.
-        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, resub: true }))
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: iso.dir, resub: true }))
             .rejects.toThrow('terminal-gone');
-        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir, attachOnly: true }))
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: iso.dir, attachOnly: true }))
             .rejects.toThrow('terminal-gone');
-        expect(spawnSync('tmux', ['has-session', '-t', `=vh-${TID2}:`], { stdio: 'ignore' }).status).not.toBe(0);
+        expect(iso.spawn(['has-session', '-t', `=vh-${TID2}:`], { stdio: 'ignore' }).status).not.toBe(0);
 
         // Attach-only DOES attach when the tmux session exists without a live
         // pty (daemon restart / idle-reaped pty): create one out-of-band.
         const TID3 = 'trkext1';
-        expect(spawnSync('tmux', ['new-session', '-d', '-s', `vh-${TID3}`], { stdio: 'ignore' }).status).toBe(0);
-        const attached = await mgr.open({ terminalId: TID3, cols: 80, rows: 24, cwd: dir, attachOnly: true });
+        expect(iso.spawn(['new-session', '-d', '-s', `vh-${TID3}`], { stdio: 'ignore' }).status).toBe(0);
+        const attached = await mgr.open({ terminalId: TID3, cols: 80, rows: 24, cwd: iso.dir, attachOnly: true });
         expect(attached.terminalId).toBe(TID3);
         expect(attached.tmuxSession).toBe(`vh-${TID3}`);
         mgr.killSession(TID3);
@@ -215,7 +204,7 @@ describe.skipIf(!tmuxAvailable)('terminal list tracking pushes (real tmux, isola
         // Kill tombstones: even a legacy create-or-attach open (no flags) must
         // NOT resurrect a killed id — this WAS the delete-resurrection bug
         // (stale-client legacy opens recreating deleted terminals).
-        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: dir }))
+        await expect(mgr.open({ terminalId: TID2, cols: 80, rows: 24, cwd: iso.dir }))
             .rejects.toThrow('terminal-gone');
     }, 60_000);
 });

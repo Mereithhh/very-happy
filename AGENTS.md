@@ -65,6 +65,8 @@ pnpm -C packages/happy-web-v2 exec tsc --noEmit
 pnpm -C packages/happy-cli test        # = build + vitest unit
 node packages/happy-cli/dist/index.mjs --version
 # 已知环境例外：daemon.integration "second daemon" 用例
+# 在 web 终端（tmux 内）跑 happy-cli 测试前先 `unset TMUX`；任何触碰 tmux 的测试只能走
+# src/testing/isolatedTmux.ts（私有 -S socket），禁止裸 `tmux kill-server`（2026-08-31 两次杀光生产终端）
 
 # happy-server：类型 + 测试
 pnpm -C packages/happy-server exec tsc --noEmit

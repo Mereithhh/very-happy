@@ -34,6 +34,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { ControlModeDecoder, type ControlModeEvent } from './controlModeDecoder';
+import { tmuxArgs } from './tmuxSocket';
 
 /** Grace between SIGTERM and SIGKILL when stopping a client (rule 3). */
 export const CONTROL_CLIENT_KILL_GRACE_MS = 2000;
@@ -96,7 +97,7 @@ export class ControlClient {
         // `refresh-client -C` does not even participate in the window size, so
         // there is nothing to kick other clients for (v1's `attach -d` existed
         // only because the pty WAS the sizing client).
-        this.child = spawn('tmux', ['-C', 'attach-session', '-t', `=${tmuxSession}:`], {
+        this.child = spawn('tmux', tmuxArgs(['-C', 'attach-session', '-t', `=${tmuxSession}:`], env), {
             stdio: ['pipe', 'pipe', 'pipe'],
             env,
         }) as ChildProcessWithoutNullStreams;

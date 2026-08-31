@@ -6,7 +6,7 @@
  * terminals disappeared, and because closure detection only diffed an in-memory
  * cache, nothing was recorded anywhere — the terminals had to be reconstructed
  * by hand from daemon logs. The reboot is reproduced without rebooting anything:
- * TMUX_TMPDIR points at an empty directory, so `tmux list-sessions` finds no
+ * A private tmux socket (isolatedTmux) starts empty, so `tmux list-sessions` finds no
  * server and the live list is legitimately empty.
  *
  * Both env overrides must be set BEFORE importing webTerminal — `configuration`
@@ -17,15 +17,14 @@ import { describe, it, expect, afterAll } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createIsolatedTmux } from '@/testing/isolatedTmux';
 
 const happyHome = mkdtempSync(join(tmpdir(), 'vh-gap-home-'));
-const tmuxDir = mkdtempSync(join(tmpdir(), 'vh-gap-tmux-'));
+const iso = createIsolatedTmux('vh-gap-tmux');
 // Saved so afterAll can put them back: unit files share a worker process, and
 // leaking HAPPY_HOME_DIR would point OTHER suites at this (deleted) temp dir.
 const prevHome = process.env.HAPPY_HOME_DIR;
-const prevTmux = process.env.TMUX_TMPDIR;
 process.env.HAPPY_HOME_DIR = happyHome;
-process.env.TMUX_TMPDIR = tmuxDir;
 
 const GONE = 'gapgone1';
 const GONE_LIVE = 'gapkill01';
@@ -69,9 +68,8 @@ describe('daemon-gap reconcile (B-149)', () => {
     afterAll(() => {
         mgr.stopListTracking();
         rmSync(happyHome, { recursive: true, force: true });
-        rmSync(tmuxDir, { recursive: true, force: true });
+        iso.dispose();
         if (prevHome === undefined) delete process.env.HAPPY_HOME_DIR; else process.env.HAPPY_HOME_DIR = prevHome;
-        if (prevTmux === undefined) delete process.env.TMUX_TMPDIR; else process.env.TMUX_TMPDIR = prevTmux;
     });
 
     it('archives the vanished terminal with its cwd, mirror and resume id', async () => {
