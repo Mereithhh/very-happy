@@ -116,6 +116,7 @@ import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
 import { parseMessageAsEvent } from "./messageToEvent";
+import { sortIncomingBySeq } from "../messageOrder";
 import { firstTurnEndForQueuedInput, TurnEndBoundary } from "../queuedInput";
 
 type TurnUsage = {
@@ -381,7 +382,16 @@ function applyToolResult(
     changed.add(messageId);
 }
 
-export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
+/**
+ * Input contract (B-261): a batch is processed in chronological order. The
+ * entry sort below enforces it for fully seq-carrying batches (history
+ * backfill pages arrive newest-first); mixed batches with locally synthesized
+ * messages have no seq and their arrival order IS the chronological order.
+ * The tracer depends on this: a child sidechain message traced before its
+ * parent `Agent` tool call is emitted as a top-level row and never re-nested.
+ */
+export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
+    const messages = sortIncomingBySeq(rawMessages);
     if (ENABLE_LOGGING) {
         console.log(`[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`);
         if (agentState?.requests) {

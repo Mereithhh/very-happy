@@ -36,3 +36,33 @@ export function compareMessagesNewestFirst(a: Message, b: Message): number {
     }
     return 0;
 }
+
+/**
+ * Batch-input ordering for the reducer/storage pipeline (B-261).
+ *
+ * History backfill pages arrive newest-first (`before_seq` DESC) and were fed
+ * to the reducer in arrival order. The tracer and the plan-mode scan both
+ * depend on chronological order: a DESC page flattens `Agent` sidechain
+ * children into top-level rows (the parent tool call is traced after its
+ * children), leaves child tool-results permanently running, and an
+ * [Exit, Enter] plan-mode pair read backwards re-enters plan mode.
+ *
+ * Sorts a batch ascending by `seq` — but ONLY when every message in the batch
+ * carries a numeric seq. Mixed batches (optimistic sends and locally
+ * synthesized messages have no seq) admit no total order, and for them the
+ * arrival order IS the correct order; sorting a mixed batch with a partial
+ * comparator would be undefined. Returns the input array untouched (same
+ * reference) when it is already sorted or not fully seq-carrying.
+ */
+export function sortIncomingBySeq<T extends { seq?: number | null }>(messages: T[]): T[] {
+    if (messages.length < 2) return messages;
+    let previous = -Infinity;
+    let sorted = true;
+    for (const message of messages) {
+        if (typeof message.seq !== 'number') return messages;
+        if (message.seq < previous) sorted = false;
+        previous = message.seq;
+    }
+    if (sorted) return messages;
+    return [...messages].sort((a, b) => (a.seq as number) - (b.seq as number));
+}

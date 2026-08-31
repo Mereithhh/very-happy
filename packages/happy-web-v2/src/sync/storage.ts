@@ -14,7 +14,8 @@ import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
-import { compareMessagesNewestFirst } from "./messageOrder";
+import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
+import { resolvePlanModeFromBatch } from "./planModeBatch";
 import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
@@ -682,30 +683,21 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             isDataReady: true
         })),
-        applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
+        applyMessages: (sessionId: string, rawMessages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             let hasReadyEvent = false;
             let appliedPermissionMode: string | undefined;
 
+            // B-261: history backfill pages arrive newest-first; both the
+            // plan-mode scan below and the reducer's tracer depend on
+            // chronological order. Sorts only fully seq-carrying batches
+            // (mixed/optimistic batches keep arrival order — see helper doc).
+            const messages = sortIncomingBySeq(rawMessages);
+
             // Track plan mode transitions through the batch in order.
-            // Set true on EnterPlanMode, false on ExitPlanMode. The final value
-            // tells us whether the batch ends with an unresolved plan entry.
-            // This prevents history replays (which contain both Enter + Exit) from
-            // re-triggering plan mode, while still catching real-time EnterPlanMode.
-            let shouldEnterPlanMode = false;
-            for (const msg of messages) {
-                if (msg.role === 'agent') {
-                    for (const c of msg.content) {
-                        if (c.type === 'tool-call') {
-                            if (c.name === 'EnterPlanMode' || c.name === 'enter_plan_mode') {
-                                shouldEnterPlanMode = true;
-                            } else if (c.name === 'ExitPlanMode' || c.name === 'exit_plan_mode') {
-                                shouldEnterPlanMode = false;
-                            }
-                        }
-                    }
-                }
-            }
+            // History replays contain both Enter + Exit, so an ordered batch
+            // must not re-trigger plan mode while real-time EnterPlanMode does.
+            const shouldEnterPlanMode = resolvePlanModeFromBatch(messages);
 
             set((state) => {
 
