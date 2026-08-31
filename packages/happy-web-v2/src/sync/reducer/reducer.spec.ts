@@ -3776,3 +3776,98 @@ describe('reducer', () => {
         });
     });
 });
+
+describe('B-261: DESC backfill pages are re-ordered before tracing', () => {
+    it('nests Agent sidechain children and completes child tool results from a newest-first single batch', () => {
+        const state = createReducer();
+        const batch: NormalizedMessage[] = [
+            {
+                id: 'child-read-result',
+                localId: null,
+                createdAt: 1400,
+                seq: 14,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'tool-read-child',
+                    content: null,
+                    is_error: false,
+                    uuid: 'child-read-result-uuid',
+                    parentUUID: 'session-subagent-desc',
+                }],
+            },
+            {
+                id: 'child-read-call',
+                localId: null,
+                createdAt: 1300,
+                seq: 13,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-read-child',
+                    name: 'Read',
+                    input: { file_path: '/tmp/example.ts' },
+                    description: null,
+                    uuid: 'child-read-call-uuid',
+                    parentUUID: 'session-subagent-desc',
+                }],
+            },
+            {
+                id: 'prompt-echo',
+                localId: null,
+                createdAt: 1200,
+                seq: 12,
+                role: 'agent',
+                isSidechain: true,
+                content: [{
+                    type: 'text',
+                    text: 'Investigate the flaky test',
+                    uuid: 'prompt-echo-uuid',
+                    parentUUID: 'session-subagent-desc',
+                }],
+            },
+            {
+                id: 'agent-parent',
+                localId: null,
+                createdAt: 1100,
+                seq: 11,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-agent-parent-desc',
+                    name: 'Agent',
+                    input: {
+                        description: 'Investigate the flaky test',
+                        prompt: 'Investigate the flaky test',
+                        sessionSubagent: 'session-subagent-desc',
+                    },
+                    description: 'Investigate the flaky test',
+                    uuid: 'agent-parent-desc-uuid',
+                    parentUUID: null,
+                }],
+            },
+        ] as NormalizedMessage[];
+
+        const result = reducer(state, batch);
+
+        // No top-level Read row: the child nests under the Agent card even
+        // though the page arrived newest-first (before_seq DESC).
+        const toolCalls = result.messages.filter((m) => m.kind === 'tool-call');
+        expect(toolCalls).toHaveLength(1);
+        expect(toolCalls[0].kind).toBe('tool-call');
+        if (toolCalls[0].kind === 'tool-call') {
+            expect(toolCalls[0].tool.name).toBe('Agent');
+            const children = toolCalls[0].children.filter((c) => c.kind === 'tool-call');
+            expect(children).toHaveLength(1);
+            if (children[0].kind === 'tool-call') {
+                expect(children[0].tool.name).toBe('Read');
+                // The child's tool-result (highest seq, first to arrive raw)
+                // must complete the child instead of being dropped.
+                expect(children[0].tool.state).toBe('completed');
+            }
+        }
+    });
+});
