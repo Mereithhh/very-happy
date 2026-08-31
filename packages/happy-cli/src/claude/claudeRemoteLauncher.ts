@@ -119,18 +119,32 @@ export async function claudeRemoteLauncher(
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     let livePermissionModeHandler: ((mode: ClaudeSdkPermissionMode) => Promise<ClaudeSdkPermissionMode>) | null = null;
+    // Idle (no active query): there is nothing to steer, so just move the
+    // process-level mode. The next queued message starts its query with it.
+    // Old clients (capability v1) never call this while idle.
+    let idlePermissionModeHandler: ((mode: ClaudeSdkPermissionMode) => ClaudeSdkPermissionMode) | null = null;
     session.client.rpcHandlerManager.registerHandler<{ mode?: unknown }, { mode: ClaudeSdkPermissionMode }>(
         'set-permission-mode',
         async (request) => {
             const requestedMode = parseClaudePermissionMode(request?.mode);
             if (!requestedMode) throw new Error('Invalid Claude permission mode');
-            if (!livePermissionModeHandler) throw new Error('No active Claude query');
-            return { mode: await livePermissionModeHandler(requestedMode) };
+            if (livePermissionModeHandler) return { mode: await livePermissionModeHandler(requestedMode) };
+            if (idlePermissionModeHandler) return { mode: idlePermissionModeHandler(requestedMode) };
+            throw new Error('No active Claude query');
         },
     );
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+
+    // Before the first launch iteration installs the queue-aware
+    // commitPermissionMode, still accept idle mode changes: enforce locally and
+    // report upward so runClaude publishes the new effective mode.
+    idlePermissionModeHandler = (nextMode) => {
+        permissionHandler.handleModeChange(nextMode);
+        onPermissionModeChange?.(nextMode);
+        return nextMode;
+    };
 
     // Drop any permission requests left over in agent state from a
     // previous CLI process that died while a tool prompt was open. The
@@ -352,6 +366,20 @@ export async function claudeRemoteLauncher(
             abortFuture = new Future<void>();
             let modeHash: string | null = null;
             let mode: EnhancedMode | null = null;
+            // Process-level mode owner: every path that changes the effective mode
+            // (idle RPC, plan approval, approve-with-mode) lands here so the queue
+            // hash, the local enforcer and runClaude's published metadata agree.
+            const commitPermissionMode = (nextMode: ClaudeSdkPermissionMode): ClaudeSdkPermissionMode => {
+                permissionHandler.handleModeChange(nextMode);
+                if (mode) {
+                    mode = { ...mode, permissionMode: nextMode };
+                    modeHash = session.queue.modeHasher(mode);
+                }
+                onPermissionModeChange?.(nextMode);
+                return nextMode;
+            };
+            idlePermissionModeHandler = commitPermissionMode;
+            permissionHandler.setOnModeChanged((nextMode) => { commitPermissionMode(nextMode); });
             try {
                 const attachmentDirectory = chatAttachmentDirectory(configuration.happyHomeDir, session.client.sessionId);
                 await ensurePrivateDirectory(attachmentDirectory);

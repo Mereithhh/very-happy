@@ -57,6 +57,45 @@ describe('PermissionHandler SDK protocol', () => {
         });
     });
 
+    it('falls back to bypassPermissions after a plan approval that carries no mode and reports the transition', async () => {
+        const { handler, respond } = fixture();
+        const onModeChanged = vi.fn();
+        handler.setOnModeChanged(onModeChanged);
+        handler.handleModeChange('plan');
+        const pending = handler.handleToolCall('ExitPlanMode', { plan: 'ship it' }, { permissionMode: 'plan' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'plan-fallback',
+            requestId: 'request-plan-fallback',
+        });
+        await respond({ id: 'plan-fallback', approved: true, decision: 'approved' });
+        await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: { plan: 'ship it' } });
+        expect(handler.getPermissionMode()).toBe('bypassPermissions');
+        expect(onModeChanged).toHaveBeenCalledWith('bypassPermissions');
+
+        // The follow-up tool must not prompt any more.
+        const bash = handler.handleToolCall('Bash', { command: 'ls' }, { permissionMode: 'default' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'bash-after-plan',
+            requestId: 'request-bash-after-plan',
+        });
+        await expect(bash).resolves.toEqual({ behavior: 'allow', updatedInput: { command: 'ls' } });
+    });
+
+    it('keeps an explicit narrower mode chosen on plan approval', async () => {
+        const { handler, respond } = fixture();
+        const onModeChanged = vi.fn();
+        handler.setOnModeChanged(onModeChanged);
+        const pending = handler.handleToolCall('ExitPlanMode', { plan: 'ship it' }, { permissionMode: 'plan' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'plan-accept-edits',
+            requestId: 'request-plan-accept-edits',
+        });
+        await respond({ id: 'plan-accept-edits', approved: true, decision: 'approved', mode: 'acceptEdits' });
+        await pending;
+        expect(handler.getPermissionMode()).toBe('acceptEdits');
+        expect(onModeChanged).toHaveBeenCalledWith('acceptEdits');
+    });
+
     it('allows ExitPlanMode without issuing a nested SDK mode switch', async () => {
         const { handler, getState, respond } = fixture();
         const setPermissionMode = vi.fn(async () => undefined);

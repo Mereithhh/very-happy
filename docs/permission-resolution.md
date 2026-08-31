@@ -60,6 +60,16 @@ per-session value, then the explicit per-agent default. The CLI validates
 incoming mode values before applying them. A crafted unknown mode cannot widen
 access.
 
+For Claude sessions on CLIs advertising `claude-live-permission-v2`, the CLI is
+the single source of truth: it publishes the mode it actually enforces in
+`session.metadata.permissionMode` (at start, on every message/RPC change, and
+after a plan approval), the selector renders that value on every device, and
+mode changes go through the `set-permission-mode` RPC whether the agent is
+working or idle. Approving a plan without picking a narrower mode runs the plan
+under `bypassPermissions` (owner decision, spec
+`specs/2026-08-permission-mode-source-of-truth.md`). Older CLIs fall back to the
+device-local behavior above.
+
 ## Managed sandbox exception
 
 When the daemon's separately configured Very Happy sandbox owns isolation, the

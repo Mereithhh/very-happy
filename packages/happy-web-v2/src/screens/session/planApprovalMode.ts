@@ -23,6 +23,10 @@ export function planApprovalMode(
         case 'read-only':
             return 'default';
         default:
-            return undefined;
+            // Owner decision: an approved plan runs in yolo unless a narrower
+            // mode was picked explicitly. `plan` / unknown / no local value
+            // used to send nothing, and the CLI then fell back to `default`
+            // while the selector kept showing "Yolo".
+            return 'bypassPermissions';
     }
 }

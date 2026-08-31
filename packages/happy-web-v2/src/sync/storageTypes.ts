@@ -45,6 +45,12 @@ export const MetadataSchema = z.object({
     queueCancellation: z.boolean().optional(),
     /** Explicit daemon/CLI feature negotiation. Optional; never default it. */
     capabilities: z.array(z.string()).optional(),
+    /**
+     * Effective permission mode the CLI process enforces right now (Claude SDK
+     * vocabulary). Written only by the CLI; the web renders it instead of the
+     * device-local guess. Absent on old CLIs — never default it.
+     */
+    permissionMode: z.string().optional(),
     homeDir: z.string().optional(), // User's home directory on the machine
     happyHomeDir: z.string().optional(), // Happy configuration directory 
     startedFromDaemon: z.boolean().optional(),

@@ -15,7 +15,7 @@ import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { compareMessagesNewestFirst } from "./messageOrder";
-import { resolveIncomingPermissionMode } from './sessionModeSync';
+import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
 import { getSessionName, getSessionSubtitle, getSessionAvatarId, type SessionState } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
@@ -463,7 +463,16 @@ export const storage = create<StorageState>()((set, get) => {
                 const existingPermissionMode = existingPermissionModeRaw === 'default' && savedPermissionMode !== 'default'
                     ? null
                     : existingPermissionModeRaw;
-                const resolvedPermissionMode = existingPermissionMode ?? savedPermissionMode ?? session.permissionMode ?? null;
+                const locallyResolvedPermissionMode = existingPermissionMode ?? savedPermissionMode ?? session.permissionMode ?? null;
+                const resolvedPermissionMode = resolveSessionPermissionMode({
+                    publishedMode: session.metadata?.permissionMode,
+                    previousPublishedMode: state.sessions[session.id]?.metadata?.permissionMode,
+                    localMode: locallyResolvedPermissionMode,
+                });
+                if (resolvedPermissionMode !== locallyResolvedPermissionMode) {
+                    sessionPermissionModes = withSessionPermissionMode(sessionPermissionModes, session.id, resolvedPermissionMode);
+                    saveSessionPermissionModes(sessionPermissionModes);
+                }
 
                 // Restore model mode / effort level from MMKV on first load — server
                 // does not sync these, and they used to reset on every app restart (#1028).

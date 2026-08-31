@@ -308,7 +308,7 @@ describe('runClaude remote JSONL scanner', () => {
         });
         expect(api.getOrCreateSession).toHaveBeenCalledWith(expect.objectContaining({
             metadata: expect.objectContaining({
-                capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
+                capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2'],
             }),
         }));
 
