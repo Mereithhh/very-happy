@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
+import { attachResumeListeners } from '@/sync/resumeSync';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
@@ -125,6 +126,7 @@ class Sync {
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sendSync = new Map<string, InvalidateSync>();
+    private resumeListeners = new Set<() => void>();
     private sendAbortControllers = new Map<string, AbortController>();
     private sessionLastSeq = new Map<string, number>();
     // Lowest seq value we have already fetched and applied for a session.
@@ -197,17 +199,23 @@ class Sync {
                     this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
                 }
                 log.log('📱 App became active');
-                this.purchasesSync.invalidate();
-                this.profileSync.invalidate();
-                this.machinesSync.invalidate();
-                this.pushTokenSync.invalidate();
-                this.sessionsSync.invalidate();
-                this.nativeUpdateSync.invalidate();
-                log.log('📱 App became active: Invalidating artifacts sync');
-                this.artifactsSync.invalidate();
-                this.friendsSync.invalidate();
-                this.friendRequestsSync.invalidate();
-                this.feedSync.invalidate();
+                // Web: the AppState shim flips 'active' on focus too, and the
+                // real resume path (visibility edge, below) owns refetching —
+                // running this set here as well made one resume fire three
+                // refetch fan-outs. Native keeps the full set.
+                if (Platform.OS !== 'web') {
+                    this.purchasesSync.invalidate();
+                    this.profileSync.invalidate();
+                    this.machinesSync.invalidate();
+                    this.pushTokenSync.invalidate();
+                    this.sessionsSync.invalidate();
+                    this.nativeUpdateSync.invalidate();
+                    log.log('📱 App became active: Invalidating artifacts sync');
+                    this.artifactsSync.invalidate();
+                    this.friendsSync.invalidate();
+                    this.friendRequestsSync.invalidate();
+                    this.feedSync.invalidate();
+                }
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
                 this.maybeStartBackgroundSendWatchdog();
@@ -217,36 +225,44 @@ class Sync {
         // Web/desktop: AppState alone doesn't capture tab focus/visibility.
         // Notify server when the tab becomes hidden, regains visibility,
         // or window focus changes — so push routing can suppress only when
-        // the user is actually looking at this client.
+        // the user is actually looking at this client. (Focus-aware: that is
+        // the push-suppression semantic and stays as is.)
         //
-        // Critically, we also RE-SYNC on resume. Mobile browsers suspend the
-        // socket while a tab is backgrounded; on return socket.io may silently
-        // "recover" the connection without firing onReconnected (which is gated
-        // on `!socket.recovered`). When that happens nothing invalidates the
-        // visible session's per-session message sync, so the UI stays frozen on
-        // the pre-background state until a manual page refresh. Edge-trigger a
-        // refresh whenever the tab transitions background → active (mirrors the
-        // native AppState 'active' path).
+        // The RESUME re-sync is deliberately NOT gated on that focus-aware
+        // "active": iOS Safari/PWA returns from background with
+        // `document.hasFocus() === false` and no window `focus`, so the old
+        // background→active edge never fired and the tab stayed frozen until
+        // a manual reload. resumeSync.ts fires on the visibility edge alone
+        // (spec `specs/2026-08-web-resume-sync.md` §A) and is the ONLY resume
+        // entry on web — the AppState 'active' branch above no longer
+        // refetches here. Desktop alt-tab (visibility unchanged) therefore no
+        // longer triggers a refetch: intentional, the live socket covers it.
         if (Platform.OS === 'web' && typeof document !== 'undefined') {
-            let wasActive = getCurrentAppState() === 'active';
-            const broadcast = () => {
-                const appState = getCurrentAppState();
-                apiSocket.sendAppState(appState);
-                const isActive = appState === 'active';
-                if (isActive && !wasActive) {
-                    this.onWebResume();
-                }
-                wasActive = isActive;
-            };
+            const broadcast = () => apiSocket.sendAppState(getCurrentAppState());
             document.addEventListener('visibilitychange', broadcast);
             window.addEventListener('focus', broadcast);
             window.addEventListener('blur', broadcast);
+            attachResumeListeners({ doc: document, win: window }, () => this.onWebResume());
         }
     }
 
-    // Web tab returned to foreground: refresh the session list and the
-    // currently-viewed session's messages so a backgrounded tab catches up on
-    // anything that arrived while the socket was suspended.
+    /** Subscribe to the web resume edge (terminal screens re-fit + catch up). */
+    onResume = (listener: () => void) => {
+        this.resumeListeners.add(listener);
+        return () => { this.resumeListeners.delete(listener); };
+    };
+
+    // Web tab returned to foreground. Three things, all at once and none
+    // waiting on the others (spec §A.3):
+    //  1. bounded REST refetch that does not depend on the socket at all —
+    //     session list (metadata/agentState/permission requests), the viewed
+    //     session's messages (forward from lastSeq), machines, artifacts;
+    //  2. listeners (terminal catch-up);
+    //  3. socket liveness: probe, and force one reconnect if the link is dead
+    //     (its `connect` then runs the full onReconnected set).
+    // `thinking` is NOT refreshable over REST (fetchSessions writes false and
+    // preserveSessionActivityFromStore keeps the local value); it converges
+    // from the CLI's 2s keepAlive once the socket is genuinely alive.
     private onWebResume = () => {
         log.log('🌐 Tab resumed from background — re-syncing');
         this.sessionsSync.invalidate();
@@ -254,6 +270,12 @@ class Sync {
         if (current) {
             this.onSessionVisible(current);
         }
+        this.machinesSync.invalidate();
+        this.artifactsSync.invalidate();
+        for (const listener of this.resumeListeners) {
+            try { listener(); } catch (e) { log.log(`🌐 resume listener failed: ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        void apiSocket.checkLiveness();
     };
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
@@ -2308,12 +2330,31 @@ class Sync {
             this.friendsSync.invalidate();
             this.friendRequestsSync.invalidate();
             this.feedSync.invalidate();
-            // Messages are fetched lazily per-session via onSessionVisible (called by SessionView
-            // when realtimeStatus changes). Session metadata + agentState (including permission
-            // requests) are already refreshed by sessionsSync.invalidate() above.
+            // The viewed session's messages must be refetched HERE: nothing
+            // else does it after a reconnect (web-v2 has no screen reacting to
+            // realtimeStatus; SessionDetailScreen only calls onSessionVisible
+            // on mount). Without this, an agent that finished while the link
+            // was down never shows its last messages — no new socket event
+            // arrives to trigger the seq-gap refetch. Bounded: forward from
+            // the last known seq.
+            const viewing = storage.getState().currentViewingSessionId;
+            if (viewing) this.onSessionVisible(viewing);
             for (const sync of this.sendSync.values()) {
                 sync.invalidate();
             }
+        });
+
+        // Recovered reconnect (connectionStateRecovery replayed the gap the
+        // server knew about). Events emitted into the dead link before the
+        // server noticed are gone for good, so refresh the bounded set the
+        // current view depends on. Spec §C.
+        apiSocket.onRecovered(() => {
+            log.log('🔌 Socket recovered — bounded re-sync');
+            apiSocket.sendAppState(getCurrentAppState());
+            this.sessionsSync.invalidate();
+            this.machinesSync.invalidate();
+            const viewing = storage.getState().currentViewingSessionId;
+            if (viewing) this.onSessionVisible(viewing);
         });
     }
 

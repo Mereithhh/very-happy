@@ -145,3 +145,8 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 12. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
     会表现为 `P2010` + SQLSTATE `40001`；事务层必须同时重试。CLI 对 session
     metadata/agent-state 的 server `result:error` 也不得静默吞掉，否则权限请求会永久丢失。
+13. **Web「回前台 / socket 是否还活着」只有一个入口**：`src/sync/resumeSync.ts`（可见性边沿，
+    不看 `hasFocus`）→ `sync.onWebResume` → `apiSocket.checkLiveness()`（`ping`/`relay-ping`
+    探活、再校验后才 `disconnect();connect()`）。不要再给 screen 加平行的 visibility/focus
+    监听去重拉或重连，也不要用「最近收到包」判活、不要 `io.open()`（退避中是 no-op 或永久卡死）；
+    socket.io 语义由 `socketIoResume.integration.test.ts` 锁住，改法见 `specs/2026-08-web-resume-sync.md`。
