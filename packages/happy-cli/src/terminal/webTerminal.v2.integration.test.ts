@@ -1,6 +1,6 @@
 /**
  * B-121 terminal channel v2 — end-to-end against a REAL tmux server, isolated
- * via TMUX_TMPDIR (same discipline as webTerminal.tracker.integration.test.ts:
+ * via a private socket (src/testing/isolatedTmux.ts, same discipline as webTerminal.tracker.integration.test.ts:
  * the user's own sessions are never touched).
  *
  * What this file pins down is the DAEMON CONTRACT the web depends on:
@@ -22,10 +22,7 @@
  * behaved differently.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import { WebTerminalManager, type OpenTerminalResult } from './webTerminal';
 
@@ -37,7 +34,7 @@ function snapshot(res: OpenTerminalResult): Extract<OpenTerminalResult, { mode: 
     return res;
 }
 
-const tmuxAvailable = spawnSync('tmux', ['-V'], { stdio: 'ignore' }).status === 0;
+const iso = createIsolatedTmux('vh-v2');
 
 async function waitFor<T>(probe: () => T | undefined | false, timeoutMs = 15_000, label = 'condition'): Promise<T> {
     const deadline = Date.now() + timeoutMs;
@@ -50,8 +47,6 @@ async function waitFor<T>(probe: () => T | undefined | false, timeoutMs = 15_000
 }
 
 describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, isolated server)', () => {
-    let dir: string;
-    let savedTmpdir: string | undefined;
     let mgr: WebTerminalManager;
     /** Every terminal-output frame, decoded to bytes. */
     const out = new Map<string, Buffer[]>();
@@ -60,9 +55,6 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
     const exitSink: Array<(payload: { terminalId: string; exitCode: number }) => void> = [];
 
     beforeAll(() => {
-        dir = mkdtempSync(join(tmpdir(), 'vh-v2-'));
-        savedTmpdir = process.env.TMUX_TMPDIR;
-        process.env.TMUX_TMPDIR = dir;
         mgr = new WebTerminalManager((event, payload) => {
             if (event === 'terminal-exit') {
                 for (const cb of exitSink) cb(payload);
@@ -78,10 +70,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
     afterAll(() => {
         mgr?.stopListTracking();
         mgr?.disposeAll?.();
-        spawnSync('tmux', ['kill-server'], { stdio: 'ignore', env: { ...process.env, TMUX_TMPDIR: dir } as any });
-        if (savedTmpdir === undefined) delete process.env.TMUX_TMPDIR;
-        else process.env.TMUX_TMPDIR = savedTmpdir;
-        try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+        iso.dispose();
     });
 
     it('opens in lines mode: shallow screen inline + a snapshot id for the deep history', async () => {
@@ -232,7 +221,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         mgr.write(id, Buffer.from('exit\r', 'utf8').toString('base64'));
         await waitFor(() => exits.some((e) => e.terminalId === id), 15_000, 'terminal-exit event');
         await waitFor(
-            () => spawnSync('tmux', ['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
+            () => iso.spawn(['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
             10_000,
             'tmux session gone',
         );
@@ -276,9 +265,9 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         for (let y = buf.viewportY; y < buf.viewportY + rows; y++) {
             rendered.push((buf.getLine(y)?.translateToString(true) ?? '').trimEnd());
         }
-        const tmuxScreen = spawnSync('tmux', ['capture-pane', '-p', '-t', `=vh-${id}:`], { encoding: 'utf8' })
+        const tmuxScreen = iso.spawn(['capture-pane', '-p', '-t', `=vh-${id}:`], { encoding: 'utf8' })
             .stdout.split('\n').slice(0, rows).map((l) => l.trimEnd());
-        const cursor = spawnSync('tmux', ['display', '-p', '-t', `=vh-${id}:`, '#{cursor_x},#{cursor_y}'], { encoding: 'utf8' })
+        const cursor = iso.spawn(['display', '-p', '-t', `=vh-${id}:`, '#{cursor_x},#{cursor_y}'], { encoding: 'utf8' })
             .stdout.trim();
         const renderedCursor = `${buf.cursorX},${buf.cursorY}`;
         term.dispose();
@@ -308,7 +297,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         // …and tmux really is at that size, so the live bytes match what the
         // client was told to render at.
         await waitFor(() => {
-            const r = spawnSync('tmux', ['display', '-p', '-t', `=vh-${id}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
+            const r = iso.spawn(['display', '-p', '-t', `=vh-${id}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
             return (r.stdout || '').trim() === '70x20';
         }, 10_000, 'pane resized to the opening client size');
     });
@@ -329,7 +318,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
 
         // Somebody else resizes the window — a local `tmux attach`, another
         // device, anything. v2 deliberately no longer kicks them.
-        spawnSync('tmux', ['resize-window', '-t', `=vh-${id}:`, '-x', '64', '-y', '20'], { stdio: 'ignore' });
+        iso.spawn(['resize-window', '-t', `=vh-${id}:`, '-x', '64', '-y', '20'], { stdio: 'ignore' });
 
         await waitFor(() => /\x1b\]6121;64;20\x07/.test(seen(id)), 15_000, 'in-band geometry marker');
         // Ordering matters as much as the value: it must arrive AFTER the bytes
@@ -354,7 +343,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
             await waitFor(() => seen(id).length > 0, 15_000, 'session live');
             // Kill the session out from under the client — the same shape as a
             // user's `exit`, another device's delete, or a machine reboot.
-            spawnSync('tmux', ['kill-session', '-t', `=vh-${id}:`], { stdio: 'ignore' });
+            iso.spawn(['kill-session', '-t', `=vh-${id}:`], { stdio: 'ignore' });
             // Write into the void, repeatedly, without waiting for the exit
             // event: this IS the race that crashed the daemon.
             for (let i = 0; i < 20; i++) {
@@ -382,7 +371,7 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         await waitFor(() => seen(id).length > 0, 15_000, 'session live');
         expect(mgr.killSession(id)).toBe(true);
         await waitFor(
-            () => spawnSync('tmux', ['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
+            () => iso.spawn(['has-session', '-t', `=vh-${id}:`], { stdio: 'ignore' }).status !== 0,
             10_000,
             'tmux session gone',
         );

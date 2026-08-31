@@ -26,7 +26,7 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -179,7 +179,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1'],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2'],
+        // Effective mode this process enforces. Kept current by
+        // publishPermissionMode below; the web renders it instead of guessing.
+        permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -537,6 +540,18 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
+    // Single writer for the published effective mode. Every path that moves
+    // the mode (message meta, live/idle RPC, plan approval) goes through here
+    // so session.metadata.permissionMode never disagrees with what
+    // canUseTool enforces.
+    let publishedPermissionMode = mapToClaudeMode(initialPermissionMode ?? 'default');
+    const publishPermissionMode = (mode: PermissionMode | undefined) => {
+        currentPermissionMode = mode;
+        const published = mapToClaudeMode(mode ?? 'default');
+        if (published === publishedPermissionMode) return;
+        publishedPermissionMode = published;
+        session.updateMetadata((meta) => ({ ...meta, permissionMode: published }));
+    };
     let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -548,7 +563,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
     const resetCurrentModeDefaults = () => {
-        currentPermissionMode = initialPermissionMode;
+        // permissionMode deliberately survives an abort: the user's latest
+        // selection is process state, not a per-turn override.
         currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
         currentFallbackModel = undefined;
         currentCustomSystemPrompt = undefined;
@@ -609,7 +625,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 message.meta.permissionMode,
                 sandboxEnabled,
             );
-            currentPermissionMode = messagePermissionMode;
+            publishPermissionMode(messagePermissionMode);
             const ignoredDefaultDowngrade =
                 (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
                 && message.meta.permissionMode === 'default'
@@ -953,8 +969,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         },
         onAbort: resetCurrentModeDefaults,
         onPermissionModeChange: (mode) => {
-            currentPermissionMode = mode;
-            logger.debug(`[loop] Permission mode updated from live session RPC to: ${mode}`);
+            publishPermissionMode(mode);
+            logger.debug(`[loop] Permission mode updated from session RPC / approval to: ${mode}`);
         },
         mcpServers: {
             'happy': {

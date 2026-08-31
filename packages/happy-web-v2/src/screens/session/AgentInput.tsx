@@ -172,6 +172,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         isClaude: isClaudeFlavor,
         isWorking: isWorking || hasPendingPermission,
         isRemote: session?.agentState?.controlledByUser === false,
+        isOnline: session?.presence === 'online',
         capabilities: metadata?.capabilities,
     });
     const effortOptions = isClaudeFlavor

@@ -22,6 +22,7 @@ import {
     parseSessionListLine,
     deriveAutoTitle,
 } from '@/terminal/webTerminal'
+import { scrubTmuxClientEnv, tmuxArgs } from '@/terminal/tmuxSocket'
 
 const TMUX_TIMEOUT_MS = 3000
 
@@ -63,10 +64,11 @@ export function parseVhTerminals(stdout: string, hostname: string = os.hostname(
 
 function runTmux(args: string[], input?: string): { ok: boolean; stdout: string; error?: string } {
     try {
-        const r = spawnSync('tmux', args, {
+        const r = spawnSync('tmux', tmuxArgs(args), {
             encoding: 'utf8',
             timeout: TMUX_TIMEOUT_MS,
             input,
+            env: scrubTmuxClientEnv({ ...process.env }),
         })
         if (r.error) return { ok: false, stdout: '', error: r.error.message }
         if (r.status !== 0) return { ok: false, stdout: r.stdout ?? '', error: (r.stderr || `tmux exited with ${r.status}`).trim() }

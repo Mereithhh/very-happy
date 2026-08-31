@@ -432,6 +432,14 @@ export type Metadata = {
   flavor?: string
   sandbox?: SandboxConfig | null
   dangerouslySkipPermissions?: boolean | null
+  /**
+   * Effective permission mode the running Claude process enforces right now
+   * (SDK vocabulary: default | acceptEdits | bypassPermissions | plan). The
+   * CLI is the single source of truth: it writes this at start, on every
+   * message/RPC/plan-approval change. Web displays it verbatim; old clients
+   * ignore it and old CLIs never write it (capability claude-live-permission-v2).
+   */
+  permissionMode?: string
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string

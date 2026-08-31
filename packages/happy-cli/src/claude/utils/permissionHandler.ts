@@ -84,6 +84,8 @@ export class PermissionHandler {
     private setPermissionModeCallback?: (mode: ClaudeSdkPermissionMode) => Promise<void>;
     private modeChangeQueue: Promise<void> = Promise.resolve();
     private deferredPermissionMode?: ClaudeSdkPermissionMode;
+    /** Fired when an approval response (plan approval / approve-with-mode) moved the mode. */
+    private onModeChangedCallback?: (mode: ClaudeSdkPermissionMode) => void;
 
     constructor(session: Session) {
         this.session = session;
@@ -99,6 +101,20 @@ export class PermissionHandler {
 
     handleModeChange(mode: PermissionMode) {
         this.permissionMode = mapToClaudeMode(mode);
+    }
+
+    /** Current locally enforced mode (what canUseTool applies right now). */
+    getPermissionMode(): ClaudeSdkPermissionMode {
+        return this.permissionMode;
+    }
+
+    /**
+     * Observe mode transitions that originate inside the approval flow
+     * (ExitPlanMode approval, approve-with-mode). Live/idle RPC changes and
+     * queue-driven changes are owned by the launcher and do not fire this.
+     */
+    setOnModeChanged(callback: ((mode: ClaudeSdkPermissionMode) => void) | undefined) {
+        this.onModeChangedCallback = callback;
     }
 
     /**
@@ -217,12 +233,18 @@ export class PermissionHandler {
                 // ExitPlanMode owns the mode transition after its canUseTool
                 // response resolves. A nested setPermissionMode control request
                 // here is queued ahead of that response and can park the turn.
+                // Owner decision (spec 2026-08-31-permission-mode-source-of-truth):
+                // an approved plan runs in yolo unless the client picked a
+                // narrower mode explicitly. Falling back to `default` here used
+                // to turn every post-plan Bash into a permission prompt while
+                // the web selector still displayed "Yolo".
                 const newMode = (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode))
                     ? response.mode
-                    : 'default';
+                    : 'bypassPermissions';
 
                 logger.debug(`Plan approved - allowing ExitPlanMode with ${newMode} as the local follow-up mode`);
                 this.permissionMode = newMode;
+                this.onModeChangedCallback?.(newMode);
 
                 pending.resolve({ behavior: 'allow', updatedInput: (pending.input as Record<string, unknown>) || {} });
             } else {
@@ -234,6 +256,7 @@ export class PermissionHandler {
                     if (!this.setPermissionModeCallback) throw new Error('permission mode updater unavailable');
                     await this.setPermissionModeCallback(response.mode);
                     this.permissionMode = response.mode;
+                    this.onModeChangedCallback?.(response.mode);
                 } catch (err) {
                     const reason = `Failed to switch permission mode: ${err instanceof Error ? err.message : String(err)}`;
                     pending.resolve({ behavior: 'deny', message: reason });
