@@ -5,6 +5,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { activityDurationSeconds, buildLeafRows } from './chatTurns';
+import { countSubagentCards } from './subagentPills';
 import { useElapsedSeconds } from './useElapsed';
 import './turnactivity.css';
 
@@ -40,6 +41,8 @@ export function TurnActivityView({
     // Inside a turn, every tool call is its own disclosure row. Grouping them
     // would reintroduce an unnecessary hierarchy and prevent independent folds.
     const rows = useMemo(() => buildLeafRows(messages, null, false, false), [messages]);
+    // B-260: a folded turn should still say how many sub-agents ran inside it.
+    const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
 
     const elapsed = useElapsedSeconds(live ? activityStart(messages) : null);
     const duration = live ? elapsed : durationSeconds ?? activityDurationSeconds(messages);
@@ -56,6 +59,11 @@ export function TurnActivityView({
                 <span className="ta-title">
                     {t('session.chat.activityElapsed', { seconds: duration })}
                 </span>
+                {subagentCount > 0 && (
+                    <span className="ta-subagents">
+                        {t('session.chat.subagentCount', { count: subagentCount })}
+                    </span>
+                )}
                 <ChevronRight size={14} className={`tg-chevron${expanded ? ' is-open' : ''}`} />
             </button>
             {expanded && (

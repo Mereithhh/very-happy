@@ -19,6 +19,14 @@
   align-self: center;
   transform-origin: 50% 50%;
 }
+/* Sub-agent count chip (B-260): identity/metadata, mono + dim — never accent. */
+.ta-subagents {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  flex: none;
+}
+
 .ta-title {
   flex: none;
   color: var(--text-dim);

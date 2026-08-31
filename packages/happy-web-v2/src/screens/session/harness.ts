@@ -67,3 +67,33 @@ export function isUserSlashCommandEcho(text: string, hasLocalId: boolean): boole
     if (!SLASH_COMMAND_RE.test(trimmed)) return false;
     return parseLocalCommandMessage(trimmed).kind === 'text';
 }
+
+// ── <task-notification> presentation (B-260) ────────────────────────────────
+// The Claude Code runtime injects background-task completion notices as USER
+// messages. They are real turn boundaries (the SDK starts a new assistant
+// turn from them), so they must stay user messages — but rendering them as an
+// empty stripped bubble (or reading the raw XML aloud in the voice assistant)
+// hides the one thing the user cares about: which sub-agent/background task
+// finished and how. Field presence measured on 797 real notifications:
+// <summary> 98%, <status> 92% — every field is optional, degrade gracefully.
+
+export type TaskNotification = {
+    summary: string | null;
+    status: 'completed' | 'failed' | 'stopped' | null;
+};
+
+/**
+ * Parses a user message that IS a task notification (nothing but harness
+ * blocks around it). Returns null for ordinary user text, including text that
+ * merely contains a notification block alongside real content.
+ */
+export function parseTaskNotification(text: string): TaskNotification | null {
+    if (!text || !/<task-notification>/i.test(text)) return null;
+    if (stripHarnessBlocks(text).length > 0) return null;
+    const summary = text.match(/<summary>([\s\S]*?)<\/summary>/i)?.[1].trim() || null;
+    const rawStatus = text.match(/<status>\s*([a-z]+)\s*<\/status>/i)?.[1].toLowerCase() ?? null;
+    const status = rawStatus === 'completed' || rawStatus === 'failed' || rawStatus === 'stopped'
+        ? rawStatus
+        : null;
+    return { summary, status };
+}

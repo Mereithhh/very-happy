@@ -27,6 +27,7 @@ import {
     shouldSmoothJumpToLatest,
 } from './chatFollow';
 import { isHiddenToolName } from './toolVisibility';
+import { suppressSubagentPills } from './subagentPills';
 import './chatlist.css';
 
 export function ChatList({
@@ -63,9 +64,9 @@ export function ChatList({
         [messages],
     );
     const chronological = useMemo(
-        () => [...messages].reverse().filter((message) =>
+        () => suppressSubagentPills([...messages].reverse().filter((message) =>
             message.inputState === undefined &&
-            (message.kind !== 'tool-call' || !isHiddenToolName(message.tool.name))),
+            (message.kind !== 'tool-call' || !isHiddenToolName(message.tool.name)))),
         [messages],
     );
     const sessionLive = session?.thinking === true || !!runningTool;
