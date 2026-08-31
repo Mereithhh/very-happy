@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-08-31-permission-mode-truth',
+    date: '2026-08-31',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.90',
+    titleKey: 'changelog.releases.aug31.title',
+    summaryKey: 'changelog.releases.aug31.summary',
+    itemKeys: [
+      'changelog.releases.aug31.truth',
+      'changelog.releases.aug31.live',
+      'changelog.releases.aug31.plan',
+      'changelog.releases.aug31.cli',
+    ],
+  },
+  {
     id: '2026-08-28-claude-queue-steer',
     date: '2026-08-28',
     buildVersion: __APP_VERSION__,

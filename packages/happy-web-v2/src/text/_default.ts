@@ -1510,6 +1510,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            aug31: {
+                title: 'The permission mode you see is the one that runs',
+                summary: 'Claude sessions now report the permission mode the CLI actually enforces, so every device shows the truth instead of a local guess.',
+                truth: 'The selector reflects the mode the running CLI enforces, synced live across all your devices — no more "Yolo" on screen while the agent quietly asks for every approval.',
+                live: 'Changing the mode mid-conversation applies immediately, whether the agent is working or idle, and becomes the default for new sessions.',
+                plan: 'Approving a plan now continues in YOLO unless you explicitly picked a narrower mode, so post-plan commands stop prompting for permission.',
+                cli: 'Update daemon machines to Very Happy CLI v0.2.90 to enable mode reporting; older CLIs keep the previous behavior.',
+            },
             aug28: {
                 title: 'Queue when you can, steer when you need to',
                 summary: 'Claude conversations now separate the next turn from a live course correction, while plan approval keeps the current work moving.',
