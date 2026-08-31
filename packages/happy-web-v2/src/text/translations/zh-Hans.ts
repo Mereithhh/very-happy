@@ -1489,6 +1489,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            aug31b: {
+                title: '回到前台，画面已经追平',
+                summary: '手机上从后台切回 Very Happy，终端与 Claude 会话现在会自动追平，不再需要手动刷新页面。',
+                resume: '回到标签页即触发一次刷新：会话列表、正在看的对话和每个打开的终端都会补齐——不管浏览器有没有恢复焦点。',
+                liveness: '回前台瞬间探测连接是否还活着；被系统悄悄掐断的链路几秒内就会被替换，而不是死等一分钟。',
+                terminal: '终端追平失败会按退避自动重试，区域中继重建后也会重新同步，每次唤醒后画面都与 tmux 一致。',
+                desktop: '桌面切标签页更省：只做一组有界刷新加一次 ping；不切标签页只切应用时不再重复拉取。',
+            },
             aug31: {
                 title: '你看到的权限模式，就是实际执行的模式',
                 summary: 'Claude 会话现在由 CLI 上报实际执行的权限模式，所有设备显示同一份真实状态，不再各自猜测。',

@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-08-31-web-resume-sync',
+    date: '2026-08-31',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.90',
+    titleKey: 'changelog.releases.aug31b.title',
+    summaryKey: 'changelog.releases.aug31b.summary',
+    itemKeys: [
+      'changelog.releases.aug31b.resume',
+      'changelog.releases.aug31b.liveness',
+      'changelog.releases.aug31b.terminal',
+      'changelog.releases.aug31b.desktop',
+    ],
+  },
+  {
     id: '2026-08-31-permission-mode-truth',
     date: '2026-08-31',
     buildVersion: __APP_VERSION__,
