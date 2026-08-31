@@ -1510,6 +1510,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            aug31b: {
+                title: 'Come back and the screen is already caught up',
+                summary: 'Returning to Very Happy from the background on a phone now re-syncs terminals and Claude sessions on its own — no more pull-to-reload.',
+                resume: 'Coming back to the tab triggers one refresh of your sessions, the conversation you are viewing and every open terminal, whether or not the browser restored focus.',
+                liveness: 'The connection is probed the moment you return; a link the OS silently dropped is replaced within seconds instead of sitting dead for a minute.',
+                terminal: 'Terminal catch-up now retries with backoff and re-syncs when a regional relay is rebuilt, so the screen matches tmux after every wake-up.',
+                desktop: 'Desktop tab switches are cheaper: one bounded refresh plus a single ping, and switching between apps without changing tabs no longer refetches anything.',
+            },
             aug31: {
                 title: 'The permission mode you see is the one that runs',
                 summary: 'Claude sessions now report the permission mode the CLI actually enforces, so every device shows the truth instead of a local guess.',
