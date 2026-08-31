@@ -108,6 +108,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Contribute ZERO intrinsic width: a nowrap one-liner must never widen the
+   * row (390px viewports overflowed via min-content propagation without this —
+   * the row then sizes from its head, and this line stretches + ellipsizes). */
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
 }
 
 .tg-row {
