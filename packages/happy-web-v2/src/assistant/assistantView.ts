@@ -11,6 +11,7 @@
 import type { Message, AgentTextMessage } from '@/sync/typesMessage';
 import type { AgentState } from '@/sync/storageTypes';
 import { compareMessagesNewestFirst } from '@/sync/messageOrder';
+import { parseTaskNotification } from '@/screens/session/harness';
 
 export interface AssistantExchange {
     /** newest user message text (displayText preferred), null when none */
@@ -33,7 +34,11 @@ export function deriveAssistantExchange(messages: Message[]): AssistantExchange 
     for (const m of sorted) {
         if (m.inputState !== undefined) continue;
         if (userText === null && m.kind === 'user-text') {
-            userText = m.displayText ?? m.text;
+            const raw = m.displayText ?? m.text;
+            // B-260: never surface (or speak) raw <task-notification> XML.
+            const notification = parseTaskNotification(raw);
+            userText = notification ? (notification.summary ?? '') : raw;
+            if (!userText) continue;
             latestRole = latestRole ?? 'user';
         } else if (assistantText === null && m.kind === 'agent-text' && !m.isThinking && m.text.trim()) {
             assistantText = m.text;
@@ -159,7 +164,9 @@ export function deriveTranscript(messages: Message[]): TranscriptEntry[] {
     for (const m of sorted) {
         if (m.inputState !== undefined) continue;
         if (m.kind === 'user-text') {
-            const text = (m.displayText ?? m.text).trim();
+            const raw = (m.displayText ?? m.text).trim();
+            const notification = parseTaskNotification(raw);
+            const text = notification ? (notification.summary ?? '') : raw;
             if (text) out.push({ id: m.id, role: 'user', text });
         } else if (m.kind === 'agent-text') {
             if (!m.text.trim()) continue;

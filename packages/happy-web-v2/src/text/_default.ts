@@ -538,6 +538,8 @@ export const en = {
             toolError: 'Error',
             toolDone: 'Done',
             usedTools: ({ count }: { count: number }) => count === 1 ? '1 tool call' : `${count} tool calls`,
+            subagentCount: ({ count }: { count: number }) => count === 1 ? '1 sub-agent' : `${count} sub-agents`,
+            subagentLatest: ({ line }: { line: string }) => `latest: ${line}`,
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `Elapsed ${seconds}s`;
                 const minutes = Math.floor(seconds / 60);
@@ -1900,6 +1902,8 @@ export const en = {
         subagent: 'Sub-agent',
         subagentStarted: ({ name }: { name: string }) => `${name} started`,
         subagentCompleted: ({ name }: { name: string }) => `${name} completed`,
+        taskNotificationGeneric: 'Background task finished',
+        taskNotificationFailed: ({ summary }: { summary: string }) => `${summary} · failed`,
         copyMessage: 'Copy message',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',

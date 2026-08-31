@@ -180,14 +180,33 @@
   max-height: 160px;
   overflow: auto;
 }
+/* Neutral by design-language contract: accent is reserved for LIVE states,
+ * and a subagent_type badge is identity, not liveness (B-260). */
 .tv-badge {
   font-family: var(--font-mono);
   font-size: var(--fs-11);
-  color: var(--accent-2);
-  background: var(--accent-dim);
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
   padding: 0 6px;
 }
+
+/* Sub-agent process log: one mono line per child tool, chronological. */
+.tv-task-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.tv-task-log-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-task-log-line--error { color: var(--danger); }
 
 /* ── ExitPlanMode (B-100): plan rendered as Markdown behind a quiet badge ── */
 .tv-plan {

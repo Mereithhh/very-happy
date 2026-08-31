@@ -24,6 +24,15 @@ describe('app visual language', () => {
     });
 
     it.each([
+        ['sub-agent type badge', css('../screens/session/toolview.css'), '.tv-badge'],
+        ['sub-agent process line', css('../screens/session/toolgroup.css'), '.tg-subagent-line'],
+        ['turn sub-agent chip', css('../screens/session/turnactivity.css'), '.ta-subagents'],
+    ])('%s stays neutral — accent is reserved for live states', (_name, source, selector) => {
+        const declarations = rule(source, selector);
+        expect(declarations).not.toContain('var(--accent');
+    });
+
+    it.each([
         ['legacy primary button', css('../App.css'), '.btn-primary'],
         ['design-system primary button', css('../ui/ui.css'), '.vh-btn--primary'],
         ['modal primary button', css('../modal/modal.css'), '.vh-modal-btn.is-primary'],

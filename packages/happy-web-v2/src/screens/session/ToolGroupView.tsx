@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ChevronRight, AlertTriangle } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Bot } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
@@ -17,6 +17,7 @@ import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { toolRunSummary } from './toolRunSummary';
+import { buildSubagentSummary } from './subagentSummary';
 import './toolgroup.css';
 
 type GroupState = 'running' | 'error' | 'mixed' | 'done';
@@ -39,7 +40,14 @@ function ToolRow({
     defaultOpen: boolean;
     collapseOnComplete?: boolean;
 }) {
+    const { t } = useTranslation();
     const tool = message.tool;
+    // B-260: sub-agent rows are pointers. Their stub tool_result is not a real
+    // completion, so they are exempt from collapse-on-complete, keep a neutral
+    // glyph instead of a "done" status dot, and carry an always-visible
+    // one-line process summary outside the disclosure panel.
+    const isSubagent = tool.name === 'Task' || tool.name === 'Agent';
+    const subagentSummary = isSubagent ? buildSubagentSummary(message) : null;
     const [open, setOpen] = useState(defaultOpen);
     const wasRunningRef = useRef(tool.state === 'running');
     const bodyId = useId();
@@ -56,15 +64,17 @@ function ToolRow({
     // once on running→completed; legacy tool groups preserve their old state.
     useEffect(() => {
         if (tool.state === 'running' || tool.state === 'error') setOpen(true);
-        if (collapseOnComplete && tool.state === 'completed' && wasRunningRef.current) setOpen(false);
+        if (collapseOnComplete && !isSubagent && tool.state === 'completed' && wasRunningRef.current) setOpen(false);
         wasRunningRef.current = tool.state === 'running';
-    }, [collapseOnComplete, tool.state]);
+    }, [collapseOnComplete, isSubagent, tool.state]);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
                 <button type="button" className="tg-row-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
-                    <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />
+                    {isSubagent && tool.state === 'completed'
+                        ? <Bot size={13} className="tg-subagent-glyph" aria-hidden />
+                        : <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />}
                     <span className="tg-tool-label">{label}</span>
                     {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
                 </button>
@@ -75,6 +85,14 @@ function ToolRow({
                     <span className="tg-tool-detail">{detail}</span>
                 )}
             </div>
+            {subagentSummary && subagentSummary.toolCount > 0 && (
+                <div className="tg-subagent-line">
+                    {t('session.chat.usedTools', { count: subagentSummary.toolCount })}
+                    {subagentSummary.recent.length > 0
+                        ? ` · ${t('session.chat.subagentLatest', { line: subagentSummary.recent[subagentSummary.recent.length - 1] })}`
+                        : ''}
+                </div>
+            )}
             <div id={bodyId} className="vh-disclosure-panel" hidden={!open}>
                 {open && <ToolView message={message} />}
             </div>

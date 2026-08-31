@@ -96,6 +96,20 @@
   flex-direction: column;
   gap: var(--sp-2);
 }
+/* Sub-agent pointer row extras (B-260): a neutral machine glyph instead of a
+ * lying "done" dot, and an always-visible one-line process summary that stays
+ * outside the disclosure panel so a collapsed row still says what happened. */
+.tg-subagent-glyph { color: var(--text-dim); flex: none; }
+.tg-subagent-line {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  padding: 0 0 2px 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tg-row {
   display: flex;
   flex-direction: column;

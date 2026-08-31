@@ -547,6 +547,8 @@ export const zhHans: TranslationStructure = {
             toolError: '出错',
             toolDone: '完成',
             usedTools: ({ count }: { count: number }) => `${count} 次工具调用`,
+            subagentCount: ({ count }: { count: number }) => `${count} 个子代理`,
+            subagentLatest: ({ line }: { line: string }) => `最近：${line}`,
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `耗时 ${seconds} 秒`;
                 const minutes = Math.floor(seconds / 60);
@@ -1816,6 +1818,8 @@ export const zhHans: TranslationStructure = {
         subagent: '子代理',
         subagentStarted: ({ name }: { name: string }) => `${name} 已开始`,
         subagentCompleted: ({ name }: { name: string }) => `${name} 已完成`,
+        taskNotificationGeneric: '后台任务已结束',
+        taskNotificationFailed: ({ summary }: { summary: string }) => `${summary} · 失败`,
         copyMessage: '复制消息',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',

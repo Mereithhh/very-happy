@@ -12,7 +12,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
 import { MessageMetaRow } from './MessageMetaRow';
-import { stripHarnessBlocks, parseLocalCommandMessage } from './harness';
+import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } from './harness';
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
@@ -25,6 +25,22 @@ function UserText({ message }: { message: UserTextMessage }) {
     const [expanded, setExpanded] = useState(false);
     const contentId = useId();
     const raw = message.displayText ?? message.text;
+    // B-260: a background-task notification is a machine-facing user message.
+    // Stripping used to leave an invisible empty bubble; render the one useful
+    // line instead (summary + status), mono, event-styled — not a user bubble.
+    const notification = parseTaskNotification(raw);
+    if (notification) {
+        const label = notification.summary ?? t('message.taskNotificationGeneric');
+        const failed = notification.status === 'failed';
+        return (
+            <div className="msg msg--event">
+                <span className={`msg-event-line msg-event-line--subtle msg-event-line--notification${failed ? ' msg-event-line--error' : ''}`}>
+                    <Bot size={13} />
+                    {failed ? t('message.taskNotificationFailed', { summary: label }) : label}
+                </span>
+            </div>
+        );
+    }
     const parsed = parseLocalCommandMessage(raw);
 
     if (parsed.kind === 'caveat') return null;

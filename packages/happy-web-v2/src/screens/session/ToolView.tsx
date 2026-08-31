@@ -7,7 +7,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { BookOpen, CheckSquare, ChevronRight, Circle, FileText, Globe, Search, Square } from 'lucide-react';
-import type { ToolCallMessage, ToolCall, Message } from '@/sync/typesMessage';
+import type { ToolCallMessage, ToolCall } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useSetting } from '@/sync/storage';
 import { sessionAllow } from '@/sync/ops';
@@ -20,7 +20,8 @@ import { DiffView } from './DiffView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { detectSelectedLabels } from './askUserQuestion';
-import { asCommand, extractError, resultToText } from './toolInfo';
+import { asCommand, extractError, resultToText, toolDetail, toolLabel } from './toolInfo';
+import { buildSubagentSummary } from './subagentSummary';
 import { langForPath } from './langForPath';
 import { FilePathLink } from './FilePathLink';
 
@@ -221,23 +222,44 @@ function SearchView({ tool }: { tool: ToolCall }) {
     );
 }
 
-// ── Task / Agent ──────────────────────────────────────────────────────────────
+// ── Task / Agent — sub-agent pointer view (B-260) ─────────────────────────────
+// The card is a POINTER: identity (description + subagent_type badge), the
+// prompt, and a chronological one-line-per-tool process log. It deliberately
+// does NOT nest child tool cards (B-250 keeps the turn activity flat) and
+// does NOT claim status/duration/result — the background stub tool_result is
+// not a real completion (true lifecycle lands with B-260-P2).
 function TaskView({ message }: { message: ToolCallMessage }) {
     const { t } = useTranslation();
     const tool = message.tool;
-    const subtype = asString(tool.input?.subagent_type);
+    const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
     const prompt = asString(tool.input?.prompt);
     const out = resultToText(tool.result);
-    const children = (message.children ?? []).filter((c) => c.kind === 'tool-call') as Message[];
+    const logTools = summary.childTools.slice(-50);
     return (
         <div className="tv-stack">
             <div className="tv-task-head">
-                {subtype && <span className="tv-badge">{subtype}</span>}
-                {children.length > 0 && (
-                    <span className="tv-task-count">{t('session.chat.usedTools', { count: children.length })}</span>
+                {summary.subtype && <span className="tv-badge">{summary.subtype}</span>}
+                {summary.toolCount > 0 && (
+                    <span className="tv-task-count">{t('session.chat.usedTools', { count: summary.toolCount })}</span>
                 )}
             </div>
             {prompt && <div className="tv-task-prompt">{prompt}</div>}
+            {logTools.length > 0 && (
+                <div className="tv-task-log">
+                    {logTools.map((child) => {
+                        const label = toolLabel(child.tool);
+                        const detail = toolDetail(child.tool);
+                        return (
+                            <div
+                                key={child.id}
+                                className={`tv-task-log-line${child.tool.state === 'error' ? ' tv-task-log-line--error' : ''}`}
+                            >
+                                {detail && detail !== label ? `[${label}] ${detail}` : `[${label}]`}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
             {out.trim() && (
                 <Section label={t('tools.fullView.output')} defaultOpen={false}>
                     <OutputText text={out} />
