@@ -1489,6 +1489,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            aug31: {
+                title: '你看到的权限模式，就是实际执行的模式',
+                summary: 'Claude 会话现在由 CLI 上报实际执行的权限模式，所有设备显示同一份真实状态，不再各自猜测。',
+                truth: '选择器显示的是正在运行的 CLI 真正执行的模式，并跨设备实时同步——不再出现界面写着 Yolo、agent 却每步都要审批的错位。',
+                live: '对话中途改模式立即生效（运行中或空闲都可以），并成为该 agent 新会话的默认设置。',
+                plan: '批准计划后默认以 YOLO 继续执行，除非你明确选择了更窄的模式；计划后的命令不再反复弹审批。',
+                cli: '请把 daemon 机器更新到 Very Happy CLI v0.2.90 以启用模式上报；旧版 CLI 保持原行为。',
+            },
             aug28: {
                 title: '该排队时排队，该改向时改向',
                 summary: 'Claude 对话现在明确区分“下一轮再做”和“立刻调整当前方向”，批准 Plan 后也会继续推进当前工作。',
