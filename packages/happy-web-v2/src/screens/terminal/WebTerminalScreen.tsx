@@ -5,6 +5,15 @@ import { createTerminalRenderer, type TerminalRenderer } from './renderer';
 import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
+import { sync as appSync } from '@/sync/sync';
+import {
+  beginRetry,
+  completeCatchUp,
+  initialCatchUpState,
+  requestCatchUp,
+  type CatchUpOpts,
+  type CatchUpOutcome,
+} from './termCatchUpScheduler';
 import {
   machineOpenTerminal,
   encryptTerminalData,
@@ -949,12 +958,11 @@ export function WebTerminalScreen() {
     // ownership watchdog (installed below), which only acts when focus is
     // genuinely unowned — the old unconditional refocus on these events could
     // steal focus from a dialog input and fired mid-composition.
-    const onVisible = () => { if (!document.hidden) { scheduleFit(); catchUp(); } };
-    document.addEventListener('visibilitychange', onVisible);
-    // bfcache restore (iOS Safari commonly restores from bfcache on unlock and
-    // fires pageshow rather than visibilitychange) → same catch-up path.
-    const onPageShow = () => { if (!document.hidden) { scheduleFit(); catchUp(); } };
-    window.addEventListener('pageshow', onPageShow);
+    // The visibility / pageshow (bfcache) / online edges are detected in ONE
+    // place — sync's resumeSync (spec `specs/2026-08-web-resume-sync.md` §A) —
+    // so this screen, the chat and the socket liveness probe all see the same
+    // single resume instead of three parallel triggers.
+    const offResume = appSync.onResume(() => { scheduleFit(); catchUp({ coalesce: true }); });
     // The web font loads async; xterm caches glyph cell size at open time from
     // whatever font was available then. Once the real font is ready, force a
     // re-measure so the cell size matches and text isn't clipped, then refit.
@@ -1216,13 +1224,18 @@ export function WebTerminalScreen() {
     // stale terminal on return. Idempotent: in-flight guard + seq dedup make
     // overlapping triggers (visible + reconnected firing together) harmless; if
     // the socket isn't back yet the RPC just fails and the next trigger retries.
-    // `catchUpAgain` replaces silent coalescing: a trigger landing while a
-    // catch-up is already in flight (e.g. a gap chunk whose hole the in-flight
+    // Scheduling (start / queue-one-follow-up / retry-with-backoff / gone) is
+    // the pure state machine in termCatchUpScheduler.ts: a trigger landing
+    // while a catch-up is in flight (e.g. a gap chunk whose hole the in-flight
     // response was computed too early to cover) queues exactly one follow-up
-    // run, so the resync converges instead of stranding the miss until the
-    // next unrelated trigger.
-    let catchingUp = false;
-    let catchUpAgain = false;
+    // run (forceSnapshot preserved), a failure retries with backoff instead of
+    // being silently dropped, and the RPC/apply body below stays exactly as it
+    // was. The open-terminal RPC runs INSIDE this outChain slot on purpose
+    // (see applyOpenResult) and only gets a short timeout so a dead link
+    // fails fast and hands over to the liveness reconnect.
+    let catchUpState = initialCatchUpState();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const CATCH_UP_RPC_TIMEOUT_MS = 10_000;
     // The daemon said the terminal no longer exists (deleted on another
     // device / expired): stop every further catch-up — retrying can't bring
     // it back, and on an old create-or-attach daemon it would RECREATE it.
@@ -1235,11 +1248,20 @@ export function WebTerminalScreen() {
       // Raw (unlocalized) line, same style as shell output/daemon errors.
       term.writeln('\r\n\x1b[38;2;255;107;107m✗ terminal no longer exists on this machine\x1b[0m');
     };
-    const catchUp = (opts?: { forceSnapshot?: boolean }) => {
+    // Request gate: the scheduler decides start / queue / ignore. The body
+    // (runCatchUp) is entered ONLY through the scheduler so its inflight /
+    // again / backoff accounting can't drift from what's actually running.
+    const catchUp = (opts?: CatchUpOpts) => {
       if (disposed || gone || !terminalId) return;
-      if (catchingUp) { catchUpAgain = true; return; }
-      catchingUp = true;
+      const req = requestCatchUp(catchUpState, opts ?? {}, Date.now());
+      catchUpState = req.state;
+      if (req.result !== 'start') return;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      runCatchUp(opts);
+    };
+    const runCatchUp = (opts?: CatchUpOpts) => {
       outChain = outChain.then(async () => {
+        let outcome: CatchUpOutcome = 'fail';
         try {
           const seqAtCall = sync.lastSeq;
           const res = await machineOpenTerminal(machineId, {
@@ -1257,10 +1279,10 @@ export function WebTerminalScreen() {
             // Same capability declaration as the mount-time open — the daemon
             // needs it on EVERY open to know which response shape to build.
             streamMode: 'lines',
-          });
-          if (disposed) return;
+          }, { timeoutMs: CATCH_UP_RPC_TIMEOUT_MS });
+          if (disposed) { outcome = 'aborted'; return; }
           if (!res.success) {
-            if (res.gone) onGone();
+            if (res.gone) { onGone(); outcome = 'gone'; }
             return;
           }
           // streamMode latch (spec §D3 M-R2-4): the daemon changed generation
@@ -1274,9 +1296,10 @@ export function WebTerminalScreen() {
             clearQuietPoll();
             assembly.abort('disposed');
             setStreamRemount((n) => n + 1);
+            outcome = 'aborted';
             return;
           }
-          if (remountRequested) return;
+          if (remountRequested) { outcome = 'aborted'; return; }
           enc = res.encStream === true;
           tmuxAttached = !!res.tmuxSession;
           setHasTmuxSession(tmuxAttached);
@@ -1285,9 +1308,26 @@ export function WebTerminalScreen() {
           // accepted after seqAtCall so the snapshot baseline keeps them.
           await applyOpenResult(res, seqAtCall)();
           apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+          outcome = 'ok';
         } finally {
-          catchingUp = false;
-          if (catchUpAgain && !disposed) { catchUpAgain = false; catchUp(); }
+          const done = completeCatchUp(catchUpState, disposed ? 'aborted' : outcome, Date.now());
+          catchUpState = done.state; // 'start' leaves the scheduler in inflight; 'retry' in backoff
+          if (!disposed) {
+            if (done.result.action === 'start') {
+              // The queued follow-up (a gap seen mid-flight, or a forceSnapshot
+              // belt) bypasses the request gate: it must run even though a
+              // catch-up just succeeded.
+              runCatchUp(done.result.opts);
+            } else if (done.result.action === 'retry') {
+              const { delayMs, opts: retryOpts } = done.result;
+              retryTimer = setTimeout(() => {
+                retryTimer = null;
+                if (disposed || gone) return;
+                catchUpState = beginRetry(catchUpState);
+                runCatchUp(retryOpts);
+              }, delayMs);
+            }
+          }
         }
       });
     };
@@ -1514,7 +1554,23 @@ export function WebTerminalScreen() {
     // The daemon replays just the missed output, or resends a snapshot if the
     // gap scrolled out of its ring. Only fires once the initial open established
     // a terminalId (onReconnected also fires on the very first connect).
-    const offReconnected = apiSocket.onReconnected(() => catchUp());
+    const offReconnected = apiSocket.onReconnected(() => catchUp({ coalesce: true }));
+    // Recovered reconnect (recovered=true) does NOT fire onReconnected, and a
+    // short-background zombie link usually ends in exactly that — without this
+    // the terminal had no catch-up trigger at all after such a resume.
+    const offRecovered = apiSocket.onRecovered(() => catchUp({ coalesce: true }));
+    // Regional relay edges: output rides the relay while it is connected, so a
+    // relay rebuild (resume probe) or fallback to control is a resync point.
+    // Only the two real transport edges — `connecting` etc. are chip-only.
+    let relayPrevState = apiSocket.getMachineRelayStatus(machineId).state;
+    const offRelayEdge = apiSocket.onMachineRelayStatus((changedMachineId, status) => {
+      if (changedMachineId !== machineId) return;
+      const prev = relayPrevState;
+      relayPrevState = status.state;
+      const cameUp = status.state === 'connected' && prev !== 'connected';
+      const fellBack = prev === 'connected' && status.state === 'fallback';
+      if (cameUp || fellBack) catchUp({ coalesce: true });
+    });
 
     const host = hostRef.current;
 
@@ -2035,10 +2091,12 @@ export function WebTerminalScreen() {
       window.removeEventListener('resize', scheduleFit);
       if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
       try { geometryOsc?.dispose(); } catch { /* already disposed */ }
-      window.removeEventListener('pageshow', onPageShow);
-      document.removeEventListener('visibilitychange', onVisible);
+      offResume();
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       ro.disconnect();
       offReconnected();
+      offRecovered();
+      offRelayEdge();
       apiSocket.offMessage('terminal-output', onOutput);
       apiSocket.offMessage('terminal-exit', onExit);
       host.removeEventListener('dragover', onDragOver);

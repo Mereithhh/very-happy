@@ -6,6 +6,7 @@ import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
 import { RelayAssignmentResponseSchema, ReleaseDrainNoticeSchema, type RelayAssignment, type ReleaseDrainNotice } from '@slopus/happy-wire';
 import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
+import { decideAfterProbe, decideProbe, LIVENESS_PROBE_MS } from './socketLiveness';
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -59,6 +60,8 @@ export type MachineRelayStatus = {
     rttMs?: number;
 };
 
+export type LivenessResult = 'alive' | 'reconnected' | 'skipped';
+
 export type SessionDeliveryResult = {
     ok: boolean;
     messages?: Array<{
@@ -83,6 +86,9 @@ class ApiSocket {
     private encryption: Encryption | null = null;
     private messageHandlers: Map<string, (data: any) => void> = new Map();
     private reconnectedListeners: Set<() => void | Promise<void>> = new Set();
+    private recoveredListeners: Set<() => void> = new Set();
+    private livenessInFlight: Promise<LivenessResult> | null = null;
+    private livenessAfterHandover = false;
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
     private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
     private relaySockets = new Map<string, Socket>();
@@ -122,13 +128,17 @@ class ApiSocket {
     private createControlSocket(handover?: ReleaseDrainNotice): Socket {
         return io(this.config!.endpoint, {
             path: '/v1/updates',
-            auth: {
+            // Function form: socket.io re-evaluates it on EVERY connect, so a
+            // reconnect (forced or automatic) carries the current focus state
+            // and token instead of the values captured when the manager was
+            // created. The server reads the same `handshake.auth` shape.
+            auth: (cb) => cb({
                 token: this.config!.token,
                 clientType: 'user-scoped' as const,
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
                 ...(handover ? { handoverEpoch: handover.epoch } : {}),
-            },
+            }),
             ...(handover ? { query: { vh_slot: handover.candidateSlot }, forceNew: true } : {}),
             // Allow HTTP long-polling fallback (+ try every transport on the
             // first attempt) so the socket still connects when wss is blocked by
@@ -163,6 +173,18 @@ class ApiSocket {
     onReconnected = (listener: () => void) => {
         this.reconnectedListeners.add(listener);
         return () => this.reconnectedListeners.delete(listener);
+    };
+
+    /**
+     * `connect` with `socket.recovered === true` (connectionStateRecovery
+     * replayed the server-side gap). onReconnected deliberately does NOT fire
+     * then — but events emitted into the dead link BEFORE the server noticed
+     * the disconnect were never delivered and are not in the replay, so the
+     * current view still needs a bounded refetch. Spec §C.
+     */
+    onRecovered = (listener: () => void) => {
+        this.recoveredListeners.add(listener);
+        return () => this.recoveredListeners.delete(listener);
     };
 
     onStatusChange = (listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
@@ -218,7 +240,13 @@ class ApiSocket {
         const encryptedParams = await sessionEncryption.encryptRaw(params);
         const machineId = storage.getState().sessions[sessionId]?.metadata?.machineId;
         const relayAllowed = typeof machineId === 'string' && (this.sessionRelayRetryAfter.get(sessionId) ?? 0) <= Date.now();
-        const relaySocket = relayAllowed ? await this.ensureMachineRelay(machineId) : null;
+        const relayCandidate = relayAllowed ? await this.ensureMachineRelay(machineId) : null;
+        // Re-check right before emitting: a relay that died between
+        // ensureMachineRelay and here (resume liveness probe closing it, or a
+        // ping-expired close) would park the packet in its sendBuffer forever
+        // (`reconnection: false`) until the ack timer fires. Nothing has been
+        // sent yet, so routing to control instead cannot double-execute.
+        const relaySocket = relayCandidate?.connected ? relayCandidate : null;
         const callCentral = () => this.socket!
             .timeout(opts?.timeoutMs ?? ApiSocket.SESSION_RPC_TIMEOUT_MS)
             .emitWithAck('rpc-call', {
@@ -247,7 +275,12 @@ class ApiSocket {
                 // The runner may have completed a mutating RPC even if its ack
                 // was lost. Never replay the same call over control; put only
                 // subsequent explicit calls on the compatibility path.
-                this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+                // Only when this relay socket is still the current one: a
+                // forced relay rebuild rejects in-flight acks synchronously and
+                // must not re-arm the cooldown it just cleared.
+                if (this.relaySockets.get(machineId as string) === relaySocket) {
+                    this.sessionRelayRetryAfter.set(sessionId, Date.now() + 30_000);
+                }
                 throw error;
             }
         } else {
@@ -304,8 +337,11 @@ class ApiSocket {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const relaySocket = await this.ensureMachineRelay(machineId);
+        const relayCandidate = await this.ensureMachineRelay(machineId);
         const encryptedParams = await machineEncryption.encryptRaw(params);
+        // See sessionRPC: re-check after the async encrypt so a relay that died
+        // meanwhile doesn't swallow the packet until the ack timer (10–60s).
+        const relaySocket = relayCandidate?.connected ? relayCandidate : null;
         const call = (socket: Socket) => socket
             .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
             .emitWithAck('rpc-call', {
@@ -318,10 +354,18 @@ class ApiSocket {
             if (relaySocket && !result?.ok) throw new Error(result?.error || 'Regional relay RPC failed');
         } catch (error) {
             if (!relaySocket) throw error;
+            // Cooldown + fallback only if this socket is still the current
+            // relay. A forced rebuild (resume liveness) deletes the map entry
+            // BEFORE closing, and its synchronous `_clearAcks` lands here — it
+            // must not re-arm the 30s cooldown or overwrite the `connecting`
+            // status it just published.
+            const stillCurrent = this.relaySockets.get(machineId) === relaySocket;
             relaySocket.close();
-            if (this.relaySockets.get(machineId) === relaySocket) this.relaySockets.delete(machineId);
-            this.relayRetryAfter.set(machineId, Date.now() + 30_000);
-            this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            if (stillCurrent) {
+                this.relaySockets.delete(machineId);
+                this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+                this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            }
             // The relay may have delivered a mutating RPC even when its ack was
             // lost. Retrying inside the same call could spawn/stop/write twice.
             // Fail this bounded call; the next explicit user action uses the
@@ -341,6 +385,127 @@ class ApiSocket {
      */
     sendAppState(state: string) {
         this.socket?.emit('app-state', { state });
+    }
+
+    /**
+     * Web resumed from background (spec `specs/2026-08-web-resume-sync.md` §B).
+     * Decides in one place whether the control socket and the connected
+     * regional relays are really alive, and forces exactly one
+     * `disconnect(); connect()` per dead socket. Sequencing matters — see
+     * socketLiveness.ts for why each step is where it is. Concurrent calls
+     * share the in-flight run (one action per resume).
+     */
+    checkLiveness(): Promise<LivenessResult> {
+        if (this.livenessInFlight) return this.livenessInFlight;
+        this.livenessInFlight = this.runLiveness().finally(() => { this.livenessInFlight = null; });
+        return this.livenessInFlight;
+    }
+
+    private async runLiveness(): Promise<LivenessResult> {
+        const socket = this.socket;
+        if (!socket) return 'skipped';
+        // Step 1: one emit. If the engine's ping deadline already passed while
+        // we were frozen, socket.io-client closes it on the next microtask.
+        this.sendAppState(getCurrentAppState());
+        // Step 2: let that close chain (all synchronous inside one microtask) run.
+        await Promise.resolve();
+        // Step 3.
+        const probe = decideProbe({ connectedAfterEmit: socket.connected, handoverInFlight: this.handoverInFlight !== null });
+        // Relays are probed in parallel with the control socket; they don't
+        // depend on its verdict (terminal output rides the relay when connected).
+        const relays = this.probeRelays();
+        if (probe === 'skip') {
+            if (this.handoverInFlight) this.livenessAfterHandover = true;
+            await relays;
+            return 'skipped';
+        }
+        // Step 4: `ping` with NO payload — the server handler's first argument
+        // is the ack callback (pingHandler.ts), a payload would shift it.
+        let acked = false;
+        try {
+            await socket.timeout(LIVENESS_PROBE_MS).emitWithAck('ping');
+            acked = true;
+        } catch {
+            acked = false;
+        }
+        // Step 5: re-validate before acting — a queued `close` may have
+        // rejected the ack via _clearAcks, and the manager is then already
+        // reconnecting; disconnecting again would kill its own attempt.
+        const decision = decideAfterProbe({
+            acked,
+            sameSocket: this.socket === socket,
+            connected: socket.connected,
+            handoverInFlight: this.handoverInFlight !== null,
+        });
+        let result: LivenessResult = 'skipped';
+        if (decision === 'alive') {
+            result = 'alive';
+        } else if (decision === 'reconnect') {
+            if (this.isVerboseLogging()) console.log('🔌 SyncSocket: liveness probe failed — forcing reconnect');
+            // `disconnect()` clears the manager's backoff state and rejects
+            // in-flight acks (never replayed: a daemon may have executed the
+            // call). `connect()` opens immediately; the resulting `connect`
+            // carries recovered=false → onReconnected does the full refetch.
+            socket.disconnect();
+            socket.connect();
+            result = 'reconnected';
+        }
+        await relays;
+        return result;
+    }
+
+    /**
+     * Probe every connected regional relay with the existing `relay-ping` ack.
+     * A relay that answers nothing is rebuilt WITHOUT the 30s legacy cooldown
+     * (the cooldown exists for relays that refuse us, not for links the OS
+     * silently dropped). Order inside forceRelayRebuild is load-bearing.
+     */
+    private async probeRelays(): Promise<void> {
+        const probes: Promise<void>[] = [];
+        for (const [machineId, socket] of this.relaySockets) {
+            if (!socket.connected) continue;
+            probes.push(this.probeRelay(machineId, socket));
+        }
+        await Promise.allSettled(probes);
+    }
+
+    private async probeRelay(machineId: string, socket: Socket): Promise<void> {
+        // Same emit → microtask → connected dance as the control socket: on a
+        // relay whose ping deadline passed, this emit closes it and the buffered
+        // ack is NOT rejected by _clearAcks — without the check we'd wait the
+        // full probe window for nothing.
+        const ack = socket.timeout(LIVENESS_PROBE_MS).emitWithAck('relay-ping', { sentAt: Date.now() }).then(() => true, () => false);
+        await Promise.resolve();
+        if (!socket.connected) {
+            // The ordinary disconnect handler already ran (map entry gone, 30s
+            // cooldown armed). Resume is not a refusal: clear it and reconnect.
+            if (this.relaySockets.get(machineId) !== socket) {
+                this.relayRetryAfter.delete(machineId);
+                void this.ensureMachineRelay(machineId, { strictPing: true });
+            }
+            return;
+        }
+        const acked = await ack;
+        if (acked) return;
+        if (this.relaySockets.get(machineId) !== socket || !socket.connected) return;
+        this.forceRelayRebuild(machineId, socket);
+    }
+
+    private forceRelayRebuild(machineId: string, socket: Socket) {
+        // 1. Unmap first so the socket's own `disconnect` handler (which runs
+        //    synchronously inside close()) skips its cooldown/fallback write.
+        this.relaySockets.delete(machineId);
+        // 2. No cooldown: we are replacing a dropped link, not being refused.
+        this.relayRetryAfter.delete(machineId);
+        // 3. Publish the transition ourselves (the skipped handler won't), so
+        //    the terminal chip shows connecting instead of a stale connected.
+        this.updateRelayStatus(machineId, { transport: 'regional', state: 'connecting' });
+        // 4. Close → rejects in-flight acks (a stuck catch-up RPC unblocks now).
+        socket.close();
+        // 5. Rebuild. strictPing: if the fresh socket also fails relay-ping, it
+        //    takes the ordinary 30s cooldown — caps a wedged relay at one
+        //    rebuild per resume instead of looping.
+        void this.ensureMachineRelay(machineId, { strictPing: true });
     }
 
     send(event: string, data: any) {
@@ -428,13 +593,13 @@ class ApiSocket {
         for (const listener of this.relayStatusListeners) listener(machineId, status);
     }
 
-    private async ensureMachineRelay(machineId: string): Promise<Socket | null> {
+    private async ensureMachineRelay(machineId: string, opts?: { strictPing?: boolean }): Promise<Socket | null> {
         const existing = this.relaySockets.get(machineId);
         if (existing?.connected) return existing;
         if ((this.relayRetryAfter.get(machineId) ?? 0) > Date.now()) return null;
         const inFlight = this.relayConnecting.get(machineId);
         if (inFlight) return inFlight;
-        const connecting = this.connectMachineRelay(machineId).finally(() => this.relayConnecting.delete(machineId));
+        const connecting = this.connectMachineRelay(machineId, opts).finally(() => this.relayConnecting.delete(machineId));
         this.relayConnecting.set(machineId, connecting);
         return connecting;
     }
@@ -449,7 +614,7 @@ class ApiSocket {
         ]);
     }
 
-    private async connectMachineRelay(machineId: string): Promise<Socket | null> {
+    private async connectMachineRelay(machineId: string, opts?: { strictPing?: boolean }): Promise<Socket | null> {
         if (!this.config) return null;
         this.updateRelayStatus(machineId, { transport: 'regional', state: 'connecting' });
         let assignment: RelayAssignment | null = null;
@@ -507,7 +672,18 @@ class ApiSocket {
         try {
             await socket.timeout(3_000).emitWithAck('relay-ping', { sentAt: Date.now() });
             rttMs = Math.max(0, performance.now() - startedAt);
-        } catch { /* connection itself is still usable */ }
+        } catch {
+            // Normally tolerated (connection itself is still usable). After a
+            // forced rebuild it is the loop cap: a relay that accepted the
+            // handshake but answers nothing goes to legacy for the usual 30s.
+            if (opts?.strictPing && this.relaySockets.get(machineId) === socket) {
+                this.relaySockets.delete(machineId);
+                socket.close();
+                this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+                this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+                return null;
+            }
+        }
         if (!socket.connected || this.relaySockets.get(machineId) !== socket) return null;
         this.relayRetryAfter.delete(machineId);
         this.updateRelayStatus(machineId, {
@@ -532,6 +708,8 @@ class ApiSocket {
             this.updateStatus('connected');
             if (!socket.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
+            } else {
+                this.recoveredListeners.forEach(listener => listener());
             }
         });
 
@@ -586,6 +764,13 @@ class ApiSocket {
         if (this.handoverInFlight) return this.handoverInFlight;
         this.handoverInFlight = this.handover(notice).finally(() => {
             this.handoverInFlight = null;
+            // A resume that landed mid-handover skipped its probe; on a dead
+            // link the candidate times out and `previous` is kept — nobody
+            // else would ever probe it. Run the deferred check now.
+            if (this.livenessAfterHandover) {
+                this.livenessAfterHandover = false;
+                void this.checkLiveness();
+            }
         });
         return this.handoverInFlight;
     }

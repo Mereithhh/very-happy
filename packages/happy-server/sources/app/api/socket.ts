@@ -54,16 +54,15 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         connectTimeout: 20000,
         serveClient: false, // Don't serve the client files
         maxHttpBufferSize: socketPayloadLimit === 0 ? Number.MAX_SAFE_INTEGER : socketPayloadLimit,
-        // Brief-disconnect event replay. Currently OFF to preserve parity with
-        // pre-multi-process prod behavior — clients fall through to the full
-        // REST re-fetch path on every reconnect (apiSocket.ts onReconnected
-        // listener). Enabling this lets socket.io replay missed events from
-        // the streams adapter (which implements restoreSession via the Redis
-        // stream) so the client can skip the heavy refetch when
-        // socket.recovered === true. Verified working cross-replica via
-        // deploy/integration-tests/missed-events.mjs (event #2 fired during a
-        // forced engine.close() arrived after auto-reconnect, recovered=true).
-        // Ship parity first; turn this on as a follow-up.
+        // Brief-disconnect event replay — ON. socket.io replays events the
+        // server knows it missed (streams adapter restoreSession via the
+        // Redis stream) and the client reconnects with socket.recovered ===
+        // true, skipping the full onReconnected refetch. Verified
+        // cross-replica via deploy/integration-tests/missed-events.mjs.
+        // Client-side caveat (web apiSocket.onRecovered): events emitted into
+        // a half-dead link BEFORE the server noticed the disconnect are not in
+        // the replay, so a recovered connect still triggers a bounded refetch
+        // of the viewed session. Spec: specs/2026-08-web-resume-sync.md.
         connectionStateRecovery: {
             maxDisconnectionDuration: 30_000,
             skipMiddlewares: false,

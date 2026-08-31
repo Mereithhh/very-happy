@@ -65,8 +65,14 @@ describe('ApiSocket release handover', () => {
         expect(state.io).toHaveBeenNthCalledWith(2, 'https://control.test', expect.objectContaining({
             query: { vh_slot: 'green' },
             forceNew: true,
-            auth: expect.objectContaining({ handoverEpoch: 'release-1234' }),
+            auth: expect.any(Function),
         }));
+        // auth is the function form (re-evaluated on every connect); it must
+        // still carry the handover epoch.
+        const candidateAuth = state.io.mock.calls[1][1].auth as (cb: (data: Record<string, unknown>) => void) => void;
+        let authPayload: Record<string, unknown> = {};
+        candidateAuth((data) => { authPayload = data; });
+        expect(authPayload).toMatchObject({ handoverEpoch: 'release-1234', clientType: 'user-scoped' });
         expect(resync).toHaveBeenCalled();
         expect(candidate.connect).toHaveBeenCalledTimes(1);
         expect(candidate.emit).toHaveBeenCalledWith('release-handover-result', expect.objectContaining({ result: 'success' }));

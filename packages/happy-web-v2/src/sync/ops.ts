@@ -375,6 +375,9 @@ export async function machineOpenTerminal(
          *  around — so this is safe to send unconditionally (铁律 4). */
         streamMode?: 'lines';
     },
+    /** Transport options. Catch-up opens pass a short timeout so a dead link
+     *  fails fast instead of holding the terminal write chain for 60s. */
+    rpc?: { timeoutMs?: number },
 ): Promise<OpenTerminalOk | { success: false; error: string; gone?: boolean }> {
     try {
         // Avoid the cold-load race: don't fire the RPC before the machine's
@@ -389,7 +392,7 @@ export async function machineOpenTerminal(
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
             { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines' }
-        >(machineId, 'open-terminal', options);
+        >(machineId, 'open-terminal', options, rpc);
         // A daemon-side handler error comes back as `{ error }` WITH a
         // relay-level ok (RpcHandlerManager encrypts the error object as a
         // normal response), so machineRPC doesn't throw — detect it here.
