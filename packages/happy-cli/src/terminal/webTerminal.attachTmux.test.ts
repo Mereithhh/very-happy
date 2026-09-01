@@ -18,6 +18,7 @@ const prevHome = process.env.HAPPY_HOME_DIR;
 process.env.HAPPY_HOME_DIR = happyHome;
 const iso = createIsolatedTmux('vh-att');
 const { WebTerminalManager } = await import('./webTerminal');
+const { USER_SESSIONS_FORMAT } = await import('./userTmuxSessions');
 
 const USER = 'my dev';
 async function until(probe: () => boolean, ms = 10_000): Promise<boolean> {
@@ -45,7 +46,8 @@ describe.skipIf(!tmuxAvailable)('attach an existing tmux session (B-273, real tm
         expect(iso.run('new-session', '-d', '-s', 'vh-decoy', '/bin/sh').status).toBe(0);
 
         const list = mgr.listUserTmuxSessions();
-        expect(list.map((s) => s.name)).toEqual([USER]);
+        const raw = iso.run('list-sessions', '-F', USER_SESSIONS_FORMAT);
+        expect(list.map((s) => s.name), `diagnostics: socket=${process.env.VH_TMUX_SOCKET} raw=${JSON.stringify({ status: raw.status, stderr: raw.stderr?.trim(), stdout: raw.stdout }, null, 0)}`).toEqual([USER]);
         const target = list[0];
         expect(target.id).toMatch(/^\$\d+$/);
         expect(target.windows).toBe(2);
