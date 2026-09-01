@@ -72,6 +72,9 @@ import {
 } from './composerExpand';
 import './input.css';
 import { shouldApplyPermissionModeLive } from './livePermissionMode';
+import { derivePermissionModeDisplay } from './permissionModeDisplay';
+import { resolveIntentSource } from '@/sync/yoloEnforcement';
+import { getAgentDefaultOverride } from '@/sync/agentDefaults';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -181,6 +184,31 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const selectedEffortKey = isClaudeFlavor ? (effortKey ?? EFFORT_DEFAULT_KEY) : effortKey;
     const selectedModel = models.find((option) => option.key === modelKey) ?? models[0];
     const selectedPermission = permModes.find((option) => option.key === permKey) ?? permModes[0];
+    // B-262 A4: honest subtitle — what the CLI has confirmed vs. what we intend.
+    const permissionDisplayState = isClaudeFlavor
+        ? derivePermissionModeDisplay({
+            displayed: permKey,
+            published: metadata?.permissionMode,
+            dangerouslySkipPermissions: metadata?.dangerouslySkipPermissions,
+            intentSource: resolveIntentSource({
+                published: metadata?.permissionMode,
+                local: session?.permissionMode,
+                override: getAgentDefaultOverride(agentDefaultOverrides, flavor).permissionMode,
+            }),
+            busy: permissionModeBusy,
+        })
+        : 'confirmed';
+    const permissionSubtitle = (() => {
+        switch (permissionDisplayState) {
+            case 'confirmed': return undefined;
+            case 'pending': return t('session.chat.permissionModeState.pending');
+            case 'conflict': return t('session.chat.permissionModeState.conflict', { mode: metadata?.permissionMode ?? '?' });
+            case 'startup-yolo': return t('session.chat.permissionModeState.startupYolo');
+            case 'unconfirmed-intent': return t('session.chat.permissionModeState.unconfirmedIntent');
+            case 'unconfirmed-guess': return t('session.chat.permissionModeState.unconfirmedGuess');
+            case 'unconfirmed-other': return t('session.chat.permissionModeState.unconfirmedOther');
+        }
+    })();
     const sessionOptionsSummary = [selectedModel?.name, selectedPermission?.name]
         .filter(Boolean)
         .join(' · ');
@@ -503,6 +531,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         let appliedKey = key;
         if (supportsLivePermissionMode) {
             setPermissionModeBusy(true);
+            // Mirror into the store so web-side yolo enforcement/alignment
+            // never races the user's own mode change (B-262).
+            storage.getState().setPermissionModeBusy(sessionId, true);
             try {
                 const response = await sessionSetPermissionMode(sessionId, key);
                 appliedKey = response.mode;
@@ -511,6 +542,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                 return;
             } finally {
                 setPermissionModeBusy(false);
+                storage.getState().setPermissionModeBusy(sessionId, false);
             }
         }
         setMode('updateSessionPermissionMode', 'permissionMode', appliedKey);
@@ -541,6 +573,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         value: permKey,
                         onChange: (key) => { void setPermissionMode(key); },
                         busy: permissionModeBusy,
+                        hint: permissionSubtitle,
                     }}
                     effort={{
                         label: t('session.chat.effortLabel'),
@@ -785,6 +818,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         value={permKey}
                         onChange={(key) => { void setPermissionMode(key); }}
                         busy={permissionModeBusy}
+                        subtitle={permissionSubtitle}
                     />
                     {efforts.length > 0 && (
                         <ModeMenu

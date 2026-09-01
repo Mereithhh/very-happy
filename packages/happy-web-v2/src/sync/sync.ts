@@ -1,6 +1,11 @@
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
 import { attachResumeListeners } from '@/sync/resumeSync';
+import { setPermissionEnforcer } from '@/sync/storage';
+import { runYoloEnforcement } from '@/sync/yoloEnforcer';
+import { sanitizeAgentDefaultOverrides } from '@/sync/permissionModeOutbound';
+import { resolveIntentSource, shouldAlignToBypass } from '@/sync/yoloEnforcement';
+import { getAgentDefaultOverride, getCodeAgentDefaults } from '@/sync/agentDefaults';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
@@ -279,6 +284,9 @@ class Sync {
     };
 
     async create(credentials: AuthCredentials, encryption: Encryption) {
+        // B-262 A3: storage collects yolo-enforcement decisions; execution lives
+        // here (storage must not import the RPC layer).
+        setPermissionEnforcer((decisions) => runYoloEnforcement(decisions));
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
@@ -350,6 +358,7 @@ class Sync {
 
     onSessionVisible = (sessionId: string) => {
         this.getMessagesSync(sessionId).invalidate();
+        this.alignPermissionModeIfNeeded(sessionId);
 
         // Also invalidate git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
@@ -362,6 +371,42 @@ class Sync {
             }
             voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
         }
+    }
+
+    // B-262 A6: upgrade-only alignment. A session the user explicitly put in
+    // yolo (this device / synced override) whose CLI has not confirmed bypass
+    // gets one set-permission-mode when it is viewed — v2 CLIs accept it idle,
+    // v1 only while a request is pending. Never downgrades, never acts on a
+    // code-default guess, never while the selector's own RPC is in flight.
+    private alignAttemptedAt = new Map<string, number>();
+    private alignPermissionModeIfNeeded(sessionId: string) {
+        const state = storage.getState();
+        const session = state.sessions[sessionId];
+        if (!session) return;
+        const flavor = session.metadata?.flavor;
+        const overrideMode = getAgentDefaultOverride(state.settings.agentDefaultOverrides, flavor).permissionMode;
+        const published = session.metadata?.permissionMode;
+        const displayed = session.permissionMode ?? overrideMode ?? getCodeAgentDefaults(flavor).permissionMode;
+        const intentSource = resolveIntentSource({ published, local: session.permissionMode, override: overrideMode });
+        const requests = session.agentState?.requests ?? {};
+        const should = shouldAlignToBypass({
+            flavor,
+            controlledByUser: session.agentState?.controlledByUser,
+            presence: session.presence,
+            displayed,
+            intentSource,
+            published,
+            capabilities: session.metadata?.capabilities,
+            hasPendingRequests: Object.keys(requests).length > 0,
+            busy: state.permissionModeBusy[sessionId] === true,
+        });
+        if (!should) return;
+        const last = this.alignAttemptedAt.get(sessionId) ?? 0;
+        if (Date.now() - last < 30_000) return;
+        this.alignAttemptedAt.set(sessionId, Date.now());
+        apiSocket.sessionRPC(sessionId, 'set-permission-mode', { mode: 'bypassPermissions' }, { timeoutMs: 20_000 })
+            .then(() => log.log(`🔐 yolo alignment applied for ${sessionId}`))
+            .catch((error) => log.log(`🔐 yolo alignment skipped for ${sessionId}: ${error instanceof Error ? error.message : String(error)}`));
     }
 
     private getMessagesSync(sessionId: string): InvalidateSync {
@@ -870,6 +915,12 @@ class Sync {
         // with same-text dedup instead of duplicating.
         const migration = migrateTerminalCommands(merged.promptPresets, merged.terminalCommands);
         if (migration) this.applySettings(migration);
+
+        // B-262 A1: a dead selector key (dontAsk) persisted in the synced
+        // per-agent override would be sent with every message and make the
+        // CLI drop it. Rewrite once, as the FULL overrides object (铁律 1).
+        const sanitizedOverrides = sanitizeAgentDefaultOverrides(merged.agentDefaultOverrides);
+        if (sanitizedOverrides) this.applySettings({ agentDefaultOverrides: sanitizedOverrides });
     }
 
     applySettings = (delta: Partial<Settings>) => {

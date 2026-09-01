@@ -61,7 +61,8 @@ export function getClaudePermissionModes(translate: Translate): PermissionMode[]
     return [
         { key: 'default', name: translate('agentInput.permissionMode.default'), description: null },
         { key: 'plan', name: translate('agentInput.permissionMode.plan'), description: null },
-        { key: 'dontAsk', name: translate('agentInput.permissionMode.dontAsk'), description: null },
+        // `dontAsk` deliberately absent (B-262): no released CLI accepts it —
+        // its MessageMetaSchema enum rejects the whole message silently.
         { key: 'acceptEdits', name: translate('agentInput.permissionMode.acceptEdits'), description: null },
         { key: 'bypassPermissions', name: translate('agentInput.permissionMode.bypassPermissions'), description: null },
     ];

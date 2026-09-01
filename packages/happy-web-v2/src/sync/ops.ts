@@ -6,6 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import { storage } from './storage';
+import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import type { MachineMetadata, Metadata } from './storageTypes';
 import { commitSessionResume } from './sessionResumeFlow';
 
@@ -1580,6 +1581,12 @@ export async function forkAndSpawn(
         return { type: 'error', errorMessage: forkResult.errorMessage };
     }
 
+    // B-262 A5: carry the parent's explicit mode (local / CLI-published) into
+    // the fork; never the code default — a fork of a review-first session must
+    // not silently start in yolo, and a fork of a yolo session must not start
+    // asking. Old daemons ignore the field (allowlisted since spawn v1).
+    const parentSession = storage.getState().sessions[source.sessionId];
+    const parentMode = normalizeClaudeOutboundMode(parentSession?.permissionMode ?? parentSession?.metadata?.permissionMode ?? null);
     const spawnResult = await machineSpawnNewSession({
         machineId: source.machineId,
         directory: source.directory,
@@ -1588,7 +1595,11 @@ export async function forkAndSpawn(
         resumeClaudeSessionId: forkResult.newClaudeSessionId,
         parentSessionId: source.sessionId,
         forkedFromMessageId: opts.forkedFromMessageId,
+        ...(parentMode ? { permissionMode: parentMode } : {}),
     });
+    if (spawnResult.type === 'success' && parentMode) {
+        storage.getState().updateSessionPermissionMode(spawnResult.sessionId, parentMode);
+    }
 
     // Pull the newly-created session row into local sync state before we
     // hand control back to the caller — otherwise router.replace into the

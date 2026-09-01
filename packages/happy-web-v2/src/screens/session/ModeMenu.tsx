@@ -14,12 +14,15 @@ export function ModeMenu({
     value,
     onChange,
     busy = false,
+    subtitle,
 }: {
     label: string;
     options: ModeOption[];
     value: string | null;
     onChange: (key: string) => void;
     busy?: boolean;
+    /** B-262: honest CLI-confirmation note (mono, neutral) — e.g. "· 未确认". */
+    subtitle?: string;
 }) {
     if (options.length === 0) return null;
     const current = options.find((o) => o.key === value) ?? options[0];
@@ -30,6 +33,7 @@ export function ModeMenu({
                 <button type="button" className="mm-trigger" aria-label={label} disabled={busy} aria-busy={busy}>
                     <span className="mm-k">{label}</span>
                     <span className="mm-v">{current?.name ?? value}</span>
+                    {subtitle && <span className="mm-sub" title={subtitle}>{subtitle}</span>}
                     {busy ? <Spinner size={12} /> : <ChevronDown size={12} className="mm-caret" />}
                 </button>
             </DropdownMenu.Trigger>

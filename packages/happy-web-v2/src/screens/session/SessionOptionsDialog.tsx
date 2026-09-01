@@ -10,9 +10,11 @@ type OptionFieldProps = {
     value: string | null;
     onChange: (key: string) => void;
     busy?: boolean;
+    /** B-262: CLI-confirmation note under the select. */
+    hint?: string;
 };
 
-function OptionField({ label, options, value, onChange, busy = false }: OptionFieldProps) {
+function OptionField({ label, options, value, onChange, busy = false, hint }: OptionFieldProps) {
     if (options.length === 0) return null;
     const selectedValue = options.some((option) => option.key === value)
         ? value ?? options[0].key
@@ -36,6 +38,7 @@ function OptionField({ label, options, value, onChange, busy = false }: OptionFi
                 </select>
                 {busy ? <Spinner size={15} /> : <ChevronDown size={15} aria-hidden="true" />}
             </span>
+            {hint && <span className="so-field-hint">{hint}</span>}
         </label>
     );
 }
