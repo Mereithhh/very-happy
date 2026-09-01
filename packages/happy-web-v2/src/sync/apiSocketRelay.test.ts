@@ -161,3 +161,76 @@ describe('ApiSocket regional session fast lane', () => {
         apiSocket.disconnect();
     });
 });
+
+describe('ApiSocket machineRPC relay preflight', () => {
+    beforeEach(() => {
+        vi.resetModules();
+        state.io.mockReset();
+        state.relayAck.mockReset();
+        state.centralAck.mockReset();
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({
+                assignment: {
+                    relayId: 'sin',
+                    url: 'https://relay.test',
+                    region: 'Singapore',
+                    token: 'relay-token',
+                    expiresAt: Date.now() + 60_000,
+                },
+            }),
+        })));
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    async function load() {
+        const control = centralSocket();
+        const relay = relaySocket();
+        state.io.mockReturnValueOnce(control).mockReturnValueOnce(relay);
+        const { apiSocket } = await import('./apiSocket');
+        apiSocket.initialize({ endpoint: 'https://control.test', token: 'account-token' }, {
+            getMachineEncryption: () => ({
+                encryptRaw: vi.fn(async () => 'cipher-params'),
+                decryptRaw: vi.fn(async (value) => `plain:${value}`),
+            }),
+        } as any);
+        return { apiSocket, control, relay };
+    }
+
+    it('routes machine RPC over the relay when the preflight ping succeeds', async () => {
+        const { apiSocket, control } = await load();
+        state.relayAck.mockImplementation(async (event: string) => {
+            if (event === 'relay-ping') return { serverAt: Date.now() };
+            if (event === 'rpc-call') return { ok: true, result: 'relay-cipher' };
+            return { ok: false };
+        });
+        await expect(apiSocket.machineRPC('m1', 'open-terminal', {})).resolves.toBe('plain:relay-cipher');
+        expect(state.relayAck).toHaveBeenCalledWith('rpc-call', {
+            method: 'm1:open-terminal', params: 'cipher-params',
+        });
+        expect(control.emitWithAck).not.toHaveBeenCalled();
+        apiSocket.disconnect();
+    });
+
+    it('fails fast to central — never emitting the RPC on a relay whose preflight ping times out', async () => {
+        const { apiSocket } = await load();
+        // The relay socket is "connected" but the link is dead end-to-end: every
+        // relay-ping (the connect-time one AND the machineRPC preflight) rejects.
+        state.relayAck.mockImplementation(async (event: string) => {
+            if (event === 'relay-ping') throw new Error('operation has timed out');
+            return { ok: false };
+        });
+        state.centralAck.mockResolvedValueOnce({ ok: true, result: 'central-cipher' });
+        await expect(apiSocket.machineRPC('m1', 'open-terminal', {})).resolves.toBe('plain:central-cipher');
+        // The RPC went over central, and was NEVER emitted on the dead relay
+        // (so it cannot park for the 60s ack timer).
+        expect(state.centralAck).toHaveBeenCalledWith('rpc-call', {
+            method: 'm1:open-terminal', params: 'cipher-params',
+        });
+        expect(state.relayAck).not.toHaveBeenCalledWith('rpc-call', expect.anything());
+        apiSocket.disconnect();
+    });
+});
