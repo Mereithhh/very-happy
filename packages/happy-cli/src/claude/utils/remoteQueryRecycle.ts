@@ -7,11 +7,13 @@ import type { SDKResultMessage } from '../sdk/types';
  * once a turn ends with `authentication_failed`, every later prompt fed into
  * the same long-lived Query fails in ~20ms without touching the network
  * ("Failed to authenticate: OAuth session expired and could not be
- * refreshed") — even after the credentials on disk are valid again.
- * 2026-09-01 (mac-office): one refresh failure during a network flap wedged a
- * web session this way until its wrapper was restarted, while a terminal
- * `claude` and every freshly spawned one-shot worked with the same
- * ~/.claude/.credentials.json.
+ * refreshed") — even after the credentials the process would read are valid
+ * again. 2026-09-01 (mac-office): every daemon-lineage Claude Code process
+ * failed this way because the login keychain held a stale, empty-token
+ * `Claude Code-credentials` item (keychain wins over ~/.claude/.credentials.json
+ * on darwin); one web session stayed dead on every later message until its
+ * SDK child was killed, while a fresh process after the keychain fix worked.
+ * See specs/2026-09-claude-auth-preflight.md.
  *
  * Ending the Query after such a result makes the next queued message spawn a
  * fresh process that re-reads the credentials, instead of replaying a stale
