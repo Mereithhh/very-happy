@@ -106,6 +106,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 - `packages/happy-web-v2/src/screens/terminal/WebTerminalScreen.tsx`
 - `packages/happy-web-v2/src/screens/settings/SettingsRoutes.tsx`
 - `packages/happy-cli/src/terminal/webTerminal.ts`
+- `packages/happy-web-v2/src/sync/storage.ts`、`src/sync/sync.ts`（applySessions / applyMessages / 权限执法与回前台链路都在这里，改前 `git log -5 -- <file>`）
 
 派工时高冲突事项显式声明「别碰」；同文件冲突由主 agent 合并时解决。
 
@@ -145,6 +146,16 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 12. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
     会表现为 `P2010` + SQLSTATE `40001`；事务层必须同时重试。CLI 对 session
     metadata/agent-state 的 server `result:error` 也不得静默吞掉，否则权限请求会永久丢失。
+14. **CLI wrapper 进程不随 daemon 升级热替换（铁律 7 的推论）**：任何依赖 CLI 行为的 Web 功能必须按
+    `session.metadata.capabilities` 分版本（不是 machine `happyCliVersion`），并假设更新前开着的会话永远跑旧代码；
+    Web 侧要有版本无关的兜底。权限模式的唯一执法入口是 `src/sync/yoloEnforcement.ts`（storage 收集决策、
+    sync 注入 enforcer；只对明确选过的 yolo 执法，绝不对代码默认执法），出站模式唯一清洗点是
+    `normalizeClaudeOutboundMode`——**选择器/设置里出现 CLI zod 枚举不认识的值会让整条消息被静默丢弃**
+    （`dontAsk` 事故）。普通工具 approve **不得带 `mode`**（0.2.79–0.2.90 会在 canUseTool 内嵌套 control
+    request，失败即 deny）。规则全文见 `specs/2026-08-permission-mode-source-of-truth.md`「Web 代批与执法边界」。
+15. **reducer 输入契约：一批消息按 seq 升序**（`sortIncomingBySeq` 在 `storage.applyMessages` 与 `reducer()`
+    入口各调一次；乐观消息混批保持到达顺序）。历史回填页是 DESC，绕过它会让 sidechain 子行永久平铺、
+    子工具永久 running、plan-mode 误进（B-261）。
 13. **Web「回前台 / socket 是否还活着」只有一个入口**：`src/sync/resumeSync.ts`（可见性边沿，
     不看 `hasFocus`）→ `sync.onWebResume` → `apiSocket.checkLiveness()`（`ping`/`relay-ping`
     探活、再校验后才 `disconnect();connect()`）。不要再给 screen 加平行的 visibility/focus

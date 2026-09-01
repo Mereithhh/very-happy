@@ -22,18 +22,22 @@ git worktree list                                   # 派工前看清有哪些�
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-08-30，会过期；以 backlog/verify-queue 为准）
+## 当前状态快照（2026-09-01，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.89**；`packages/happy-cli/package.json` 里的
-  version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
-- `docs/backlog.md` 活跃区约 60 项非 done；`doing` 中的大项：B-216 终端 tag、B-209
-  对话降噪、B-208 工作区视图、B-211 统一 Usage、B-196 配对 500、B-192 多地域 relay、
-  B-185 Email OTP 登录、B-051/B-081 语音助手、B-031 CI gitleaks。改这些方向前先读
-  对应 `specs/2026-08-*.md`（多数已 Final/Shipped）。
-- `docs/verify-queue.md` 待验证 **78 项**（V-0xx～V-103），远超「下一批前清账」纪律；
-  发新批前请 Owner 清账或明确批准堆积。
-- 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1300+ 测试（本地跑一次门禁约 5-10 分钟，
-  首次 install 更久）。
+- 最新 tag / npm `very-happy-cli` = **v0.2.90**；线上 Web = `main@78c37a84`（2026-09-01 蓝绿）。
+  `packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- `docs/backlog.md` 活跃区约 60 项非 done；`doing` 中的大项：B-262 yolo 仍弹审批（第一批 Web 已发，
+  **第二批 CLI 侧需 spec**：SDK `system/init.permissionMode` 当真相、approve-with-mode 不嵌套 control
+  request、队列陈旧 meta、RPC default 降级保护、resume 透传）、B-260 子代理展示（第一批已发，P2 需 spec）、
+  B-216 终端 tag、B-209 对话降噪、B-208 工作区视图、B-211 统一 Usage、B-196 配对 500、B-192 多地域 relay、
+  B-185 Email OTP、B-051/B-081 语音助手、B-031 CI gitleaks。改这些方向前先读对应 `specs/`。
+- `docs/verify-queue.md` 待验证 **82 项**（V-0xx～V-107），远超「下一批前清账」纪律；
+  发新批前请 Owner 清账或明确批准堆积。V-106/V-107 由各账号使用者自验，**不代操作他人会话/机器**。
+- 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1900+ 测试（本地跑一次门禁约 5-10 分钟，
+  首次 install 更久）。web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让
+  `installScript.test.ts` 失败，CI 不受影响）。
+- 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理
+  逐轮推翻前提后定稿（B-259/B-260/B-262 记录在 `~/code/github/skills/tmp/<slug>/`）。
 
 ## 本地工具入口
 
