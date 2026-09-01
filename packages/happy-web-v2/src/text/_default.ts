@@ -999,7 +999,7 @@ export const en = {
         attachUnsupported: 'This machine’s CLI is too old to attach sessions — a plain terminal was opened. Update the CLI to enable it.',
         tipsTitle: 'About web terminals',
         tips1: 'Every web terminal is its own tmux session on the machine.',
-        tips2: 'To reach a tmux session you already have, use “Attach an existing tmux session” below — do not run `tmux attach` inside a web terminal (tmux refuses to nest).',
+        tips2: 'To reach a tmux session you already have, use “Attach an existing tmux session” below — do not run tmux attach inside a web terminal (tmux refuses to nest).',
         tips3: 'After you detach (prefix + d) the terminal is a plain shell again; come back here to attach once more. Wheel scrolling inside an attached session follows that session’s own mouse setting.',
         tipsDismiss: 'Got it',
     },

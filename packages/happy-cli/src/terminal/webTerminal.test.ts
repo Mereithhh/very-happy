@@ -532,7 +532,7 @@ describe('parseSessionListLine', () => {
     });
 
     it('B-273: @vh_attach carries the attached user session name; control chars fail closed', () => {
-        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', ' dev ', 'tmux', 't'))!.attachTmux).toBe('dev');
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', ' dev ', 'tmux', 't'))!.attachTmux).toBe(' dev '); // verbatim: tmux allows edge spaces
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'bad\x07name', 'tmux', 't'))!.attachTmux).toBeUndefined();
     });
 });

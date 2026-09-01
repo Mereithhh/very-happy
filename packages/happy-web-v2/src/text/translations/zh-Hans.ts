@@ -988,7 +988,7 @@ export const zhHans: TranslationStructure = {
         attachUnsupported: '这台机器的 CLI 版本过旧，不支持接入会话，已打开普通终端。升级 CLI 后可用。',
         tipsTitle: '关于 web 终端',
         tips1: 'web 终端本身就是机器上的一个 tmux 会话。',
-        tips2: '要进入你已有的 tmux 会话，用下面的「接入已有 tmux 会话」；不要在 web 终端里再敲 `tmux attach`（tmux 不允许嵌套）。',
+        tips2: '要进入你已有的 tmux 会话，用下面的「接入已有 tmux 会话」；不要在 web 终端里再敲 tmux attach（tmux 不允许嵌套）。',
         tips3: '接入后按 prefix + d 退出，终端会变回普通 shell；要再进入回到这里重新接入。接入会话里的滚轮行为跟随该会话自己的鼠标设置。',
         tipsDismiss: '知道了',
     },

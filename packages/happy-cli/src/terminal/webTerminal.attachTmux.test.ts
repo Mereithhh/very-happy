@@ -8,7 +8,7 @@
  * terminal restores attached (or refuses when the session is gone).
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createIsolatedTmux, tmuxAvailable } from '@/testing/isolatedTmux';
@@ -61,6 +61,18 @@ describe.skipIf(!tmuxAvailable)('attach an existing tmux session (B-273, real tm
         expect(iso.run('show-options', '-qv', '-t', '=vh-att00000001:', '@vh_attach').stdout.trim()).toBe(USER);
         const item = mgr.listSessions().find((t) => t.id === 'att00000001');
         expect(item).toMatchObject({ title: USER, manual: true, attachTmux: USER });
+        // A repeated create-open of the LIVE session still echoes the attach fact
+        // (StrictMode double effect / lost reply replayed with fresh=1).
+        const again = await mgr.open({ terminalId: 'att00000001', cols: 100, rows: 30, cwd: iso.dir, attachTmux: { id: target.id, name: USER } });
+        expect(again.attachedTmux).toEqual({ id: target.id, name: USER });
+        mgr.unsubscribe('att00000001');
+        // The live snapshot on disk carries the target (daemon-gap restore needs it).
+        mgr.startListTracking(() => { /* pushes not under test */ }, 10 * 60 * 1000);
+        mgr.requestListRefresh(); // tracking ticks on kicks, not on start
+        expect(await until(() => {
+            try { return JSON.parse(readFileSync(join(happyHome, 'live-terminals.json'), 'utf8'))?.att00000001?.attachTmux === USER; } catch { return false; }
+        })).toBe(true);
+        mgr.stopListTracking();
         // Keys typed into the web terminal land in the USER's pane.
         mgr.write('att00000001', Buffer.from('printf NESTED-KEYS-OK\r', 'utf8').toString('base64'));
         expect(await until(() => capture(`=${USER}:`).includes('NESTED-KEYS-OK'))).toBe(true);

@@ -235,10 +235,6 @@
   display: grid;
   gap: 4px;
 }
-.ns-tips-list code {
-  font-family: var(--font-mono);
-  font-size: var(--fs-11);
-}
 .ns-tips-dismiss {
   margin-top: var(--sp-2);
   min-height: 32px;

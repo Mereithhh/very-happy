@@ -740,7 +740,9 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         manual: manual.trim().length > 0,
         tags: parseTerminalTags(vhTags),
         paneCurrentCommand: paneCommand.trim() || undefined,
-        attachTmux: isSafeTmuxSessionName(vhAttach.trim()) ? vhAttach.trim() : undefined,
+        // Verbatim (no trim): tmux allows edge spaces in a session name and the
+        // restore lookup / attach echo compare it exactly.
+        attachTmux: isSafeTmuxSessionName(vhAttach) ? vhAttach : undefined,
         // pane_title is last, so anything after field 9 is title content that
         // contained the separator — rejoin it rather than dropping it.
         paneTitle: parts.slice(9).join(LIST_FIELD_SEP) || undefined,
@@ -1151,6 +1153,9 @@ class TerminalSession {
     readonly id: string;
     readonly tmuxSession?: string;
     transport: SessionTransport;
+    /** B-273: the user tmux session this terminal was created to attach —
+     *  echoed to any later open of the same live session. */
+    attachedTmux?: { id: string; name: string };
     /**
      * The pane this terminal follows, latched from the open capture's
      * `list-panes` (first pane of the window). `%output` from any OTHER pane is
@@ -1920,7 +1925,7 @@ export class WebTerminalManager {
         if (plan.kind === 'already-live') return { type: 'success', terminalId };
         if (plan.kind === 'error') return { type: 'error', reason: plan.reason };
         if (!this.createDetachedTerminal(plan)) return { type: 'error', reason: 'create-failed' };
-        logger.info(`[WEB TERMINAL] restored closed terminal ${terminalId} in ${plan.cwd}${plan.command ? ' (conversation resumed)' : ''}`);
+        logger.info(`[WEB TERMINAL] restored closed terminal ${terminalId} in ${plan.cwd}${plan.attachTmux ? ` (attached tmux session ${plan.attachTmux})` : plan.command ? ' (conversation resumed)' : ''}`);
         this.kickListRefresh();
         return { type: 'success', terminalId };
     }
@@ -1987,7 +1992,7 @@ export class WebTerminalManager {
      *  would care about changed (see liveSnapshotChanged). */
     private persistLiveSnapshot(live: ReadonlyMap<string, SeenTerminalInfo>, now: number): void {
         const candidate = new Map<string, LiveTerminalInfo>();
-        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, seenAt: now });
+        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}), seenAt: now });
         if (!liveSnapshotChanged(this.lastPersistedSnapshot, candidate)) return;
         this.lastPersistedSnapshot = candidate;
         saveLiveSnapshot(candidate);
@@ -2096,6 +2101,11 @@ export class WebTerminalManager {
 
         const existing = this.terminals.get(id);
         if (existing) {
+            // B-273: a repeated create-open (StrictMode double effect, lost
+            // reply replayed with fresh=1) must echo the attach fact of the
+            // LIVE session, or the web reports "attach unsupported" wrongly.
+            const echo = opts.attachTmux && !(opts.attachOnly || opts.resub) && existing.attachedTmux?.name === opts.attachTmux.name
+                ? { attachedTmux: existing.attachedTmux } : {};
             // Re-subscribe to the live session. The transport stays; we only
             // bump the subscriber count and resize to the (possibly new) client
             // geometry.
@@ -2117,7 +2127,7 @@ export class WebTerminalManager {
                 logger.debug(`[WEB TERMINAL] re-subscribed ${id} (subs=${existing.subscribers}, mode=replay, seq=${existing.seq})`);
                 return {
                     terminalId: id, tmuxSession: existing.tmuxSession, seq: existing.seq,
-                    mode: 'replay', chunks, ...(lines ? { streamMode: 'lines' as const } : {}),
+                    mode: 'replay', chunks, ...(lines ? { streamMode: 'lines' as const } : {}), ...echo,
                 };
             }
             if (lines && existing.transport.kind === 'control') {
@@ -2125,11 +2135,11 @@ export class WebTerminalManager {
                 // be an invisible content hole for every other subscriber). The
                 // capture only READS the seq at its anchor; chunks at or below
                 // it dedup client-side against the snapshot baseline.
-                return await this.linesSnapshotResponse(id, existing);
+                return { ...(await this.linesSnapshotResponse(id, existing)), ...echo };
             }
             const state = existing.subscribeState(opts.fromSeq);
             logger.debug(`[WEB TERMINAL] re-subscribed ${id} (subs=${existing.subscribers}, mode=${state.mode}, seq=${state.seq})`);
-            return { terminalId: id, tmuxSession: existing.tmuxSession, ...state };
+            return { terminalId: id, tmuxSession: existing.tmuxSession, ...state, ...echo };
         }
 
         // Attach-only opens (viewer catch-ups via `resub`, and every new-web
@@ -2456,6 +2466,7 @@ export class WebTerminalManager {
         }
 
         session.subscribers = 1;
+        if (attachedTmux) session.attachedTmux = attachedTmux;
         this.terminals.set(id, session);
 
         // Live title events: the inner app's OSC title (re-emitted by tmux —
@@ -2529,16 +2540,26 @@ export class WebTerminalManager {
 
     /**
      * B-273: check an attach request against the live tmux server. The id
-     * must be a real `$N` whose CURRENT name equals the name the web saw in
-     * the list (ids are recycled across kills) and must not be a vh-* web
-     * terminal. Throws the 'tmux-session-gone' contract string.
+     * must be a real `$N` (session ids only reset when the tmux server
+     * restarts, so a stale id from an older list simply does not exist)
+     * whose CURRENT name equals the name the web saw — the name cross-check
+     * is what refuses a target that was killed and re-created in between —
+     * and must not be a vh-* web terminal. Throws the 'tmux-session-gone'
+     * contract string. Note `display-message -t '$N'` exits 0 with an EMPTY
+     * line for an unknown id (its target lookup may fail silently), which is
+     * why existence is probed with `has-session` first.
      */
     private resolveAttachTarget(req: { id: string; name: string }): { id: string; name: string } {
         const id = typeof req?.id === 'string' ? req.id : '';
         const name = typeof req?.name === 'string' ? req.name : '';
         if (!TMUX_SESSION_ID_RE.test(id) || !isSafeTmuxSessionName(name) || isVhSessionName(name)) throw new Error('tmux-session-gone');
+        const env = ptyEnv();
+        const exists = spawnSync('tmux', tmuxArgs(['has-session', '-t', id]), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+        if (!exists) throw new Error('tmux-session-gone');
         const r = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', id, '#{session_name}']),
-            { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+            { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+        // Only the line terminator comes off: tmux allows leading/trailing
+        // spaces in a name, and every other reader keeps them verbatim.
         const current = r.status === 0 && typeof r.stdout === 'string' ? r.stdout.replace(/\r?\n$/, '') : undefined;
         if (current !== name) throw new Error('tmux-session-gone');
         return { id, name };
