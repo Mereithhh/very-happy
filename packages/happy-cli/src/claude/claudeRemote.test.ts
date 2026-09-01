@@ -283,4 +283,101 @@ describe('claudeRemote', () => {
         expect(nextMessage).toHaveBeenCalledTimes(2);
         expect(interrupt).not.toHaveBeenCalled();
     });
+
+    it('ends the Query after a turn that failed OAuth refresh so the next message spawns a fresh process', async () => {
+        // Claude Code caches a failed refresh per process: feeding the next
+        // prompt into this Query would replay "OAuth session expired" forever
+        // (2026-09-01 mac-office wedge). The launcher loop must get a fresh one.
+        const observedInputs: string[] = [];
+        let inputEnded = false;
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                observedInputs.push((await input.next()).value.message.content);
+                yield {
+                    type: 'assistant',
+                    error: 'authentication_failed',
+                    message: { role: 'assistant', model: '<synthetic>', content: [{ type: 'text', text: 'Failed to authenticate: OAuth session expired and could not be refreshed' }] },
+                };
+                yield { type: 'result', subtype: 'success', is_error: true, result: 'Failed to authenticate: OAuth session expired and could not be refreshed' };
+                inputEnded = (await input.next()).done === true;
+            },
+        } as any));
+
+        const nextMessage = vi.fn()
+            .mockResolvedValueOnce({ message: 'first', mode })
+            .mockResolvedValueOnce({ message: 'queued follow-up', mode })
+            .mockResolvedValueOnce(null);
+        const onCompletionEvent = vi.fn();
+        const onReady = vi.fn();
+        const onThinkingChange = vi.fn();
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage,
+            onReady,
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange,
+            onMessage: vi.fn(),
+            onCompletionEvent,
+        });
+
+        // The poisoned Query saw only the first prompt; the queued follow-up
+        // stays in the queue for the launcher's next (fresh) claudeRemote.
+        expect(observedInputs).toEqual(['first']);
+        expect(inputEnded).toBe(true);
+        expect(nextMessage).toHaveBeenCalledTimes(1);
+        expect(onReady).toHaveBeenCalledOnce();
+        expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('could not refresh its OAuth session'));
+        expect(onThinkingChange.mock.calls.map(([thinking]) => thinking)).toEqual([true, false]);
+    });
+
+    it('keeps feeding the same Query after a non-auth API error result', async () => {
+        const observedInputs: string[] = [];
+        vi.mocked(query).mockImplementation((args: any) => ({
+            setPermissionMode: vi.fn(),
+            interrupt: vi.fn(),
+            async *[Symbol.asyncIterator]() {
+                const input = args.prompt[Symbol.asyncIterator]();
+                observedInputs.push((await input.next()).value.message.content);
+                yield { type: 'assistant', error: 'rate_limit', message: { role: 'assistant', content: [{ type: 'text', text: 'Rate limited' }] } };
+                yield { type: 'result', subtype: 'success', is_error: true, result: 'Rate limited' };
+                observedInputs.push((await input.next()).value.message.content);
+                yield { type: 'result', subtype: 'success', is_error: false, result: 'ok' };
+                expect((await input.next()).done).toBe(true);
+            },
+        } as any));
+
+        const nextMessage = vi.fn()
+            .mockResolvedValueOnce({ message: 'first', mode })
+            .mockResolvedValueOnce({ message: 'retry', mode })
+            .mockResolvedValueOnce(null);
+        const onCompletionEvent = vi.fn();
+
+        await claudeRemote({
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            nextMessage,
+            onReady: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+            onCompletionEvent,
+        });
+
+        expect(observedInputs).toEqual(['first', 'retry']);
+        expect(nextMessage).toHaveBeenCalledTimes(3);
+        expect(onCompletionEvent).not.toHaveBeenCalled();
+    });
 });

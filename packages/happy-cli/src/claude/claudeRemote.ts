@@ -6,6 +6,7 @@ import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
+import { QUERY_RECYCLE_NOTICE, queryRecycleReason } from './utils/remoteQueryRecycle';
 import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
@@ -202,12 +203,21 @@ export async function claudeRemote(opts: {
         });
     }
 
+    // `error` of the latest flagged assistant frame in the current turn — the
+    // typed signal for deciding whether this Query is still usable (see
+    // utils/remoteQueryRecycle.ts). Reset when the turn's result is handled.
+    let lastAssistantError: string | undefined;
+
     updateThinking(true);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
             logger.debug(`[claudeRemote] Message ${message.type}`, contentLogMetadata(message));
+
+            if (message.type === 'assistant' && message.error) {
+                lastAssistantError = message.error;
+            }
 
             // Handle messages. During /compact, Claude emits the generated
             // summary as a normal assistant text message before the result.
@@ -292,6 +302,19 @@ export async function claudeRemote(opts: {
 
                 // Send ready event
                 opts.onReady(message);
+
+                // A turn that ended in a failed OAuth refresh poisons this
+                // process for good (Claude Code caches the verdict): end the
+                // Query so the launcher's next iteration spawns a fresh one
+                // for the next queued message, instead of replaying the error.
+                const recycleReason = queryRecycleReason(message, lastAssistantError);
+                lastAssistantError = undefined;
+                if (recycleReason) {
+                    logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
+                    opts.onCompletionEvent?.(QUERY_RECYCLE_NOTICE[recycleReason]);
+                    messages.end();
+                    continue;
+                }
 
                 // Wait for next user message without blocking the message loop.
                 // Background task messages (task_started, task_progress, task_notification)
