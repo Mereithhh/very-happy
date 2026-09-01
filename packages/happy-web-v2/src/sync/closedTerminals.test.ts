@@ -197,3 +197,14 @@ describe('B-265 restore in place', () => {
     expect(rows[1].tags).toBeUndefined();
   });
 });
+
+describe('B-273 tmuxSessionsSupported', () => {
+    it('same trust rule as terminalRestore: flag must be stamped by THIS daemon run', async () => {
+        const { tmuxSessionsSupported } = await import('./closedTerminals');
+        expect(tmuxSessionsSupported(undefined)).toBe(false);
+        expect(tmuxSessionsSupported({ startedAt: 10 })).toBe(false);
+        expect(tmuxSessionsSupported({ startedAt: 10, tmuxSessions: { rpcAvailable: true, detectedAt: 10 } })).toBe(true);
+        expect(tmuxSessionsSupported({ startedAt: 20, tmuxSessions: { rpcAvailable: true, detectedAt: 10 } })).toBe(false); // downgraded daemon
+        expect(tmuxSessionsSupported({ startedAt: 10, tmuxSessions: { rpcAvailable: false, detectedAt: 10 } })).toBe(false);
+    });
+});

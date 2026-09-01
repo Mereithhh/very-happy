@@ -18,10 +18,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Check, FolderOpen, X } from 'lucide-react';
-import { useAllMachines, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, useLocalSettingMutable, useSettingMutable } from '@/sync/storage';
 import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
 import { createTerminalAt } from '@/app/newTerminal';
 import { machineFsList } from '@/sync/fsOps';
+import { machineListTmuxSessions } from '@/sync/ops';
+import { tmuxSessionsSupported } from '@/sync/closedTerminals';
+import {
+  attachSectionVisible,
+  formatSessionAge,
+  primaryLabelKey,
+  TMUX_TIPS_HINT_KEY,
+  tipsCardVisible,
+  toggleAttachSelection,
+  type UserTmuxSession,
+} from './newTerminalAttach';
 import { FsBrowser } from '@/screens/files/FsBrowser';
 import { fsFailureText } from '@/screens/files/fsFailureText';
 import { Button, useToast } from '@/ui';
@@ -54,6 +65,13 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // B-273: attach an existing tmux session. `loadingSessions` is deliberately
+  // NOT `busy` — the list fetch must never lock the plain "Open terminal".
+  const [sessions, setSessions] = useState<UserTmuxSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [attachId, setAttachId] = useState<string | null>(null);
+  const [dismissedHints, setDismissedHints] = useLocalSettingMutable('dismissedHints');
+  const showTips = tipsCardVisible(dismissedHints);
 
   // B-146: useAllMachines answers [] until the store is hydrated
   // (storage.ts's `!isDataReady` guard), so the useState initializer above can
@@ -69,8 +87,26 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   }, [onlineIds, machineId]);
 
   const trimmed = normalizeCwdInput(directory);
-  const canCreate = !!machineId && trimmed.length > 0 && !busy;
-  const homeDir = (online.find((m) => m.id === machineId) as any)?.metadata?.homeDir as string | undefined;
+  const machine = online.find((m) => m.id === machineId);
+  const attachSupported = !!machine && tmuxSessionsSupported((machine as any).daemonState);
+  const attachSelected = attachId ? sessions.find((s) => s.id === attachId) : undefined;
+  // Attaching ignores the directory, so an empty path must not block it.
+  const canCreate = !!machineId && (!!attachSelected || trimmed.length > 0) && !busy;
+  const homeDir = (machine as any)?.metadata?.homeDir as string | undefined;
+
+  // Fetch the machine's tmux sessions once per (open, machine); a machine
+  // switch clears the selection — the ids belong to the old server.
+  useEffect(() => {
+    setAttachId(null);
+    setSessions([]);
+    if (!machineId || !attachSupported) return;
+    let cancelled = false;
+    setLoadingSessions(true);
+    machineListTmuxSessions(machineId)
+      .then((list) => { if (!cancelled) setSessions(list); })
+      .finally(() => { if (!cancelled) setLoadingSessions(false); });
+    return () => { cancelled = true; };
+  }, [machineId, attachSupported]);
   const matchesEditing = editingId != null && list.find((p) => p.id === editingId)?.path === trimmed;
 
   function savePreset() {
@@ -84,6 +120,16 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
     if (!canCreate) return;
     setBusy(true);
     try {
+      if (attachSelected) {
+        // B-273: no directory probe — the daemon validates the target itself
+        // and the cwd is meaningless inside the attached session.
+        if (!createTerminalAt(navigate, machineId, { attachTmux: { id: attachSelected.id, name: attachSelected.name } })) {
+          toast.error(t('newSession.machineOffline'));
+          return;
+        }
+        onClose();
+        return;
+      }
       const guess = expandHomePath(trimmed, homeDir);
       // fs-list doubles as validation AND canonicalization: it answers with
       // the daemon-normalized absolute path, so a '~' the machine metadata
@@ -100,7 +146,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
       // B-146: the machine can drop between the probe above and this call.
       // Closing the dialog unconditionally would leave the user with a
       // dismissed dialog, no terminal, and no explanation.
-      if (!createTerminalAt(navigate, machineId, cwd)) {
+      if (!createTerminalAt(navigate, machineId, { cwd })) {
         toast.error(t('newSession.machineOffline'));
         return;
       }
@@ -117,6 +163,23 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
       <div className="ns-card" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="eyebrow">{t('newTerminalModal.eyebrow')}</div>
         <div className="ns-title">{t('newTerminalModal.title')}</div>
+
+        {showTips && (
+          <div className="ns-tips" role="note">
+            <div className="ns-tips-title">{t('newTerminalModal.tipsTitle')}</div>
+            <ol className="ns-tips-list">
+              <li>{t('newTerminalModal.tips1')}</li>
+              <li>{t('newTerminalModal.tips2')}</li>
+              <li>{t('newTerminalModal.tips3')}</li>
+            </ol>
+            <button
+              className="ns-tips-dismiss"
+              onClick={() => setDismissedHints({ ...(dismissedHints ?? {}), [TMUX_TIPS_HINT_KEY]: Date.now() })}
+            >
+              {t('newTerminalModal.tipsDismiss')}
+            </button>
+          </div>
+        )}
 
         {online.length === 0 ? (
           <div className="ns-empty">{t('machine.noMachines')}</div>
@@ -138,8 +201,48 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
               ))}
             </select>
 
+            {attachSectionVisible(attachSupported, loadingSessions, sessions) && (
+              <>
+                <label className="ns-label">{t('newTerminalModal.attachSection')}</label>
+                {loadingSessions && sessions.length === 0 ? (
+                  <div className="ns-hint">{t('newTerminalModal.attachLoading')}</div>
+                ) : (
+                  <div className="ns-sessions" role="listbox" aria-label={t('newTerminalModal.attachSection')}>
+                    {sessions.map((s) => {
+                      const on = attachId === s.id;
+                      const age = formatSessionAge(s.activityAt ?? s.createdAt, Date.now());
+                      return (
+                        <div
+                          key={s.id}
+                          className={`ns-session${on ? ' is-on' : ''}`}
+                          role="option"
+                          aria-selected={on}
+                          tabIndex={0}
+                          onClick={() => setAttachId((cur) => toggleAttachSelection(cur, s.id))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAttachId((cur) => toggleAttachSelection(cur, s.id)); }
+                          }}
+                        >
+                          <span className="ns-session-name mono">{s.name}</span>
+                          <span className="ns-session-meta mono">
+                            {s.windows === 1 ? t('newTerminalModal.attachWindow') : t('newTerminalModal.attachWindows', { count: s.windows })}
+                            {s.attached ? ` · ${t('newTerminalModal.attachAttached')}` : ''}
+                            {age ? ` · ${age}` : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
             <label className="ns-label">{t('newSession.directory')}</label>
 
+            {attachSelected ? (
+              <div className="ns-hint">{t('newTerminalModal.attachIgnoresCwd')}</div>
+            ) : (
+            <>
             {list.length > 0 && (
               <div className="ns-presets">
                 {list.map((p) => (
@@ -221,6 +324,8 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
             )}
 
             <div className="ns-hint">{t('newTerminalModal.startupHint')}</div>
+            </>
+            )}
           </>
         )}
 
@@ -229,7 +334,7 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
             {t('common.cancel')}
           </Button>
           <Button variant="primary" loading={busy} disabled={!canCreate} onClick={onCreate}>
-            {t('newTerminalModal.create')}
+            {t(primaryLabelKey(!!attachSelected))}
           </Button>
         </div>
       </div>

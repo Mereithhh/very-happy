@@ -5,7 +5,7 @@ import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { soleOnlineMachine, machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { isImeGuardedEvent } from '@/utils/ime';
-import { isClaudeSessionId } from '@/sync/closedTerminals';
+import { newTerminalSearch, type CreateTerminalOptions } from './newTerminalSearch';
 
 /**
  * The ONE "new terminal" entry point — every button/shortcut/palette item goes
@@ -52,19 +52,19 @@ export function createTerminalOrPick(navigate: NavigateFunction): void {
  *   terminal screen rebuilds `claude --resume <id>` after re-validating it, so a
  *   crafted URL cannot run something else in the user's shell.
  */
+export { newTerminalSearch, type CreateTerminalOptions } from './newTerminalSearch';
+
 export function createTerminalAt(
   navigate: NavigateFunction,
   machineId: string,
-  cwd?: string,
-  resumeClaudeSessionId?: string,
+  opts: CreateTerminalOptions = {},
 ): boolean {
   const m = storage.getState().machines[machineId];
   if (!m || !isMachineOnline(m)) return false;
-  const term = useTerminalSessions.getState().create(machineId, machineLabel(m));
-  const q = new URLSearchParams({ tid: term.id, fresh: '1' });
-  if (cwd) q.set('cwd', cwd);
-  if (isClaudeSessionId(resumeClaudeSessionId)) q.set('resume', resumeClaudeSessionId);
-  navigate(`/terminal/${machineId}?${q.toString()}`);
+  // B-273: the optimistic row shows the session name at once (the daemon pins
+  // the same name as the title, so the push does not flip it later).
+  const term = useTerminalSessions.getState().create(machineId, machineLabel(m), opts.attachTmux?.name);
+  navigate(`/terminal/${machineId}?${newTerminalSearch(term.id, opts).toString()}`);
   return true;
 }
 

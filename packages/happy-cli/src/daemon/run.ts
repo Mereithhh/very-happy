@@ -52,10 +52,7 @@ import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
 import { readSessionLock } from '@/utils/sessionLock';
 
-/** Shell-escape a string for safe interpolation into tmux commands. */
-function shellescape(s: string): string {
-    return "'" + s.replace(/'/g, "'\\''") + "'";
-}
+import { shellescape } from '@/utils/shellescape';
 
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon

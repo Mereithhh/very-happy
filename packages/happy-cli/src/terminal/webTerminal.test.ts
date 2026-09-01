@@ -471,7 +471,7 @@ describe('parseSessionListLine', () => {
     const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
 
     it('parses a full line (epoch seconds → ms, trims titles)', () => {
-        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '["prod","Deploy"]', 'node', '✳ task');
+        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '["prod","Deploy"]', 'my dev', 'node', '✳ task');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: 1700000000000,
@@ -480,13 +480,14 @@ describe('parseSessionListLine', () => {
             vhTitle: 'my title',
             manual: true,
             tags: ['prod', 'Deploy'],
+            attachTmux: 'my dev',
             paneCurrentCommand: 'node',
             paneTitle: '✳ task',
         });
     });
 
     it('empty optional fields become undefined / manual=false', () => {
-        const line = mk('vh-abc', '', '', '', '', '', '', '', '');
+        const line = mk('vh-abc', '', '', '', '', '', '', '', '', '');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: undefined,
@@ -495,6 +496,7 @@ describe('parseSessionListLine', () => {
             vhTitle: undefined,
             manual: false,
             tags: [],
+            attachTmux: undefined,
             paneCurrentCommand: undefined,
             paneTitle: undefined,
         });
@@ -508,11 +510,13 @@ describe('parseSessionListLine', () => {
         // — daemon and format ship together, so a short line means a garbled
         // read, not an old daemon.
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 't'))).toBeUndefined();
-        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', '[]', 'zsh', 't'))).toBeUndefined(); // no name
+        // The pre-B-273 9-field shape is malformed too (@vh_attach was added).
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'zsh', 't'))).toBeUndefined();
+        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', '[]', '', 'zsh', 't'))).toBeUndefined(); // no name
     });
 
     it('a pathological separator inside pane_title only garbles the title, never the fields', () => {
-        const line = mk('vh-abc', '1', '2', '/x', 'v', '', '[]', 'zsh', `weird${LIST_FIELD_SEP}title`);
+        const line = mk('vh-abc', '1', '2', '/x', 'v', '', '[]', '', 'zsh', `weird${LIST_FIELD_SEP}title`);
         const parsed = parseSessionListLine(line)!;
         expect(parsed.name).toBe('vh-abc');
         expect(parsed.cwd).toBe('/x');
@@ -523,8 +527,24 @@ describe('parseSessionListLine', () => {
     it('pane_current_command sits BEFORE pane_title (a title with a separator cannot shift it)', () => {
         // The whole reason for the field order: if the command were last, a
         // title containing 0x1f would silently steal it.
-        const line = mk('vh-abc', '1', '2', '/x', '', '', '[]', '2.1.228', `a${LIST_FIELD_SEP}b`);
+        const line = mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '2.1.228', `a${LIST_FIELD_SEP}b`);
         expect(parseSessionListLine(line)!.paneCurrentCommand).toBe('2.1.228');
+    });
+
+    it('B-273: @vh_attach carries the attached user session name; control chars fail closed', () => {
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', ' dev ', 'tmux', 't'))!.attachTmux).toBe(' dev '); // verbatim: tmux allows edge spaces
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'bad\x07name', 'tmux', 't'))!.attachTmux).toBeUndefined();
+    });
+});
+
+describe('B-273 planScrollAction inside a nested tmux', () => {
+    it('wheel goes to the inner tmux as SGR mouse even when the outer pane reports no mouse', () => {
+        expect(planScrollAction(false, true, false, 4, false, 24, true)).toEqual({ kind: 'mouse-wheel', dir: 'up', count: 4 });
+        expect(planScrollAction(false, true, false, -2, false, 24, true)).toEqual({ kind: 'mouse-wheel', dir: 'down', count: 2 });
+        // …but not when the outer pane itself is already in copy-mode.
+        expect(planScrollAction(true, true, false, 1, false, 24, true).kind).toBe('copy-scroll');
+        // Without the nested flag the old table stands (arrows into a fullscreen app).
+        expect(planScrollAction(false, true, false, 4).kind).toBe('keys');
     });
 });
 

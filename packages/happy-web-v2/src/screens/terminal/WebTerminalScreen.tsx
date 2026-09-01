@@ -266,6 +266,15 @@ export function WebTerminalScreen() {
   // and it OVERRIDES the global startup command for this one open.
   const createResumeCmdRef = useRef<string | undefined>(undefined);
   createResumeCmdRef.current = resumeStartupCommand(params.get('resume') || undefined);
+  // `attach` + `attachName` (B-273): create this terminal attached to the
+  // user's own tmux session. Rides the create-open only; the daemon
+  // re-validates the id/name pair and composes the attach command itself.
+  const createAttachRef = useRef<{ id: string; name: string } | undefined>(undefined);
+  createAttachRef.current = (() => {
+    const id = params.get('attach') || '';
+    const name = params.get('attachName') || '';
+    return /^\$\d{1,9}$/.test(id) && name ? { id, name } : undefined;
+  })();
   const clearFreshRef = useRef(() => {});
   clearFreshRef.current = () => {
     if (params.get('fresh') !== '1') return;
@@ -273,6 +282,8 @@ export function WebTerminalScreen() {
     next.delete('fresh');
     next.delete('cwd');
     next.delete('resume');
+    next.delete('attach');
+    next.delete('attachName');
     setSearchParams(next, { replace: true });
   };
 
@@ -1464,14 +1475,19 @@ export function WebTerminalScreen() {
     (async () => {
       safeFit();
       const isFresh = freshRef.current;
+      const attach = isFresh ? createAttachRef.current : undefined;
       const res = await machineOpenTerminal(machineId, {
         terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
         // Runs only if the daemon CREATES the session (see startupCommandRef).
         // A resume request (B-149) wins over the configured startup command:
         // the user asked for THIS conversation, not for the usual boot script.
-        startupCommand: (isFresh && createResumeCmdRef.current) || startupCommandRef.current,
+        // An attach request (B-273) sends neither — the daemon types the
+        // attach line itself and a startup command would land inside the
+        // attached session.
+        startupCommand: attach ? undefined : ((isFresh && createResumeCmdRef.current) || startupCommandRef.current),
         // Starting directory for the create path only (see createCwdRef).
-        cwd: isFresh ? createCwdRef.current : undefined,
+        cwd: isFresh && !attach ? createCwdRef.current : undefined,
+        ...(attach ? { attachTmux: attach } : {}),
         // Only the fresh-create navigation may create the tmux session; any
         // other mount (sidebar nav, URL refresh) attaches to what exists —
         // a deleted terminal's stale URL must not resurrect it (>= 0.2.29;
@@ -1487,6 +1503,15 @@ export function WebTerminalScreen() {
         earlyOutput = null; // nothing will ever consume the stash
         if (res.gone) {
           onGone();
+        } else if (attach && (res.error === 'tmux-session-gone' || res.error === 'tmux-unavailable')) {
+          // B-273: the daemon refused BEFORE creating anything, so there is
+          // no terminal to show — drop the optimistic row and go back to
+          // the picker instead of leaving an empty screen behind.
+          gone = true;
+          if (tid) useTerminalSessions.getState().remove(tid);
+          toast.error(t(res.error === 'tmux-unavailable' ? 'newTerminalModal.attachUnavailable' : 'newTerminalModal.attachGone'));
+          navigate('/', { replace: true });
+          return;
         } else {
           term.writeln(`\x1b[38;2;255;107;107m✗ ${res.error}\x1b[0m`);
         }
@@ -1499,6 +1524,10 @@ export function WebTerminalScreen() {
       // The create intent was consumed — strip `fresh` from the URL so a
       // later refresh of this tab re-attaches instead of re-creating.
       if (isFresh) clearFreshRef.current();
+      // B-273: a daemon that does not know `attachTmux` ignores it and opens a
+      // plain terminal — say so instead of letting the user wonder why their
+      // session is not there (capability flag cached across a daemon downgrade).
+      if (attach && !res.attachedTmux) toast.error(t('newTerminalModal.attachUnsupported'));
       terminalId = res.terminalId;
       enc = res.encStream === true;
       tmuxAttached = !!res.tmuxSession;

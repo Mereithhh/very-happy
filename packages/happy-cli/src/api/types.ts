@@ -214,6 +214,8 @@ export const WebTerminalListItemSchema = z.object({
   restoredAt: z.number().optional(),
   /** B-265: @vh_title_manual is set (user renamed it). */
   manual: z.boolean().optional(),
+  /** B-273: opened attached to the user's tmux session of this name. */
+  attachTmux: z.string().optional(),
 })
 
 /**
@@ -237,6 +239,8 @@ export const ClosedTerminalRecordSchema = z.object({
   /** B-265: tags + manual-rename flag at close time (restored verbatim). */
   tags: z.array(z.string()).optional(),
   manual: z.boolean().optional(),
+  /** B-273: attached user tmux session name — restore re-attaches. */
+  attachTmux: z.string().optional(),
   closedAt: z.number(),
 })
 
@@ -290,6 +294,16 @@ export const DaemonStateSchema = z.object({
    * downgraded daemon spreads the stale field forward on connect.
    */
   terminalRestore: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
+  /**
+   * B-273 capability flag: this daemon answers `list-tmux-sessions` and
+   * honours `open-terminal.attachTmux`. Same trust rule (`detectedAt >=
+   * startedAt`). Stamped unconditionally — on a machine without tmux the
+   * RPC just answers an empty list.
+   */
+  tmuxSessions: z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
   }).optional(),

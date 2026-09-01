@@ -43,10 +43,22 @@ export interface ClosedTerminal {
  *  stale field forward on connect. Calling an unregistered RPC would make the
  *  server wait its 15 s grace before failing, so never guess. */
 export function terminalRestoreSupported(daemonState: any): boolean {
-  const flag = daemonState?.terminalRestore;
+  return daemonRpcFlagSupported(daemonState, 'terminalRestore');
+}
+
+/** Generic form of the rule above for any `{ rpcAvailable, detectedAt }`
+ *  capability flag the daemon stamps at connect time. */
+export function daemonRpcFlagSupported(daemonState: any, key: string): boolean {
+  const flag = daemonState?.[key];
   if (!flag || flag.rpcAvailable !== true || typeof flag.detectedAt !== 'number') return false;
   const startedAt = typeof daemonState.startedAt === 'number' ? daemonState.startedAt : 0;
   return flag.detectedAt >= startedAt;
+}
+
+/** B-273: does this machine's CURRENT daemon answer `list-tmux-sessions` and
+ *  honour `open-terminal.attachTmux`? */
+export function tmuxSessionsSupported(daemonState: any): boolean {
+  return daemonRpcFlagSupported(daemonState, 'tmuxSessions');
 }
 
 /** Claude session ids are uuids. Validated here because the value comes off the

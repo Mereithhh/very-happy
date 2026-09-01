@@ -48,6 +48,9 @@ export interface ClosedTerminalRecord {
      *  verbatim by `restore-terminal`. Absent on records from older daemons. */
     tags?: string[];
     manual?: boolean;
+    /** B-273: the user tmux session (name) this terminal was attached to;
+     *  restore re-attaches instead of opening an empty shell. */
+    attachTmux?: string;
     /** When the close was observed (ms epoch). For a `daemon-gap` record there
      *  was nobody to observe it, so it carries the last time the terminal was
      *  seen ALIVE instead — which is what the archive should show anyway. */
@@ -106,7 +109,7 @@ export function sanitizeClosedTerminals(
     const out: ClosedTerminalRecord[] = [];
     for (const item of raw) {
         if (!item || typeof item !== 'object') continue;
-        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt, tags, manual } = item as Record<string, unknown>;
+        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt, tags, manual, attachTmux } = item as Record<string, unknown>;
         if (typeof id !== 'string' || id.length === 0 || typeof closedAt !== 'number') continue;
         if (seen.has(id)) continue;
         seen.add(id);
@@ -120,6 +123,7 @@ export function sanitizeClosedTerminals(
             reason: reason === 'daemon-gap' || reason === 'closed' ? reason : undefined,
             ...(tagList !== undefined ? { tags: tagList } : {}),
             ...(manual === true ? { manual: true } : {}),
+            ...(typeof attachTmux === 'string' && attachTmux ? { attachTmux } : {}),
             closedAt,
         });
     }
