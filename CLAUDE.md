@@ -26,10 +26,9 @@ git worktree list                                   # 派工前看清有哪些�
 
 - 最新 tag / npm `very-happy-cli` = **v0.2.91**（mac-office daemon 同版本；2026-09-01）；`packages/happy-cli/package.json` 里的
   version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
-- `docs/backlog.md` 活跃区约 60 项非 done；`doing` 中的大项：B-216 终端 tag、B-209
-  对话降噪、B-208 工作区视图、B-211 统一 Usage、B-196 配对 500、B-192 多地域 relay、
-  B-185 Email OTP 登录、B-051/B-081 语音助手、B-031 CI gitleaks。改这些方向前先读
-  对应 `specs/2026-08-*.md`（多数已 Final/Shipped）。
+- `docs/backlog.md` 2026-09-01 已整理：活跃区 28 项（6 `doing`：B-216 终端 tag、B-209
+  对话降噪、B-208 工作区视图、B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 收尾；
+  其余 todo）；裁撤项带理由留在「近期完成」一轮后删。改 doing 项前先读对应 `specs/2026-08-*.md`。
 - `docs/verify-queue.md` 待验证 **83 项**（V-0xx～V-108），远超「下一批前清账」纪律；
   发新批前请 Owner 清账或明确批准堆积。
 - 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1300+ 测试（本地跑一次门禁约 5-10 分钟，
