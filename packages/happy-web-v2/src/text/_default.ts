@@ -1520,6 +1520,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep01: {
+                title: 'Yolo now means yolo — on every machine',
+                summary: 'Choosing yolo no longer leaves you clicking Approve on sessions whose CLI predates the last update, and sub-agents finally read like sub-agents.',
+                yolo: 'When a session is in yolo and a tool still asks, the web approves it for you — one mode switch for CLIs since 0.2.89, per-request for older ones. Questions and plan approvals still wait for you.',
+                honest: 'The mode selector now says whether the CLI has confirmed the mode ("unconfirmed", "at start", "CLI: default") instead of showing a guess; the dead "don\'t ask" option is gone.',
+                subagents: 'Sub-agent rows show what the agent actually ran (tool count + latest action) even when collapsed, and no longer flip to "done" the moment a background agent is launched.',
+                history: 'Loading older history no longer scatters sub-agent work into top-level rows or re-enters plan mode.',
+            },
             aug31b: {
                 title: 'Come back and the screen is already caught up',
                 summary: 'Returning to Very Happy from the background on a phone now re-syncs terminals and Claude sessions on its own — no more pull-to-reload.',
