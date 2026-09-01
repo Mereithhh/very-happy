@@ -23,6 +23,8 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
 }), z.object({
     type: z.literal('message'),
     message: z.string(),
+    /** B-276: structured marker (e.g. 'claude-auth-failed'); old CLIs omit it. */
+    kind: z.string().optional(),
 }), z.object({
     type: z.literal('limit-reached'),
     endsAt: z.number(),

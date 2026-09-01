@@ -311,6 +311,7 @@ describe('claudeRemote', () => {
             .mockResolvedValueOnce({ message: 'queued follow-up', mode })
             .mockResolvedValueOnce(null);
         const onCompletionEvent = vi.fn();
+        const onAuthFailure = vi.fn();
         const onReady = vi.fn();
         const onThinkingChange = vi.fn();
 
@@ -327,8 +328,10 @@ describe('claudeRemote', () => {
             onThinkingChange,
             onMessage: vi.fn(),
             onCompletionEvent,
+            onAuthFailure,
         });
 
+        expect(onAuthFailure).toHaveBeenCalledWith('authentication_failed');
         // The poisoned Query saw only the first prompt; the queued follow-up
         // stays in the queue for the launcher's next (fresh) claudeRemote.
         expect(observedInputs).toEqual(['first']);

@@ -51,6 +51,8 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
+    /** B-276: the turn ended with an auth failure that poisons this Query. */
+    onAuthFailure?: (reason: string) => void,
     onSessionReset?: () => void,
     onSDKMetadata?: (metadata: ClaudeSdkMetadata) => void
 }) {
@@ -312,6 +314,7 @@ export async function claudeRemote(opts: {
                 if (recycleReason) {
                     logger.warn(`[claudeRemote] Ending SDK query after ${recycleReason}; the next message starts a fresh Claude Code process`);
                     opts.onCompletionEvent?.(QUERY_RECYCLE_NOTICE[recycleReason]);
+                    opts.onAuthFailure?.(recycleReason);
                     messages.end();
                     continue;
                 }

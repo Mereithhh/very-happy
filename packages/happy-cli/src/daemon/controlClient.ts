@@ -139,6 +139,17 @@ export async function notifyDaemonSessionEvent(
   return daemonPost('/session-event', { sessionId, event, spawnedBy });
 }
 
+/**
+ * B-276: tell the daemon a Claude Code turn ended with `authentication_failed`
+ * so it re-runs the auth preflight now instead of at the next 10-minute tick.
+ * Bypasses the HAPPY_SPAWNED_BY gate on purpose (every remote session reports).
+ * Fire-and-forget: an old daemon rejects the enum value with 400 and
+ * `daemonPost` returns `{error}` without throwing.
+ */
+export async function notifyDaemonClaudeAuthFailed(sessionId: string): Promise<{ error?: string } | any> {
+  return daemonPost('/session-event', { sessionId, event: 'auth_failed' });
+}
+
 export async function stopDaemonHttp(): Promise<void> {
   await daemonPost('/stop');
 }

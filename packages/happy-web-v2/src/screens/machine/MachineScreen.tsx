@@ -32,6 +32,8 @@ import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import '@/screens/settings/settings.css';
 import { cliUpdateInstallCommand, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
+import { claudeAuthTone, isClaudeAuthStale, readClaudeAuth } from '@/sync/claudeAuth';
+import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
 
 export function MachineScreen() {
   const { id } = useParams();
@@ -183,6 +185,35 @@ export function MachineScreen() {
 
   const cli = machine.metadata?.cliAvailability;
   const daemon = machine.daemonState;
+  // B-276: daemon-context Claude auth preflight (trust-gated on daemonPid).
+  const claudeAuth = readClaudeAuth(machine);
+  const claudeAuthMachineId = machine.id;
+  const [claudeAuthBusy, setClaudeAuthBusy] = useState<null | 'probe' | 'repair' | 'store'>(null);
+  const applyClaudeAuthResult = (result: ClaudeAuthRpcResult, successKey?: 'machine.claudeAuth.probed' | 'machine.claudeAuth.repaired' | 'machine.claudeAuth.storeSaved') => {
+    if (!result.ok) {
+      toast.error(result.unsupported ? t('machine.claudeAuth.unsupported') : `${t('machine.claudeAuth.failed')}: ${result.error}`);
+      return;
+    }
+    if (successKey) toast.success(t(successKey));
+  };
+  async function claudeAuthProbe() {
+    setClaudeAuthBusy('probe');
+    try { applyClaudeAuthResult(await machineClaudeAuthProbe(claudeAuthMachineId), 'machine.claudeAuth.probed'); } finally { setClaudeAuthBusy(null); }
+  }
+  async function claudeAuthRepair() {
+    const ok = await Modal.confirm(t('machine.claudeAuth.repairTitle'), t('machine.claudeAuth.repairMessage'), { confirmText: t('machine.claudeAuth.repairConfirm'), destructive: true });
+    if (!ok) return;
+    setClaudeAuthBusy('repair');
+    try { applyClaudeAuthResult(await machineClaudeAuthRepair(claudeAuthMachineId, 'delete-empty-keychain-item'), 'machine.claudeAuth.repaired'); } finally { setClaudeAuthBusy(null); }
+  }
+  async function claudeAuthSetStore(store: 'auto' | 'file') {
+    if (store === 'file') {
+      const ok = await Modal.confirm(t('machine.claudeAuth.storeFileTitle'), t('machine.claudeAuth.storeFileMessage'), { confirmText: t('common.ok') });
+      if (!ok) return;
+    }
+    setClaudeAuthBusy('store');
+    try { applyClaudeAuthResult(await machineClaudeAuthSetStore(claudeAuthMachineId, store), 'machine.claudeAuth.storeSaved'); } finally { setClaudeAuthBusy(null); }
+  }
   const cliUpdate = machineCliUpdateNotice(machine);
   const cliUpdateState = daemon?.cliUpdate;
   const cliUpdatePolicyKnown = hasValidCliUpdatePolicy(machine);
@@ -208,6 +239,15 @@ export function MachineScreen() {
             <span className="set-header__subtitle">{machine.metadata?.host}</span>
           </div>
           <div className="set-header__right">
+            {claudeAuth && (
+              <Badge tone={claudeAuthTone(claudeAuth)}>
+                {claudeAuth.status === 'ok'
+                  ? `Claude · ${claudeAuth.subscriptionType ?? claudeAuth.authMethod ?? 'ok'}`
+                  : claudeAuth.status === 'unknown'
+                    ? `Claude · ${claudeAuth.authMethod ?? t('machine.claudeAuth.unknown')}`
+                    : t(`machine.claudeAuth.status.${claudeAuth.status}` as 'machine.claudeAuth.status.not-logged-in')}
+              </Badge>
+            )}
             <StatusDot status={online ? 'connected' : 'offline'} pulse={online} />
             <button type="button" className="set-header__back" onClick={rename} disabled={renaming} aria-busy={renaming} aria-label={t('common.rename')}>
               {renaming ? <Spinner size={14} /> : <Pencil size={16} />}
@@ -312,6 +352,52 @@ export function MachineScreen() {
               <Item title={t('machine.stopDaemon')} destructive onClick={stopDaemon} loading={stopping} right={<ChevronRight size={16} />} />
             )}
           </ItemGroup>
+
+          {claudeAuth && (
+            <ItemGroup
+              title={t('machine.claudeAuth.title')}
+              footer={[
+                `${t('machine.lastDetected')}: ${new Date(claudeAuth.checkedAt).toLocaleString()}${isClaudeAuthStale(claudeAuth) ? ` · ${t('machine.claudeAuth.stale')}` : ''}`,
+                claudeAuth.detail ?? '',
+              ].filter(Boolean).join('\n')}
+            >
+              <Item
+                title={t('machine.claudeAuth.statusLabel')}
+                right={
+                  <Badge tone={claudeAuthTone(claudeAuth)}>
+                    {claudeAuth.status === 'unknown'
+                      ? (claudeAuth.authMethod ?? t('machine.claudeAuth.unknown'))
+                      : t(`machine.claudeAuth.status.${claudeAuth.status}` as 'machine.claudeAuth.status.ok')}
+                  </Badge>
+                }
+                detail={claudeAuth.status === 'ok' ? [claudeAuth.authMethod, claudeAuth.subscriptionType].filter(Boolean).join(' · ') : undefined}
+              />
+              {claudeAuth.diagnosis && (
+                <Item title={t('machine.claudeAuth.diagnosis')} detail={t(`machine.claudeAuth.diagnosisText.${claudeAuth.diagnosis}` as 'machine.claudeAuth.diagnosisText.no-credentials')} />
+              )}
+              <Item title={t('machine.claudeAuth.lineage')} detail={`${claudeAuth.context.lineage} · ${claudeAuth.context.platform}`} />
+              <Item
+                title={t('machine.claudeAuth.store')}
+                detail={t(`machine.claudeAuth.storeValue.${claudeAuth.context.credentialStore}` as 'machine.claudeAuth.storeValue.auto')}
+                right={claudeAuth.context.platform === 'darwin' && online ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={claudeAuthBusy === 'store'}
+                    onClick={() => void claudeAuthSetStore(claudeAuth.context.credentialStore === 'file' ? 'auto' : 'file')}
+                  >
+                    {claudeAuth.context.credentialStore === 'file' ? t('machine.claudeAuth.storeUseAuto') : t('machine.claudeAuth.storeUseFile')}
+                  </Button>
+                ) : undefined}
+              />
+              {online && (
+                <Item title={t('machine.claudeAuth.probe')} onClick={() => void claudeAuthProbe()} loading={claudeAuthBusy === 'probe'} right={<ChevronRight size={16} />} />
+              )}
+              {online && claudeAuth.repairable === 'delete-empty-keychain-item' && (
+                <Item title={t('machine.claudeAuth.repair')} destructive onClick={() => void claudeAuthRepair()} loading={claudeAuthBusy === 'repair'} right={<ChevronRight size={16} />} />
+              )}
+            </ItemGroup>
+          )}
 
           {cli && (
             <ItemGroup

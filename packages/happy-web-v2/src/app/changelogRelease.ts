@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-claude-auth-preflight',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.97',
+    titleKey: 'changelog.releases.sep02c.title',
+    summaryKey: 'changelog.releases.sep02c.summary',
+    itemKeys: [
+      'changelog.releases.sep02c.recycle',
+      'changelog.releases.sep02c.preflight',
+      'changelog.releases.sep02c.store',
+      'changelog.releases.sep02c.cli',
+    ],
+  },
+  {
     id: '2026-09-02-session-single-writer',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,

@@ -22,6 +22,7 @@ export function startDaemonControlServer({
   requestShutdown,
   onHappySessionWebhook,
   onSessionStateEvent,
+  onClaudeAuthFailed,
   pushClipboard,
   onTerminalHook
 }: {
@@ -35,6 +36,8 @@ export function startDaemonControlServer({
   /** B-069: a session reported a stable state transition (turn done /
    *  blocked on permission). Optional so older wirings/tests keep working. */
   onSessionStateEvent?: (sessionId: string, event: AssistantReportEvent, spawnedBy?: string) => void;
+  /** B-276: a session's Claude Code turn ended with `authentication_failed`. */
+  onClaudeAuthFailed?: (sessionId: string) => void;
   pushClipboard: (text: string) => { delivered: boolean; truncated: boolean; totalBytes: number; error?: string };
   /** B-105: a claude SessionStart/SessionEnd hook forwarded from inside a vh
    *  web terminal (scripts/terminal_mirror_forwarder.cjs). Payload is claude's
@@ -114,7 +117,7 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           sessionId: z.string(),
-          event: z.enum(['completed', 'needs_input']),
+          event: z.enum(['completed', 'needs_input', 'auth_failed']),
           spawnedBy: z.string().optional(),
         }),
         response: {
@@ -126,6 +129,12 @@ export function startDaemonControlServer({
     }, async (request) => {
       const { sessionId, event, spawnedBy } = request.body;
       logger.debug(`[CONTROL SERVER] Session event: ${sessionId} ${event} (spawnedBy=${spawnedBy ?? 'unset'})`);
+      if (event === 'auth_failed') {
+        // B-276: never route into the assistant-report sink (its vocabulary is
+        // completed/needs_input); this only re-arms the auth preflight.
+        onClaudeAuthFailed?.(sessionId);
+        return { status: 'ok' as const };
+      }
       onSessionStateEvent?.(sessionId, event, spawnedBy);
       return { status: 'ok' as const };
     });

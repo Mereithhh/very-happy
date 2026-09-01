@@ -165,6 +165,23 @@ export const MachineMetadataSchema = z.object({
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
 
+export const ClaudeAuthStateSchema = z.object({
+  probeVersion: z.number(),
+  daemonPid: z.number(),
+  status: z.union([z.enum(['ok', 'not-logged-in', 'unknown', 'error', 'claude-missing']), z.string()]),
+  authMethod: z.string().optional(),
+  subscriptionType: z.string().optional(),
+  diagnosis: z.string().optional(),
+  detail: z.string().optional(),
+  repairable: z.string().optional(),
+  context: z.object({
+    platform: z.string(),
+    lineage: z.string(),
+    credentialStore: z.string(),
+  }),
+  checkedAt: z.number(),
+})
+
 export const CliUpdateStateSchema = z.object({
   currentVersion: z.string(),
   recommendedVersion: z.string().nullable(),
@@ -278,9 +295,18 @@ export const DaemonStateSchema = z.object({
   }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
   cliUpdate: CliUpdateStateSchema.optional(),
+  /**
+   * B-276: result of the daemon-context Claude auth preflight (spec
+   * 2026-09-claude-auth-preflight). Trust rule for consumers:
+   * `claudeAuth.daemonPid === daemonState.pid` — daemonState survives daemon
+   * restarts (the server returns the existing row and connect spreads it
+   * forward), so a downgraded daemon carries this field along unchanged.
+   */
+  claudeAuth: ClaudeAuthStateSchema.optional(),
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
+export type ClaudeAuthState = import('@/daemon/claudeAuth/claudeAuthProbe').ClaudeAuthState
 
 export type Machine = {
   id: string,
