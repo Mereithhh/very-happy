@@ -84,9 +84,14 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
                 : [];
             const probe = iso.run(...tmuxNewSessionArgs('utc-probe', 80, 24, iso.dir, envFlags, resolveDefaultShell(process.platform, process.env)));
             await sleep(500);
+            // …and survives what open() does next: a control-mode client that
+            // declares its size (`refresh-client -C`) — on CI's tmux 3.4 the
+            // server dies exactly there under `window-size manual`.
+            const attach = iso.spawn(['-C', 'attach-session', '-t', '=utc-probe:'], { input: 'refresh-client -C 100x30\ndetach-client\n', timeout: 5000 });
+            await sleep(500);
             if (probe.status !== 0 || !iso.hasSession('utc-probe')) {
                 iso.killServer();
-                ctx.skip(`this tmux (${iso.run('-V').stdout.trim()}) cannot hold a session under "${conf.split('\n')[0]}": ${probe.stderr.trim() || 'session vanished after create'}`);
+                ctx.skip(`this tmux (${iso.run('-V').stdout.trim()}) cannot hold a session under "${conf.split('\n')[0]}": ${probe.stderr.trim() || attach.stderr.trim() || 'server/session vanished'}`);
                 return;
             }
             iso.run('kill-session', '-t', '=utc-probe:');
