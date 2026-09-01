@@ -556,6 +556,12 @@ export interface TerminalListItem {
     createdAt?: number;
     activityAt?: number;
     agentState?: AgentState;
+    /** Mirror reconcile (design v3): stricter "claude is really here" gate (its
+     *  own TUI footer/dialog present) — daemon-internal, NOT pushed to web and
+     *  NOT part of the list signature. Only this may trigger mirror adopt (which
+     *  re-opens the B-107 input gate); `agentState` alone would false-positive
+     *  on a bare `node` process. */
+    claudeConfident?: boolean;
     /** Terminal mirror (B-105): shadow session id of the hand-typed claude
      *  running inside this terminal (set via the daemon's mirror resolver).
      *  The web shows the xterm ↔ structured toggle when present. */
@@ -804,6 +810,33 @@ export function classifyPane(currentCommand: string, tail: string): AgentState |
 export function looksLikeClaudeCommand(currentCommand: string): boolean {
     const cmd = (currentCommand || '').trim().replace(/^-/, '').toLowerCase();
     return cmd === 'claude' || cmd === 'node' || /^\d+\.\d+(\.\d+)?$/.test(cmd);
+}
+
+/**
+ * Mirror reconcile (design v3): a STRICTER "claude is really here" signal than
+ * `agentState !== 'shell'`. Used only to gate mirror ADOPT/REACTIVATE, which
+ * re-opens the B-107 paste-input gate — so it must not fire on a bare `node`
+ * script (which `looksLikeClaudeCommand` matches) or a generic `(y/n)` prompt
+ * from some other CLI. True ONLY for Claude Code's own TUI strings:
+ * permission/choice dialogs, the running footer, and the idle input-box footer.
+ * An idle claude at its prompt always shows an idle footer, so a genuinely
+ * stuck-but-live terminal still self-heals; a non-claude foreground never does.
+ * Pure; unit-tested.
+ */
+export function isClaudeConfident(tail: string): boolean {
+    const lines = tail.replace(/\r/g, '').split('\n').map((l) => l.trimEnd());
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    const text = lines.join('\n');
+    const last15 = lines.slice(-15).join('\n');
+    return (
+        last15.includes('Do you want')
+        || last15.includes('Would you like to proceed')
+        || /^[\s│]*[❯>]\s*1\.\s/m.test(last15)
+        || text.includes('esc to interrupt')
+        || text.includes('? for shortcuts')
+        || text.includes('bypass permissions on')
+        || text.includes('⏵⏵')
+    );
 }
 
 /**
@@ -1368,9 +1401,17 @@ export class WebTerminalManager {
     /** terminalId → shadow session id (daemon's mirror manager). Feeds the
      *  list push (toggle availability) and closed-terminal records. */
     private mirrorResolver: ((terminalId: string) => string | undefined) | null = null;
+    private mirrorTickObserver: ((terminals: TerminalListItem[]) => void) | null = null;
     /** Fired once per terminal whose close was just recorded — the mirror
      *  manager archives + tears down that terminal's binding. */
     private onTerminalClosedCb: ((terminalId: string) => void) | null = null;
+
+    /** Mirror reconcile (design v3): fired every list-track tick, BEFORE the
+     *  signature short-circuit, so a claude-running terminal whose binding was
+     *  lost self-heals even when nothing about the list changed. */
+    setMirrorTickObserver(fn: (terminals: TerminalListItem[]) => void): void {
+        this.mirrorTickObserver = fn;
+    }
 
     setMirrorSessionResolver(fn: (terminalId: string) => string | undefined): void {
         this.mirrorResolver = fn;
@@ -1578,6 +1619,11 @@ export class WebTerminalManager {
             this.emitActivity(Object.fromEntries(
                 list.filter((t) => t.activityAt).map((t) => [t.id, t.activityAt!]),
             ));
+            // Mirror reconcile (design v3), BEFORE the signature short-circuit:
+            // a terminal running claude with a lost/ended binding has an
+            // UNCHANGED signature, so a signature-gated push would never fire —
+            // the reconciler must see every tick to self-heal it (~10s).
+            this.mirrorTickObserver?.(list);
             const sig = terminalListSignature(list);
             if (sig === this.lastListSignature) return;
             this.lastListSignature = sig;
@@ -2729,6 +2775,7 @@ export class WebTerminalManager {
                         if (w.status === 0) title = auto;
                     } catch { /* keep the stored title */ }
                 }
+                const probe = this.probeAgentState(s.name, s.paneCurrentCommand);
                 out.push({
                     id,
                     title,
@@ -2739,7 +2786,10 @@ export class WebTerminalManager {
                     // tmux last-activity (epoch s) → ms; optional so old daemons
                     // simply omit it and web clients fall back to createdAt.
                     activityAt: s.activity,
-                    agentState: this.probeAgentState(s.name, s.paneCurrentCommand),
+                    agentState: probe.agentState,
+                    // Daemon-internal (not pushed to web / not in the signature):
+                    // the mirror reconciler's stricter "claude is really here" gate.
+                    claudeConfident: probe.claudeConfident,
                     manual: s.manual,
                 });
             }
@@ -2756,7 +2806,7 @@ export class WebTerminalManager {
      *  the old path spawned 2 tmux procs EACH (2×N per refresh) — now a terminal
      *  you've opened this daemon lifetime costs nothing. Cold tmux-only sessions
      *  (pty reaped / never attached) fall back to the tmux probe. */
-    private probeAgentState(sessionName: string, polledCommand?: string): AgentState | undefined {
+    private probeAgentState(sessionName: string, polledCommand?: string): { agentState: AgentState | undefined; claudeConfident: boolean } {
         const id = sessionName.startsWith('vh-') ? sessionName.slice(3) : sessionName;
         const live = this.terminals.get(id);
         if (live) {
@@ -2766,7 +2816,7 @@ export class WebTerminalManager {
                 // empty — the same list-sessions read that produced this line
                 // carries `#{pane_current_command}` instead (≤ one tick old).
                 // The pty value still wins when there IS one (no-tmux fallback).
-                return classifyPane(command || polledCommand || '', tail);
+                return { agentState: classifyPane(command || polledCommand || '', tail), claudeConfident: isClaudeConfident(tail) };
             } catch { /* fall through to the tmux probe */ }
         }
         return this.probeAgentStateViaTmux(sessionName);
@@ -2775,17 +2825,17 @@ export class WebTerminalManager {
     /** Fallback probe for sessions with no live headless: 2 short tmux calls
      *  (foreground command + pane tail) fed into classifyPane. Any failure or
      *  timeout → undefined (the field is omitted), never an error. */
-    private probeAgentStateViaTmux(sessionName: string): AgentState | undefined {
+    private probeAgentStateViaTmux(sessionName: string): { agentState: AgentState | undefined; claudeConfident: boolean } {
         try {
             const cmd = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', sessionName, '#{pane_current_command}']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
-            if (cmd.status !== 0 || typeof cmd.stdout !== 'string') return undefined;
+            if (cmd.status !== 0 || typeof cmd.stdout !== 'string') return { agentState: undefined, claudeConfident: false };
             const cap = spawnSync('tmux', tmuxArgs(['capture-pane', '-p', '-t', sessionName, '-S', '-40']),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
-            if (cap.status !== 0 || typeof cap.stdout !== 'string') return undefined;
-            return classifyPane(cmd.stdout.trim(), cap.stdout);
+            if (cap.status !== 0 || typeof cap.stdout !== 'string') return { agentState: undefined, claudeConfident: false };
+            return { agentState: classifyPane(cmd.stdout.trim(), cap.stdout), claudeConfident: isClaudeConfident(cap.stdout) };
         } catch {
-            return undefined;
+            return { agentState: undefined, claudeConfident: false };
         }
     }
 

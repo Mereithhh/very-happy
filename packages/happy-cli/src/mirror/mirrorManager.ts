@@ -54,7 +54,15 @@ interface MirrorBinding {
     /** What persistSession needs on every metadata refresh. */
     persist: Omit<PersistedSession, 'metadata' | 'savedAt'>;
     metadata: Metadata;
+    /** design v3 F4: a reactivate (unarchive) round-trip failed — retry it on a
+     *  later reconcile tick, even while active, until the server tombstone clears
+     *  (else the web keeps hiding the toggle behind archivedAt). */
+    needsReactivate?: boolean;
 }
+
+/** design v3 E: after an end, don't let a stale claude footer lingering in the
+ *  pane tail immediately re-adopt the just-ended session (toggle flicker). */
+const RECONCILE_HYSTERESIS_MS = 20_000;
 
 export interface MirrorManager {
     /** Raw /terminal-hook payload from the forwarder. Never throws. */
@@ -74,6 +82,11 @@ export interface MirrorManager {
     isMirrorInputAllowed(terminalId: string): boolean;
     /** Rebuild bindings for still-alive terminals after a daemon restart. */
     restore(): Promise<void>;
+    /** design v3: every list-track tick (signature-independent). Reconciles
+     *  bindings to observed pane truth — re-adopts/reactivates a terminal whose
+     *  claude is verifiably running but whose binding was lost/ended, ends one
+     *  whose pane returned to a shell. Self-heals hook misses + restart orphans. */
+    reconcile(list: TerminalListItem[]): void;
     /** Daemon shutdown: flush + close clients WITHOUT archiving (a restart
      *  must be able to pick the mirrors back up). */
     shutdown(): Promise<void>;
@@ -91,9 +104,23 @@ export function createMirrorManager(deps: {
 }): MirrorManager {
     const backfillLines = deps.backfillLines ?? MIRROR_BACKFILL_LINES_DEFAULT;
     const bindings = new Map<string, MirrorBinding>();
+    // design v3 E: terminalId → last end time, for reconcile hysteresis.
+    const lastEndedAt = new Map<string, number>();
     // Hooks are rare and ordering matters (SessionEnd → SessionStart on
     // /clear); one global chain serializes all mutations.
     let chain: Promise<void> = Promise.resolve();
+
+    /** design v3 F4: clear the server archive tombstone so the web stops hiding
+     *  the session behind archivedAt. On failure mark for retry (reconcile
+     *  re-issues it on later ticks until it sticks). */
+    const reactivate = async (binding: MirrorBinding): Promise<void> => {
+        try {
+            const ok = await deps.api.reactivateSession(binding.happySessionId);
+            binding.needsReactivate = !ok;
+        } catch {
+            binding.needsReactivate = true;
+        }
+    };
 
     const isTerminalAlive = deps.isTerminalAlive ?? ((terminalId: string): boolean => {
         try {
@@ -156,6 +183,10 @@ export function createMirrorManager(deps: {
     const endBinding = async (binding: MirrorBinding, reason: string): Promise<void> => {
         if (binding.status === 'ended') return;
         binding.status = 'ended';
+        // Hysteresis anchor + drop any pending reactivate (the session is now
+        // deactivated on purpose; a later revival will re-issue unarchive).
+        lastEndedAt.set(binding.terminalId, Date.now());
+        binding.needsReactivate = false;
         logger.debug(`[MIRROR] ending binding for terminal ${binding.terminalId} (${reason})`);
         await binding.scanner?.cleanup();
         binding.scanner = null;
@@ -182,6 +213,90 @@ export function createMirrorManager(deps: {
             await binding.client.flush();
         } catch { /* best-effort */ }
         await binding.client.close();
+    };
+
+    // design v3: re-adopt a terminal's mirror from its NEWEST persisted record
+    // (post-restart, when restore() skipped it because it was archived). Same
+    // reconnect-via-persisted-key path as restore() (B-051: never re-mints a
+    // tag). Keeps restore's flavor + machineId + claudeSessionId filters — this
+    // opens a live client + the B-107 input gate, so it must be at least as
+    // strict as restore.
+    const adoptPersisted = async (terminalId: string, persisted: Record<string, PersistedSession>): Promise<void> => {
+        if (bindings.has(terminalId)) return;
+        let best: { sessionId: string; entry: PersistedSession } | null = null;
+        for (const [sessionId, entry] of Object.entries(persisted)) {
+            const meta = entry.metadata;
+            if (meta?.flavor !== TERMINAL_MIRROR_FLAVOR) continue;
+            if (meta.machineId !== deps.machineId) continue;
+            if ((meta as Metadata).terminalId !== terminalId) continue;
+            if (!meta.claudeSessionId) continue;
+            if (!best || entry.savedAt > best.entry.savedAt) best = { sessionId, entry };
+        }
+        if (!best) return;
+        const { sessionId, entry } = best;
+        const meta = entry.metadata;
+        const session: ApiSession = {
+            id: sessionId,
+            seq: entry.seq,
+            metadata: meta,
+            metadataVersion: entry.metadataVersion,
+            agentState: null,
+            agentStateVersion: entry.agentStateVersion,
+            encryptionKey: decodeBase64(entry.encryptionKey),
+            encryptionVariant: entry.encryptionVariant,
+        };
+        const client = deps.api.sessionSyncClient(session);
+        client.skipExistingMessages();
+        const binding: MirrorBinding = {
+            terminalId,
+            happySessionId: sessionId,
+            claudeSessionId: meta.claudeSessionId!,
+            status: 'active',
+            client,
+            scanner: null,
+            persist: {
+                encryptionKey: entry.encryptionKey,
+                encryptionVariant: entry.encryptionVariant,
+                seq: entry.seq,
+                metadataVersion: entry.metadataVersion,
+                agentStateVersion: entry.agentStateVersion,
+            },
+            metadata: meta,
+        };
+        bindings.set(terminalId, binding);
+        await reactivate(binding);
+        updateBindingMetadata(binding, {
+            lifecycleState: 'running',
+            lifecycleStateSince: Date.now(),
+            archivedBy: undefined,
+            archiveReason: undefined,
+        });
+        const scanner = attachScanner(binding, { withTruncationNotice: false });
+        scanner.addFile(join(getProjectPath(meta.path), `${meta.claudeSessionId}.jsonl`), 'backfill-tail');
+        logger.debug(`[MIRROR] reconcile adopted terminal ${terminalId} → ${sessionId}`);
+        deps.onBindingsChanged?.();
+    };
+
+    // design v3: re-activate an ended-but-still-in-map binding whose pane is
+    // observably running claude again (SessionEnd fired while claude kept
+    // running). Reuses the SAME open client — endBinding never closes it, only
+    // teardownBinding does — so no second client (Round-2 double-client guard).
+    // backfill-tail, NOT from-eof: it is the SAME session's file, grown since
+    // the scanner was cleaned up; from-eof would drop the gap-window lines.
+    const reactivateInPlace = async (binding: MirrorBinding): Promise<void> => {
+        if (binding.status !== 'ended') return;
+        binding.status = 'active';
+        await reactivate(binding);
+        updateBindingMetadata(binding, {
+            lifecycleState: 'running',
+            lifecycleStateSince: Date.now(),
+            archivedBy: undefined,
+            archiveReason: undefined,
+        });
+        const scanner = binding.scanner ?? attachScanner(binding, { withTruncationNotice: false });
+        scanner.addFile(join(getProjectPath(binding.metadata.path), `${binding.claudeSessionId}.jsonl`), 'backfill-tail');
+        logger.debug(`[MIRROR] reconcile reactivated (in place) terminal ${binding.terminalId}`);
+        deps.onBindingsChanged?.();
     };
 
     const createBinding = async (event: TerminalHookEvent, replaces?: MirrorBinding): Promise<void> => {
@@ -248,6 +363,9 @@ export function createMirrorManager(deps: {
         binding.claudeSessionId = event.claudeSessionId;
         if (binding.status === 'ended') {
             binding.status = 'active';
+            // F4: endBinding deactivated the server session; a continue must
+            // clear that archive tombstone or the web keeps the toggle hidden.
+            await reactivate(binding);
             updateBindingMetadata(binding, {
                 lifecycleState: 'running',
                 lifecycleStateSince: Date.now(),
@@ -323,6 +441,50 @@ export function createMirrorManager(deps: {
                     chain = chain.then(() => endBinding(binding, 'claude exited (pane observation)')).catch((error) => {
                         logger.debug(`[MIRROR] pane-exit end failed for terminal ${item.id}:`, error);
                     });
+                }
+            }
+        },
+
+        reconcile(list: TerminalListItem[]): void {
+            let persisted: Record<string, PersistedSession> | null = null;
+            const now = Date.now();
+            for (const item of list) {
+                const binding = bindings.get(item.id) ?? null;
+                // Pane back to a shell → end an active binding (pane observation
+                // safety net, same as observeTerminalList).
+                if (item.agentState === 'shell') {
+                    if (binding && binding.status === 'active') {
+                        chain = chain.then(() => {
+                            const b = bindings.get(item.id);
+                            return b && b.status === 'active' ? endBinding(b, 'claude exited (pane observation)') : undefined;
+                        }).catch((e) => logger.debug(`[MIRROR] reconcile end failed for ${item.id}:`, e));
+                    }
+                    continue;
+                }
+                // Retry a pending unarchive on an already-active binding (F4).
+                if (binding && binding.status === 'active' && binding.needsReactivate) {
+                    chain = chain.then(() => {
+                        const b = bindings.get(item.id);
+                        return b && b.status === 'active' && b.needsReactivate ? reactivate(b) : undefined;
+                    }).catch((e) => logger.debug(`[MIRROR] reconcile reactivate-retry failed for ${item.id}:`, e));
+                }
+                // Adopt / reactivate ONLY on claude-confident evidence (a bare
+                // `node` classifies as agentState 'idle' but is NOT confident —
+                // reactivating it would re-open the B-107 input gate on node).
+                if (!item.claudeConfident) continue;
+                const endedAt = lastEndedAt.get(item.id);
+                if (endedAt !== undefined && now - endedAt < RECONCILE_HYSTERESIS_MS) continue; // hysteresis
+                if (binding && binding.status === 'ended') {
+                    chain = chain.then(() => {
+                        const b = bindings.get(item.id);
+                        return b && b.status === 'ended' ? reactivateInPlace(b) : undefined;
+                    }).catch((e) => logger.debug(`[MIRROR] reconcile in-place reactivate failed for ${item.id}:`, e));
+                } else if (!binding) {
+                    persisted ??= readPersistedSessions();
+                    const p = persisted;
+                    chain = chain.then(() => {
+                        return bindings.has(item.id) ? undefined : adoptPersisted(item.id, p);
+                    }).catch((e) => logger.debug(`[MIRROR] reconcile adopt failed for ${item.id}:`, e));
                 }
             }
         },
