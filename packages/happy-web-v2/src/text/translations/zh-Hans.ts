@@ -1499,6 +1499,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep01: {
+                title: 'yolo 就是 yolo——每台机器都算数',
+                summary: '选了 yolo 的会话不再让你反复点 approve（包括 CLI 更新前就开着的会话），子代理也终于像子代理了。',
+                yolo: '会话处于 yolo 时若工具仍弹审批，Web 会替你放行：0.2.89 及以上的 CLI 一次切换整段不再问，更旧的按请求逐条放行；提问与计划批准仍会等你。',
+                honest: '模式选择器会标明 CLI 是否已确认该模式（「未确认」「启动时」「CLI: default」），不再显示猜测值；无效的「不再询问」选项已下架。',
+                subagents: '子代理行在折叠时也能看到它实际跑了什么（工具数 + 最近动作），后台子代理刚启动时不再被显示成「已完成」。',
+                history: '加载更早的历史不再把子代理的工作打散成顶层工具行，也不会误进 plan 模式。',
+            },
             aug31b: {
                 title: '回到前台，画面已经追平',
                 summary: '手机上从后台切回 Very Happy，终端与 Claude 会话现在会自动追平，不再需要手动刷新页面。',

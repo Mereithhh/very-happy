@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-01-yolo-enforcement-subagents',
+    date: '2026-09-01',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.90',
+    titleKey: 'changelog.releases.sep01.title',
+    summaryKey: 'changelog.releases.sep01.summary',
+    itemKeys: [
+      'changelog.releases.sep01.yolo',
+      'changelog.releases.sep01.honest',
+      'changelog.releases.sep01.subagents',
+      'changelog.releases.sep01.history',
+    ],
+  },
+  {
     id: '2026-08-31-web-resume-sync',
     date: '2026-08-31',
     buildVersion: __APP_VERSION__,
