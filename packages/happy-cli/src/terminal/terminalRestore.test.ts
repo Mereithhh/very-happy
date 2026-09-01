@@ -21,6 +21,23 @@ describe('B-265 planTerminalRestore', () => {
         expect(planTerminalRestore({ ...rec, cwd: undefined }, facts)).toEqual({ kind: 'error', reason: 'missing-cwd' });
         expect(planTerminalRestore(rec, { ...facts, cwdExists: () => false })).toEqual({ kind: 'error', reason: 'missing-cwd' });
     });
+    it('B-273: an attach terminal comes back attached (unique live name → $id) or not at all', () => {
+        const att = { id: 'att1', title: 'my dev', cwd: '/w', manual: true, attachTmux: 'my dev', closedAt: 1 };
+        const live = [{ id: '$4', name: 'my dev' }, { id: '$9', name: 'other' }];
+        expect(planTerminalRestore(att, { ...facts, userSessions: live })).toEqual({
+            kind: 'create', terminalId: 'att1', cwd: '/w', title: 'my dev', manual: true, tags: undefined,
+            command: " TMUX= tmux attach-session -t '$4'", attachTmux: 'my dev',
+        });
+        expect(planTerminalRestore(att, { ...facts, userSessions: live, attachSocket: '/tmp/s' })).toMatchObject({ command: " TMUX= tmux -S '/tmp/s' attach-session -t '$4'" });
+        expect(planTerminalRestore(att, { ...facts, userSessions: [] })).toEqual({ kind: 'error', reason: 'tmux-session-gone' });
+        expect(planTerminalRestore(att, { ...facts })).toEqual({ kind: 'error', reason: 'tmux-session-gone' });
+        expect(planTerminalRestore(att, { ...facts, userSessions: [...live, { id: '$5', name: 'my dev' }] })).toEqual({ kind: 'error', reason: 'tmux-session-gone' }); // ambiguous
+        // A vanished cwd falls back to the home directory (irrelevant inside the attached session).
+        expect(planTerminalRestore(att, { ...facts, userSessions: live, cwdExists: () => false, homeDir: '/home/u' })).toMatchObject({ kind: 'create', cwd: '/home/u' });
+        expect(planTerminalRestore(att, { ...facts, userSessions: live, cwdExists: () => false })).toEqual({ kind: 'error', reason: 'missing-cwd' });
+        // Never resumes a claude conversation on top of an attach record.
+        expect('command' in planTerminalRestore({ ...att, claudeSessionId: uuid }, { ...facts, userSessions: live }) && (planTerminalRestore({ ...att, claudeSessionId: uuid }, { ...facts, userSessions: live }) as any).command.includes('claude')).toBe(false);
+    });
     it('terminal ids are charset-limited (they become tmux target names)', () => {
         expect(TERMINAL_ID_RE.test('ok_id-1')).toBe(true);
         expect(TERMINAL_ID_RE.test('=vh-x:')).toBe(false);

@@ -1077,7 +1077,7 @@ export function Sidebar() {
                   aria-label={t(r.restoreSupported ? 'sidebar.closedTerminalRestore' : r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
                   onClick={async () => {
                     if (!r.restoreSupported) {
-                      createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId);
+                      createTerminalAt(navigate, r.machineId, { cwd: r.cwd, resumeClaudeSessionId: r.claudeSessionId });
                       return;
                     }
                     setRestoringTerminals((prev) => new Set(prev).add(r.terminalId));

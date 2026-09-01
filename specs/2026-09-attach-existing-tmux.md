@@ -1,6 +1,6 @@
 # 在 Web 里接入机器上已有的 tmux 会话（attach existing tmux）
 
-> 状态：Draft v2（第 1 轮对抗 review 后）
+> 状态：Final（2 轮对抗 review；实现随同一 PR）
 > 日期：2026-09-02 ｜ 关联 backlog：B-273（接 B-269/B-270 tmux.conf 加固）｜ 出处：同事实报「web 终端里 `tmux attach` 报 `sessions should be nested with care`」
 
 ## 背景
@@ -72,21 +72,21 @@ web 终端本身就是 daemon 建的 tmux 会话 `vh-<id>` 里的一个 pane，t
 - 优先级：`attachTmux` 存在时忽略 `startupCommand`（web 也不发）；`cwd` 忽略（web 不发）。
 - 标题：创建后 `set-option @vh_title <name>` + `@vh_title_manual 1`（内层 tmux 的 pane title 不可靠），用户可改。
 - 标记：创建后 `set-option @vh_attach '<name>'`（仅名字；`$N` 不跨 server 重启）。
-- 响应回显 `attachedTmux: { id, name }`；web 在 `isFresh && attach` 但响应缺该字段时 toast「此 daemon 不支持接入，已开普通终端」（覆盖旗缓存 vs daemon 降级的竞态）。
+- 响应回显 `attachedTmux: { id, name }`——**来自会话事实而非「本次是否创建」**：创建路径（含第二次重试创建）由共用的 `injectIntoCreated()` 返回；会话已存在（RPC 回包丢失后带 `fresh=1&attach=` 重开、StrictMode 双触发）时读 `@vh_attach` 与请求名相等才回显。web 在 `isFresh && attach` 但响应缺该字段时 toast「此 daemon 不支持接入，已开普通终端」（覆盖旗缓存 vs daemon 降级的竞态）。attach 请求下 tmux 建会话失败不走 pty 回退（抛 `tmux-unavailable`）。
 
 ### D2b daemon：接入型终端的列表/关闭/恢复
 
 - `LIST_SESSIONS_FORMAT` 在 `@vh_tags` 之后、`pane_current_command` 之前插入 `#{@vh_attach}`（10 字段；`parseSessionListLine` 的 `parts.length >= 10` 与 `slice(9)` 同步改；`assistant/terminals.ts` 共用同一解析器，一起过）。
 - `TerminalListItem.attachTmux?: string`（名字）→ 进 `terminalListSignature` → `WebTerminalListItemSchema` → `SeenTerminalInfo`/`LiveTerminalInfo`（`sanitizeLiveSnapshot`/`liveSnapshotChanged` 加字段）→ `ClosedTerminalRecord`（`sanitizeClosedTerminals` 加字段）→ `ClosedTerminalRecordSchema`。web 侧 `MachineTerminal.attachTmux?` 只读不显示（v1 标题已是会话名）。
 - **滚轮**：`scroll()` 在外层 `pane_current_command === 'tmux'` 时一律走 `mouse-wheel`（SGR）——内层 `mouse on` 会进 copy-mode 滚动；`mouse off` 被内层静默吞掉、不再把 `Up/Down` 灌进内层应用（B-121 同类）。`planScrollAction` 加 `nestedTmux` 参数，纯函数单测。
-- **手动恢复**（`restore-terminal`）：记录带 `attachTmux` 时，`planTerminalRestore` 用当前 `listUserTmuxSessions()` 按**名字唯一匹配**解析出 `$N` → `command = attachStartupCommand(id)`，`title=name, manual=true`；找不到或不唯一 → `{type:'error', reason:'tmux-session-gone'}`，不建空壳。`cwd` 用记录里的（外层 shell 的目录，attach 后无意义但无害）。
+- **手动恢复**（`restore-terminal`）：记录带 `attachTmux` 时，调用方把当前用户会话列表（**不限 50 条**）与 `VH_TMUX_SOCKET`、`homeDir` 注入 `planTerminalRestore`（仍是纯函数），按**名字唯一匹配**解析出 `$N` → `command = attachStartupCommand(id, socket)`，`title=record.title ?? name, manual=true`；找不到或不唯一 → `{type:'error', reason:'tmux-session-gone'}`，不建空壳；记录的 cwd 已不存在时退到 `homeDir`（attach 后目录无意义）。web `machineRestoreTerminal` 认 `tmux-session-gone`，`rowActions` 映射 i18n `restore.reason.tmux-session-gone`。
 - 自动恢复（B-150）：不改，`no-conversation` 已排除。
 
 ### D3 web：面板与流程
 
 - `sync/ops.ts`：`machineListTmuxSessions(machineId)`（`timeoutMs: 10_000`，宽松解析：只收 `name` 为 string 的项）；`tmuxSessionsSupported(daemonState)`（复用 `terminalRestoreSupported` 的信任规则，抽成通用 `daemonRpcFlagSupported(daemonState, 'tmuxSessions')`）。
 - `app/newTerminal.ts`：`createTerminalAt(navigate, machineId, opts?: { cwd?; resume?; attachTmux?: {id,name} })`（现有两个位置参数改成 options 对象，调用点一起改）；有 `attachTmux` 时 `useTerminalSessions.create(machineId, label, name)` 让侧栏乐观行立刻显示会话名；URL 加 `attach=<encodeURIComponent(id)>&attachName=<encodeURIComponent(name)>`（只有 id 与名字，daemon 精确校验，不构成命令执行面）。
-- `WebTerminalScreen`：`isFresh && attach` → 发 `attachTmux`，不发 `startupCommand`/`cwd`；`clearFreshRef` 同时删 `attach`/`attachName`。失败 `tmux-session-gone`/`tmux-unavailable` → `useTerminalSessions.remove(tid)`（撤掉乐观行）+ toast `t('newTerminalModal.attachGone')` + `navigate('/terminal')`（回机器选择页）；不留一个空终端屏幕。
+- `WebTerminalScreen`：`isFresh && attach` → 发 `attachTmux`，不发 `startupCommand`/`cwd`；`clearFreshRef` 同时删 `attach`/`attachName`。失败 `tmux-session-gone`/`tmux-unavailable` → `useTerminalSessions.remove(tid)`（撤掉乐观行）+ toast + `navigate('/', {replace:true})`（`/terminal` 是多机选择器，手机上是全屏 picker，不自然）；不留一个空终端屏幕。
 - `NewTerminalModal`：
   - 机器选定且 `tmuxSessionsSupported` → 打开面板即拉 `machineListTmuxSessions`（一次；**独立 `loadingSessions` 状态**，不复用 `busy`，主按钮不被锁）；非空时在「目录」区块**上方**新增区块「接入已有 tmux 会话」：单选列表（每行：mono 会话名 · N 窗口 · 「已连接」灰点/无 · 相对时间；选中态复用 `.ns-preset.is-on`；行高 ≥44px 落到 CSS），再点一次取消选择。选中会话时目录区块折叠为一句 `t('newTerminalModal.attachIgnoresCwd')`，主按钮文案变 `t('newTerminalModal.attach')`；`onCreate` 选中会话时**跳过 `machineFsList` 目录探测**，直接 `createTerminalAt(navigate, machineId, { attachTmux })`。
   - 列表为空/不支持 → 区块不渲染（老 daemon 完全看不到新东西）。
@@ -112,9 +112,10 @@ web 终端本身就是 daemon 建的 tmux 会话 `vh-<id>` 里的一个 pane，t
 4. 内层 tmux 的 `remain-on-exit`/`destroy-unattached` 等是用户会话自己的选项，不受 B-270 覆盖影响（覆盖只落在 vh 会话）——正确行为。
 5. 用户在 attach 状态下关闭 web 终端 → `kill-session vh-*` → 内层 client 断开，用户会话保留（实测）。
 6. 面板每次打开都拉一次列表：一次 RPC、≤50 行，无轮询。
-7. 隔离测试 server 下必须带 `-S`；生产带 `-S` 反而会指错 server → 由 `VH_TMUX_SOCKET` 存在与否决定，纯函数单测两种分支。
-8. `session_id` 只在 tmux server 生命周期内稳定：列表与打开之间会话被杀再建同名 → id 变、`display-message` 反查名字不等 → `tmux-session-gone`，让用户重选（正确）。
-9. 内层 claude 的可见文本会让 `agentState`/`claudeConfident` 为真，`mirrorManager.reconcile` 只会在有持久化 mirror 记录时 adopt——接入型终端没有 `SessionStart` hook 绑定，实际 no-op；非目标里已声明。
+7. 注入的 `TMUX= tmux …` 依赖 `VAR= cmd` 前缀语法：sh/bash/zsh/fish≥3.1 都支持；nushell/xonsh 作为登录 shell 时 pane 里会直接看到 nested 报错——接受（极少见，且与手敲一致）。
+8. 隔离测试 server 下必须带 `-S`；生产带 `-S` 反而会指错 server → 由 `VH_TMUX_SOCKET` 存在与否决定，纯函数单测两种分支。
+9. `session_id` 只在 tmux server 生命周期内稳定：列表与打开之间会话被杀再建同名 → id 变、`display-message` 反查名字不等 → `tmux-session-gone`，让用户重选（正确）。
+10. 内层 claude 的可见文本会让 `agentState`/`claudeConfident` 为真，`mirrorManager.reconcile` 只会在有持久化 mirror 记录时 adopt——接入型终端没有 `SessionStart` hook 绑定，实际 no-op；非目标里已声明。
 
 ## 验收标准
 
@@ -130,3 +131,8 @@ web 终端本身就是 daemon 建的 tmux 会话 `vh-<id>` 里的一个 pane，t
 
 - mac-office 上本地开一个多窗口 tmux `dev` 并 attach 着 → web 面板接入 → 内层状态栏/窗口切换（`C-b n`）/`C-b d` 回外层的手感；关闭 web 终端后本地 `dev` 仍在。
 - 手机 PWA 上面板的滚动与触控。
+
+## 2 轮对抗 review 收敛点
+
+- Round 1：按名字定位会话必失败（tmux ≥3.2 sanitize 不拒绝 `:`/`.`/`$`）→ 改 `session_id`；嵌套 tmux 下滚轮把方向键灌进内层应用（B-121 同类）→ 外层 `pane_current_command==='tmux'` 一律 SGR 滚轮；接入型终端的恢复变成假空壳 → `@vh_attach` 贯穿列表/快照/关闭记录/恢复；校验时机与 `createdNew` 关系、web 失败路径撤行、`loadingSessions` 独立于 `busy`、跳过目录探测、旗无条件置、path 放末尾、回显 `attachedTmux`、提示卡用 localSettings。
+- Round 2：回显不能依赖「本次是否创建」（丢包重开/StrictMode）→ 从 `@vh_attach` 会话事实回显；第二次重试创建路径漏注入 → 抽 `injectIntoCreated()` 两处共用；web 侧 `tmux-session-gone` 无映射 → ops/rowActions/i18n 补；attach 记录 cwd 消失退 `homeDir`；恢复用列表不限 50；失败回 `/` 而非 `/terminal`；`canCreate` 豁免目录、切机器重拉并清选中；`VAR= cmd` 语法风险入表。

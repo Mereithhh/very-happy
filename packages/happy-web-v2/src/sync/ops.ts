@@ -4,6 +4,7 @@
  */
 
 import { apiSocket } from './apiSocket';
+import { parseTmuxSessions, type UserTmuxSession } from '@/screens/sessions/newTerminalAttach';
 import { sync } from './sync';
 import { storage } from './storage';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
@@ -387,6 +388,9 @@ export type OpenTerminalOk = {
      *  duplicate status line. Live changes arrive in-band (OSC 6121). */
     paneCols?: number;
     paneRows?: number;
+    /** B-273: echoed by a daemon that honoured `attachTmux` on this (create)
+     *  open. Absent on an attach request ⇒ the daemon does not support it. */
+    attachedTmux?: { id: string; name: string };
 } & (
     | { mode: 'snapshot'; data: string }
     | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
@@ -417,6 +421,11 @@ export async function machineOpenTerminal(
          *  `streamMode`), which is exactly the attach fallback the client keeps
          *  around — so this is safe to send unconditionally (铁律 4). */
         streamMode?: 'lines';
+        /** B-273: create this terminal attached to the user's own tmux session
+         *  (`id` = tmux `$N` from `machineListTmuxSessions`, `name` cross-checked
+         *  by the daemon). Only sent on the fresh-create open, only when
+         *  `tmuxSessionsSupported(daemonState)`. Old daemons ignore it. */
+        attachTmux?: { id: string; name: string };
     },
     /** Transport options. Catch-up opens pass a short timeout so a dead link
      *  fails fast instead of holding the terminal write chain for 60s. */
@@ -430,11 +439,12 @@ export async function machineOpenTerminal(
             {
                 type: 'success'; terminalId: string; tmuxSession?: string; encStream?: boolean; seq: number;
                 streamMode?: 'lines' | 'attach'; snapshotId?: string; totalPages?: number; alternateOn?: boolean; paneCols?: number; paneRows?: number;
+                attachedTmux?: { id: string; name: string };
             } & (
                 | { mode: 'snapshot'; data: string }
                 | { mode: 'replay'; chunks: Array<{ seq: number; data: string }> }
             ),
-            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines' }
+            { terminalId?: string; cols?: number; rows?: number; cwd?: string; fromSeq?: number; encStream?: boolean; startupCommand?: string; resub?: boolean; attachOnly?: boolean; streamMode?: 'lines'; attachTmux?: { id: string; name: string } }
         >(machineId, 'open-terminal', options, rpc);
         // A daemon-side handler error comes back as `{ error }` WITH a
         // relay-level ok (RpcHandlerManager encrypts the error object as a
@@ -463,6 +473,10 @@ export async function machineOpenTerminal(
             alternateOn: result.alternateOn,
             paneCols: result.paneCols,
             paneRows: result.paneRows,
+            attachedTmux: result.attachedTmux && typeof result.attachedTmux === 'object'
+                && typeof result.attachedTmux.id === 'string' && typeof result.attachedTmux.name === 'string'
+                ? { id: result.attachedTmux.id, name: result.attachedTmux.name }
+                : undefined,
         };
         return result.mode === 'replay'
             ? { ...base, mode: 'replay', chunks: result.chunks }
@@ -690,7 +704,7 @@ export async function machineScrollTerminal(
  *  RPC makes the server wait 15 s before failing. Never throws. */
 export type RestoreTerminalResult =
     | { ok: true }
-    | { ok: false; reason: 'unsupported' | 'no-record' | 'missing-cwd' | 'invalid-id' | 'error'; message?: string };
+    | { ok: false; reason: 'unsupported' | 'no-record' | 'missing-cwd' | 'invalid-id' | 'tmux-session-gone' | 'error'; message?: string };
 export async function machineRestoreTerminal(machineId: string, terminalId: string): Promise<RestoreTerminalResult> {
     try {
         const result = await apiSocket.machineRPC<
@@ -703,12 +717,28 @@ export async function machineRestoreTerminal(machineId: string, terminalId: stri
             || '';
         const reason = (result && 'reason' in result && typeof result.reason === 'string') ? result.reason : '';
         if (/method not found|rpc method not available/i.test(text)) return { ok: false, reason: 'unsupported', message: text };
-        if (reason === 'no-record' || reason === 'missing-cwd' || reason === 'invalid-id') return { ok: false, reason, message: text };
+        if (reason === 'no-record' || reason === 'missing-cwd' || reason === 'invalid-id' || reason === 'tmux-session-gone') return { ok: false, reason, message: text };
         return { ok: false, reason: 'error', message: text || 'restore-terminal failed' };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (/method not found|rpc method not available/i.test(message)) return { ok: false, reason: 'unsupported', message };
         return { ok: false, reason: 'error', message };
+    }
+}
+
+/** B-273: the machine's OWN tmux sessions (never vh-*) for the new-terminal
+ *  panel's "attach an existing session". Callers must check
+ *  `tmuxSessionsSupported(daemonState)` first (unregistered RPC = 15 s server
+ *  stall). Never throws; [] on any failure. */
+export async function machineListTmuxSessions(machineId: string): Promise<UserTmuxSession[]> {
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<unknown, Record<string, never>>(
+            machineId, 'list-tmux-sessions', {}, { timeoutMs: 10_000 },
+        );
+        return parseTmuxSessions(result);
+    } catch {
+        return [];
     }
 }
 

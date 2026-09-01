@@ -391,10 +391,16 @@ export class ApiMachineClient {
             // declaration; a client that doesn't send it gets the v1 response
             // shape verbatim (its `applyOpenResult` throws on anything else and
             // the terminal would stay "connecting" forever).
-            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode } = params || {};
+            const { terminalId, cols, rows, cwd, fromSeq, encStream, startupCommand, resub, attachOnly, streamMode, attachTmux } = params || {};
+            // B-273: `attachTmux {id,name}` — validated (and possibly refused
+            // with 'tmux-session-gone') inside open() BEFORE anything is created.
+            const attach = attachTmux && typeof attachTmux === 'object' && typeof attachTmux.id === 'string' && typeof attachTmux.name === 'string'
+                ? { id: attachTmux.id, name: attachTmux.name }
+                : undefined;
             const result = await this.webTerminal.open({
                 terminalId, cols, rows, cwd, fromSeq, startupCommand, resub, attachOnly,
                 streamMode: streamMode === 'lines' ? 'lines' : undefined,
+                ...(attach ? { attachTmux: attach } : {}),
             });
             // Negotiated stream encryption: only enable for clients that ask
             // (so an old client still works in plaintext). Echo it back so the
@@ -508,6 +514,13 @@ export class ApiMachineClient {
         // stays for old clients and returns the SAME list the push carries.
         this.rpcHandlerManager.registerHandler('list-terminals', async () => {
             return { type: 'success', terminals: this.webTerminal.buildTerminalList() };
+        });
+
+        // B-273: the user's OWN tmux sessions (never vh-*), for the web's
+        // "attach an existing tmux session" option. Old webs never call it;
+        // new webs gate on daemonState.tmuxSessions.
+        this.rpcHandlerManager.registerHandler('list-tmux-sessions', async () => {
+            return { type: 'success', sessions: this.webTerminal.listUserTmuxSessions() };
         });
 
         // Persist a terminal's title on the machine so every device sees it.
@@ -989,6 +1002,8 @@ export class ApiMachineClient {
                     // B-265 capability flag; restamped every connect so the
                     // web's `detectedAt >= startedAt` trust rule holds.
                     terminalRestore: { rpcAvailable: true, detectedAt: now },
+                    // B-273 capability flag (same restamp discipline).
+                    tmuxSessions: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

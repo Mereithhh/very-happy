@@ -86,10 +86,11 @@ export async function restoreClosedTerminal(navigate: NavigateFunction, row: Clo
     return true;
   }
   if (result.reason === 'unsupported') {
-    return createTerminalAt(navigate, row.machineId, row.cwd, row.claudeSessionId);
+    return createTerminalAt(navigate, row.machineId, { cwd: row.cwd, resumeClaudeSessionId: row.claudeSessionId });
   }
   const key = result.reason === 'no-record' ? 'restore.terminalNoRecord'
     : result.reason === 'missing-cwd' ? 'restore.reason.missing-cwd'
+    : result.reason === 'tmux-session-gone' ? 'restore.reason.tmux-session-gone'
     : 'restore.terminalFailed';
   Modal.alert(t('restore.failed'), `${t(key as Parameters<typeof t>[0])}${result.message ? ` (${result.message})` : ''}`);
   return false;

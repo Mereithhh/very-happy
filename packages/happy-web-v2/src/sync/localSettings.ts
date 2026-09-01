@@ -24,6 +24,10 @@ export const LocalSettingsSchema = z.object({
     newSessionReviewFirst: z.boolean().describe('Default new sessions to a review-first permission mode instead of auto-applying changes'),
     // CLI version acknowledgments - keyed by machineId
     acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+    // One-time UI hints the user dismissed, keyed by hint id → dismissed-at (ms).
+    // Device-local like acknowledgedCliVersions; no zod .default() (defaults
+    // live in localSettingsDefaults only).
+    dismissedHints: z.record(z.string(), z.number()).describe('Dismissed one-time UI hints (hint id → ms epoch)'),
     // Desktop sidebar width override (px) set by dragging the divider. null = use
     // the responsive default. Per-device (local).
     sidebarWidth: z.number().nullable().describe('User-dragged desktop sidebar width in px (null = responsive default)'),
@@ -173,6 +177,7 @@ export const localSettingsDefaults: LocalSettings = {
     // this field, so established Owner/user workflows do not silently change.
     newSessionReviewFirst: true,
     acknowledgedCliVersions: {},
+    dismissedHints: {},
     sidebarWidth: null,
     filesPanelWidth: null,
     // Safe default: existing users keep the current home screen.

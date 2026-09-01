@@ -212,3 +212,88 @@
     font-size: var(--fs-16);
   }
 }
+
+/* ── B-273: attach an existing tmux session ─────────────────────────────── */
+.ns-tips {
+  margin: var(--sp-3) 0 var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.ns-tips-title {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: var(--sp-2);
+}
+.ns-tips-list {
+  margin: 0;
+  padding-left: 1.25em;
+  display: grid;
+  gap: 4px;
+}
+.ns-tips-list code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+}
+.ns-tips-dismiss {
+  margin-top: var(--sp-2);
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+.ns-sessions {
+  display: grid;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ns-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.ns-session:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ns-session.is-on {
+  color: var(--accent-2);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.ns-session-name {
+  font-size: var(--fs-12);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ns-session.is-on .ns-session-name {
+  color: var(--accent-2);
+}
+.ns-session-meta {
+  flex-shrink: 0;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+@media (pointer: coarse) {
+  .ns-session { min-height: 44px; }
+  .ns-tips-dismiss { min-height: 44px; }
+}
