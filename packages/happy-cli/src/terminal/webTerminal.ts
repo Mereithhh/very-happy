@@ -1029,6 +1029,9 @@ function defaultShell(): string {
  *  - `remain-on-exit on`: the dead pane lingers after `exit`; the terminal
  *    never closes.
  *  - `window-size manual`: the pane ignores the web viewport (stuck 80x24).
+ *    (tmux 3.4/3.5a on Linux cannot even create a session under it — the
+ *    server crashes — so there the user's own tmux is broken too; on 3.6+ the
+ *    override is what keeps resize working.)
  *  - `pane-border-status top`: one row eaten by a border, geometry off by one.
  * Session/window scoped (`-t =name:`), so the user's global config and their
  * own sessions are untouched. `-q` keeps an older tmux that lacks an option

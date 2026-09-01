@@ -36,7 +36,9 @@ const SCENARIOS: Array<[label: string, conf: string]> = [
     ['a whole dotfile', [
         'set -g mouse on', 'set -g prefix C-a', 'unbind C-b', 'bind C-a send-prefix',
         'set -g base-index 1', 'setw -g pane-base-index 1', 'set -g renumber-windows on',
-        'set -g destroy-unattached on', 'set -g remain-on-exit on', 'set -g window-size manual',
+        'set -g destroy-unattached on', 'set -g remain-on-exit on',
+        // (`window-size manual` deliberately left out here — see the scenario
+        // above: some tmux builds cannot create a session under it at all.)
         'set -g pane-border-status top', 'set -g status off', 'set -g default-terminal "screen-256color"',
         'set -sg escape-time 0', 'set -g history-limit 50000', 'setw -g mode-keys vi',
         'setw -g aggressive-resize on', 'set -g detach-on-destroy off', 'set -g exit-empty off',
@@ -64,10 +66,23 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
     });
 
     for (const [label, conf] of SCENARIOS) {
-        it(`survives: ${label}`, async () => {
+        it(`survives: ${label}`, async (ctx) => {
             writeFileSync(join(xdg, 'tmux', 'tmux.conf'), conf + '\n');
             process.env.XDG_CONFIG_HOME = xdg;
             iso.killServer(); // next tmux call boots a fresh server with THIS config
+            // Precondition: tmux ITSELF can create a session under this config.
+            // tmux 3.4 / 3.5a on Linux (ubuntu 24.04 = CI, debian trixie, alpine)
+            // crash the server on ANY new-session while `window-size manual` is
+            // set ("server exited unexpectedly", plain `tmux new` included) —
+            // nothing a client can work around, and not what this test is
+            // about. macOS/brew 3.7b is fine. Skip honestly instead of failing.
+            const probe = iso.run('new-session', '-d', '-s', 'utc-probe', '/bin/sh');
+            if (probe.status !== 0) {
+                iso.killServer();
+                ctx.skip(`this tmux (${iso.run('-V').stdout.trim()}) cannot create a session under "${conf.split('\n')[0]}": ${probe.stderr.trim()}`);
+                return;
+            }
+            iso.run('kill-session', '-t', '=utc-probe:');
             const mgr = new WebTerminalManager(() => { /* byte stream not under test */ });
             const tid = 'utc' + Math.random().toString(16).slice(2, 9);
             const sess = `vh-${tid}`;
