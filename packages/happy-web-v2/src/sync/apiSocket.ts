@@ -8,6 +8,13 @@ import { RelayAssignmentResponseSchema, ReleaseDrainNoticeSchema, type RelayAssi
 import { isMachineRealtimeEvent, shouldIgnoreLegacyRealtime } from './machineRelayRouting';
 import { decideAfterProbe, decideProbe, LIVENESS_PROBE_MS } from './socketLiveness';
 
+/**
+ * Bound for the machineRPC relay preflight `relay-ping`. Short on purpose: it
+ * exists to fail over to central FAST when the relay link is silently dead,
+ * not to wait — one relay RTT is sub-100ms in practice, so 3s is generous.
+ */
+const RELAY_PREFLIGHT_MS = 3_000;
+
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
     if (platform === 'web' && typeof window !== 'undefined' && '__TAURI__' in window) {
@@ -341,7 +348,19 @@ class ApiSocket {
         const encryptedParams = await machineEncryption.encryptRaw(params);
         // See sessionRPC: re-check after the async encrypt so a relay that died
         // meanwhile doesn't swallow the packet until the ack timer (10–60s).
-        const relaySocket = relayCandidate?.connected ? relayCandidate : null;
+        let relaySocket = relayCandidate?.connected ? relayCandidate : null;
+        // Preflight the relay before committing the RPC to it. A relay socket
+        // can be `connected` at the ws layer yet silently dropped end-to-end
+        // (proxy/VPN/half-open link) — and `ensureMachineRelay` returns a CACHED
+        // socket without re-pinging, so a link that went dead after connect is
+        // exactly this failure. Without the probe a bare emitWithAck parks for
+        // the full MACHINE_RPC_TIMEOUT_MS (60s) — the terminal-open "timeout"
+        // users see. One short relay-ping proves the round trip first; on
+        // failure we retire the relay (cooldown) and take the central path,
+        // which cannot double-execute because nothing has been sent yet.
+        if (relaySocket && !(await this.relayPreflightOk(machineId, relaySocket))) {
+            relaySocket = null;
+        }
         const call = (socket: Socket) => socket
             .timeout(opts?.timeoutMs ?? ApiSocket.MACHINE_RPC_TIMEOUT_MS)
             .emitWithAck('rpc-call', {
@@ -591,6 +610,31 @@ class ApiSocket {
     private updateRelayStatus(machineId: string, status: MachineRelayStatus) {
         this.relayStatuses.set(machineId, status);
         for (const listener of this.relayStatusListeners) listener(machineId, status);
+    }
+
+    /**
+     * Prove a round trip over `socket` (this machine's current relay) with a
+     * short `relay-ping` before an RPC is committed to it. Returns true if the
+     * relay answered; on failure it retires the relay exactly like machineRPC's
+     * lost-ack path (close + 30s cooldown + legacy status, only when the socket
+     * is still the current one) so the caller falls back to central and the
+     * cooldown keeps the next calls off the dead link without re-probing.
+     * Bounded by RELAY_PREFLIGHT_MS — the whole point is to fail fast instead
+     * of waiting out the 60s RPC ack timer.
+     */
+    private async relayPreflightOk(machineId: string, socket: Socket): Promise<boolean> {
+        try {
+            await socket.timeout(RELAY_PREFLIGHT_MS).emitWithAck('relay-ping', { sentAt: Date.now() });
+            return true;
+        } catch {
+            if (this.relaySockets.get(machineId) === socket) {
+                this.relaySockets.delete(machineId);
+                this.relayRetryAfter.set(machineId, Date.now() + 30_000);
+                this.updateRelayStatus(machineId, { transport: 'legacy', state: 'fallback' });
+            }
+            socket.close();
+            return false;
+        }
     }
 
     private async ensureMachineRelay(machineId: string, opts?: { strictPing?: boolean }): Promise<Socket | null> {
