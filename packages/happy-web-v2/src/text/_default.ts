@@ -1524,6 +1524,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep01b: {
+                title: 'Sub-agents you can actually watch',
+                summary: 'Agent cards now carry the real state of each sub-agent — running, finished, failed — with its tool count, latest action, duration and final report; and yolo is now enforced by the CLI itself.',
+                lifecycle: 'A background sub-agent stays "running" on its card until it really finishes, updating tool count and latest action as it works, even after the launching turn has ended.',
+                report: 'When a sub-agent finishes, the card shows its status and duration, and expanding it reveals the full report it sent back — no more empty notification rows.',
+                turn: 'Folded turns show how many sub-agents are still running, and the session stays marked live while any of them is.',
+                cli: 'CLI 0.2.91: sessions switched to yolo run in bypass mode inside Claude itself (no more per-tool approvals), the mode shown is the one Claude confirmed, and queued messages no longer undo an explicit mode switch. Applies to sessions started after upgrading.',
+            },
             sep01: {
                 title: 'Yolo now means yolo — on every machine',
                 summary: 'Choosing yolo no longer leaves you clicking Approve on sessions whose CLI predates the last update, and sub-agents finally read like sub-agents.',
