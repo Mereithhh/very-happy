@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { randomUUID } from 'node:crypto';
 
 import { ApiClient } from '@/api/api';
@@ -271,6 +272,24 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         throw new Error(`Failed to reactivate archived session ${response.id}`);
     }
 
+    // B-265: seed the reconnect from the server's current snapshot — message
+    // cursor (so history is neither replayed nor skipped wholesale), metadata
+    // and agent state with their real versions. Without it (old server /
+    // transient failure after retries) fall back to the legacy skip-all-history
+    // reconnect with zeroed versions so the first write pulls the server copy.
+    let reconnectSeeded = false;
+    if (reconnectSessionId) {
+        const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
+        if (snapshot.ok) {
+            response = applyServerSnapshot(response, snapshot.session);
+            reconnectSeeded = true;
+            logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
+        } else {
+            response = withoutServerSnapshot(response);
+            logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
+        }
+    }
+
     // Always report to daemon if it exists
     try {
         logger.debug(`[START] Reporting session ${response.id} to daemon`);
@@ -294,16 +313,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // system.init message in claudeRemote.ts via onSDKMetadata callback
 
     // Create realtime session
-    const session = api.sessionSyncClient(response);
+    const session = api.sessionSyncClient(response, reconnectSeeded ? { initialSeq: response.seq } : undefined);
 
-    // On reconnect, un-archive the session and skip replaying old messages.
+    // On reconnect, un-archive the session; with a server-seeded cursor the
+    // history needs neither replay nor skip, otherwise skip it wholesale.
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
-        session.skipExistingMessages();
+        if (!reconnectSeeded) session.skipExistingMessages();
+        // First write: server truth (handler arg) + this process's identity
+        // (the local `metadata` object) + lifecycle back to running.
         session.updateMetadata((meta) => ({
-            ...meta,
-            lifecycleState: 'running',
-            archivedBy: undefined,
+            ...mergeReconnectMetadata(meta, metadata, Date.now()),
             queueCancellation: true,
             // B-262 batch 2 (B5): a reconnected process re-publishes the mode
             // IT enforces; the server copy may still carry the previous

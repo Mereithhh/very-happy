@@ -24,6 +24,7 @@ import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
+import { applyServerSnapshot, mergeReconnectMetadata, withoutServerSnapshot } from '@/utils/reconnectSession';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -170,6 +171,20 @@ export async function runCodex(opts: {
         throw new Error(`Failed to reactivate archived session ${response.id}`);
     }
 
+    // B-265: seed the reconnect from the server snapshot (see runClaude).
+    let reconnectSeeded = false;
+    if (reconnectSessionId && response) {
+        const snapshot = await api.getSession(response.id, response.encryptionKey, response.encryptionVariant);
+        if (snapshot.ok) {
+            response = applyServerSnapshot(response, snapshot.session);
+            reconnectSeeded = true;
+            logger.debug(`[START] Reconnect seeded from server: seq=${snapshot.session.seq} metadataVersion=${snapshot.session.metadataVersion}`);
+        } else {
+            response = withoutServerSnapshot(response);
+            logger.debug(`[START] Reconnect without server snapshot (${snapshot.reason}); skipping existing messages`);
+        }
+    }
+
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
     // Permission handler declared here so it can be updated in onSessionSwap callback
@@ -184,6 +199,7 @@ export async function runCodex(opts: {
         metadata,
         state,
         response,
+        sessionClientOptions: reconnectSeeded && response ? { initialSeq: response.seq } : undefined,
         onSessionSwap: (newSession) => {
             session = newSession;
             // Update permission handler with new session to avoid stale reference
@@ -194,15 +210,12 @@ export async function runCodex(opts: {
     });
     session = initialSession;
 
-    // On reconnect, un-archive the session and skip replaying old messages.
+    // On reconnect, un-archive the session; with a server-seeded cursor the
+    // history needs neither replay nor skip, otherwise skip it wholesale.
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
-        session.skipExistingMessages();
-        session.updateMetadata((meta) => ({
-            ...meta,
-            lifecycleState: 'running',
-            archivedBy: undefined,
-        }));
+        if (!reconnectSeeded) session.skipExistingMessages();
+        session.updateMetadata((meta) => mergeReconnectMetadata(meta, metadata, Date.now()));
     }
 
     // Always report to daemon if it exists (skip if offline)
