@@ -24,6 +24,8 @@ import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAs
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
+import { resumePrecheck, sanitizeResumeModel } from './resumePrecheck';
+import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { getProjectPath } from '@/claude/utils/path';
@@ -212,6 +214,8 @@ export async function startDaemon(): Promise<void> {
         tracked.pid = livePid;
         tracked.startedBy = 'recovered after daemon restart';
         pidToTrackedSession.set(livePid, tracked);
+        // B-265: seen alive → the 14-day restore retention restarts from now.
+        persistSession(id, { ...s, savedAt: Date.now() });
       } else {
         sessionIdToFinishedSession.set(id, tracked);
       }
@@ -852,6 +856,21 @@ export async function startDaemon(): Promise<void> {
     };
 
     const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
+      // B-265: by-id first (a session older than the list's 150-row window is
+      // otherwise unresolvable); old servers 404 → the list as before.
+      try {
+        const byId = await axios.get(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { Authorization: `Bearer ${credentials.token}` },
+          timeout: 10_000,
+          validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
+        });
+        if (byId.status !== 404) {
+          const row = (byId.data as { session?: { metadata: string } }).session;
+          if (row?.metadata) return decrypt(encryptionKey, encryptionVariant, decodeBase64(row.metadata)) as Metadata | null;
+        }
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] by-id session metadata fetch failed, falling back to list: ${error instanceof Error ? error.message : error}`);
+      }
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
@@ -868,17 +887,45 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
+    // B-265: one in-flight resume per session (the RPC layer runs handlers
+    // concurrently; a double click or two devices must not spawn twice), and a
+    // live process wins outright. Precheck failures carry a fixed
+    // `resume-precheck:<reason>` prefix the web maps to user-facing text.
+    const resumeGates = new Map<string, SpawnGate<SpawnSessionResult>>();
     const resumeSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+      let gate = resumeGates.get(happySessionId);
+      if (!gate) {
+        gate = createSpawnGate<SpawnSessionResult>();
+        resumeGates.set(happySessionId, gate);
+      }
       try {
+        return await gate.join(() => resumeSessionImpl(happySessionId, options));
+      } finally {
+        if (!gate.inFlight()) resumeGates.delete(happySessionId);
+      }
+    };
+
+    const resumeSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+      try {
+        for (const [pid, live] of pidToTrackedSession.entries()) {
+          if (live.happySessionId !== happySessionId) continue;
+          if (isPidAlive(pid)) {
+            logger.debug(`[DAEMON RUN] resume ${happySessionId}: process ${pid} already alive — idempotent success`);
+            return { type: 'success', sessionId: happySessionId };
+          }
+          // An externally started session that died never fires onChildExited;
+          // finalize it now so the entry moves to the resumable set.
+          onChildExited(pid);
+        }
         const tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
+          return { type: 'error', errorMessage: `resume-precheck:not-tracked: Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon, more than 14 days ago, or on another machine.` };
         }
         if (!tracked.happySessionMetadataFromLocalWebhook) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
+          return { type: 'error', errorMessage: `resume-precheck:no-metadata: Session ${happySessionId} has no metadata. Cannot resume.` };
         }
         if (!tracked.encryption) {
-          return { type: 'error', errorMessage: `Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
+          return { type: 'error', errorMessage: `resume-precheck:no-encryption: Session ${happySessionId} has no stored encryption data. It was likely started before this feature was available. Restart the daemon and start a new session to enable resume.` };
         }
 
         // Webhook metadata may be stale (missing claudeSessionId/codexThreadId set after startup).
@@ -895,21 +942,27 @@ export async function startDaemon(): Promise<void> {
           }
         }
 
+        const precheck = resumePrecheck(metadata, {
+          cwdExists: (p) => existsSync(p),
+          conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+        });
+        if (!precheck.ok) {
+          return { type: 'error', errorMessage: `resume-precheck:${precheck.reason}: ${precheck.detail}` };
+        }
+
         const launch = buildResumeLaunch(
           { id: happySessionId, active: true, metadata },
           { startedBy: 'daemon', claudeStartingMode: 'remote' },
         );
 
-        if (options?.model) {
-          launch.args.push('--model', options.model);
-        }
-        if (options?.permissionMode) {
-          launch.args.push('--permission-mode', options.permissionMode);
-        }
+        const model = sanitizeResumeModel(options?.model);
+        if (model) launch.args.push('--model', model);
+        else if (options?.model !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid model ${JSON.stringify(options.model)}`);
+        const permissionMode = sanitizeSpawnPermissionMode(options?.permissionMode);
+        if (permissionMode) launch.args.push('--permission-mode', permissionMode);
+        else if (options?.permissionMode !== undefined) logger.debug(`[DAEMON RUN] resume: ignoring invalid permission mode ${JSON.stringify(options.permissionMode)}`);
 
-        await fs.access(launch.cwd);
-
-        return spawnTrackedHappyProcess({
+        const result = await spawnTrackedHappyProcess({
           args: launch.args,
           cwd: launch.cwd,
           env: {
@@ -922,6 +975,22 @@ export async function startDaemon(): Promise<void> {
             HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
           },
         });
+        if (result.type === 'success') {
+          // Refresh the on-disk restore record: `savedAt` (14-day retention now
+          // measured from the last time we saw the session alive) and the
+          // server-side metadata (claudeSessionId etc.), keeping the webhook's
+          // versions untouched.
+          persistSession(happySessionId, {
+            encryptionKey: encodeBase64(tracked.encryption.encryptionKey),
+            encryptionVariant: tracked.encryption.encryptionVariant,
+            seq: tracked.encryption.seq,
+            metadataVersion: tracked.encryption.metadataVersion,
+            agentStateVersion: tracked.encryption.agentStateVersion,
+            metadata,
+            savedAt: Date.now(),
+          });
+        }
+        return result;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : (error && typeof error === 'object' ? JSON.stringify(error) : String(error));
         logger.debug(`[DAEMON RUN] Failed to resume session: ${errorMessage}`, error instanceof Error ? error.stack : undefined);

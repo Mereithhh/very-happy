@@ -195,6 +195,8 @@ export const WebTerminalListItemSchema = z.object({
   /** B-150: auto-restored after a restart (ms epoch) — the directory and the
    *  conversation carried over, the processes did not. Cleared once opened. */
   restoredAt: z.number().optional(),
+  /** B-265: @vh_title_manual is set (user renamed it). */
+  manual: z.boolean().optional(),
 })
 
 /**
@@ -215,6 +217,9 @@ export const ClosedTerminalRecordSchema = z.object({
   /** B-149: 'daemon-gap' = died while no daemon was watching (restart/reboot);
    *  absent means an ordinary observed close. */
   reason: z.enum(['closed', 'daemon-gap']).optional(),
+  /** B-265: tags + manual-rename flag at close time (restored verbatim). */
+  tags: z.array(z.string()).optional(),
+  manual: z.boolean().optional(),
   closedAt: z.number(),
 })
 
@@ -262,6 +267,15 @@ export const DaemonStateSchema = z.object({
    * ignore the field; old daemons never write it (web renders nothing).
    */
   closedTerminals: z.array(ClosedTerminalRecordSchema).optional(),
+  /**
+   * B-265 capability flag: this daemon answers `restore-terminal`. Same trust
+   * rule as webTerminals — only `detectedAt >= startedAt` counts, because a
+   * downgraded daemon spreads the stale field forward on connect.
+   */
+  terminalRestore: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
   cliUpdate: CliUpdateStateSchema.optional(),
 })

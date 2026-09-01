@@ -59,6 +59,8 @@
  * The 60s bucket stays exactly as it is — the two lanes have different jobs.
  */
 import * as pty from 'node-pty';
+import { planTerminalRestore, TERMINAL_ID_RE } from './terminalRestore';
+import { getProjectPath } from '@/claude/utils/path';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -563,6 +565,15 @@ export interface TerminalListItem {
      *  the claude conversation carried over. The web badges it until the user
      *  opens it once; the mark is daemon-local and never persisted. */
     restoredAt?: number;
+    /** B-265: `@vh_title_manual` is set — carried into close records so a
+     *  restore can put the flag back (old webs ignore it). */
+    manual?: boolean;
+}
+
+/** What the close/gap bookkeeping remembers per live terminal (B-084/B-265). */
+type SeenTerminalInfo = { title?: string; cwd?: string; tags?: string[]; manual?: boolean };
+function seenInfoOf(t: TerminalListItem): SeenTerminalInfo {
+    return { title: t.title, cwd: t.cwd, tags: t.tags, manual: t.manual };
 }
 
 /**
@@ -1292,7 +1303,7 @@ export class WebTerminalManager {
      *  the tick's disappearance diff against it is ALSO how tmux-side natural
      *  exits (shell `exit`, `tmux kill-session` on the machine) get recorded,
      *  not just web-initiated kills. */
-    private lastSeenInfo = new Map<string, { title?: string; cwd?: string }>();
+    private lastSeenInfo = new Map<string, SeenTerminalInfo>();
     /** B-149: what the PREVIOUS daemon life left on disk. Reconciled exactly
      *  once, against the first observed list, then dropped (null = done). */
     private restoredSnapshot: Map<string, LiveTerminalInfo> | null = loadLiveSnapshot();
@@ -1504,7 +1515,7 @@ export class WebTerminalManager {
 
     /** Refresh the per-id {title, cwd} cache from an observed live list. */
     private noteSeen(list: TerminalListItem[]): void {
-        this.lastSeenInfo = new Map(list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]));
+        this.lastSeenInfo = new Map(list.map((t) => [t.id, seenInfoOf(t)]));
     }
 
     /** Record one terminal as closed (dedupe/cap in the pure module) and
@@ -1590,8 +1601,8 @@ export class WebTerminalManager {
         const liveIds = new Set(list.map((t) => t.id));
         // Before diffing this life's cache: settle the previous life's leftovers.
         this.reconcileRestoredSnapshot(liveIds);
-        const next = new Map<string, { title?: string; cwd?: string }>(
-            list.map((t) => [t.id, { title: t.title, cwd: t.cwd }]),
+        const next = new Map<string, SeenTerminalInfo>(
+            list.map((t) => [t.id, seenInfoOf(t)]),
         );
         let changed = false;
         const now = Date.now();
@@ -1612,7 +1623,7 @@ export class WebTerminalManager {
             persisted ??= readPersistedSessions();
             const mirror = pickMirrorForTerminal(persisted, id);
             this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
-                id, title: info.title, cwd: info.cwd,
+                id, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 // Live binding first (authoritative while it exists), persisted
                 // metadata as the fallback once the mirror has been torn down.
                 mirrorSessionId: this.mirrorResolver?.(id) ?? mirror?.sessionId,
@@ -1670,6 +1681,8 @@ export class WebTerminalManager {
                 id,
                 title: info.title,
                 cwd: info.cwd,
+                tags: info.tags,
+                manual: info.manual,
                 mirrorSessionId: mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
                 reason: 'daemon-gap',
@@ -1680,6 +1693,8 @@ export class WebTerminalManager {
                 id,
                 title: info.title,
                 cwd: info.cwd,
+                tags: info.tags,
+                manual: info.manual,
                 seenAt: info.seenAt,
                 claudeSessionId: mirror?.claudeSessionId,
             });
@@ -1754,6 +1769,46 @@ export class WebTerminalManager {
      * exactly like a terminal whose pty was reaped.
      */
     private restoreOneTerminal(plan: AutoRestorePlan): boolean {
+        return this.createDetachedTerminal(plan);
+    }
+
+    /**
+     * B-265: `restore-terminal` — bring ONE closed terminal back with its
+     * original id / cwd / title (+ manual flag) / tags and, when the record
+     * knows a claude conversation whose JSONL is still on disk, `claude
+     * --resume` injected. Idempotent: an id whose tmux session already exists
+     * is a success. The closed record is left to `pruneClosedAgainstLive` (the
+     * next tick sees the id live again); the tombstone is deliberately kept —
+     * a live tmux session attaches regardless, and dropping it would re-open
+     * the stale-client resurrection hole B-149 closed.
+     */
+    restoreClosedTerminal(terminalId: unknown): { type: 'success'; terminalId: string } | { type: 'error'; reason: 'invalid-id' | 'no-record' | 'missing-cwd' | 'create-failed' | 'no-tmux' } {
+        if (typeof terminalId !== 'string' || !TERMINAL_ID_RE.test(terminalId)) return { type: 'error', reason: 'invalid-id' };
+        if (!isTmuxAvailable()) return { type: 'error', reason: 'no-tmux' };
+        const record = this.closedTerminals.find((r) => r.id === terminalId);
+        if (!record) return { type: 'error', reason: 'no-record' };
+        const env = ptyEnv();
+        const alive = spawnSync('tmux', tmuxArgs(['has-session', '-t', `=vh-${terminalId}:`]),
+            { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env }).status === 0;
+        const plan = planTerminalRestore(record, {
+            tmuxAlive: alive,
+            cwdExists: (cwd) => {
+                try { return existsSync(cwd) && statSync(cwd).isDirectory(); } catch { return false; }
+            },
+            conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+        });
+        if (plan.kind === 'already-live') return { type: 'success', terminalId };
+        if (plan.kind === 'error') return { type: 'error', reason: plan.reason };
+        if (!this.createDetachedTerminal(plan)) return { type: 'error', reason: 'create-failed' };
+        logger.info(`[WEB TERMINAL] restored closed terminal ${terminalId} in ${plan.cwd}${plan.command ? ' (conversation resumed)' : ''}`);
+        this.kickListRefresh();
+        return { type: 'success', terminalId };
+    }
+
+    /** Shared cold-create for auto-restore (B-150) and restore-terminal
+     *  (B-265): same create-only env as the interactive path, title/tags
+     *  written back, optional startup command injected. */
+    private createDetachedTerminal(plan: { terminalId: string; cwd: string; title?: string; manual?: boolean; tags?: string[]; command?: string }): boolean {
         const env = ptyEnv();
         const name = `vh-${plan.terminalId}`;
         // Idempotence guard #2 (after the live-set filter): if it exists, leave
@@ -1780,23 +1835,35 @@ export class WebTerminalManager {
             return false;
         }
         if (plan.title) {
-            // No `@vh_title_manual`: let the normal auto-follow take over as soon
-            // as the resumed claude sets its own pane title.
             spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_title', plan.title]),
                 { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+            // A user-renamed title stays pinned; otherwise no manual flag, so
+            // the normal auto-follow takes over as soon as claude sets its
+            // own pane title.
+            if (plan.manual) {
+                spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_title_manual', '1']),
+                    { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+            }
         }
-        for (const argv of startupInjectionArgs(name, plan.command)) {
-            spawnSync('tmux', tmuxArgs(argv), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+        const tags = plan.tags !== undefined ? validateTerminalTags(plan.tags) : undefined;
+        if (tags && tags.length > 0) {
+            spawnSync('tmux', tmuxArgs(['set-option', '-t', `=${name}:`, '@vh_tags', JSON.stringify(tags)]),
+                { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
         }
-        logger.info(`[WEB TERMINAL] auto-restored ${plan.terminalId} in ${plan.cwd}`);
+        if (plan.command) {
+            for (const argv of startupInjectionArgs(name, plan.command)) {
+                spawnSync('tmux', tmuxArgs(argv), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env });
+            }
+        }
+        logger.info(`[WEB TERMINAL] cold-created ${plan.terminalId} in ${plan.cwd}`);
         return true;
     }
 
     /** Mirror the in-memory cache to disk, but only when something a restart
      *  would care about changed (see liveSnapshotChanged). */
-    private persistLiveSnapshot(live: ReadonlyMap<string, { title?: string; cwd?: string }>, now: number): void {
+    private persistLiveSnapshot(live: ReadonlyMap<string, SeenTerminalInfo>, now: number): void {
         const candidate = new Map<string, LiveTerminalInfo>();
-        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, seenAt: now });
+        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, seenAt: now });
         if (!liveSnapshotChanged(this.lastPersistedSnapshot, candidate)) return;
         this.lastPersistedSnapshot = candidate;
         saveLiveSnapshot(candidate);
@@ -2583,7 +2650,7 @@ export class WebTerminalManager {
             // torn down by the callback a few lines below).
             const mirror = pickMirrorForTerminal(readPersistedSessions(), terminalId);
             this.recordClosed({
-                id: terminalId, title: info.title, cwd: info.cwd,
+                id: terminalId, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 mirrorSessionId: this.mirrorResolver?.(terminalId) ?? mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
                 reason: 'closed',
@@ -2670,6 +2737,7 @@ export class WebTerminalManager {
                     // simply omit it and web clients fall back to createdAt.
                     activityAt: s.activity,
                     agentState: this.probeAgentState(s.name, s.paneCurrentCommand),
+                    manual: s.manual,
                 });
             }
             return out;

@@ -4,6 +4,7 @@ import {
   buildClosedTerminalRows,
   isClaudeSessionId,
   resumeStartupCommand,
+  terminalRestoreSupported,
 } from './closedTerminals';
 
 describe('closedTerminalsOf', () => {
@@ -166,5 +167,33 @@ describe('resume ids (B-149)', () => {
       ['gap', UUID, true],
       ['plain', undefined, false],
     ]);
+  });
+});
+
+describe('B-265 restore in place', () => {
+  it('parses tags/manual tolerantly and never fabricates them', () => {
+    const out = closedTerminalsOf({ closedTerminals: [
+      { id: 'a', closedAt: 1, tags: ['x', 2, ''], manual: true },
+      { id: 'b', closedAt: 2, tags: 'nope', manual: 'yes' },
+    ] });
+    expect(out[0]).toMatchObject({ id: 'a', tags: ['x'], manual: true });
+    expect('tags' in out[1]).toBe(false);
+    expect('manual' in out[1]).toBe(false);
+  });
+  it('trusts the terminalRestore flag only when stamped by the current daemon run', () => {
+    expect(terminalRestoreSupported({ startedAt: 100, terminalRestore: { rpcAvailable: true, detectedAt: 100 } })).toBe(true);
+    expect(terminalRestoreSupported({ startedAt: 200, terminalRestore: { rpcAvailable: true, detectedAt: 100 } })).toBe(false); // downgraded daemon spread it forward
+    expect(terminalRestoreSupported({ startedAt: 100, terminalRestore: { rpcAvailable: false, detectedAt: 100 } })).toBe(false);
+    expect(terminalRestoreSupported({ startedAt: 100 })).toBe(false);
+    expect(terminalRestoreSupported(undefined)).toBe(false);
+  });
+  it('rows carry tags and the per-machine restore capability', () => {
+    const rows = buildClosedTerminalRows([
+      { id: 'm1', name: 'M1', online: true, daemonState: { startedAt: 1, terminalRestore: { rpcAvailable: true, detectedAt: 1 }, closedTerminals: [{ id: 'a', closedAt: 5, cwd: '/w', tags: ['t'], manual: true }] } },
+      { id: 'm2', name: 'M2', online: true, daemonState: { startedAt: 1, closedTerminals: [{ id: 'b', closedAt: 4, cwd: '/w' }] } },
+    ], new Set());
+    expect(rows[0]).toMatchObject({ terminalId: 'a', tags: ['t'], manual: true, restoreSupported: true });
+    expect(rows[1]).toMatchObject({ terminalId: 'b', restoreSupported: false });
+    expect(rows[1].tags).toBeUndefined();
   });
 });

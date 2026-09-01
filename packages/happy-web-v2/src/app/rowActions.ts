@@ -16,12 +16,17 @@ import { t } from '@/i18n/useTranslation';
 import { Modal } from '@/modal';
 import { getCurrentAuth } from '@/auth/AuthContext';
 import { notifyWebhook } from '@/sync/apiWebhook';
-import { sessionUpdateTitleTags, sessionArchive, sessionMarkCompleted, machineKillTerminal } from '@/sync/ops';
+import { sessionUpdateTitleTags, sessionArchive, sessionMarkCompleted, machineKillTerminal, machineRestoreTerminal } from '@/sync/ops';
+import type { NavigateFunction } from 'react-router-dom';
+import { createTerminalAt } from './newTerminal';
+import type { ClosedTerminalRow } from '@/sync/closedTerminals';
+import { machineLabel } from '@/utils/machineUtils';
 import { storage } from '@/sync/storage';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
 import { pickNextSessionId } from './nextSession';
 import { commitSessionArchive } from './sessionArchiveFlow';
+import { restoreSession, useSessionRestore } from './sessionRestore';
 
 /** B-111: route to land on after closing `closedId` — the most recently
  *  active other visible session, or '/' when none is left. Read the store at
@@ -37,13 +42,57 @@ export function nextSessionPathAfterClose(closedId: string): string {
  *  durable state first and then tells the daemon/session process to stop. */
 export async function archiveSessionNow(session: Session): Promise<void> {
   const wasActive = session.active;
+  const previousArchivedAt = session.archivedAt;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
+  // B-265: stamp the archive intent locally so the row reads "archived" (not
+  // "offline") before the server's update-session round-trips.
+  storage.getState().setSessionArchivedAtLocal(session.id, Date.now());
   try {
     await commitSessionArchive(() => sessionArchive(session.id));
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
+    storage.getState().setSessionArchivedAtLocal(session.id, previousArchivedAt ?? null);
     throw error;
   }
+}
+
+/** B-265: restore an archived session in place (row button / menu / palette).
+ *  The banner narrates progress on the detail screen; surfaces without one
+ *  get the failure reason as an alert. Returns whether the daemon accepted. */
+export async function restoreSessionOrAlert(sessionId: string): Promise<boolean> {
+  const ok = await restoreSession(sessionId);
+  if (ok) return true;
+  const state = useSessionRestore.getState().states[sessionId];
+  if (state?.phase === 'failed') {
+    const detail = state.reason === 'unknown' && state.message ? ` (${state.message})` : '';
+    Modal.alert(t('restore.failed'), `${t(`restore.reason.${state.reason ?? 'unknown'}`)}${detail}`);
+  }
+  return false;
+}
+
+/** B-265: restore a closed terminal in place through the daemon, then open
+ *  it (attach path — the tmux session exists again). Unsupported daemon →
+ *  the B-149 "new terminal in this cwd (+ claude --resume)" fallback; other
+ *  failures are surfaced. Returns whether a terminal was opened. */
+export async function restoreClosedTerminal(navigate: NavigateFunction, row: ClosedTerminalRow): Promise<boolean> {
+  const result = await machineRestoreTerminal(row.machineId, row.terminalId);
+  if (result.ok) {
+    const machine = storage.getState().machines[row.machineId];
+    useTerminalSessions.getState().adopt(row.terminalId, row.machineId, machine ? machineLabel(machine) : row.machineName, {
+      title: row.title,
+      tags: row.tags,
+    });
+    navigate(`/terminal/${encodeURIComponent(row.machineId)}?tid=${encodeURIComponent(row.terminalId)}`);
+    return true;
+  }
+  if (result.reason === 'unsupported') {
+    return createTerminalAt(navigate, row.machineId, row.cwd, row.claudeSessionId);
+  }
+  const key = result.reason === 'no-record' ? 'restore.terminalNoRecord'
+    : result.reason === 'missing-cwd' ? 'restore.reason.missing-cwd'
+    : 'restore.terminalFailed';
+  Modal.alert(t('restore.failed'), `${t(key as Parameters<typeof t>[0])}${result.message ? ` (${result.message})` : ''}`);
+  return false;
 }
 
 /** Archive a chat session, confirm first (sidebar/menu/⌘W entry point).

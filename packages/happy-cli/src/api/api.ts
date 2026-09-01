@@ -11,6 +11,7 @@ import { Credentials } from '@/persistence';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 import { NotificationProducer } from '@/claude/notificationProducer';
 import { redactLogValue } from '@/utils/logRedaction';
+import type { ServerSessionSnapshot } from '@/utils/reconnectSession';
 
 export class ApiClient {
 
@@ -293,8 +294,8 @@ export class ApiClient {
     }
   }
 
-  sessionSyncClient(session: Session): ApiSessionClient {
-    return new ApiSessionClient(this.credential.token, session);
+  sessionSyncClient(session: Session, opts?: { initialSeq?: number }): ApiSessionClient {
+    return new ApiSessionClient(this.credential.token, session, opts);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {
@@ -491,6 +492,64 @@ export class ApiClient {
       logger.debug('[API] deactivateSession failed:', error);
       return false;
     }
+  }
+
+  /**
+   * B-265: one session by id — the message cursor (`seq`), metadata and
+   * agent state with their versions, decrypted with the session key the
+   * reconnecting process already holds. `unsupported` = the server has no
+   * such route (or the row is gone): callers fall back to the legacy
+   * skip-all-history reconnect. Transient failures are retried a few times
+   * first, because falling back silently discards the very message a restore
+   * is meant to deliver.
+   */
+  async getSession(
+    sessionId: string,
+    encryptionKey: Uint8Array,
+    encryptionVariant: 'legacy' | 'dataKey',
+    opts?: { attempts?: number; delaysMs?: number[]; timeoutMs?: number },
+  ): Promise<{ ok: true; session: ServerSessionSnapshot } | { ok: false; reason: 'unsupported' | 'unavailable' }> {
+    const attempts = opts?.attempts ?? 3;
+    const delays = opts?.delaysMs ?? [500, 1500];
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await axios.get(
+          `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.credential.token}`,
+              'X-Happy-Client': `cli-coding-session/${configuration.currentCliVersion}`,
+            },
+            timeout: opts?.timeoutMs ?? 4000,
+            validateStatus: () => true,
+          },
+        );
+        if (response.status === 404 || response.status === 401 || response.status === 403) {
+          return { ok: false, reason: 'unsupported' };
+        }
+        if (response.status >= 200 && response.status < 300) {
+          const row = (response.data as { session?: { seq: number; metadata: string; metadataVersion: number; agentState: string | null; agentStateVersion: number } }).session;
+          if (!row || typeof row.seq !== 'number' || typeof row.metadata !== 'string') {
+            return { ok: false, reason: 'unsupported' };
+          }
+          const metadata = decrypt(encryptionKey, encryptionVariant, decodeBase64(row.metadata)) as Metadata | null;
+          if (!metadata) return { ok: false, reason: 'unavailable' };
+          const agentState = row.agentState
+            ? (decrypt(encryptionKey, encryptionVariant, decodeBase64(row.agentState)) as AgentState | null)
+            : null;
+          return {
+            ok: true,
+            session: { seq: row.seq, metadata, metadataVersion: row.metadataVersion, agentState, agentStateVersion: row.agentStateVersion },
+          };
+        }
+        logger.debug(`[API] getSession ${sessionId}: status ${response.status} (attempt ${attempt + 1}/${attempts})`);
+      } catch (error) {
+        logger.debug(`[API] getSession ${sessionId} failed (attempt ${attempt + 1}/${attempts}):`, error);
+      }
+      const delayMs = delays[Math.min(attempt, delays.length - 1)];
+      if (attempt < attempts - 1 && delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return { ok: false, reason: 'unavailable' };
   }
 
   /** Clear the server-owned archive tombstone before an intentional resume.

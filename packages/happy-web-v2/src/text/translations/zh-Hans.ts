@@ -677,6 +677,7 @@ export const zhHans: TranslationStructure = {
         actionNewTerminalAt: '在指定目录新建终端…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
+        actionRestoreSession: '恢复当前对话',
         actionOpenSettings: '打开设置',
         actionClipboardHistory: '剪贴板历史',
         actionAssistant: '语音助手',
@@ -1199,12 +1200,39 @@ export const zhHans: TranslationStructure = {
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
+        closedTerminalRestore: '恢复这个终端（同 id、标题、标签）',
         terminalRestored: '已恢复',
         terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
         closedTerminalGap: '重启时结束',
         closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
         rowUnread: '有未读',
+    },
+
+    restore: {
+        restore: '恢复',
+        retry: '重试',
+        restoreAndSend: '恢复并发送',
+        archivedNotice: '此会话已归档。恢复后可以在这里继续对话。',
+        restoring: '正在机器上恢复…',
+        restoringSlow: '机器尚未响应…',
+        awaitingOnline: '已启动，等待会话上线…',
+        failed: '恢复失败',
+        terminalNoRecord: '机器上已没有这个终端的记录。',
+        terminalFailed: '机器无法重建这个终端。',
+        reason: {
+            'not-archived': '此会话未归档。',
+            'no-machine': '不知道这个会话在哪台机器上运行。',
+            'machine-offline': '机器离线，恢复需要机器在线。',
+            'unsupported-flavor': '该 agent 不支持恢复。',
+            'no-backend-id': '没有可以续接的 agent 对话。',
+            'not-tracked': '机器上已没有这个会话的恢复信息（保留 14 天），或它在别的机器上运行。',
+            'missing-cwd': '原工作目录已不存在。',
+            'conversation-missing': '对话文件已不在机器上。',
+            'machine-unreachable': '机器没有响应，请稍后再试。',
+            'timeout': '恢复未得到确认。如果会话已显示在线可直接使用，否则请重试。',
+            'unknown': '未知错误。',
+        },
     },
 
     zen: {
@@ -1503,6 +1531,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02: {
+                title: '归档会话可以恢复了',
+                summary: '归档不再是单行道：对话和终端都能原地恢复。',
+                restore: '归档对话新增「恢复」（侧栏行 / 详情页横幅 / ⌘K）：同一会话、同一链接、历史不丢。',
+                compose: '在归档对话里发送会先恢复再排队发出，消息不再发进黑洞。',
+                terminal: '关闭终端即进入归档；「恢复」用同一 id、标题、标签把它带回来，并接回记录的 claude 对话。',
+                cli: 'CLI 0.2.92：resume 幂等、失败原因明确；重连从服务器当前进度接续（不再重放或跳过历史）；daemon 支持 restore-terminal。',
+            },
             sep01b: {
                 title: '子代理，终于看得见',
                 summary: 'Agent 卡片现在显示每个子代理的真实状态——运行中、已完成、失败——以及工具数、最近动作、耗时和最终报告；yolo 也改由 CLI 自己落实。',
@@ -1616,7 +1652,7 @@ export const zhHans: TranslationStructure = {
     terminal: {
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
-        closeMessage: '这会结束机器上的终端进程。未保存的终端工作会丢失；agent 对话能否恢复取决于对应 agent。',
+        closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',

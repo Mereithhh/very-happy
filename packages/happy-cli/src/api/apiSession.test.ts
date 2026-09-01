@@ -854,6 +854,48 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
     });
 
+    it('B-265 reconnect: a server-seeded cursor fetches only what came after it and never routes a message twice', async () => {
+        const client = new ApiSessionClient('fake-token', session, { initialSeq: 40 });
+        const onUserMessage = vi.fn();
+        client.onUserMessage(onUserMessage);
+        const msg = { role: 'user', content: { type: 'text', text: 'after-restore' } };
+        const newMessage = (seq: number, localId: string) => {
+            const update = createNewMessageUpdate(seq, encryptContent(session, msg));
+            const body = update.body as Extract<Update['body'], { t: 'new-message' }>;
+            body.message.localId = localId;
+            return { update, message: body.message };
+        };
+
+        // First fetch is in flight (armed by socket connect) …
+        let resolveFetch!: (value: unknown) => void;
+        mockAxiosGet.mockImplementationOnce(() => new Promise((resolve) => { resolveFetch = resolve; }));
+        emitSocketEvent('connect');
+        await waitForCheck(() => expect(mockAxiosGet).toHaveBeenCalledTimes(1));
+        expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(40);
+
+        // … when seq 41 arrives on the socket: NOT routed directly (the fetch
+        // will return it) — only a re-fetch is requested.
+        const m41 = newMessage(41, 'local-41');
+        emitSocketEvent('update', m41.update);
+        expect(onUserMessage).not.toHaveBeenCalled();
+
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [], hasMore: false } });
+        resolveFetch({ data: { messages: [m41.message], hasMore: false } });
+        await waitForCheck(() => expect(onUserMessage).toHaveBeenCalledTimes(1));
+        expect(onUserMessage).toHaveBeenCalledWith({ ...msg, localKey: 'local-41' });
+        expect((client as any).lastSeq).toBe(41);
+
+        // Fast path is live once the initial fetch completed.
+        await waitForCheck(() => expect((client as any).awaitingInitialFetch).toBe(false));
+        const m42 = newMessage(42, 'local-42');
+        emitSocketEvent('update', m42.update);
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+        // and a later fetch that echoes seq 42 does not route it again
+        mockAxiosGet.mockResolvedValueOnce({ data: { messages: [m42.message], hasMore: false } });
+        await (client as any).fetchMessages();
+        expect(onUserMessage).toHaveBeenCalledTimes(2);
+    });
+
     it('invalidates receive sync for duplicate and stale seq values', async () => {
         const client = new ApiSessionClient('fake-token', session);
         (client as any).lastSeq = 5;

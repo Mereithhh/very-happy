@@ -120,3 +120,14 @@ describe("pickMirrorForTerminal", () => {
         expect(res).toEqual({ sessionId: "s", claudeSessionId: undefined });
     });
 });
+
+describe("B-265 tags + manual in the live snapshot", () => {
+    it("survive sanitize and count as a change", () => {
+        const snap = sanitizeLiveSnapshot({ a: { title: "t", cwd: "/c", tags: ["k", 1], manual: true, seenAt: NOW } }, NOW);
+        expect(snap.get("a")).toEqual({ title: "t", cwd: "/c", tags: ["k"], manual: true, seenAt: NOW });
+        const before = map([["a", { title: "t", cwd: "/c", tags: ["k"], seenAt: NOW }]]);
+        expect(liveSnapshotChanged(before, map([["a", { title: "t", cwd: "/c", tags: ["k"], seenAt: NOW + 5 }]]))).toBe(false);
+        expect(liveSnapshotChanged(before, map([["a", { title: "t", cwd: "/c", tags: ["k", "z"], seenAt: NOW }]]))).toBe(true);
+        expect(liveSnapshotChanged(before, map([["a", { title: "t", cwd: "/c", tags: ["k"], manual: true, seenAt: NOW }]]))).toBe(true);
+    });
+});

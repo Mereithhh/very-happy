@@ -21,8 +21,16 @@ export function advanceQueueDeliveryPhase(
     return phase;
 }
 
-export function canReleaseQueuedMessage(phase: QueueDeliveryPhase, isWorking: boolean): boolean {
-    return phase === 'idle' && !isWorking;
+/** B-265: an archived session's queue must not release into the void — the
+ *  message would sit on the server and be skipped by the resumed process.
+ *  `gate` comes from sessionRestore.composerGate; 'restore-first' holds the
+ *  queue until the session is back (archivedAt cleared + online). */
+export function canReleaseQueuedMessage(
+    phase: QueueDeliveryPhase,
+    isWorking: boolean,
+    gate: 'send' | 'restore-first' = 'send',
+): boolean {
+    return gate === 'send' && phase === 'idle' && !isWorking;
 }
 
 export function updateQueuedMessage(
