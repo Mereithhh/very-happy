@@ -20,6 +20,15 @@ export interface SubagentSummary {
     childTools: ToolCallMessage[];
     /** 最近 N 条 `[Tool] detail` 一行式摘要，最新在最后。 */
     recent: string[];
+    /** B-260-P2：只有 CLI 发了 task_* 生命周期时才有；否则 null（第一批的诚实指针行）。 */
+    lifecycle: {
+        status: 'running' | 'completed' | 'failed' | 'stopped';
+        /** progress.lastTool 优先，其次子工具日志最后一条。 */
+        latest: string | null;
+        durationMs: number | null;
+        totalTokens: number | null;
+        result: { text: string; truncated?: boolean } | null;
+    } | null;
 }
 
 function asTrimmedString(value: unknown): string | null {
@@ -49,5 +58,25 @@ export function buildSubagentSummary(message: ToolCallMessage, recentLimit = 3):
         const detail = toolDetail(child.tool);
         return detail && detail !== label ? `[${label}] ${detail}` : `[${label}]`;
     });
-    return { title, subtype, toolCount: childTools.length, childTools, recent };
+    const lc = message.subagent;
+    const lifecycle = lc
+        ? {
+            status: lc.status,
+            latest: lc.progress?.lastTool ? `[${lc.progress.lastTool}]` : (recent[recent.length - 1] ?? null),
+            durationMs: lc.usage?.durationMs ?? lc.progress?.durationMs ?? null,
+            totalTokens: lc.usage?.totalTokens ?? lc.progress?.totalTokens ?? null,
+            result: lc.result ?? null,
+        }
+        : null;
+    // The CLI's tool count (progress/usage) is authoritative when the web has
+    // fewer children (forwardSubagentText off, or children not yet loaded).
+    const toolCount = Math.max(childTools.length, lc?.usage?.toolUses ?? 0, lc?.progress?.toolUses ?? 0);
+    return {
+        title: title ?? lc?.description ?? lc?.subagentType ?? null,
+        subtype: subtype ?? lc?.subagentType ?? null,
+        toolCount,
+        childTools,
+        recent,
+        lifecycle,
+    };
 }

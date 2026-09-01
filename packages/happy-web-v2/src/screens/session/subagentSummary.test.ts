@@ -65,3 +65,18 @@ describe('buildSubagentSummary (B-260)', () => {
         expect(isSubagentToolName('Bash')).toBe(false);
     });
 });
+
+describe('buildSubagentSummary with CLI lifecycle (B-260-P2)', () => {
+    it('surfaces status, latest tool, duration, result and the CLI tool count', () => {
+        const c = card({ description: 'Review' }, [childTool('c1', 1, 'Read', { file_path: '/a/one.ts' })]);
+        (c as any).subagent = { status: 'running', progress: { toolUses: 6, lastTool: 'Grep', durationMs: 12_000, totalTokens: 500 }, updatedAt: 1 };
+        const s = buildSubagentSummary(c);
+        expect(s.lifecycle).toEqual({ status: 'running', latest: '[Grep]', durationMs: 12_000, totalTokens: 500, result: null });
+        expect(s.toolCount).toBe(6);
+        (c as any).subagent = { status: 'completed', result: { text: 'All good' }, usage: { toolUses: 9, durationMs: 30_000 }, updatedAt: 2 };
+        expect(buildSubagentSummary(c).lifecycle).toMatchObject({ status: 'completed', result: { text: 'All good' }, durationMs: 30_000 });
+    });
+    it('no lifecycle → null (first-batch honest row)', () => {
+        expect(buildSubagentSummary(card({}, [])).lifecycle).toBeNull();
+    });
+});

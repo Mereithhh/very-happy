@@ -40,3 +40,12 @@ export function countSubagentCards(messages: Message[]): number {
     }
     return count;
 }
+
+/** B-260-P2: sub-agent cards whose CLI-published lifecycle is still running. */
+export function countRunningSubagentCards(messages: Message[]): number {
+    let count = 0;
+    for (const message of messages) {
+        if (message.kind === 'tool-call' && message.subagent?.status === 'running') count++;
+    }
+    return count;
+}

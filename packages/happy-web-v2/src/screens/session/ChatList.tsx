@@ -27,7 +27,7 @@ import {
     shouldSmoothJumpToLatest,
 } from './chatFollow';
 import { isHiddenToolName } from './toolVisibility';
-import { suppressSubagentPills } from './subagentPills';
+import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
 import './chatlist.css';
 
 export function ChatList({
@@ -69,7 +69,10 @@ export function ChatList({
             (message.kind !== 'tool-call' || !isHiddenToolName(message.tool.name)))),
         [messages],
     );
-    const sessionLive = session?.thinking === true || !!runningTool;
+    // B-260-P2: a background sub-agent keeps the turn live after the main
+    // agent's stub tool_result — the CLI publishes its lifecycle.
+    const runningSubagents = useMemo(() => countRunningSubagentCards(chronological), [chronological]);
+    const sessionLive = session?.thinking === true || !!runningTool || runningSubagents > 0;
     const rows = useMemo(
         () => buildChatRows(chronological, sessionLive),
         [chronological, sessionLive],

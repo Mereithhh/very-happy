@@ -5,6 +5,15 @@ import {
     type SessionEnvelope,
     type SessionTurnEndStatus,
 } from '@slopus/happy-wire';
+import {
+    capSubagentText,
+    parseTaskNotificationText,
+    shouldEmitProgress,
+    toolUseResultStats,
+    toolUseResultStatus,
+    toolUseResultToText,
+    type ProgressThrottleState,
+} from './subagentLifecycle';
 
 export type ClaudeSessionProtocolState = {
     currentTurnId: string | null;
@@ -17,7 +26,20 @@ export type ClaudeSessionProtocolState = {
     hiddenParentToolCalls?: Set<string>;
     startedSubagents?: Set<string>;
     activeSubagents?: Set<string>;
+    // B-260-P2 lifecycle state (survives closeTurn — background sub-agents
+    // outlive the turn that launched them).
+    /** tool_use ids of Agent/Task calls seen in this process. */
+    agentToolCalls?: Set<string>;
+    /** Identity captured from the Agent input / task_started. */
+    subagentMeta?: Map<string, { description?: string; subagentType?: string }>;
+    /** Sub-agents whose tool_result was the async stub — their stop comes from task_notification. */
+    stubSubagents?: Set<string>;
+    progressThrottle?: Map<string, ProgressThrottleState>;
+    /** Injectable clock for tests. */
+    now?: () => number;
 };
+
+const SUBAGENT_BUFFER_MAX_MESSAGES = 100;
 
 type ClaudeMapperResult = {
     currentTurnId: string | null;
@@ -110,6 +132,8 @@ function bufferSubagentMessage(state: ClaudeSessionProtocolState, subagent: stri
     const buffer = getBufferedSubagentMessages(state);
     const queue = buffer.get(subagent) ?? [];
     queue.push(message);
+    // B-260-P2: bounded — a parent that never shows up must not grow memory forever.
+    while (queue.length > SUBAGENT_BUFFER_MAX_MESSAGES) queue.shift();
     buffer.set(subagent, queue);
 }
 
@@ -132,6 +156,37 @@ function getActiveSubagents(state: ClaudeSessionProtocolState): Set<string> {
         state.activeSubagents = new Set<string>();
     }
     return state.activeSubagents;
+}
+
+function getAgentToolCalls(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.agentToolCalls) state.agentToolCalls = new Set<string>();
+    return state.agentToolCalls;
+}
+
+function getSubagentMeta(state: ClaudeSessionProtocolState): Map<string, { description?: string; subagentType?: string }> {
+    if (!state.subagentMeta) state.subagentMeta = new Map();
+    return state.subagentMeta;
+}
+
+function getStubSubagents(state: ClaudeSessionProtocolState): Set<string> {
+    if (!state.stubSubagents) state.stubSubagents = new Set<string>();
+    return state.stubSubagents;
+}
+
+function getProgressThrottle(state: ClaudeSessionProtocolState): Map<string, ProgressThrottleState> {
+    if (!state.progressThrottle) state.progressThrottle = new Map();
+    return state.progressThrottle;
+}
+
+function nowOf(state: ClaudeSessionProtocolState): number {
+    return state.now ? state.now() : Date.now();
+}
+
+function rememberSubagentMeta(state: ClaudeSessionProtocolState, subagent: string, meta: { description?: unknown; subagentType?: unknown }): void {
+    const existing = getSubagentMeta(state).get(subagent) ?? {};
+    const description = typeof meta.description === 'string' && meta.description.trim() ? meta.description.trim() : existing.description;
+    const subagentType = typeof meta.subagentType === 'string' && meta.subagentType.trim() ? meta.subagentType.trim() : existing.subagentType;
+    getSubagentMeta(state).set(subagent, { ...(description ? { description } : {}), ...(subagentType ? { subagentType } : {}) });
 }
 
 /** Per-API-call usage of an assistant transcript line, in the wire shape
@@ -359,12 +414,33 @@ function maybeEmitSubagentStart(
     }
 
     const title = getSubagentTitles(state).get(subagent);
+    const meta = getSubagentMeta(state).get(subagent);
     envelopes.push(createEnvelope('agent', {
         t: 'start',
         ...(title ? { title } : {}),
+        ...(meta?.description ? { description: meta.description } : {}),
+        ...(meta?.subagentType ? { subagentType: meta.subagentType } : {}),
     }, { turn, subagent }));
     started.add(subagent);
     getActiveSubagents(state).add(subagent);
+}
+
+/** B-260-P2: stop with lifecycle payload; may be emitted twice (status first, result later). */
+function emitSubagentStopWithStatus(
+    state: ClaudeSessionProtocolState,
+    turn: string | undefined,
+    subagent: string,
+    envelopes: SessionEnvelope[],
+    payload: { status?: 'completed' | 'failed' | 'stopped'; result?: { text: string; truncated?: boolean }; usage?: { toolUses?: number; totalTokens?: number; durationMs?: number } },
+): void {
+    envelopes.push(createEnvelope('agent', {
+        t: 'stop',
+        ...(payload.status ? { status: payload.status } : {}),
+        ...(payload.result ? { result: payload.result } : {}),
+        ...(payload.usage ? { usage: payload.usage } : {}),
+    }, { ...(turn ? { turn } : {}), subagent }));
+    getActiveSubagents(state).delete(subagent);
+    getStartedSubagents(state).delete(subagent);
 }
 
 function maybeEmitSubagentStop(
@@ -385,8 +461,10 @@ function maybeEmitSubagentStop(
 function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
     getUuidToProviderSubagent(state).clear();
     getTaskPromptToSubagents(state).clear();
-    getProviderSubagentToSessionSubagent(state).clear();
-    getSubagentTitles(state).clear();
+    // B-260-P2: the provider→session subagent mapping, titles and identity
+    // deliberately SURVIVE the turn: background sub-agents keep sending
+    // child messages and their task_notification after the launching turn
+    // ended; releasing the mapping here buffered those forever (data loss).
     getBufferedSubagentMessages(state).clear();
     getHiddenParentToolCalls(state).clear();
     getStartedSubagents(state).clear();
@@ -481,6 +559,85 @@ export function mapClaudeLogMessageToSessionEnvelopes(
     return mapClaudeLogMessageToSessionEnvelopesInternal(message, state);
 }
 
+/**
+ * B-260-P2: SDK system/task_* frames → sub-agent lifecycle envelopes. Only
+ * frames whose tool_use_id points at an Agent/Task call THIS process saw are
+ * mapped; Bash background tasks, Monitor events and skip_transcript tasks are
+ * ignored (they still reach the user as the notification machine line).
+ */
+function mapTaskLifecycleSystemMessage(
+    message: RawJSONLines,
+    state: ClaudeSessionProtocolState,
+    envelopes: SessionEnvelope[],
+): void {
+    const raw = message as RawJSONLines & {
+        subtype?: unknown;
+        tool_use_id?: unknown;
+        description?: unknown;
+        subagent_type?: unknown;
+        skip_transcript?: unknown;
+        status?: unknown;
+        usage?: { total_tokens?: unknown; tool_uses?: unknown; duration_ms?: unknown };
+        last_tool_name?: unknown;
+        summary?: unknown;
+        patch?: { is_backgrounded?: unknown };
+    };
+    const subtype = typeof raw.subtype === 'string' ? raw.subtype : '';
+    if (!subtype.startsWith('task_')) return;
+    if (raw.skip_transcript === true) return;
+    const toolUseId = typeof raw.tool_use_id === 'string' && raw.tool_use_id.length > 0 ? raw.tool_use_id : null;
+    if (!toolUseId || !getAgentToolCalls(state).has(toolUseId)) return;
+    const subagent = ensureSessionSubagentIdForProviderSubagent(state, toolUseId);
+    const usage = raw.usage && typeof raw.usage === 'object'
+        ? {
+            ...(typeof raw.usage.tool_uses === 'number' ? { toolUses: raw.usage.tool_uses } : {}),
+            ...(typeof raw.usage.total_tokens === 'number' ? { totalTokens: raw.usage.total_tokens } : {}),
+            ...(typeof raw.usage.duration_ms === 'number' ? { durationMs: raw.usage.duration_ms } : {}),
+        }
+        : undefined;
+
+    if (subtype === 'task_started') {
+        rememberSubagentMeta(state, subagent, { description: raw.description, subagentType: raw.subagent_type });
+        const turn = ensureTurn(state, envelopes);
+        // A resumed sub-agent (same tool_use_id notifies again) comes back to
+        // running: drop it from the started set so start is re-emitted.
+        getStartedSubagents(state).delete(subagent);
+        maybeEmitSubagentStart(state, turn, subagent, envelopes);
+        return;
+    }
+    if (subtype === 'task_progress') {
+        const toolUses = typeof raw.usage?.tool_uses === 'number' ? raw.usage.tool_uses : 0;
+        const throttle = getProgressThrottle(state);
+        const now = nowOf(state);
+        if (!shouldEmitProgress(throttle.get(subagent), toolUses, now)) return;
+        throttle.set(subagent, { lastAt: now, lastToolUses: toolUses });
+        const turn = ensureTurn(state, envelopes);
+        maybeEmitSubagentStart(state, turn, subagent, envelopes);
+        envelopes.push(createEnvelope('agent', {
+            t: 'progress',
+            toolUses,
+            ...(typeof raw.last_tool_name === 'string' && raw.last_tool_name ? { lastTool: raw.last_tool_name } : {}),
+            ...(usage?.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
+            ...(usage?.durationMs !== undefined ? { durationMs: usage.durationMs } : {}),
+            ...(typeof raw.summary === 'string' && raw.summary.trim() ? { summary: raw.summary.trim() } : {}),
+        }, { turn, subagent }));
+        return;
+    }
+    if (subtype === 'task_notification') {
+        const status = raw.status === 'completed' || raw.status === 'failed' || raw.status === 'stopped' ? raw.status : 'completed';
+        emitSubagentStopWithStatus(state, state.currentTurnId ?? undefined, subagent, envelopes, {
+            status,
+            ...(usage ? { usage } : {}),
+        });
+        getStubSubagents(state).delete(subagent);
+        getProgressThrottle(state).delete(subagent);
+        return;
+    }
+    if (subtype === 'task_updated' && raw.patch?.is_backgrounded === true) {
+        getStubSubagents(state).add(subagent);
+    }
+}
+
 function mapClaudeLogMessageToSessionEnvelopesInternal(
     message: RawJSONLines,
     state: ClaudeSessionProtocolState,
@@ -509,6 +666,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'system') {
+        mapTaskLifecycleSystemMessage(message, state, envelopes);
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
@@ -555,6 +713,9 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         queueTaskPromptSubagent(state, prompt, call);
                     }
                     setSubagentTitle(state, sessionSubagentForCall, pickTaskTitle(block.input) ?? prompt);
+                    getAgentToolCalls(state).add(call);
+                    const input = (block.input ?? {}) as { description?: unknown; subagent_type?: unknown };
+                    rememberSubagentMeta(state, sessionSubagentForCall, { description: input.description, subagentType: input.subagent_type });
                 }
                 if (shouldHideParentToolCall(name)) {
                     getHiddenParentToolCalls(state).add(call);
@@ -611,6 +772,25 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 maybeEmitSubagentStart(state, turnId, subagent, envelopes);
                 envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent, claudeUuid }));
             } else {
+                // B-260-P2: the task-notification user message carries the
+                // sub-agent's final report (<result>). Emit the lifecycle stop
+                // (again, with result) BEFORE the turn boundary so it lands in
+                // the launching turn's card; the user text itself stays a turn
+                // boundary (the web renders it as a machine line).
+                const origin = (message as { origin?: { kind?: unknown } }).origin;
+                if (origin?.kind === 'task-notification' || /<task-notification>/i.test(message.message.content)) {
+                    const fields = parseTaskNotificationText(message.message.content);
+                    const providerId = fields?.toolUseId ?? null;
+                    const subagentForNotification = providerId && getAgentToolCalls(state).has(providerId)
+                        ? getSessionSubagentIdForProviderSubagent(state, providerId)
+                        : undefined;
+                    if (fields && subagentForNotification && (fields.result || fields.status)) {
+                        emitSubagentStopWithStatus(state, state.currentTurnId ?? undefined, subagentForNotification, envelopes, {
+                            ...(fields.status ? { status: fields.status } : {}),
+                            ...(fields.result ? { result: fields.result } : {}),
+                        });
+                    }
+                }
                 closeTurn(state, 'completed', envelopes);
                 envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { claudeUuid }));
             }
@@ -643,6 +823,34 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         }
                         getHiddenParentToolCalls(state).delete(block.tool_use_id);
                         continue;
+                    }
+                    if (sessionSubagentForToolResult && getAgentToolCalls(state).has(block.tool_use_id)) {
+                        // B-260-P2: an Agent tool_result is either the async stub
+                        // (sub-agent keeps running; its stop comes from
+                        // task_notification) or the foreground final report.
+                        const toolUseResult = (message as { tool_use_result?: unknown }).tool_use_result;
+                        const resultStatus = toolUseResultStatus(toolUseResult);
+                        if (resultStatus === 'async_launched') {
+                            getStubSubagents(state).add(sessionSubagentForToolResult);
+                            envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call: block.tool_use_id }, { turn: turnId, subagent }));
+                            continue;
+                        }
+                        if (resultStatus === 'completed') {
+                            const text = toolUseResultToText(toolUseResult);
+                            const stats = toolUseResultStats(toolUseResult);
+                            const result = text ? capSubagentText(text) : undefined;
+                            emitSubagentStopWithStatus(state, turnId, sessionSubagentForToolResult, envelopes, {
+                                status: 'completed',
+                                ...(result ? { result } : {}),
+                                ...(stats ? { usage: { toolUses: stats.toolUses, totalTokens: stats.totalTokens, durationMs: stats.durationMs } } : {}),
+                            });
+                            envelopes.push(createEnvelope('agent', {
+                                t: 'tool-call-end',
+                                call: block.tool_use_id,
+                                ...(result ? { result: { ...result, ...(stats ? { stats } : {}) } } : {}),
+                            }, { turn: turnId, subagent }));
+                            continue;
+                        }
                     }
                     if (sessionSubagentForToolResult) {
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);

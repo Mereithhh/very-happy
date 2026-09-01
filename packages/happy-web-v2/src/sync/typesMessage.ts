@@ -102,6 +102,19 @@ export type AgentTextMessage = MessageOrdering & {
     numTurns?: number;
 }
 
+/** B-260-P2: lifecycle of the sub-agent an Agent/Task call launched (from CLI task_* events). */
+export type SubagentLifecycle = {
+    status: 'running' | 'completed' | 'failed' | 'stopped';
+    title?: string;
+    description?: string;
+    subagentType?: string;
+    progress?: { toolUses: number; lastTool?: string; totalTokens?: number; durationMs?: number; summary?: string };
+    result?: { text: string; truncated?: boolean };
+    usage?: { toolUses?: number; totalTokens?: number; durationMs?: number };
+    /** createdAt of the latest lifecycle event folded in. */
+    updatedAt: number;
+};
+
 export type ToolCallMessage = MessageOrdering & {
     kind: 'tool-call';
     id: string;
@@ -110,6 +123,8 @@ export type ToolCallMessage = MessageOrdering & {
     tool: ToolCall;
     children: Message[];
     meta?: MessageMeta;
+    /** Present only when the CLI published lifecycle events for this call's sub-agent. */
+    subagent?: SubagentLifecycle;
 }
 
 export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;

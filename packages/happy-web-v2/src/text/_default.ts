@@ -540,6 +540,10 @@ export const en = {
             usedTools: ({ count }: { count: number }) => count === 1 ? '1 tool call' : `${count} tool calls`,
             subagentCount: ({ count }: { count: number }) => count === 1 ? '1 sub-agent' : `${count} sub-agents`,
             subagentLatest: ({ line }: { line: string }) => `latest: ${line}`,
+            subagentRunningCount: ({ running, count }: { running: number; count: number }) => `${running}/${count} sub-agents running`,
+            subagentStatus: { running: 'running', completed: 'done', failed: 'failed', stopped: 'stopped' },
+            subagentResult: 'sub-agent report',
+            subagentResultTruncated: 'truncated at 16KB',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `Elapsed ${seconds}s`;
                 const minutes = Math.floor(seconds / 60);

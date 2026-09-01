@@ -144,6 +144,12 @@ export class SDKToLogConverter {
                     message: userMsg.message as any,
                     ...(userMsg.parent_tool_use_id ? { parent_tool_use_id: userMsg.parent_tool_use_id } : {}),
                     ...(meta ? { isMeta: true } : {}),
+                    // B-260-P2: structured tool output (Agent/Task final report +
+                    // run totals, or the `async_launched` stub marker) and the
+                    // message origin (task-notification). Both are consumed by
+                    // sessionProtocolMapper; the raw-line schema is passthrough.
+                    ...((userMsg as any).tool_use_result !== undefined ? { tool_use_result: (userMsg as any).tool_use_result } : {}),
+                    ...((userMsg as any).origin ? { origin: (userMsg as any).origin } : {}),
                 }
 
                 // Check if this is a tool result and add mode if available
