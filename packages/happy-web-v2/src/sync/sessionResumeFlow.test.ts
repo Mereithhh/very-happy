@@ -44,4 +44,16 @@ describe('commitSessionResume', () => {
     );
     expect(rearchive).not.toHaveBeenCalled();
   });
+
+  it('recoverability: skipArchiveDance shape (no-op unarchive, supported:false) never re-archives a non-archived session on resume failure, and passes the error through', async () => {
+    const rearchive = vi.fn(async () => ({ success: true }));
+    const unarchive = vi.fn(async () => ({ success: true, supported: false }));
+    const result = await commitSessionResume(
+      unarchive,
+      async () => ({ type: 'error', errorMessage: 'conversation-missing' }),
+      rearchive,
+    );
+    expect(result).toEqual({ type: 'error', errorMessage: 'conversation-missing' });
+    expect(rearchive).not.toHaveBeenCalled();
+  });
 });

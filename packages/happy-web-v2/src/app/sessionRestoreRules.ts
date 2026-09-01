@@ -63,7 +63,9 @@ export function restoreEligibility(
   session: EligibilitySession,
   machines: Record<string, EligibilityMachine>,
 ): { ok: true; machineId: string } | { ok: false; reason: RestoreReason } {
-  if (session.archivedAt == null) return { ok: false, reason: 'not-archived' };
+  // B-264/session-recoverability: an inactive session is recoverable whether it
+  // was user-archived OR just went offline (its wrapper may have died with the
+  // machine and will NOT auto-return). archivedAt is a label, not a gate here.
   const flavor = session.metadata?.flavor ?? 'claude';
   if (flavor !== 'claude' && flavor !== 'codex') return { ok: false, reason: 'unsupported-flavor' };
   const backendId = flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId;
@@ -76,9 +78,29 @@ export function restoreEligibility(
   return { ok: true, machineId };
 }
 
-/** Whether a row / banner should offer the restore action at all. */
+/** composerGate ONLY: an ARCHIVED offline session's composer restores first;
+ *  a merely-offline (non-archived) session's composer sends as today. Must stay
+ *  archivedAt-gated — do NOT reuse for button visibility (use canOfferRestore). */
 export function isRestorable(session: EligibilitySession | null | undefined): boolean {
   return !!session && !session.active && session.archivedAt != null;
+}
+
+/** Whether a row / banner / palette should OFFER the restore action — archivedAt
+ *  independent (offline-but-not-archived sessions are recoverable too). Does NOT
+ *  require the machine online: an offline machine still shows the action, DISABLED
+ *  with a "waiting for machine" reason (compute enabled/disabled from
+ *  restoreEligibility, whose only remaining rejection for a canOfferRestore=true
+ *  session is machine-offline). `machine` must be the session's own machine. */
+export function canOfferRestore(
+  session: EligibilitySession | null | undefined,
+  machine: EligibilityMachine | null | undefined,
+): boolean {
+  if (!session || session.active) return false;
+  const flavor = session.metadata?.flavor ?? 'claude';
+  if (flavor !== 'claude' && flavor !== 'codex') return false;
+  const backendId = flavor === 'codex' ? session.metadata?.codexThreadId : session.metadata?.claudeSessionId;
+  if (!backendId) return false;
+  return !!machine; // machine-known; machine-offline → shown but disabled
 }
 
 /** Daemon / transport error text → user-facing reason. New CLIs prefix

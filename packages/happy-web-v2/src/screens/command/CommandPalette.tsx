@@ -16,7 +16,7 @@ import {
   FolderOpen,
   RotateCcw,
 } from 'lucide-react';
-import { useSessions } from '@/sync/storage';
+import { useSessions, storage } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
 import { useTerminalSessions } from '@/sync/terminalSessions';
 import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
@@ -24,7 +24,7 @@ import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTermi
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { archiveSessionNow, nextSessionPathAfterClose, restoreSessionOrAlert } from '@/app/rowActions';
-import { isRestorable } from '@/app/sessionRestore';
+import { canOfferRestore } from '@/app/sessionRestore';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
@@ -87,6 +87,7 @@ export function CommandPalette() {
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const sessions = useSessions();
+  const machines = storage((s) => s.machines);
   const terminals = useTerminalSessions((s) => s.terminals);
 
   const close = useCallback(() => {
@@ -222,8 +223,12 @@ export function CommandPalette() {
         (session): session is Exclude<typeof session, string> =>
           typeof session !== 'string' && session.id === currentSessionId,
       );
-      if (isRestorable(currentSession)) {
-        // B-265: an archived session restores in place instead of archiving.
+      const currentMachine = currentSession?.metadata?.machineId
+        ? machines[currentSession.metadata.machineId]
+        : undefined;
+      // recoverability: restore (inactive+recoverable) and archive (not yet
+      // archived) are INDEPENDENT — a merely-offline session gets both.
+      if (canOfferRestore(currentSession, currentMachine)) {
         out.push({
           key: 'action:restore',
           group: 'actions',
@@ -232,7 +237,8 @@ export function CommandPalette() {
           haystack: (t('commandPalette.actionRestoreSession') as string).toLowerCase(),
           run: () => void restoreSessionOrAlert(currentSessionId),
         });
-      } else {
+      }
+      if (currentSession && currentSession.archivedAt == null) {
         out.push({
           key: 'action:archive',
           group: 'actions',
@@ -333,6 +339,7 @@ export function CommandPalette() {
     return out;
   }, [
     sessions,
+    machines,
     terminals,
     currentSessionId,
     t,

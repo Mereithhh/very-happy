@@ -77,6 +77,9 @@ export async function restoreSession(sessionId: string): Promise<boolean> {
   const result = await machineResumeSession(
     { machineId: eligibility.machineId, sessionId },
     { timeoutMs: RESTORE_RPC_TIMEOUT_MS },
+    // A non-archived (merely offline) session must not be re-archived on a
+    // resume failure — skip the unarchive/rearchive dance for it.
+    { skipArchiveDance: session.archivedAt == null },
   );
   if (result.type === 'success') {
     useSessionRestore.getState().set(sessionId, { phase: 'awaiting-online', startedAt });
