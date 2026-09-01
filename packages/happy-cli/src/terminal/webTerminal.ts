@@ -2570,9 +2570,15 @@ export class WebTerminalManager {
     listUserTmuxSessions(max?: number): UserTmuxSession[] {
         if (!isTmuxAvailable()) return [];
         try {
+            // Not latency-critical (the web waits 10 s): give a loaded box the
+            // create-class budget rather than the 1.5 s probe budget — a timed
+            // out listing would silently hide every session.
             const r = spawnSync('tmux', tmuxArgs(['list-sessions', '-F', USER_SESSIONS_FORMAT]),
-                { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
-            if (r.status !== 0 || typeof r.stdout !== 'string') return [];
+                { encoding: 'utf8', timeout: TMUX_CREATE_TIMEOUT_MS, env: ptyEnv() });
+            if (r.status !== 0 || typeof r.stdout !== 'string') {
+                logger.debug(`[WEB TERMINAL] list-tmux-sessions failed: status=${r.status} ${(r.stderr || '').toString().trim()}`);
+                return [];
+            }
             return parseUserSessions(r.stdout, max);
         } catch {
             return [];
