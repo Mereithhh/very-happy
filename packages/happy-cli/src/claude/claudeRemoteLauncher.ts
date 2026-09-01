@@ -5,6 +5,7 @@ import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { PermissionHandler } from "./utils/permissionHandler";
+import { rewriteQueuedPermissionMode } from "./utils/queuedPermissionMode";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
@@ -37,6 +38,8 @@ interface PermissionsField {
 export async function claudeRemoteLauncher(
     session: Session,
     onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void,
+    /** SDK-reported effective mode from system/init (B-262 batch 2). */
+    onEffectivePermissionMode?: (mode: string) => void,
 ): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
 
@@ -375,6 +378,15 @@ export async function claudeRemoteLauncher(
                     mode = { ...mode, permissionMode: nextMode };
                     modeHash = session.queue.modeHasher(mode);
                 }
+                // B-262 batch 2: messages already queued carry the mode snapshot
+                // taken when they were enqueued. An explicit switch (idle RPC,
+                // plan approval, approve-with-mode) is newer than all of them —
+                // rewrite their snapshots so the next queued message cannot
+                // pull the process back to a stale plan/default.
+                rewriteQueuedPermissionMode(session.queue.queue, session.queue.modeHasher, nextMode);
+                if (pending) {
+                    pending = { ...pending, mode: { ...pending.mode, permissionMode: nextMode } };
+                }
                 onPermissionModeChange?.(nextMode);
                 return nextMode;
             };
@@ -457,6 +469,7 @@ export async function claudeRemoteLauncher(
                         });
                         session.client.updateMetadata((currentMetadata) =>
                             applyClaudeSdkMetadata(currentMetadata, metadata));
+                        if (metadata.permissionMode) onEffectivePermissionMode?.(metadata.permissionMode);
                     },
                     onQueryReady: (q) => {
                         turnSteering.setInterrupt(q.interrupt);

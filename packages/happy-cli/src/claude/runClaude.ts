@@ -26,7 +26,7 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode, reconcilePublishedPermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -305,6 +305,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             lifecycleState: 'running',
             archivedBy: undefined,
             queueCancellation: true,
+            // B-262 batch 2 (B5): a reconnected process re-publishes the mode
+            // IT enforces; the server copy may still carry the previous
+            // process's value.
+            permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
         }));
     }
 
@@ -544,7 +548,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // the mode (message meta, live/idle RPC, plan approval) goes through here
     // so session.metadata.permissionMode never disagrees with what
     // canUseTool enforces.
-    let publishedPermissionMode = mapToClaudeMode(initialPermissionMode ?? 'default');
+    let publishedPermissionMode: string = mapToClaudeMode(initialPermissionMode ?? 'default');
     const publishPermissionMode = (mode: PermissionMode | undefined) => {
         currentPermissionMode = mode;
         const published = mapToClaudeMode(mode ?? 'default');
@@ -552,6 +556,29 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         publishedPermissionMode = published;
         session.updateMetadata((meta) => ({ ...meta, permissionMode: published }));
     };
+    // B-262 batch 2 (B2): the SDK's system/init verdict is the truth the web
+    // displays. If settings vetoed our request, publish what Claude Code will
+    // really do and say so in the log; the local enforcer keeps the intent so a
+    // later explicit switch re-publishes normally.
+    const publishEffectivePermissionMode = (effective: string) => {
+        const decision = reconcilePublishedPermissionMode({
+            intent: mapToClaudeMode(currentPermissionMode ?? 'default'),
+            published: publishedPermissionMode,
+            effective,
+        });
+        if (!decision) return;
+        if (decision.mismatch) {
+            logger.warn(`[loop] Claude Code enforces permission mode '${effective}' but this process asked for '${mapToClaudeMode(currentPermissionMode ?? 'default')}' — check ~/.claude settings (permissions.deny/ask/defaultMode/disableBypassPermissionsMode). Publishing the effective mode.`);
+        }
+        if (decision.publish !== publishedPermissionMode) {
+            publishedPermissionMode = decision.publish;
+            session.updateMetadata((meta) => ({ ...meta, permissionMode: decision.publish }));
+        }
+    };
+    // B-262 batch 2 (B4): a message's meta.permissionMode is a snapshot from
+    // when the client enqueued it. An explicit switch (RPC / approval) that
+    // happened AFTER that snapshot is newer and must not be undone by it.
+    let lastExplicitModeSwitchAt = 0;
     let currentModel: string | undefined = options.model ?? DEFAULT_CLAUDE_MODEL; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -618,7 +645,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
-        if (message.meta?.permissionMode) {
+        const messageCreatedAt = (message as { createdAt?: number }).createdAt;
+        const staleModeSnapshot = message.meta?.permissionMode !== undefined
+            && typeof messageCreatedAt === 'number'
+            && messageCreatedAt < lastExplicitModeSwitchAt;
+        if (staleModeSnapshot) {
+            logger.debug(`[loop] Ignoring stale meta.permissionMode=${message.meta?.permissionMode} (message ${messageCreatedAt} predates explicit switch ${lastExplicitModeSwitchAt}); keeping ${currentPermissionMode}`);
+        } else if (message.meta?.permissionMode) {
             const previousPermissionMode = currentPermissionMode;
             messagePermissionMode = resolveRemoteClaudePermissionMode(
                 currentPermissionMode,
@@ -969,9 +1002,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         },
         onAbort: resetCurrentModeDefaults,
         onPermissionModeChange: (mode) => {
+            lastExplicitModeSwitchAt = Date.now();
             publishPermissionMode(mode);
             logger.debug(`[loop] Permission mode updated from session RPC / approval to: ${mode}`);
         },
+        onEffectivePermissionMode: (mode) => publishEffectivePermissionMode(mode),
         mcpServers: {
             'happy': {
                 type: 'http' as const,

@@ -276,3 +276,46 @@ function createDeferred<T>() {
     const promise = new Promise<T>((res) => { resolve = res; });
     return { promise, resolve };
 }
+
+describe('approve-with-mode on an ordinary tool (B-262 batch 2, 铁律 8)', () => {
+    it('allows the tool immediately, switches the local mode, and sends the SDK control request only after the callback resolved', async () => {
+        const { handler, getState, respond } = fixture();
+        const calls: string[] = [];
+        handler.setPermissionModeUpdater(async (mode) => { calls.push(`sdk:${mode}`); });
+        handler.setOnModeChanged((mode) => { calls.push(`local:${mode}`); });
+        const pending = handler.handleToolCall('Bash', { command: 'pwd' }, { permissionMode: 'default' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'bash-mode-1',
+            requestId: 'request-bash-mode-1',
+        });
+        await respond({ id: 'bash-mode-1', approved: true, mode: 'bypassPermissions', decision: 'approved' });
+        await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: { command: 'pwd' } });
+        expect(calls[0]).toBe('local:bypassPermissions');
+        // control request is deferred past the callback (setImmediate), never nested
+        expect(calls).not.toContain('sdk:bypassPermissions');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(calls).toContain('sdk:bypassPermissions');
+        expect(getState().completedRequests?.['bash-mode-1']?.status).toBe('approved');
+        // the enforcer now runs in bypass: a follow-up Bash is auto-allowed
+        await expect(handler.handleToolCall('Bash', { command: 'ls' }, { permissionMode: 'bypassPermissions' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'bash-mode-2',
+            requestId: 'request-bash-mode-2',
+        })).resolves.toEqual({ behavior: 'allow', updatedInput: { command: 'ls' } });
+    });
+
+    it('a failing SDK mode update no longer denies the approved tool', async () => {
+        const { handler, respond } = fixture();
+        handler.setPermissionModeUpdater(async () => { throw new Error('sdk failed'); });
+        const pending = handler.handleToolCall('Bash', { command: 'pwd' }, { permissionMode: 'default' }, {
+            signal: new AbortController().signal,
+            toolUseID: 'bash-mode-3',
+            requestId: 'request-bash-mode-3',
+        });
+        await respond({ id: 'bash-mode-3', approved: true, mode: 'bypassPermissions', decision: 'approved' });
+        await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: { command: 'pwd' } });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+    });
+});

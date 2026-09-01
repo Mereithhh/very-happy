@@ -252,16 +252,18 @@ export class PermissionHandler {
             }
         } else {
             if (response.approved && response.mode) {
-                try {
-                    if (!this.setPermissionModeCallback) throw new Error('permission mode updater unavailable');
-                    await this.setPermissionModeCallback(response.mode);
-                    this.permissionMode = response.mode;
-                    this.onModeChangedCallback?.(response.mode);
-                } catch (err) {
-                    const reason = `Failed to switch permission mode: ${err instanceof Error ? err.message : String(err)}`;
-                    pending.resolve({ behavior: 'deny', message: reason });
-                    return { ...response, approved: false, reason };
-                }
+                // 铁律 8 (B-262 batch 2): the Query is parked inside THIS
+                // canUseTool callback. Awaiting a setPermissionMode control
+                // request here queues it behind the callback's own response —
+                // the turn stalls and, on failure, the tool used to be DENIED
+                // even though the user approved it. Switch the local enforcer
+                // now (it decides every later tool), report the mode up, and
+                // let the SDK control request go out AFTER this callback
+                // resolves via the deferred-update path (same mechanism as a
+                // live mode change during a pending prompt).
+                this.permissionMode = response.mode;
+                this.deferredPermissionMode = response.mode;
+                this.onModeChangedCallback?.(response.mode);
             }
 
             // Legacy clients may still send allowTools. Apply them only after

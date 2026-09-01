@@ -236,6 +236,11 @@ export async function claudeRemote(opts: {
                         skills: systemInit.skills,
                         model: systemInit.model,
                         modelIsDefault: initial.mode.model == null,
+                        // The SDK's own verdict on the mode it will enforce —
+                        // settings (permissions.deny/ask/defaultMode/
+                        // disableBypassPermissionsMode) can override what we
+                        // asked for. runClaude publishes THIS, not our intent.
+                        permissionMode: systemInit.permissionMode,
                     });
                 }
 
@@ -265,6 +270,13 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received');
+                // Authoritative record of tools Claude Code denied without a
+                // prompt (deny rules, dontAsk/auto, hook denies). Invisible
+                // otherwise — surface it so "yolo still refused X" is diagnosable.
+                const denials = (message as { permission_denials?: Array<{ tool_name?: string }> }).permission_denials;
+                if (denials && denials.length > 0) {
+                    logger.warn(`[claudeRemote] ${denials.length} tool call(s) auto-denied by Claude Code policy: ${denials.map((d) => d.tool_name ?? '?').join(', ')}`);
+                }
 
                 // Send completion messages
                 if (isCompactCommand) {

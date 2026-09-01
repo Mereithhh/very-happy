@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, parseClaudePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
+import { applySandboxPermissionPolicy, extractPermissionModeFromClaudeArgs, mapToClaudeMode, parseClaudePermissionMode, reconcilePublishedPermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
@@ -119,5 +119,20 @@ describe('resolveRemoteClaudePermissionMode', () => {
 
     it('applies sandbox policy to incoming modes', () => {
         expect(resolveRemoteClaudePermissionMode('default', 'plan', true)).toBe('bypassPermissions');
+    });
+});
+
+describe('reconcilePublishedPermissionMode (B-262 batch 2 / B2)', () => {
+    it('publishes nothing when the SDK agrees with what we published', () => {
+        expect(reconcilePublishedPermissionMode({ intent: 'bypassPermissions', published: 'bypassPermissions', effective: 'bypassPermissions' })).toBeNull();
+        expect(reconcilePublishedPermissionMode({ intent: 'bypassPermissions', published: 'bypassPermissions', effective: undefined })).toBeNull();
+    });
+    it('publishes the SDK verdict when settings vetoed the requested mode', () => {
+        expect(reconcilePublishedPermissionMode({ intent: 'bypassPermissions', published: 'bypassPermissions', effective: 'default' }))
+            .toEqual({ publish: 'default', mismatch: true });
+    });
+    it('re-publishes when the server copy drifted from the effective mode', () => {
+        expect(reconcilePublishedPermissionMode({ intent: 'plan', published: 'bypassPermissions', effective: 'plan' }))
+            .toEqual({ publish: 'plan', mismatch: false });
     });
 });
