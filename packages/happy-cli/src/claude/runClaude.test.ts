@@ -30,6 +30,12 @@ vi.mock('@/persistence', () => ({
     readSettings: mockReadSettings,
 }));
 
+// B-272: the single-writer lock writes under the real happy home; keep the
+// unit test off the filesystem (the lock has its own tests).
+vi.mock('@/utils/sessionLock', () => ({
+    claimSessionOrExit: vi.fn(async () => {}),
+}));
+
 vi.mock('@/claude/utils/sessionScanner', () => ({
     createSessionScanner: mockCreateSessionScanner,
 }));
