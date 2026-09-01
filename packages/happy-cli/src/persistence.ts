@@ -63,6 +63,13 @@ interface Settings {
    */
   boardLlm?: boolean
   /**
+   * B-276: which credential store the Claude Code processes spawned by this
+   * daemon may use. `file` prepends the keychain-off `security` shim to their
+   * PATH so they behave like an ssh/tmux shell (only ~/.claude/.credentials.json);
+   * absent/`auto` = Claude Code's own keychain-first behaviour.
+   */
+  claudeCredentialStore?: 'auto' | 'file'
+  /**
    * B-007: external todo provider — a user-supplied command that speaks the
    * contract in docs/channels.md (`<command> list|complete <id>|create <title>`).
    *

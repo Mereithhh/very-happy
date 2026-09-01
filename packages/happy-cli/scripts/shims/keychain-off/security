@@ -1,0 +1,51 @@
+#!/bin/bash
+# very-happy keychain-off shim for Claude Code (B-276, spec 2026-09-claude-auth-preflight D8).
+#
+# Placed FIRST on PATH only for the Claude Code processes very-happy spawns when
+# the machine-local setting `claudeCredentialStore` is `file`. Claude Code reads
+# and writes its OAuth credentials through the bare `security` CLI; an exit code
+# of 36 (errSecInteractionNotAllowed) on its own keychain item makes it fall
+# back to ~/.claude/.credentials.json for reads AND writes without deleting the
+# file — exactly what an ssh/tmux shell sees. Everything that is not Claude
+# Code's own item is passed through to the real binary untouched.
+#
+# Exit code MUST be 36 or 44: anything else is treated by Claude Code as a
+# transient READ_FAILED (cached credentials), not as "use the file".
+REAL="${HAPPY_SECURITY_BIN:-/usr/bin/security}"
+
+is_claude_item() {
+  # $@ = tokens of one security command line; true when -s <value> starts with "Claude Code"
+  local prev="" tok
+  for tok in "$@"; do
+    if [ "$prev" = "-s" ]; then
+      tok="${tok%\"}"; tok="${tok#\"}"; tok="${tok%\'}"; tok="${tok#\'}"
+      case "$tok" in "Claude Code"*) return 0 ;; esac
+      return 1
+    fi
+    prev="$tok"
+  done
+  return 1
+}
+
+case "${1:-}" in
+  show-keychain-info)
+    exit 36 ;;
+  find-generic-password|add-generic-password|delete-generic-password)
+    if is_claude_item "$@"; then exit 36; fi
+    exec "$REAL" "$@" ;;
+  -i)
+    # Interactive form: Claude Code's normal write path feeds
+    # `add-generic-password -U -a <user> -s "<service>" -X <hex>` on stdin.
+    input="$(cat)"
+    first_line="$(printf '%s\n' "$input" | sed -n '1p')"
+    case "$first_line" in
+      find-generic-password*|add-generic-password*|delete-generic-password*)
+        if [[ "$first_line" =~ (^|[[:space:]])-s[[:space:]]+(\"([^\"]*)\"|\'([^\']*)\'|([^[:space:]]+)) ]]; then
+          svc="${BASH_REMATCH[3]}${BASH_REMATCH[4]}${BASH_REMATCH[5]}"
+          case "$svc" in "Claude Code"*) exit 36 ;; esac
+        fi ;;
+    esac
+    printf '%s\n' "$input" | exec "$REAL" -i ;;
+  *)
+    exec "$REAL" "$@" ;;
+esac

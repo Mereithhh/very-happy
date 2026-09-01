@@ -8,6 +8,7 @@ import { sync } from './sync';
 import { storage } from './storage';
 import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import type { MachineMetadata, Metadata } from './storageTypes';
+import { ClaudeAuthStateSchema, type ClaudeAuthState } from './claudeAuth';
 import { commitSessionResume } from './sessionResumeFlow';
 
 // Strict type definitions for all operations
@@ -239,6 +240,47 @@ export interface ResumeSessionOptions {
 /**
  * Spawn a new remote session on a specific machine
  */
+/**
+ * B-276 Claude auth preflight RPCs. An old daemon answers unknown methods with a
+ * NORMAL encrypted `{error:'Method not found'}` (B-003 fake-ack surface), so every
+ * wrapper here checks `error` explicitly and never treats it as success.
+ */
+export type ClaudeAuthRpcResult =
+    | { ok: true; claudeAuth: ClaudeAuthState | null }
+    | { ok: false; error: string; unsupported: boolean; claudeAuth: ClaudeAuthState | null };
+
+function parseClaudeAuthRpc(raw: unknown): ClaudeAuthRpcResult {
+    const obj = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
+    const parsed = ClaudeAuthStateSchema.safeParse(obj.claudeAuth);
+    const claudeAuth = parsed.success ? parsed.data : null;
+    if (typeof obj.error === 'string' && obj.error) {
+        const unsupported = /method not found|unknown method|not supported/i.test(obj.error);
+        return { ok: false, error: obj.error, unsupported, claudeAuth };
+    }
+    return { ok: true, claudeAuth };
+}
+
+async function claudeAuthRpc(machineId: string, method: string, params: Record<string, unknown>): Promise<ClaudeAuthRpcResult> {
+    try {
+        const raw = await apiSocket.machineRPC<unknown, Record<string, unknown>>(machineId, method, params, { timeoutMs: 30000 });
+        return parseClaudeAuthRpc(raw);
+    } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error), unsupported: false, claudeAuth: null };
+    }
+}
+
+export function machineClaudeAuthProbe(machineId: string): Promise<ClaudeAuthRpcResult> {
+    return claudeAuthRpc(machineId, 'claude-auth-probe', {});
+}
+
+export function machineClaudeAuthRepair(machineId: string, action: 'delete-empty-keychain-item'): Promise<ClaudeAuthRpcResult> {
+    return claudeAuthRpc(machineId, 'claude-auth-repair', { action });
+}
+
+export function machineClaudeAuthSetStore(machineId: string, store: 'auto' | 'file'): Promise<ClaudeAuthRpcResult> {
+    return claudeAuthRpc(machineId, 'claude-auth-set-store', { store });
+}
+
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
     const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode } = options;

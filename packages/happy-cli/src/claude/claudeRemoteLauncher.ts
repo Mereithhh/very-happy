@@ -1,3 +1,4 @@
+import { notifyDaemonClaudeAuthFailed } from '@/daemon/controlClient';
 import { render } from "ink";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -515,6 +516,14 @@ export async function claudeRemoteLauncher(
                     onCompletionEvent: (message: string) => {
                         logger.debug('[remote]: Completion event received:', contentLogMetadata(message));
                         session.client.sendSessionEvent({ type: 'message', message });
+                    },
+                    onAuthFailure: (reason: string) => {
+                        // B-276: structured marker for the web (old web strips
+                        // `kind`; the plain-text event above still renders) +
+                        // immediate daemon re-probe.
+                        session.client.sendSessionEvent({ type: 'message', message: `Claude Code auth: ${reason}`, kind: 'claude-auth-failed' });
+                        void notifyDaemonClaudeAuthFailed(session.client.sessionId)
+                            .catch((error) => logger.debug('[remote]: auth_failed report to daemon failed:', error));
                     },
                     onSessionReset: () => {
                         logger.debug('[remote]: Session reset');

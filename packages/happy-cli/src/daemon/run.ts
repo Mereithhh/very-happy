@@ -40,6 +40,8 @@ import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
+import { readSettings, writeSettings } from '@/persistence';
+import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
 import { createDaemonControlToken } from './controlAuth';
@@ -72,6 +74,9 @@ export const initialMachineMetadata: MachineMetadata = {
 };
 
 export async function startDaemon(): Promise<void> {
+  // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
+  let claudeAuthServiceRef: ClaudeAuthService | null = null;
+  let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
   // We don't have cleanup function at the time of server construction
   // Control flow is:
   // 1. Create promise that will resolve when shutdown is requested
@@ -528,6 +533,10 @@ export async function startDaemon(): Promise<void> {
         let extraEnv: Record<string, string> = {
           ...authEnv,
           ...(options.environmentVariables ?? {}),
+          // B-276 D8: credentialStore=file pins the spawned Claude Code (SDK
+          // Query, title/board one-shots — all inside this wrapper) to
+          // ~/.claude/.credentials.json via the keychain-off `security` shim.
+          ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
         };
         if (options.parentSessionId) {
           extraEnv.HAPPY_FORKED_FROM_SESSION_ID = options.parentSessionId;
@@ -1358,6 +1367,7 @@ export async function startDaemon(): Promise<void> {
       requestShutdown: () => requestShutdown('happy-cli'),
       onHappySessionWebhook,
       onSessionStateEvent,
+      onClaudeAuthFailed: (sessionId: string) => claudeAuthServiceRef?.signalAuthFailed(sessionId),
       pushClipboard: (text: string) => {
         if (!apiMachineRef) {
           return { delivered: false, truncated: false, totalBytes: 0, error: 'daemon is still starting up' };
@@ -1460,6 +1470,27 @@ export async function startDaemon(): Promise<void> {
       requestShutdown: () => requestShutdown('happy-app')
     });
 
+    // B-276: daemon-context Claude auth preflight (spec 2026-09-claude-auth-preflight).
+    const claudeAuthService = new ClaudeAuthService({
+      happyHomeDir: configuration.happyHomeDir,
+      happyLibDir: projectPath(),
+      credentialSource: daemonClaudeCredentials.source,
+      getCredentialStore: () => claudeCredentialStoreSetting,
+      setCredentialStore: async (store) => {
+        const settings = await readSettings();
+        await writeSettings({ ...settings, claudeCredentialStore: store });
+        claudeCredentialStoreSetting = store;
+      },
+      publish: (state) => apiMachine.setClaudeAuthState(state),
+    });
+    claudeAuthServiceRef = claudeAuthService;
+    apiMachine.setClaudeAuthHandlers({
+      probe: () => claudeAuthService.probe('rpc', true),
+      repair: (action) => claudeAuthService.repair(action),
+      setStore: (store) => claudeAuthService.setStore(store),
+    });
+    claudeAuthService.start();
+
     // Connect to server
     apiMachine.connect();
 
@@ -1543,6 +1574,8 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
+      claudeAuthService.stop();
+        claudeAuthService.stop();
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
         // `very-happy daemon start` reads our still-present daemon.state.json, sees

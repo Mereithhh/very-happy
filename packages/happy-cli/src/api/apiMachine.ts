@@ -7,7 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
 import { configuration } from '@/configuration';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type CliUpdateState } from './types';
+import { ClaudeAuthState, MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, type CliUpdateState } from './types';
 import { withCurrentCliUpdateState } from '@/update/cliUpdate';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
 import { registerFsHandlers } from '../modules/fs/fsRpc';
@@ -165,6 +165,7 @@ export class ApiMachineClient {
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private cliUpdateState: CliUpdateState | null = null;
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
+    private claudeAuthState: ClaudeAuthState | null = null;
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private restartSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
@@ -277,6 +278,51 @@ export class ApiMachineClient {
         this.cliUpdatePushChain = this.cliUpdatePushChain
             .then(() => this.updateDaemonState((current) => withCurrentCliUpdateState(current, this.cliUpdateState)))
             .catch((error) => logger.debug('[API MACHINE] Failed to publish CLI update policy:', error));
+    }
+
+    /**
+     * B-276: publish the daemon-context Claude auth preflight into daemonState
+     * (same serialized push chain as the CLI update policy). Resolves true when
+     * the server acknowledged the write with our value in it, false otherwise
+     * (rate-limit `result:'error'` is swallowed by updateDaemonState, so the
+     * caller checks the echoed state and re-sends on the next probe).
+     */
+    setClaudeAuthState(state: ClaudeAuthState): Promise<boolean> {
+        this.claudeAuthState = state;
+        if (!this.socket?.connected) return Promise.resolve(false);
+        const attempt = this.cliUpdatePushChain
+            .then(() => this.updateDaemonState((current) => ({
+                ...(current ?? {}),
+                status: current?.status ?? 'running',
+                claudeAuth: state,
+            })))
+            .then(() => this.machine.daemonState?.claudeAuth?.checkedAt === state.checkedAt
+                && this.machine.daemonState?.claudeAuth?.daemonPid === state.daemonPid)
+            .catch((error) => { logger.debug('[API MACHINE] Failed to publish Claude auth state:', error); return false; });
+        this.cliUpdatePushChain = attempt.then(() => undefined);
+        return attempt;
+    }
+
+    /** B-276 machine RPCs. Responses always carry `claudeAuth` so the web can refresh in place. */
+    setClaudeAuthHandlers(handlers: {
+        probe: () => Promise<ClaudeAuthState>;
+        repair: (action: string) => Promise<{ ok: true; claudeAuth: ClaudeAuthState } | { error: string; claudeAuth: ClaudeAuthState | null }>;
+        setStore: (store: 'auto' | 'file') => Promise<ClaudeAuthState>;
+    }): void {
+        this.rpcHandlerManager.registerHandler('claude-auth-probe', async () => {
+            const claudeAuth = await handlers.probe();
+            return { claudeAuth };
+        });
+        this.rpcHandlerManager.registerHandler('claude-auth-repair', async (params: any) => {
+            const action = typeof params?.action === 'string' ? params.action : '';
+            return handlers.repair(action);
+        });
+        this.rpcHandlerManager.registerHandler('claude-auth-set-store', async (params: any) => {
+            const store = params?.store === 'file' ? 'file' : params?.store === 'auto' ? 'auto' : null;
+            if (!store) return { error: 'invalid-store', claudeAuth: this.claudeAuthState };
+            const claudeAuth = await handlers.setStore(store);
+            return { claudeAuth };
+        });
     }
 
     setRPCHandlers({
@@ -947,6 +993,9 @@ export class ApiMachineClient {
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
                     closedTerminals: this.webTerminal.getClosedTerminals(),
+                    // B-276: re-ship the last preflight so a reconnect never
+                    // leaves a stale-pid value visible longer than needed.
+                    ...(this.claudeAuthState ? { claudeAuth: this.claudeAuthState } : {}),
                 };
             });
             // From here on, only CHANGES push (signature diff inside the manager).

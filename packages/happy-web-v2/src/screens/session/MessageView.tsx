@@ -4,6 +4,7 @@
  * runs) hand off to ToolGroupView.
  */
 import { useEffect, useId, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
@@ -219,6 +220,22 @@ function RestartAction({ sessionId }: { sessionId: string }) {
     );
 }
 
+/** B-276: jump from an auth-failed turn to the machine's Claude login status. */
+function MachineAuthLink({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const navigate = useNavigate();
+    const session = useSession(sessionId);
+    const machineId = session?.metadata?.machineId;
+    if (!machineId) return null;
+    return (
+        <span className="msg-event-restart">
+            <button type="button" className="msg-event-restart-btn" onClick={() => navigate(`/machine/${machineId}`)}>
+                {t('session.chat.claudeAuthOpenMachine')}
+            </button>
+        </span>
+    );
+}
+
 function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; sessionId: string }) {
     const { t } = useTranslation();
     const ev = message.event;
@@ -230,6 +247,14 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
             break;
         case 'message':
             {
+                if (ev.kind === 'claude-auth-failed') {
+                    return (
+                        <div className="msg msg--event">
+                            <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.claudeAuthFailed')}</span>
+                            <MachineAuthLink sessionId={sessionId} />
+                        </div>
+                    );
+                }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;
                 if (presentation.kind === 'stopped') {
