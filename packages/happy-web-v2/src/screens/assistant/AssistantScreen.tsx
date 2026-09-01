@@ -137,6 +137,11 @@ export function AssistantScreen() {
                     ...(skipPermissionsRef.current ? {} : { permissionMode: 'default' }),
                 });
                 if (res.type === 'success') {
+                    // B-262: record the mode this spawn actually asked for as the
+                    // session's LOCAL intent, so the selector never shows a
+                    // code-default guess and web-side yolo enforcement only
+                    // applies when the assistant setting really is "skip".
+                    storage.getState().updateSessionPermissionMode(res.sessionId, skipPermissionsRef.current ? 'bypassPermissions' : 'default');
                     useAssistantStore.getState().setSessionId(res.sessionId);
                 } else if (res.type === 'error') {
                     setSpawnError(res.errorMessage);

@@ -33,6 +33,14 @@ describe('app visual language', () => {
     });
 
     it.each([
+        ['permission-mode confirmation note', css('../screens/session/modemenu.css'), '.mm-sub'],
+        ['session options field hint', css('../screens/session/sessionOptionsDialog.css'), '.so-field-hint'],
+    ])('%s stays neutral — accent is reserved for live states', (_name, source, selector) => {
+        const declarations = rule(source, selector);
+        expect(declarations).not.toContain('var(--accent');
+    });
+
+    it.each([
         ['legacy primary button', css('../App.css'), '.btn-primary'],
         ['design-system primary button', css('../ui/ui.css'), '.vh-btn--primary'],
         ['modal primary button', css('../modal/modal.css'), '.vh-modal-btn.is-primary'],

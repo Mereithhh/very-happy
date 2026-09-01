@@ -39,6 +39,8 @@ import {
     releaseSessionInactive,
 } from './sessionArchiveHold';
 import { withSessionPermissionMode } from './sessionPermissionPreference';
+import { collectYoloDecisions, newPermissionRequests, type YoloEnforcementDecision } from './yoloEnforcement';
+import { sanitizeSessionPermissionModes } from './permissionModeOutbound';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -232,6 +234,12 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: string | null) => void;
+    /** B-262: per-session "mode RPC in flight" — read by enforcement/alignment to stay out of the user's way. */
+    permissionModeBusy: Record<string, boolean>;
+    setPermissionModeBusy: (sessionId: string, busy: boolean) => void;
+    /** B-262: request ids this device auto-approved under yolo (allow path), for the completed card's note. */
+    yoloAutoApproved: Record<string, Record<string, true>>;
+    markYoloAutoApproved: (sessionId: string, requestId: string) => void;
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortLevel: (sessionId: string, level: string | null) => void;
     resetSessionAgentOverrides: (sessionId: string) => void;
@@ -366,13 +374,27 @@ function buildSessionListViewData(
     return listData;
 }
 
+export type { YoloEnforcementDecision } from './yoloEnforcement';
+let permissionEnforcer: ((decisions: YoloEnforcementDecision[]) => void) | null = null;
+/** B-262: injected by sync at startup (storage must not import ops — circular). */
+export function setPermissionEnforcer(fn: ((decisions: YoloEnforcementDecision[]) => void) | null) {
+    permissionEnforcer = fn;
+}
+
 export const storage = create<StorageState>()((set, get) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
     let purchases = loadPurchases();
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
-    let sessionPermissionModes = loadSessionPermissionModes();
+    // B-262 A1: a dead selector key (dontAsk) may still sit in the device map;
+    // drop it before it can be displayed or sent (no released CLI accepts it).
+    let sessionPermissionModes = (() => {
+        const loaded = loadSessionPermissionModes();
+        const cleaned = sanitizeSessionPermissionModes(loaded);
+        if (cleaned !== loaded) saveSessionPermissionModes(cleaned);
+        return cleaned;
+    })();
     let sessionModelModes = loadSessionModelModes();
     let sessionEffortLevels = loadSessionEffortLevels();
     return {
@@ -428,7 +450,12 @@ export const storage = create<StorageState>()((set, get) => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
         },
-        applySessions: (incomingSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+        applySessions: (incomingSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => {
+            // B-262 A3: enforcement decisions are COLLECTED inside the updater and
+            // executed after set() returns (microtask) — never a side effect or a
+            // throw inside a zustand updater (a throw would drop the whole batch).
+            const enforcement: YoloEnforcementDecision[] = [];
+            set((state) => {
             // Drop sessions that were already deleted — a raced update/fetch
             // must not resurrect them (see deletedSessionTombstones above).
             const sessions = incomingSessions
@@ -473,6 +500,33 @@ export const storage = create<StorageState>()((set, get) => {
                 if (resolvedPermissionMode !== locallyResolvedPermissionMode) {
                     sessionPermissionModes = withSessionPermissionMode(sessionPermissionModes, session.id, resolvedPermissionMode);
                     saveSessionPermissionModes(sessionPermissionModes);
+                }
+
+                // B-262 A3: web-side yolo enforcement. Triggers: (a) agentStateVersion
+                // advanced with a NEW request id; (b) presence offline→online with
+                // pending requests (a dead-looking process came back — re-scan).
+                // Busy-release re-scan lives in setPermissionModeBusy.
+                {
+                    const oldSession = state.sessions[session.id];
+                    const cameOnline = presence === 'online' && oldSession !== undefined && oldSession.presence !== 'online';
+                    const fresh = newPermissionRequests(
+                        oldSession ? { agentStateVersion: oldSession.agentStateVersion, requests: oldSession.agentState?.requests } : undefined,
+                        { agentStateVersion: session.agentStateVersion, requests: session.agentState?.requests },
+                    );
+                    const candidates = cameOnline
+                        ? Object.entries(session.agentState?.requests ?? {}).map(([id, r]) => ({ id, tool: r.tool, kind: r.kind }))
+                        : fresh;
+                    enforcement.push(...collectYoloDecisions({
+                        sessionId: session.id,
+                        metadata: session.metadata,
+                        controlledByUser: session.agentState?.controlledByUser,
+                        presence,
+                        localMode: locallyResolvedPermissionMode,
+                        resolvedMode: resolvedPermissionMode,
+                        overrides: state.settings.agentDefaultOverrides,
+                        busy: state.permissionModeBusy[session.id] === true,
+                        requests: candidates,
+                    }));
                 }
 
                 // Restore model mode / effort level from MMKV on first load — server
@@ -671,7 +725,15 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionMessages: updatedSessionMessages,
                 unreadSessionIds,
             };
-        }),
+            });
+            if (enforcement.length > 0 && permissionEnforcer) {
+                const run = permissionEnforcer;
+                const decisions = enforcement;
+                queueMicrotask(() => {
+                    try { run(decisions); } catch (error) { console.warn('[yolo-enforcement] enforcer failed', error); }
+                });
+            }
+        },
         applyLoaded: () => set((state) => {
             const result = {
                 ...state,
@@ -1088,6 +1150,42 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData: buildSessionListViewData(updatedSessions)
             };
         }),
+        permissionModeBusy: {},
+        setPermissionModeBusy: (sessionId: string, busy: boolean) => {
+            set((state) => {
+                if ((state.permissionModeBusy[sessionId] === true) === busy) return state;
+                const next = { ...state.permissionModeBusy };
+                if (busy) next[sessionId] = true; else delete next[sessionId];
+                return { ...state, permissionModeBusy: next };
+            });
+            // Busy released (the user's own mode RPC settled): re-scan pending
+            // requests that were skipped while busy (B-262 T2 edge c).
+            if (!busy && permissionEnforcer) {
+                const state = get();
+                const session = state.sessions[sessionId];
+                if (!session) return;
+                const decisions = collectYoloDecisions({
+                    sessionId,
+                    metadata: session.metadata,
+                    controlledByUser: session.agentState?.controlledByUser,
+                    presence: session.presence,
+                    localMode: session.permissionMode,
+                    resolvedMode: session.permissionMode,
+                    overrides: state.settings.agentDefaultOverrides,
+                    busy: false,
+                    requests: Object.entries(session.agentState?.requests ?? {}).map(([id, r]) => ({ id, tool: r.tool, kind: r.kind })),
+                });
+                if (decisions.length > 0) {
+                    const run = permissionEnforcer;
+                    queueMicrotask(() => { try { run(decisions); } catch (error) { console.warn('[yolo-enforcement] enforcer failed', error); } });
+                }
+            }
+        },
+        yoloAutoApproved: {},
+        markYoloAutoApproved: (sessionId: string, requestId: string) => set((state) => ({
+            ...state,
+            yoloAutoApproved: { ...state.yoloAutoApproved, [sessionId]: { ...(state.yoloAutoApproved[sessionId] ?? {}), [requestId]: true } },
+        })),
         updateSessionPermissionMode: (sessionId: string, mode: string | null) => set((state) => {
             const session = state.sessions[sessionId];
 

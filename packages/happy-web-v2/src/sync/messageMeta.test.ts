@@ -51,4 +51,22 @@ describe('resolveMessageModeMeta (B-103)', () => {
         expect(resolveMessageModeMeta(session({ permissionMode: 'plan' })).permissionMode).toBe('plan');
         expect('permissionMode' in resolveMessageModeMeta(session({}))).toBe(false);
     });
+
+    it('B-262 A2: falls back to the synced override only — never to the code default (yolo)', () => {
+        const overrides = (mode?: string) => ({ agentDefaultOverrides: mode ? { claude: { permissionMode: mode } } : {} });
+        expect(resolveMessageModeMeta(session({}), overrides('bypassPermissions')).permissionMode).toBe('bypassPermissions');
+        // override=plan is a downgrade guess for a session with no local value: omitted (today it would be sent)
+        expect('permissionMode' in resolveMessageModeMeta(session({}), overrides('plan'))).toBe(false);
+        expect('permissionMode' in resolveMessageModeMeta(session({}), overrides('dontAsk'))).toBe(false);
+        expect('permissionMode' in resolveMessageModeMeta(session({}), overrides())).toBe(false);
+        // local wins over override, symmetrically
+        expect(resolveMessageModeMeta(session({ permissionMode: 'plan' }), overrides('bypassPermissions')).permissionMode).toBe('plan');
+        // non-claude vocab untouched
+        expect(resolveMessageModeMeta(session({ flavor: 'codex' }), { agentDefaultOverrides: { codex: { permissionMode: 'read-only' } } }).permissionMode).toBe('read-only');
+    });
+
+    it('B-262 A1: a dead selector key never reaches the CLI (it would drop the whole message)', () => {
+        expect(resolveMessageModeMeta(session({ permissionMode: 'dontAsk' })).permissionMode).toBe('default');
+        expect(resolveMessageModeMeta(session({ permissionMode: 'yolo' })).permissionMode).toBe('bypassPermissions');
+    });
 });

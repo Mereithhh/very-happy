@@ -99,3 +99,21 @@ handover）；也可反序 —— 双向都只增字段。回滚点：任一端�
 ## 留真机验证项
 
 - 双设备模式同步、plan→yolo 批准链路、升级窗口（旧 CLI + 新 Web）显示回退 —— 登记 verify-queue。
+
+## Web 代批与执法边界（B-262 修订，2026-09-01）
+
+B-258 发布后复发：simon 机器上更新前已开的 wrapper 进程（铁律 7：handover 不热替换）选 yolo 后 Bash 仍弹审批。四轮对抗 review（会话临时目录 `yolo-chain/`）核出的链路事实与本节规则：
+
+**术语。** `published` = `metadata.permissionMode`（0.2.90+ 才有）；`local` = 本设备 session→mode 表（会被 published 折叠镜像、任一设备消息 meta 回流、spawn 记录三条路径写入）；`override` = synced `agentDefaultOverrides.claude.permissionMode`；`codeDefault` = `bypassPermissions`（agentDefaults.ts）。**意图只承认前三者**，代码默认是猜测。
+
+**旧 wrapper 三档。** ≤0.2.88 无 `set-permission-mode`（capabilities 只有 `claude-steer-v1` 或缺省）；0.2.89 有 v1、`applyLivePermissionMode` 会放行全部 pending 普通工具并切 SDK，但 RPC 只在 working/有卡时；0.2.90+ v2 空闲可切并上报 published。`requests[].kind` 自 0.2.79 才写（缺省视为普通工具）；`permission` RPC 自 0.2.55 幂等；普通工具 allow **带 mode** 在 0.2.79–0.2.90 会在 canUseTool 内嵌套 SDK control request、失败即 deny（铁律 8）→ 代批一律裸 allow。`meta.permissionMode` 自 0.2.55 双向生效（plan/acceptEdits 无条件降级）。
+
+**执法（A3）。** 位置：`storage.applySessions` session 级，updater 内只收集决策，`set()` 返回后 `queueMicrotask` 交给 sync 注入的 enforcer（storage 不得 import RPC 层）。触发：(a) `agentStateVersion` 前进且出现新请求 id；(b) presence 非 online→online 且有 pending；(c) `permissionModeBusy` true→false 重扫。`decideYoloEnforcement` 门：flavor 空或 claude 且非 terminal-mirror；`variant==='assistant'` 只在 source=local 时；`controlledByUser===false`；presence online；非 busy；displayed=bypass；source∈{published,local,override}；`kind∈{undefined,'tool'}`；tool∉{AskUserQuestion,ExitPlanMode}。行动：有 v1/v2 → `set-permission-mode bypassPermissions`（失败退化裸 allow）；无 v1 → 裸 allow。去重只记成功；失败按 session 退避 5s→60s（死进程 RPC 15s/30s 才失败，presence 滞后 10 分钟）。
+
+**出站（A1/A2）。** `normalizeClaudeOutboundMode`：合法 default|acceptEdits|plan|bypassPermissions，`yolo`→bypass，其余（含 dontAsk）→default；MMKV 与 override 存量清洗（override 写回整对象、只一次）。消息 meta：local 存在照发；否则 override **=bypass 才**携带；不发代码默认。
+
+**显示（A4）七态。** confirmed / pending（busy）`· 切换中` / conflict `· CLI:<mode>` / startup-yolo（`dangerouslySkipPermissions`）`· 启动时` / unconfirmed-intent `· 未确认（Web 代批）` / unconfirmed-guess `· 未确认` / unconfirmed-other `· 未确认`。mono、`--text-faint`、无 accent；designLanguage 测试锁 `.mm-sub`/`.so-field-hint`。
+
+**兼容矩阵。** 新 Web + ≤0.2.88：Web 在线时逐卡裸 allow，下一条消息 meta=bypass 后不再问；无 Web 在线时第一张卡等人。新 Web + 0.2.89：有卡即 RPC，整段不再问，显示永远未确认。新 Web + 0.2.90+：打开即 upgrade-only 对齐 → confirmed。旧 Web + 新 CLI：不变。assistant：本地未明确选 yolo 不代批不发 meta。多设备 × 旧 CLI：选过的设备与 override 生效，另一台只显示未确认；相反 local 的设备发消息会降级（既有，B1 收口）。codex/gemini/openclaw/mirror：不触碰。settings 禁用 bypass：不产生 Happy 卡（handler 在 bypass 下先放行）。
+
+**明写不做。** 不对代码默认执法/发送；不自动重放；不改协议。第二批：sessionModeSync 乐观窗口、CLI 读 `system/init.permissionMode`、approve-with-mode 不嵌套、CLI 队列陈旧 meta、RPC 通道 default 降级保护、resume 透传 `--permission-mode`、B-263。
