@@ -1558,6 +1558,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02b: {
+                title: 'One session, one process',
+                summary: 'A session can no longer be driven by two CLI processes at once — the cause of every message showing up three times, thinking traces flickering open and closed, and the permission mode flipping back and forth.',
+                lock: 'Every session process now takes a single-writer lock before it connects; a restart replaces the previous process cleanly instead of running beside it.',
+                restart: 'Restart and Restore stop every live process of a session — including ones an upgraded daemon had lost track of — before relaunching, and the daemon re-adopts running sessions correctly after its own upgrade.',
+                cli: 'CLI 0.2.96 (fix first shipped in 0.2.95): daemon-side, so upgrading the daemon covers sessions that are already open; sessions started after the upgrade also carry the lock.',
+            },
             sep02: {
                 title: 'Archived sessions come back',
                 summary: 'Archiving is no longer a one-way door: chats and terminals restore in place.',

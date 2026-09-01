@@ -1536,6 +1536,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02b: {
+                title: '一个会话，只有一个进程',
+                summary: '同一会话不会再被两个 CLI 进程同时驱动——这正是每条消息显示 3 条、thinking 轨迹展开收起闪动、权限模式来回翻的根因。',
+                lock: '每个会话进程连接前先持单写者锁；重启会干净地替换旧进程，而不是与它并排运行。',
+                restart: '「重启」和「恢复」会先停掉该会话的所有活进程——包括 daemon 升级后失去跟踪的那些——再重新拉起；daemon 自身升级后也能正确认领仍在运行的会话。',
+                cli: 'CLI 0.2.96（修复自 0.2.95 起）：修复在 daemon 侧，升级 daemon 即覆盖已开着的会话；升级后新开的会话同时带锁。',
+            },
             sep02: {
                 title: '归档会话可以恢复了',
                 summary: '归档不再是单行道：对话和终端都能原地恢复。',

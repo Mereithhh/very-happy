@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-session-single-writer',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.96',
+    titleKey: 'changelog.releases.sep02b.title',
+    summaryKey: 'changelog.releases.sep02b.summary',
+    itemKeys: [
+      'changelog.releases.sep02b.lock',
+      'changelog.releases.sep02b.restart',
+      'changelog.releases.sep02b.cli',
+    ],
+  },
+  {
     id: '2026-09-02-archive-restore',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,
