@@ -161,3 +161,9 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     探活、再校验后才 `disconnect();connect()`）。不要再给 screen 加平行的 visibility/focus
     监听去重拉或重连，也不要用「最近收到包」判活、不要 `io.open()`（退避中是 no-op 或永久卡死）；
     socket.io 语义由 `socketIoResume.integration.test.ts` 锁住，改法见 `specs/2026-08-web-resume-sync.md`。
+16. **一个 happy session 至多一个活 wrapper，执法点在 wrapper 自己**：启动时、连 server 之前持
+    `~/.happy/session-locks/<id>.json`（`utils/sessionLock.ts`）；`HAPPY_RECONNECT_*` 即 takeover（杀旧→等退出→
+    持锁→reactivate，顺序不可反：旧 wrapper 的 deactivate 会让 server 广播 archive 连坐 successor），杀不掉就让位。
+    daemon 认领/停旧/幂等判活以锁为准，`hostPid`/命令行匹配只是存量兜底；新增任何 spawn/resume 路径都不得绕过
+    `claimSessionOrExit`。多写者状态下不要手杀其中一个（会归档整个会话），走「重启会话」。见
+    `specs/2026-09-session-single-writer-lock.md`（B-272）。

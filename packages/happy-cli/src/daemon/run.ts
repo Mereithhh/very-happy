@@ -47,7 +47,8 @@ import { withDaemonHeartbeat } from './daemonState';
 import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUpdateCheckInterval } from '@/update/cliUpdate';
 import { terminateProcess } from './processTermination';
 import { findAllHappyProcesses } from './doctor';
-import { recoverableSessionPid } from './sessionProcessRecovery';
+import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
+import { readSessionLock } from '@/utils/sessionLock';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -195,7 +196,7 @@ export async function startDaemon(): Promise<void> {
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     const persisted = readPersistedSessions();
-    const liveHappyPids = new Set((await findAllHappyProcesses()).map((entry) => entry.pid));
+    const liveHappyProcesses = await findAllHappyProcesses();
     for (const [id, s] of Object.entries(persisted)) {
       const tracked: TrackedSession = {
         startedBy: 'persisted',
@@ -210,13 +211,30 @@ export async function startDaemon(): Promise<void> {
         },
         pid: 0,
       };
-      const livePid = recoverableSessionPid(s.metadata, liveHappyPids);
-      if (livePid !== null) {
+      // B-272: by persisted pid first, then by the daemon-spawned
+      // `--resume <id>` command line — the record's hostPid can be stale
+      // (see sessionProcessRecovery.ts), which used to orphan a live wrapper
+      // and let the next restart-session spawn a second one next to it.
+      const livePids = findSessionWrapperPids(s.metadata, liveHappyProcesses, { excludePid: process.pid, lockPid: readSessionLock(id)?.pid });
+      if (livePids.length > 0) {
+        const [livePid, ...duplicates] = livePids;
         tracked.pid = livePid;
         tracked.startedBy = 'recovered after daemon restart';
         pidToTrackedSession.set(livePid, tracked);
+        if (livePid !== s.metadata?.hostPid) {
+          logger.debug(`[DAEMON RUN] Session ${id}: persisted hostPid ${s.metadata?.hostPid} is stale; adopted live wrapper ${livePid} by its --resume command line`);
+        }
+        for (const dup of duplicates) {
+          // Two live wrappers on one session = two SDK runs on one conversation.
+          // Track the extra under the same session id so restart-session stops
+          // ALL of them before relaunching. Never kill here: a wrapper's
+          // deactivate archives the row, which takes every sibling down too.
+          logger.warn(`[DAEMON RUN] Session ${id} has a duplicate live wrapper ${dup} (kept ${livePid}); restart the session to collapse them`);
+          pidToTrackedSession.set(dup, { ...tracked, pid: dup, startedBy: 'recovered after daemon restart (duplicate wrapper)' });
+        }
         // B-265: seen alive → the 14-day restore retention restarts from now.
-        persistSession(id, { ...s, savedAt: Date.now() });
+        // B-272: and the record now names the wrapper actually adopted.
+        persistSession(id, { ...s, metadata: { ...s.metadata, hostPid: livePid }, savedAt: Date.now() });
       } else {
         sessionIdToFinishedSession.set(id, tracked);
       }
@@ -255,6 +273,14 @@ export async function startDaemon(): Promise<void> {
           metadata: sessionMetadata,
           savedAt: Date.now(),
         });
+      }
+
+      // B-272: two live wrappers on one session are two writers on one
+      // conversation. Surface it loudly; restart-session is the collapse path.
+      for (const [otherPid, other] of pidToTrackedSession.entries()) {
+        if (other.happySessionId === sessionId && otherPid !== pid && isPidAlive(otherPid)) {
+          logger.warn(`[DAEMON RUN] Session ${sessionId} now has two live wrappers (${otherPid} and ${pid}); restart the session to collapse them`);
+        }
       }
 
       // Check if we already have this PID (daemon-spawned)
@@ -864,6 +890,28 @@ export async function startDaemon(): Promise<void> {
       return sessionIdToFinishedSession.get(happySessionId);
     };
 
+    // B-272: the restore record written after a resume/restart spawn succeeded.
+    // The webhook has just persisted the NEW wrapper's identity and versions;
+    // this write only adds the conversation truth (claudeSessionId etc.) the
+    // webhook snapshot lacks. It must not clobber that identity with the
+    // pre-spawn copy — a stale hostPid meant the next daemon restart could not
+    // re-adopt the wrapper, and restart-session then double-spawned onto it.
+    const persistRestoreRecord = (happySessionId: string, fallback: TrackedSession, metadata: Metadata) => {
+      const candidates = [...pidToTrackedSession.values()].filter((s) => s.happySessionId === happySessionId && isPidAlive(s.pid));
+      const live = candidates.find((s) => s.childProcess) ?? candidates[0];
+      const encryption = live?.encryption ?? fallback.encryption;
+      if (!encryption) return;
+      persistSession(happySessionId, {
+        encryptionKey: encodeBase64(encryption.encryptionKey),
+        encryptionVariant: encryption.encryptionVariant,
+        seq: encryption.seq,
+        metadataVersion: encryption.metadataVersion,
+        agentStateVersion: encryption.agentStateVersion,
+        metadata: mergeRestoreMetadata(metadata, live?.happySessionMetadataFromLocalWebhook),
+        savedAt: Date.now(),
+      });
+    };
+
     const fetchServerSessionMetadata = async (sessionId: string, encryptionKey: Uint8Array, encryptionVariant: 'legacy' | 'dataKey'): Promise<Metadata | null> => {
       // B-265: by-id first (a session older than the list's 150-row window is
       // otherwise unresolvable); old servers 404 → the list as before.
@@ -930,6 +978,18 @@ export async function startDaemon(): Promise<void> {
         if (!tracked) {
           return { type: 'error', errorMessage: `resume-precheck:not-tracked: Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon, more than 14 days ago, or on another machine.` };
         }
+        // B-272: a wrapper this daemon never tracked (spawned by a previous
+        // daemon, record's hostPid stale) is still the live writer for this
+        // session — adopt it instead of spawning a second one next to it.
+        const orphans = findSessionWrapperPids(tracked.happySessionMetadataFromLocalWebhook, await findAllHappyProcesses(), { excludePid: process.pid, lockPid: readSessionLock(happySessionId)?.pid })
+          .filter((pid) => isPidAlive(pid) && !pidToTrackedSession.has(pid));
+        if (orphans.length > 0) {
+          for (const pid of orphans) {
+            pidToTrackedSession.set(pid, { ...tracked, pid, startedBy: 'adopted untracked wrapper' });
+          }
+          logger.debug(`[DAEMON RUN] resume ${happySessionId}: adopted untracked live wrapper(s) ${orphans.join(', ')} — idempotent success`);
+          return { type: 'success', sessionId: happySessionId };
+        }
         if (!tracked.happySessionMetadataFromLocalWebhook) {
           return { type: 'error', errorMessage: `resume-precheck:no-metadata: Session ${happySessionId} has no metadata. Cannot resume.` };
         }
@@ -987,17 +1047,9 @@ export async function startDaemon(): Promise<void> {
         if (result.type === 'success') {
           // Refresh the on-disk restore record: `savedAt` (14-day retention now
           // measured from the last time we saw the session alive) and the
-          // server-side metadata (claudeSessionId etc.), keeping the webhook's
-          // versions untouched.
-          persistSession(happySessionId, {
-            encryptionKey: encodeBase64(tracked.encryption.encryptionKey),
-            encryptionVariant: tracked.encryption.encryptionVariant,
-            seq: tracked.encryption.seq,
-            metadataVersion: tracked.encryption.metadataVersion,
-            agentStateVersion: tracked.encryption.agentStateVersion,
-            metadata,
-            savedAt: Date.now(),
-          });
+          // server-side metadata (claudeSessionId etc.) on top of the NEW
+          // wrapper's identity + versions (B-272).
+          persistRestoreRecord(happySessionId, tracked, metadata);
         }
         return result;
       } catch (error) {
@@ -1024,14 +1076,22 @@ export async function startDaemon(): Promise<void> {
     // when it has actually exited (terminateProcess settles after SIGTERM→2s→
     // SIGKILL), or immediately when there is no live process. A safety timeout
     // guards a wedged SIGKILL so a restart can never hang forever.
-    const stopSessionAndWait = (happySessionId: string, timeoutMs = 8_000): Promise<void> => {
-      let targetPid: number | null = null;
+    const stopSessionAndWait = async (happySessionId: string, timeoutMs = 8_000): Promise<void> => {
+      const targets = new Set<number>();
       for (const [pid, s] of pidToTrackedSession.entries()) {
-        if (s.happySessionId === happySessionId && isPidAlive(pid)) { targetPid = pid; break; }
+        if (s.happySessionId === happySessionId && isPidAlive(pid)) targets.add(pid);
       }
-      if (targetPid === null) return Promise.resolve();
-      const pid = targetPid;
-      return new Promise<void>((resolve) => {
+      // B-272: also wrappers this daemon never tracked (spawned by a previous
+      // daemon and not re-adopted because the record's hostPid was stale).
+      // Leaving one alive here IS the double-spawn: the relaunch would be its
+      // second writer.
+      const known = findTrackedSessionById(happySessionId)?.happySessionMetadataFromLocalWebhook;
+      for (const pid of findSessionWrapperPids(known, await findAllHappyProcesses(), { excludePid: process.pid, lockPid: readSessionLock(happySessionId)?.pid })) {
+        if (isPidAlive(pid)) targets.add(pid);
+      }
+      if (targets.size === 0) return;
+      logger.debug(`[DAEMON RUN] restart ${happySessionId}: stopping live wrapper(s) ${[...targets].join(', ')}`);
+      await Promise.all([...targets].map((pid) => new Promise<void>((resolve) => {
         let settled = false;
         const done = () => { if (!settled) { settled = true; resolve(); } };
         const requested = terminateProcess(pid, () => {
@@ -1046,7 +1106,7 @@ export async function startDaemon(): Promise<void> {
         });
         if (!requested) done();
         setTimeout(done, timeoutMs).unref?.();
-      });
+      })));
     };
 
     const restartSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
@@ -1156,15 +1216,7 @@ export async function startDaemon(): Promise<void> {
           },
         });
         if (result.type === 'success') {
-          persistSession(happySessionId, {
-            encryptionKey: encodeBase64(tracked.encryption.encryptionKey),
-            encryptionVariant: tracked.encryption.encryptionVariant,
-            seq: tracked.encryption.seq,
-            metadataVersion: tracked.encryption.metadataVersion,
-            agentStateVersion: tracked.encryption.agentStateVersion,
-            metadata,
-            savedAt: Date.now(),
-          });
+          persistRestoreRecord(happySessionId, tracked, metadata);
         }
         return result;
       } catch (error) {

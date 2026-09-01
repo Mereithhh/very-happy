@@ -90,6 +90,12 @@ web 已收到 `processFailed`（「Agent 进程意外退出」，`serviceEvent.t
 
 R2/R3 否决：架构不可实现（`persistSession` 仅 daemon 可写、逐项 consumed-seq 不可计算、`onChildExited` 对 recovered survivor 不触发），且相对「按需重启/下次自然轮换」收益边际。除非有具体投诉证明部件 1-3 不足，否则不做。
 
+## 后记（2026-09-02，B-272）
+
+部件 1 的「崩溃安全 successor 追踪」按持久化 `hostPid` 对账在实战中失效：spawn 后的 restore 记录被 spawn 前的
+metadata 覆盖，handover 后活 wrapper 成孤儿，`restart-session` 随即 double-spawn。根治改为 wrapper 侧单写者锁 +
+daemon 以锁为事实源，见 `specs/2026-09-session-single-writer-lock.md`。
+
 ## 兼容矩阵与发布顺序
 
 - **部件 1+2 跨包**（cli daemon + web）。新增 daemon RPC（如 `restart-session`）：旧 web 不认→无此按钮，行为不变；新 web 打旧 daemon（无 handler）→按钮报「不支持，请升级」，绝不 double-spawn（web 侧优雅降级）。旧 web「Resume」打新 daemon→经同一把锁，安全。
