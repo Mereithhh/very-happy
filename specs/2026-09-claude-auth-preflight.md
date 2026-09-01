@@ -1,6 +1,6 @@
 # Claude 认证预检、诊断与修复（daemon 上下文即真理源）
 
-> 状态：Final（4 轮对抗 review 收敛；v5）
+> 状态：Shipped（commit `050e9e4c`，PR #136；Web `main@050e9e4c` + CLI v0.2.97，2026-09-02）。真机验证项已转 `docs/verify-queue.md` V-111 / V-112
 > 日期：2026-09-02 ｜ 关联 backlog：B-275（放大器，已修）、B-276（本 spec）、B-277（web 端 relogin，后续）｜ 出处：2026-09-01 mac-office `OAuth session expired and could not be refreshed` 事故
 
 ## 背景
