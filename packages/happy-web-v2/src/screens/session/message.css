@@ -160,6 +160,40 @@
   background: var(--danger-dim);
 }
 
+/* B-264: inline restart action under a processFailed event line */
+.msg-event-restart {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--sp-1);
+}
+.msg-event-restart-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-1);
+  padding: 2px var(--sp-2);
+  cursor: pointer;
+}
+.msg-event-restart-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.msg-event-restart-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.msg-event-restart-hint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  word-break: break-word;
+}
+
 /* thinking block */
 .msg-thinking {
   border-left: 2px solid var(--line-2);

@@ -904,6 +904,33 @@ export async function machineResumeSession(
 }
 
 /**
+ * B-264: relaunch a LIVE-but-broken session in place. Symmetric to
+ * machineResumeSession, but the `restart-session` handler stops the broken
+ * wrapper first and there is NO archive/unarchive dance — the session is live,
+ * not archived. A daemon predating the handler answers with "Method not found"
+ * (machineRPC rethrows it); callers map that to a "too old" hint.
+ */
+export async function machineRestartSession(
+    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string },
+    opts?: { timeoutMs?: number },
+): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode } = options;
+    try {
+        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+            machineId,
+            'restart-session',
+            { sessionId, model, permissionMode },
+            opts,
+        );
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to restart session',
+        };
+    }
+}
+
+/**
  * Permanently remove a machine from the server. Sessions spawned by the
  * machine are preserved; only the Machine row and its AccessKeys are deleted.
  */
