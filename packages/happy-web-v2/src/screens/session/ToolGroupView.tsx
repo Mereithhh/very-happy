@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ChevronRight, AlertTriangle, Bot } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Bot, Check, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
@@ -29,6 +29,16 @@ function groupState(tools: ToolCallMessage[]): GroupState {
     if (errors === states.length && errors > 0) return 'error';
     if (errors > 0) return 'mixed';
     return 'done';
+}
+
+/** B-260-P2: the only accent on a sub-agent row is a genuinely running lifecycle. */
+function subagentGlyph(lifecycle: 'running' | 'completed' | 'failed' | 'stopped' | undefined, toolState: string) {
+    if (lifecycle === 'running' || toolState === 'running') return <StatusDot status="thinking" size={7} pulse />;
+    if (lifecycle === 'failed' || toolState === 'error') return <StatusDot status="permission" size={7} />;
+    if (lifecycle === 'completed') return <Check size={13} className="tg-subagent-glyph" aria-hidden />;
+    if (lifecycle === 'stopped') return <Square size={11} className="tg-subagent-glyph" aria-hidden />;
+    // No lifecycle from the CLI (old wrapper / stub completion): neutral, no claim.
+    return <Bot size={13} className="tg-subagent-glyph" aria-hidden />;
 }
 
 function ToolRow({
@@ -72,8 +82,8 @@ function ToolRow({
             <div className="tg-row-head-wrap">
                 <button type="button" className="tg-row-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
-                    {isSubagent && tool.state === 'completed'
-                        ? <Bot size={13} className="tg-subagent-glyph" aria-hidden />
+                    {isSubagent
+                        ? subagentGlyph(subagentSummary?.lifecycle?.status, tool.state)
                         : <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />}
                     <span className="tg-tool-label">{label}</span>
                     {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
@@ -85,11 +95,17 @@ function ToolRow({
                     <span className="tg-tool-detail">{detail}</span>
                 )}
             </div>
-            {subagentSummary && subagentSummary.toolCount > 0 && (
+            {subagentSummary && (subagentSummary.toolCount > 0 || subagentSummary.lifecycle) && (
                 <div className="tg-subagent-line">
+                    {subagentSummary.lifecycle
+                        ? `${t(`session.chat.subagentStatus.${subagentSummary.lifecycle.status}` as 'session.chat.subagentStatus.running')} · `
+                        : ''}
                     {t('session.chat.usedTools', { count: subagentSummary.toolCount })}
-                    {subagentSummary.recent.length > 0
-                        ? ` · ${t('session.chat.subagentLatest', { line: subagentSummary.recent[subagentSummary.recent.length - 1] })}`
+                    {(subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1])
+                        ? ` · ${t('session.chat.subagentLatest', { line: subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1] })}`
+                        : ''}
+                    {subagentSummary.lifecycle?.durationMs != null
+                        ? ` · ${formatElapsed(Math.round(subagentSummary.lifecycle.durationMs / 1000))}`
                         : ''}
                 </div>
             )}

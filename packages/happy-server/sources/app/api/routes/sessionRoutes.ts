@@ -1,4 +1,4 @@
-import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral } from "@/app/events/eventRouter";
+import { eventRouter, buildNewSessionUpdate, buildSessionActivityEphemeral, buildSessionArchivedAtUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
@@ -9,6 +9,58 @@ import { sessionDelete } from "@/app/session/sessionDelete";
 import { isAccountResourceLimitError } from '../resourceLimits';
 import { createSessionWithQuota, sessionCreateSchema } from '@/app/state/accountStateStore';
 import { activityCache } from '@/app/presence/sessionCache';
+import { allocateUserSeq } from '@/storage/seq';
+
+/** B-265: one projection for the list and the by-id read, so the web sees the
+ *  same shape (incl. the server-owned `archivedAt`) on both paths. */
+const sessionProjection = {
+    id: true,
+    seq: true,
+    createdAt: true,
+    updatedAt: true,
+    metadata: true,
+    metadataVersion: true,
+    agentState: true,
+    agentStateVersion: true,
+    dataEncryptionKey: true,
+    active: true,
+    lastActiveAt: true,
+    archivedAt: true,
+} as const;
+
+function projectSession(v: {
+    id: string; seq: number; createdAt: Date; updatedAt: Date; metadata: string; metadataVersion: number;
+    agentState: string | null; agentStateVersion: number; dataEncryptionKey: Uint8Array | Buffer | null;
+    active: boolean; lastActiveAt: Date; archivedAt: Date | null;
+}) {
+    return {
+        id: v.id,
+        seq: v.seq,
+        createdAt: v.createdAt.getTime(),
+        updatedAt: v.updatedAt.getTime(),
+        active: v.active,
+        activeAt: v.lastActiveAt.getTime(),
+        archivedAt: v.archivedAt ? v.archivedAt.getTime() : null,
+        metadata: v.metadata,
+        metadataVersion: v.metadataVersion,
+        agentState: v.agentState,
+        agentStateVersion: v.agentStateVersion,
+        dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+        lastMessage: null as null,
+    };
+}
+
+/** B-265: archive / unarchive fan-out to every user-scoped connection (web
+ *  tabs, other devices). The session-scoped CLI socket is deliberately not a
+ *  recipient — on archive it is being disconnected right now. */
+async function emitArchivedAtUpdate(userId: string, sessionId: string, archivedAt: Date | null): Promise<void> {
+    const updateSeq = await allocateUserSeq(userId);
+    eventRouter.emitUpdate({
+        userId,
+        payload: buildSessionArchivedAtUpdate(sessionId, updateSeq, randomKeyNaked(12), archivedAt ? archivedAt.getTime() : null),
+        recipientFilter: { type: 'user-scoped-only' },
+    });
+}
 
 export function sessionRoutes(app: Fastify) {
 
@@ -22,54 +74,29 @@ export function sessionRoutes(app: Fastify) {
             where: { accountId: userId },
             orderBy: { updatedAt: 'desc' },
             take: 150,
-            select: {
-                id: true,
-                seq: true,
-                createdAt: true,
-                updatedAt: true,
-                metadata: true,
-                metadataVersion: true,
-                agentState: true,
-                agentStateVersion: true,
-                dataEncryptionKey: true,
-                active: true,
-                lastActiveAt: true,
-                // messages: {
-                //     orderBy: { seq: 'desc' },
-                //     take: 1,
-                //     select: {
-                //         id: true,
-                //         seq: true,
-                //         content: true,
-                //         localId: true,
-                //         createdAt: true
-                //     }
-                // }
-            }
+            select: sessionProjection,
         });
 
-        return reply.send({
-            sessions: sessions.map((v) => {
-                // const lastMessage = v.messages[0];
-                const sessionUpdatedAt = v.updatedAt.getTime();
-                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
+        return reply.send({ sessions: sessions.map(projectSession) });
+    });
 
-                return {
-                    id: v.id,
-                    seq: v.seq,
-                    createdAt: v.createdAt.getTime(),
-                    updatedAt: sessionUpdatedAt,
-                    active: v.active,
-                    activeAt: v.lastActiveAt.getTime(),
-                    metadata: v.metadata,
-                    metadataVersion: v.metadataVersion,
-                    agentState: v.agentState,
-                    agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
-                };
-            })
+    // B-265: one session by id, same projection as the list. Lets a resuming
+    // CLI / daemon read the current `seq` + metadata of a session that has
+    // fallen out of the list's 150-row window.
+    app.get('/v1/sessions/:sessionId', {
+        schema: {
+            params: z.object({ sessionId: z.string() })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const session = await db.session.findFirst({
+            where: { id: request.params.sessionId, accountId: request.userId },
+            select: sessionProjection,
         });
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+        return reply.send({ session: projectSession(session) });
     });
 
     // V2 Sessions API - Active sessions only
@@ -377,9 +404,10 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
+        const archivedAt = new Date();
         const result = await db.session.updateMany({
             where: { id: sessionId, accountId: userId },
-            data: { archivedAt: new Date(), active: false, lastActiveAt: new Date() }
+            data: { archivedAt, active: false, lastActiveAt: archivedAt }
         });
 
         if (result.count === 0) {
@@ -388,6 +416,7 @@ export function sessionRoutes(app: Fastify) {
 
         activityCache.discardSessionUpdate(sessionId);
         eventRouter.emitSessionArchived(userId, sessionId);
+        await emitArchivedAtUpdate(userId, sessionId, archivedAt);
 
         // Notify all clients about the session deactivation
         const sessionActivity = buildSessionActivityEphemeral(sessionId, false, Date.now(), false);
@@ -413,6 +442,7 @@ export function sessionRoutes(app: Fastify) {
             data: { archivedAt: null, active: false, lastActiveAt: new Date() }
         });
         if (result.count === 0) return reply.code(404).send({ error: 'Session not found' });
+        await emitArchivedAtUpdate(request.userId, sessionId, null);
         return reply.send({ success: true });
     });
 

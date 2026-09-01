@@ -355,3 +355,17 @@
   font-family: var(--font-mono);
   font-size: var(--fs-10);
 }
+
+/* B-260-P2: sub-agent final report (markdown), labelled in mono. */
+.tv-task-result {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+  max-height: 320px;
+  overflow: auto;
+}
+.tv-task-result-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  margin-bottom: var(--sp-1);
+}

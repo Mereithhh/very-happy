@@ -130,6 +130,8 @@ interface DaemonToServerEvents {
 type MachineRpcHandlers = {
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
+    /** B-264: stop a live-but-broken wrapper and relaunch it on the current CLI. */
+    restartSession?: (sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     listTrackedSessionIds?: () => string[];
     requestShutdown: () => void;
@@ -165,6 +167,7 @@ export class ApiMachineClient {
     private cliUpdatePushChain: Promise<void> = Promise.resolve();
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private restartSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string }) => Promise<SpawnSessionResult>) | null = null;
     private stopSessionHandler: ((sessionId: string) => boolean) | null = null;
     private listTrackedSessionIds: (() => string[]) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
@@ -279,11 +282,13 @@ export class ApiMachineClient {
     setRPCHandlers({
         spawnSession,
         resumeSession,
+        restartSession,
         stopSession,
         listTrackedSessionIds,
         requestShutdown
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
+        this.restartSessionHandler = restartSession ?? null;
         this.stopSessionHandler = stopSession;
         this.listTrackedSessionIds = listTrackedSessionIds ?? null;
 
@@ -315,6 +320,7 @@ export class ApiMachineClient {
         });
 
         this.syncResumeSessionRpcRegistration();
+        this.syncRestartSessionRpcRegistration();
 
         // Register web-terminal open handler. Account scoping is already
         // enforced by the server (RPC rooms are per-account), so only this
@@ -437,6 +443,18 @@ export class ApiMachineClient {
             }
             this.encTerminals.delete(terminalId);
             return { type: 'success' };
+        });
+
+        // B-265: bring a closed terminal back (same id/cwd/title/tags, claude
+        // resumed when the record knows the conversation). Old webs never call
+        // it; new webs gate on daemonState.terminalRestore before calling.
+        this.rpcHandlerManager.registerHandler('restore-terminal', async (params: any) => {
+            const { terminalId } = params || {};
+            const result = this.webTerminal.restoreClosedTerminal(terminalId);
+            if (result.type === 'error') {
+                return { type: 'error', reason: result.reason, errorMessage: `restore-terminal: ${result.reason}` };
+            }
+            return { type: 'success', terminalId: result.terminalId };
         });
 
         // List this machine's live tmux terminals. LEGACY polling path: new
@@ -629,6 +647,43 @@ export class ApiMachineClient {
 
             return { message: 'Daemon stop request acknowledged, starting shutdown sequence...' };
         });
+    }
+
+    // B-264: symmetric to resume, but the handler stops a live-but-broken
+    // wrapper first. Old web never calls it; new web calling an old daemon that
+    // lacks the handler gets "method not found" and shows an upgrade hint —
+    // never a double-spawn.
+    private syncRestartSessionRpcRegistration(): void {
+        const method = 'restart-session';
+
+        if (this.restartSessionHandler) {
+            if (!this.rpcHandlerManager.hasHandler(method)) {
+                this.rpcHandlerManager.registerHandler(method, async (params: any) => {
+                    const { sessionId, model, permissionMode } = params || {};
+                    if (!sessionId || typeof sessionId !== 'string') {
+                        throw new Error('Session ID is required');
+                    }
+                    const handler = this.restartSessionHandler;
+                    if (!handler) {
+                        throw new Error('Restart session handler not available');
+                    }
+                    const result = await handler(sessionId, { model, permissionMode });
+                    switch (result.type) {
+                        case 'success':
+                            return { type: 'success', sessionId: result.sessionId };
+                        case 'requestToApproveDirectoryCreation':
+                            return result;
+                        case 'error':
+                            throw new Error(result.errorMessage);
+                    }
+                });
+            }
+            return;
+        }
+
+        if (this.rpcHandlerManager.hasHandler(method)) {
+            this.rpcHandlerManager.unregisterHandler(method);
+        }
     }
 
     private syncResumeSessionRpcRegistration(): void {
@@ -881,6 +936,9 @@ export class ApiMachineClient {
                     httpPort: this.machine.daemonState?.httpPort,
                     startedAt: now,
                     webTerminals: { updatedAt: now, terminals: initialTerminals },
+                    // B-265 capability flag; restamped every connect so the
+                    // web's `detectedAt >= startedAt` trust rule holds.
+                    terminalRestore: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
@@ -892,6 +950,7 @@ export class ApiMachineClient {
 
         if (!rpcAlreadyRegistered) this.rpcHandlerManager.onSocketConnect(socket);
         this.syncResumeSessionRpcRegistration();
+        this.syncRestartSessionRpcRegistration();
         this.startKeepAlive();
         void this.reconcileArchivedSessions();
         void this.refreshRelayConnection();
@@ -1150,6 +1209,7 @@ export class ApiMachineClient {
                 if (this.relaySocket !== relaySocket) return;
                 this.rpcHandlerManager.onSocketConnect(relaySocket);
                 this.syncResumeSessionRpcRegistration();
+                this.syncRestartSessionRpcRegistration();
                 logger.debug(`[API MACHINE] Connected to regional relay ${selected.assignment.relayId}`);
             });
             relaySocket.on('disconnect', () => {

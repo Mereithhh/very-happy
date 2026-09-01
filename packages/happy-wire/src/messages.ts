@@ -59,6 +59,10 @@ export const UpdateSessionBodySchema = z.object({
   id: z.string(),
   metadata: VersionedEncryptedValueSchema.nullish(),
   agentState: VersionedNullableEncryptedValueSchema.nullish(),
+  /** B-265: server-owned archive intent (ms epoch, null = not archived).
+   *  Present only on the archive / unarchive transitions; absent elsewhere.
+   *  Old clients strip it (default z.object) and fall back to `active`. */
+  archivedAt: z.number().nullable().optional(),
 });
 export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>;
 

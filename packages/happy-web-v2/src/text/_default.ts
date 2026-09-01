@@ -516,6 +516,10 @@ export const en = {
             queueEditingPlaceholder: 'Edit message',
             stoppedByYou: 'Stopped by you',
             processFailed: 'The agent process exited unexpectedly',
+            restart: 'Restart',
+            restarting: 'Restarting…',
+            restartFailed: 'Restart failed. Try again.',
+            restartDaemonTooOld: 'Update the machine’s CLI to restart from here.',
             permissionModeChangeFailed: 'The running agent could not change permission mode. Your previous mode is still active.',
             enterToSend: 'Enter to send · Shift+Enter for newline',
             shiftEnterToSend: 'Shift+Enter to send · Enter for newline',
@@ -540,6 +544,10 @@ export const en = {
             usedTools: ({ count }: { count: number }) => count === 1 ? '1 tool call' : `${count} tool calls`,
             subagentCount: ({ count }: { count: number }) => count === 1 ? '1 sub-agent' : `${count} sub-agents`,
             subagentLatest: ({ line }: { line: string }) => `latest: ${line}`,
+            subagentRunningCount: ({ running, count }: { running: number; count: number }) => `${running}/${count} sub-agents running`,
+            subagentStatus: { running: 'running', completed: 'done', failed: 'failed', stopped: 'stopped' },
+            subagentResult: 'sub-agent report',
+            subagentResultTruncated: 'truncated at 16KB',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `Elapsed ${seconds}s`;
                 const minutes = Math.floor(seconds / 60);
@@ -671,6 +679,7 @@ export const en = {
         actionNewTerminalAt: 'New terminal in a directory…',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
+        actionRestoreSession: 'Restore current chat',
         actionOpenSettings: 'Open settings',
         actionClipboardHistory: 'Clipboard history',
         actionAssistant: 'Voice assistant',
@@ -1213,6 +1222,7 @@ export const en = {
         closedTerminals: 'Closed terminals',
         closedTerminalReopen: 'New terminal in this directory',
         closedTerminalResume: 'Continue this conversation here',
+        closedTerminalRestore: 'Restore this terminal (same id, title and tags)',
         terminalRestored: 'restored',
         terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new and the scrollback starts fresh.',
         closedTerminalGap: 'ended in a restart',
@@ -1221,6 +1231,33 @@ export const en = {
         // B-085 two-level row signal (aria/title on the right-edge dot)
         rowNeedsAttention: 'Waiting for you',
         rowUnread: 'Unread activity',
+    },
+
+    // B-265: restore an archived session in place (banner / row / palette)
+    restore: {
+        restore: 'Restore',
+        retry: 'Retry',
+        restoreAndSend: 'Restore and send',
+        archivedNotice: 'This session is archived. Restore it to continue the conversation here.',
+        restoring: 'Restoring on the machine…',
+        restoringSlow: 'The machine has not responded yet…',
+        awaitingOnline: 'Started — waiting for the session to come online…',
+        failed: 'Restore failed',
+        terminalNoRecord: 'The machine no longer has a record of this terminal.',
+        terminalFailed: 'The machine could not recreate the terminal.',
+        reason: {
+            'not-archived': 'This session is not archived.',
+            'no-machine': 'The machine this session ran on is unknown.',
+            'machine-offline': 'The machine is offline. Restore needs it online.',
+            'unsupported-flavor': 'This agent cannot be resumed.',
+            'no-backend-id': 'There is no agent conversation to resume.',
+            'not-tracked': 'The machine no longer has the restore data for this session (kept 14 days), or it ran elsewhere.',
+            'missing-cwd': 'The original working directory no longer exists.',
+            'conversation-missing': 'The conversation file is no longer on the machine.',
+            'machine-unreachable': 'The machine did not respond. Try again in a moment.',
+            'timeout': 'The restore was not confirmed. If the session shows as online, just use it; otherwise try again.',
+            'unknown': 'Unexpected error.',
+        },
     },
 
     zen: {
@@ -1520,6 +1557,22 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02: {
+                title: 'Archived sessions come back',
+                summary: 'Archiving is no longer a one-way door: chats and terminals restore in place.',
+                restore: 'Archived chats have a Restore action (row, detail banner, ⌘K) — same session, same URL, history intact.',
+                compose: 'Typing into an archived chat restores it first and queues the message; nothing is sent into the void anymore.',
+                terminal: 'Closing a terminal moves it to the archive; Restore brings it back with the same id, title and tags, and resumes the recorded claude conversation.',
+                cli: 'CLI 0.2.92: resume is idempotent with clear failure reasons, reconnects pick up exactly where the server left off (no history replay or skip), and the daemon answers restore-terminal.',
+            },
+            sep01b: {
+                title: 'Sub-agents you can actually watch',
+                summary: 'Agent cards now carry the real state of each sub-agent — running, finished, failed — with its tool count, latest action, duration and final report; and yolo is now enforced by the CLI itself.',
+                lifecycle: 'A background sub-agent stays "running" on its card until it really finishes, updating tool count and latest action as it works, even after the launching turn has ended.',
+                report: 'When a sub-agent finishes, the card shows its status and duration, and expanding it reveals the full report it sent back — no more empty notification rows.',
+                turn: 'Folded turns show how many sub-agents are still running, and the session stays marked live while any of them is.',
+                cli: 'CLI 0.2.91: sessions switched to yolo run in bypass mode inside Claude itself (no more per-tool approvals), the mode shown is the one Claude confirmed, and queued messages no longer undo an explicit mode switch. Applies to sessions started after upgrading.',
+            },
             sep01: {
                 title: 'Yolo now means yolo — on every machine',
                 summary: 'Choosing yolo no longer leaves you clicking Approve on sessions whose CLI predates the last update, and sub-agents finally read like sub-agents.',
@@ -1625,7 +1678,7 @@ export const en = {
     terminal: {
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
-        closeMessage: 'This ends the terminal process on the machine. Unsaved terminal work is lost; whether an agent conversation can resume depends on that agent.',
+        closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
         // Used by terminal connection screens
         webBrowserRequired: 'Web Browser Required',
         webBrowserRequiredDescription: 'Terminal connection links can only be opened in a web browser for security reasons. Please use the QR code scanner or open this link on a computer.',

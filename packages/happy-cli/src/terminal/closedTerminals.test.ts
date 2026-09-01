@@ -129,3 +129,15 @@ describe('sanitizeClosedTerminals', () => {
         expect(junk.reason).toBeUndefined();
     });
 });
+
+describe('B-265 tags + manual on closed records', () => {
+    it('sanitize keeps a clean tag list and the manual flag, drops junk, never fabricates them', () => {
+        const out = sanitizeClosedTerminals([
+            { id: 'a', closedAt: 2, tags: ['x', ' y ', 3, 'x', ''], manual: true },
+            { id: 'b', closedAt: 1, tags: 'nope', manual: 'yes' },
+        ]);
+        expect(out[0]).toMatchObject({ id: 'a', tags: ['x', 'y'], manual: true });
+        expect('tags' in out[1]).toBe(false);
+        expect('manual' in out[1]).toBe(false);
+    });
+});

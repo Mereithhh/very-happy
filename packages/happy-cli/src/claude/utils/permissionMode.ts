@@ -137,3 +137,24 @@ export function resolveRemoteClaudePermissionMode(
 
     return nextMode;
 }
+
+/**
+ * B-262 batch 2 (B2): what to publish once Claude Code reports the mode it
+ * will actually enforce (`system/init.permissionMode`). The SDK's verdict wins
+ * over our intent — user settings (permissions.deny/ask/defaultMode,
+ * disableBypassPermissionsMode) can veto a requested bypass and the web must
+ * show that instead of a lie. Returns null when nothing needs publishing.
+ */
+export function reconcilePublishedPermissionMode(input: {
+    /** Mode this process asked the SDK for (mapped to SDK vocabulary). */
+    intent: string;
+    /** Last value written to session.metadata.permissionMode. */
+    published: string;
+    /** Mode the SDK reported in system/init. */
+    effective: string | undefined;
+}): { publish: string; mismatch: boolean } | null {
+    if (!input.effective) return null;
+    const mismatch = input.effective !== input.intent;
+    if (input.effective === input.published) return mismatch ? { publish: input.effective, mismatch } : null;
+    return { publish: input.effective, mismatch };
+}

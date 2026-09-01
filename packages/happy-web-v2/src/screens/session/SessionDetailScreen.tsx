@@ -13,6 +13,8 @@ import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
 import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
+import { SessionArchivedBanner } from './SessionArchivedBanner';
+import { isRestorable } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
 import { readSessionPanel, withSessionPanel, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
@@ -91,6 +93,8 @@ export function SessionDetailScreen() {
                     onToggleFiles={() => filesOpen ? setPanel(null, true) : setPanel('changed')}
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
+                {/* B-265: archived (not merely offline) → offer restore in place */}
+                {!mirror && isRestorable(session) && <SessionArchivedBanner sessionId={id} />}
                 <div className="sd-body">
                     <ChatList key={id} sessionId={id} showLiveStatus={!mirror} />
                 </div>

@@ -24,6 +24,17 @@ describe('commitSessionResume', () => {
     expect(result).toEqual({ type: 'error', errorMessage: 'daemon offline' });
   });
 
+  it('B-265: folds a thrown daemon handler ({error}) into an error result and still compensates', async () => {
+    const rearchive = vi.fn(async () => ({ success: true }));
+    const result = await commitSessionResume(
+      async () => ({ success: true, supported: true }),
+      async () => ({ error: 'resume-precheck:not-tracked' } as any),
+      rearchive,
+    );
+    expect(rearchive).toHaveBeenCalledOnce();
+    expect(result).toEqual({ type: 'error', errorMessage: 'resume-precheck:not-tracked' });
+  });
+
   it('preserves compatibility with a server that has no lifecycle endpoint', async () => {
     const rearchive = vi.fn(async () => ({ success: true }));
     await commitSessionResume(

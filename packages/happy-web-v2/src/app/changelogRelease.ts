@@ -15,6 +15,34 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-archive-restore',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.92',
+    titleKey: 'changelog.releases.sep02.title',
+    summaryKey: 'changelog.releases.sep02.summary',
+    itemKeys: [
+      'changelog.releases.sep02.restore',
+      'changelog.releases.sep02.compose',
+      'changelog.releases.sep02.terminal',
+      'changelog.releases.sep02.cli',
+    ],
+  },
+  {
+    id: '2026-09-01-subagent-lifecycle-cli-yolo',
+    date: '2026-09-01',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.91',
+    titleKey: 'changelog.releases.sep01b.title',
+    summaryKey: 'changelog.releases.sep01b.summary',
+    itemKeys: [
+      'changelog.releases.sep01b.lifecycle',
+      'changelog.releases.sep01b.report',
+      'changelog.releases.sep01b.turn',
+      'changelog.releases.sep01b.cli',
+    ],
+  },
+  {
     id: '2026-09-01-yolo-enforcement-subagents',
     date: '2026-09-01',
     buildVersion: __APP_VERSION__,

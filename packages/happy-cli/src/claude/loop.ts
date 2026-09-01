@@ -45,6 +45,8 @@ interface LoopOptions {
     onSessionReady?: (session: Session) => void
     onAbort?: () => void
     onPermissionModeChange?: (mode: ClaudeSdkPermissionMode) => void
+    /** B-262 batch 2: SDK-reported effective mode from system/init. */
+    onEffectivePermissionMode?: (mode: string) => void
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -96,7 +98,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
             }
 
             case 'remote': {
-                const reason = await claudeRemoteLauncher(session, opts.onPermissionModeChange);
+                const reason = await claudeRemoteLauncher(session, opts.onPermissionModeChange, opts.onEffectivePermissionMode);
                 switch (reason) {
                     case 'exit':
                         return 0;

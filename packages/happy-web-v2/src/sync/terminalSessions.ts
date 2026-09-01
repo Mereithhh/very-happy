@@ -72,6 +72,10 @@ interface TerminalSessionsState {
   /** Optimistic overlay for local mutations. */
   overlay: PushOverlay;
   create(machineId: string, machineName: string, title?: string): TerminalSession;
+  /** B-265: a RESTORED terminal keeps its old id — show its row immediately
+   *  (with the record's title/tags) until the daemon's push carries it, and
+   *  drop any lingering `removed` overlay for that id. */
+  adopt(id: string, machineId: string, machineName: string, meta?: { title?: string; tags?: string[] }): void;
   update(id: string, changes: { title?: string; tags?: string[] }): void;
   remove(id: string): void;
   /** Apply one machine's trusted webTerminals snapshot (terminalSync). */
@@ -110,6 +114,30 @@ export const useTerminalSessions = create<TerminalSessionsState>((set, get) => (
     set({ overlay: nextOverlay, terminals: composed(pushes, nextOverlay) });
     scheduleOverlaySweep(CREATE_OVERLAY_TTL_MS);
     return t;
+  },
+  adopt: (id, machineId, machineName, meta) => {
+    const now = Date.now();
+    const { pushes, overlay } = get();
+    const { [id]: _dropped, ...removed } = overlay.removed;
+    const alreadyPushed = Object.values(pushes).some((p) => p.terminals.some((t) => t.id === id));
+    const created = alreadyPushed
+      ? overlay.created.filter((c) => c.id !== id)
+      : [
+          {
+            id,
+            machineId,
+            machineName,
+            title: meta?.title?.trim() || machineName || 'Terminal',
+            tags: meta?.tags,
+            manual: !!meta?.title?.trim(),
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...overlay.created.filter((c) => c.id !== id),
+        ];
+    const nextOverlay: PushOverlay = { ...overlay, created, removed };
+    set({ overlay: nextOverlay, terminals: composed(pushes, nextOverlay) });
+    scheduleOverlaySweep(CREATE_OVERLAY_TTL_MS);
   },
   update: (id, changes) => {
     const row = get().terminals.find((t) => t.id === id);

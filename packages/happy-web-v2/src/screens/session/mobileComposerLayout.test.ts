@@ -21,7 +21,7 @@ describe('mobile composer layout contract', () => {
 
     it('keeps send available beside stop while an agent is working', () => {
         expect(component).toContain('<div className="ci-composer-actions">');
-        expect(component).toMatch(/\{isWorking && \([\s\S]*ci-send--abort[\s\S]*\)\}[\s\S]*aria-label=\{isWorking \? t\('session\.chat\.queueSend'\) : t\('session\.chat\.send'\)\}/);
+        expect(component).toMatch(/\{isWorking && \([\s\S]*ci-send--abort[\s\S]*\)\}[\s\S]*aria-label=\{gate === 'restore-first' \? t\('restore\.restoreAndSend'\) : isWorking \? t\('session\.chat\.queueSend'\) : t\('session\.chat\.send'\)\}/);
         expect(input).toMatch(/\.ci-composer-actions \{[\s\S]*display: inline-flex;/);
     });
 

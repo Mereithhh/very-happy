@@ -84,6 +84,9 @@ export interface AutoRestoreCandidate {
     seenAt: number;
     /** Claude conversation to resume, if the mirror metadata knew one. */
     claudeSessionId?: string;
+    /** B-265: tags + manual-rename flag, put back on the recreated session. */
+    tags?: string[];
+    manual?: boolean;
 }
 
 /** What the daemon executes for one accepted candidate. */
@@ -91,6 +94,8 @@ export interface AutoRestorePlan {
     terminalId: string;
     cwd: string;
     title?: string;
+    tags?: string[];
+    manual?: boolean;
     claudeSessionId: string;
     /** The exact command injected into the fresh session. */
     command: string;
@@ -173,6 +178,8 @@ export function selectAutoRestore(
         if (plans.length >= config.max) { skipped.push({ id: c.id, reason: 'over-limit' }); continue; }
         plans.push({
             terminalId: c.id,
+            ...(c.tags !== undefined ? { tags: c.tags } : {}),
+            ...(c.manual ? { manual: true } : {}),
             cwd: c.cwd,
             title: c.title,
             claudeSessionId: c.claudeSessionId,

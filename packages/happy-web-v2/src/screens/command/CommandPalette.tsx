@@ -14,6 +14,7 @@ import {
   AudioLines,
   ListChecks,
   FolderOpen,
+  RotateCcw,
 } from 'lucide-react';
 import { useSessions } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -22,7 +23,8 @@ import { getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { createTerminalOrPick, NEW_TERMINAL_SHORTCUT_HINT } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { sessionUpdateTitle } from '@/sync/ops';
-import { archiveSessionNow, nextSessionPathAfterClose } from '@/app/rowActions';
+import { archiveSessionNow, nextSessionPathAfterClose, restoreSessionOrAlert } from '@/app/rowActions';
+import { isRestorable } from '@/app/sessionRestore';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useImeGuard } from '@/utils/ime';
@@ -216,14 +218,30 @@ export function CommandPalette() {
         haystack: (t('commandPalette.actionRenameSession') as string).toLowerCase(),
         run: renameCurrent,
       });
-      out.push({
-        key: 'action:archive',
-        group: 'actions',
-        title: t('commandPalette.actionArchiveSession'),
-        icon: <Archive size={16} />,
-        haystack: (t('commandPalette.actionArchiveSession') as string).toLowerCase(),
-        run: archiveCurrent,
-      });
+      const currentSession = (sessions ?? []).find(
+        (session): session is Exclude<typeof session, string> =>
+          typeof session !== 'string' && session.id === currentSessionId,
+      );
+      if (isRestorable(currentSession)) {
+        // B-265: an archived session restores in place instead of archiving.
+        out.push({
+          key: 'action:restore',
+          group: 'actions',
+          title: t('commandPalette.actionRestoreSession'),
+          icon: <RotateCcw size={16} />,
+          haystack: (t('commandPalette.actionRestoreSession') as string).toLowerCase(),
+          run: () => void restoreSessionOrAlert(currentSessionId),
+        });
+      } else {
+        out.push({
+          key: 'action:archive',
+          group: 'actions',
+          title: t('commandPalette.actionArchiveSession'),
+          icon: <Archive size={16} />,
+          haystack: (t('commandPalette.actionArchiveSession') as string).toLowerCase(),
+          run: archiveCurrent,
+        });
+      }
     }
     out.push({
       key: 'action:assistant',

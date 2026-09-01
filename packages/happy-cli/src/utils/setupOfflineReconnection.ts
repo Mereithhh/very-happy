@@ -28,6 +28,8 @@ export interface SetupOfflineReconnectionOptions {
     state: AgentState;
     /** Initial API response (null if server unreachable) */
     response: Session | null;
+    /** B-265: forwarded to ApiSessionClient (reconnect seeds `initialSeq`). */
+    sessionClientOptions?: { initialSeq?: number };
     /**
      * Callback invoked when session is swapped after reconnection.
      * Use this to update the session reference in the calling code.
@@ -104,7 +106,7 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
 
         return { session, reconnectionHandle, isOffline: true };
     } else {
-        session = api.sessionSyncClient(response);
+        session = api.sessionSyncClient(response, opts.sessionClientOptions);
         return { session, reconnectionHandle: null, isOffline: false };
     }
 }

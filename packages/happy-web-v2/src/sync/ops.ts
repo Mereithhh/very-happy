@@ -642,6 +642,34 @@ export async function machineScrollTerminal(
  *  whether the machine acked (false = offline/timeout/error; never throws) —
  *  a failed kill must surface to the user instead of pretending the terminal
  *  is gone (the machine would push it right back). */
+/** B-265: restore a closed terminal in place (same id / cwd / title / tags;
+ *  claude resumed when the daemon's record knows the conversation). Callers
+ *  must check `terminalRestoreSupported(daemonState)` first — an unregistered
+ *  RPC makes the server wait 15 s before failing. Never throws. */
+export type RestoreTerminalResult =
+    | { ok: true }
+    | { ok: false; reason: 'unsupported' | 'no-record' | 'missing-cwd' | 'invalid-id' | 'error'; message?: string };
+export async function machineRestoreTerminal(machineId: string, terminalId: string): Promise<RestoreTerminalResult> {
+    try {
+        const result = await apiSocket.machineRPC<
+            { type: 'success'; terminalId: string } | { type: 'error'; reason?: string; errorMessage?: string } | { error?: string },
+            { terminalId: string }
+        >(machineId, 'restore-terminal', { terminalId }, { timeoutMs: 20_000 });
+        if (result && 'type' in result && result.type === 'success') return { ok: true };
+        const text = (result && 'error' in result && typeof result.error === 'string' && result.error)
+            || (result && 'errorMessage' in result && typeof result.errorMessage === 'string' && result.errorMessage)
+            || '';
+        const reason = (result && 'reason' in result && typeof result.reason === 'string') ? result.reason : '';
+        if (/method not found|rpc method not available/i.test(text)) return { ok: false, reason: 'unsupported', message: text };
+        if (reason === 'no-record' || reason === 'missing-cwd' || reason === 'invalid-id') return { ok: false, reason, message: text };
+        return { ok: false, reason: 'error', message: text || 'restore-terminal failed' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/method not found|rpc method not available/i.test(message)) return { ok: false, reason: 'unsupported', message };
+        return { ok: false, reason: 'error', message };
+    }
+}
+
 export async function machineKillTerminal(machineId: string, terminalId: string): Promise<boolean> {
     try {
         const r = await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string }>(
@@ -857,7 +885,10 @@ export async function codexListRewindPoints(
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
+export async function machineResumeSession(
+    options: ResumeSessionOptions & { model?: string; permissionMode?: string },
+    opts?: { timeoutMs?: number },
+): Promise<SpawnSessionResult> {
     const { machineId, sessionId, model, permissionMode } = options;
 
     return commitSessionResume(
@@ -866,9 +897,37 @@ export async function machineResumeSession(options: ResumeSessionOptions & { mod
             machineId,
             'resume-happy-session',
             { sessionId, model, permissionMode },
+            opts,
         ),
         () => sessionArchive(sessionId),
     );
+}
+
+/**
+ * B-264: relaunch a LIVE-but-broken session in place. Symmetric to
+ * machineResumeSession, but the `restart-session` handler stops the broken
+ * wrapper first and there is NO archive/unarchive dance — the session is live,
+ * not archived. A daemon predating the handler answers with "Method not found"
+ * (machineRPC rethrows it); callers map that to a "too old" hint.
+ */
+export async function machineRestartSession(
+    options: { machineId: string; sessionId: string; model?: string; permissionMode?: string },
+    opts?: { timeoutMs?: number },
+): Promise<SpawnSessionResult> {
+    const { machineId, sessionId, model, permissionMode } = options;
+    try {
+        return await apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+            machineId,
+            'restart-session',
+            { sessionId, model, permissionMode },
+            opts,
+        );
+    } catch (error) {
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to restart session',
+        };
+    }
 }
 
 /**

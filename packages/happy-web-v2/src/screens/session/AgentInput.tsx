@@ -47,6 +47,7 @@ import {
     type QueuedMessage,
     type QueueDeliveryPhase,
 } from './queuedMessages';
+import { composerGate, restoreSession, useRestoreState } from '@/app/sessionRestore';
 
 // Sentinel key for the「默认」effort entry — not a real SDK effort level
 // (the CLI validates against low/medium/high/xhigh/max, so this can never
@@ -133,6 +134,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
     const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
     const isWorking = session?.thinking === true || !!runningTool;
+    // B-265: an archived session's composer restores first and queues; the
+    // queue releases once the session is back (archivedAt cleared + online).
+    const gate = composerGate(session);
+    const restoreState = useRestoreState(sessionId);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
     const slashSuggestions = dismissedSlashText === text
         ? []
@@ -336,6 +341,15 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if (!atts) clear();
         storage.getState().updateSessionDraft(sessionId, null);
 
+        if (gate === 'restore-first') {
+            // Never write to an archived session: the message would sit on the
+            // server unprocessed. Queue it locally and bring the session back.
+            setQueued((current) => [...current, item]);
+            void restoreSession(sessionId);
+            if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
+            return;
+        }
+
         if (isWorking && delivery === 'queue') {
             setQueued((current) => [...current, item]);
             if (hadFocus || !IS_COARSE_POINTER) requestAnimationFrame(() => taRef.current?.focus());
@@ -390,7 +404,10 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     // restored at the head for an explicit retry.
     useEffect(() => {
         deliveryPhaseRef.current = advanceQueueDeliveryPhase(deliveryPhaseRef.current, isWorking);
-        if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking) || queued.length === 0) return;
+        // B-265: hold while archived AND while a restore is still settling
+        // (the store entry is dropped once presence held 'online' for 2 s).
+        const releaseGate = gate === 'restore-first' || (restoreState && restoreState.phase !== 'failed') ? 'restore-first' : 'send';
+        if (!canReleaseQueuedMessage(deliveryPhaseRef.current, isWorking, releaseGate) || queued.length === 0) return;
 
         const item = queued[0];
         deliveryPhaseRef.current = 'waiting-start';
@@ -399,7 +416,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             setQueued((current) => [item, ...current]);
             deliveryPhaseRef.current = 'idle';
         });
-    }, [isWorking, queued, sessionId]);
+    }, [isWorking, queued, sessionId, gate, restoreState]);
 
     const insertPreset = (presetText: string) => {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));
@@ -793,8 +810,8 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             onClick={() => void doSend('queue')}
                             disabled={!canSend}
                             aria-busy={sending || processingAttachments}
-                            aria-label={isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
-                            title={isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
+                            aria-label={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
+                            title={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}
                         >
                             {sending || processingAttachments ? <Spinner size={16} /> : <Send size={16} />}
                         </button>

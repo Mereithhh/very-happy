@@ -153,3 +153,21 @@ describe('createEnvelope', () => {
     expect(() => createEnvelope('user', { t: 'service', text: 'internal event' })).toThrow();
   });
 });
+
+describe('B-260-P2 sub-agent lifecycle payloads', () => {
+    it('progress requires a subagent and role agent', () => {
+        const sub = createId();
+        expect(() => createEnvelope('agent', { t: 'progress', toolUses: 2, lastTool: 'Read' }, { subagent: sub })).not.toThrow();
+        expect(() => createEnvelope('agent', { t: 'progress', toolUses: 2 })).toThrow();
+        expect(() => createEnvelope('user', { t: 'progress', toolUses: 2 }, { subagent: sub })).toThrow();
+    });
+    it('stop / tool-call-end carry optional lifecycle fields and stay valid without them', () => {
+        const sub = createId();
+        const stop = createEnvelope('agent', { t: 'stop', status: 'failed', result: { text: 'x', truncated: true }, usage: { toolUses: 1 } }, { subagent: sub });
+        expect(stop.ev).toMatchObject({ t: 'stop', status: 'failed' });
+        expect(createEnvelope('agent', { t: 'stop' }, { subagent: sub }).ev).toEqual({ t: 'stop' });
+        const end = createEnvelope('agent', { t: 'tool-call-end', call: 'c1', result: { text: 'r', stats: { toolUses: 3, toolStats: { readCount: 1 } } } });
+        expect(end.ev).toMatchObject({ t: 'tool-call-end', result: { text: 'r' } });
+        expect(createEnvelope('agent', { t: 'start', title: 't', description: 'd', subagentType: 'Explore' }, { subagent: sub }).ev).toMatchObject({ subagentType: 'Explore' });
+    });
+});

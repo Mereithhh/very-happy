@@ -8,6 +8,8 @@ export type ClaudeSdkMetadata = {
     skills?: string[];
     model?: string;
     modelIsDefault: boolean;
+    /** Effective permission mode Claude Code reports in system/init (B-262 batch 2). */
+    permissionMode?: string;
 };
 
 export function applyClaudeSdkMetadata(current: Metadata, update: ClaudeSdkMetadata): Metadata {

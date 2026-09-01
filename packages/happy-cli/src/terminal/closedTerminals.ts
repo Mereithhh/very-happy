@@ -19,6 +19,8 @@
  *     off a transient tmux list glitch.
  */
 
+import { sanitizeTagList } from './liveTerminals';
+
 export interface ClosedTerminalRecord {
     /** Terminal id (tmux session was `vh-<id>`). */
     id: string;
@@ -42,6 +44,10 @@ export interface ClosedTerminalRecord {
      *  to leave no record at all. Absent on records from older daemons; readers
      *  treat absent as `closed`. */
     reason?: ClosedTerminalReason;
+    /** B-265: tags (@vh_tags) and manual-rename flag at close time, restored
+     *  verbatim by `restore-terminal`. Absent on records from older daemons. */
+    tags?: string[];
+    manual?: boolean;
     /** When the close was observed (ms epoch). For a `daemon-gap` record there
      *  was nobody to observe it, so it carries the last time the terminal was
      *  seen ALIVE instead — which is what the archive should show anyway. */
@@ -100,10 +106,11 @@ export function sanitizeClosedTerminals(
     const out: ClosedTerminalRecord[] = [];
     for (const item of raw) {
         if (!item || typeof item !== 'object') continue;
-        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt } = item as Record<string, unknown>;
+        const { id, title, cwd, mirrorSessionId, claudeSessionId, reason, closedAt, tags, manual } = item as Record<string, unknown>;
         if (typeof id !== 'string' || id.length === 0 || typeof closedAt !== 'number') continue;
         if (seen.has(id)) continue;
         seen.add(id);
+        const tagList = sanitizeTagList(tags);
         out.push({
             id,
             title: typeof title === 'string' ? title : undefined,
@@ -111,6 +118,8 @@ export function sanitizeClosedTerminals(
             mirrorSessionId: typeof mirrorSessionId === 'string' ? mirrorSessionId : undefined,
             claudeSessionId: typeof claudeSessionId === 'string' ? claudeSessionId : undefined,
             reason: reason === 'daemon-gap' || reason === 'closed' ? reason : undefined,
+            ...(tagList !== undefined ? { tags: tagList } : {}),
+            ...(manual === true ? { manual: true } : {}),
             closedAt,
         });
     }

@@ -30,7 +30,25 @@
 export interface LiveTerminalInfo {
     title?: string;
     cwd?: string;
+    /** B-265: cross-device tags (@vh_tags) and the manual-rename flag
+     *  (@vh_title_manual) at the time of observation, so a restore can put
+     *  them back. Optional: old snapshots / daemons never wrote them. */
+    tags?: string[];
+    manual?: boolean;
     seenAt: number;
+}
+
+/** Tolerant read of a persisted tags list (strings only, trimmed, capped). */
+export function sanitizeTagList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out: string[] = [];
+    for (const tag of value) {
+        if (typeof tag !== 'string') continue;
+        const clean = tag.trim();
+        if (clean && !out.includes(clean)) out.push(clean);
+        if (out.length >= 64) break;
+    }
+    return out;
 }
 
 /** Entries older than this are dropped on load — a terminal last seen alive two
@@ -54,12 +72,15 @@ export function sanitizeLiveSnapshot(
     const rows: Array<[string, LiveTerminalInfo]> = [];
     for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
         if (!id || !value || typeof value !== 'object') continue;
-        const { title, cwd, seenAt } = value as Record<string, unknown>;
+        const { title, cwd, seenAt, tags, manual } = value as Record<string, unknown>;
         if (typeof seenAt !== 'number' || !Number.isFinite(seenAt)) continue;
         if (now - seenAt >= ttlMs) continue;
+        const tagList = sanitizeTagList(tags);
         rows.push([id, {
             title: typeof title === 'string' && title.trim() ? title : undefined,
             cwd: typeof cwd === 'string' && cwd ? cwd : undefined,
+            ...(tagList !== undefined ? { tags: tagList } : {}),
+            ...(manual === true ? { manual: true } : {}),
             seenAt,
         }]);
     }
@@ -91,6 +112,8 @@ export function liveSnapshotChanged(
         const before = prev.get(id);
         if (!before) return true;
         if (before.title !== info.title || before.cwd !== info.cwd) return true;
+        if (!!before.manual !== !!info.manual) return true;
+        if ((before.tags ?? []).join('\u0000') !== (info.tags ?? []).join('\u0000')) return true;
     }
     return false;
 }

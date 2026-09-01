@@ -136,10 +136,20 @@ export class ApiSessionClient extends EventEmitter {
     private readonly routedInboundLocalIds = new Set<string>();
     private handoverInFlight: Promise<void> | null = null;
 
-    constructor(token: string, session: Session) {
+    /** B-265 reconnect: the message cursor was seeded from the server, so
+     *  nothing before it is history to replay — but socket fast-path routing
+     *  must wait for the first fetch, otherwise a message that lands between
+     *  the seed and the first fetch is routed twice (socket + fetch). */
+    private awaitingInitialFetch = false;
+
+    constructor(token: string, session: Session, opts?: { initialSeq?: number }) {
         super()
         this.token = token;
         this.sessionId = session.id;
+        if (opts?.initialSeq !== undefined && opts.initialSeq >= 0) {
+            this.lastSeq = opts.initialSeq;
+            this.awaitingInitialFetch = true;
+        }
         this.metadata = session.metadata;
         this.metadataVersion = session.metadataVersion;
         this.agentState = session.agentState;
@@ -223,7 +233,7 @@ export class ApiSessionClient extends EventEmitter {
 
                 if (data.body.t === 'new-message') {
                     const messageSeq = data.body.message?.seq;
-                    if (this.lastSeq === 0) {
+                    if (this.lastSeq === 0 || this.awaitingInitialFetch) {
                         this.receiveSync.invalidate();
                         return;
                     }
@@ -548,6 +558,10 @@ export class ApiSessionClient extends EventEmitter {
                 if (message.localId && this.directInboundLocalIds.delete(message.localId)) {
                     continue;
                 }
+                // Already routed off the socket fast path — never twice.
+                if (message.localId && this.routedInboundLocalIds.has(message.localId)) {
+                    continue;
+                }
 
                 if (message.content?.t !== 'encrypted') {
                     continue;
@@ -580,6 +594,7 @@ export class ApiSessionClient extends EventEmitter {
                 break;
             }
         }
+        this.awaitingInitialFetch = false;
     }
 
     private static readonly MAX_OUTBOX_BATCH_SIZE = 50;

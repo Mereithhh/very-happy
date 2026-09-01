@@ -525,6 +525,10 @@ export const zhHans: TranslationStructure = {
             queueEditingPlaceholder: '编辑消息',
             stoppedByYou: '已由你停止',
             processFailed: 'Agent 进程意外退出',
+            restart: '重启会话',
+            restarting: '重启中…',
+            restartFailed: '重启失败，请重试。',
+            restartDaemonTooOld: '请更新该机器的 CLI 后再从这里重启。',
             permissionModeChangeFailed: '运行中的 Agent 无法切换权限，原权限模式仍然有效。',
             enterToSend: '回车发送 · Shift+回车换行',
             shiftEnterToSend: 'Shift+回车发送 · 回车换行',
@@ -549,6 +553,10 @@ export const zhHans: TranslationStructure = {
             usedTools: ({ count }: { count: number }) => `${count} 次工具调用`,
             subagentCount: ({ count }: { count: number }) => `${count} 个子代理`,
             subagentLatest: ({ line }: { line: string }) => `最近：${line}`,
+            subagentRunningCount: ({ running, count }: { running: number; count: number }) => `${running}/${count} 个子代理运行中`,
+            subagentStatus: { running: '运行中', completed: '已完成', failed: '失败', stopped: '已停止' },
+            subagentResult: '子代理报告',
+            subagentResultTruncated: '已截断至 16KB',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `耗时 ${seconds} 秒`;
                 const minutes = Math.floor(seconds / 60);
@@ -673,6 +681,7 @@ export const zhHans: TranslationStructure = {
         actionNewTerminalAt: '在指定目录新建终端…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
+        actionRestoreSession: '恢复当前对话',
         actionOpenSettings: '打开设置',
         actionClipboardHistory: '剪贴板历史',
         actionAssistant: '语音助手',
@@ -1195,12 +1204,39 @@ export const zhHans: TranslationStructure = {
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
+        closedTerminalRestore: '恢复这个终端（同 id、标题、标签）',
         terminalRestored: '已恢复',
         terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
         closedTerminalGap: '重启时结束',
         closedTerminalHistory: '查看结构化历史',
         rowNeedsAttention: '等你处理',
         rowUnread: '有未读',
+    },
+
+    restore: {
+        restore: '恢复',
+        retry: '重试',
+        restoreAndSend: '恢复并发送',
+        archivedNotice: '此会话已归档。恢复后可以在这里继续对话。',
+        restoring: '正在机器上恢复…',
+        restoringSlow: '机器尚未响应…',
+        awaitingOnline: '已启动，等待会话上线…',
+        failed: '恢复失败',
+        terminalNoRecord: '机器上已没有这个终端的记录。',
+        terminalFailed: '机器无法重建这个终端。',
+        reason: {
+            'not-archived': '此会话未归档。',
+            'no-machine': '不知道这个会话在哪台机器上运行。',
+            'machine-offline': '机器离线，恢复需要机器在线。',
+            'unsupported-flavor': '该 agent 不支持恢复。',
+            'no-backend-id': '没有可以续接的 agent 对话。',
+            'not-tracked': '机器上已没有这个会话的恢复信息（保留 14 天），或它在别的机器上运行。',
+            'missing-cwd': '原工作目录已不存在。',
+            'conversation-missing': '对话文件已不在机器上。',
+            'machine-unreachable': '机器没有响应，请稍后再试。',
+            'timeout': '恢复未得到确认。如果会话已显示在线可直接使用，否则请重试。',
+            'unknown': '未知错误。',
+        },
     },
 
     zen: {
@@ -1499,6 +1535,22 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02: {
+                title: '归档会话可以恢复了',
+                summary: '归档不再是单行道：对话和终端都能原地恢复。',
+                restore: '归档对话新增「恢复」（侧栏行 / 详情页横幅 / ⌘K）：同一会话、同一链接、历史不丢。',
+                compose: '在归档对话里发送会先恢复再排队发出，消息不再发进黑洞。',
+                terminal: '关闭终端即进入归档；「恢复」用同一 id、标题、标签把它带回来，并接回记录的 claude 对话。',
+                cli: 'CLI 0.2.92：resume 幂等、失败原因明确；重连从服务器当前进度接续（不再重放或跳过历史）；daemon 支持 restore-terminal。',
+            },
+            sep01b: {
+                title: '子代理，终于看得见',
+                summary: 'Agent 卡片现在显示每个子代理的真实状态——运行中、已完成、失败——以及工具数、最近动作、耗时和最终报告；yolo 也改由 CLI 自己落实。',
+                lifecycle: '后台子代理在真正结束前一直显示「运行中」，工具数和最近动作随进度更新，即使派出它的那轮对话早已结束。',
+                report: '子代理完成后，卡片显示状态与耗时，展开可看到它回传的完整报告——不再是空荡荡的通知行。',
+                turn: '折叠的对话轮会标明还有几个子代理在跑，只要有一个在跑，会话就保持 live。',
+                cli: 'CLI 0.2.91：切到 yolo 的会话由 Claude 本体以 bypass 模式运行（不再逐个工具审批），显示的模式以 Claude 确认为准，排队消息也不会再把模式切回去。对升级后新开的会话生效。',
+            },
             sep01: {
                 title: 'yolo 就是 yolo——每台机器都算数',
                 summary: '选了 yolo 的会话不再让你反复点 approve（包括 CLI 更新前就开着的会话），子代理也终于像子代理了。',
@@ -1604,7 +1656,7 @@ export const zhHans: TranslationStructure = {
     terminal: {
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
-        closeMessage: '这会结束机器上的终端进程。未保存的终端工作会丢失；agent 对话能否恢复取决于对应 agent。',
+        closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',

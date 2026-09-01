@@ -162,6 +162,11 @@ export interface Session {
     updatedAt: number,
     active: boolean,
     activeAt: number,
+    /** B-265: server-owned archive intent (ms epoch). `null` = not archived;
+     *  `undefined` = unknown (server too old to report it). Distinguishes a
+     *  deliberately archived session from one that merely went offline —
+     *  both are `active === false`. */
+    archivedAt?: number | null,
     metadata: Metadata | null,
     metadataVersion: number,
     agentState: AgentState | null,

@@ -32,6 +32,21 @@ export interface ClosedTerminal {
    *  (daemon restart / machine reboot), so the row is labelled accordingly.
    *  Absent (old daemons) reads as an ordinary observed close. */
   reason?: 'closed' | 'daemon-gap';
+  /** B-265: tags + manual-rename flag at close time (new daemons only). */
+  tags?: string[];
+  manual?: boolean;
+}
+
+/** B-265: does this machine's CURRENT daemon answer `restore-terminal`?
+ *  Same trust rule as webTerminals: the flag must have been stamped by this
+ *  daemon run (`detectedAt >= startedAt`) — a downgraded daemon spreads the
+ *  stale field forward on connect. Calling an unregistered RPC would make the
+ *  server wait its 15 s grace before failing, so never guess. */
+export function terminalRestoreSupported(daemonState: any): boolean {
+  const flag = daemonState?.terminalRestore;
+  if (!flag || flag.rpcAvailable !== true || typeof flag.detectedAt !== 'number') return false;
+  const startedAt = typeof daemonState.startedAt === 'number' ? daemonState.startedAt : 0;
+  return flag.detectedAt >= startedAt;
 }
 
 /** Claude session ids are uuids. Validated here because the value comes off the
@@ -68,6 +83,10 @@ export function closedTerminalsOf(daemonState: any): ClosedTerminal[] {
           : undefined,
       claudeSessionId: isClaudeSessionId(item.claudeSessionId) ? item.claudeSessionId : undefined,
       reason: item.reason === 'daemon-gap' || item.reason === 'closed' ? item.reason : undefined,
+      ...(Array.isArray(item.tags)
+        ? { tags: (item.tags as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0) }
+        : {}),
+      ...(item.manual === true ? { manual: true } : {}),
     });
   }
   return out;
@@ -94,6 +113,12 @@ export interface ClosedTerminalRow {
   /** B-149: the terminal died in a daemon/machine restart, not in an observed
    *  close — worth saying in the UI, since the user never closed it. */
   fromDaemonGap: boolean;
+  /** B-265: tags shown on the row and restored with it. */
+  tags?: string[];
+  manual?: boolean;
+  /** B-265: the machine's current daemon can restore this terminal in place
+   *  (same id). false → the row falls back to "new terminal in this cwd". */
+  restoreSupported: boolean;
 }
 
 /** The slice of a machine this module needs (kept narrow for tests). */
@@ -132,6 +157,9 @@ export function buildClosedTerminalRows(
         mirrorSessionId: r.mirrorSessionId,
         claudeSessionId: r.claudeSessionId,
         fromDaemonGap: r.reason === 'daemon-gap',
+        tags: r.tags,
+        manual: r.manual,
+        restoreSupported: terminalRestoreSupported(m.daemonState),
       });
     }
   }

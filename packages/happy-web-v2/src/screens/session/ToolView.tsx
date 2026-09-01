@@ -260,7 +260,13 @@ function TaskView({ message }: { message: ToolCallMessage }) {
                     })}
                 </div>
             )}
-            {out.trim() && (
+            {summary.lifecycle?.result && (
+                <div className="tv-task-result">
+                    <div className="tv-task-result-label">{t('session.chat.subagentResult')}{summary.lifecycle.result.truncated ? ` · ${t('session.chat.subagentResultTruncated')}` : ''}</div>
+                    <Markdown text={summary.lifecycle.result.text} />
+                </div>
+            )}
+            {!summary.lifecycle?.result && out.trim() && (
                 <Section label={t('tools.fullView.output')} defaultOpen={false}>
                     <OutputText text={out} />
                 </Section>

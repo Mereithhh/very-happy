@@ -25,6 +25,9 @@
   font-size: var(--fs-11);
   color: var(--text-dim);
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
 .ta-title {

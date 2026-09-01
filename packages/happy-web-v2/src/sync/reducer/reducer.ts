@@ -390,6 +390,43 @@ function applyToolResult(
  * The tracer depends on this: a child sidechain message traced before its
  * parent `Agent` tool call is emitted as a top-level row and never re-nested.
  */
+/** B-260-P2: the Agent card whose `args.sessionSubagent` equals this lifecycle id must re-render. */
+function markSubagentCardChanged(state: ReducerState, sessionSubagent: string, changed: Set<string>): void {
+    for (const [internalId, message] of state.messages) {
+        if (message.tool && (message.tool.input as Record<string, unknown> | null | undefined)?.sessionSubagent === sessionSubagent) {
+            changed.add(internalId);
+            return;
+        }
+    }
+}
+
+function subagentLifecycleFor(state: ReducerState, tool: ToolCall): ToolCallMessageLifecycle | undefined {
+    const sessionSubagent = (tool.input as Record<string, unknown> | null | undefined)?.sessionSubagent;
+    if (typeof sessionSubagent !== 'string') return undefined;
+    const eventId = state.subagentIdToMessageId.get(sessionSubagent);
+    const eventMessage = eventId ? state.messages.get(eventId) : undefined;
+    const event = eventMessage?.event;
+    if (!eventMessage || !event || event.type !== 'subagent') return undefined;
+    // Old CLIs only ever send running/completed with no payload; a bare
+    // "completed" from them is the async stub, not a real completion — the
+    // pointer row must stay honest, so require some lifecycle payload.
+    const hasLifecyclePayload = event.status === 'failed' || event.status === 'stopped'
+        || event.progress !== undefined || event.result !== undefined || event.usage !== undefined
+        || event.subagentType !== undefined || event.description !== undefined;
+    if (!hasLifecyclePayload) return undefined;
+    return {
+        status: event.status,
+        ...(event.title ? { title: event.title } : {}),
+        ...(event.description ? { description: event.description } : {}),
+        ...(event.subagentType ? { subagentType: event.subagentType } : {}),
+        ...(event.progress ? { progress: event.progress } : {}),
+        ...(event.result ? { result: event.result } : {}),
+        ...(event.usage ? { usage: event.usage } : {}),
+        updatedAt: eventMessage.createdAt,
+    };
+}
+type ToolCallMessageLifecycle = NonNullable<Extract<Message, { kind: 'tool-call' }>['subagent']>;
+
 export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
     const messages = sortIncomingBySeq(rawMessages);
     if (ENABLE_LOGGING) {
@@ -1291,15 +1328,23 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                     const isNewer = msg.seq != null && existing.seq != null
                         ? msg.seq >= existing.seq
                         : msg.createdAt >= existing.createdAt;
+                    const incoming = msg.content;
+                    // B-260-P2: the NEWER event decides status (a resumed
+                    // sub-agent legitimately goes completed → running again);
+                    // backfill (newest-first) therefore never regresses it.
+                    // Identity/progress/result/usage merge: newer wins when
+                    // present, otherwise keep what we had.
+                    const pick = <T,>(mine: T | undefined, theirs: T | undefined): T | undefined =>
+                        isNewer ? (theirs ?? mine) : (mine ?? theirs);
                     existing.event = {
                         ...existingEvent,
-                        // Backfill arrives newest-first. An older start may
-                        // supply the title, but completed is terminal and must
-                        // never regress to running.
-                        ...(msg.content.title && !existingEvent.title ? { title: msg.content.title } : {}),
-                        status: existingEvent.status === 'completed' || msg.content.status === 'completed'
-                            ? 'completed'
-                            : 'running',
+                        title: pick(existingEvent.title, incoming.title),
+                        description: pick(existingEvent.description, incoming.description),
+                        subagentType: pick(existingEvent.subagentType, incoming.subagentType),
+                        progress: pick(existingEvent.progress, incoming.progress),
+                        result: pick(existingEvent.result, incoming.result),
+                        usage: pick(existingEvent.usage, incoming.usage),
+                        status: isNewer ? incoming.status : existingEvent.status,
                     };
                     if (isNewer) {
                         existing.createdAt = msg.createdAt;
@@ -1307,6 +1352,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
                         existing.meta = msg.meta;
                     }
                     changed.add(existing.id);
+                    markSubagentCardChanged(state, incoming.id, changed);
                     continue;
                 }
             }
@@ -1325,6 +1371,7 @@ export function reducer(state: ReducerState, rawMessages: NormalizedMessage[], a
             });
             if (msg.content.type === 'subagent') {
                 state.subagentIdToMessageId.set(msg.content.id, mid);
+                markSubagentCardChanged(state, msg.content.id, changed);
             }
             changed.add(mid);
         }
@@ -1512,6 +1559,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
             children: childMessages,
+            ...(subagentLifecycleFor(state, reducerMsg.tool) ? { subagent: subagentLifecycleFor(state, reducerMsg.tool) } : {}),
             meta: reducerMsg.meta,
             ...(reducerMsg.inputState ? { inputState: reducerMsg.inputState } : {}),
         };
