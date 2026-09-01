@@ -22,15 +22,15 @@ git worktree list                                   # 派工前看清有哪些�
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-08-30，会过期；以 backlog/verify-queue 为准）
+## 当前状态快照（2026-09-01，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.89**；`packages/happy-cli/package.json` 里的
+- 最新 tag / npm `very-happy-cli` = **v0.2.91**（mac-office daemon 同版本；2026-09-01）；`packages/happy-cli/package.json` 里的
   version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
 - `docs/backlog.md` 活跃区约 60 项非 done；`doing` 中的大项：B-216 终端 tag、B-209
   对话降噪、B-208 工作区视图、B-211 统一 Usage、B-196 配对 500、B-192 多地域 relay、
   B-185 Email OTP 登录、B-051/B-081 语音助手、B-031 CI gitleaks。改这些方向前先读
   对应 `specs/2026-08-*.md`（多数已 Final/Shipped）。
-- `docs/verify-queue.md` 待验证 **78 项**（V-0xx～V-103），远超「下一批前清账」纪律；
+- `docs/verify-queue.md` 待验证 **83 项**（V-0xx～V-108），远超「下一批前清账」纪律；
   发新批前请 Owner 清账或明确批准堆积。
 - 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1300+ 测试（本地跑一次门禁约 5-10 分钟，
   首次 install 更久）。
