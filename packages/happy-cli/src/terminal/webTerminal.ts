@@ -2378,10 +2378,13 @@ export class WebTerminalManager {
     private async runCaptureBatch(session: TerminalSession, fresh: boolean): Promise<RestoreOutcome> {
         if (session.transport.kind !== 'control') throw new Error('capture requires a control client');
         const { client } = session.transport;
-        // `:.0` = first pane of the session's current window — the pane this
-        // terminal follows (single-pane declaration).
+        // `=<session>:` = the ACTIVE pane of the session's current window — the
+        // pane this terminal follows (single-pane declaration). Never address
+        // it by index: a user's tmux.conf may set `pane-base-index 1` /
+        // `base-index 1`, and `:.0` then fails with "can't find pane: 0"
+        // (2026-09-01, colleague's ECS — every open died as terminal-open-timeout).
         const batch = buildCaptureBatch({
-            paneTarget: `=${session.tmuxSession}:.0`,
+            paneTarget: `=${session.tmuxSession}:`,
             historyLines: HEADLESS_SCROLLBACK,
             smallLines: SNAPSHOT_SCROLLBACK,
             cols: session.cols,
@@ -2494,7 +2497,7 @@ export class WebTerminalManager {
             session.transport.pty.write(text);
             return;
         }
-        const target = session.paneId ?? `=${session.tmuxSession}:.0`;
+        const target = session.paneId ?? `=${session.tmuxSession}:`;
         // `normalizeKeyNames` ON (spec D1b says three channels; this is the one
         // deviation, taken because the spec's own hard gate demands it). The
         // v1 attach client was never a byte pipe: it DECODED bytes into keys and
@@ -2533,7 +2536,7 @@ export class WebTerminalManager {
             session.transport.pty.write(text);
             return;
         }
-        const target = session.paneId ?? `=${session.tmuxSession}:.0`;
+        const target = session.paneId ?? `=${session.tmuxSession}:`;
         const plan = buildPastePlan(text, target, { dir: pasteSpoolDir() });
         writeFileSync(plan.path, plan.bytes, { mode: 0o600 });
         try {
