@@ -136,3 +136,7 @@ web 终端本身就是 daemon 建的 tmux 会话 `vh-<id>` 里的一个 pane，t
 
 - Round 1：按名字定位会话必失败（tmux ≥3.2 sanitize 不拒绝 `:`/`.`/`$`）→ 改 `session_id`；嵌套 tmux 下滚轮把方向键灌进内层应用（B-121 同类）→ 外层 `pane_current_command==='tmux'` 一律 SGR 滚轮；接入型终端的恢复变成假空壳 → `@vh_attach` 贯穿列表/快照/关闭记录/恢复；校验时机与 `createdNew` 关系、web 失败路径撤行、`loadingSessions` 独立于 `busy`、跳过目录探测、旗无条件置、path 放末尾、回显 `attachedTmux`、提示卡用 localSettings。
 - Round 2：回显不能依赖「本次是否创建」（丢包重开/StrictMode）→ 从 `@vh_attach` 会话事实回显；第二次重试创建路径漏注入 → 抽 `injectIntoCreated()` 两处共用；web 侧 `tmux-session-gone` 无映射 → ops/rowActions/i18n 补；attach 记录 cwd 消失退 `homeDir`；恢复用列表不限 50；失败回 `/` 而非 `/terminal`；`canCreate` 豁免目录、切机器重拉并清选中；`VAR= cmd` 语法风险入表。
+
+## 实现中发现的存量 bug（随本 PR 一并修）
+
+`LIST_SESSIONS_FORMAT` 的 0x1f 分隔符会被 tmux 按版本munge（容器实测）：**≤3.2a 把格式里的控制字符换成 `_`（不可逆），3.4/3.5 八进制转义成 `\037`，只有 3.6+ 原样通过**。也就是说 tmux ≤3.5 的机器上 `listSessions()` 从来解析不出任何行——daemonState.webTerminals 一直是空（同事的 3.2a ECS 侧栏终端列表、标题、tag、agentState 全部失效，只有乐观行在撑），scroll 的 `\t` 探针同样中招。CI 的 ubuntu 24.04（tmux 3.4）第一次把这条链路暴露出来（unit 项目此前从不跑真实 tmux 的列表解析）。修法：分隔符改用可打印哨兵 **ASCII 哨兵 `<~|~>`（U+241F 在 C locale 下也会被 munge 成 `_`，试过后放弃）**，`LIST_FIELD_SEP`/`USER_SESSION_FIELD_SEP`/scroll 探针统一，末字段拼回策略不变；不做逆转义（`_` 不可逆，且哨兵在所有版本原样通过）。

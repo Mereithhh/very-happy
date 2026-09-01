@@ -12,7 +12,10 @@
  */
 import { shellescape } from '@/utils/shellescape';
 
-export const USER_SESSION_FIELD_SEP = '\x1f';
+/** Same printable ASCII sentinel as LIST_FIELD_SEP (webTerminal.ts) — a
+ *  control character or multibyte separator is munged by tmux in
+ *  version/locale-dependent ways. */
+export const USER_SESSION_FIELD_SEP = '<~|~>';
 
 /** `pane_current_path` is deliberately LAST: a directory name may contain
  *  0x1f (verified), so the tail is rejoined instead of shifting fields. The

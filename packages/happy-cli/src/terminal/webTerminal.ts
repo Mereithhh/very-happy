@@ -674,8 +674,18 @@ export function deriveAutoTitle(paneTitle: unknown, hostname: string): string | 
 /** Field separator for the list-sessions format below. Titles and paths are
  *  free text that may contain tabs; US (0x1f) can't be typed into a terminal
  *  title in practice. pane_title is deliberately the LAST field so even a
- *  pathological embedded 0x1f only garbles the title, never the fields. */
-export const LIST_FIELD_SEP = '\x1f';
+ *  pathological embedded separator only garbles the title, never the fields.
+ *
+ *  The separator is a PRINTABLE ASCII sentinel, not a control character and
+ *  not a fancy Unicode one, because tmux munges both in format output in
+ *  version/locale-dependent ways (2026-09-02, container-verified): ≤3.2a
+ *  replaces control characters with `_` (unrecoverable — the old 0x1f
+ *  separator silently broke this parse, so those machines listed ZERO
+ *  terminals), 3.4/3.5 octal-escape them (`\037`), and under a C locale
+ *  even printable multibyte characters (U+241F tried first) collapse to
+ *  `_`. Plain printable ASCII survives everywhere; this exact sequence is
+ *  not going to appear in a title/path/tag. */
+export const LIST_FIELD_SEP = '<~|~>';
 
 /** The ONE list-sessions field set. Exported because the assistant's terminal
  *  list (assistant/terminals.ts) parses the same lines with the same parser —
@@ -3042,10 +3052,13 @@ export class WebTerminalManager {
         const session = this.terminals.get(terminalId);
         if (session) session.lastTouch = Date.now();
         try {
-            const probe = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', name, '#{pane_in_mode}\t#{alternate_on}\t#{mouse_any_flag}\t#{pane_width}\t#{pane_height}\t#{pane_current_command}']),
+            // LIST_FIELD_SEP, not \t: tmux ≤3.2a turns control characters in
+            // format output into `_` and 3.4/3.5 octal-escape them, which made
+            // this probe unparseable there (scroll fell back to nothing).
+            const probe = spawnSync('tmux', tmuxArgs(['display-message', '-p', '-t', name, ['#{pane_in_mode}', '#{alternate_on}', '#{mouse_any_flag}', '#{pane_width}', '#{pane_height}', '#{pane_current_command}'].join(LIST_FIELD_SEP)]),
                 { encoding: 'utf8', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
             if (probe.status !== 0 || typeof probe.stdout !== 'string') return;
-            const [inMode, altOn, wantsMouse, paneW, paneH, paneCmd] = probe.stdout.trim().split('\t');
+            const [inMode, altOn, wantsMouse, paneW, paneH, paneCmd] = probe.stdout.trim().split(LIST_FIELD_SEP);
             const action = planScrollAction(
                 inMode === '1', altOn === '1', wantsMouse === '1', lines,
                 looksLikeClaudeCommand(paneCmd || ''), Number(paneH) || 24,
