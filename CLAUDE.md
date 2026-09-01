@@ -30,7 +30,7 @@ git worktree list                                   # 派工前看清有哪些�
   对话降噪、B-208 工作区视图、B-211 统一 Usage、B-196 配对 500、B-192 多地域 relay、
   B-185 Email OTP 登录、B-051/B-081 语音助手、B-031 CI gitleaks。改这些方向前先读
   对应 `specs/2026-08-*.md`（多数已 Final/Shipped）。
-- `docs/verify-queue.md` 待验证 **112 项**（V-0xx～V-108），远超「下一批前清账」纪律；
+- `docs/verify-queue.md` 待验证 **83 项**（V-0xx～V-108），远超「下一批前清账」纪律；
   发新批前请 Owner 清账或明确批准堆积。
 - 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1300+ 测试（本地跑一次门禁约 5-10 分钟，
   首次 install 更久）。
