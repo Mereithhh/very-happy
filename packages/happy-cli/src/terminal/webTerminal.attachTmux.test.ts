@@ -47,7 +47,7 @@ describe.skipIf(!tmuxAvailable)('attach an existing tmux session (B-273, real tm
 
         const list = mgr.listUserTmuxSessions();
         const raw = iso.run('list-sessions', '-F', USER_SESSIONS_FORMAT);
-        expect(list.map((s) => s.name), `diagnostics: socket=${process.env.VH_TMUX_SOCKET} raw=${JSON.stringify({ status: raw.status, stderr: raw.stderr?.trim(), stdout: raw.stdout }, null, 0)}`).toEqual([USER]);
+        expect(list.map((s) => s.name), `diagnostics: socket=${process.env.VH_TMUX_SOCKET} probe=${JSON.stringify(mgr.lastUserSessionsProbe)} raw=${JSON.stringify({ status: raw.status, stderr: raw.stderr?.trim(), stdout: raw.stdout }, null, 0)}`).toEqual([USER]);
         const target = list[0];
         expect(target.id).toMatch(/^\$\d+$/);
         expect(target.windows).toBe(2);

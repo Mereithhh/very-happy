@@ -2567,20 +2567,25 @@ export class WebTerminalManager {
 
     /** B-273: the user's own tmux sessions (never vh-*), newest activity
      *  first. Empty when tmux is missing or no server runs. */
+    /** Last raw outcome of the list-tmux-sessions spawn (diagnostics only). */
+    lastUserSessionsProbe?: { status: number | null; error?: string; stderr?: string; stdoutBytes: number };
+
     listUserTmuxSessions(max?: number): UserTmuxSession[] {
-        if (!isTmuxAvailable()) return [];
+        if (!isTmuxAvailable()) { this.lastUserSessionsProbe = { status: null, error: 'tmux-unavailable', stdoutBytes: 0 }; return []; }
         try {
             // Not latency-critical (the web waits 10 s): give a loaded box the
             // create-class budget rather than the 1.5 s probe budget — a timed
             // out listing would silently hide every session.
             const r = spawnSync('tmux', tmuxArgs(['list-sessions', '-F', USER_SESSIONS_FORMAT]),
                 { encoding: 'utf8', timeout: TMUX_CREATE_TIMEOUT_MS, env: ptyEnv() });
+            this.lastUserSessionsProbe = { status: r.status, error: r.error?.message, stderr: (r.stderr || '').toString().trim() || undefined, stdoutBytes: typeof r.stdout === 'string' ? r.stdout.length : 0 };
             if (r.status !== 0 || typeof r.stdout !== 'string') {
-                logger.debug(`[WEB TERMINAL] list-tmux-sessions failed: status=${r.status} ${(r.stderr || '').toString().trim()}`);
+                logger.debug(`[WEB TERMINAL] list-tmux-sessions failed: ${JSON.stringify(this.lastUserSessionsProbe)}`);
                 return [];
             }
             return parseUserSessions(r.stdout, max);
-        } catch {
+        } catch (e) {
+            this.lastUserSessionsProbe = { status: null, error: e instanceof Error ? e.message : String(e), stdoutBytes: 0 };
             return [];
         }
     }
