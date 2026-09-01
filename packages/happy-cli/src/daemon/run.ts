@@ -48,6 +48,7 @@ import { DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, fetchCliUpdateState, resolveCliUp
 import { terminateProcess } from './processTermination';
 import { findAllHappyProcesses } from './doctor';
 import { findSessionWrapperPids, mergeRestoreMetadata } from './sessionProcessRecovery';
+import { readSessionLock } from '@/utils/sessionLock';
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -214,7 +215,7 @@ export async function startDaemon(): Promise<void> {
       // `--resume <id>` command line — the record's hostPid can be stale
       // (see sessionProcessRecovery.ts), which used to orphan a live wrapper
       // and let the next restart-session spawn a second one next to it.
-      const livePids = findSessionWrapperPids(s.metadata, liveHappyProcesses, { excludePid: process.pid });
+      const livePids = findSessionWrapperPids(s.metadata, liveHappyProcesses, { excludePid: process.pid, lockPid: readSessionLock(id)?.pid });
       if (livePids.length > 0) {
         const [livePid, ...duplicates] = livePids;
         tracked.pid = livePid;
@@ -980,7 +981,7 @@ export async function startDaemon(): Promise<void> {
         // B-272: a wrapper this daemon never tracked (spawned by a previous
         // daemon, record's hostPid stale) is still the live writer for this
         // session — adopt it instead of spawning a second one next to it.
-        const orphans = findSessionWrapperPids(tracked.happySessionMetadataFromLocalWebhook, await findAllHappyProcesses(), { excludePid: process.pid })
+        const orphans = findSessionWrapperPids(tracked.happySessionMetadataFromLocalWebhook, await findAllHappyProcesses(), { excludePid: process.pid, lockPid: readSessionLock(happySessionId)?.pid })
           .filter((pid) => isPidAlive(pid) && !pidToTrackedSession.has(pid));
         if (orphans.length > 0) {
           for (const pid of orphans) {
@@ -1085,7 +1086,7 @@ export async function startDaemon(): Promise<void> {
       // Leaving one alive here IS the double-spawn: the relaunch would be its
       // second writer.
       const known = findTrackedSessionById(happySessionId)?.happySessionMetadataFromLocalWebhook;
-      for (const pid of findSessionWrapperPids(known, await findAllHappyProcesses(), { excludePid: process.pid })) {
+      for (const pid of findSessionWrapperPids(known, await findAllHappyProcesses(), { excludePid: process.pid, lockPid: readSessionLock(happySessionId)?.pid })) {
         if (isPidAlive(pid)) targets.add(pid);
       }
       if (targets.size === 0) return;

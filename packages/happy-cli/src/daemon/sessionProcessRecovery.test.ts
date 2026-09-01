@@ -81,6 +81,13 @@ describe('findSessionWrapperPids', () => {
         expect(findSessionWrapperPids(undefined, live)).toEqual([]);
     });
 
+    it('puts the session-lock holder first and ignores a lock pid that is not a live Happy process', () => {
+        const duplicated = [...live, { pid: 17092, command: wrapperCmd(CLAUDE_ID) }];
+        expect(findSessionWrapperPids({ hostPid: 25691, claudeSessionId: CLAUDE_ID } as any, duplicated, { lockPid: 17092 })).toEqual([17092, 25691]);
+        expect(findSessionWrapperPids({ hostPid: 25691, claudeSessionId: CLAUDE_ID } as any, duplicated, { lockPid: 4242 })).toEqual([25691, 17092]);
+        expect(findSessionWrapperPids({ claudeSessionId: 'other' } as any, live, { lockPid: 44604 })).toEqual([44604]);
+    });
+
     it('honours excludePid (the caller is never its own target)', () => {
         expect(findSessionWrapperPids({ hostPid: 25691, claudeSessionId: CLAUDE_ID } as any, live, { excludePid: 25691 })).toEqual([]);
     });

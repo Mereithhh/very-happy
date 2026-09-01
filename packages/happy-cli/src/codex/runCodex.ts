@@ -1,4 +1,5 @@
 import { render } from "ink";
+import { claimSessionOrExit } from '@/utils/sessionLock';
 import React from "react";
 import { ApiClient } from '@/api/api';
 import { CodexAppServerClient } from './codexAppServerClient';
@@ -165,6 +166,11 @@ export async function runCodex(opts: {
         };
     } else {
         response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+    }
+
+    // B-272: single-writer lock — see runClaude / utils/sessionLock.ts.
+    if (response) {
+        await claimSessionOrExit(response.id, { takeover: !!reconnectSessionId, flavor: 'codex' });
     }
 
     if (reconnectSessionId && response && !await api.reactivateSession(response.id)) {

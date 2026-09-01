@@ -42,7 +42,8 @@ export function isDaemonWrapperForConversation(command: string, conversationId: 
 }
 
 /**
- * B-272: every live wrapper that belongs to this session, persisted-pid first.
+ * B-272: every live wrapper that belongs to this session — the lock holder
+ * first, then the persisted pid, then command-line matches.
  *
  * `hostPid` alone is not enough: the post-spawn restore record used to be
  * written from the pre-spawn (server / on-disk) metadata and clobbered the
@@ -57,12 +58,17 @@ export function isDaemonWrapperForConversation(command: string, conversationId: 
 export function findSessionWrapperPids(
     metadata: Metadata | undefined,
     liveHappyProcesses: readonly LiveHappyProcess[],
-    options: { excludePid?: number } = {},
+    options: { excludePid?: number; lockPid?: number | null } = {},
 ): number[] {
     const out: number[] = [];
     const livePids = new Set(liveHappyProcesses.map((p) => p.pid));
+    // The wrapper's own single-writer lock (utils/sessionLock.ts) is the
+    // authoritative claim; the record's hostPid and the command line only
+    // matter for wrappers older than the lock.
+    const lockPid = options.lockPid ?? null;
+    if (lockPid !== null && lockPid !== options.excludePid && livePids.has(lockPid)) out.push(lockPid);
     const persisted = recoverableSessionPid(metadata, livePids);
-    if (persisted !== null && persisted !== options.excludePid) out.push(persisted);
+    if (persisted !== null && persisted !== options.excludePid && !out.includes(persisted)) out.push(persisted);
 
     const conversationId = sessionAgentConversationId(metadata);
     if (conversationId) {

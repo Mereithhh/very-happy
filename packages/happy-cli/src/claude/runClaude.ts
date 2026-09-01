@@ -26,6 +26,7 @@ import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
+import { claimSessionOrExit } from '@/utils/sessionLock';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode, reconcilePublishedPermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
@@ -267,6 +268,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
 
     logger.debug(`Session created: ${response.id}`);
+
+    // B-272: single-writer lock — before reactivate/connect. A reconnect
+    // (resume / restart) REPLACES whatever runs this session: the holder is
+    // terminated and gone before we touch the server, so its shutdown cannot
+    // archive the row under us. If it cannot be removed, yield: never be the
+    // second SDK run on one conversation.
+    await claimSessionOrExit(response.id, { takeover: !!reconnectSessionId, flavor: 'claude' });
 
     if (reconnectSessionId && !await api.reactivateSession(response.id)) {
         throw new Error(`Failed to reactivate archived session ${response.id}`);
