@@ -1018,6 +1018,32 @@ function defaultShell(): string {
     return resolveDefaultShell(process.platform, process.env);
 }
 
+/**
+ * Per-session overrides for user tmux.conf settings that break or degrade a
+ * web terminal (B-270 matrix, 2026-09-01 — every other common option passed):
+ *  - `destroy-unattached on`: tmux destroys the detached `vh-*` session the
+ *    instant `new-session -d` returns, so every open died as
+ *    terminal-open-timeout. A separate set-option call is already too late
+ *    (verified) — the override MUST ride in the same tmux invocation as the
+ *    create, as a chained command.
+ *  - `remain-on-exit on`: the dead pane lingers after `exit`; the terminal
+ *    never closes.
+ *  - `window-size manual`: the pane ignores the web viewport (stuck 80x24).
+ *    (tmux 3.4/3.5a on Linux cannot even create a session under it — the
+ *    server crashes — so there the user's own tmux is broken too; on 3.6+ the
+ *    override is what keeps resize working.)
+ *  - `pane-border-status top`: one row eaten by a border, geometry off by one.
+ * Session/window scoped (`-t =name:`), so the user's global config and their
+ * own sessions are untouched. `-q` keeps an older tmux that lacks an option
+ * from failing the create (window-size is 2.9+, pane-border-status 2.3+).
+ */
+export const VH_SESSION_OPTION_OVERRIDES: ReadonlyArray<readonly [scope: 'session' | 'window', option: string, value: string]> = [
+    ['session', 'destroy-unattached', 'off'],
+    ['window', 'remain-on-exit', 'off'],
+    ['window', 'window-size', 'latest'],
+    ['window', 'pane-border-status', 'off'],
+];
+
 export function tmuxNewSessionArgs(
     session: string,
     cols: number,
@@ -1029,7 +1055,16 @@ export function tmuxNewSessionArgs(
     // Explicitly provide the command. tmux otherwise caches `default-shell`
     // when its server starts; hosted containers can inherit a host-only SHELL
     // (for example /opt/homebrew/bin/zsh), making every new pane exit instantly.
-    return ['new-session', '-d', ...envFlags, '-s', session, '-x', String(cols), '-y', String(rows), '-c', cwd, shell];
+    const args = ['new-session', '-d', ...envFlags, '-s', session, '-x', String(cols), '-y', String(rows), '-c', cwd, shell];
+    // Chained (`;` argv separator) so the overrides land before tmux gets a
+    // chance to act on the user's globals — see VH_SESSION_OPTION_OVERRIDES.
+    // On a "duplicate session" create the chain still runs against the
+    // existing session (idempotent) and the exit status stays non-zero, so
+    // the "did WE create it" signal in open() is unchanged.
+    for (const [scope, option, value] of VH_SESSION_OPTION_OVERRIDES) {
+        args.push(';', 'set-option', ...(scope === 'window' ? ['-w'] : []), '-q', '-t', `=${session}:`, option, value);
+    }
+    return args;
 }
 
 export function shouldUseDirectPtyFallback(attachOnly: boolean, createdNew: boolean, sessionAlive: boolean): boolean {

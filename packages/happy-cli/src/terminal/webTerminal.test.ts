@@ -23,6 +23,11 @@ describe('resolveDefaultShell', () => {
     it('passes the validated shell explicitly when creating a tmux pane', () => {
         expect(tmuxNewSessionArgs('vh-test', 80, 24, '/workspace', ['-e', 'A=B'], '/bin/sh')).toEqual([
             'new-session', '-d', '-e', 'A=B', '-s', 'vh-test', '-x', '80', '-y', '24', '-c', '/workspace', '/bin/sh',
+            // B-270: user tmux.conf overrides ride in the same invocation.
+            ';', 'set-option', '-q', '-t', '=vh-test:', 'destroy-unattached', 'off',
+            ';', 'set-option', '-w', '-q', '-t', '=vh-test:', 'remain-on-exit', 'off',
+            ';', 'set-option', '-w', '-q', '-t', '=vh-test:', 'window-size', 'latest',
+            ';', 'set-option', '-w', '-q', '-t', '=vh-test:', 'pane-border-status', 'off',
         ]);
     });
 
