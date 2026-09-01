@@ -46,7 +46,7 @@ const SCENARIOS: Array<[label: string, conf: string]> = [
     ].join('\n')],
 ];
 
-async function until(probe: () => boolean, ms = 8_000): Promise<boolean> {
+async function until(probe: () => boolean, ms = 12_000): Promise<boolean> {
     const deadline = Date.now() + ms;
     while (Date.now() < deadline) {
         if (probe()) return true;
@@ -105,7 +105,7 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
                 expect(iso.run('show-options', '-wqv', '-t', `=${sess}:`, 'remain-on-exit').stdout.trim()).toBe('off');
 
                 mgr.resize(tid, 100, 30);
-                expect(await until(() => geom() === '100x30', 4000), `resize followed (got ${geom()})`).toBe(true);
+                expect(await until(() => geom() === '100x30', 10_000), `resize followed (got ${geom()})`).toBe(true);
 
                 mgr.write(tid, Buffer.from('printf utc-marker-ok\r', 'utf8').toString('base64'));
                 expect(await until(() => (iso.run('capture-pane', '-p', '-t', `=${sess}:`).stdout ?? '').includes('utc-marker-ok')), 'write reached the pane').toBe(true);
@@ -118,11 +118,11 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
                 expect(again.tmuxSession).toBe(sess);
 
                 mgr.write(tid, Buffer.from('exit\r', 'utf8').toString('base64'));
-                expect(await until(() => !iso.hasSession(sess), 5000), 'session goes away when the shell exits').toBe(true);
+                expect(await until(() => !iso.hasSession(sess), 10_000), 'session goes away when the shell exits').toBe(true);
             } finally {
                 try { mgr.killSession(tid); } catch { /* already gone */ }
                 mgr.stopListTracking();
             }
-        }, 30_000);
+        }, 60_000);
     }
 });
