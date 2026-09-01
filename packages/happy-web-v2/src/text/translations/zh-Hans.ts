@@ -1503,6 +1503,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep01b: {
+                title: '子代理，终于看得见',
+                summary: 'Agent 卡片现在显示每个子代理的真实状态——运行中、已完成、失败——以及工具数、最近动作、耗时和最终报告；yolo 也改由 CLI 自己落实。',
+                lifecycle: '后台子代理在真正结束前一直显示「运行中」，工具数和最近动作随进度更新，即使派出它的那轮对话早已结束。',
+                report: '子代理完成后，卡片显示状态与耗时，展开可看到它回传的完整报告——不再是空荡荡的通知行。',
+                turn: '折叠的对话轮会标明还有几个子代理在跑，只要有一个在跑，会话就保持 live。',
+                cli: 'CLI 0.2.91：切到 yolo 的会话由 Claude 本体以 bypass 模式运行（不再逐个工具审批），显示的模式以 Claude 确认为准，排队消息也不会再把模式切回去。对升级后新开的会话生效。',
+            },
             sep01: {
                 title: 'yolo 就是 yolo——每台机器都算数',
                 summary: '选了 yolo 的会话不再让你反复点 approve（包括 CLI 更新前就开着的会话），子代理也终于像子代理了。',
