@@ -69,7 +69,7 @@
 - `GET /v1/sessions` 投影加 `archivedAt: number | null`；web `Session` 类型、`fetchSessions` 映射、`storage.applySessions` 全部带上（否则全量 fetch 会抹掉）。
 - happy-wire `UpdateSessionBodySchema` 加 `archivedAt: z.number().nullable().optional()`（web 的 `ApiUpdateSessionStateSchema` 来自 wire，默认 strip）。
 - archive / unarchive 两个路由各 emit 一条 `update-session`（只带 `archivedAt`，不带 metadata/agentState；`allocateUserSeq` 分配 seq；
-  recipientFilter `user-scoped-only`，不去戳正在退出的 CLI）。web 处理器：有 `archivedAt` 就写 store；顺手修存量 bug——`update-session` 不再把 user-level update seq 覆盖进 `session.seq`（`sync.ts:2619`，`sessionModeSync` 依赖该字段）。
+  recipientFilter `user-scoped-only`，不去戳正在退出的 CLI）。web 处理器：有 `archivedAt` 就写 store。（review 曾建议顺手改 `update-session` 覆盖 `session.seq` 的行为；核实 `sessionModeSync` 按**消息** seq 排序、不读 `session.seq`，本期不动。）
 - 新增 `GET /v1/sessions/:id`（同列表投影 + `seq` + `archivedAt`；`where {id, accountId}`），供 daemon/CLI 按 id 取 metadata、版本与当前 seq（摆脱 150 条上限）。
 - 注：CLI 所有 cleanup 路径（含终端里 Ctrl-C）都 `POST /archive`，所以「Ctrl-C 结束的会话」也是 `archivedAt != null`——会显示恢复入口且可恢复（外部启动会话 webhook 带 encryption）。真正的「暂时离线」只剩 10 min 心跳超时。
 
@@ -200,7 +200,7 @@
 - [ ] wire：`UpdateSessionBodySchema.archivedAt` 可选；server：`/v1/sessions` 与 `/v1/sessions/:id` 返回 `archivedAt`/`seq`；archive/unarchive 各 emit 带 `archivedAt`、有 user seq 的 `update-session`（spec 测试）
 - [ ] web：`sessionRestore.test.ts` 覆盖 eligibility 全部 reason、online-2s 就绪、两段超时、`{error}` 规范化、A5 映射表新旧文本
 - [ ] web：`composerGate` 两态；`canReleaseQueuedMessage` 带 gate（归档会话不释放，就绪后释放）；归档会话发送不写 server（回归：现状队列直发黑洞）
-- [ ] web：`update-session` 不再覆盖 `session.seq`（回归）；`archivedAt` 经 fetch/diff/update 三条路径进 store
+- [ ] web：`archivedAt` 经 fetch / update-session / 本地乐观三条路径进 store
 - [ ] web：三个入口共用 `restoreSession`；离线未归档会话**不**被拦截、不显示恢复（回归）
 - [ ] web：order/pins 对归档会话不 prune（回归）
 - [ ] web：`closedTerminalsOf` 解析 `tags`/`manual`；`machineRestoreTerminal` 按标记分流（旧 daemon 不发 RPC）

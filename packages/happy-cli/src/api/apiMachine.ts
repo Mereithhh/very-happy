@@ -439,6 +439,18 @@ export class ApiMachineClient {
             return { type: 'success' };
         });
 
+        // B-265: bring a closed terminal back (same id/cwd/title/tags, claude
+        // resumed when the record knows the conversation). Old webs never call
+        // it; new webs gate on daemonState.terminalRestore before calling.
+        this.rpcHandlerManager.registerHandler('restore-terminal', async (params: any) => {
+            const { terminalId } = params || {};
+            const result = this.webTerminal.restoreClosedTerminal(terminalId);
+            if (result.type === 'error') {
+                return { type: 'error', reason: result.reason, errorMessage: `restore-terminal: ${result.reason}` };
+            }
+            return { type: 'success', terminalId: result.terminalId };
+        });
+
         // List this machine's live tmux terminals. LEGACY polling path: new
         // clients consume daemonState.webTerminals pushes instead; this RPC
         // stays for old clients and returns the SAME list the push carries.
@@ -881,6 +893,9 @@ export class ApiMachineClient {
                     httpPort: this.machine.daemonState?.httpPort,
                     startedAt: now,
                     webTerminals: { updatedAt: now, terminals: initialTerminals },
+                    // B-265 capability flag; restamped every connect so the
+                    // web's `detectedAt >= startedAt` trust rule holds.
+                    terminalRestore: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

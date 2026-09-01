@@ -1200,6 +1200,7 @@ export const zhHans: TranslationStructure = {
         closedTerminals: '已结束终端',
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
+        closedTerminalRestore: '恢复这个终端（同 id、标题、标签）',
         terminalRestored: '已恢复',
         terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
         closedTerminalGap: '重启时结束',
@@ -1217,6 +1218,8 @@ export const zhHans: TranslationStructure = {
         restoringSlow: '机器尚未响应…',
         awaitingOnline: '已启动，等待会话上线…',
         failed: '恢复失败',
+        terminalNoRecord: '机器上已没有这个终端的记录。',
+        terminalFailed: '机器无法重建这个终端。',
         reason: {
             'not-archived': '此会话未归档。',
             'no-machine': '不知道这个会话在哪台机器上运行。',
@@ -1528,6 +1531,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02: {
+                title: '归档会话可以恢复了',
+                summary: '归档不再是单行道：对话和终端都能原地恢复。',
+                restore: '归档对话新增「恢复」（侧栏行 / 详情页横幅 / ⌘K）：同一会话、同一链接、历史不丢。',
+                compose: '在归档对话里发送会先恢复再排队发出，消息不再发进黑洞。',
+                terminal: '关闭终端即进入归档；「恢复」用同一 id、标题、标签把它带回来，并接回记录的 claude 对话。',
+                cli: 'CLI 0.2.92：resume 幂等、失败原因明确；重连从服务器当前进度接续（不再重放或跳过历史）；daemon 支持 restore-terminal。',
+            },
             sep01b: {
                 title: '子代理，终于看得见',
                 summary: 'Agent 卡片现在显示每个子代理的真实状态——运行中、已完成、失败——以及工具数、最近动作、耗时和最终报告；yolo 也改由 CLI 自己落实。',

@@ -9,6 +9,7 @@ import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows, closedTerminalsOf } from '@/sync/closedTerminals';
+import { restoreClosedTerminal } from '@/app/rowActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
 import { isRestorable, useRestoreState } from '@/app/sessionRestore';
 import { sessionUpdateTitleTags } from '@/sync/ops';
@@ -1026,6 +1027,14 @@ export function Sidebar() {
                   <span className="sb-row-text">
                     <span className="sb-row-title-line">
                       <span className="sb-row-title">{r.title}</span>
+                      {r.tags && r.tags.length > 0 && (
+                        <span className="sb-row-tags">
+                          {r.tags.slice(0, 2).map((tag) => (
+                            <TagChip key={tag} tag={tag} small />
+                          ))}
+                          {r.tags.length > 2 && <TagOverflowChip count={r.tags.length - 2} small />}
+                        </span>
+                      )}
                     </span>
                     <span
                       className="sb-row-sub mono"
@@ -1050,17 +1059,23 @@ export function Sidebar() {
                     <MessagesSquare size={16} />
                   </button>
                 )}
-                {/* B-149: with a known claude session the action CONTINUES the
-                    conversation (new terminal in cwd + `claude --resume`);
-                    without one it stays the plain "same directory" open. */}
+                {/* B-265: a daemon that supports restore-terminal brings the
+                    terminal back IN PLACE (same id/title/tags, claude resumed).
+                    B-149 fallback for older daemons: with a known claude session
+                    the action CONTINUES the conversation in a NEW terminal
+                    (cwd + `claude --resume`); without one it stays the plain
+                    "same directory" open. */}
                 <button
                   className="sb-closed-reopen"
                   disabled={!r.machineOnline || !r.cwd}
-                  title={t(r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
-                  aria-label={t(r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
-                  onClick={() => createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId)}
+                  title={t(r.restoreSupported ? 'sidebar.closedTerminalRestore' : r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
+                  aria-label={t(r.restoreSupported ? 'sidebar.closedTerminalRestore' : r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
+                  onClick={() => {
+                    if (r.restoreSupported) void restoreClosedTerminal(navigate, r);
+                    else createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId);
+                  }}
                 >
-                  {r.claudeSessionId ? <RotateCcw size={16} /> : <Plus size={16} />}
+                  {r.restoreSupported || r.claudeSessionId ? <RotateCcw size={16} /> : <Plus size={16} />}
                 </button>
               </div>
             ))}
