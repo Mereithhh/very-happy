@@ -25,6 +25,7 @@ import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessi
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
 import { resumePrecheck, sanitizeResumeModel } from './resumePrecheck';
+import { decideRestart, recordRestartAttempt, DEFAULT_MAX_RESTARTS } from './restartBreaker';
 import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
@@ -831,6 +832,14 @@ export async function startDaemon(): Promise<void> {
         const timeout = setTimeout(() => {
           pidToAwaiter.delete(happyProcess.pid!);
           logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+          // B-264: kill the leaked child. Without this the timed-out process
+          // keeps running and later webhooks in as an externally-started
+          // session, so a caller that retries after the error (or a restart
+          // sweep) double-spawns onto the same session row + key. Killing it
+          // makes the error terminal — the caller retries onto a clean slate.
+          if (happyProcess.pid) {
+            try { terminateProcess(happyProcess.pid, () => {}); } catch { /* best effort */ }
+          }
           resolve({
             type: 'error',
             errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
@@ -998,6 +1007,170 @@ export async function startDaemon(): Promise<void> {
           type: 'error',
           errorMessage: `Failed to resume session: ${errorMessage}`,
         };
+      }
+    };
+
+    // ── B-264 session restart ────────────────────────────────────────────────
+    // Restart differs from resume: resume treats a LIVE wrapper as healthy and
+    // returns idempotent success (resumeSessionImpl's live-check) — but a
+    // B-266 corpse is a live-but-broken wrapper whose SDK query keeps failing.
+    // Restart therefore STOPS the live wrapper first, waits for its exit, then
+    // relaunches on the current CLI code. It reuses the same per-session gate as
+    // resume (so restart/resume/concurrent-restart never double-spawn) and is
+    // bounded by a per-daemon-lifetime circuit breaker.
+    const restartCounts = new Map<string, number>();
+
+    // Promise-returning stop: kill the live wrapper for a session and resolve
+    // when it has actually exited (terminateProcess settles after SIGTERM→2s→
+    // SIGKILL), or immediately when there is no live process. A safety timeout
+    // guards a wedged SIGKILL so a restart can never hang forever.
+    const stopSessionAndWait = (happySessionId: string, timeoutMs = 8_000): Promise<void> => {
+      let targetPid: number | null = null;
+      for (const [pid, s] of pidToTrackedSession.entries()) {
+        if (s.happySessionId === happySessionId && isPidAlive(pid)) { targetPid = pid; break; }
+      }
+      if (targetPid === null) return Promise.resolve();
+      const pid = targetPid;
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => { if (!settled) { settled = true; resolve(); } };
+        const requested = terminateProcess(pid, () => {
+          const tracked = pidToTrackedSession.get(pid);
+          if (tracked) {
+            if (tracked.happySessionId && tracked.encryption) {
+              sessionIdToFinishedSession.set(tracked.happySessionId, tracked);
+            }
+            pidToTrackedSession.delete(pid);
+          }
+          done();
+        });
+        if (!requested) done();
+        setTimeout(done, timeoutMs).unref?.();
+      });
+    };
+
+    const restartSession = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+      let gate = resumeGates.get(happySessionId);
+      if (!gate) {
+        gate = createSpawnGate<SpawnSessionResult>();
+        resumeGates.set(happySessionId, gate);
+      }
+      try {
+        // `replace` (not `join`): a restart must actually run and must serialize
+        // AFTER any in-flight resume for the same session rather than dedupe
+        // into it — otherwise a "Restart" click could no-op onto a resume.
+        return await gate.replace(() => restartSessionImpl(happySessionId, options));
+      } finally {
+        if (!gate.inFlight()) resumeGates.delete(happySessionId);
+      }
+    };
+
+    const restartSessionImpl = async (happySessionId: string, options?: { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> => {
+      try {
+        const prior = restartCounts.get(happySessionId) ?? 0;
+        const decision = decideRestart(prior, DEFAULT_MAX_RESTARTS);
+        if (!decision.allowed) {
+          return { type: 'error', errorMessage: `restart:${decision.reason}` };
+        }
+
+        // Stop the live (broken) wrapper and wait for it to exit; finalization
+        // moves the tracked entry into the resumable set with its encryption.
+        await stopSessionAndWait(happySessionId);
+
+        const tracked = findTrackedSessionById(happySessionId);
+        if (!tracked) {
+          return { type: 'error', errorMessage: `restart-precheck:not-tracked: Session ${happySessionId} is not tracked by this daemon.` };
+        }
+        if (!tracked.happySessionMetadataFromLocalWebhook) {
+          return { type: 'error', errorMessage: `restart-precheck:no-metadata: Session ${happySessionId} has no metadata. Cannot restart.` };
+        }
+        if (!tracked.encryption) {
+          return { type: 'error', errorMessage: `restart-precheck:no-encryption: Session ${happySessionId} has no stored encryption data. Restart the daemon and start a new session.` };
+        }
+
+        // Server metadata may carry the agent session id the webhook snapshot
+        // lacks (the id only ever reaches the server). Fetch if the local copy
+        // is missing it — same as resume.
+        let metadata = tracked.happySessionMetadataFromLocalWebhook;
+        const needsFetch = (!metadata.claudeSessionId && (!metadata.flavor || metadata.flavor === 'claude'))
+          || (!metadata.codexThreadId && metadata.flavor === 'codex');
+        if (needsFetch) {
+          const serverMetadata = await fetchServerSessionMetadata(happySessionId, tracked.encryption.encryptionKey, tracked.encryption.encryptionVariant);
+          if (serverMetadata) {
+            metadata = serverMetadata;
+            tracked.happySessionMetadataFromLocalWebhook = serverMetadata;
+          }
+        }
+
+        // Build the relaunch. Guarded: --resume only when the agent conversation
+        // is genuinely resumable (id present + transcript on disk). A B-266
+        // corpse (claude session that died at 0s, never got a claudeSessionId)
+        // falls through to a FRESH reconnect that reuses the same session row
+        // via HAPPY_RECONNECT — no --resume, which would crash on a missing
+        // transcript. Mirrors the assistant re-attach path.
+        const precheck = resumePrecheck(metadata, {
+          cwdExists: (p) => existsSync(p),
+          conversationExists: (cwd, claudeSessionId) => existsSync(join(getProjectPath(cwd), `${claudeSessionId}.jsonl`)),
+        });
+        let args: string[];
+        let cwd: string;
+        if (precheck.ok) {
+          const launch = buildResumeLaunch(
+            { id: happySessionId, active: true, metadata },
+            { startedBy: 'daemon', claudeStartingMode: 'remote' },
+          );
+          args = launch.args;
+          cwd = launch.cwd;
+        } else if ((metadata.flavor ?? 'claude') === 'claude' && typeof metadata.path === 'string' && metadata.path.length > 0) {
+          cwd = metadata.path;
+          if (!existsSync(cwd)) {
+            return { type: 'error', errorMessage: `restart-precheck:cwd-missing: ${cwd}` };
+          }
+          // Fresh reconnect for a corpse: no --resume.
+          args = ['claude', '--happy-starting-mode', 'remote', '--started-by', 'daemon'];
+        } else {
+          // Codex without a thread id, or any other non-relaunchable shape.
+          return { type: 'error', errorMessage: `restart-precheck:${precheck.ok ? 'unknown' : precheck.reason}: ${precheck.ok ? '' : precheck.detail}` };
+        }
+
+        const model = sanitizeResumeModel(options?.model);
+        if (model) args.push('--model', model);
+        const permissionMode = sanitizeSpawnPermissionMode(options?.permissionMode);
+        if (permissionMode) args.push('--permission-mode', permissionMode);
+
+        // Count the attempt now that we are actually spawning (a pre-flight
+        // rejection above never burns a slot).
+        restartCounts.set(happySessionId, recordRestartAttempt(prior));
+
+        const result = await spawnTrackedHappyProcess({
+          args,
+          cwd,
+          env: {
+            ...process.env,
+            HAPPY_RECONNECT_SESSION_ID: happySessionId,
+            HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
+            HAPPY_RECONNECT_SEQ: String(tracked.encryption.seq),
+            HAPPY_RECONNECT_METADATA_VERSION: String(tracked.encryption.metadataVersion),
+            HAPPY_RECONNECT_AGENT_STATE_VERSION: String(tracked.encryption.agentStateVersion),
+          },
+        });
+        if (result.type === 'success') {
+          persistSession(happySessionId, {
+            encryptionKey: encodeBase64(tracked.encryption.encryptionKey),
+            encryptionVariant: tracked.encryption.encryptionVariant,
+            seq: tracked.encryption.seq,
+            metadataVersion: tracked.encryption.metadataVersion,
+            agentStateVersion: tracked.encryption.agentStateVersion,
+            metadata,
+            savedAt: Date.now(),
+          });
+        }
+        return result;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.debug(`[DAEMON RUN] Failed to restart session: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
+        return { type: 'error', errorMessage: `Failed to restart session: ${errorMessage}` };
       }
     };
 
@@ -1226,6 +1399,7 @@ export async function startDaemon(): Promise<void> {
     apiMachine.setRPCHandlers({
       spawnSession,
       resumeSession,
+      restartSession,
       stopSession,
       listTrackedSessionIds: () => [...pidToTrackedSession.values()]
         .map((session) => session.happySessionId)

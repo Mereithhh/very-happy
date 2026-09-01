@@ -7,7 +7,9 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
-import { useSession } from '@/sync/storage';
+import { useSession, useMachine } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { useTranslation } from '@/i18n/useTranslation';
 import { CopyButton } from '@/ui/CopyButton';
 import { Markdown } from './Markdown';
@@ -185,7 +187,39 @@ function formatUnixTime(ts: number): string {
     }
 }
 
-function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
+/** B-264: inline "Restart" on a processFailed event — asks the daemon to stop
+ *  the broken wrapper and relaunch it on current CLI code. Disabled while a
+ *  restart is in flight or the machine is offline. */
+function RestartAction({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    const restart = useRestartState(sessionId);
+    const session = useSession(sessionId);
+    const machine = useMachine(session?.metadata?.machineId ?? '');
+    const machineOnline = !!machine && isMachineOnline(machine);
+    const pending = restart?.phase === 'spawning' || restart?.phase === 'awaiting-online';
+    const failed = restart?.phase === 'failed';
+    return (
+        <span className="msg-event-restart">
+            <button
+                type="button"
+                className="msg-event-restart-btn"
+                onClick={() => { void restartBrokenSession(sessionId); }}
+                disabled={pending || !machineOnline}
+            >
+                {pending ? t('session.chat.restarting') : t('session.chat.restart')}
+            </button>
+            {failed && (
+                <span className="msg-event-restart-hint">
+                    {restart?.reason === 'daemon-too-old'
+                        ? t('session.chat.restartDaemonTooOld')
+                        : t('session.chat.restartFailed')}
+                </span>
+            )}
+        </span>
+    );
+}
+
+function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; sessionId: string }) {
     const { t } = useTranslation();
     const ev = message.event;
     let label: string;
@@ -202,7 +236,12 @@ function AgentEventBlock({ message }: { message: ModeSwitchMessage }) {
                     return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
                 }
                 if (presentation.kind === 'error') {
-                    return <div className="msg msg--event"><span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t(presentation.textKey)}</span></div>;
+                    return (
+                        <div className="msg msg--event">
+                            <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t(presentation.textKey)}</span>
+                            <RestartAction sessionId={sessionId} />
+                        </div>
+                    );
                 }
                 label = presentation.text;
                 subtle = true;
@@ -262,7 +301,7 @@ export function MessageView({
                 />
             );
         case 'agent-event':
-            return <AgentEventBlock message={message} />;
+            return <AgentEventBlock message={message} sessionId={sessionId} />;
         default:
             // Never silently drop an unknown kind — show a subtle fallback line.
             return (
