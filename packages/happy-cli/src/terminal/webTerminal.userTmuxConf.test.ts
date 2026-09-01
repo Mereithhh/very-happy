@@ -21,7 +21,7 @@ const happyHome = mkdtempSync(join(tmpdir(), 'vh-utc-home-'));
 const prevHome = process.env.HAPPY_HOME_DIR;
 process.env.HAPPY_HOME_DIR = happyHome;
 const iso = createIsolatedTmux('vh-utc');
-const { WebTerminalManager, tmuxNewSessionArgs } = await import('./webTerminal');
+const { WebTerminalManager, tmuxNewSessionArgs, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, resolveDefaultShell } = await import('./webTerminal');
 
 const xdg = mkdtempSync(join(tmpdir(), 'vh-utc-xdg-'));
 mkdirSync(join(xdg, 'tmux'), { recursive: true });
@@ -78,7 +78,11 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
             // nothing a client can work around, and not what this test is
             // about. macOS/brew 3.7b and 3.2a are fine. Probe with the daemon's
             // exact create argv, then re-check after a beat; skip honestly.
-            const probe = iso.run(...tmuxNewSessionArgs('utc-probe', 80, 24, iso.dir, [], '/bin/sh'));
+            const tmuxV = iso.run('-V').stdout.trim();
+            const envFlags = tmuxSupportsNewSessionEnv(tmuxV)
+                ? ['-e', CLAUDE_CLASSIC_RENDERER_ENV, '-e', 'VH_TERMINAL_ID=utc-probe', '-e', `VH_HAPPY_HOME_DIR=${happyHome}`]
+                : [];
+            const probe = iso.run(...tmuxNewSessionArgs('utc-probe', 80, 24, iso.dir, envFlags, resolveDefaultShell(process.platform, process.env)));
             await sleep(500);
             if (probe.status !== 0 || !iso.hasSession('utc-probe')) {
                 iso.killServer();
@@ -92,7 +96,7 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
             const geom = () => iso.run('display-message', '-p', '-t', `=${sess}:`, '#{pane_width}x#{pane_height}').stdout.trim();
             try {
                 const r = await mgr.open({ terminalId: tid, cols: 80, rows: 24, cwd: iso.dir });
-                expect(r.tmuxSession).toBe(sess);
+                expect(r.tmuxSession, `open() fell back (tmux ${tmuxV}); result=${JSON.stringify({ ...r, data: undefined, chunks: undefined })} sessions=[${iso.run('list-sessions', '-F', '#{session_name}').stdout.trim().replace(/\n/g, ',')}] stderr=${iso.run('list-sessions').stderr.trim()}`).toBe(sess);
                 // The hostile global really is in force on this server…
                 const firstOpt = conf.split('\n')[0].split(' ');
                 expect(iso.run('show-options', '-gqv', firstOpt[2]).stdout.trim()).toBe(firstOpt.slice(3).join(' ').replace(/"/g, ''));
