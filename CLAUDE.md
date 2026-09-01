@@ -24,15 +24,18 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-01，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.91**（mac-office daemon 同版本；2026-09-01）；`packages/happy-cli/package.json` 里的
-  version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
-- `docs/backlog.md` 2026-09-01 已整理：活跃区 28 项（6 `doing`：B-216 终端 tag、B-209
+- 最新 tag / npm `very-happy-cli` = **v0.2.92**（mac-office daemon 同版本；2026-09-01）；线上 Web = `main@ff8e113f`（2026-09-01 蓝绿）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- `docs/backlog.md` 2026-09-01 已整理：活跃区约 28 项（6 `doing`：B-216 终端 tag、B-209
   对话降噪、B-208 工作区视图、B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 收尾；
-  其余 todo）；裁撤项带理由留在「近期完成」一轮后删。改 doing 项前先读对应 `specs/2026-08-*.md`。
-- `docs/verify-queue.md` 待验证 **83 项**（V-0xx～V-108），远超「下一批前清账」纪律；
+  其余 todo）；裁撤项带理由留在「近期完成」一轮后删。**最近发布 v0.2.92**：B-264 会话重启（一键 Restart + 守卫式重生）、
+  B-266 relay 预检、B-267 root IS_SANDBOX（#121/#122/#123）。改 doing 项前先读对应 `specs/`。
+- `docs/verify-queue.md` 待验证 **80+ 项**（V-0xx～V-108，含 v0.2.92 的 V-051~053），远超「下一批前清账」纪律；
   发新批前请 Owner 清账或明确批准堆积。
-- 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1300+ 测试（本地跑一次门禁约 5-10 分钟，
-  首次 install 更久）。
+- 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1900+ 测试（本地跑一次门禁约 5-10 分钟，
+  首次 install 更久）。web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让
+  `installScript.test.ts` 失败，CI 不受影响）。
+- 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理
+  逐轮推翻前提后定稿（B-259/B-260/B-262/B-264 记录在 `~/code/github/skills/tmp/<slug>/`）。
 
 ## 本地工具入口
 
