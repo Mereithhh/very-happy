@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceRestoreState,
+  canOfferRestore,
   composerGate,
   isRestorable,
   mapResumeError,
@@ -18,9 +19,11 @@ describe('B-265 restoreEligibility', () => {
   it('accepts an archived claude session whose machine is online', () => {
     expect(restoreEligibility(base, machines)).toEqual({ ok: true, machineId: 'm1' });
   });
-  it('an inactive session WITHOUT archivedAt is merely offline — never restorable (its process reconnects on its own)', () => {
-    expect(restoreEligibility({ ...base, archivedAt: null }, machines)).toEqual({ ok: false, reason: 'not-archived' });
-    expect(restoreEligibility({ ...base, archivedAt: undefined }, machines)).toEqual({ ok: false, reason: 'not-archived' });
+  it('recoverability: an inactive session recovers whether archived OR merely offline (archivedAt is no longer a gate)', () => {
+    expect(restoreEligibility({ ...base, archivedAt: null }, machines)).toEqual({ ok: true, machineId: 'm1' });
+    expect(restoreEligibility({ ...base, archivedAt: undefined }, machines)).toEqual({ ok: true, machineId: 'm1' });
+    // but isRestorable (the composerGate driver) stays archivedAt-gated so a
+    // merely-offline session's composer still SENDS instead of restore-first.
     expect(isRestorable({ ...base, archivedAt: null })).toBe(false);
     expect(isRestorable(base)).toBe(true);
     expect(isRestorable({ ...base, active: true })).toBe(false);
@@ -33,6 +36,26 @@ describe('B-265 restoreEligibility', () => {
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: undefined } }, machines)).toEqual({ ok: false, reason: 'no-machine' });
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: 'zz' } }, machines)).toEqual({ ok: false, reason: 'no-machine' });
     expect(restoreEligibility({ ...base, metadata: { ...base.metadata, machineId: 'm2' } }, machines)).toEqual({ ok: false, reason: 'machine-offline' });
+  });
+});
+
+describe('recoverability canOfferRestore (button visibility, archivedAt-independent)', () => {
+  const on = { id: 'm1', active: true };
+  const off = { id: 'm1', active: false };
+  it('offers restore for an inactive recoverable session regardless of archivedAt, incl. an offline machine (shown disabled)', () => {
+    expect(canOfferRestore(base, on)).toBe(true);
+    expect(canOfferRestore({ ...base, archivedAt: null }, on)).toBe(true);
+    expect(canOfferRestore({ ...base, archivedAt: null }, off)).toBe(true);
+  });
+  it('does not offer for live / no-backend-id / unsupported-flavor / unknown machine', () => {
+    expect(canOfferRestore({ ...base, active: true }, on)).toBe(false);
+    expect(canOfferRestore({ ...base, metadata: { ...base.metadata, claudeSessionId: undefined } }, on)).toBe(false);
+    expect(canOfferRestore({ ...base, metadata: { ...base.metadata, flavor: 'gemini' } }, on)).toBe(false);
+    expect(canOfferRestore(base, undefined)).toBe(false);
+    expect(canOfferRestore(null, on)).toBe(false);
+  });
+  it('codex parity', () => {
+    expect(canOfferRestore({ ...base, metadata: { machineId: 'm1', flavor: 'codex', codexThreadId: 't' } as any }, on)).toBe(true);
   });
 });
 

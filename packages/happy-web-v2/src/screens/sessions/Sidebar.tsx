@@ -11,7 +11,7 @@ import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
 import { buildClosedTerminalRows, closedTerminalsOf } from '@/sync/closedTerminals';
 import { restoreClosedTerminal } from '@/app/rowActions';
 import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
-import { isRestorable, useRestoreState } from '@/app/sessionRestore';
+import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
@@ -218,6 +218,10 @@ export function Sidebar() {
         : [],
     [view, allMachines, terminals],
   );
+  // §7: closed-terminal restore is an RPC round-trip (seconds); track in-flight
+  // ids so the reopen button shows a spinner (only the restore-in-place path;
+  // the createTerminalAt fallback navigates instantly).
+  const [restoringTerminals, setRestoringTerminals] = useState<Set<string>>(() => new Set());
 
   const rows = useMemo<Row[] | null>(() => {
     if (!sessions) return null;
@@ -1067,15 +1071,30 @@ export function Sidebar() {
                     "same directory" open. */}
                 <button
                   className="sb-closed-reopen"
-                  disabled={!r.machineOnline || !r.cwd}
+                  disabled={!r.machineOnline || !r.cwd || restoringTerminals.has(r.terminalId)}
+                  aria-busy={restoringTerminals.has(r.terminalId)}
                   title={t(r.restoreSupported ? 'sidebar.closedTerminalRestore' : r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
                   aria-label={t(r.restoreSupported ? 'sidebar.closedTerminalRestore' : r.claudeSessionId ? 'sidebar.closedTerminalResume' : 'sidebar.closedTerminalReopen')}
-                  onClick={() => {
-                    if (r.restoreSupported) void restoreClosedTerminal(navigate, r);
-                    else createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId);
+                  onClick={async () => {
+                    if (!r.restoreSupported) {
+                      createTerminalAt(navigate, r.machineId, r.cwd, r.claudeSessionId);
+                      return;
+                    }
+                    setRestoringTerminals((prev) => new Set(prev).add(r.terminalId));
+                    try {
+                      await restoreClosedTerminal(navigate, r);
+                    } finally {
+                      setRestoringTerminals((prev) => {
+                        const next = new Set(prev);
+                        next.delete(r.terminalId);
+                        return next;
+                      });
+                    }
                   }}
                 >
-                  {r.restoreSupported || r.claudeSessionId ? <RotateCcw size={16} /> : <Plus size={16} />}
+                  {restoringTerminals.has(r.terminalId)
+                    ? <Spinner size={14} />
+                    : r.restoreSupported || r.claudeSessionId ? <RotateCcw size={16} /> : <Plus size={16} />}
                 </button>
               </div>
             ))}
@@ -1165,8 +1184,15 @@ function rowMenuItems(opts: {
   /** B-091 priority marker; undefined hides it on old terminal daemons. */
   isPriority?: boolean;
   onTogglePriority?: () => void;
-  /** B-265: archived session → restore in place (undefined hides it). */
+  /** B-265/recoverability: inactive session (archived OR offline) → restore in
+   *  place (undefined hides it). */
   onRestore?: () => void;
+  /** Restore offered but the machine is offline → shown disabled. */
+  restoreDisabled?: boolean;
+  /** Whether the archive/close lifecycle action shows. Decoupled from restore:
+   *  a merely-offline (non-archived) session is BOTH restorable and archivable;
+   *  an already-archived one is neither closable nor re-archivable. */
+  canArchiveOrClose: boolean;
 }): MenuItemDef[] {
   const { t } = opts;
   const items: MenuItemDef[] = [
@@ -1178,7 +1204,7 @@ function rowMenuItems(opts: {
     },
   ];
   if (opts.onRestore) {
-    items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, onSelect: opts.onRestore });
+    items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, disabled: opts.restoreDisabled, onSelect: opts.onRestore });
   }
   if (opts.onTogglePriority) {
     items.push({
@@ -1212,9 +1238,10 @@ function rowMenuItems(opts: {
   // Archive-only (B-083): a chat session ends by archiving (records survive);
   // a terminal ends by a neutral "close" (tmux dies, the claude conversation
   // inside stays on the machine — `claude --resume`). No delete concept.
-  // B-265: an already-archived session has nothing to archive — its only
-  // lifecycle action is the restore above.
-  if (!opts.onRestore) {
+  // B-265/recoverability: an already-archived session has nothing to archive
+  // (restore is its only lifecycle action); a merely-offline non-archived one is
+  // still archivable AND restorable, so this is decoupled from onRestore.
+  if (opts.canArchiveOrClose) {
     items.push({
       key: 'archive',
       label: opts.isTerminal ? t('common.close') : t('common.archive'),
@@ -1294,11 +1321,20 @@ function SidebarRow({
 
   const open = () => navigate(row.href);
 
-  // B-265: archived (not merely offline) sessions restore in place.
-  const restorable = !isTerminal && isRestorable(s);
+  // recoverability: an inactive session (archived OR merely offline) is
+  // restorable; if its machine is offline the action shows but disabled.
+  const restoreMachine = storage((st) => {
+    const mid = s?.metadata?.machineId;
+    return mid ? st.machines[mid] : undefined;
+  });
+  const restorable = !isTerminal && canOfferRestore(s, restoreMachine);
+  const restoreBlockedOffline = restorable && !restoreMachine?.active;
   const restoreState = useRestoreState(s?.id ?? '');
   const restoring = restoreState?.phase === 'spawning' || restoreState?.phase === 'awaiting-online';
   const onRestore = () => { void restoreSessionOrAlert(s!.id); };
+  // Decoupled from restore: a non-archived (incl. merely offline) session can
+  // still be archived; an already-archived one cannot.
+  const canArchiveOrClose = isTerminal || (!!s && s.archivedAt == null);
 
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
@@ -1330,6 +1366,8 @@ function SidebarRow({
     onMove,
     onArchiveOrClose: () => void onArchiveOrClose(),
     onRestore: restorable ? onRestore : undefined,
+    restoreDisabled: restoreBlockedOffline,
+    canArchiveOrClose,
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
     // update-metadata op as the rename dialog (togglePriorityTag prepends the
     // tag, so the row also lands in the priority group when grouping is on).
@@ -1423,10 +1461,10 @@ function SidebarRow({
       {restorable && (
         <button
           className="sb-closed-reopen"
-          title={t('restore.restore')}
+          title={restoreBlockedOffline ? t('restore.reason.machine-offline') : t('restore.restore')}
           aria-label={t('restore.restore')}
           aria-busy={restoring}
-          disabled={restoring}
+          disabled={restoring || restoreBlockedOffline}
           onClick={(e) => { e.stopPropagation(); onRestore(); }}
         >
           {restoring ? <Spinner size={14} /> : <RotateCcw size={16} />}

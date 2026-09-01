@@ -7,7 +7,7 @@
  * archived session is not live).
  */
 import { useEffect, useState } from 'react';
-import { Archive, RotateCcw } from 'lucide-react';
+import { Archive, RotateCcw, Unplug } from 'lucide-react';
 import { useSession } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { Spinner } from '@/ui';
@@ -41,13 +41,15 @@ export function SessionArchivedBanner({ sessionId }: { sessionId: string }) {
     } else if (state?.phase === 'failed') {
         text = `${t('restore.failed')}: ${t(restoreReasonKey(state.reason))}${state.reason === 'unknown' && state.message ? ` (${state.message})` : ''}`;
     } else {
-        text = t('restore.archivedNotice');
+        // recoverability: archived vs merely-offline get different notices.
+        text = session.archivedAt != null ? t('restore.archivedNotice') : t('restore.offlineNotice');
     }
+    const offline = session.archivedAt == null;
 
     return (
         <div className="mrb" data-testid="session-archived-banner">
             <div className={`mrb-note${state?.phase === 'failed' ? ' mrb-note--failed' : ''}`} role="status">
-                <Archive size={13} />
+                {offline ? <Unplug size={13} /> : <Archive size={13} />}
                 <span className="mrb-note-text">{text}</span>
                 <button
                     type="button"

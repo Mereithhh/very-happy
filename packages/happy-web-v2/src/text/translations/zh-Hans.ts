@@ -1218,6 +1218,7 @@ export const zhHans: TranslationStructure = {
         retry: '重试',
         restoreAndSend: '恢复并发送',
         archivedNotice: '此会话已归档。恢复后可以在这里继续对话。',
+        offlineNotice: '此会话已离线。恢复后可以在这里继续对话。',
         restoring: '正在机器上恢复…',
         restoringSlow: '机器尚未响应…',
         awaitingOnline: '已启动，等待会话上线…',

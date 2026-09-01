@@ -888,17 +888,30 @@ export async function codexListRewindPoints(
 export async function machineResumeSession(
     options: ResumeSessionOptions & { model?: string; permissionMode?: string },
     opts?: { timeoutMs?: number },
+    // session-recoverability: a merely-offline (non-archived) session must NOT go
+    // through unarchive→resume→re-archive-on-failure — that would ARCHIVE a
+    // healthy session on a transient resume failure. skipArchiveDance passes a
+    // no-op unarchive with supported:false, so commitSessionResume keeps the
+    // normalizeResumeResult + try/catch but runs neither unarchive nor rearchive.
+    flags?: { skipArchiveDance?: boolean },
 ): Promise<SpawnSessionResult> {
     const { machineId, sessionId, model, permissionMode } = options;
-
+    const resume = () => apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
+        machineId,
+        'resume-happy-session',
+        { sessionId, model, permissionMode },
+        opts,
+    );
+    if (flags?.skipArchiveDance) {
+        return commitSessionResume(
+            async () => ({ success: true, supported: false }),
+            resume,
+            async () => ({ success: true }),
+        );
+    }
     return commitSessionResume(
         () => sessionUnarchive(sessionId),
-        () => apiSocket.machineRPC<SpawnSessionResult, { sessionId: string; model?: string; permissionMode?: string }>(
-            machineId,
-            'resume-happy-session',
-            { sessionId, model, permissionMode },
-            opts,
-        ),
+        resume,
         () => sessionArchive(sessionId),
     );
 }

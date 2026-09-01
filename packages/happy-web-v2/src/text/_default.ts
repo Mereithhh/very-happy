@@ -1239,6 +1239,7 @@ export const en = {
         retry: 'Retry',
         restoreAndSend: 'Restore and send',
         archivedNotice: 'This session is archived. Restore it to continue the conversation here.',
+        offlineNotice: 'This session is offline. Restore it to continue the conversation here.',
         restoring: 'Restoring on the machine…',
         restoringSlow: 'The machine has not responded yet…',
         awaitingOnline: 'Started — waiting for the session to come online…',
