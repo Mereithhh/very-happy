@@ -24,7 +24,7 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-01，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.93**（mac-office daemon 同版本；2026-09-01）；线上 Web = `main@ff8e113f`（2026-09-01 蓝绿）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- 最新 tag / npm `very-happy-cli` = **v0.2.96**（mac-office daemon 同版本；2026-09-01）；线上 Web = `main@ff8e113f`（2026-09-01 蓝绿）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
 - `docs/backlog.md` 2026-09-01 已整理：活跃区约 28 项（6 `doing`：B-216 终端 tag、B-209
   对话降噪、B-208 工作区视图、B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 收尾；
   其余 todo）；裁撤项带理由留在「近期完成」一轮后删。**最近发布 v0.2.92**：B-264 会话重启（一键 Restart + 守卫式重生）、
