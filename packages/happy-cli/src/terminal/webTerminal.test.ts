@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, isClaudeConfident, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, type TerminalListItem } from './webTerminal';
 
 describe('resolveDefaultShell', () => {
     it('uses an executable configured shell', () => {
@@ -632,5 +632,42 @@ describe('geometryMarker (B-124: in-band pane geometry)', () => {
         expect(s.startsWith('\x1b]')).toBe(true);
         expect(s.endsWith('\x07')).toBe(true);
         expect(s).not.toMatch(/[\r\n]/);
+    });
+});
+
+describe('isClaudeConfident (B-107 mirror adopt/reactivate gate)', () => {
+    // TRUE only for claude-specific TUI evidence. This gate decides whether the
+    // reconciler may re-open a live mirror client (+ input gate) on a pane; a
+    // false positive pastes web input into whatever actually owns the pane.
+    it('is confident on the permission prompt', () => {
+        expect(isClaudeConfident('Do you want to make this edit to file.ts?\n❯ 1. Yes\n  2. No')).toBe(true);
+        expect(isClaudeConfident('Would you like to proceed?\n  1. Yes')).toBe(true);
+    });
+    it('is confident on the numbered select frame', () => {
+        expect(isClaudeConfident('│ ❯ 1. Yes\n│   2. No, tell Claude what to do differently')).toBe(true);
+    });
+    it('is confident on the working/idle footer strings', () => {
+        expect(isClaudeConfident('· Herding… (12s · esc to interrupt)')).toBe(true);
+        expect(isClaudeConfident('> \n  ? for shortcuts')).toBe(true);
+        expect(isClaudeConfident('⏵⏵ bypass permissions on')).toBe(true);
+        expect(isClaudeConfident('some text\n⏵⏵ accept edits on')).toBe(true);
+    });
+    // The critical negatives — a bare shell / node / editor must NOT be adopted.
+    it('is NOT confident on a bare shell prompt', () => {
+        expect(isClaudeConfident('jojo@mac ~/code %')).toBe(false);
+        expect(isClaudeConfident('$ ')).toBe(false);
+        expect(isClaudeConfident('')).toBe(false);
+    });
+    it('is NOT confident on a bare (y/n) prompt (any tool asks that — not claude-specific)', () => {
+        expect(isClaudeConfident('Overwrite existing file? (y/n)')).toBe(false);
+        expect(isClaudeConfident('Continue? [Y/n]')).toBe(false);
+    });
+    it('is NOT confident on a generic editor / pager frame', () => {
+        expect(isClaudeConfident('~\n~\n~\n"file.txt" 0 lines')).toBe(false); // vim
+        expect(isClaudeConfident('Tasks: 512 total, 2 running\n%Cpu(s): 3.1 us')).toBe(false); // htop
+    });
+    it('reads only the last 15 lines for the prompt markers (stale scrollback does not count)', () => {
+        const stale = 'Do you want to proceed?\n' + Array.from({ length: 40 }, (_, i) => `log line ${i}`).join('\n');
+        expect(isClaudeConfident(stale)).toBe(false);
     });
 });

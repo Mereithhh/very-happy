@@ -751,10 +751,14 @@ export class ApiMachineClient {
         resolveMirrorSessionId: (terminalId: string) => string | undefined;
         onTerminalClosed: (terminalId: string) => void;
         onTerminalList: (terminals: TerminalListItem[]) => void;
+        /** design v3: unconditional per-tick reconcile (self-heals lost bindings
+         *  on an unchanged-signature list). */
+        onTerminalListTick: (terminals: TerminalListItem[]) => void;
         isMirrorInputAllowed: (terminalId: string) => boolean;
     }): void {
         this.webTerminal.setMirrorSessionResolver(integration.resolveMirrorSessionId);
         this.webTerminal.setOnTerminalClosed(integration.onTerminalClosed);
+        this.webTerminal.setMirrorTickObserver(integration.onTerminalListTick);
         this.mirrorListObserver = integration.onTerminalList;
         this.mirrorInputAllowed = integration.isMirrorInputAllowed;
     }

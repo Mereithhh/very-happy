@@ -1387,6 +1387,7 @@ export async function startDaemon(): Promise<void> {
       resolveMirrorSessionId: (terminalId) => mirrorManager.resolveMirrorSessionId(terminalId),
       onTerminalClosed: (terminalId) => mirrorManager.onTerminalClosed(terminalId),
       onTerminalList: (terminals) => mirrorManager.observeTerminalList(terminals),
+      onTerminalListTick: (terminals) => mirrorManager.reconcile(terminals),
       isMirrorInputAllowed: (terminalId) => mirrorManager.isMirrorInputAllowed(terminalId),
     });
     // Re-adopt mirrors for terminals that survived the daemon restart (tail
