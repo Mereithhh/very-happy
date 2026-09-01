@@ -32,9 +32,30 @@ export const sessionToolCallStartEventSchema = z.object({
   args: z.record(z.string(), z.unknown()),
 });
 
+// B-260-P2: sub-agent lifecycle payloads. All optional / additive — old
+// clients strip unknown keys (zod default) and keep today's behaviour.
+export const sessionSubagentResultSchema = z.object({
+  text: z.string(),
+  truncated: z.boolean().optional(),
+});
+export const sessionSubagentUsageSchema = z.object({
+  toolUses: z.number().optional(),
+  totalTokens: z.number().optional(),
+  durationMs: z.number().optional(),
+});
+
 export const sessionToolCallEndEventSchema = z.object({
   t: z.literal('tool-call-end'),
   call: z.string(),
+  // Foreground Agent/Task completion: the sub-agent's final report + run
+  // totals (SDK `tool_use_result`). Absent for ordinary tools and for the
+  // background stub ("Async agent launched").
+  result: sessionSubagentResultSchema.extend({
+    isError: z.boolean().optional(),
+    stats: sessionSubagentUsageSchema.extend({
+      toolStats: z.record(z.string(), z.unknown()).optional(),
+    }).optional(),
+  }).optional(),
 });
 
 export const sessionFileEventSchema = z.object({
@@ -59,6 +80,9 @@ export const sessionTurnStartEventSchema = z.object({
 export const sessionStartEventSchema = z.object({
   t: z.literal('start'),
   title: z.string().optional(),
+  // B-260-P2: identity from SDK task_started / Agent tool input.
+  description: z.string().optional(),
+  subagentType: z.string().optional(),
 });
 
 export const sessionTurnEndStatusSchema = z.enum(['completed', 'failed', 'cancelled']);
@@ -90,6 +114,24 @@ export const sessionTurnEndEventSchema = z.object({
 
 export const sessionStopEventSchema = z.object({
   t: z.literal('stop'),
+  // B-260-P2: from SDK task_notification. A second `stop` for the same
+  // subagent may follow carrying `result` once the notification user message
+  // (which holds the <result> block) arrives; consumers fold by subagent id.
+  status: z.enum(['completed', 'failed', 'stopped']).optional(),
+  result: sessionSubagentResultSchema.optional(),
+  usage: sessionSubagentUsageSchema.optional(),
+});
+
+// B-260-P2: live progress of a running sub-agent (SDK task_progress,
+// throttled by the CLI). New discriminator: an old client drops only this
+// envelope.
+export const sessionProgressEventSchema = z.object({
+  t: z.literal('progress'),
+  toolUses: z.number(),
+  lastTool: z.string().optional(),
+  totalTokens: z.number().optional(),
+  durationMs: z.number().optional(),
+  summary: z.string().optional(),
 });
 
 export const sessionEventSchema = z.discriminatedUnion('t', [
@@ -102,6 +144,7 @@ export const sessionEventSchema = z.discriminatedUnion('t', [
   sessionStartEventSchema,
   sessionTurnEndEventSchema,
   sessionStopEventSchema,
+  sessionProgressEventSchema,
 ]);
 
 export type SessionEvent = z.infer<typeof sessionEventSchema>;
@@ -140,7 +183,14 @@ export const sessionEnvelopeSchema = z
         path: ['role'],
       });
     }
-    if ((envelope.ev.t === 'start' || envelope.ev.t === 'stop') && envelope.role !== 'agent') {
+    if (envelope.ev.t === 'progress' && !envelope.subagent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'progress events must carry a subagent',
+        path: ['subagent'],
+      });
+    }
+    if ((envelope.ev.t === 'start' || envelope.ev.t === 'stop' || envelope.ev.t === 'progress') && envelope.role !== 'agent') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `${envelope.ev.t} events must use role "agent"`,

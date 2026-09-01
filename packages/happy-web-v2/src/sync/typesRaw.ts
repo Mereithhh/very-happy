@@ -48,7 +48,20 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('subagent'),
     id: z.string(),
     title: z.string().optional(),
-    status: z.enum(['running', 'completed']),
+    // B-260-P2: lifecycle from the CLI (task_started/progress/notification).
+    // `failed`/`stopped` only come from new CLIs; old ones send running/completed.
+    status: z.enum(['running', 'completed', 'failed', 'stopped']),
+    description: z.string().optional(),
+    subagentType: z.string().optional(),
+    progress: z.object({
+        toolUses: z.number(),
+        lastTool: z.string().optional(),
+        totalTokens: z.number().optional(),
+        durationMs: z.number().optional(),
+        summary: z.string().optional(),
+    }).optional(),
+    result: z.object({ text: z.string(), truncated: z.boolean().optional() }).optional(),
+    usage: z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), durationMs: z.number().optional() }).optional(),
 }), z.object({
     type: z.literal('queue-cancel'),
     targetLocalKeys: z.array(z.string().min(1)).min(1),
@@ -75,9 +88,17 @@ const sessionToolCallStartEventSchema = z.object({
     args: z.record(z.string(), z.unknown()),
 });
 
+const subagentResultSchema = z.object({ text: z.string(), truncated: z.boolean().optional() });
+const subagentUsageSchema = z.object({ toolUses: z.number().optional(), totalTokens: z.number().optional(), durationMs: z.number().optional() });
+
 const sessionToolCallEndEventSchema = z.object({
     t: z.literal('tool-call-end'),
     call: z.string(),
+    // B-260-P2: foreground Agent/Task final report (+ run totals).
+    result: subagentResultSchema.extend({
+        isError: z.boolean().optional(),
+        stats: subagentUsageSchema.extend({ toolStats: z.record(z.string(), z.unknown()).optional() }).optional(),
+    }).optional(),
 });
 
 const sessionFileEventSchema = z.object({
@@ -103,6 +124,8 @@ const sessionTurnStartEventSchema = z.object({
 const sessionStartEventSchema = z.object({
     t: z.literal('start'),
     title: z.string().optional(),
+    description: z.string().optional(),
+    subagentType: z.string().optional(),
 });
 
 const sessionTurnUsageSchema = z.object({
@@ -126,6 +149,19 @@ const sessionTurnEndEventSchema = z.object({
 
 const sessionStopEventSchema = z.object({
     t: z.literal('stop'),
+    status: z.enum(['completed', 'failed', 'stopped']).optional(),
+    result: subagentResultSchema.optional(),
+    usage: subagentUsageSchema.optional(),
+});
+
+// B-260-P2: throttled live progress of a running sub-agent.
+const sessionProgressEventSchema = z.object({
+    t: z.literal('progress'),
+    toolUses: z.number(),
+    lastTool: z.string().optional(),
+    totalTokens: z.number().optional(),
+    durationMs: z.number().optional(),
+    summary: z.string().optional(),
 });
 
 const sessionQueueCancelEventSchema = z.object({
@@ -144,6 +180,7 @@ const sessionEventSchema = z.discriminatedUnion('t', [
     sessionTurnEndEventSchema,
     sessionStopEventSchema,
     sessionQueueCancelEventSchema,
+    sessionProgressEventSchema,
 ]);
 
 const sessionEnvelopeSchema = z.object({
@@ -625,8 +662,9 @@ function normalizeSessionEnvelope(
         } satisfies NormalizedMessage;
     }
 
-    if (envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
+    if (envelope.ev.t === 'start' || envelope.ev.t === 'stop' || envelope.ev.t === 'progress') {
         if (!envelope.subagent) return null;
+        const ev = envelope.ev;
         return {
             id: messageId,
             localId,
@@ -636,8 +674,21 @@ function normalizeSessionEnvelope(
             content: {
                 type: 'subagent',
                 id: envelope.subagent,
-                ...(envelope.ev.t === 'start' && envelope.ev.title ? { title: envelope.ev.title } : {}),
-                status: envelope.ev.t === 'start' ? 'running' : 'completed',
+                ...(ev.t === 'start' && ev.title ? { title: ev.title } : {}),
+                ...(ev.t === 'start' && ev.description ? { description: ev.description } : {}),
+                ...(ev.t === 'start' && ev.subagentType ? { subagentType: ev.subagentType } : {}),
+                ...(ev.t === 'progress' ? {
+                    progress: {
+                        toolUses: ev.toolUses,
+                        ...(ev.lastTool ? { lastTool: ev.lastTool } : {}),
+                        ...(typeof ev.totalTokens === 'number' ? { totalTokens: ev.totalTokens } : {}),
+                        ...(typeof ev.durationMs === 'number' ? { durationMs: ev.durationMs } : {}),
+                        ...(ev.summary ? { summary: ev.summary } : {}),
+                    },
+                } : {}),
+                ...(ev.t === 'stop' && ev.result ? { result: ev.result } : {}),
+                ...(ev.t === 'stop' && ev.usage ? { usage: ev.usage } : {}),
+                status: ev.t === 'stop' ? (ev.status ?? 'completed') : 'running',
             },
             meta,
         } satisfies NormalizedMessage;
@@ -774,8 +825,10 @@ function normalizeSessionEnvelope(
             content: [{
                 type: 'tool-result',
                 tool_use_id: envelope.ev.call,
-                content: null,
-                is_error: false,
+                // B-260-P2: a foreground sub-agent's final report; null for
+                // every other tool (the session protocol carries no output).
+                content: envelope.ev.result ? envelope.ev.result.text : null,
+                is_error: envelope.ev.result?.isError === true,
                 uuid: contentUUID,
                 parentUUID
             }],

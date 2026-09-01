@@ -549,6 +549,10 @@ export const zhHans: TranslationStructure = {
             usedTools: ({ count }: { count: number }) => `${count} 次工具调用`,
             subagentCount: ({ count }: { count: number }) => `${count} 个子代理`,
             subagentLatest: ({ line }: { line: string }) => `最近：${line}`,
+            subagentRunningCount: ({ running, count }: { running: number; count: number }) => `${running}/${count} 个子代理运行中`,
+            subagentStatus: { running: '运行中', completed: '已完成', failed: '失败', stopped: '已停止' },
+            subagentResult: '子代理报告',
+            subagentResultTruncated: '已截断至 16KB',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `耗时 ${seconds} 秒`;
                 const minutes = Math.floor(seconds / 60);

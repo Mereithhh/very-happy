@@ -3871,3 +3871,39 @@ describe('B-261: DESC backfill pages are re-ordered before tracing', () => {
         }
     });
 });
+
+describe('B-260-P2: sub-agent lifecycle on the Agent card', () => {
+    const SUB = 'ck9x2q1y8000001lbwx7f7q1b';
+    function agentCard(seq: number): NormalizedMessage {
+        return {
+            id: `card-${seq}`, localId: null, createdAt: seq * 100, seq, role: 'agent', isSidechain: false,
+            content: [{ type: 'tool-call', id: 'toolu_1', name: 'Agent', input: { description: 'Review', prompt: 'Review', subagent_type: 'Explore', sessionSubagent: SUB }, description: 'Review', uuid: `u-${seq}`, parentUUID: null }],
+        } as NormalizedMessage;
+    }
+    function ev(seq: number, content: Record<string, unknown>): NormalizedMessage {
+        return { id: `ev-${seq}`, localId: null, createdAt: seq * 100, seq, role: 'event', isSidechain: false, content: { type: 'subagent', id: SUB, ...content } } as NormalizedMessage;
+    }
+    const card = (r: ReturnType<typeof reducer>) => r.messages.find((m) => m.kind === 'tool-call') as Extract<Message, { kind: 'tool-call' }> | undefined;
+
+    it('attaches lifecycle to the card and re-renders it on every newer event; newer status wins (completed → running on resume)', () => {
+        const state = createReducer();
+        reducer(state, [agentCard(1)]);
+        let r = reducer(state, [ev(2, { status: 'running', description: 'Review', subagentType: 'Explore' })]);
+        expect(card(r)?.subagent).toMatchObject({ status: 'running', subagentType: 'Explore' });
+        r = reducer(state, [ev(3, { status: 'running', progress: { toolUses: 4, lastTool: 'Read' } })]);
+        expect(card(r)?.subagent).toMatchObject({ status: 'running', progress: { toolUses: 4, lastTool: 'Read' }, subagentType: 'Explore' });
+        r = reducer(state, [ev(4, { status: 'completed', result: { text: 'done' }, usage: { toolUses: 9 } })]);
+        expect(card(r)?.subagent).toMatchObject({ status: 'completed', result: { text: 'done' }, usage: { toolUses: 9 } });
+        r = reducer(state, [ev(5, { status: 'running' })]);
+        expect(card(r)?.subagent).toMatchObject({ status: 'running', result: { text: 'done' } });
+        r = reducer(state, [ev(1, { status: 'completed' })]);
+        expect(card(r)?.subagent?.status).toBe('running');
+    });
+
+    it("an old CLI's bare running/completed pills carry no lifecycle payload → the card stays honest (no lifecycle)", () => {
+        const state = createReducer();
+        reducer(state, [agentCard(1)]);
+        const r = reducer(state, [ev(2, { status: 'running' }), ev(3, { status: 'completed' })]);
+        expect(card(r)?.subagent).toBeUndefined();
+    });
+});
