@@ -21,7 +21,7 @@ const happyHome = mkdtempSync(join(tmpdir(), 'vh-utc-home-'));
 const prevHome = process.env.HAPPY_HOME_DIR;
 process.env.HAPPY_HOME_DIR = happyHome;
 const iso = createIsolatedTmux('vh-utc');
-const { WebTerminalManager } = await import('./webTerminal');
+const { WebTerminalManager, tmuxNewSessionArgs } = await import('./webTerminal');
 
 const xdg = mkdtempSync(join(tmpdir(), 'vh-utc-xdg-'));
 mkdirSync(join(xdg, 'tmux'), { recursive: true });
@@ -70,16 +70,19 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
             writeFileSync(join(xdg, 'tmux', 'tmux.conf'), conf + '\n');
             process.env.XDG_CONFIG_HOME = xdg;
             iso.killServer(); // next tmux call boots a fresh server with THIS config
-            // Precondition: tmux ITSELF can create a session under this config.
+            // Precondition: tmux ITSELF can hold a session under this config.
             // tmux 3.4 / 3.5a on Linux (ubuntu 24.04 = CI, debian trixie, alpine)
             // crash the server on ANY new-session while `window-size manual` is
-            // set ("server exited unexpectedly", plain `tmux new` included) —
+            // set ("server exited unexpectedly", plain `tmux new` included;
+            // on CI the crash lands a beat AFTER the create returns 0) —
             // nothing a client can work around, and not what this test is
-            // about. macOS/brew 3.7b is fine. Skip honestly instead of failing.
-            const probe = iso.run('new-session', '-d', '-s', 'utc-probe', '/bin/sh');
-            if (probe.status !== 0) {
+            // about. macOS/brew 3.7b and 3.2a are fine. Probe with the daemon's
+            // exact create argv, then re-check after a beat; skip honestly.
+            const probe = iso.run(...tmuxNewSessionArgs('utc-probe', 80, 24, iso.dir, [], '/bin/sh'));
+            await sleep(500);
+            if (probe.status !== 0 || !iso.hasSession('utc-probe')) {
                 iso.killServer();
-                ctx.skip(`this tmux (${iso.run('-V').stdout.trim()}) cannot create a session under "${conf.split('\n')[0]}": ${probe.stderr.trim()}`);
+                ctx.skip(`this tmux (${iso.run('-V').stdout.trim()}) cannot hold a session under "${conf.split('\n')[0]}": ${probe.stderr.trim() || 'session vanished after create'}`);
                 return;
             }
             iso.run('kill-session', '-t', '=utc-probe:');
