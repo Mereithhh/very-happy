@@ -246,6 +246,7 @@ interface StorageState {
     // Optimistically flip a session's active state locally (e.g. archive UX) so
     // it leaves the active-sessions group immediately. The next server sync
     // (applySessions) is authoritative and will correct/confirm this.
+    setSessionArchivedAtLocal: (sessionId: string, archivedAt: number | null) => void;
     setSessionActiveLocal: (sessionId: string, active: boolean) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -1297,6 +1298,18 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        // B-265: optimistic archive intent for the tab that performed the
+        // transition; the server's update-session confirms (or corrects) it.
+        setSessionArchivedAtLocal: (sessionId: string, archivedAt: number | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session || session.archivedAt === archivedAt) return state;
+            const updatedSessions = { ...state.sessions, [sessionId]: { ...session, archivedAt } };
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds),
             };
         }),
         setSessionActiveLocal: (sessionId: string, active: boolean) => set((state) => {

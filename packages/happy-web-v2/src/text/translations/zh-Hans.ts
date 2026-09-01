@@ -677,6 +677,7 @@ export const zhHans: TranslationStructure = {
         actionNewTerminalAt: '在指定目录新建终端…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
+        actionRestoreSession: '恢复当前对话',
         actionOpenSettings: '打开设置',
         actionClipboardHistory: '剪贴板历史',
         actionAssistant: '语音助手',
@@ -1207,6 +1208,30 @@ export const zhHans: TranslationStructure = {
         rowUnread: '有未读',
     },
 
+    restore: {
+        restore: '恢复',
+        retry: '重试',
+        restoreAndSend: '恢复并发送',
+        archivedNotice: '此会话已归档。恢复后可以在这里继续对话。',
+        restoring: '正在机器上恢复…',
+        restoringSlow: '机器尚未响应…',
+        awaitingOnline: '已启动，等待会话上线…',
+        failed: '恢复失败',
+        reason: {
+            'not-archived': '此会话未归档。',
+            'no-machine': '不知道这个会话在哪台机器上运行。',
+            'machine-offline': '机器离线，恢复需要机器在线。',
+            'unsupported-flavor': '该 agent 不支持恢复。',
+            'no-backend-id': '没有可以续接的 agent 对话。',
+            'not-tracked': '机器上已没有这个会话的恢复信息（保留 14 天），或它在别的机器上运行。',
+            'missing-cwd': '原工作目录已不存在。',
+            'conversation-missing': '对话文件已不在机器上。',
+            'machine-unreachable': '机器没有响应，请稍后再试。',
+            'timeout': '恢复未得到确认。如果会话已显示在线可直接使用，否则请重试。',
+            'unknown': '未知错误。',
+        },
+    },
+
     zen: {
         toggle: '禅模式',
     },
@@ -1616,7 +1641,7 @@ export const zhHans: TranslationStructure = {
     terminal: {
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
-        closeMessage: '这会结束机器上的终端进程。未保存的终端工作会丢失；agent 对话能否恢复取决于对应 agent。',
+        closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',

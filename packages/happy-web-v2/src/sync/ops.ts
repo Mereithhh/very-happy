@@ -857,7 +857,10 @@ export async function codexListRewindPoints(
     }
 }
 
-export async function machineResumeSession(options: ResumeSessionOptions & { model?: string; permissionMode?: string }): Promise<SpawnSessionResult> {
+export async function machineResumeSession(
+    options: ResumeSessionOptions & { model?: string; permissionMode?: string },
+    opts?: { timeoutMs?: number },
+): Promise<SpawnSessionResult> {
     const { machineId, sessionId, model, permissionMode } = options;
 
     return commitSessionResume(
@@ -866,6 +869,7 @@ export async function machineResumeSession(options: ResumeSessionOptions & { mod
             machineId,
             'resume-happy-session',
             { sessionId, model, permissionMode },
+            opts,
         ),
         () => sessionArchive(sessionId),
     );

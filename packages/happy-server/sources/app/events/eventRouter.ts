@@ -425,6 +425,23 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
     };
 }
 
+/** B-265: the archive / unarchive transition as a user-level update — the
+ *  only channel through which other tabs and devices learn `archivedAt`
+ *  without a full refetch. Carries no metadata / agentState on purpose (old
+ *  web handlers fall back to the current session for both). */
+export function buildSessionArchivedAtUpdate(sessionId: string, updateSeq: number, updateId: string, archivedAt: number | null): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-session',
+            id: sessionId,
+            archivedAt,
+        },
+        createdAt: Date.now()
+    };
+}
+
 export function buildDeleteSessionUpdate(sessionId: string, updateSeq: number, updateId: string): UpdatePayload {
     return {
         id: updateId,

@@ -10,7 +10,7 @@ describe('AgentInput queue controls', () => {
         expect(source).toContain("metadata?.capabilities?.includes('claude-steer-v1')");
         expect(source).toContain("aria-label={t('session.chat.queueIntervene')}");
         expect(source).toContain("await sendQueuedItem(item, 'steer')");
-        expect(source).toContain("aria-label={isWorking ? t('session.chat.queueSend') : t('session.chat.send')}");
+        expect(source).toContain("aria-label={gate === 'restore-first' ? t('restore.restoreAndSend') : isWorking ? t('session.chat.queueSend') : t('session.chat.send')}");
         expect(source).toContain("onClick={() => void doSend('queue')}");
         expect(source).toContain("delivery: 'queue' | 'steer' = 'queue'");
         expect(source).not.toContain('sessionSteer');

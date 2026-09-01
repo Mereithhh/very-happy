@@ -123,3 +123,9 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* B-265 SessionArchivedBanner reuses the note strip; a failed restore shows
+ * the reason in the attention color (still no accent). */
+.mrb-note--failed {
+  color: var(--warn);
+}

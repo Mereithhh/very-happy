@@ -22,6 +22,7 @@ import { useTerminalSessions } from '@/sync/terminalSessions';
 import type { Session } from '@/sync/storageTypes';
 import { pickNextSessionId } from './nextSession';
 import { commitSessionArchive } from './sessionArchiveFlow';
+import { restoreSession, useSessionRestore } from './sessionRestore';
 
 /** B-111: route to land on after closing `closedId` — the most recently
  *  active other visible session, or '/' when none is left. Read the store at
@@ -37,13 +38,32 @@ export function nextSessionPathAfterClose(closedId: string): string {
  *  durable state first and then tells the daemon/session process to stop. */
 export async function archiveSessionNow(session: Session): Promise<void> {
   const wasActive = session.active;
+  const previousArchivedAt = session.archivedAt;
   if (wasActive) storage.getState().setSessionActiveLocal(session.id, false);
+  // B-265: stamp the archive intent locally so the row reads "archived" (not
+  // "offline") before the server's update-session round-trips.
+  storage.getState().setSessionArchivedAtLocal(session.id, Date.now());
   try {
     await commitSessionArchive(() => sessionArchive(session.id));
   } catch (error) {
     if (wasActive) storage.getState().setSessionActiveLocal(session.id, true);
+    storage.getState().setSessionArchivedAtLocal(session.id, previousArchivedAt ?? null);
     throw error;
   }
+}
+
+/** B-265: restore an archived session in place (row button / menu / palette).
+ *  The banner narrates progress on the detail screen; surfaces without one
+ *  get the failure reason as an alert. Returns whether the daemon accepted. */
+export async function restoreSessionOrAlert(sessionId: string): Promise<boolean> {
+  const ok = await restoreSession(sessionId);
+  if (ok) return true;
+  const state = useSessionRestore.getState().states[sessionId];
+  if (state?.phase === 'failed') {
+    const detail = state.reason === 'unknown' && state.message ? ` (${state.message})` : '';
+    Modal.alert(t('restore.failed'), `${t(`restore.reason.${state.reason ?? 'unknown'}`)}${detail}`);
+  }
+  return false;
 }
 
 /** Archive a chat session, confirm first (sidebar/menu/⌘W entry point).

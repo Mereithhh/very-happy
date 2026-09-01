@@ -8,8 +8,9 @@ import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
-import { buildClosedTerminalRows } from '@/sync/closedTerminals';
-import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags } from '@/app/rowActions';
+import { buildClosedTerminalRows, closedTerminalsOf } from '@/sync/closedTerminals';
+import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
+import { isRestorable, useRestoreState } from '@/app/sessionRestore';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
 import { visibleSidebarSessions } from './sidebarRows';
@@ -18,7 +19,7 @@ import { groupRowsByWorkspace, resolveSidebarGroupMode, type SidebarGroupMode, t
 import type { Session } from '@/sync/storageTypes';
 // aliased: `Settings` is already taken by the lucide gear icon above
 import type { Settings as SyncedSettings } from '@/sync/settings';
-import { StatusDot, CyberMark, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, type MenuItemDef } from '@/ui';
+import { StatusDot, CyberMark, QuickThemeToggle, TagChip, TagOverflowChip, ActionDropdownMenu, ActionContextMenu, Spinner, type MenuItemDef } from '@/ui';
 import { useSocketStatus, socketToStatus } from '@/app/useConnection';
 import { useSidebarPrefs } from '@/app/useSidebarPrefs';
 import { useIsDesktop } from '@/app/useMediaQuery';
@@ -595,11 +596,14 @@ export function Sidebar() {
       const legacyPinned = st.settings.pinnedRows ?? [];
       const target: Array<{ key: string }> = order.length > 0 ? order : legacyPinned;
       if (target.length === 0) return;
-      const valid = new Set<string>();
-      for (const s of Object.values(st.sessions)) {
-        if (s.active) valid.add(s.id);
-      }
+      // B-265: archived sessions and closed terminals are restorable, so their
+      // order/pin entries must survive the archive — only ids that are gone
+      // from the store / every machine's records are pruned.
+      const valid = new Set<string>(Object.keys(st.sessions));
       for (const tm of useTerminalSessions.getState().terminals) valid.add(`t:${tm.id}`);
+      for (const m of Object.values(st.machines)) {
+        for (const r of closedTerminalsOf(m.daemonState)) valid.add(`t:${r.id}`);
+      }
       const missingNow = new Set<string>();
       for (const e of target) {
         if (!valid.has(e.key)) missingNow.add(e.key);
@@ -1146,6 +1150,8 @@ function rowMenuItems(opts: {
   /** B-091 priority marker; undefined hides it on old terminal daemons. */
   isPriority?: boolean;
   onTogglePriority?: () => void;
+  /** B-265: archived session → restore in place (undefined hides it). */
+  onRestore?: () => void;
 }): MenuItemDef[] {
   const { t } = opts;
   const items: MenuItemDef[] = [
@@ -1156,6 +1162,9 @@ function rowMenuItems(opts: {
       onSelect: opts.onRename,
     },
   ];
+  if (opts.onRestore) {
+    items.push({ key: 'restore', label: t('restore.restore'), icon: RotateCcw, onSelect: opts.onRestore });
+  }
   if (opts.onTogglePriority) {
     items.push({
       key: 'priority',
@@ -1188,14 +1197,18 @@ function rowMenuItems(opts: {
   // Archive-only (B-083): a chat session ends by archiving (records survive);
   // a terminal ends by a neutral "close" (tmux dies, the claude conversation
   // inside stays on the machine — `claude --resume`). No delete concept.
-  items.push({
-    key: 'archive',
-    label: opts.isTerminal ? t('common.close') : t('common.archive'),
-    icon: opts.isTerminal ? X : Archive,
-    danger: !opts.isTerminal,
-    separatorBefore: true,
-    onSelect: opts.onArchiveOrClose,
-  });
+  // B-265: an already-archived session has nothing to archive — its only
+  // lifecycle action is the restore above.
+  if (!opts.onRestore) {
+    items.push({
+      key: 'archive',
+      label: opts.isTerminal ? t('common.close') : t('common.archive'),
+      icon: opts.isTerminal ? X : Archive,
+      danger: !opts.isTerminal,
+      separatorBefore: true,
+      onSelect: opts.onArchiveOrClose,
+    });
+  }
   return items;
 }
 
@@ -1266,6 +1279,12 @@ function SidebarRow({
 
   const open = () => navigate(row.href);
 
+  // B-265: archived (not merely offline) sessions restore in place.
+  const restorable = !isTerminal && isRestorable(s);
+  const restoreState = useRestoreState(s?.id ?? '');
+  const restoring = restoreState?.phase === 'spawning' || restoreState?.phase === 'awaiting-online';
+  const onRestore = () => { void restoreSessionOrAlert(s!.id); };
+
   // Archive (session) / close (terminal) — the flows, confirms included,
   // live in rowActions.ts and are shared with the board. Archive-only (B-083):
   // no delete flow exists for chat sessions.
@@ -1295,6 +1314,7 @@ function SidebarRow({
     onRename: onRenameRequest,
     onMove,
     onArchiveOrClose: () => void onArchiveOrClose(),
+    onRestore: restorable ? onRestore : undefined,
     // B-091 标记优先/取消优先 — writes metadata.tags through the same
     // update-metadata op as the rename dialog (togglePriorityTag prepends the
     // tag, so the row also lands in the priority group when grouping is on).
@@ -1385,6 +1405,18 @@ function SidebarRow({
         )}
         {badge != null && <kbd className="sb-row-badge mono">⌘{badge}</kbd>}
       </button>
+      {restorable && (
+        <button
+          className="sb-closed-reopen"
+          title={t('restore.restore')}
+          aria-label={t('restore.restore')}
+          aria-busy={restoring}
+          disabled={restoring}
+          onClick={(e) => { e.stopPropagation(); onRestore(); }}
+        >
+          {restoring ? <Spinner size={14} /> : <RotateCcw size={16} />}
+        </button>
+      )}
       <ActionDropdownMenu items={menuItems} align="end" sideOffset={4}>
         <button className="sb-row-menu" aria-label="actions" onClick={(e) => e.stopPropagation()}>
           <MoreHorizontal size={16} />

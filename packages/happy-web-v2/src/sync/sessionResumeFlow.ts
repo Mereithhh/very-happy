@@ -1,5 +1,19 @@
 import type { SpawnSessionResult } from './ops';
 
+/** A daemon handler that throws reaches the web as `{ error }` (no `type`),
+ * see RpcHandlerManager — fold it into the SpawnSessionResult shape so callers
+ * can read `errorMessage` uniformly. Anything else unrecognised is an error too. */
+export function normalizeResumeResult(raw: unknown): SpawnSessionResult {
+  const r = raw as { type?: string; error?: unknown; errorMessage?: unknown; sessionId?: unknown; directory?: unknown } | null;
+  if (r && typeof r === 'object') {
+    if (r.type === 'success' && typeof r.sessionId === 'string') return { type: 'success', sessionId: r.sessionId };
+    if (r.type === 'requestToApproveDirectoryCreation' && typeof r.directory === 'string') return { type: 'requestToApproveDirectoryCreation', directory: r.directory };
+    if (r.type === 'error') return { type: 'error', errorMessage: typeof r.errorMessage === 'string' ? r.errorMessage : 'Failed to resume session' };
+    if (typeof r.error === 'string') return { type: 'error', errorMessage: r.error };
+  }
+  return { type: 'error', errorMessage: 'Unexpected resume response' };
+}
+
 interface LifecycleTransitionResult {
   success: boolean;
   supported?: boolean;
@@ -21,7 +35,7 @@ export async function commitSessionResume(
 
   let result: SpawnSessionResult;
   try {
-    result = await resume();
+    result = normalizeResumeResult(await resume());
   } catch (error) {
     result = {
       type: 'error',

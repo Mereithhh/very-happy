@@ -1121,6 +1121,7 @@ class Sync {
             dataEncryptionKey: string | null;
             active: boolean;
             activeAt: number;
+            archivedAt?: number | null;
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
@@ -2616,6 +2617,9 @@ class Sync {
                     metadataVersion: updateData.body.metadata
                         ? updateData.body.metadata.version
                         : session.metadataVersion,
+                    // B-265: the archive / unarchive transition rides a
+                    // metadata-less update-session; absent means "no change".
+                    ...(updateData.body.archivedAt !== undefined ? { archivedAt: updateData.body.archivedAt } : {}),
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }]);
