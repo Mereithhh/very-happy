@@ -79,6 +79,18 @@ describe.skipIf(!tmuxAvailable)('web terminal vs user tmux.conf (B-270, real tmu
             // about. macOS/brew 3.7b and 3.2a are fine. Probe with the daemon's
             // exact create argv, then re-check after a beat; skip honestly.
             const tmuxV = iso.run('-V').stdout.trim();
+            // tmux 3.4 / 3.5a on Linux crash the SERVER somewhere in the open
+            // sequence under `window-size manual` (four CI rounds: the probes
+            // below all pass, then open() finds "no server running"). It is
+            // tmux's bug, reproducible with plain tmux in ubuntu:24.04 /
+            // debian:trixie / alpine containers, and the user's own tmux is
+            // equally dead there — nothing a client can work around. Gate it
+            // by version so the scenario still runs on 3.2a (Ubuntu 22.04) and
+            // 3.6+/3.7 (brew), where the override is what keeps resize alive.
+            if (conf.includes('window-size manual') && process.platform === 'linux' && /^tmux (3\.4|3\.5)/.test(tmuxV)) {
+                ctx.skip(`${tmuxV} on Linux crashes its server under window-size manual (tmux bug, not ours)`);
+                return;
+            }
             const envFlags = tmuxSupportsNewSessionEnv(tmuxV)
                 ? ['-e', CLAUDE_CLASSIC_RENDERER_ENV, '-e', 'VH_TERMINAL_ID=utc-probe', '-e', `VH_HAPPY_HOME_DIR=${happyHome}`]
                 : [];
