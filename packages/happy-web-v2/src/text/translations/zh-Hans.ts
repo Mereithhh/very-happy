@@ -1586,6 +1586,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02e: {
+                title: '终端显示修好了',
+                summary: '修了三个终端显示问题：手机不再把桌面终端挤窄，新会话不再按错误宽度画第一屏，接入的 tmux 会话不再糊出一整片绿色块。',
+                geometry: '在手机上打开某个终端后，桌面同一终端不再卡在手机的窄宽——切回桌面会重排回全宽；重启后恢复的会话也按它原本的尺寸回来。',
+                font: '首屏渲染现在会先等终端字体加载完再量尺寸，新会话不再先按错误的（偏窄）宽度画第一屏、把窄版冻进滚动历史。',
+                green: '恢复「接入已有 tmux 会话」的终端时不再糊出整片绿色：被捕获的背景色（copy-mode 选区、状态栏）不会再蔓延到空行或后续输出。',
+                cli: 'CLI 0.2.101：几何与绿色块修复在 daemon 侧，升级 daemon 即覆盖重新打开的会话；字体修复在 web。',
+            },
             sep02d: {
                 title: '/btw 顺口问一句',
                 summary: '在 Claude 会话里输入 /btw（或点头部新按钮）就能在不打断 agent 当前工作的情况下问个旁路小问题；更新说明也改成把你错过的每个版本都列出来，不再只显示最新的一个。',

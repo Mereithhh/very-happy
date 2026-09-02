@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-terminal-render',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.101',
+    titleKey: 'changelog.releases.sep02e.title',
+    summaryKey: 'changelog.releases.sep02e.summary',
+    itemKeys: [
+      'changelog.releases.sep02e.geometry',
+      'changelog.releases.sep02e.font',
+      'changelog.releases.sep02e.green',
+      'changelog.releases.sep02e.cli',
+    ],
+  },
+  {
     id: '2026-09-02-btw-side-question',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,
