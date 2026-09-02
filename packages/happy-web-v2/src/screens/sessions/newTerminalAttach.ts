@@ -45,10 +45,12 @@ export function parseTmuxSessions(raw: unknown): UserTmuxSession[] {
     return out;
 }
 
-/** Section shown only when the daemon supports attach AND has something to
- *  offer (or is still fetching) — an old daemon renders nothing new at all. */
-export function attachSectionVisible(supported: boolean, loading: boolean, sessions: readonly UserTmuxSession[]): boolean {
-    return supported && (loading || sessions.length > 0);
+/** Section shown whenever the daemon supports attach — with a loading line or
+ *  an honest empty state, so the entry point is discoverable even when the
+ *  machine has no personal tmux sessions yet (B-280). An old daemon (no
+ *  capability flag) still renders nothing new at all. */
+export function attachSectionVisible(supported: boolean): boolean {
+    return supported;
 }
 
 /** Which session is selected after clicking `id` (click again = deselect). */

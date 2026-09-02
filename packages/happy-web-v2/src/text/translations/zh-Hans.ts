@@ -681,6 +681,7 @@ export const zhHans: TranslationStructure = {
         actionNewChatAdvanced: '新建对话（自定义选项）…',
         actionNewTerminal: '新建终端',
         actionNewTerminalAt: '在指定目录新建终端…',
+        actionAttachTmux: '接入 tmux 会话…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
         actionRestoreSession: '恢复当前对话',
@@ -968,6 +969,7 @@ export const zhHans: TranslationStructure = {
         offlineMachine: '离线',
         offlineTerminalHelp: '终端不可用。请在这台机器运行 `very-happy daemon start`，然后重试。',
         terminalAtTitle: '在指定目录新建终端…',
+        terminalAttachTitle: '接入 tmux 会话…',
     },
 
     newTerminalModal: {
@@ -978,6 +980,8 @@ export const zhHans: TranslationStructure = {
         startupHint: '终端会在这个目录启动，然后执行「设置 → 终端」里的启动命令。',
         attachSection: '接入已有 tmux 会话',
         attachLoading: '正在查找这台机器上的 tmux 会话…',
+        attachEmpty: '这台机器上没有你自己的 tmux 会话——web 终端（vh-*）不在列表里。',
+        attachNeedsCli: '接入需要这台机器的 CLI ≥ v0.2.98。',
         attachWindows: ({ count }: { count: number }) => `${count} 个窗口`,
         attachWindow: '1 个窗口',
         attachAttached: '已连接',

@@ -679,6 +679,7 @@ export const en = {
         actionNewChatAdvanced: 'New chat (choose options)…',
         actionNewTerminal: 'New terminal',
         actionNewTerminalAt: 'New terminal in a directory…',
+        actionAttachTmux: 'Attach a tmux session…',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
         actionRestoreSession: 'Restore current chat',
@@ -977,6 +978,7 @@ export const en = {
         offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
         // B-144: same terminal, but the working directory is chosen first.
         terminalAtTitle: 'Web terminal in a directory…',
+        terminalAttachTitle: 'Attach a tmux session…',
     },
 
     newTerminalModal: {
@@ -989,6 +991,8 @@ export const en = {
         // B-273: attach an existing tmux session
         attachSection: 'Attach an existing tmux session',
         attachLoading: 'Looking for tmux sessions on this machine…',
+        attachEmpty: 'No tmux sessions of your own on this machine — web terminals (vh-*) are not listed.',
+        attachNeedsCli: 'Attaching needs this machine’s CLI at v0.2.98 or newer.',
         attachWindows: ({ count }: { count: number }) => `${count} windows`,
         attachWindow: '1 window',
         attachAttached: 'attached',

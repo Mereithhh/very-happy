@@ -18,10 +18,10 @@ describe('B-273 newTerminalAttach', () => {
         expect(parseTmuxSessions({ error: 'Method not found' })).toEqual([]);
     });
     it('section visibility / selection / labels', () => {
-        expect(attachSectionVisible(false, true, [{ id: '$1', name: 'a', windows: 1, attached: false }])).toBe(false);
-        expect(attachSectionVisible(true, false, [])).toBe(false);
-        expect(attachSectionVisible(true, true, [])).toBe(true);
-        expect(attachSectionVisible(true, false, [{ id: '$1', name: 'a', windows: 1, attached: false }])).toBe(true);
+        // B-280: visible whenever the daemon supports it — an empty machine
+        // shows an honest empty state instead of hiding the entry point.
+        expect(attachSectionVisible(false)).toBe(false);
+        expect(attachSectionVisible(true)).toBe(true);
         expect(toggleAttachSelection(null, '$1')).toBe('$1');
         expect(toggleAttachSelection('$1', '$1')).toBeNull();
         expect(toggleAttachSelection('$1', '$2')).toBe('$2');
@@ -49,5 +49,8 @@ describe('B-273 newTerminalAttach', () => {
         expect(src.indexOf('if (attachSelected) {')).toBeLessThan(src.indexOf('machineFsList(machineId, guess)'));
         expect(src).toMatch(/\}, \[machineId, attachSupported\]\);/);
         expect(src).toMatch(/\(!!attachSelected \|\| trimmed\.length > 0\)/);
+        // B-280: empty machines show the empty state, unsupported + attach intent shows the CLI hint.
+        expect(src).toMatch(/attachEmpty/);
+        expect(src).toMatch(/intent === 'attach'[\s\S]{0,200}attachNeedsCli/);
     });
 });
