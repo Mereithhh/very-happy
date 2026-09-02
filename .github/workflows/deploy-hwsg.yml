@@ -31,6 +31,15 @@ on:
         description: Exact shadowed release SHA to switch (optional; switch only)
         type: string
         required: false
+      changelog:
+        description: Changelog gate — require fails unless CHANGELOG_RELEASES gained an entry covering the user-facing commits since the live release
+        type: choice
+        options: [require, skip]
+        default: require
+      changelog_skip_reason:
+        description: Why the changelog gate is skipped (mandatory with changelog=skip; kept in the run log)
+        type: string
+        required: false
 
 concurrency:
   group: deploy-hwsg
@@ -63,6 +72,31 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # 每次发布都必须有 changelog：拿线上 entry 资产名里的 release SHA 与本次
+      # 目标 SHA 求差，有 feat/fix/perf 却没新增 CHANGELOG_RELEASES 条目就拒发。
+      # 逃生门 changelog=skip 必须带 changelog_skip_reason，进 run 日志可追溯。
+      - name: Gate - changelog covers this release
+        if: inputs.target != 'publish'
+        env:
+          CHANGELOG_GATE: ${{ inputs.changelog }}
+          CHANGELOG_SKIP_REASON: ${{ inputs.changelog_skip_reason }}
+          DEPLOY_RELEASE_SHA: ${{ inputs.release_sha || github.sha }}
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow origin
+          fi
+          if [ "$CHANGELOG_GATE" = skip ]; then
+            if [ -z "$CHANGELOG_SKIP_REASON" ]; then
+              echo "ERROR: changelog=skip requires changelog_skip_reason" >&2
+              exit 1
+            fi
+            node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
+              --sha "$DEPLOY_RELEASE_SHA" --skip "$CHANGELOG_SKIP_REASON"
+          else
+            node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev \
+              --sha "$DEPLOY_RELEASE_SHA"
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3

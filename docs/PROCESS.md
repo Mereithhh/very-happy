@@ -62,6 +62,10 @@ triage（分独立/冲突域）
 
 ## 4. 发布工程
 
+- **changelog 门禁**：Server/Web 发布按「线上 release SHA → 目标 SHA」求差、CLI 按「上一个 v* tag →
+  本 tag」求差，凡有 feat/fix/perf 提交就必须新增 `CHANGELOG_RELEASES` 条目（CLI 需精确 `cliVersion`），
+  `deploy-hwsg.yml` / `publish.yml` 拒发；本地先跑 `scripts/changelog/check-release.mjs`，跳过必须留理由
+  （deploy 输入 `changelog_skip_reason` / 附注 tag `[changelog-skip: …]`）。
 - **版本**：CLI = semver patch（推 tag 自动发 npm）；同一 tag 先发布六个
   `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
   `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。

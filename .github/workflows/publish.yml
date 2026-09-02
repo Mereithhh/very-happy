@@ -35,6 +35,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # Fail before anything is published: CLI feat/fix/perf commits since the
+      # previous v* tag need a CHANGELOG_RELEASES entry with this exact
+      # cliVersion. A failed tag costs a version number (tags are immutable),
+      # so the release skill runs the same check locally before tagging. The
+      # audited escape hatch is an annotated tag whose message contains
+      # `[changelog-skip: <reason>]`.
+      - name: Gate - changelog covers this CLI release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow origin
+          fi
+          git fetch --quiet --tags --force origin
+          node scripts/changelog/check-release.mjs --mode cli --version "$VERSION"
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

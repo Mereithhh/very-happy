@@ -50,6 +50,30 @@ HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs --version
 Never release from a failing gate unless the user explicitly authorizes an
 emergency exception after seeing the failure and rollback plan.
 
+### Changelog coverage (run locally BEFORE tagging or dispatching)
+
+Every release must carry its `CHANGELOG_RELEASES` entry
+(`packages/happy-web-v2/src/app/changelogRelease.ts` + text keys). CI enforces
+it — `deploy-hwsg.yml` and `publish.yml` both fail without it — but a failed
+`v*` tag burns a version number, so run the same script first:
+
+```bash
+# Server/Web: diff the target SHA against the release currently live
+# (read from the public entry asset name, no credentials needed).
+node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
+# CLI: user-facing commits under packages/happy-cli|happy-wire since the
+# previous v* tag require an entry with cliVersion '<X.Y.Z>'.
+node scripts/changelog/check-release.mjs --mode cli --version X.Y.Z --sha <sha>
+```
+
+`FAIL` prints the conventional-commit draft: write the entry (id, title,
+summary, items; `cliVersion` when a CLI ships), merge it, re-lock the SHA.
+Escape hatches are explicit and logged — deploy input `changelog=skip` with a
+mandatory `changelog_skip_reason`, or for CLI an annotated tag whose message
+contains `[changelog-skip: <reason>]`. Use them only for changes with no
+user-visible effect; the rollback path (live SHA not an ancestor of the
+target) always needs the explicit skip.
+
 ## Deploy server/Web
 
 Preferred path:

@@ -41,6 +41,9 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   AI 并行开发下测试稳定性的支柱。
 - 常规发布只认 canonical `origin/main` 已合入且必需 quality gates 全绿的精确 SHA；旧
   worktree、detached HEAD 或 rebase/squash 后的改动必须先移植/合入最新 main，再重新锁定 SHA。
+- **每次发布必须带 changelog**：`scripts/changelog/check-release.mjs` 在 deploy/publish 工作流里硬拦
+  「有 feat/fix/perf 却没新增 `CHANGELOG_RELEASES` 条目」的发布；tag 失败要烧版本号，所以打 tag /
+  触发 deploy 前先本地跑同一脚本（命令见 `.agents/skills/release/SKILL.md`）。跳过必须留理由。
 - 每次任务或发布收尾都主动判断是否产生了值得跨会话保留的经验：只有能防止后续 agent
   重踩、可在多个任务复用、且不能仅靠邻近代码明显推导的稳定事实或方法论，才更新根
   `AGENTS.md`，并优先修订既有条目而非追加重复规则。一次性版本/SHA/run id、临时排障过程、
