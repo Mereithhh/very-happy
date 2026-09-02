@@ -51,6 +51,10 @@ export interface ClosedTerminalRecord {
     /** B-273: the user tmux session (name) this terminal was attached to;
      *  restore re-attaches instead of opening an empty shell. */
     attachTmux?: string;
+    /** B-287: pane geometry when last seen alive — a restore recreates the
+     *  session at this size so claude's first paint is not reflowed later. */
+    cols?: number;
+    rows?: number;
     /** When the close was observed (ms epoch). For a `daemon-gap` record there
      *  was nobody to observe it, so it carries the last time the terminal was
      *  seen ALIVE instead — which is what the archive should show anyway. */

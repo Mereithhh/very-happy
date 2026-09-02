@@ -1612,6 +1612,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02e: {
+                title: 'Terminals that render right',
+                summary: 'Three terminal display bugs are fixed: a phone no longer squeezes your desktop terminal narrow, a new session no longer paints its first output at the wrong width, and attached tmux sessions no longer smear a green block across the screen.',
+                geometry: 'A terminal opened on your phone no longer leaves the desktop stuck at the phone\'s narrow width — switching back to the desktop reflows it to full width, and a session restored after a restart comes back at the size it had.',
+                font: 'The first paint now waits for the terminal font to load before it measures, so a new session no longer renders its first output at the wrong (narrow) width and freezes that narrow copy into the scrollback.',
+                green: 'Restoring a terminal attached to your own tmux session no longer smears a green block across the screen: a captured background colour (a copy-mode selection, the status bar) can no longer bleed into blank rows or into later output.',
+                cli: 'CLI 0.2.101: the geometry and green-block fixes are daemon-side, so upgrading the daemon covers sessions that reopen; the font fix ships in the web.',
+            },
             sep02d: {
                 title: 'Ask on the side with /btw',
                 summary: 'Type /btw (or press the new header button) in a Claude session to ask a quick side question without interrupting what the agent is doing — and the release notes now show every version you missed, not just the newest.',

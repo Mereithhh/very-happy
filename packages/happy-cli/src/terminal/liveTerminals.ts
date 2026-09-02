@@ -37,7 +37,17 @@ export interface LiveTerminalInfo {
     manual?: boolean;
     /** B-273: attached user tmux session (name), see webTerminal `@vh_attach`. */
     attachTmux?: string;
+    /** B-287: the pane's real geometry when last observed, so a cold restore
+     *  recreates the session at that size instead of a hardcoded one. */
+    cols?: number;
+    rows?: number;
     seenAt: number;
+}
+
+/** Tolerant read of a persisted / wire-delivered pane geometry. */
+export function sanitizeGeometry(cols: unknown, rows: unknown): { cols: number; rows: number } | undefined {
+    const ok = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 2 && v <= 10_000;
+    return ok(cols) && ok(rows) ? { cols, rows } : undefined;
 }
 
 /** Tolerant read of a persisted tags list (strings only, trimmed, capped). */
@@ -74,7 +84,7 @@ export function sanitizeLiveSnapshot(
     const rows: Array<[string, LiveTerminalInfo]> = [];
     for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
         if (!id || !value || typeof value !== 'object') continue;
-        const { title, cwd, seenAt, tags, manual, attachTmux } = value as Record<string, unknown>;
+        const { title, cwd, seenAt, tags, manual, attachTmux, cols: rawCols, rows: rawRows } = value as Record<string, unknown>;
         if (typeof seenAt !== 'number' || !Number.isFinite(seenAt)) continue;
         if (now - seenAt >= ttlMs) continue;
         const tagList = sanitizeTagList(tags);
@@ -84,6 +94,7 @@ export function sanitizeLiveSnapshot(
             ...(tagList !== undefined ? { tags: tagList } : {}),
             ...(manual === true ? { manual: true } : {}),
             ...(typeof attachTmux === 'string' && attachTmux ? { attachTmux } : {}),
+            ...(sanitizeGeometry(rawCols, rawRows) ?? {}),
             seenAt,
         }]);
     }
@@ -118,6 +129,7 @@ export function liveSnapshotChanged(
         if (!!before.manual !== !!info.manual) return true;
         if ((before.attachTmux ?? '') !== (info.attachTmux ?? '')) return true;
         if ((before.tags ?? []).join('\u0000') !== (info.tags ?? []).join('\u0000')) return true;
+        if (before.cols !== info.cols || before.rows !== info.rows) return true;
     }
     return false;
 }

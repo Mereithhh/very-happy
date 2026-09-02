@@ -72,6 +72,13 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
         resizeTo: (cols, rows) => {
             try { term.resize(Math.max(2, Math.floor(cols)), Math.max(2, Math.floor(rows))); } catch { /* invalid dims */ }
         },
+        remeasureFont: () => {
+            // Private API (no public seam in the pinned xterm): re-run the char
+            // measurement so a font that loaded AFTER open() updates the cell
+            // size. Best-effort — a version bump that renames this is caught by
+            // the fonts.ready belt still calling fit().
+            try { (term as unknown as { _core?: { _charSizeService?: { measure?: () => void } } })._core?._charSizeService?.measure?.(); } catch { /* best-effort */ }
+        },
         onData: (cb) => term.onData(cb),
         onKey: (cb) => term.onKey(cb),
         paste: (data) => term.paste(data),

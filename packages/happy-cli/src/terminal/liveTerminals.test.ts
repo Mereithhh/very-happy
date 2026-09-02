@@ -3,6 +3,7 @@ import {
     sanitizeLiveSnapshot,
     serializeLiveSnapshot,
     liveSnapshotChanged,
+    sanitizeGeometry,
     pickMirrorForTerminal,
     isClaudeSessionId,
     LIVE_SNAPSHOT_TTL_MS,
@@ -16,6 +17,19 @@ function map(entries: Array<[string, LiveTerminalInfo]>): Map<string, LiveTermin
     return new Map(entries);
 }
 
+describe("sanitizeGeometry (B-287)", () => {
+    it("accepts a valid integer pane size and rejects everything else", () => {
+        expect(sanitizeGeometry(146, 40)).toEqual({ cols: 146, rows: 40 });
+        expect(sanitizeGeometry(2, 2)).toEqual({ cols: 2, rows: 2 });
+        expect(sanitizeGeometry(0, 40)).toBeUndefined();
+        expect(sanitizeGeometry(146, 1)).toBeUndefined();
+        expect(sanitizeGeometry(146.5, 40)).toBeUndefined();
+        expect(sanitizeGeometry(20000, 40)).toBeUndefined();
+        expect(sanitizeGeometry("146", 40)).toBeUndefined();
+        expect(sanitizeGeometry(undefined, undefined)).toBeUndefined();
+    });
+});
+
 describe("sanitizeLiveSnapshot", () => {
     it("keeps well-formed entries and drops malformed ones", () => {
         const out = sanitizeLiveSnapshot({
@@ -26,6 +40,11 @@ describe("sanitizeLiveSnapshot", () => {
         }, NOW);
         expect([...out.keys()].sort()).toEqual(["a", "d"]);
         expect(out.get("a")).toEqual({ title: "t", cwd: "/x", seenAt: NOW - 1000 });
+        // B-287: pane geometry survives the round-trip when well-formed.
+        const g = sanitizeLiveSnapshot({ a: { cwd: "/x", cols: 200, rows: 50, seenAt: NOW } }, NOW);
+        expect(g.get("a")).toMatchObject({ cols: 200, rows: 50 });
+        const bad = sanitizeLiveSnapshot({ a: { cwd: "/x", cols: 0, rows: 50, seenAt: NOW } }, NOW);
+        expect(bad.get("a")!.cols).toBeUndefined();
         // blank title / empty cwd normalize to undefined rather than "" noise
         expect(out.get("d")).toEqual({ title: undefined, cwd: undefined, seenAt: NOW });
     });
@@ -80,6 +99,13 @@ describe("liveSnapshotChanged", () => {
         expect(liveSnapshotChanged(base, map([["b", { seenAt: NOW }]]))).toBe(true);
         expect(liveSnapshotChanged(base, map([["a", { title: "u", cwd: "/x", seenAt: NOW }]]))).toBe(true);
         expect(liveSnapshotChanged(base, map([["a", { title: "t", cwd: "/y", seenAt: NOW }]]))).toBe(true);
+    });
+
+    it("B-287: is true when the pane geometry changes (a restart would recreate at a new size)", () => {
+        const base = map([["a", { cwd: "/x", cols: 80, rows: 24, seenAt: NOW }]]);
+        expect(liveSnapshotChanged(base, map([["a", { cwd: "/x", cols: 200, rows: 24, seenAt: NOW }]]))).toBe(true);
+        expect(liveSnapshotChanged(base, map([["a", { cwd: "/x", cols: 80, rows: 50, seenAt: NOW }]]))).toBe(true);
+        expect(liveSnapshotChanged(base, map([["a", { cwd: "/x", cols: 80, rows: 24, seenAt: NOW + 5 }]]))).toBe(false);
     });
 });
 

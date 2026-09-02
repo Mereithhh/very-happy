@@ -87,6 +87,9 @@ export interface AutoRestoreCandidate {
     /** B-265: tags + manual-rename flag, put back on the recreated session. */
     tags?: string[];
     manual?: boolean;
+    /** B-287: last observed pane geometry (see LiveTerminalInfo). */
+    cols?: number;
+    rows?: number;
 }
 
 /** What the daemon executes for one accepted candidate. */
@@ -96,6 +99,9 @@ export interface AutoRestorePlan {
     title?: string;
     tags?: string[];
     manual?: boolean;
+    /** B-287: recreate at this size (daemon falls back to its default). */
+    cols?: number;
+    rows?: number;
     claudeSessionId: string;
     /** The exact command injected into the fresh session. */
     command: string;
@@ -180,6 +186,7 @@ export function selectAutoRestore(
             terminalId: c.id,
             ...(c.tags !== undefined ? { tags: c.tags } : {}),
             ...(c.manual ? { manual: true } : {}),
+            ...(c.cols !== undefined && c.rows !== undefined ? { cols: c.cols, rows: c.rows } : {}),
             cwd: c.cwd,
             title: c.title,
             claudeSessionId: c.claudeSessionId,

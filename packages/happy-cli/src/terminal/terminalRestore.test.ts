@@ -11,6 +11,14 @@ describe('B-265 planTerminalRestore', () => {
             kind: 'create', terminalId: 'abc123', cwd: '/w', title: 'work', manual: true, tags: ['a', 'b'], command: `claude --resume ${uuid}`,
         });
     });
+    it('B-287: carries the recorded pane geometry into the create plan (both branches)', () => {
+        expect(planTerminalRestore({ ...rec, cols: 200, rows: 50 }, facts)).toMatchObject({ kind: 'create', cols: 200, rows: 50 });
+        // absent geometry → no cols/rows keys (daemon falls back to its default)
+        const p = planTerminalRestore(rec, facts) as any;
+        expect('cols' in p).toBe(false);
+        const att = { id: 'att1', cwd: '/w', manual: true, attachTmux: 'my dev', cols: 146, rows: 40, closedAt: 1 };
+        expect(planTerminalRestore(att, { ...facts, userSessions: [{ id: '$4', name: 'my dev' }] })).toMatchObject({ kind: 'create', cols: 146, rows: 40 });
+    });
     it('no command without a valid uuid or without the JSONL on disk; manual defaults to false', () => {
         expect(planTerminalRestore({ ...rec, claudeSessionId: undefined, manual: undefined }, facts)).toMatchObject({ kind: 'create', manual: false });
         expect('command' in planTerminalRestore({ ...rec, claudeSessionId: '../x' }, facts)).toBe(false);

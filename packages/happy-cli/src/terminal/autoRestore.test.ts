@@ -51,6 +51,15 @@ describe('resolveAutoRestoreConfig', () => {
 });
 
 describe('selectAutoRestore', () => {
+    it('B-287: carries candidate pane geometry into the plan, omitting it when unknown', () => {
+        const sel = selectAutoRestore([
+            cand({ id: 'sized', seenAt: NOW - 1000, cols: 200, rows: 50 }),
+            cand({ id: 'bare', seenAt: NOW - 2000 }),
+        ], base);
+        expect(sel.plans.find((p) => p.terminalId === 'sized')).toMatchObject({ cols: 200, rows: 50 });
+        const bare = sel.plans.find((p) => p.terminalId === 'bare')!;
+        expect('cols' in bare).toBe(false);
+    });
     it('restores newest-first and builds the resume command', () => {
         const sel = selectAutoRestore([
             cand({ id: 'old', seenAt: NOW - 3 * H }),

@@ -593,12 +593,23 @@ export interface TerminalListItem {
      *  this NAME (`@vh_attach`). Carried into close records so a manual
      *  restore re-attaches; old webs ignore it. */
     attachTmux?: string;
+    /** B-287: the pane's real geometry from the same list-sessions read.
+     *  Daemon-internal (not in the signature): it feeds the persisted snapshot
+     *  and close records so a cold restore recreates the session at the size
+     *  it last had. */
+    paneCols?: number;
+    paneRows?: number;
 }
 
 /** What the close/gap bookkeeping remembers per live terminal (B-084/B-265). */
-type SeenTerminalInfo = { title?: string; cwd?: string; tags?: string[]; manual?: boolean; attachTmux?: string };
+type SeenTerminalInfo = { title?: string; cwd?: string; tags?: string[]; manual?: boolean; attachTmux?: string; cols?: number; rows?: number };
 function seenInfoOf(t: TerminalListItem): SeenTerminalInfo {
-    return { title: t.title, cwd: t.cwd, tags: t.tags, manual: t.manual, attachTmux: t.attachTmux };
+    return { title: t.title, cwd: t.cwd, tags: t.tags, manual: t.manual, attachTmux: t.attachTmux, ...seenGeometry(t.paneCols, t.paneRows) };
+}
+/** `{cols, rows}` when both are known, else nothing — keeps records free of
+ *  `undefined` keys (they are persisted verbatim and diffed by field). */
+function seenGeometry(cols: number | undefined, rows: number | undefined): { cols: number; rows: number } | Record<string, never> {
+    return cols !== undefined && rows !== undefined ? { cols, rows } : {};
 }
 
 /**
@@ -702,6 +713,12 @@ export const LIST_SESSIONS_FORMAT = [
     // B-273: the user tmux session this terminal was opened to attach (name),
     // carried into close records so a restore can re-attach.
     '#{@vh_attach}',
+    // B-287: the pane's REAL geometry, persisted with the live snapshot so a
+    // cold restore (daemon boot auto-restore, archive ↻) recreates the session
+    // at the size it last had — claude's one-shot welcome banner then never
+    // gets reflowed by the first web open (the "half-drawn logo").
+    '#{pane_width}',
+    '#{pane_height}',
     // B-121: the control-mode client has no `pty.process`, so the agent-state
     // fast path lost its live `#{pane_current_command}` equivalent. Carry it in
     // the ONE list-sessions call the tracker already makes — the value goes
@@ -730,6 +747,10 @@ export interface SessionListLine {
     paneCurrentCommand?: string;
     /** B-273: `@vh_attach` — name of the user tmux session attached inside. */
     attachTmux?: string;
+    /** B-287: `#{pane_width}` / `#{pane_height}` of the active pane; absent
+     *  when tmux printed anything but a positive integer. */
+    paneCols?: number;
+    paneRows?: number;
     /** Raw `#{pane_title}` of the session's active pane. */
     paneTitle?: string;
 }
@@ -738,9 +759,12 @@ export interface SessionListLine {
 export function parseSessionListLine(line: string): SessionListLine | undefined {
     if (!line) return undefined;
     const parts = line.split(LIST_FIELD_SEP);
-    if (parts.length < 10) return undefined;
-    const [name, created, activity, cwd, vhTitle, manual, vhTags, vhAttach, paneCommand] = parts;
+    if (parts.length < 12) return undefined;
+    const [name, created, activity, cwd, vhTitle, manual, vhTags, vhAttach, paneW, paneH, paneCommand] = parts;
     if (!name) return undefined;
+    const geom = parsePositiveInt(paneW) !== undefined && parsePositiveInt(paneH) !== undefined
+        ? { paneCols: parsePositiveInt(paneW)!, paneRows: parsePositiveInt(paneH)! }
+        : {};
     return {
         name,
         created: created ? Number(created) * 1000 : undefined,
@@ -753,10 +777,17 @@ export function parseSessionListLine(line: string): SessionListLine | undefined 
         // Verbatim (no trim): tmux allows edge spaces in a session name and the
         // restore lookup / attach echo compare it exactly.
         attachTmux: isSafeTmuxSessionName(vhAttach) ? vhAttach : undefined,
-        // pane_title is last, so anything after field 9 is title content that
+        ...geom,
+        // pane_title is last, so anything after field 11 is title content that
         // contained the separator — rejoin it rather than dropping it.
-        paneTitle: parts.slice(9).join(LIST_FIELD_SEP) || undefined,
+        paneTitle: parts.slice(11).join(LIST_FIELD_SEP) || undefined,
     };
+}
+
+function parsePositiveInt(raw: string | undefined): number | undefined {
+    if (raw === undefined || !/^[0-9]{1,5}$/.test(raw.trim())) return undefined;
+    const n = Number(raw.trim());
+    return n > 0 ? n : undefined;
 }
 
 export const TERMINAL_TAG_MAX_COUNT = 64;
@@ -1087,6 +1118,13 @@ export const VH_SESSION_OPTION_OVERRIDES: ReadonlyArray<readonly [scope: 'sessio
     ['window', 'window-size', 'latest'],
     ['window', 'pane-border-status', 'off'],
 ];
+
+/** B-287: geometry for a cold (no web viewer yet) session create. */
+export const COLD_CREATE_DEFAULT_GEOMETRY = { cols: 120, rows: 30 } as const;
+export function coldCreateGeometry(plan: { cols?: number; rows?: number }): { cols: number; rows: number } {
+    const ok = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 2 && v <= 10_000;
+    return ok(plan.cols) && ok(plan.rows) ? { cols: plan.cols, rows: plan.rows } : { ...COLD_CREATE_DEFAULT_GEOMETRY };
+}
 
 export function tmuxNewSessionArgs(
     session: string,
@@ -1753,6 +1791,7 @@ export class WebTerminalManager {
             this.closedTerminals = appendClosedTerminal(this.closedTerminals, {
                 id, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...seenGeometry(info.cols, info.rows),
                 // Live binding first (authoritative while it exists), persisted
                 // metadata as the fallback once the mirror has been torn down.
                 mirrorSessionId: this.mirrorResolver?.(id) ?? mirror?.sessionId,
@@ -1813,6 +1852,7 @@ export class WebTerminalManager {
                 tags: info.tags,
                 manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...seenGeometry(info.cols, info.rows),
                 mirrorSessionId: mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
                 reason: 'daemon-gap',
@@ -1825,6 +1865,7 @@ export class WebTerminalManager {
                 cwd: info.cwd,
                 tags: info.tags,
                 manual: info.manual,
+                ...seenGeometry(info.cols, info.rows),
                 seenAt: info.seenAt,
                 claudeSessionId: mirror?.claudeSessionId,
             });
@@ -1943,7 +1984,7 @@ export class WebTerminalManager {
     /** Shared cold-create for auto-restore (B-150) and restore-terminal
      *  (B-265): same create-only env as the interactive path, title/tags
      *  written back, optional startup command injected. */
-    private createDetachedTerminal(plan: { terminalId: string; cwd: string; title?: string; manual?: boolean; tags?: string[]; command?: string; attachTmux?: string }): boolean {
+    private createDetachedTerminal(plan: { terminalId: string; cwd: string; title?: string; manual?: boolean; tags?: string[]; command?: string; attachTmux?: string; cols?: number; rows?: number }): boolean {
         const env = ptyEnv();
         const name = `vh-${plan.terminalId}`;
         // Idempotence guard #2 (after the live-set filter): if it exists, leave
@@ -1956,9 +1997,13 @@ export class WebTerminalManager {
             '-e', `VH_TERMINAL_ID=${plan.terminalId}`,
             '-e', `VH_HAPPY_HOME_DIR=${configuration.happyHomeDir}`,
         ] : [];
-        // Geometry is provisional — the first web open resizes the pane. These
-        // numbers only decide how claude's first paint wraps.
-        const created = spawnSync('tmux', tmuxArgs(tmuxNewSessionArgs(name, 120, 30, plan.cwd, envFlags, defaultShell())),
+        // B-287: recreate at the size the pane last had (persisted from the
+        // list-sessions read), so the device that used it last opens it with
+        // no resize — claude's one-shot welcome banner is printed once and
+        // never repainted, so any later reflow leaves it torn. Unknown → the
+        // historical default; the first web open still resizes as before.
+        const { cols, rows } = coldCreateGeometry(plan);
+        const created = spawnSync('tmux', tmuxArgs(tmuxNewSessionArgs(name, cols, rows, plan.cwd, envFlags, defaultShell())),
             { stdio: 'ignore', timeout: TMUX_CREATE_TIMEOUT_MS, env });
         // Some tmux builds have returned status 0 even when the server socket
         // could not be created. Verify the durable session itself before
@@ -2002,7 +2047,7 @@ export class WebTerminalManager {
      *  would care about changed (see liveSnapshotChanged). */
     private persistLiveSnapshot(live: ReadonlyMap<string, SeenTerminalInfo>, now: number): void {
         const candidate = new Map<string, LiveTerminalInfo>();
-        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}), seenAt: now });
+        for (const [id, info] of live) candidate.set(id, { title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual, ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}), ...seenGeometry(info.cols, info.rows), seenAt: now });
         if (!liveSnapshotChanged(this.lastPersistedSnapshot, candidate)) return;
         this.lastPersistedSnapshot = candidate;
         saveLiveSnapshot(candidate);
@@ -2137,7 +2182,13 @@ export class WebTerminalManager {
                 logger.debug(`[WEB TERMINAL] re-subscribed ${id} (subs=${existing.subscribers}, mode=replay, seq=${existing.seq})`);
                 return {
                     terminalId: id, tmuxSession: existing.tmuxSession, seq: existing.seq,
-                    mode: 'replay', chunks, ...(lines ? { streamMode: 'lines' as const } : {}), ...echo,
+                    mode: 'replay', chunks,
+                    // B-287: a replay carries no restore, so without this the
+                    // adopting client had no authoritative width and fell back
+                    // to its own guess — the door through which a stale device
+                    // width leaked in. Announced = what we last told clients.
+                    ...(lines ? { streamMode: 'lines' as const, paneCols: existing.announcedCols ?? existing.cols, paneRows: existing.announcedRows ?? existing.rows } : {}),
+                    ...echo,
                 };
             }
             if (lines && existing.transport.kind === 'control') {
@@ -2282,6 +2333,13 @@ export class WebTerminalManager {
                 // the web xterm also sees the OSC, which is inert there.
                 ['set-option', '-t', `=${tmuxSession}:`, 'set-titles', 'on'],
                 ['set-option', '-t', `=${tmuxSession}:`, 'set-titles-string', '#{pane_title}'],
+                // B-287: re-assert on EVERY open, not just at create. A session
+                // made before the create-time override (pre-0.2.96) or under a
+                // user `window-size manual`/`smallest` silently refuses
+                // `refresh-client -C`, so the pane freezes at whatever width the
+                // first viewer set and no later device can widen it. `-w -q` so
+                // an older tmux without the option does not fail the open.
+                ['set-option', '-w', '-q', '-t', `=${tmuxSession}:`, 'window-size', 'latest'],
                 ['set-option', '-g', 'set-clipboard', 'on'],
                 ['set-option', '-ga', 'terminal-features', ',xterm-256color:clipboard'],
             ];
@@ -2803,13 +2861,12 @@ export class WebTerminalManager {
     }
 
     /** Resize the transport AND the authoritative headless screen together, so a
-     *  later snapshot matches the real geometry. Multiple tabs subscribed to one
-     *  terminal all drive the same tmux window — we simply take the LAST resize
-     *  (tmux is single-size anyway); there's no per-subscriber geometry to
-     *  reconcile. For a control client the declaration IS `refresh-client -C`:
-     *  a client that never sends it doesn't participate in the window size at
-     *  all (which is the door the spec leaves open for "phone mirrors without
-     *  squeezing the desktop" — not implemented in this batch). */
+     *  later snapshot matches the real geometry. One tmux window = one size:
+     *  we take the LAST resize we are handed (B-287: the web only sends one on a
+     *  human-activity edge, so "last resize" == "most recently used viewer" ==
+     *  tmux's own `window-size latest` semantics). The control-client
+     *  declaration IS `refresh-client -C`, preceded by a `window-size latest`
+     *  re-assert so a manual/smallest session cannot swallow it. */
     private applyResize(session: TerminalSession, cols: number, rows: number) {
         const c = Math.max(2, Math.floor(cols));
         const r = Math.max(2, Math.floor(rows));
@@ -2820,7 +2877,17 @@ export class WebTerminalManager {
                 logger.debug(`[WEB TERMINAL] resize ${session.id} failed: ${e}`);
             }
         } else if (c !== session.cols || r !== session.rows) {
-            session.transport.client.sendFireAndForget([`refresh-client -C ${c}x${r}`]);
+            // B-287: re-assert `window-size latest` on the SAME FIFO right
+            // before the resize. A live session in manual/smallest mode (user
+            // tmux.conf, or created before the 0.2.96 override) otherwise
+            // silently ignores `refresh-client -C` and the pane stays stuck at
+            // whatever width the first viewer set — no later device can widen
+            // it. Idempotent and fire-and-forget; ordered ahead of the resize
+            // by the single stdin FIFO. `-w -q` so an older tmux does not choke.
+            session.transport.client.sendFireAndForget([
+                `set-option -w -q -t =${session.tmuxSession}: window-size latest`,
+                `refresh-client -C ${c}x${r}`,
+            ]);
         }
         session.resizeHeadless(c, r);
     }
@@ -2873,8 +2940,8 @@ export class WebTerminalManager {
         // as fallback (kill can arrive before tracking ever observed this id).
         // No info found at all ⇒ the terminal never verifiably existed — don't
         // fabricate a record for a bogus/stale id.
-        const info = this.lastSeenInfo.get(terminalId)
-            ?? this.listSessions().find((t) => t.id === terminalId);
+        const info: SeenTerminalInfo | undefined = this.lastSeenInfo.get(terminalId)
+            ?? (() => { const t = this.listSessions().find((x) => x.id === terminalId); return t ? seenInfoOf(t) : undefined; })();
         // The tmux process is the source of truth. Do not remove the UI/list
         // record until tmux itself confirms that the session no longer exists.
         // spawnSync returning is not enough: the old implementation ignored a
@@ -2912,6 +2979,7 @@ export class WebTerminalManager {
             this.recordClosed({
                 id: terminalId, title: info.title, cwd: info.cwd, tags: info.tags, manual: info.manual,
                 ...(info.attachTmux ? { attachTmux: info.attachTmux } : {}),
+                ...seenGeometry(info.cols, info.rows),
                 mirrorSessionId: this.mirrorResolver?.(terminalId) ?? mirror?.sessionId,
                 claudeSessionId: mirror?.claudeSessionId,
                 reason: 'closed',
@@ -3004,6 +3072,7 @@ export class WebTerminalManager {
                     claudeConfident: probe.claudeConfident,
                     manual: s.manual,
                     ...(s.attachTmux ? { attachTmux: s.attachTmux } : {}),
+                    ...(s.paneCols !== undefined && s.paneRows !== undefined ? { paneCols: s.paneCols, paneRows: s.paneRows } : {}),
                 });
             }
             return out;

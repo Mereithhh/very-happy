@@ -159,6 +159,17 @@ const ALT_ENTER = Buffer.from('\x1b[?1049h', 'ascii');
  *  had left it. */
 const CURSOR_HOME = Buffer.from('\x1b[H', 'ascii');
 const CRLF = Buffer.from('\r\n', 'ascii');
+/**
+ * SGR reset (B-288). `capture-pane -e` reproduces a green tmux copy-mode
+ * selection / status bar as an OPEN background run and — measured on tmux 3.7b
+ * — does NOT re-declare the attribute at a wrapped/continued row start; the pen
+ * carries across rows. So we must reset ONLY at the seams THIS module
+ * fabricates between separately-captured sections (each `capture-pane` starts
+ * its own pen at default, so the next section re-declares any non-default from
+ * its first cell → a section-boundary reset is lossless). Never reset between
+ * a capture's own rows, or a spanning colour would be stripped from row 2+.
+ */
+const SGR_RESET = Buffer.from('\x1b[0m', 'ascii');
 
 /**
  * Rebuild one capture blob as replayable bytes: LF (and any stray CRLF) seams
@@ -258,24 +269,54 @@ export function assembleRestore(
     const screen = (): Buffer => {
         const raw = get('visible');
         const lines = splitLines(raw);
+        let realCount = lines.length;
         if (rows !== undefined && rows > 0) {
             while (lines.length > rows) lines.shift();      // keep the LAST rows
+            realCount = lines.length;
             while (lines.length < rows) lines.push(EMPTY);  // pad to a full screen
         }
-        const body = joinCrlf(lines);
+        // Real screen rows are joined with bare CRLF so a colour that spans
+        // rows (tmux does not re-declare it per row) stays intact. B-288: the
+        // SYNTHESISED padding rows below the real content are a seam we made up,
+        // so reset once before them — otherwise an unclosed background from the
+        // last real row (e.g. a full-width green status/selection line) bleeds
+        // down through the blank padding to the bottom of the screen.
+        const realBody = joinCrlf(lines.slice(0, realCount));
+        const padCount = lines.length - realCount;
+        const padBody = padCount > 0
+            ? Buffer.concat([realCount > 0 ? CRLF : EMPTY, SGR_RESET, joinCrlf(new Array(padCount).fill(EMPTY))])
+            : EMPTY;
         const cursor = paneState
             ? Buffer.from(`\x1b[${paneState.cursorY + 1};${paneState.cursorX + 1}H`, 'ascii')
             : Buffer.alloc(0);
-        return Buffer.concat([body, tail, cursor]);
+        // Reset before tail/cursor too: the last real row's open background must
+        // not dye the cursor cell or the pending-escape tail.
+        return Buffer.concat([realBody, padBody, SGR_RESET, tail, cursor]);
     };
+
+    // B-288: bracket every payload in SGR resets so an unclosed captured
+    // background cannot dye what comes next.
+    //  - `full` gets a LEADING reset: the daemon headless restore
+    //    (restoreHeadless) does NOT `term.reset()` first, so it needs a clean
+    //    starting pen. It is also what an old web's serialize() snapshot reads.
+    //  - both get a TRAILING reset: the app's live output AFTER the restore must
+    //    start from default, not inherit the last captured cell's colour.
+    //  - `small` gets NO leading reset: the web always `term.reset()`s before
+    //    writing it, and it must still START with `\x1b[?1049h` on the alt path
+    //    so the client enters the alt buffer.
+    const wrapFull = (b: Buffer) => Buffer.concat([SGR_RESET, b, SGR_RESET]);
+    const wrapSmall = (b: Buffer) => Buffer.concat([b, SGR_RESET]);
 
     if (!alternateOn) {
         const history = trimTrailingBlankRows(normalizeCaptureLines(get('history')));
         const smallHistory = trimTrailingBlankRows(normalizeCaptureLines(get('smallHistory')));
+        // Reset at the history↔screen seam: history's last row may end with an
+        // open background and the screen's first row, if it is default, emits no
+        // SGR and would inherit it.
         const withHistory = (h: Buffer) => Buffer.concat(
-            h.length > 0 ? [truncateToBudget(h, budget), CRLF, screen()] : [screen()],
+            h.length > 0 ? [truncateToBudget(h, budget), SGR_RESET, CRLF, screen()] : [screen()],
         );
-        return { full: withHistory(history), small: withHistory(smallHistory), alternateOn };
+        return { full: wrapFull(withHistory(history)), small: wrapSmall(withHistory(smallHistory)), alternateOn };
     }
 
     // Alt: scrollback = history + the normal screen the alt buffer hid; then
@@ -284,13 +325,15 @@ export function assembleRestore(
     const history = trimTrailingBlankRows(normalizeCaptureLines(get('history')));
     const saved = trimTrailingBlankRows(normalizeCaptureLines(get('altSaved')));
     const scrollback = truncateToBudget(
-        Buffer.concat(history.length > 0 && saved.length > 0 ? [history, CRLF, saved] : [history, saved]),
+        Buffer.concat(history.length > 0 && saved.length > 0 ? [history, SGR_RESET, CRLF, saved] : [history, saved]),
         budget,
     );
-    const altScreen = Buffer.concat([ALT_ENTER, CURSOR_HOME, screen()]);
+    // Reset before painting the alt buffer: the pen carries across the 1049h
+    // switch, so a scrollback line that ended green would tint the alt frame.
+    const altScreen = Buffer.concat([ALT_ENTER, CURSOR_HOME, SGR_RESET, screen()]);
     return {
-        full: Buffer.concat([scrollback, scrollback.length > 0 ? CRLF : Buffer.alloc(0), altScreen]),
-        small: altScreen,
+        full: wrapFull(Buffer.concat([scrollback, scrollback.length > 0 ? CRLF : Buffer.alloc(0), altScreen])),
+        small: wrapSmall(altScreen),
         alternateOn,
     };
 }

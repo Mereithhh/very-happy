@@ -7,6 +7,13 @@ import '@fontsource/ibm-plex-sans/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 
+// B-289: warm the terminal's monospace face at boot so that by the time any web
+// terminal opens, xterm measures its cell width from the real font (not a
+// fallback) — otherwise the first size sent to the daemon is wrong and Claude
+// boots at a width that freezes narrow content into scrollback. Best-effort;
+// the terminal open also waits on it (awaitTerminalFont) as the real guarantee.
+try { (document as unknown as { fonts?: { load?: (q: string) => unknown } }).fonts?.load?.("13px 'IBM Plex Mono'"); } catch { /* no-op */ }
+
 import './styles/tokens.css';
 import './styles/base.css';
 
