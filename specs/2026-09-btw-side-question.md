@@ -1,6 +1,6 @@
 # `/btw` 侧问（side question）：不打断主对话的旁路问答
 
-> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web/CLI 尚未发布）
+> 状态：Shipped（commit `9d3a101f`，PR #143，2026-09-02 合入 main；web `main@892be05e` + CLI v0.2.100 已于 2026-09-02 发布）
 > 日期：2026-09-02 ｜ 关联 backlog：B-283 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
 
 ## 背景
