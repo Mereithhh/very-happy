@@ -6,8 +6,9 @@
  *   web: node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <sha>
  *        Live release SHA is read from the public entry asset name
  *        (`/assets/index-<hash>-<sha>.js`), so no credentials are needed.
- *        Fails when `live..sha` contains feat/fix/perf commits but the
- *        changelog head id is unchanged.
+ *        Fails when `live..sha` contains feat/fix/perf commits touching the
+ *        shipped packages (web/server/wire) but the changelog head id is
+ *        unchanged.
  *   cli: node scripts/changelog/check-release.mjs --mode cli --version X.Y.Z [--sha <ref>]
  *        Fails when packages/happy-cli|happy-wire have feat/fix/perf commits
  *        since the previous v* tag and no entry carries cliVersion 'X.Y.Z'.
@@ -24,6 +25,9 @@ import { buildDraft, parseCommitLine } from './generate-draft.mjs';
 
 export const CHANGELOG_SOURCE = 'packages/happy-web-v2/src/app/changelogRelease.ts';
 export const CLI_PATHS = ['packages/happy-cli', 'packages/happy-wire'];
+// What the server/web image actually ships. CI/release tooling, docs and
+// scripts are not user-facing even when their commit says fix(...).
+export const WEB_PATHS = ['packages/happy-web-v2', 'packages/happy-server', 'packages/happy-wire'];
 
 export function parseLiveReleaseSha(html) {
   const match = /\/assets\/index-[A-Za-z0-9_-]+-([0-9a-f]{40})\.js/.exec(html ?? '');
@@ -135,7 +139,7 @@ async function checkWeb({ live, sha }) {
       range: null,
     };
   }
-  const commits = commitLines(`${liveSha}..${target}`);
+  const commits = commitLines(`${liveSha}..${target}`, WEB_PATHS);
   const verdict = evaluateWebRelease({ commits, liveReleases: releasesAt(liveSha), targetReleases: releasesAt(target) });
   return { ...verdict, lines, range: `${liveSha.slice(0, 8)}..${target.slice(0, 8)}` };
 }
