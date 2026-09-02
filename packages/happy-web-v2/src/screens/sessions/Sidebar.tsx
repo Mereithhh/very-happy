@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -137,6 +137,7 @@ export function Sidebar() {
   );
   const [showNew, setShowNew] = useState(false);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
+  const [newTerminalIntent, setNewTerminalIntent] = useState<'attach' | undefined>(undefined);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
@@ -891,7 +892,16 @@ export function Sidebar() {
                 key: 'terminal-at',
                 label: t('newSessionModal.terminalAtTitle'),
                 icon: FolderOpen,
-                onSelect: () => setShowNewTerminal(true),
+                onSelect: () => { setNewTerminalIntent(undefined); setShowNewTerminal(true); },
+              },
+              {
+                // B-280: open a web terminal attached to one of the machine's
+                // OWN tmux sessions (B-273) — a first-class entry so it is
+                // discoverable without knowing the directory dialog hosts it.
+                key: 'terminal-attach',
+                label: t('newSessionModal.terminalAttachTitle'),
+                icon: Cable,
+                onSelect: () => { setNewTerminalIntent('attach'); setShowNewTerminal(true); },
               },
             ]}
           >
@@ -1134,7 +1144,7 @@ export function Sidebar() {
       </footer>
 
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
-      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
+      {showNewTerminal && <NewTerminalModal intent={newTerminalIntent} onClose={() => setShowNewTerminal(false)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}

@@ -82,6 +82,7 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const [showNewSession, setShowNewSession] = useState(false);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
+  const [newTerminalIntent, setNewTerminalIntent] = useState<'attach' | undefined>(undefined);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -190,7 +191,16 @@ export function CommandPalette() {
       title: t('commandPalette.actionNewTerminalAt'),
       icon: <FolderOpen size={16} />,
       haystack: `terminal directory cwd ${(t('commandPalette.actionNewTerminalAt') as string).toLowerCase()}`,
-      run: () => setShowNewTerminal(true),
+      run: () => { setNewTerminalIntent(undefined); setShowNewTerminal(true); },
+    });
+    out.push({
+      // B-280: attach one of the machine's own tmux sessions (B-273).
+      key: 'action:attach-tmux',
+      group: 'actions',
+      title: t('commandPalette.actionAttachTmux'),
+      icon: <TerminalSquare size={16} />,
+      haystack: `tmux attach session ${(t('commandPalette.actionAttachTmux') as string).toLowerCase()}`,
+      run: () => { setNewTerminalIntent('attach'); setShowNewTerminal(true); },
     });
     out.push({
       key: 'action:new-chat',
@@ -505,7 +515,7 @@ export function CommandPalette() {
       )}
 
       {showNewSession && <NewSessionModal onClose={() => setShowNewSession(false)} />}
-      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
+      {showNewTerminal && <NewTerminalModal intent={newTerminalIntent} onClose={() => setShowNewTerminal(false)} />}
     </>
   );
 }
