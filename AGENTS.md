@@ -173,7 +173,16 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     daemon 认领/停旧/幂等判活以锁为准，`hostPid`/命令行匹配只是存量兜底；新增任何 spawn/resume 路径都不得绕过
     `claimSessionOrExit`。多写者状态下不要手杀其中一个（会归档整个会话），走「重启会话」。见
     `specs/2026-09-session-single-writer-lock.md`（B-272）。
-17. **tmux 格式输出会被按版本/locale munge，探针分隔符只准可打印 ASCII**：`list-sessions -F`/`display-message`
+17. **会话 RPC handler 抛错不等于 RPC reject**：`RpcHandlerManager.handleRequest` 把 handler 的异常包成 `{ error }` 用
+    **正常 ack** 回给 web，`apiSocket.sessionRPC` 照样 resolve。任何新的 web RPC wrapper 都必须先检查 `error` 字段再信载荷
+    （先例 `ops.ts` 的 `throwIfRpcError` / `parseClaudeAuthRpc`），否则 store 会把错误当成功、渲染层拿到 undefined 直接白屏
+    （web 没有 ErrorBoundary）。另：server 与 relay 的 RPC 都是 30s 上限，超过它的工作走「即返 id + 轮询」（B-283 `btw-ask/poll` 先例）。
+18. **给 remote 会话加「旁路 SDK 查询」（fork 主会话另开 claude 进程）必须三件套**：上下文只认 live `Session.sessionId` 且经
+    `claudeCheckSession` 确认 transcript 已落盘（server metadata 的 `claudeSessionId` 在 `/clear` 后是旧的）；显式带上
+    `options.claudeEnvVars`（`--claude-env` 在 local 模式只进主 Claude 的 spawn env）；用 `--settings {"disableAllHooks":true}`
+    否则每次旁路查询都放一遍用户的 SessionStart/Stop/SessionEnd hook。`persistSession:false` + `resume` + `forkSession` 已实证
+    不落 JSONL、能拿全上下文。见 `specs/2026-09-btw-side-question.md`（B-283）。
+19. **tmux 格式输出会被按版本/locale munge，探针分隔符只准可打印 ASCII**：`list-sessions -F`/`display-message`
     输出里的控制字符在 ≤3.2a 被换成 `_`（不可逆）、3.4/3.5 转义成 `\037`，C locale 下多字节字符也塌成 `_`
     ——0x1f 分隔符曾让 tmux ≤3.5 机器的终端列表静默全空（B-273 附带修复，哨兵 `<~|~>`）。定位用户会话用
     `$id`（`#{session_id}`）不用名字（≥3.2 名字可含 `:`/`.`，`=name:` 会被 target 解析拆开）。CI 的 vitest
