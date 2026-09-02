@@ -742,10 +742,15 @@ export async function machineListTmuxSessions(machineId: string): Promise<UserTm
     }
 }
 
-export async function machineKillTerminal(machineId: string, terminalId: string): Promise<boolean> {
+export async function machineKillTerminal(machineId: string, terminalId: string, opts?: {
+    /** B-282: also kill the user tmux session the terminal is attached to.
+     *  Send only when `killAttachedSupported(daemonState)` — an old daemon
+     *  ignores the field and kills the web terminal alone. */
+    alsoAttached?: boolean;
+}): Promise<boolean> {
     try {
-        const r = await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string }>(
-            machineId, 'kill-terminal', { terminalId },
+        const r = await apiSocket.machineRPC<{ type: 'success' }, { terminalId: string; alsoAttached?: boolean }>(
+            machineId, 'kill-terminal', { terminalId, ...(opts?.alsoAttached ? { alsoAttached: true } : {}) },
         );
         return (r as unknown as { type?: string })?.type === 'success';
     } catch {
@@ -776,6 +781,8 @@ export interface MachineTerminal {
      *  daemon clears it once the terminal is opened, so it is a "while you were
      *  away" hint, not a permanent property. */
     restoredAt?: number;
+    /** B-273: name of the user tmux session attached inside this terminal. */
+    attachTmux?: string;
 }
 
 /** Persist a terminal's title on the machine so every device sees it.

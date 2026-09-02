@@ -1,16 +1,16 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2 } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
 import { createChatOrConfigure } from '@/app/newChat';
 import { getSessionName, getSessionSidebarSubtitle, formatLastSeen } from '@/utils/sessionUtils';
 import { machineLabel, isMachineOnline } from '@/utils/machineUtils';
-import { buildClosedTerminalRows, closedTerminalsOf } from '@/sync/closedTerminals';
+import { buildClosedTerminalRows, closedTerminalsOf, killAttachedSupported } from '@/sync/closedTerminals';
 import { restoreClosedTerminal } from '@/app/rowActions';
-import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
+import { confirmArchiveSession, nextSessionPathAfterClose, confirmCloseTerminal, confirmKillAttachedTerminal, saveRowRename, collectAllTags, restoreSessionOrAlert } from '@/app/rowActions';
 import { canOfferRestore, useRestoreState } from '@/app/sessionRestore';
 import { sessionUpdateTitleTags } from '@/sync/ops';
 import { hasPriorityTag, togglePriorityTag, sortPriorityFirst } from '@/utils/tags';
@@ -85,6 +85,8 @@ interface Row {
   /** B-150: terminal rows the daemon brought back after a restart. Cleared by
    *  the daemon on first open, so the badge disappears by itself. */
   restored?: boolean;
+  /** B-273/B-282: terminal attached to this user tmux session (name). */
+  attachTmux?: string;
 }
 
 interface SidebarSection {
@@ -258,6 +260,7 @@ export function Sidebar() {
             tags: tm.tags,
             subtitle: `${tm.machineName} · terminal`,
             restored: !!tm.restoredAt,
+            attachTmux: tm.attachTmux,
           }));
     // One place applies the overlay for every ACTIVITY-ORDERED surface, so
     // 列表/状态/归档 can't disagree about what "last active" means. (已完成(今日)
@@ -1366,6 +1369,12 @@ function SidebarRow({
     if (archived && selected) navigate(nextSessionPathAfterClose(row.session!.id));
   };
 
+  // B-282: attach terminals get a destructive "close together with the tmux
+  // session" item — only when this daemon run declared the capability (an
+  // old daemon would silently kill just the web terminal).
+  const attachKillMachine = storage((st) => (isTerminal && row.attachTmux && row.machineId ? st.machines[row.machineId] : undefined));
+  const canKillAttached = !!row.attachTmux && killAttachedSupported(attachKillMachine?.daemonState);
+
   // ONE item list feeds both the "…" dropdown and the right-click menu.
   const menuItems = rowMenuItems({
     t,
@@ -1396,6 +1405,21 @@ function SidebarRow({
           );
         },
   });
+
+  if (canKillAttached) {
+    menuItems.push({
+      key: 'kill-attached',
+      label: t('sidebar.closeWithTmuxSession'),
+      icon: Trash2,
+      danger: true,
+      separatorBefore: true,
+      onSelect: () => {
+        void confirmKillAttachedTerminal(row.machineId!, row.terminalId!, row.attachTmux!, () => {
+          if (selected) navigate('/');
+        });
+      },
+    });
+  }
 
   return (
     <ActionContextMenu items={menuItems}>

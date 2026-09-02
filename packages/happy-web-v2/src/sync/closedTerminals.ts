@@ -61,6 +61,11 @@ export function tmuxSessionsSupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'tmuxSessions');
 }
 
+/** B-282: does `kill-terminal` honour `alsoAttached` on this daemon run? */
+export function killAttachedSupported(daemonState: any): boolean {
+  return daemonRpcFlagSupported(daemonState, 'tmuxSessions') && daemonState?.tmuxSessions?.killAttached === true;
+}
+
 /** Claude session ids are uuids. Validated here because the value comes off the
  *  wire and ends up inside a shell command (`claude --resume <id>`) on the
  *  machine — the web must never forward an unvalidated string into that. */

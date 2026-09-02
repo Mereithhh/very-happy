@@ -1250,6 +1250,7 @@ export const en = {
         closedTerminalReopen: 'New terminal in this directory',
         closedTerminalResume: 'Continue this conversation here',
         closedTerminalRestore: 'Restore this terminal (same id, title and tags)',
+        closeWithTmuxSession: 'Close together with the tmux session…',
         terminalRestored: 'restored',
         terminalRestoredHint: 'Brought back after a restart: same directory, conversation resumed — the processes are new and the scrollback starts fresh.',
         closedTerminalGap: 'ended in a restart',
@@ -1723,6 +1724,13 @@ export const en = {
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
         closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
+        // B-282: attach terminals — closing only disconnects.
+        closeAttachedTitle: 'Disconnect this tmux session?',
+        closeAttachedMessage: ({ name }: { name: string }) => `Closing only disconnects: your tmux session “${name}” and everything running in it keep going on the machine. You can attach it again any time; the row moves to the archive.`,
+        closeAttachedConfirm: 'Disconnect',
+        killAttachedTitle: 'Close together with the tmux session?',
+        killAttachedMessage: ({ name }: { name: string }) => `This kills the tmux session “${name}” on the machine, including every process running inside it. This cannot be undone.`,
+        killAttachedConfirm: 'Kill session',
         // Used by terminal connection screens
         webBrowserRequired: 'Web Browser Required',
         webBrowserRequiredDescription: 'Terminal connection links can only be opened in a web browser for security reasons. Please use the QR code scanner or open this link on a computer.',

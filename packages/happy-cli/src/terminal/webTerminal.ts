@@ -2867,7 +2867,7 @@ export class WebTerminalManager {
     /** Permanently destroy the terminal: detach the pty AND kill the tmux
      *  session (so a local `tmux attach` won't find it either). Used when the
      *  user deletes the terminal from the sidebar. */
-    killSession(terminalId: string): boolean {
+    killSession(terminalId: string, opts?: { alsoAttached?: boolean }): boolean {
         // Record the close BEFORE the kill, while title/cwd are still knowable
         // (B-084). Cache first (fed by every tracking tick), fresh tmux lookup
         // as fallback (kill can arrive before tracking ever observed this id).
@@ -2885,6 +2885,22 @@ export class WebTerminalManager {
         if (!tmuxKillVerified(killed, verified)) {
             logger.debug(`[WEB TERMINAL] failed to verify tmux session removal ${target}`);
             return false;
+        }
+
+        // B-282: "close together with the attached tmux session" — only ever
+        // on explicit request from a client that saw the killAttached
+        // capability; the DEFAULT close always leaves the user's session (and
+        // everything running inside it) alone. Resolved by unique name, same
+        // rule as restore; a missing/ambiguous name is a silent no-op (the
+        // web terminal itself is already gone, which is what was asked).
+        if (opts?.alsoAttached && info?.attachTmux) {
+            const matches = this.listUserTmuxSessions(Infinity).filter((s) => s.name === info.attachTmux);
+            if (matches.length === 1) {
+                spawnSync('tmux', tmuxArgs(['kill-session', '-t', matches[0].id]), { stdio: 'ignore', timeout: TMUX_PROBE_TIMEOUT_MS, env: ptyEnv() });
+                logger.info(`[WEB TERMINAL] killed attached user tmux session ${matches[0].id} (${info.attachTmux}) with ${terminalId}`);
+            } else {
+                logger.debug(`[WEB TERMINAL] alsoAttached: no unique session named ${info.attachTmux} (${matches.length} matches)`);
+            }
         }
 
         if (info) {

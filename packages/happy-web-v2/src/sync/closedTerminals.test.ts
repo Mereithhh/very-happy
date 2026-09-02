@@ -208,3 +208,13 @@ describe('B-273 tmuxSessionsSupported', () => {
         expect(tmuxSessionsSupported({ startedAt: 10, tmuxSessions: { rpcAvailable: false, detectedAt: 10 } })).toBe(false);
     });
 });
+
+describe('B-282 killAttachedSupported', () => {
+    it('requires the trusted flag AND the killAttached marker of THIS daemon run', async () => {
+        const { killAttachedSupported } = await import('./closedTerminals');
+        expect(killAttachedSupported({ startedAt: 10, tmuxSessions: { rpcAvailable: true, detectedAt: 10, killAttached: true } })).toBe(true);
+        expect(killAttachedSupported({ startedAt: 10, tmuxSessions: { rpcAvailable: true, detectedAt: 10 } })).toBe(false); // 0.2.98 daemon
+        expect(killAttachedSupported({ startedAt: 20, tmuxSessions: { rpcAvailable: true, detectedAt: 10, killAttached: true } })).toBe(false); // downgraded
+        expect(killAttachedSupported(undefined)).toBe(false);
+    });
+});

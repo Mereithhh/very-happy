@@ -486,11 +486,14 @@ export class ApiMachineClient {
 
         // Permanently destroy a terminal's tmux session (sidebar delete).
         this.rpcHandlerManager.registerHandler('kill-terminal', async (params: any) => {
-            const { terminalId } = params || {};
+            // B-282: `alsoAttached` kills the user tmux session the terminal
+            // was attached to as well — sent only by webs that saw the
+            // tmuxSessions.killAttached capability; old daemons ignore it.
+            const { terminalId, alsoAttached } = params || {};
             if (typeof terminalId !== 'string' || !terminalId) {
                 return { type: 'error', errorMessage: 'Terminal ID is required' };
             }
-            if (!this.webTerminal.killSession(terminalId)) {
+            if (!this.webTerminal.killSession(terminalId, { alsoAttached: alsoAttached === true })) {
                 return { type: 'error', errorMessage: 'tmux session is still running' };
             }
             this.encTerminals.delete(terminalId);
@@ -1003,7 +1006,7 @@ export class ApiMachineClient {
                     // web's `detectedAt >= startedAt` trust rule holds.
                     terminalRestore: { rpcAvailable: true, detectedAt: now },
                     // B-273 capability flag (same restamp discipline).
-                    tmuxSessions: { rpcAvailable: true, detectedAt: now },
+                    tmuxSessions: { rpcAvailable: true, detectedAt: now, killAttached: true },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.
