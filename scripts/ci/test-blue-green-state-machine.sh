@@ -29,6 +29,28 @@ wait_ready 3102 green "$option_like_release" \
     || fail 'readiness asset match must accept option-like release suffixes'
 unset -f admin_curl sleep
 
+# Cross-slot canary: a freshly booted peer may not answer the first
+# serverSideEmitWithAck; the check retries and only fails when every attempt
+# fails. Both directions must be ok within the same attempt.
+canary_counter=$(mktemp)
+canary_calls() { wc -l < "$canary_counter" | tr -d ' '; }
+admin_curl() {
+    # runs inside $(...): count through a file, not a shell variable
+    echo x >> "$canary_counter"
+    if [ "$(canary_calls)" -le 3 ]; then printf '{"status":"failed","peers":[]}'; return 22; fi
+    printf '{"status":"ok","peers":[{"slot":"blue"}]}'
+}
+sleep() { :; }
+verify_cross_slot 3102 3101 2>/dev/null || fail 'canary must pass once both slots answer within the retry budget'
+# attempt 1: calls 1,2 fail; attempt 2: call 3 fails, 4 ok (same-attempt rule); attempt 3: 5,6 ok
+[ "$(canary_calls)" -eq 6 ] || fail "canary retried unexpectedly ($(canary_calls) calls)"
+: > "$canary_counter"
+admin_curl() { echo x >> "$canary_counter"; printf '{"status":"failed","peers":[]}'; return 22; }
+if VH_RELEASE_CANARY_ATTEMPTS=2 verify_cross_slot 3102 3101 2>/dev/null; then fail 'canary must fail when no attempt succeeds'; fi
+[ "$(canary_calls)" -eq 4 ] || fail "canary attempt budget not honoured ($(canary_calls) calls)"
+rm -f "$canary_counter"
+unset -f admin_curl sleep
+
 migration_review_file=$(mktemp)
 ACTIVE_IMAGE=active-image
 IMAGE=candidate-image
