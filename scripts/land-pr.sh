@@ -22,10 +22,16 @@ state() { gh api "repos/$REPO/pulls/$PR" --jq .mergeable_state; }
 
 H=$(head_sha)
 echo "PR #$PR head ${H:0:8} state=$(state)"
-if [ "$(state)" = "dirty" ]; then
-  echo "✗ merge conflict with base — rebase and push first (conflicted PRs never trigger CI)." >&2
-  exit 2
-fi
+case "$(state)" in
+  dirty)
+    echo "✗ merge conflict with base — rebase and push first (conflicted PRs never trigger CI)." >&2
+    exit 2 ;;
+  behind)
+    # Strict required checks: an out-of-date branch cannot merge even with
+    # green CI — rebasing (which re-runs CI) is the only way forward.
+    echo "✗ branch is behind base — rebase and push first (strict status checks refuse stale heads)." >&2
+    exit 2 ;;
+esac
 
 # Runs can take ~1 min to appear after a push.
 RUNS=""
