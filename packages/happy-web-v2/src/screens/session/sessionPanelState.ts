@@ -1,15 +1,19 @@
-export type SessionPanelTab = 'changed' | 'all' | 'browse';
+/** Files panel tabs plus the `/btw` side-question panel (B-279). */
+export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw';
+export type SessionFilesTab = Exclude<SessionPanelTab, 'btw'>;
 
 const QUERY_TO_TAB: Record<string, SessionPanelTab> = {
   changes: 'changed',
   files: 'all',
   browse: 'browse',
+  btw: 'btw',
 };
 
 const TAB_TO_QUERY: Record<SessionPanelTab, string> = {
   changed: 'changes',
   all: 'files',
   browse: 'browse',
+  btw: 'btw',
 };
 
 export function readSessionPanel(value: string | null): SessionPanelTab | null {

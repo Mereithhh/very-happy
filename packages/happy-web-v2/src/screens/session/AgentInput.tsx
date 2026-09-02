@@ -66,6 +66,8 @@ import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
+import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
+import { openBtwPanel } from './btwPanelState';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
     composerHeightCap,
@@ -139,9 +141,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const gate = composerGate(session);
     const restoreState = useRestoreState(sessionId);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
+    // B-279: `/btw` is a WEB command (never sent to the CLI) — list it first on
+    // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
         ? []
-        : filterSlashSuggestions(getAllCommands(sessionId), text);
+        : filterSlashSuggestions(
+            canOfferBtw(session)
+                ? [{ command: BTW_COMMAND, description: t('session.btw.commandDescription') }, ...getAllCommands(sessionId)]
+                : getAllCommands(sessionId),
+            text,
+        );
 
     useEffect(() => {
         setSlashIndex(0);
@@ -319,6 +328,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending || !session) return;
+        // B-279: `/btw [question]` opens the side-question panel and NEVER
+        // reaches the main conversation (attachments stay in the composer).
+        const btw = parseBtwCommand(value);
+        if (btw) {
+            setText('');
+            draftRef.current = '';
+            storage.getState().updateSessionDraft(sessionId, null);
+            openBtwPanel(sessionId, btw.question);
+            return;
+        }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for

@@ -11,12 +11,16 @@ import { ChatHeader } from './ChatHeader';
 import { ChatList } from './ChatList';
 import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
+import { BtwPanel } from './BtwPanel';
+import { onBtwOpen } from './btwPanelState';
+import { canOfferBtw, supportsBtw } from './btwCommand';
+import { btwStore } from '@/sync/btwStore';
 import { MirrorBanner } from './MirrorBanner';
 import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
-import { readSessionPanel, withSessionPanel, type SessionPanelTab } from './sessionPanelState';
+import { readSessionPanel, withSessionPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -30,10 +34,31 @@ export function SessionDetailScreen() {
     });
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
-    const filesOpen = panelTab !== null;
+    // One aside, two tenants: the files panel (three tabs) or the `/btw`
+    // side-question panel (B-279). `filesOpen` drives the files toggle only.
+    const panelOpen = panelTab !== null;
+    const btwOpen = panelTab === 'btw';
+    const filesOpen = panelOpen && !btwOpen;
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
     };
+    const setPanelRef = useRef(setPanel);
+    setPanelRef.current = setPanel;
+    // Composer `/btw [question]` → open this session's panel (and ask when the
+    // wrapper supports it; otherwise park the text as the panel draft so the
+    // upgrade notice explains why nothing ran).
+    useEffect(() => {
+        if (!id) return;
+        return onBtwOpen((detail) => {
+            if (detail.sessionId !== id) return;
+            setPanelRef.current('btw');
+            const question = detail.question?.trim();
+            if (!question) return;
+            const current = storage.getState().sessions[id];
+            if (supportsBtw(current)) void btwStore.getState().ask(id, question);
+            else btwStore.getState().setDraft(id, question);
+        });
+    }, [id]);
     // Desktop (>860px, matching session.css): the files panel is an inline
     // right sidebar — draggable width, persisted in localSettings.filesPanelWidth
     // (shared with the terminal's file browser, B-088). Narrow viewports keep
@@ -89,12 +114,16 @@ export function SessionDetailScreen() {
     const mirror = isMirrorSession(session);
 
     return (
-        <div className={`sd${filesOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
+        <div className={`sd${panelOpen ? ' sd--files-open' : ''}`} ref={sdRef}>
             <div className="sd-main">
                 <ChatHeader
                     sessionId={id}
                     filesOpen={filesOpen}
                     onToggleFiles={() => filesOpen ? setPanel(null, true) : setPanel('changed')}
+                    btwOpen={btwOpen}
+                    onToggleBtw={!mirror && canOfferBtw(session)
+                        ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
+                        : undefined}
                 />
                 {mirror && <MirrorBanner sessionId={id} />}
                 {/* recoverability: inactive session (archived OR offline) → restore banner */}
@@ -116,7 +145,7 @@ export function SessionDetailScreen() {
                     self-hides when the terminal is gone or claude exited. */}
                 {mirror && <MirrorInputBar sessionId={id} />}
             </div>
-            {filesOpen && (
+            {panelOpen && (
                 <>
                     <div className="sd-files-scrim" onClick={() => setPanel(null, true)} aria-hidden />
                     {filesResizable && (
@@ -128,12 +157,16 @@ export function SessionDetailScreen() {
                         />
                     )}
                     <aside className="sd-files" style={filesWide ? { width: filesWidth } : undefined}>
-                        <FilesPanel
-                            sessionId={id}
-                            tab={panelTab}
-                            onTabChange={(tab) => setPanel(tab, true)}
-                            onClose={() => setPanel(null, true)}
-                        />
+                        {btwOpen ? (
+                            <BtwPanel sessionId={id} onClose={() => setPanel(null, true)} />
+                        ) : (
+                            <FilesPanel
+                                sessionId={id}
+                                tab={panelTab as SessionFilesTab}
+                                onTabChange={(tab) => setPanel(tab, true)}
+                                onClose={() => setPanel(null, true)}
+                            />
+                        )}
                     </aside>
                 </>
             )}

@@ -1781,3 +1781,58 @@ export type {
     SessionRipgrepResponse,
     SessionKillResponse
 };
+
+// ── `/btw` side questions (B-279) ───────────────────────────────────────────
+// Ask/poll/cancel instead of one blocking RPC: server + relay cap every RPC
+// at 30s and a side answer over a big context routinely takes longer. The
+// CLI keeps the running answer; the web polls until a terminal status.
+export type SideQuestionStatus = 'running' | 'done' | 'error' | 'cancelled';
+export interface SideQuestionExchangeInput {
+    question: string;
+    answer: string;
+}
+export interface SideQuestionAskResponse {
+    requestId: string;
+    /** false when the main session has not produced a Claude session id yet */
+    hadContext: boolean;
+}
+export interface SideQuestionPollResponse {
+    requestId: string;
+    status: SideQuestionStatus;
+    text: string;
+    error?: string;
+    startedAt: number;
+    finishedAt?: number;
+}
+
+export async function sessionBtwAsk(
+    sessionId: string,
+    question: string,
+    history: SideQuestionExchangeInput[],
+): Promise<SideQuestionAskResponse> {
+    return apiSocket.sessionRPC<SideQuestionAskResponse, { question: string; history: SideQuestionExchangeInput[] }>(
+        sessionId,
+        'btw-ask',
+        { question, history },
+        { timeoutMs: 20_000 },
+    );
+}
+
+export async function sessionBtwPoll(sessionId: string, requestId: string): Promise<SideQuestionPollResponse> {
+    return apiSocket.sessionRPC<SideQuestionPollResponse, { requestId: string }>(
+        sessionId,
+        'btw-poll',
+        { requestId },
+        { timeoutMs: 20_000 },
+    );
+}
+
+export async function sessionBtwCancel(sessionId: string, requestId: string): Promise<boolean> {
+    const response = await apiSocket.sessionRPC<{ cancelled: boolean }, { requestId: string }>(
+        sessionId,
+        'btw-cancel',
+        { requestId },
+        { timeoutMs: 20_000 },
+    );
+    return response?.cancelled === true;
+}

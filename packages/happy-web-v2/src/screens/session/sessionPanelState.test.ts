@@ -6,6 +6,7 @@ describe('session panel URL state (B-208)', () => {
     expect(readSessionPanel('changes')).toBe('changed');
     expect(readSessionPanel('files')).toBe('all');
     expect(readSessionPanel('browse')).toBe('browse');
+    expect(readSessionPanel('btw')).toBe('btw');
     expect(readSessionPanel('changed')).toBeNull();
     expect(readSessionPanel(null)).toBeNull();
   });
@@ -14,6 +15,7 @@ describe('session panel URL state (B-208)', () => {
     const start = new URLSearchParams('foo=1&panel=changes');
     expect(withSessionPanel(start, 'browse').toString()).toBe('foo=1&panel=browse');
     expect(withSessionPanel(start, null).toString()).toBe('foo=1');
+    expect(withSessionPanel(start, 'btw').toString()).toBe('foo=1&panel=btw');
     expect(start.toString()).toBe('foo=1&panel=changes');
   });
 });

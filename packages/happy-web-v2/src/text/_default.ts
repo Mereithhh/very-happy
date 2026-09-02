@@ -440,6 +440,27 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-279 `/btw` side questions — answered by a separate single-turn
+        // query that forks the live conversation; never enters the main chat.
+        btw: {
+            title: 'Side question',
+            subtitle: 'not added to the conversation',
+            headerHint: 'Ask a quick side question (/btw)',
+            commandDescription: 'Ask a quick side question without interrupting the current work',
+            placeholder: 'Ask something on the side… (Enter to send)',
+            send: 'Ask',
+            cancel: 'Stop side question',
+            clear: 'Clear side questions',
+            close: 'Close side questions',
+            thinking: 'thinking…',
+            emptyTitle: 'Ask without interrupting',
+            emptyDesc: 'Claude answers from this conversation\'s context in one reply — no tools, nothing added to the main chat. Works while a turn is running.',
+            unsupported: 'This session\'s CLI does not support side questions. Update very-happy-cli and start a new session.',
+            offline: 'Session is offline — side questions need the running agent.',
+            noContext: 'Answered without conversation context (asked before the first turn).',
+            cancelled: 'Side question stopped.',
+            failed: ({ error }: { error: string }) => `Side question failed: ${error}`,
+        },
         // B-098 composer manual expand toggle
         input: {
             expand: 'Expand input',

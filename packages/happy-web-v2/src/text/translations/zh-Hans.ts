@@ -455,6 +455,25 @@ export const zhHans: TranslationStructure = {
 
     session: {
         inputPlaceholder: '输入消息...',
+        btw: {
+            title: '侧问',
+            subtitle: '不进主对话',
+            headerHint: '顺口问一句（/btw）',
+            commandDescription: '不打断当前任务，顺口问一个小问题',
+            placeholder: '旁边问一句…（Enter 发送）',
+            send: '提问',
+            cancel: '停止侧问',
+            clear: '清空侧问',
+            close: '关闭侧问',
+            thinking: '思考中…',
+            emptyTitle: '不打断，直接问',
+            emptyDesc: 'Claude 基于当前对话上下文单轮作答——不用工具、不进主对话。主任务跑着的时候也能问。',
+            unsupported: '当前会话的 CLI 不支持侧问。升级 very-happy-cli 后新建会话即可。',
+            offline: '会话离线——侧问需要 agent 在线。',
+            noContext: '本次回答没有对话上下文（在第一轮之前提问）。',
+            cancelled: '侧问已停止。',
+            failed: ({ error }: { error: string }) => `侧问失败：${error}`,
+        },
         input: {
             expand: '展开输入框',
             collapse: '收起输入框',
