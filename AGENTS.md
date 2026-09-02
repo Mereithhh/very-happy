@@ -55,7 +55,9 @@ pnpm -C packages/happy-wire build
 pnpm -C packages/happy-wire exec vitest run
 
 # happy-web-v2：测试 + 构建 + tsc **零错误**（2026-08-18 实测已是 0，不再有存量债）
-pnpm -C packages/happy-web-v2 exec vitest run
+# shell 里若导出了 HAPPY_SERVER_URL/HAPPY_WEBAPP_URL（只设其一），installScript.test 会随 process.env 继承而挂：
+# 门禁统一用 env -u HAPPY_SERVER_URL -u HAPPY_WEBAPP_URL 前缀跑（2026-09-02 实踩）。
+env -u HAPPY_SERVER_URL -u HAPPY_WEBAPP_URL pnpm -C packages/happy-web-v2 exec vitest run
 pnpm -C packages/happy-web-v2 exec vite build
 pnpm -C packages/happy-web-v2 exec tsc --noEmit
 # 直接以 tsc 退出码为准；不要接 grep/wc，零错误时 grep 无匹配会返回 1，污染门禁退出码。
