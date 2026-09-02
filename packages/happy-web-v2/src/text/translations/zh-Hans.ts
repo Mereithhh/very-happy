@@ -1586,6 +1586,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03a: {
+                title: '终端里的中文不再叠字',
+                summary: '终端换用了等宽双宽的中文字体(Sarasa Fixed SC),中文字符按网格对齐、不再互相重叠;同一字体也让 Claude logo 和 TUI 框线彻底严丝合缝。',
+                overlap: '中文(及其他 CJK)不再自我重叠:终端字体的汉字宽度正好是拉丁字符的两倍,干净地落在网格上。字体只在你打开终端时按需从 CDN 加载,别处零成本。',
+                logo: '新字体的方块和框线字形填满整格,Claude Code 启动 logo 和 TUI 边框现在像素级严丝合缝——补齐了之前行高修复的最后一块。',
+            },
             sep02g: {
                 title: '终端 logo 和框线渲染严丝合缝',
                 summary: '方块/像素画(Claude Code 启动 logo)和 TUI 框线不再在行与行之间露出细缝——终端行距收紧到标准控制台密度,让堆叠的方块严丝合缝地拼接。',
