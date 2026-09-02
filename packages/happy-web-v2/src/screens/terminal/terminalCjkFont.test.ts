@@ -35,4 +35,12 @@ describe('terminal CJK font', () => {
         // and the loader is invoked on mount
         expect(screen).toContain('ensureTerminalCjkFont();');
     });
+
+    it('re-measures the cell when the CDN font swaps in (Iosevka 0.5em != Plex 0.6em)', () => {
+        const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
+        // document.fonts.ready resolves before the CDN css is fetched, so there
+        // MUST be an explicit load-then-remeasure for the CJK family.
+        expect(screen).toContain("fonts?.load?.(`${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`, 'Mgqw0')");
+        expect(screen).toContain('renderer.remeasureFont(); scheduleFit();');
+    });
 });
