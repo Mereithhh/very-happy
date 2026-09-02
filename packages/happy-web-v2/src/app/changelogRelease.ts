@@ -15,6 +15,16 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-terminal-logo-seamless',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep02g.title',
+    summaryKey: 'changelog.releases.sep02g.summary',
+    itemKeys: [
+      'changelog.releases.sep02g.blocks',
+    ],
+  },
+  {
     id: '2026-09-02-terminal-width-reclaim',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,
