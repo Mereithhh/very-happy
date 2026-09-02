@@ -1,5 +1,5 @@
 /**
- * Session-scoped RPCs for `/btw` side questions (B-279).
+ * Session-scoped RPCs for `/btw` side questions (B-282).
  *
  * Why ask/poll instead of one blocking RPC: server AND relay cap every RPC at
  * 30s (rpcHandler.ts / relay.ts RPC_TIMEOUT_MS) while an answer over a big

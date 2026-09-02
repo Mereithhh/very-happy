@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canOfferBtw, parseBtwCommand, supportsBtw } from './btwCommand';
 
-describe('/btw command parsing (B-279)', () => {
+describe('/btw command parsing (B-282)', () => {
     it('opens the panel on a bare /btw and asks on /btw <question>', () => {
         expect(parseBtwCommand('/btw')).toEqual({ question: '' });
         expect(parseBtwCommand('  /BTW  ')).toEqual({ question: '' });

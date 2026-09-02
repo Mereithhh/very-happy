@@ -35,7 +35,7 @@ export function SessionDetailScreen() {
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
     // One aside, two tenants: the files panel (three tabs) or the `/btw`
-    // side-question panel (B-279). `filesOpen` drives the files toggle only.
+    // side-question panel (B-282). `filesOpen` drives the files toggle only.
     const panelOpen = panelTab !== null;
     const btwOpen = panelTab === 'btw';
     const filesOpen = panelOpen && !btwOpen;

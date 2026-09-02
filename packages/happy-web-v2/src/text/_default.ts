@@ -440,7 +440,7 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
-        // B-279 `/btw` side questions — answered by a separate single-turn
+        // B-282 `/btw` side questions — answered by a separate single-turn
         // query that forks the live conversation; never enters the main chat.
         btw: {
             title: 'Side question',

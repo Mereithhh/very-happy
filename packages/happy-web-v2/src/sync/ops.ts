@@ -1782,7 +1782,7 @@ export type {
     SessionKillResponse
 };
 
-// ── `/btw` side questions (B-279) ───────────────────────────────────────────
+// ── `/btw` side questions (B-282) ───────────────────────────────────────────
 // Ask/poll/cancel instead of one blocking RPC: server + relay cap every RPC
 // at 30s and a side answer over a big context routinely takes longer. The
 // CLI keeps the running answer; the web polls until a terminal status.

@@ -17,7 +17,7 @@ function harness(polls: Array<Partial<SideQuestionPollResponse> | Error>, askImp
     return { store, ask, poll, cancel, delay };
 }
 
-describe('btwStore ask/poll loop (B-279)', () => {
+describe('btwStore ask/poll loop (B-282)', () => {
     it('records the exchange, streams partial text and lands on done', async () => {
         const h = harness([{ text: 'part' }, { text: 'partial answer', status: 'done', finishedAt: 7000 }]);
         await h.store.getState().ask('s1', '  why?  ');

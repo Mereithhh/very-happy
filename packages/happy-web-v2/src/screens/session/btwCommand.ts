@@ -1,5 +1,5 @@
 /**
- * `/btw` composer command + capability gate (B-279). Pure; the composer and
+ * `/btw` composer command + capability gate (B-282). Pure; the composer and
  * the detail screen consume it.
  */
 import type { Session } from '@/sync/storageTypes';
@@ -25,7 +25,7 @@ export function canOfferBtw(session: Pick<Session, 'metadata'> | null | undefine
     return !flavor || flavor === 'claude';
 }
 
-/** The wrapper actually answers side questions (new CLI, per-session — B-279 / 铁律 14). */
+/** The wrapper actually answers side questions (new CLI, per-session — B-282 / 铁律 14). */
 export function supportsBtw(session: Pick<Session, 'metadata'> | null | undefined): boolean {
     return canOfferBtw(session) && session?.metadata?.capabilities?.includes(BTW_CAPABILITY) === true;
 }

@@ -66,7 +66,7 @@ export interface QueryOptions {
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     /**
      * With `resume`: derive a NEW session id instead of appending to the
-     * resumed one. Used by side questions (B-279) so a fork sees the main
+     * resumed one. Used by side questions (B-282) so a fork sees the main
      * conversation's context without ever writing to its transcript.
      */
     forkSession?: boolean

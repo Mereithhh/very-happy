@@ -141,7 +141,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const gate = composerGate(session);
     const restoreState = useRestoreState(sessionId);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
-    // B-279: `/btw` is a WEB command (never sent to the CLI) — list it first on
+    // B-282: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
         ? []
@@ -328,7 +328,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending || !session) return;
-        // B-279: `/btw [question]` opens the side-question panel and NEVER
+        // B-282: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
         const btw = parseBtwCommand(value);
         if (btw) {

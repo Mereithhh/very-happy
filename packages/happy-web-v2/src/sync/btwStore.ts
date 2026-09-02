@@ -1,5 +1,5 @@
 /**
- * btwStore — per-session side-question ("/btw") state (B-279).
+ * btwStore — per-session side-question ("/btw") state (B-282).
  *
  * Independent zustand store (assistantStore precedent), memory only: like
  * Claude Code's own `btwHistory` the exchanges live as long as the page. The
