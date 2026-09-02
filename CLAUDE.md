@@ -22,20 +22,22 @@ git worktree list                                   # 派工前看清有哪些�
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-09-01，会过期；以 backlog/verify-queue 为准）
+## 当前状态快照（2026-09-02，会过期；以 backlog/verify-queue 为准）
 
 - 最新 tag / npm `very-happy-cli` = **v0.2.99**（mac-office daemon 同版本；2026-09-02；含 B-275 认证失败换进程 + B-276 Claude 登录预检/诊断/`credentialStore=file`）；线上 Web = `main@0a8005ca`（2026-09-02 蓝绿）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
-- `docs/backlog.md` 2026-09-01 已整理：活跃区约 28 项（6 `doing`：B-216 终端 tag、B-209
-  对话降噪、B-208 工作区视图、B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 收尾；
-  其余 todo）；裁撤项带理由留在「近期完成」一轮后删。**最近发布 v0.2.92**：B-264 会话重启（一键 Restart + 守卫式重生）、
-  B-266 relay 预检、B-267 root IS_SANDBOX（#121/#122/#123）。改 doing 项前先读对应 `specs/`。
-- `docs/verify-queue.md` 待验证 **80+ 项**（V-0xx～V-108，含 v0.2.92 的 V-051~053），远超「下一批前清账」纪律；
-  发新批前请 Owner 清账或明确批准堆积。
-- 门禁基线：web tsc 0 错误、cli 1100+ unit、web 1900+ 测试（本地跑一次门禁约 5-10 分钟，
-  首次 install 更久）。web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让
-  `installScript.test.ts` 失败，CI 不受影响）。
+- `docs/backlog.md` 活跃区约 31 项非 done（8 `doing`：B-216 终端 tag、B-209 对话降噪、B-208 工作区视图、
+  B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 等）；改 doing 项前先读对应 `specs/`。
+  **2026-09-02 已发布**：v0.2.93–v0.2.99 一大批——B-269/B-270（用户 tmux.conf 打坏 web 终端：base-index、
+  destroy-unattached 等 + 0x1f 分隔符被 tmux ≤3.5 munge 的存量修复，见 AGENTS 铁律 17）、B-273/280/281/282
+  （接入已有 tmux 会话：能力 + 一等入口 + 直达选择器 + 关闭=仅断开/可选彻底关闭，spec
+  `specs/2026-09-attach-existing-tmux.md`）、B-275/276（Claude 认证预检/修复）、B-272（session 单写者锁）。
+- `docs/verify-queue.md` 待验证 **90 项**（V-0xx～V-114），远超「下一批前清账」纪律；发新批前请 Owner
+  清账或明确批准堆积。
+- 门禁基线：web tsc 0 错误、cli 1490+ unit、web 1940+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
+  web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让 `installScript.test.ts` 失败，
+  CI 不受影响）；happy-cli 的 unit 项目含真实 tmux 测试（CI 也跑，见铁律 17）。
 - 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理
-  逐轮推翻前提后定稿（B-259/B-260/B-262/B-264 记录在 `~/code/github/skills/tmp/<slug>/`）。
+  逐轮推翻前提后定稿（B-259/B-260/B-262/B-264/B-265/B-273 记录在 `~/code/github/skills/tmp/<slug>/`）。
 
 ## 本地工具入口
 
@@ -45,4 +47,5 @@ git worktree list                                   # 派工前看清有哪些�
   （默认代理到生产 veryhappy.dev；连本地 server 用 `VH_SERVER_URL=http://127.0.0.1:3005`）。
 - CLI 实验永远用一次性 home：`HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs …`，
   **不要动 `~/.happy`**（那是 mac-office 生产 daemon 的状态）。
+- PR 等 CI + 合并统一用 `scripts/land-pr.sh <pr>`（会识别 conflict 不触发 CI、按 head commit 找 run、合并重试；`--no-merge` 只看 CI）。
 - 临时文件放 `~/code/github/skills/tmp/<task-slug>/`，不进 repo。

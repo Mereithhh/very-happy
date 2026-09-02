@@ -173,3 +173,9 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     daemon 认领/停旧/幂等判活以锁为准，`hostPid`/命令行匹配只是存量兜底；新增任何 spawn/resume 路径都不得绕过
     `claimSessionOrExit`。多写者状态下不要手杀其中一个（会归档整个会话），走「重启会话」。见
     `specs/2026-09-session-single-writer-lock.md`（B-272）。
+17. **tmux 格式输出会被按版本/locale munge，探针分隔符只准可打印 ASCII**：`list-sessions -F`/`display-message`
+    输出里的控制字符在 ≤3.2a 被换成 `_`（不可逆）、3.4/3.5 转义成 `\037`，C locale 下多字节字符也塌成 `_`
+    ——0x1f 分隔符曾让 tmux ≤3.5 机器的终端列表静默全空（B-273 附带修复，哨兵 `<~|~>`）。定位用户会话用
+    `$id`（`#{session_id}`）不用名字（≥3.2 名字可含 `:`/`.`，`=name:` 会被 target 解析拆开）。CI 的 vitest
+    unit 项目在 ubuntu-latest 上**真跑 tmux**（当前 3.4：`window-size manual` 下建会话即崩 server，须版本 gate），
+    integration-* 项目则不在 CI 跑——别把「本地绿」当「CI 会绿」。
