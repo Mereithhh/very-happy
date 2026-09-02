@@ -1586,6 +1586,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02f: {
+                title: '终端会自动缩回你的宽度',
+                summary: '从手机切回桌面时，终端现在只要你一操作就会重新占满本机宽度；终端头部还加了一个「重新适配宽度」按钮，需要时手动触发。',
+                reclaim: '当手机把共享终端留在窄宽时，桌面现在会在你第一次点击或按键时重新变宽——不用再靠切换会话来强制。后台的手机标签页也不会再把你正在用的桌面重新染窄。',
+                button: '终端头部新增「重新适配宽度」按钮，可按需把终端重新适配到本设备；提示里说明：上方已滚过的旧内容仍保持当时打印的宽度，因为终端无法重排它们。',
+            },
             sep02e: {
                 title: '终端显示修好了',
                 summary: '修了三个终端显示问题：手机不再把桌面终端挤窄，新会话不再按错误宽度画第一屏，接入的 tmux 会话不再糊出一整片绿色块。',
@@ -1780,6 +1786,8 @@ export const zhHans: TranslationStructure = {
         claudeNeedsInput: 'Claude：等待输入',
         claudeNeedsInputBody: 'Claude 需要你的输入',
         structuredView: '结构化视图',
+        refitWidth: '重新适配宽度',
+        refitWidthHint: '让终端按本设备宽度重新适配。上方已滚过的旧内容仍保持当时打印的宽度——终端无法重排它们。',
         selectMode: '选择/复制模式',
         selectModeHint: '选择模式 — 长按选中并复制 · 再点一下切回滚动',
         keybarLabel: '终端按键',

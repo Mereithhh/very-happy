@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-terminal-width-reclaim',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep02f.title',
+    summaryKey: 'changelog.releases.sep02f.summary',
+    itemKeys: [
+      'changelog.releases.sep02f.reclaim',
+      'changelog.releases.sep02f.button',
+    ],
+  },
+  {
     id: '2026-09-02-terminal-render',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,
@@ -285,17 +296,23 @@ export interface ChangelogCliNotice {
 
 export function changelogCliNotices(
   machines: readonly ChangelogMachineLike[],
-  release: ChangelogRelease = CURRENT_CHANGELOG,
+  // Default to the newest release that actually shipped a companion CLI, not
+  // blindly the newest release: a web-only latest release (no cliVersion) must
+  // still advertise the last published CLI to machines behind it, never drop
+  // the notice to nothing. The production caller (ChangelogNotice) already
+  // passes changelogCliTarget(unseen) explicitly; this only fixes the default.
+  release: ChangelogRelease | null = changelogCliTarget(CHANGELOG_RELEASES),
 ): ChangelogCliNotice[] {
-  if (!release.cliVersion) return [];
+  if (!release?.cliVersion) return [];
+  const targetVersion = release.cliVersion; // captured non-null for the closure
   return machines.flatMap((machine) => {
     const currentVersion = machine.metadata?.happyCliVersion;
-    if (machine.active !== true || !currentVersion || !isCliVersionBelow(currentVersion, release.cliVersion!)) return [];
+    if (machine.active !== true || !currentVersion || !isCliVersionBelow(currentVersion, targetVersion)) return [];
     return [{
       machineId: machine.id,
       machineName: machine.metadata?.displayName || machine.metadata?.host || machine.id.slice(0, 8),
       currentVersion,
-      targetVersion: release.cliVersion!,
+      targetVersion,
     }];
   });
 }

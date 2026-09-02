@@ -1612,6 +1612,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02f: {
+                title: 'Terminal snaps back to your width',
+                summary: 'Switch from your phone back to your desktop and the terminal now reclaims your full width the moment you touch it — plus a new refit-width button in the terminal header for when you want it on demand.',
+                reclaim: 'When a phone left the shared terminal narrow, the desktop now widens again on your first click or keypress — you no longer have to switch conversations to force it. A backgrounded phone tab can no longer re-narrow the desktop you are using.',
+                button: 'A new refit-width button in the terminal header re-fits the terminal to your device on demand; its tooltip explains that lines already scrolled above keep the width they were printed at, because terminals cannot reflow them.',
+            },
             sep02e: {
                 title: 'Terminals that render right',
                 summary: 'Three terminal display bugs are fixed: a phone no longer squeezes your desktop terminal narrow, a new session no longer paints its first output at the wrong width, and attached tmux sessions no longer smear a green block across the screen.',
@@ -1808,6 +1814,10 @@ export const en = {
         claudeNeedsInputBody: 'Claude needs your input',
         // B-105 terminal mirror: header toggle to the structured (chat) face
         structuredView: 'Structured view',
+        // P1 multi-device: header button to reclaim this viewport's width when
+        // another (narrower) device left the shared pane narrow.
+        refitWidth: 'Refit width',
+        refitWidthHint: 'Fit the terminal to this device’s width. Lines already scrolled above keep the width they were printed at — terminals cannot reflow them.',
         selectMode: 'Select / copy mode',
         selectModeHint: 'Select mode — long-press to select & copy · tap again to scroll',
         // Accessible name for the mobile assistive key bar (Esc/Tab/Ctrl/arrows…)

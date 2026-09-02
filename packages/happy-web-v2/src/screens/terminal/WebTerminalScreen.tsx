@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X, RefreshCw } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -37,6 +37,7 @@ import {
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
 import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS } from './termFont';
+import { shouldReassertGeometry } from './termGeometryReassert';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
 import { isTerminalInputElement } from './termInputElement';
@@ -322,6 +323,10 @@ export function WebTerminalScreen() {
   // Bridge the effect-local scheduleFit out to the drag-release handler (same
   // pattern as sendInputRef).
   const scheduleFitRef = useRef<(() => void) | null>(null);
+  // Bridge the effect-local "re-assert this viewport's width" out to the header
+  // "refit width" button (P1 multi-device fix). force=true re-sends even when
+  // the pane already matches, so the button always does something visible.
+  const refitWidthRef = useRef<((force?: boolean) => void) | null>(null);
   const { width: filesWidth, onHandleMouseDown: onFilesHandleDown } = useFilesPanelWidth({
     onDragStart: () => { filesDragHoldRef.current = true; },
     onDragEnd: () => {
@@ -889,6 +894,40 @@ export function WebTerminalScreen() {
       if (terminalId) apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
     };
 
+    // ── Reclaim the pane on INTERACTION (P1 multi-device, 2026-09) ───────────
+    // B-287's window-'focus' handler (below) reclaims the width on alt-tab, but
+    // a switch between two physical DEVICES fires no focus/visibility edge on
+    // the desktop: its browser window never lost OS focus — the user just looked
+    // at their phone, which meanwhile shrank the shared `window-size latest`
+    // pane. So the desktop sat narrow until a conversation switch remounted it.
+    // The reliable "this device is being used again" signal that survives the
+    // no-edge case is a real pointer/keystroke here. shouldReassertGeometry gates
+    // it so a hidden tab never drives the width and an already-correct pane never
+    // spams a resize (only a genuine device-switch mismatch sends one — after
+    // which the OSC-6121 adopt makes us match and further events are no-ops).
+    // NOTE the frozen NARROW scrollback above the fold cannot be reflowed (the
+    // app hard-wrapped it; specs/2026-09-terminal-render-integrity.md, ink#883)
+    // — this only makes the LIVE region and all NEW output reclaim full width.
+    const reassertGeometry = (force?: boolean) => {
+      if (disposed || !terminalId) return;
+      const want = renderer.proposeFit();
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      if (!shouldReassertGeometry({ hidden, want, current: { cols: term.cols, rows: term.rows }, force })) return;
+      doFit();
+    };
+    refitWidthRef.current = reassertGeometry;
+    // Keystrokes are hot; probe proposeFit() (a DOM measure) at most once/sec.
+    // Pointer taps are rare, so they probe immediately.
+    let lastGeomProbeAt = 0;
+    const GEOM_PROBE_MS = 1000;
+    const onActiveKey = () => {
+      const now = Date.now();
+      if (now - lastGeomProbeAt < GEOM_PROBE_MS) return;
+      lastGeomProbeAt = now;
+      reassertGeometry();
+    };
+    const onActivePointer = () => reassertGeometry();
+
     // The daemon's in-band geometry marker: ESC ] 6121 ; cols ; rows BEL,
     // injected into the output stream at the exact point tmux resized the pane
     // (it rides the normal seq/ring/replay path, so a catch-up replays it too).
@@ -950,6 +989,12 @@ export function WebTerminalScreen() {
     // own the size (the daemon dedupes an unchanged `refresh-client -C`).
     const onWindowFocus = () => { if (!disposed && !document.hidden) scheduleFit(); };
     window.addEventListener('focus', onWindowFocus);
+    // The no-focus-edge device switch (see reassertGeometry above): a real
+    // pointer/keystroke on this pane reclaims the width. Capture-phase + read
+    // only (never preventDefault/stopPropagation), so xterm's own handling is
+    // untouched; passive where the type allows it.
+    mount.addEventListener('pointerdown', onActivePointer, { capture: true, passive: true });
+    mount.addEventListener('keydown', onActiveKey, { capture: true });
     // Give the terminal keyboard focus back. Three rules, all of them paid for
     // (2026-08-14, CDP-measured):
     //  1. IDEMPOTENT — already focused ⇒ do nothing. A focus() on the element
@@ -1335,7 +1380,13 @@ export function WebTerminalScreen() {
           // during the RPC queued their writes after it, and their seqs were
           // accepted after seqAtCall so the snapshot baseline keeps them.
           await applyOpenResult(res, seqAtCall)();
-          apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+          // Re-assert geometry after a catch-up — but never from a HIDDEN tab.
+          // A backgrounded phone that reconnects would otherwise re-send its
+          // narrow width and re-shrink the desktop the user is now looking at
+          // (window-size latest). A visible tab still asserts its real size.
+          if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+            apiSocket.send('terminal-resize', { machineId, terminalId, cols: term.cols, rows: term.rows });
+          }
           outcome = 'ok';
         } finally {
           const done = completeCatchUp(catchUpState, disposed ? 'aborted' : outcome, Date.now());
@@ -2147,6 +2198,8 @@ export function WebTerminalScreen() {
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
       window.removeEventListener('focus', onWindowFocus);
+      mount.removeEventListener('pointerdown', onActivePointer, { capture: true } as EventListenerOptions);
+      mount.removeEventListener('keydown', onActiveKey, { capture: true } as EventListenerOptions);
       if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
       try { geometryOsc?.dispose(); } catch { /* already disposed */ }
       offResume();
@@ -2207,6 +2260,7 @@ export function WebTerminalScreen() {
       writeHoldRef.current = null;
       sendInputRef.current = null;
       scheduleFitRef.current = null;
+      refitWidthRef.current = null;
       pasteTextRef.current = null;
       dataDisp.dispose();
       keyDisp.dispose();
@@ -2426,6 +2480,20 @@ export function WebTerminalScreen() {
             onClick={() => setFilesOpen((v) => !v)}
           >
             <FolderOpen size={18} />
+          </button>
+          {/* P1 multi-device: reclaim this device's width when a narrower one
+              (a phone) left the shared pane narrow. Auto-reclaim rides real
+              pointer/keys (reassertGeometry); this is the explicit lever and
+              carries the "old lines can't reflow" explanation in its tooltip. */}
+          <button
+            type="button"
+            className="sb-icon-btn"
+            title={t('terminal.refitWidthHint')}
+            aria-label={t('terminal.refitWidth')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => refitWidthRef.current?.(true)}
+          >
+            <RefreshCw size={18} />
           </button>
           {hasTmuxSession && <button
             className="sb-icon-btn"
