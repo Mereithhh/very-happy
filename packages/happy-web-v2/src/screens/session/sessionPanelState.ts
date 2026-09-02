@@ -1,4 +1,4 @@
-/** Files panel tabs plus the `/btw` side-question panel (B-282). */
+/** Files panel tabs plus the `/btw` side-question panel (B-283). */
 export type SessionPanelTab = 'changed' | 'all' | 'browse' | 'btw';
 export type SessionFilesTab = Exclude<SessionPanelTab, 'btw'>;
 

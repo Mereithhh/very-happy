@@ -743,7 +743,7 @@ export async function machineListTmuxSessions(machineId: string): Promise<UserTm
 }
 
 export async function machineKillTerminal(machineId: string, terminalId: string, opts?: {
-    /** B-282: also kill the user tmux session the terminal is attached to.
+    /** B-283: also kill the user tmux session the terminal is attached to.
      *  Send only when `killAttachedSupported(daemonState)` — an old daemon
      *  ignores the field and kills the web terminal alone. */
     alsoAttached?: boolean;
@@ -1782,7 +1782,7 @@ export type {
     SessionKillResponse
 };
 
-// ── `/btw` side questions (B-282) ───────────────────────────────────────────
+// ── `/btw` side questions (B-283) ───────────────────────────────────────────
 // Ask/poll/cancel instead of one blocking RPC: server + relay cap every RPC
 // at 30s and a side answer over a big context routinely takes longer. The
 // CLI keeps the running answer; the web polls until a terminal status.

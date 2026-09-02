@@ -1,7 +1,7 @@
 # `/btw` 侧问（side question）：不打断主对话的旁路问答
 
 > 状态：Final
-> 日期：2026-09-02 ｜ 关联 backlog：B-282 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
+> 日期：2026-09-02 ｜ 关联 backlog：B-283 ｜ 出处：Owner 2026-09-02「给 claude code sdk session 支持类似 btw 命令的能力」
 
 ## 背景
 

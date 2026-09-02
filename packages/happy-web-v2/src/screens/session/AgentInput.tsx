@@ -141,7 +141,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const gate = composerGate(session);
     const restoreState = useRestoreState(sessionId);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
-    // B-282: `/btw` is a WEB command (never sent to the CLI) — list it first on
+    // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
     // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
         ? []
@@ -298,7 +298,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
-    // B-282: `/btw` is a web command on Claude sessions. This is the ONLY exit
+    // B-283: `/btw` is a web command on Claude sessions. This is the ONLY exit
     // to the main conversation for queued items (auto-release, edit-and-save,
     // intervene, persisted-queue reload), so the routing lives here too.
     const routeBtw = (text: string): boolean => {
@@ -343,7 +343,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending || !session) return;
-        // B-282: `/btw [question]` opens the side-question panel and NEVER
+        // B-283: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
         // Non-Claude sessions keep sending the text verbatim.
         if (routeBtw(value)) {

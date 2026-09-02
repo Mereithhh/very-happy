@@ -16,7 +16,7 @@ function stream(messages: unknown[]) {
 
 const base = { question: 'what does this error mean?', resumeSessionId: 'sess-1', cwd: '/repo' };
 
-describe('buildSideQuestionPrompt (B-282)', () => {
+describe('buildSideQuestionPrompt (B-283)', () => {
     it('is just the question when there is no history', () => {
         expect(buildSideQuestionPrompt('  why?  ')).toBe('why?');
     });

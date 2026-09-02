@@ -50,7 +50,7 @@ describe('Claude SDK query adapter', () => {
         }));
     });
 
-    it('forwards side-question fork options verbatim (B-282)', () => {
+    it('forwards side-question fork options verbatim (B-283)', () => {
         query({
             prompt: 'hello',
             options: { resume: 'abc', forkSession: true, tools: [], persistSession: false, includePartialMessages: true },

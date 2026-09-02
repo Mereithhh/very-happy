@@ -36,7 +36,7 @@ export function ChatHeader({
     sessionId: string;
     filesOpen?: boolean;
     onToggleFiles?: () => void;
-    /** B-282 `/btw` side-question panel; absent = this session can't host it */
+    /** B-283 `/btw` side-question panel; absent = this session can't host it */
     btwOpen?: boolean;
     onToggleBtw?: () => void;
 }) {

@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe('side-question composer keys vs CJK IME (B-282)', () => {
+describe('side-question composer keys vs CJK IME (B-283)', () => {
     it('plain Enter submits, Shift+Enter is a newline, other keys are ignored', () => {
         expect(press({ key: 'Enter' })).toBe('submit');
         expect(press({ key: 'Enter', shiftKey: true })).toBe('newline');

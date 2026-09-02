@@ -619,7 +619,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentDisallowedTools: string[] | undefined = withAssistantDenylist(undefined, isAssistantVariant);
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
-    // B-282 `/btw` side questions: answered by a separate single-turn query that
+    // B-283 `/btw` side questions: answered by a separate single-turn query that
     // forks the live Claude session. Registered here (not in the launcher) so
     // it works in both modes and sees the process-level model selection.
     // Context source is the LIVE id only: server metadata keeps the pre-/clear

@@ -440,7 +440,7 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
-        // B-282 `/btw` side questions — answered by a separate single-turn
+        // B-283 `/btw` side questions — answered by a separate single-turn
         // query that forks the live conversation; never enters the main chat.
         btw: {
             title: 'Side question',
@@ -1746,7 +1746,7 @@ export const en = {
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
         closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
-        // B-282: attach terminals — closing only disconnects.
+        // B-283: attach terminals — closing only disconnects.
         closeAttachedTitle: 'Disconnect this tmux session?',
         closeAttachedMessage: ({ name }: { name: string }) => `Closing only disconnects: your tmux session “${name}” and everything running in it keep going on the machine. You can attach it again any time; the row moves to the archive.`,
         closeAttachedConfirm: 'Disconnect',

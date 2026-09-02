@@ -35,7 +35,7 @@ export function SessionDetailScreen() {
     const [searchParams, setSearchParams] = useSearchParams();
     const panelTab = readSessionPanel(searchParams.get('panel'));
     // One aside, two tenants: the files panel (three tabs) or the `/btw`
-    // side-question panel (B-282). `filesOpen` drives the files toggle only.
+    // side-question panel (B-283). `filesOpen` drives the files toggle only.
     // `?panel=btw` on a session that cannot host it (codex/gemini, terminal
     // mirror, pasted URL) is ignored rather than mounting a dead panel.
     const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);

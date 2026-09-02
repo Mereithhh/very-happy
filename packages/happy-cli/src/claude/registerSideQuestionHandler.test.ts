@@ -29,7 +29,7 @@ function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadCont
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-describe('registerSideQuestionHandler (B-282)', () => {
+describe('registerSideQuestionHandler (B-283)', () => {
     it('registers the three btw RPCs', () => {
         const handlers: string[] = [];
         registerSideQuestionHandler({ registerHandler: (m: string) => { handlers.push(m); } }, {

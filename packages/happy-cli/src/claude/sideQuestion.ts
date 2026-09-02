@@ -1,5 +1,5 @@
 /**
- * Side questions (`/btw`, B-282) — a quick question answered from the main
+ * Side questions (`/btw`, B-283) — a quick question answered from the main
  * conversation's context WITHOUT touching the main conversation.
  *
  * Mirrors Claude Code's own `/btw`: the answer comes from a separate,

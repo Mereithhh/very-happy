@@ -1,4 +1,4 @@
-/* BtwPanel — `/btw` side questions (B-282). Sits in the session aside
+/* BtwPanel — `/btw` side questions (B-283). Sits in the session aside
    (.sd-files geometry). Panel = bg-1, composer = bg-2, borders = --line;
    accent only for the live "thinking" dot (StatusDot owns it). */
 .btw {

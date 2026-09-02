@@ -1,5 +1,5 @@
 /**
- * Keyboard submit policy for the side-question composer (B-282). Pure, so the
+ * Keyboard submit policy for the side-question composer (B-283). Pure, so the
  * IME cases are unit-tested against the real guard instead of on a phone:
  *
  * - Composition traffic (isComposing / key 'Process' / Safari's committing

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
-describe('/btw wiring (B-282)', () => {
+describe('/btw wiring (B-283)', () => {
     it('the composer intercepts /btw before any send path', () => {
         const source = read('./AgentInput.tsx');
         const intercept = source.indexOf('if (routeBtw(value))');

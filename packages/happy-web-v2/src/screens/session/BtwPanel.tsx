@@ -1,5 +1,5 @@
 /**
- * BtwPanel — the `/btw` side-question panel (B-282). Lives in the session's
+ * BtwPanel — the `/btw` side-question panel (B-283). Lives in the session's
  * right-hand aside (same geometry as FilesPanel). Exchanges come from
  * btwStore (memory-only, per session); the store owns the ask/poll loop so
  * closing the panel never abandons a running question.
