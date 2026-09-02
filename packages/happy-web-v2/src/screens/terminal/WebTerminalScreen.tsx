@@ -37,6 +37,7 @@ import {
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
 import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS } from './termFont';
+import { ensureTerminalCjkFont } from './terminalCjkFont';
 import { shouldReassertGeometry } from './termGeometryReassert';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
@@ -144,7 +145,11 @@ const THEME = {
 // cramped). IBM Plex Mono loads async via @fontsource, so we also re-measure
 // once document.fonts is ready (below) — otherwise the cell size is locked to
 // the fallback metrics and text gets clipped after the real font swaps in.
-const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+// 'Sarasa Fixed SC' FIRST: dual-width (CJK == 2x ASCII) so Chinese doesn't
+// overlap the grid (叠字), and its Iosevka block/box glyphs tile seamlessly.
+// Loaded lazily from the CDN by ensureTerminalCjkFont() on mount; IBM Plex Mono
+// stays as the already-bundled Latin fallback until the slices arrive.
+const TERM_FONT = "'Sarasa Fixed SC', 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
 const TERM_FONT_SIZE_FINE = 13;
 const TERM_FONT_SIZE_COARSE = 12;
 
@@ -480,6 +485,9 @@ export function WebTerminalScreen() {
     setHasTmuxSession(false);
     setShowHelp(false);
     ensureImeFix();
+    // Start fetching the dual-width CJK terminal font (Sarasa Fixed SC) the
+    // first time any terminal opens — deferred, terminal-only, CDN-hosted.
+    ensureTerminalCjkFont();
     const mount = innerRef.current;
 
     // Renderer abstraction (see ./renderer): the daemon-authoritative core below

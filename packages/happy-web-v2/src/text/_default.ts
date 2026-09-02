@@ -1612,6 +1612,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03a: {
+                title: 'Chinese in the terminal stops overlapping',
+                summary: 'The terminal now uses a dual-width CJK font (Sarasa Fixed SC), so Chinese characters line up on the grid instead of overlapping each other — and the same font makes the Claude logo and TUI frames render fully seamless.',
+                overlap: 'Chinese (and other CJK) text no longer overlaps itself: the terminal font’s ideographs are exactly twice the width of a Latin character, so they sit on the grid cleanly. The font is loaded on demand from a CDN only when you open a terminal, so it costs nothing elsewhere.',
+                logo: 'The new font’s block and box-drawing glyphs fill the cell, so the Claude Code startup logo and TUI frame borders now tile perfectly seamlessly — completing the earlier line-height fix.',
+            },
             sep02g: {
                 title: 'Terminal logo & frames render seamless',
                 summary: 'Block/pixel art (the Claude Code startup logo) and TUI box-drawing no longer show hairline gaps between rows — terminal line spacing was tightened to the standard console density so stacked blocks tile seamlessly.',

@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-terminal-cjk-font',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep03a.title',
+    summaryKey: 'changelog.releases.sep03a.summary',
+    itemKeys: [
+      'changelog.releases.sep03a.overlap',
+      'changelog.releases.sep03a.logo',
+    ],
+  },
+  {
     id: '2026-09-02-terminal-logo-seamless',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,
