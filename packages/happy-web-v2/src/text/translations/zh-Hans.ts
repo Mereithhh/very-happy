@@ -461,6 +461,7 @@ export const zhHans: TranslationStructure = {
             headerHint: '顺口问一句（/btw）',
             commandDescription: '不打断当前任务，顺口问一个小问题',
             placeholder: '旁边问一句…（Enter 发送）',
+            placeholderShiftEnter: '旁边问一句…（Shift+Enter 发送）',
             send: '提问',
             cancel: '停止侧问',
             clear: '清空侧问',

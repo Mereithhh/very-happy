@@ -448,6 +448,7 @@ export const en = {
             headerHint: 'Ask a quick side question (/btw)',
             commandDescription: 'Ask a quick side question without interrupting the current work',
             placeholder: 'Ask something on the side… (Enter to send)',
+            placeholderShiftEnter: 'Ask something on the side… (Shift+Enter to send)',
             send: 'Ask',
             cancel: 'Stop side question',
             clear: 'Clear side questions',

@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { MessageCircleQuestion, Send, Square, Trash2, X } from 'lucide-react';
-import { useSession } from '@/sync/storage';
+import { useSession, useSetting } from '@/sync/storage';
 import { btwStore, useBtwSession, type BtwExchange } from '@/sync/btwStore';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
@@ -18,6 +18,7 @@ import { useImeGuard } from '@/utils/ime';
 import { Markdown, MarkdownPathProvider } from './Markdown';
 import { useElapsedSeconds } from './useElapsed';
 import { supportsBtw } from './btwCommand';
+import { resolveBtwComposerKey } from './btwSubmitKey';
 import './btw.css';
 
 function clock(ms: number): string {
@@ -68,6 +69,7 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
     const online = session?.presence === 'online';
     const running = exchanges.find((e) => e.status === 'running');
     const ime = useImeGuard();
+    const enterToSend = useSetting('agentInputEnterToSend');
     const taRef = useRef<HTMLTextAreaElement>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
     // The textarea is controlled by LOCAL state only (a per-keystroke round
@@ -94,7 +96,9 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
 
     const canAsk = supported && online && !running && draftLocal.trim().length > 0;
     const submit = () => {
-        if (!canAsk) return;
+        // A send-button tap while a composition is still open would ship the
+        // half-composed text; the key path is guarded per event below.
+        if (!canAsk || ime.isComposing()) return;
         const question = draftLocal;
         setDraftLocal('');
         btwStore.getState().setDraft(sessionId, '');
@@ -102,7 +106,13 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
         requestAnimationFrame(() => taRef.current?.focus());
     };
     const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey && !ime.isGuarded(e)) {
+        const action = resolveBtwComposerKey({
+            key: e.key,
+            shiftKey: e.shiftKey,
+            guarded: ime.isGuarded(e),
+            enterToSend,
+        });
+        if (action === 'submit') {
             e.preventDefault();
             submit();
         }
@@ -156,7 +166,7 @@ export function BtwPanel({ sessionId, onClose }: { sessionId: string; onClose: (
                         rows={2}
                         value={draftLocal}
                         disabled={!supported}
-                        placeholder={t('session.btw.placeholder')}
+                        placeholder={enterToSend ? t('session.btw.placeholder') : t('session.btw.placeholderShiftEnter')}
                         onChange={(e) => setDraftLocal(e.target.value)}
                         onKeyDown={onKeyDown}
                         onCompositionStart={ime.onCompositionStart}
