@@ -981,6 +981,11 @@ export const en = {
         terminalAttachTitle: 'Attach a tmux session…',
     },
 
+    attachTmuxModal: {
+        // B-281: the dedicated attach picker
+        eyebrow: 'ATTACH TMUX',
+        title: 'Attach a tmux session',
+    },
     newTerminalModal: {
         // Used by NewTerminalModal (B-144)
         eyebrow: 'NEW TERMINAL',

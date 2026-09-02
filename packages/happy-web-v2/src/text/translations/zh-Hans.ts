@@ -972,6 +972,10 @@ export const zhHans: TranslationStructure = {
         terminalAttachTitle: '接入 tmux 会话…',
     },
 
+    attachTmuxModal: {
+        eyebrow: '接入 TMUX',
+        title: '接入 tmux 会话',
+    },
     newTerminalModal: {
         eyebrow: '新建终端',
         title: '在指定目录新建终端',

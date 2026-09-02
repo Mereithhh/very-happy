@@ -51,13 +51,7 @@ function newId(): string {
   return c?.randomUUID ? c.randomUUID().replace(/-/g, '').slice(0, 12) : Math.random().toString(36).slice(2, 14);
 }
 
-export function NewTerminalModal({ onClose, intent }: {
-  onClose: () => void;
-  /** B-280: 'attach' = opened from the dedicated "attach a tmux session"
-   *  entry — the section is the point, so an unsupported daemon gets a hint
-   *  instead of silence. */
-  intent?: 'attach';
-}) {
+export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { t } = useTranslation();
@@ -206,10 +200,6 @@ export function NewTerminalModal({ onClose, intent }: {
                 </option>
               ))}
             </select>
-
-            {!attachSupported && intent === 'attach' && (
-              <div className="ns-hint">{t('newTerminalModal.attachNeedsCli')}</div>
-            )}
             {attachSectionVisible(attachSupported) && (
               <>
                 <label className="ns-label">{t('newTerminalModal.attachSection')}</label>

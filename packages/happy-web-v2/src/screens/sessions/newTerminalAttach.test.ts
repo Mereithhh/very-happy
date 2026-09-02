@@ -49,8 +49,17 @@ describe('B-273 newTerminalAttach', () => {
         expect(src.indexOf('if (attachSelected) {')).toBeLessThan(src.indexOf('machineFsList(machineId, guess)'));
         expect(src).toMatch(/\}, \[machineId, attachSupported\]\);/);
         expect(src).toMatch(/\(!!attachSelected \|\| trimmed\.length > 0\)/);
-        // B-280: empty machines show the empty state, unsupported + attach intent shows the CLI hint.
+        // B-280: empty machines show the empty state instead of hiding the section.
         expect(src).toMatch(/attachEmpty/);
-        expect(src).toMatch(/intent === 'attach'[\s\S]{0,200}attachNeedsCli/);
+    });
+
+    it('source contract: the dedicated picker (B-281) attaches on row click and covers unsupported/empty/loading', () => {
+        const picker = readFileSync(join(__dirname, 'AttachTmuxModal.tsx'), 'utf8');
+        expect(picker).toMatch(/createTerminalAt\(navigate, machineId, \{ attachTmux: \{ id: s\.id, name: s\.name \} \}\)/);
+        expect(picker).toMatch(/attachNeedsCli/);
+        expect(picker).toMatch(/attachEmpty/);
+        expect(picker).toMatch(/attachLoading/);
+        // Row click attaches immediately — no separate confirm button.
+        expect(picker).toMatch(/onClick=\{\(\) => attach\(s\)\}/);
     });
 });

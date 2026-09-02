@@ -35,6 +35,7 @@ import { NotificationBell } from '@/screens/notifications/NotificationBell';
 import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
 import { NewTerminalModal } from './NewTerminalModal';
+import { AttachTmuxModal } from './AttachTmuxModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
@@ -137,7 +138,7 @@ export function Sidebar() {
   );
   const [showNew, setShowNew] = useState(false);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
-  const [newTerminalIntent, setNewTerminalIntent] = useState<'attach' | undefined>(undefined);
+  const [showAttachTmux, setShowAttachTmux] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
@@ -892,16 +893,15 @@ export function Sidebar() {
                 key: 'terminal-at',
                 label: t('newSessionModal.terminalAtTitle'),
                 icon: FolderOpen,
-                onSelect: () => { setNewTerminalIntent(undefined); setShowNewTerminal(true); },
+                onSelect: () => setShowNewTerminal(true),
               },
               {
-                // B-280: open a web terminal attached to one of the machine's
-                // OWN tmux sessions (B-273) — a first-class entry so it is
-                // discoverable without knowing the directory dialog hosts it.
+                // B-281: the dedicated picker — lists the machine's OWN tmux
+                // sessions directly, click = attach (B-273 machinery).
                 key: 'terminal-attach',
                 label: t('newSessionModal.terminalAttachTitle'),
                 icon: Cable,
-                onSelect: () => { setNewTerminalIntent('attach'); setShowNewTerminal(true); },
+                onSelect: () => setShowAttachTmux(true),
               },
             ]}
           >
@@ -1144,7 +1144,8 @@ export function Sidebar() {
       </footer>
 
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
-      {showNewTerminal && <NewTerminalModal intent={newTerminalIntent} onClose={() => setShowNewTerminal(false)} />}
+      {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
+      {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}
