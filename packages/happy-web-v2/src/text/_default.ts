@@ -1612,6 +1612,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02g: {
+                title: 'Terminal logo & frames render seamless',
+                summary: 'Block/pixel art (the Claude Code startup logo) and TUI box-drawing no longer show hairline gaps between rows — terminal line spacing was tightened to the standard console density so stacked blocks tile seamlessly.',
+                blocks: 'The terminal line height is now 1.0, so the Claude logo’s blocks and TUI frame borders connect instead of showing a thin gap between each row; regular text is a touch denser as a result.',
+            },
             sep02f: {
                 title: 'Terminal snaps back to your width',
                 summary: 'Switch from your phone back to your desktop and the terminal now reclaims your full width the moment you touch it — plus a new refit-width button in the terminal header for when you want it on demand.',

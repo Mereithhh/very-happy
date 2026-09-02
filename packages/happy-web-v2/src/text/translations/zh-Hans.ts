@@ -1586,6 +1586,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02g: {
+                title: '终端 logo 和框线渲染严丝合缝',
+                summary: '方块/像素画(Claude Code 启动 logo)和 TUI 框线不再在行与行之间露出细缝——终端行距收紧到标准控制台密度,让堆叠的方块严丝合缝地拼接。',
+                blocks: '终端行高改为 1.0,Claude logo 的方块和 TUI 边框现在连成一体、不再每行之间有细缝;代价是普通文字会略密一点。',
+            },
             sep02f: {
                 title: '终端会自动缩回你的宽度',
                 summary: '从手机切回桌面时，终端现在只要你一操作就会重新占满本机宽度；终端头部还加了一个「重新适配宽度」按钮，需要时手动触发。',

@@ -16,7 +16,16 @@ export function createXtermRenderer(opts: RendererOptions): TerminalRenderer {
     const term = new Terminal({
         fontFamily: opts.fontFamily,
         fontSize: opts.fontSize,
-        lineHeight: 1.3,
+        // lineHeight 1.0 — pixel-art/block glyphs (the Claude startup logo) and
+        // TUI box-drawing must tile SEAMLESSLY, and the DOM renderer draws those
+        // from the font (no customGlyphs — that's canvas/webgl only). Any
+        // lineHeight > 1 inserts leading between the stacked block rows
+        // (xterm DomRenderer cell.height = floor(charHeight * lineHeight)), so
+        // 1.3 opened a ~30% dark seam through the logo (xterm.js #2572). 1.0 is
+        // the standard console density and the only value that closes the seam
+        // in the DOM renderer without a WebGL migration. See
+        // specs/2026-09-terminal-render-integrity.md.
+        lineHeight: 1.0,
         cursorBlink: true,
         theme: opts.theme,
         allowProposedApi: true,
