@@ -3,7 +3,7 @@ import { registerSideQuestionHandler, type SideQuestionPollResponse } from './re
 
 type Handler = (request: any) => Promise<any>;
 
-function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadContext: boolean }>; claudeSessionId?: string | null } = {}) {
+function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadContext: boolean }>; claudeSessionId?: string | null; maxRunMs?: number } = {}) {
     const handlers = new Map<string, Handler>();
     let clock = 1000;
     const rpc = { registerHandler: (method: string, handler: Handler) => { handlers.set(method, handler); } };
@@ -19,6 +19,9 @@ function harness(opts: { run?: (input: any) => Promise<{ answer: string; hadCont
         run: runSpy,
         now: () => clock,
         retainMs: 1000,
+        maxRunMs: opts.maxRunMs,
+        getEnv: () => ({ ANTHROPIC_BASE_URL: 'https://hub.example' }),
+        settingsPath: '/tmp/side-question.json',
     });
     const call = (method: string, request?: unknown) => handlers.get(method)!(request);
     return { call, runSpy, tick: (ms: number) => { clock += ms; } };
@@ -49,6 +52,8 @@ describe('registerSideQuestionHandler (B-282)', () => {
             resumeSessionId: 'claude-1',
             cwd: '/repo',
             model: 'opus',
+            env: { ANTHROPIC_BASE_URL: 'https://hub.example' },
+            settingsPath: '/tmp/side-question.json',
         }));
         await flush();
         const running: SideQuestionPollResponse = await h.call('btw-poll', { requestId: ask.requestId });
@@ -93,6 +98,29 @@ describe('registerSideQuestionHandler (B-282)', () => {
         expect(await h.call('btw-poll', { requestId: ask.requestId })).toEqual(expect.objectContaining({ status: 'cancelled' }));
         expect(await h.call('btw-cancel', { requestId: ask.requestId })).toEqual({ cancelled: false });
         await expect(h.call('btw-ask', { question: 'again' })).resolves.toBeTruthy();
+    });
+
+    it('frees a slot whose run never settles once the wall-clock cap elapses', async () => {
+        vi.useFakeTimers();
+        try {
+            const aborted = vi.fn();
+            const h = harness({
+                maxRunMs: 5000,
+                run: (input) => new Promise((_, reject) => {
+                    input.signal.addEventListener('abort', () => { aborted(); reject(new Error('aborted')); });
+                }),
+            });
+            const ask = await h.call('btw-ask', { question: 'q' });
+            await expect(h.call('btw-ask', { question: 'again' })).rejects.toThrow('already running');
+            await vi.advanceTimersByTimeAsync(5001);
+            expect(aborted).toHaveBeenCalledTimes(1);
+            expect(await h.call('btw-poll', { requestId: ask.requestId })).toEqual(expect.objectContaining({
+                status: 'error', error: 'Side question timed out',
+            }));
+            await expect(h.call('btw-ask', { question: 'again' })).resolves.toBeTruthy();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('drops finished results after the retain window and reports no context before first turn', async () => {

@@ -64,6 +64,14 @@ describe('Claude SDK query adapter', () => {
         }));
     });
 
+    it('layers explicit env over process.env for the spawned Claude', () => {
+        query({ prompt: 'hello', options: { env: { ANTHROPIC_BASE_URL: 'https://hub.example', HAPPY_MANAGED: '1' } } });
+        const env = sdkQuery.mock.calls[0][0].options.env;
+        expect(env.ANTHROPIC_BASE_URL).toBe('https://hub.example');
+        expect(env.HAPPY_MANAGED).toBe('1');
+        expect(env.PATH).toBe(process.env.PATH);
+    });
+
     it('leaves fork options undefined for ordinary queries', () => {
         query({ prompt: 'hello', options: { resume: 'abc' } });
         const options = sdkQuery.mock.calls[0][0].options;

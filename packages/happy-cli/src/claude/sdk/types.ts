@@ -76,6 +76,12 @@ export interface QueryOptions {
     persistSession?: boolean
     /** Emit `stream_event` partials (token-level text deltas). */
     includePartialMessages?: boolean
+    /**
+     * Extra environment for the spawned Claude, layered over the wrapper's
+     * process.env (e.g. the session's `--claude-env` values, which in local
+     * mode only ever reached the main Claude's spawn env).
+     */
+    env?: Record<string, string>
 }
 
 /**

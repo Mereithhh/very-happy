@@ -25,6 +25,10 @@ export interface SideQuestionInput {
     resumeSessionId: string | null;
     cwd: string;
     model?: string;
+    /** Session `--claude-env` values (provider/base URL/managed flag) — the fork must see the same. */
+    env?: Record<string, string>;
+    /** Settings file that disables hooks: a side question must not fire the user's SessionStart/Stop hooks. */
+    settingsPath?: string;
     signal?: AbortSignal;
     /** Progressive text — the full answer so far, every time it grows. */
     onText?: (text: string) => void;
@@ -48,8 +52,8 @@ export const SIDE_QUESTION_SYSTEM_PROMPT = [
     'unaffected by this exchange.',
 ].join(' ');
 
-const MAX_HISTORY = 12;
-const MAX_HISTORY_CHARS = 2000;
+export const MAX_HISTORY = 12;
+export const MAX_HISTORY_CHARS = 2000;
 
 function clip(text: string, max: number): string {
     return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -83,6 +87,8 @@ export function sideQuestionQueryOptions(input: SideQuestionInput): QueryOptions
         includePartialMessages: true,
         permissionMode: 'default',
         model: input.model,
+        env: input.env,
+        settingsPath: input.settingsPath,
         appendSystemPrompt: SIDE_QUESTION_SYSTEM_PROMPT,
         canCallTool: async () => ({ behavior: 'deny', message: 'Side questions cannot use tools' }),
         abort: input.signal,

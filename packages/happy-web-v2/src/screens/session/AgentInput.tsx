@@ -298,7 +298,22 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    // B-282: `/btw` is a web command on Claude sessions. This is the ONLY exit
+    // to the main conversation for queued items (auto-release, edit-and-save,
+    // intervene, persisted-queue reload), so the routing lives here too.
+    const routeBtw = (text: string): boolean => {
+        if (!canOfferBtw(session)) return false;
+        const btw = parseBtwCommand(text);
+        if (!btw) return false;
+        openBtwPanel(sessionId, btw.question);
+        return true;
+    };
+
     const sendQueuedItem = async (item: QueuedMessage, delivery: 'queue' | 'steer' = 'queue') => {
+        if (routeBtw(item.text)) {
+            releaseQueuedAttachments(item);
+            return;
+        }
         await sync.sendMessage(sessionId, item.text, {
             source: 'chat',
             delivery,
@@ -330,12 +345,11 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         if ((!value && !atts) || sending || !session) return;
         // B-282: `/btw [question]` opens the side-question panel and NEVER
         // reaches the main conversation (attachments stay in the composer).
-        const btw = parseBtwCommand(value);
-        if (btw) {
+        // Non-Claude sessions keep sending the text verbatim.
+        if (routeBtw(value)) {
             setText('');
             draftRef.current = '';
             storage.getState().updateSessionDraft(sessionId, null);
-            openBtwPanel(sessionId, btw.question);
             return;
         }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the

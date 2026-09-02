@@ -36,26 +36,33 @@ export function SessionDetailScreen() {
     const panelTab = readSessionPanel(searchParams.get('panel'));
     // One aside, two tenants: the files panel (three tabs) or the `/btw`
     // side-question panel (B-282). `filesOpen` drives the files toggle only.
-    const panelOpen = panelTab !== null;
-    const btwOpen = panelTab === 'btw';
-    const filesOpen = panelOpen && !btwOpen;
+    // `?panel=btw` on a session that cannot host it (codex/gemini, terminal
+    // mirror, pasted URL) is ignored rather than mounting a dead panel.
+    const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);
+    const btwOpen = panelTab === 'btw' && btwAllowed;
+    const filesOpen = panelTab !== null && panelTab !== 'btw';
+    const panelOpen = btwOpen || filesOpen;
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
     };
     const setPanelRef = useRef(setPanel);
     setPanelRef.current = setPanel;
-    // Composer `/btw [question]` → open this session's panel (and ask when the
-    // wrapper supports it; otherwise park the text as the panel draft so the
-    // upgrade notice explains why nothing ran).
+    const btwOpenRef = useRef(btwOpen);
+    btwOpenRef.current = btwOpen;
+    // Composer `/btw [question]` → open this session's panel (replace, not
+    // push, when it is already open) and ask when the wrapper supports it and
+    // nothing is running; otherwise park the text as the panel draft so it is
+    // never lost (upgrade notice / running question explain why).
     useEffect(() => {
         if (!id) return;
         return onBtwOpen((detail) => {
             if (detail.sessionId !== id) return;
-            setPanelRef.current('btw');
+            setPanelRef.current('btw', btwOpenRef.current);
             const question = detail.question?.trim();
             if (!question) return;
             const current = storage.getState().sessions[id];
-            if (supportsBtw(current)) void btwStore.getState().ask(id, question);
+            const running = btwStore.getState().sessions[id]?.exchanges.some((e) => e.status === 'running') === true;
+            if (supportsBtw(current) && !running) void btwStore.getState().ask(id, question);
             else btwStore.getState().setDraft(id, question);
         });
     }, [id]);
@@ -121,7 +128,7 @@ export function SessionDetailScreen() {
                     filesOpen={filesOpen}
                     onToggleFiles={() => filesOpen ? setPanel(null, true) : setPanel('changed')}
                     btwOpen={btwOpen}
-                    onToggleBtw={!mirror && canOfferBtw(session)
+                    onToggleBtw={btwAllowed
                         ? () => (btwOpen ? setPanel(null, true) : setPanel('btw'))
                         : undefined}
                 />

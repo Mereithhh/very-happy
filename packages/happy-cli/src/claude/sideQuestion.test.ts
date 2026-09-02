@@ -44,7 +44,7 @@ describe('buildSideQuestionPrompt (B-282)', () => {
 
 describe('sideQuestionQueryOptions', () => {
     it('forks the live session, disables every tool and never persists', async () => {
-        const options = sideQuestionQueryOptions({ ...base, model: 'opus' });
+        const options = sideQuestionQueryOptions({ ...base, model: 'opus', env: { HAPPY_MANAGED: '1' }, settingsPath: '/tmp/sq.json' });
         expect(options).toEqual(expect.objectContaining({
             cwd: '/repo',
             resume: 'sess-1',
@@ -57,6 +57,8 @@ describe('sideQuestionQueryOptions', () => {
             includePartialMessages: true,
             permissionMode: 'default',
             model: 'opus',
+            env: { HAPPY_MANAGED: '1' },
+            settingsPath: '/tmp/sq.json',
             appendSystemPrompt: SIDE_QUESTION_SYSTEM_PROMPT,
         }));
         expect(options.allowDangerouslySkipPermissions).toBeUndefined();

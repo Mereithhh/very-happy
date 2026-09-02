@@ -60,14 +60,17 @@ web 用户在等 agent 干活时想顺口问一句「这个报错啥意思」只
   - RPC `btw-cancel {requestId}` → abort。
   - 已完成结果保留 5 分钟后丢弃（web 拿到 done 就本地持有）。
 - `runClaude.ts:184` capability 追加 `'claude-btw-v1'`；注册点放在 `currentModel` 声明之后，deps：
-  `getClaudeSessionId: () => currentSession?.sessionId ?? session.getMetadata()?.claudeSessionId`、`getModel: () => currentModel`、`cwd: workingDirectory`。
+  `getClaudeSessionId`（**只认 live `currentSession.sessionId`**，且经 `claudeCheckSession` 确认 transcript 已落盘，否则无上下文作答——server metadata 里的 `claudeSessionId` 在 `/clear` 后是旧的，不能用）、`getModel: () => currentModel`、`cwd`、`getEnv: () => options.claudeEnvVars`（`--claude-env` 的 provider/凭据在 local 模式只进主 Claude 的 spawn env，fork 必须显式带上）、`settingsPath`（`{"disableAllHooks":true}` 的临时 settings：Claude CLI 自己的 `/btw` 在进程内跑不触发 hook，我们的 fork 是新进程，否则每次侧问都会放一遍用户的 SessionStart/Stop/SessionEnd hook）。
+- 兜底：CLI 侧每个侧问 10 分钟 wall-clock 上限（web 断连不发 cancel 时自动释放 slot）；web 侧 poll 连续 5 次失败或 ask 往返期间被取消，都会补发 `btw-cancel`。
+- RPC 错误语义：handler 抛错 ≠ RPC reject，`RpcHandlerManager` 以正常 ack 回 `{error}`——web 三个 wrapper 必须检查 `error` 字段并抛出（ops.ts 兄弟 wrapper 同款），否则 store 会把它当成功载荷。
 - `sdk/types.ts` + `sdk/query.ts`：`QueryOptions` 增 `forkSession/tools/persistSession/includePartialMessages`，一一透传。
 
 ### Web
 
 - `sessionPanelState.ts`：`SessionPanelTab` 增 `'btw'`（`?panel=btw`）。`SessionDetailScreen` 里 `panelTab==='btw'` 时右侧 aside 渲染 `BtwPanel`（复用 `.sd-files` 几何、拖宽、窄屏遮罩），否则 `FilesPanel`；files 按钮的 active 态只认 files 三个 tab。
 - `ChatHeader`：files 按钮左侧新增「侧问」图标按钮（`MessageCircleQuestion`），非 mirror 时显示；`aria-pressed` = 面板开。
-- `AgentInput.doSend`：`^/btw\b` 拦截 → 通过 `btwPanelState.openBtwPanel(sessionId, question?)`（window 事件 `vh:btw-open`，`SessionDetailScreen` 监听后 `setPanel('btw')`）；带问题则直接发问；**永不** `sendMessage`。Claude flavor 的斜杠补全列表前置 `btw` 项（描述文案 i18n）。
+- `AgentInput`：`routeBtw(text)` 在 **doSend 与 sendQueuedItem 两个出口**都拦截（排队释放/编辑排队项/插队/持久化队列重载都经 `sendQueuedItem`），只对 `canOfferBtw`（Claude flavor）会话生效，codex/gemini 原样发送；通过 `openBtwPanel(sessionId, question?)`（window 事件 `vh:btw-open`）打开面板，面板已开时 `replace` 而不是 push history；有问题且 wrapper 支持、无进行中侧问 → 直接发问，否则停进面板 draft 不丢字。Claude flavor 的斜杠补全列表前置 `btw` 项，CLI 自带的 builtin `btw` 进 `IGNORED_COMMANDS` 防重复行。
+- `?panel=btw` 只在 `btwAllowed`（非 mirror + Claude flavor）时挂载面板，其他会话上的该 URL 视为无面板。
 - `sync/btwStore.ts`（zustand，内存）：按 sessionId 存 `exchanges[]`、`pending`、`draft`；`ask()` 调 `ops.sessionBtwAsk` 后每 1s `sessionBtwPoll` 直到终态；`cancel()`。面板关闭不打断轮询（Claude CLI 的「panel torn down; question handed on」语义）。
 - `ops.ts`：`sessionBtwAsk/Poll/Cancel` 三个 typed wrapper。
 - 无 capability（`metadata.capabilities` 不含 `claude-btw-v1`）：面板可开、输入禁用、显示「当前会话的 CLI 不支持侧问，升级后新建会话」。

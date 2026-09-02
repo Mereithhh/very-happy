@@ -77,6 +77,33 @@ describe('btwStore ask/poll loop (B-282)', () => {
         expect(h.poll.mock.calls.length).toBeLessThan(3);
     });
 
+    it('clips history to the CLI cap before sending', async () => {
+        const h = harness([{ text: 'x'.repeat(5000), status: 'done' }, { text: 'a2', status: 'done' }]);
+        await h.store.getState().ask('s1', 'q1');
+        await h.store.getState().ask('s1', 'q2');
+        const history = (h.ask.mock.calls[1] as unknown as [string, string, { question: string; answer: string }[]])[2];
+        expect(history[0].answer.length).toBe(2001);
+        expect(history[0].answer.endsWith('…')).toBe(true);
+    });
+
+    it('releases the CLI slot when the web gives up polling or cancelled during the ask round-trip', async () => {
+        const dead = harness(Array.from({ length: 5 }, () => new Error('socket closed')));
+        await dead.store.getState().ask('s1', 'q');
+        expect(dead.cancel).toHaveBeenCalledWith('s1', 'req-1');
+
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const late = harness([{ text: 'never', status: 'done' }], async () => { await gate; return { requestId: 'req-9', hadContext: true }; });
+        const run = late.store.getState().ask('s2', 'q');
+        await late.store.getState().cancel('s2'); // no requestId yet → nothing to tell the CLI
+        expect(late.cancel).not.toHaveBeenCalled();
+        release();
+        await run;
+        expect(late.cancel).toHaveBeenCalledWith('s2', 'req-9');
+        expect(late.poll).not.toHaveBeenCalled();
+        expect(late.store.getState().sessions.s2.exchanges[0].status).toBe('cancelled');
+    });
+
     it('draft and clear are per session', () => {
         const h = harness([]);
         h.store.getState().setDraft('s1', 'hello');

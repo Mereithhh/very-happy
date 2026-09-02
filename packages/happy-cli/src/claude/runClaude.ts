@@ -21,7 +21,8 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
-import { registerSideQuestionHandler } from './registerSideQuestionHandler';
+import { registerSideQuestionHandler, writeSideQuestionSettingsFile } from './registerSideQuestionHandler';
+import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
@@ -621,10 +622,19 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // B-282 `/btw` side questions: answered by a separate single-turn query that
     // forks the live Claude session. Registered here (not in the launcher) so
     // it works in both modes and sees the process-level model selection.
+    // Context source is the LIVE id only: server metadata keeps the pre-/clear
+    // id, and a reported-but-not-yet-written transcript must fall back to
+    // "no context" (same guard the main resume path uses) instead of a raw
+    // SDK "No conversation found" failure.
     registerSideQuestionHandler(session.rpcHandlerManager, {
-        getClaudeSessionId: () => currentSession?.sessionId ?? session.getMetadata()?.claudeSessionId ?? null,
+        getClaudeSessionId: () => {
+            const id = currentSession?.sessionId ?? null;
+            return id && claudeCheckSession(id, workingDirectory) ? id : null;
+        },
         getModel: () => currentModel,
         cwd: workingDirectory,
+        getEnv: () => options.claudeEnvVars,
+        settingsPath: writeSideQuestionSettingsFile(configuration.happyHomeDir),
     });
 
     const resetCurrentModeDefaults = () => {

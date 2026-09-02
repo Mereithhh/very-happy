@@ -9,6 +9,9 @@ export const IGNORED_COMMANDS = [
     'model', 'pr-comments', 'release-notes', 'resume', 'status', 'bug', 'review',
     'security-review', 'terminal-setup', 'upgrade', 'vim', 'permissions', 'hooks',
     'export', 'logout', 'login',
+    // web-local command (B-282): the composer prepends its own /btw row; the
+    // CLI's builtin (local-jsx, cannot run in SDK mode) must not show twice
+    'btw',
 ];
 
 const DEFAULT_COMMANDS: CommandItem[] = [

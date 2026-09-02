@@ -1805,34 +1805,62 @@ export interface SideQuestionPollResponse {
     finishedAt?: number;
 }
 
+// A thrown CLI handler does NOT reject the RPC: RpcHandlerManager answers with
+// `{ error }` under a normal ack. Surface it as a rejection here so the store
+// never treats it as a successful payload (sibling wrappers do the same).
+function throwIfRpcError(raw: unknown): void {
+    const error = (raw && typeof raw === 'object') ? (raw as { error?: unknown }).error : undefined;
+    if (typeof error === 'string' && error) throw new Error(error);
+}
+
+const BTW_SIDE_STATUSES: readonly SideQuestionStatus[] = ['running', 'done', 'error', 'cancelled'];
+
 export async function sessionBtwAsk(
     sessionId: string,
     question: string,
     history: SideQuestionExchangeInput[],
 ): Promise<SideQuestionAskResponse> {
-    return apiSocket.sessionRPC<SideQuestionAskResponse, { question: string; history: SideQuestionExchangeInput[] }>(
+    const raw = await apiSocket.sessionRPC<unknown, { question: string; history: SideQuestionExchangeInput[] }>(
         sessionId,
         'btw-ask',
         { question, history },
         { timeoutMs: 20_000 },
     );
+    throwIfRpcError(raw);
+    const ack = raw as Partial<SideQuestionAskResponse> | null;
+    if (!ack || typeof ack.requestId !== 'string' || !ack.requestId) throw new Error('Side question: malformed ask response');
+    return { requestId: ack.requestId, hadContext: ack.hadContext === true };
 }
 
 export async function sessionBtwPoll(sessionId: string, requestId: string): Promise<SideQuestionPollResponse> {
-    return apiSocket.sessionRPC<SideQuestionPollResponse, { requestId: string }>(
+    const raw = await apiSocket.sessionRPC<unknown, { requestId: string }>(
         sessionId,
         'btw-poll',
         { requestId },
         { timeoutMs: 20_000 },
     );
+    throwIfRpcError(raw);
+    const snap = raw as Partial<SideQuestionPollResponse> | null;
+    if (!snap || !BTW_SIDE_STATUSES.includes(snap.status as SideQuestionStatus)) {
+        throw new Error('Side question: malformed poll response');
+    }
+    return {
+        requestId: typeof snap.requestId === 'string' ? snap.requestId : requestId,
+        status: snap.status as SideQuestionStatus,
+        text: typeof snap.text === 'string' ? snap.text : '',
+        error: typeof snap.error === 'string' ? snap.error : undefined,
+        startedAt: typeof snap.startedAt === 'number' ? snap.startedAt : Date.now(),
+        finishedAt: typeof snap.finishedAt === 'number' ? snap.finishedAt : undefined,
+    };
 }
 
 export async function sessionBtwCancel(sessionId: string, requestId: string): Promise<boolean> {
-    const response = await apiSocket.sessionRPC<{ cancelled: boolean }, { requestId: string }>(
+    const raw = await apiSocket.sessionRPC<unknown, { requestId: string }>(
         sessionId,
         'btw-cancel',
         { requestId },
         { timeoutMs: 20_000 },
     );
-    return response?.cancelled === true;
+    throwIfRpcError(raw);
+    return (raw as { cancelled?: unknown } | null)?.cancelled === true;
 }

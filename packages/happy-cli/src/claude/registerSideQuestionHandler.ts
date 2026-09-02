@@ -11,6 +11,8 @@
  */
 import { logger } from '@/ui/logger';
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { runSideQuestion, type SideQuestionExchange, type SideQuestionInput } from './sideQuestion';
 
 export type SideQuestionStatus = 'running' | 'done' | 'error' | 'cancelled';
@@ -42,6 +44,12 @@ export interface SideQuestionDeps {
     getClaudeSessionId: () => string | null | undefined;
     getModel: () => string | undefined;
     cwd: string;
+    /** Session `--claude-env` values; the fork runs against the same provider/credentials. */
+    getEnv?: () => Record<string, string> | undefined;
+    /** `--settings` file for the fork (see `writeSideQuestionSettingsFile`). */
+    settingsPath?: string;
+    /** Wall-clock cap for one side question; the slot is freed (aborted) when it elapses. */
+    maxRunMs?: number;
     run?: (input: SideQuestionInput) => Promise<{ answer: string; hadContext: boolean }>;
     now?: () => number;
     /** How long a finished result stays pollable. */
@@ -60,6 +68,22 @@ interface Slot {
 
 export const SIDE_QUESTION_RETAIN_MS = 5 * 60_000;
 export const SIDE_QUESTION_MAX_CHARS = 8000;
+export const SIDE_QUESTION_MAX_RUN_MS = 10 * 60_000;
+
+/**
+ * Claude Code's own `/btw` runs in-process and fires no hooks; our fork is a
+ * fresh `claude` process that would otherwise run the user's SessionStart /
+ * Stop / SessionEnd hooks (desktop notifications, context injection, mirror
+ * forwarders) once per side question. `disableAllHooks` via `--settings`
+ * keeps the fork silent while `settingSources` still bring in CLAUDE.md.
+ */
+export function writeSideQuestionSettingsFile(homeDir: string): string {
+    const dir = join(homeDir, 'tmp', 'hooks');
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `side-question-${process.pid}.json`);
+    writeFileSync(file, JSON.stringify({ disableAllHooks: true }));
+    return file;
+}
 
 function parseHistory(raw: unknown): SideQuestionExchange[] {
     if (!Array.isArray(raw)) return [];
@@ -73,6 +97,7 @@ function parseHistory(raw: unknown): SideQuestionExchange[] {
 export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestionDeps) {
     const now = deps.now ?? (() => Date.now());
     const retainMs = deps.retainMs ?? SIDE_QUESTION_RETAIN_MS;
+    const maxRunMs = deps.maxRunMs ?? SIDE_QUESTION_MAX_RUN_MS;
     const run = deps.run ?? (async (input) => {
         const { query } = await import('@/claude/sdk');
         return runSideQuestion(query as any, input);
@@ -111,12 +136,23 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
         slots.set(slot.requestId, slot);
         active = slot;
         logger.debug(`[btw] side question ${slot.requestId} start (context=${resumeSessionId ? 'fork' : 'none'})`);
+        // The web may vanish mid-answer (socket loss, tab closed) without ever
+        // sending btw-cancel; without a cap the slot would stay busy forever.
+        const deadline = setTimeout(() => {
+            if (slot.status !== 'running') return;
+            slot.abort.abort('timeout');
+            finish(slot, 'error', 'Side question timed out');
+            logger.debug(`[btw] side question ${slot.requestId} timed out after ${maxRunMs}ms`);
+        }, maxRunMs);
+        deadline.unref?.();
         void run({
             question,
             history: parseHistory(request.history),
             resumeSessionId,
             cwd: deps.cwd,
             model: deps.getModel(),
+            env: deps.getEnv?.(),
+            settingsPath: deps.settingsPath,
             signal: slot.abort.signal,
             onText: (text) => { if (slot.status === 'running') slot.text = text; },
         }).then((result) => {
@@ -131,7 +167,7 @@ export function registerSideQuestionHandler(rpc: RpcRegistrar, deps: SideQuestio
                 finish(slot, 'error', message);
                 logger.debug(`[btw] side question ${slot.requestId} failed: ${message}`);
             }
-        });
+        }).finally(() => clearTimeout(deadline));
         return { requestId: slot.requestId, hadContext: Boolean(resumeSessionId) };
     });
 

@@ -52,7 +52,10 @@ export interface BtwStoreDeps {
 
 export const EMPTY_BTW_SESSION: BtwSessionState = Object.freeze({ exchanges: [], draft: '' }) as BtwSessionState;
 const HISTORY_FOR_PROMPT = 12;
+/** Same clip the CLI applies before building the prompt — no point shipping more (RPC payload cap). */
+export const HISTORY_CLIP_CHARS = 2000;
 const MAX_POLL_FAILURES = 5;
+const clip = (text: string) => (text.length > HISTORY_CLIP_CHARS ? `${text.slice(0, HISTORY_CLIP_CHARS)}…` : text);
 
 let seq = 0;
 const nextId = () => `btw-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -93,7 +96,7 @@ export function createBtwStore(deps: BtwStoreDeps) {
                 const history = current.exchanges
                     .filter((e) => e.status === 'done' && e.answer.trim())
                     .slice(-HISTORY_FOR_PROMPT)
-                    .map((e) => ({ question: e.question, answer: e.answer }));
+                    .map((e) => ({ question: clip(e.question), answer: clip(e.answer) }));
                 const id = nextId();
                 const exchange: BtwExchange = {
                     id, question, answer: '', status: 'running', startedAt: deps.now(), hadContext: true,
@@ -110,6 +113,12 @@ export function createBtwStore(deps: BtwStoreDeps) {
                     const ack = await deps.ask(sessionId, question, history);
                     requestId = ack.requestId;
                     patch(sessionId, id, { requestId, hadContext: ack.hadContext });
+                    // Stop pressed during the ask round-trip: the CLI slot is
+                    // live but nobody told it — release it now.
+                    if (find(sessionId, id)?.status !== 'running') {
+                        try { await deps.cancel(sessionId, requestId); } catch { /* best effort */ }
+                        return;
+                    }
                 } catch (error) {
                     patch(sessionId, id, {
                         status: 'error',
@@ -146,6 +155,8 @@ export function createBtwStore(deps: BtwStoreDeps) {
                                 error: error instanceof Error ? error.message : String(error),
                                 finishedAt: deps.now(),
                             });
+                            // Giving up locally must not leave the CLI slot busy.
+                            try { await deps.cancel(sessionId, requestId); } catch { /* best effort */ }
                             return;
                         }
                     }
