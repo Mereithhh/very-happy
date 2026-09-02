@@ -36,6 +36,7 @@ import {
   type FocusOwnershipWatchdog,
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
+import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS } from './termFont';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
 import { isTerminalInputElement } from './termInputElement';
@@ -143,6 +144,8 @@ const THEME = {
 // once document.fonts is ready (below) — otherwise the cell size is locked to
 // the fallback metrics and text gets clipped after the real font swaps in.
 const TERM_FONT = "'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+const TERM_FONT_SIZE_FINE = 13;
+const TERM_FONT_SIZE_COARSE = 12;
 
 // Touch-first device (phone/tablet). Evaluated once at module load — pointer
 // capability doesn't change at runtime, and all mobile-only behavior below is
@@ -487,7 +490,7 @@ export function WebTerminalScreen() {
     const renderer = createTerminalRenderer('xterm', {
       mount,
       fontFamily: TERM_FONT,
-      fontSize: IS_COARSE_POINTER ? 12 : 13,
+      fontSize: IS_COARSE_POINTER ? TERM_FONT_SIZE_COARSE : TERM_FONT_SIZE_FINE,
       theme: THEME,
       scrollback: 5000,
       coarsePointer: IS_COARSE_POINTER,
@@ -993,7 +996,7 @@ export function WebTerminalScreen() {
     // re-measure so the cell size matches and text isn't clipped, then refit.
     (document as any).fonts?.ready?.then(() => {
       if (disposed) return;
-      try { (term as any)._core?._charSizeService?.measure?.(); } catch { /* private API best-effort */ }
+      renderer.remeasureFont();
       scheduleFit();
     });
 
@@ -1487,9 +1490,20 @@ export function WebTerminalScreen() {
 
     // Open (first subscribe): no fromSeq → the daemon returns a fresh snapshot.
     (async () => {
-      safeFit();
+      // Read the one-shot navigation intent SYNCHRONOUSLY, before any await, so
+      // a StrictMode re-render can't change it under us (review F6).
       const isFresh = freshRef.current;
       const attach = isFresh ? createAttachRef.current : undefined;
+      // B-289: measure the terminal size with the REAL monospace face, not a
+      // fallback, before sending it. A fresh create bakes this width into the
+      // tmux session + Claude's first paint (wrong = frozen-narrow scrollback),
+      // so it waits generously; a reattach adopts the daemon's authoritative
+      // paneCols anyway, so it waits only briefly.
+      const fontSize = IS_COARSE_POINTER ? TERM_FONT_SIZE_COARSE : TERM_FONT_SIZE_FINE;
+      await awaitTerminalFont(fontSize, isFresh ? FONT_WAIT_FRESH_MS : FONT_WAIT_ATTACH_MS);
+      if (disposed) return;
+      renderer.remeasureFont();
+      safeFit();
       const res = await machineOpenTerminal(machineId, {
         terminalId: tid, cols: term.cols, rows: term.rows, encStream: true,
         // Runs only if the daemon CREATES the session (see startupCommandRef).

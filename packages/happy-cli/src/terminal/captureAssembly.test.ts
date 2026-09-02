@@ -141,6 +141,11 @@ describe('assembleRestore', () => {
         paneId: '%0', alternateOn: false, cursorX: 0, cursorY: 0, width: 80, height: 4, ...over,
     });
     const CUP = (y: number, x: number) => `\x1b[${y + 1};${x + 1}H`;
+    // B-288 brackets sections with SGR resets (\x1b[0m). These layout/cursor
+    // tests don't care WHERE the resets land (a reset writes no cell and moves
+    // no cursor); strip them and assert the text+cursor structure. The reset
+    // PLACEMENT is verified behaviourally by the attribute test below.
+    const stripR = (v: string) => v.split('\x1b[0m').join('');
 
     it('normal: scrollback + a FULL-height screen + the cursor where the app left it', () => {
         const r = assembleRestore(
@@ -154,8 +159,8 @@ describe('assembleRestore', () => {
         );
         expect(r.alternateOn).toBe(false);
         // screen padded to the pane's height so CUP rows mean what tmux meant
-        expect(str(r.full)).toBe(`hist1\r\nhist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
-        expect(str(r.small)).toBe(`hist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
+        expect(stripR(str(r.full))).toBe(`hist1\r\nhist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
+        expect(stripR(str(r.small))).toBe(`hist2\r\nprompt$ typed\r\n\r\n\r\n${CUP(0, 13)}`);
     });
 
     it('a screen taller than the pane keeps the LAST rows (never the first)', () => {
@@ -163,7 +168,7 @@ describe('assembleRestore', () => {
             { visible: buf('a\nb\nc\nd\ne\nf\n'), tail: buf('') },
             pane({ height: 3, cursorY: 2, cursorX: 0 }),
         );
-        expect(str(r.full)).toBe(`d\r\ne\r\nf${CUP(2, 0)}`);
+        expect(stripR(str(r.full))).toBe(`d\r\ne\r\nf${CUP(2, 0)}`);
     });
 
     it('alt: scrollback + saved normal screen, THEN 1049h + the alt frame + cursor', () => {
@@ -177,18 +182,18 @@ describe('assembleRestore', () => {
             pane({ alternateOn: true, height: 2, cursorX: 3, cursorY: 1 }),
         );
         expect(r.alternateOn).toBe(true);
-        expect(str(r.full)).toBe(`h1\r\ns1\r\n\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
+        expect(stripR(str(r.full))).toBe(`h1\r\ns1\r\n\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
         // The命门: the fullscreen frame sits AFTER the alt switch, never in the
         // scrollback part.
         expect(str(r.full).indexOf('TUI')).toBeGreaterThan(str(r.full).indexOf('\x1b[?1049h'));
-        expect(str(r.small)).toBe(`\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
+        expect(stripR(str(r.small))).toBe(`\x1b[?1049h\x1b[HTUI\r\n${CUP(1, 3)}`);
     });
 
     it('unknown pane state: no padding, no cursor — degrade instead of guessing', () => {
         const r = assembleRestore({ history: buf('a\n'), visible: buf('b\n') }, undefined);
         expect(r.alternateOn).toBe(false);
-        expect(str(r.full)).toBe('a\r\nb');
-        expect(str(r.full)).not.toContain('\x1b[');
+        expect(stripR(str(r.full))).toBe('a\r\nb');
+        expect(stripR(str(r.full))).not.toContain('\x1b['); // no escapes other than the bracketing resets
     });
 
     it('appends the unfinished-escape tail before the cursor move', () => {
@@ -196,7 +201,7 @@ describe('assembleRestore', () => {
             { visible: buf('a\n'), tail: Buffer.from('\x1b[3', 'ascii') },
             pane({ height: 1, cursorX: 1, cursorY: 0 }),
         );
-        expect(str(r.full)).toBe(`a\x1b[3${CUP(0, 1)}`);
+        expect(stripR(str(r.full))).toBe(`a\x1b[3${CUP(0, 1)}`);
     });
 
     it('missing responses degrade instead of throwing', () => {
@@ -211,5 +216,91 @@ describe('assembleRestore', () => {
         expect(r.full.length).toBeLessThanOrEqual(260);
         expect(str(r.full)).toContain('now');            // the screen always survives
         expect(str(r.full)).toContain(CUP(0, 0));
+    });
+});
+
+
+// ── B-288 green-bleed regression (renders into @xterm/headless, asserts cell
+//    ATTRIBUTES, not text — the text+cursor tests above cannot catch a colour
+//    leak) ─────────────────────────────────────────────────────────────────
+import { Terminal as HeadlessTerminal } from '@xterm/headless';
+
+async function renderCells(payload: Buffer, cols: number, rows: number) {
+    const term = new HeadlessTerminal({ cols, rows, allowProposedApi: true, scrollback: 200 });
+    await new Promise<void>((resolve) => term.write(new Uint8Array(payload), () => resolve()));
+    const buffer = term.buffer.active;
+    // Read the LAST `rows` viewport rows (the restored screen), plus a probe of
+    // the pen after the payload by writing one more space.
+    const base = buffer.baseY;
+    const bgOf = (y: number, x: number) => {
+        const line = buffer.getLine(base + y);
+        const cell = line?.getCell(x);
+        return { def: cell?.isBgDefault() === true, color: cell?.getBgColor() ?? -1 };
+    };
+    // Probe the live pen: after the restore the cursor sits somewhere; write a
+    // marker and read its bg — that is the attribute the app's next output gets.
+    await new Promise<void>((resolve) => term.write(new Uint8Array(buf('\x1b[100;1HZ')), () => resolve()));
+    const penDefault = (() => {
+        const line = buffer.getLine(base + rows - 1);
+        // 'Z' was written at row 99 (clamped to bottom); find it near the end.
+        for (let y = 0; y < buffer.length; y++) {
+            const l = buffer.getLine(y);
+            for (let x = 0; x < cols; x++) {
+                if (l?.getCell(x)?.getChars() === 'Z') return l.getCell(x)!.isBgDefault() === true;
+            }
+        }
+        return true;
+    })();
+    term.dispose();
+    return { bgOf, penDefault };
+}
+
+describe('assembleRestore B-288 green-bleed (attribute assertions)', () => {
+    const GREEN = 2; // ANSI color index for green background (\x1b[42m)
+    const pane = (over: Partial<{ alternateOn: boolean; cursorX: number; cursorY: number; height: number; width: number }> = {}) => ({
+        paneId: '%0', alternateOn: false, cursorX: 0, cursorY: 0, width: 10, height: 6, ...over,
+    });
+
+    it('a green background that SPANS rows stays green on every row (no intra-row reset)', async () => {
+        // tmux -e does NOT re-declare the bg on a continued row: row 0 opens
+        // green, rows 1-2 have no SGR and inherit it, row 3 closes it. A per-row
+        // reset would strip rows 1-2 — the trap the review caught.
+        const visible = buf('\x1b[42mAAAAAAAAAA\nBBBBBBBBBB\nCCCCCCCCCC\x1b[49m\nplain now\n');
+        const r = assembleRestore({ visible, tail: buf('') }, pane({ height: 6, cursorY: 3, cursorX: 9 }));
+        const { bgOf, penDefault } = await renderCells(r.full, 10, 6);
+        // Rows 0-2 of the spanning block: green on the first AND the continued rows.
+        for (const y of [0, 1, 2]) {
+            expect(bgOf(y, 0).def, `row ${y} col0 should be green`).toBe(false);
+            expect(bgOf(y, 0).color, `row ${y} col0 colour`).toBe(GREEN);
+            expect(bgOf(y, 9).def, `row ${y} right edge should be green`).toBe(false); // to the edge
+        }
+        // The plain row after the block is default.
+        expect(bgOf(3, 0).def).toBe(true);
+        // The SYNTHESISED padding rows (4,5) must be default, not green.
+        expect(bgOf(4, 0).def, 'padding row must be default, not bled green').toBe(true);
+        expect(bgOf(5, 0).def, 'padding row must be default, not bled green').toBe(true);
+        // The live pen after the restore is default (new output is not dyed).
+        expect(penDefault, 'post-restore pen must be default').toBe(true);
+    });
+
+    it("an unclosed green on the last real row does not bleed into the padding below", async () => {
+        // Worst case: the pane's last visible row leaves green OPEN (a full-width
+        // status/selection line), and the screen is shorter than the pane.
+        const visible = buf('header\n\x1b[42mstatus-open-green\n'); // second row opens green, never closed
+        const r = assembleRestore({ visible, tail: buf('') }, pane({ width: 20, height: 6, cursorY: 1, cursorX: 0 }));
+        const { bgOf, penDefault } = await renderCells(r.full, 20, 6);
+        expect(bgOf(1, 0).color, 'the real status row stays green').toBe(GREEN);
+        expect(bgOf(2, 0).def, 'row below the open-green row must be default').toBe(true);
+        expect(bgOf(5, 0).def, 'bottom padding must be default').toBe(true);
+        expect(penDefault).toBe(true);
+    });
+
+    it("history ending in open green does not tint the screen's first (default) row", async () => {
+        const history = buf('\x1b[42mgreen-history-line\n'); // scrollback line opens green, no reset
+        const visible = buf('clean-screen-row\n');
+        const r = assembleRestore({ history, smallHistory: history, visible, tail: buf('') }, pane({ width: 20, height: 3, cursorY: 0, cursorX: 0 }));
+        const { bgOf } = await renderCells(r.full, 20, 3);
+        // (history scrolls into scrollback; the visible area's first row is the screen)
+        expect(bgOf(0, 0).def, "screen row 0 must not inherit history's green").toBe(true);
     });
 });

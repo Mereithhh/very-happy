@@ -262,6 +262,25 @@ describe('geometry ownership (B-124 duplicate status line)', () => {
         expect(ops).toMatch(/paneCols: result\.paneCols/);
     });
 
+    it('B-289: the first open waits for the terminal font and remeasures BEFORE sending its size', () => {
+        // xterm measures cell width from whatever font is loaded; the mono face
+        // is async, so measuring before it loads sends a wrong (narrow) width
+        // that a fresh create bakes into the tmux session + Claude's first paint
+        // and freezes into scrollback.
+        expect(screen).toMatch(/await awaitTerminalFont\(/);
+        // ref read (isFresh) stays synchronous, before the await (F6)
+        const isFreshIdx = screen.indexOf('const isFresh = freshRef.current;');
+        const awaitIdx = screen.indexOf('await awaitTerminalFont(');
+        const openIdx = screen.indexOf('const res = await machineOpenTerminal(machineId, {', awaitIdx);
+        expect(isFreshIdx).toBeGreaterThan(-1);
+        expect(awaitIdx).toBeGreaterThan(isFreshIdx);
+        expect(openIdx).toBeGreaterThan(awaitIdx);
+        // remeasure + fit between the font wait and the open
+        expect(screen).toMatch(/await awaitTerminalFont\([\s\S]{0,120}renderer\.remeasureFont\(\);\s*\n\s*safeFit\(\);/);
+        // create waits longer than a reattach (permanent damage only on create)
+        expect(screen).toMatch(/isFresh \? FONT_WAIT_FRESH_MS : FONT_WAIT_ATTACH_MS/);
+    });
+
     it('B-287: the window focus edge re-asserts this viewport size (reclaim on return)', () => {
         // Cmd-Tab back to a still-`visible` desktop fires window 'focus' but not
         // visibilitychange; without this the pane stayed at whatever width the

@@ -50,6 +50,11 @@ export interface TerminalRenderer {
     proposeFit(): { cols: number; rows: number } | undefined;
     /** Adopt an authoritative geometry (pane size) without re-measuring. */
     resizeTo(cols: number, rows: number): void;
+    /** Re-measure the glyph cell size from the CURRENTLY loaded font (B-289).
+     *  The web monospace face loads async; call this once it is ready so the
+     *  next `fit()` computes columns from the real advance width, not a
+     *  fallback font's. Encapsulates the renderer's private char-size service. */
+    remeasureFont(): void;
 
     /** Keystrokes the user typed (already VT-encoded) → send to the pty. */
     onData(cb: (data: string) => void): RendererDisposable;
