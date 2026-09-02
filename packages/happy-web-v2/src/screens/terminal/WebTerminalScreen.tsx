@@ -37,7 +37,7 @@ import {
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
 import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS } from './termFont';
-import { ensureTerminalCjkFont } from './terminalCjkFont';
+import { ensureTerminalCjkFont, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFont';
 import { shouldReassertGeometry } from './termGeometryReassert';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
 import { installTermInputDiag } from './termInputDiag';
@@ -1052,6 +1052,21 @@ export function WebTerminalScreen() {
       renderer.remeasureFont();
       scheduleFit();
     });
+    // The CJK terminal font (Sarasa) is fetched from the CDN AFTER the effect
+    // mounts, so `document.fonts.ready` above resolves (Plex-only) BEFORE the
+    // CDN css is even fetched — it never sees Sarasa. And Sarasa's ASCII advance
+    // (Iosevka 0.5em) differs from the Plex fallback (0.6em), so when it swaps
+    // in via font-display:swap the cached cell size is wrong and the grid goes
+    // loose. Explicitly load its Latin slice (the cell-defining glyphs) and
+    // re-measure + refit when it lands. CJK slices that arrive later don't move
+    // the cell (Han is 2x by construction), so one re-measure suffices; a CDN
+    // failure just leaves the correct Plex measurement in place.
+    try {
+      const cjkSize = IS_COARSE_POINTER ? TERM_FONT_SIZE_COARSE : TERM_FONT_SIZE_FINE;
+      (document as any).fonts?.load?.(`${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`, 'Mgqw0')
+        ?.then(() => { if (!disposed) { renderer.remeasureFont(); scheduleFit(); } })
+        ?.catch(() => { /* CDN font unavailable — keep the fallback measurement */ });
+    } catch { /* no fonts API */ }
 
     // Digest an open-terminal result: ALL seq bookkeeping happens synchronously
     // here (so live chunks racing the restore dedup against the right
