@@ -1586,6 +1586,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep02d: {
+                title: '/btw 顺口问一句',
+                summary: '在 Claude 会话里输入 /btw（或点头部新按钮）就能在不打断 agent 当前工作的情况下问个旁路小问题；更新说明也改成把你错过的每个版本都列出来，不再只显示最新的一个。',
+                btw: '侧问在右侧面板里进行，由一个独立的、不带工具、单轮作答的 Claude 进程 fork 会话上下文来回答；不会进主对话，主 turn 正在跑时也能问。',
+                context: '侧问面板看到的是和会话相同的上下文，「这个报错啥意思」会基于当前工作作答；历史只保留在当前页面。',
+                unseen: '更新弹窗按最新在前堆叠你上次确认之后的所有版本，CLI 升级提示只给其中最高的那个版本。',
+                cli: 'CLI 0.2.100：侧问在会话 wrapper 里运行——升级前开着的会话在面板里提示需升级 CLI，/btw 文本绝不会发进主对话。',
+            },
             sep02c: {
                 title: 'Claude 登录不再飘',
                 summary: '会话不会再因为一次「OAuth session expired and could not be refreshed」永久报错；每台机器都能看到「你的会话实际跑的那个 Claude Code」能不能登录，并且能一键修掉背后的 keychain 坑。',
