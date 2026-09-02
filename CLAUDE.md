@@ -24,7 +24,7 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-02，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.99**（mac-office daemon 同版本；2026-09-02；含 B-275 认证失败换进程 + B-276 Claude 登录预检/诊断/`credentialStore=file`）；线上 Web = `main@0a8005ca`（2026-09-02 蓝绿）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- 最新 tag / npm `very-happy-cli` = **v0.2.100**（mac-office daemon 同版本；2026-09-02；含 B-283 /btw 侧问 capability `claude-btw-v1`）；线上 Web = `main@892be05e`（2026-09-02 蓝绿；含 /btw、B-284 更新弹窗堆叠未读版本）。发布前先跑 `scripts/changelog/check-release.mjs`（B-285 门禁，CI 也拦）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
 - `docs/backlog.md` 活跃区约 31 项非 done（8 `doing`：B-216 终端 tag、B-209 对话降噪、B-208 工作区视图、
   B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 等）；改 doing 项前先读对应 `specs/`。
   **2026-09-02 已发布**：v0.2.93–v0.2.99 一大批——B-269/B-270（用户 tmux.conf 打坏 web 终端：base-index、

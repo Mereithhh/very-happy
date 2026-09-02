@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-02-btw-side-question',
+    date: '2026-09-02',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.100',
+    titleKey: 'changelog.releases.sep02d.title',
+    summaryKey: 'changelog.releases.sep02d.summary',
+    itemKeys: [
+      'changelog.releases.sep02d.btw',
+      'changelog.releases.sep02d.context',
+      'changelog.releases.sep02d.unseen',
+      'changelog.releases.sep02d.cli',
+    ],
+  },
+  {
     id: '2026-09-02-claude-auth-preflight',
     date: '2026-09-02',
     buildVersion: __APP_VERSION__,

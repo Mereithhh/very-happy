@@ -1612,6 +1612,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep02d: {
+                title: 'Ask on the side with /btw',
+                summary: 'Type /btw (or press the new header button) in a Claude session to ask a quick side question without interrupting what the agent is doing — and the release notes now show every version you missed, not just the newest.',
+                btw: 'Side questions open a right-hand panel and are answered by a separate, tool-less, single-turn Claude process that forks the session context; nothing lands in the main conversation, and you can ask while a turn is still running.',
+                context: 'The side panel sees the same context as the session, so "what does this error mean" gets an answer grounded in the current work; history lives only for the open page.',
+                unseen: 'The release notice stacks every release since the last one you acknowledged, newest first, with one CLI update hint for the highest version among them.',
+                cli: 'CLI 0.2.100: side questions run in the session wrapper — sessions started before the upgrade show "upgrade the CLI" in the panel and /btw text is never sent to the main conversation.',
+            },
             sep02c: {
                 title: 'Claude login that stays fixed',
                 summary: 'A session no longer dies for good after one "OAuth session expired and could not be refreshed", and each machine now shows whether the Claude Code your sessions actually run can log in — with a one-click fix for the keychain trap behind it.',

@@ -209,12 +209,27 @@ verify_direct_asset() {
     case "$content_type" in *javascript*) ;; *) return 1 ;; esac
 }
 
+# The canary rides the socket.io Redis adapter; a slot that just booted can
+# answer /_vh/release/ready before its peers see it, and the first
+# serverSideEmitWithAck then times out (503 after ~5s — 2026-09-02 run
+# 33605152182 failed before-switch exactly this way while a retry moments later
+# was fine). Retry a bounded number of times; both directions must succeed in
+# the same attempt.
 verify_cross_slot() {
-    local first_port="$1" second_port="$2" first second
-    first=$(admin_curl "$first_port" POST /_vh/release/canary)
-    second=$(admin_curl "$second_port" POST /_vh/release/canary)
-    printf '%s' "$first" | grep -Fq '"status":"ok"'
-    printf '%s' "$second" | grep -Fq '"status":"ok"'
+    local first_port="$1" second_port="$2" first second attempt
+    local attempts="${VH_RELEASE_CANARY_ATTEMPTS:-6}"
+    for attempt in $(seq 1 "$attempts"); do
+        first=$(admin_curl "$first_port" POST /_vh/release/canary 2>/dev/null || true)
+        second=$(admin_curl "$second_port" POST /_vh/release/canary 2>/dev/null || true)
+        if printf '%s' "$first" | grep -Fq '"status":"ok"' \
+            && printf '%s' "$second" | grep -Fq '"status":"ok"'; then
+            return 0
+        fi
+        echo "cross-slot canary attempt $attempt/$attempts failed; retrying" >&2
+        sleep 3
+    done
+    echo "cross-slot canary failed after $attempts attempts" >&2
+    return 1
 }
 
 write_active_upstream() {
