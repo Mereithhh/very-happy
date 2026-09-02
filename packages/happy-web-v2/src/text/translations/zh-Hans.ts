@@ -1586,6 +1586,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03b: {
+                title: '更多 daemon 宿主上的中文宽度修复',
+                summary: 'daemon 现在更稳地强制 UTF-8 locale,即使宿主以 LC_ALL=C 启动、或没有生成 en_US.UTF-8,终端里的中文也按双宽处理、不再叠字——更新 CLI 与新终端字体配套。',
+                locale: 'daemon 会覆盖非 UTF-8 的 LC_ALL(它原本会盖过我们设置的 locale),并在 Linux 用 C.UTF-8(必定存在)、macOS 用 en_US.UTF-8,让 tmux 在精简或配置不当的宿主上也把 CJK 当宽度 2。',
+            },
             sep03a: {
                 title: '终端里的中文不再叠字',
                 summary: '终端换用了等宽双宽的中文字体(Sarasa Fixed SC),中文字符按网格对齐、不再互相重叠;同一字体也让 Claude logo 和 TUI 框线彻底严丝合缝。',

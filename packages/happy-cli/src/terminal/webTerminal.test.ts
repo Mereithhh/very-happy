@@ -4,7 +4,7 @@
  * Fixtures below approximate real Claude Code TUI frames.
  */
 import { describe, it, expect } from 'vitest';
-import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, isClaudeConfident, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, type TerminalListItem } from './webTerminal';
+import { parseLayoutSize, geometryMarker, GEOMETRY_OSC_CODE, classifyPane, normalizeStartupCommand, startupInjectionArgs, planScrollAction, sgrWheelHexBytes, deriveAutoTitle, parseSessionListLine, parseTerminalTags, validateTerminalTags, LIST_FIELD_SEP, looksLikeClaudeCommand, isClaudeConfident, tmuxSupportsNewSessionEnv, CLAUDE_CLASSIC_RENDERER_ENV, terminalListSignature, ACTIVITY_SIGNATURE_BUCKET_MS, pruneTombstones, diffTerminalActivity, tmuxKillVerified, resolveDefaultShell, tmuxNewSessionArgs, shouldUseDirectPtyFallback, utf8LocaleEnv, type TerminalListItem } from './webTerminal';
 
 describe('resolveDefaultShell', () => {
     it('uses an executable configured shell', () => {
@@ -707,5 +707,27 @@ describe('isClaudeConfident (B-107 mirror adopt/reactivate gate)', () => {
     it('reads only the last 15 lines for the prompt markers (stale scrollback does not count)', () => {
         const stale = 'Do you want to proceed?\n' + Array.from({ length: 40 }, (_, i) => `log line ${i}`).join('\n');
         expect(isClaudeConfident(stale)).toBe(false);
+    });
+});
+
+describe('utf8LocaleEnv (CJK width: force a UTF-8 locale for tmux)', () => {
+    it('injects a platform-correct UTF-8 locale when none is present', () => {
+        expect(utf8LocaleEnv({}, 'linux')).toEqual({ LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' });
+        expect(utf8LocaleEnv({}, 'darwin')).toEqual({ LANG: 'en_US.UTF-8', LC_CTYPE: 'en_US.UTF-8' });
+    });
+    it('overrides a non-UTF-8 LC_ALL (it outranks LANG/LC_CTYPE by POSIX precedence)', () => {
+        // The bug: LC_ALL=C stays in effect unless we also override it.
+        expect(utf8LocaleEnv({ LC_ALL: 'C' }, 'linux')).toEqual({ LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8', LC_ALL: 'C.UTF-8' });
+        expect(utf8LocaleEnv({ LC_ALL: 'POSIX' }, 'darwin')).toEqual({ LANG: 'en_US.UTF-8', LC_CTYPE: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' });
+    });
+    it('never clobbers a user’s own UTF-8 locale (any of the three)', () => {
+        expect(utf8LocaleEnv({ LC_ALL: 'zh_CN.UTF-8' }, 'linux')).toEqual({});
+        expect(utf8LocaleEnv({ LANG: 'ja_JP.UTF-8' }, 'linux')).toEqual({});
+        expect(utf8LocaleEnv({ LC_CTYPE: 'en_GB.utf8' }, 'darwin')).toEqual({});
+    });
+    it('does not set LC_ALL when it was unset (LANG/LC_CTYPE suffice)', () => {
+        const out = utf8LocaleEnv({ LANG: 'C' }, 'linux');
+        expect(out.LC_ALL).toBeUndefined();
+        expect(out).toEqual({ LANG: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' });
     });
 });

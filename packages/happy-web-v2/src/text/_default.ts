@@ -1612,6 +1612,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03b: {
+                title: 'Chinese width fix on more daemon hosts',
+                summary: 'The daemon now forces a UTF-8 locale more robustly, so Chinese in the terminal is treated as double-width (not overlapping) even on hosts started with LC_ALL=C or without a generated en_US.UTF-8 — pair it with the new terminal font by updating the CLI.',
+                locale: 'The daemon overrides a non-UTF-8 LC_ALL (which used to outrank the locale it set) and uses C.UTF-8 on Linux (always available) / en_US.UTF-8 on macOS, so tmux counts CJK as width-2 on minimal or misconfigured hosts too.',
+            },
             sep03a: {
                 title: 'Chinese in the terminal stops overlapping',
                 summary: 'The terminal now uses a dual-width CJK font (Sarasa Fixed SC), so Chinese characters line up on the grid instead of overlapping each other — and the same font makes the Claude logo and TUI frames render fully seamless.',

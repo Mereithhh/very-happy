@@ -1167,17 +1167,38 @@ function ptyEnv(): Record<string, string> {
         env.PATH = `${local}:${env.PATH || ''}`;
     }
     env.TERM = 'xterm-256color';
-    // Ensure a UTF-8 locale so tmux + the shell treat CJK/emoji as wide chars.
-    // The daemon is often launched without LANG (launchd/GUI context) → tmux
-    // falls back to the C locale → multibyte input renders at width 1 and
-    // overlaps ("中文" overwrites itself). Only inject when no UTF-8 locale is
-    // already present, so we never clobber a user's own zh_CN.UTF-8 etc.
-    const isUtf8 = (v?: string) => !!v && /utf-?8/i.test(v);
-    if (!isUtf8(env.LC_ALL) && !isUtf8(env.LANG) && !isUtf8(env.LC_CTYPE)) {
-        env.LANG = 'en_US.UTF-8';
-        env.LC_CTYPE = 'en_US.UTF-8';
-    }
+    // Ensure a UTF-8 locale so tmux + the shell treat CJK/emoji as wide chars
+    // (see utf8LocaleEnv for the C-locale-overlap背景 + the two holes it closes).
+    Object.assign(env, utf8LocaleEnv(env, process.platform));
     return env;
+}
+
+/**
+ * The locale env that forces a UTF-8 CTYPE for the tmux server + shell, so CJK
+ * and emoji are treated as WIDE (width-2) instead of width-1 (which makes "中文"
+ * overwrite itself — the 叠字 bug). Pure + testable.
+ *
+ * Returns only the vars to SET (empty when a UTF-8 locale is already present, so
+ * a user's own zh_CN.UTF-8 etc. is never clobbered). Closes two holes the first
+ * cut missed (2026-09, V-067 / 风险 8):
+ *  1. A non-UTF-8 `LC_ALL` (e.g. `LC_ALL=C` from a launchd/GUI daemon context)
+ *     OUTRANKS LANG/LC_CTYPE by POSIX precedence, so setting only LANG/LC_CTYPE
+ *     left tmux in the C locale and CJK still overlapped — we now also override
+ *     an existing non-UTF-8 LC_ALL.
+ *  2. `en_US.UTF-8` may be UNGENERATED on a minimal Linux/musl host → tmux falls
+ *     back to C anyway. `C.UTF-8` is always present on glibc/musl; macOS lacks
+ *     C.UTF-8 but always has en_US.UTF-8 — so pick by platform.
+ */
+export function utf8LocaleEnv(
+    cur: { LANG?: string; LC_CTYPE?: string; LC_ALL?: string },
+    platform: NodeJS.Platform,
+): { LANG?: string; LC_CTYPE?: string; LC_ALL?: string } {
+    const isUtf8 = (v?: string) => !!v && /utf-?8/i.test(v);
+    if (isUtf8(cur.LC_ALL) || isUtf8(cur.LANG) || isUtf8(cur.LC_CTYPE)) return {};
+    const locale = platform === 'darwin' ? 'en_US.UTF-8' : 'C.UTF-8';
+    const patch: { LANG: string; LC_CTYPE: string; LC_ALL?: string } = { LANG: locale, LC_CTYPE: locale };
+    if (cur.LC_ALL) patch.LC_ALL = locale; // only override an EXISTING (non-UTF-8) LC_ALL
+    return patch;
 }
 
 /**
