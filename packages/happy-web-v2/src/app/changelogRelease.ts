@@ -272,11 +272,52 @@ export function changelogCliNotices(
   });
 }
 
+/**
+ * The receipt is a release id. The first implementation stored
+ * `${releaseId}:${buildVersion}`; strip the salt so those visitors are diffed
+ * against the release they actually acknowledged instead of re-shown everything.
+ */
+export function normalizeChangelogSeen(seen: string | null): string | null {
+  if (!seen) return null;
+  const salt = seen.indexOf(':');
+  return salt === -1 ? seen : seen.slice(0, salt);
+}
+
+/**
+ * Every release the visitor has not acknowledged yet, newest first — the diff
+ * between the receipt in localStorage and `CHANGELOG_RELEASES[0]`, so a few
+ * releases shipped in quick succession are all shown, not just the newest.
+ *
+ * - No receipt (fresh browser) → only the current release; a first visit should
+ *   not be greeted with the whole history.
+ * - Receipt that names an id no longer in the list → same as no receipt.
+ * - Receipt === current → nothing.
+ */
+export function unseenChangelogReleases(
+  seen: string | null,
+  releases: readonly ChangelogRelease[] = CHANGELOG_RELEASES,
+): ChangelogRelease[] {
+  if (releases.length === 0) return [];
+  const seenId = normalizeChangelogSeen(seen);
+  if (seenId === null) return [releases[0]];
+  const index = releases.findIndex((release) => release.id === seenId);
+  if (index === -1) return [releases[0]];
+  return releases.slice(0, index);
+}
+
+/** Newest companion CLI among the given releases (the one the machines should be on). */
+export function changelogCliTarget(releases: readonly ChangelogRelease[]): ChangelogRelease | null {
+  let best: ChangelogRelease | null = null;
+  for (const release of releases) {
+    if (!release.cliVersion) continue;
+    if (!best || isCliVersionBelow(best.cliVersion!, release.cliVersion)) best = release;
+  }
+  return best;
+}
+
 export function shouldShowChangelog(seen: string | null, releaseId = CURRENT_CHANGELOG.id): boolean {
-  if (seen === releaseId) return false;
-  // Migrate the first implementation's `${releaseId}:${buildVersion}` receipt
-  // without making every timestamp-salted Web deploy reopen the same notes.
-  return !seen?.startsWith(`${releaseId}:`);
+  if (releaseId === CURRENT_CHANGELOG.id) return unseenChangelogReleases(seen).length > 0;
+  return normalizeChangelogSeen(seen) !== releaseId;
 }
 
 export function changelogSeenValue(releaseId = CURRENT_CHANGELOG.id): string {
