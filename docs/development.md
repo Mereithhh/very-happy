@@ -71,6 +71,25 @@ reuse the production `~/.happy` while testing.
 the real daemon. It is useful for intentional local installation, not an isolated
 test command.
 
+## Checking narrow / mobile viewports in the local browser
+
+The Chrome automation tools ignore `resize_window` on this machine. Load the
+screen or harness in same-origin iframes of the target size instead — media
+queries resolve against the iframe viewport, so `@media (max-width: 520px)`
+branches render for real:
+
+```js
+document.body.innerHTML = `<div style="display:flex;gap:24px;padding:12px;background:#333">
+  <iframe src="/dev/changelog" style="width:390px;height:780px;border:2px solid #999"></iframe>
+  <iframe src="/dev/changelog" style="width:360px;height:640px;border:2px solid #999"></iframe>
+</div>`;
+```
+
+Then measure overflow inside each frame (`contentDocument.documentElement.scrollWidth`
+vs `contentWindow.innerWidth`) and toggle `data-theme="dark"` on the iframe's
+`documentElement` for the dark palette. Dev harnesses live under `/dev/*`
+(`ChangelogHarness` has a "last seen release" picker).
+
 ## Package gates
 
 The authoritative commands are in [`AGENTS.md`](../AGENTS.md) and

@@ -45,6 +45,11 @@ git worktree list                                   # 派工前看清有哪些�
   `.agents/skills/release`（发布/回滚/验证）；全局 `/release` 指向同一套流程。
 - Web 本地开发 `pnpm -C packages/happy-web-v2 dev` → `http://localhost:8082`
   （默认代理到生产 veryhappy.dev；连本地 server 用 `VH_SERVER_URL=http://127.0.0.1:3005`）。
+- `gh pr edit` 在 mac-office 会因 token 缺 `read:org` 报 GraphQL scope 错（标题/正文都改不了）；改用
+  `gh api -X PATCH repos/Mereithhh/very-happy/pulls/<n> -f title=… -f body=…`。`gh pr create/merge/checks`、
+  `scripts/land-pr.sh` 不受影响。PR 被标 `behind` 时 land-pr 会拒绝：`gh api -X PUT …/pulls/<n>/update-branch` 再 land。
+- 发布前后核对线上 SHA 不用登机器：首页 entry 资产名 `index-<hash>-<sha>.js` 就是生效 release（`check-release.mjs`
+  也这么读）；需要看 slot/探针留档再 `ssh vh-us`（只读 `/opt/happy/release/state.env`、`http-probe.*`）。
 - CLI 实验永远用一次性 home：`HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs …`，
   **不要动 `~/.happy`**（那是 mac-office 生产 daemon 的状态）。
 - PR 等 CI + 合并统一用 `scripts/land-pr.sh <pr>`（会识别 conflict 不触发 CI、按 head commit 找 run、合并重试；`--no-merge` 只看 CI）。
