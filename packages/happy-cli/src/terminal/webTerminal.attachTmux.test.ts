@@ -95,6 +95,19 @@ describe.skipIf(!tmuxAvailable)('attach an existing tmux session (B-273, real tm
         for (const id of ['att00000002', 'att00000003', 'att00000004']) expect(iso.hasSession(`vh-${id}`)).toBe(false);
     });
 
+    it('B-282: alsoAttached kills the user session together with the terminal; the default close never does', async () => {
+        const live = mgr.listUserTmuxSessions().find((s) => s.name === USER)!;
+        const r = await mgr.open({ terminalId: 'att00000005', cols: 80, rows: 24, cwd: iso.dir, attachTmux: { id: live.id, name: USER } });
+        expect(r.attachedTmux?.name).toBe(USER);
+        mgr.unsubscribe('att00000005');
+        expect(mgr.killSession('att00000005', { alsoAttached: true })).toBe(true);
+        expect(await until(() => !iso.hasSession(USER))).toBe(true);
+        expect(iso.hasSession('vh-att00000005')).toBe(false);
+        // Recreate for the restore test below.
+        expect(iso.run('new-session', '-d', '-s', USER, '-x', '80', '-y', '24', '-c', iso.dir, '/bin/sh').status).toBe(0);
+        iso.run('new-window', '-t', `=${USER}:`, '/bin/sh');
+    }, 30_000);
+
     it('restore re-attaches while the session lives, refuses once it is gone', async () => {
         expect(mgr.restoreClosedTerminal('att00000001')).toEqual({ type: 'success', terminalId: 'att00000001' });
         expect(await until(() => clients().includes(USER))).toBe(true);

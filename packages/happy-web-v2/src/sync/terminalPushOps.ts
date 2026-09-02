@@ -57,6 +57,9 @@ export interface TerminalSession {
   mirrorSessionId?: string;
   /** B-150: auto-restored after a restart — badged until opened once. */
   restoredAt?: number;
+  /** B-273: this terminal is attached to the user's tmux session of this name
+   *  (close = detach only; B-282 offers kill-together separately). */
+  attachTmux?: string;
 }
 
 /** A trusted webTerminals snapshot read out of a machine's daemonState. */
@@ -141,6 +144,7 @@ function pushRowOf(t: MachineTerminal, machineId: string, machineName: string): 
     mirrorSessionId:
       typeof t.mirrorSessionId === 'string' && t.mirrorSessionId ? t.mirrorSessionId : undefined,
     restoredAt: typeof t.restoredAt === 'number' && t.restoredAt > 0 ? t.restoredAt : undefined,
+    attachTmux: typeof t.attachTmux === 'string' && t.attachTmux ? t.attachTmux : undefined,
   };
 }
 

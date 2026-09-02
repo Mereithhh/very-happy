@@ -244,3 +244,18 @@ describe('restoredAt (B-150)', () => {
     expect(by('c')?.restoredAt).toBeUndefined();
   });
 });
+
+describe('B-282 attachTmux mapping', () => {
+    it('carries the attached session name through the push row (strings only)', () => {
+        const rows = composeTerminalList({
+            m1: { machineName: 'M', terminals: [
+                { id: 'a1', attachTmux: 'my dev' },
+                { id: 'a2', attachTmux: 7 as any },
+                { id: 'a3' },
+            ] },
+        }, EMPTY_OVERLAY, 20);
+        expect(rows.find((r) => r.id === 'a1')?.attachTmux).toBe('my dev');
+        expect(rows.find((r) => r.id === 'a2')?.attachTmux).toBeUndefined();
+        expect(rows.find((r) => r.id === 'a3')?.attachTmux).toBeUndefined();
+    });
+});

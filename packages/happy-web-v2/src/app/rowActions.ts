@@ -173,11 +173,39 @@ export async function confirmCloseTerminal(
   terminalId: string,
   onConfirmed?: () => void,
 ): Promise<boolean> {
-  const ok = await Modal.confirm(t('terminal.closeTitle'), t('terminal.closeMessage'), {
-    confirmText: t('common.close'),
-  });
+  // B-282: an ATTACHED terminal's close only disconnects — the user's tmux
+  // session (and everything running in it) stays alive on the machine. Say
+  // so instead of the generic "process ends now" text. Derived here so every
+  // caller (sidebar, board, ⌘W) gets the honest wording for free.
+  const attachName = useTerminalSessions.getState().terminals.find((tm) => tm.id === terminalId)?.attachTmux;
+  const ok = attachName
+    ? await Modal.confirm(t('terminal.closeAttachedTitle'), t('terminal.closeAttachedMessage', { name: attachName }), {
+        confirmText: t('terminal.closeAttachedConfirm'),
+      })
+    : await Modal.confirm(t('terminal.closeTitle'), t('terminal.closeMessage'), {
+        confirmText: t('common.close'),
+      });
   if (!ok) return false;
   await closeTerminalNow(machineId, terminalId, onConfirmed);
+  return true;
+}
+
+/** B-282: destructive variant for attach terminals — kills the web terminal
+ *  AND the user tmux session it is attached to. Callers gate the entry on
+ *  `killAttachedSupported(daemonState)`. */
+export async function confirmKillAttachedTerminal(
+  machineId: string,
+  terminalId: string,
+  attachName: string,
+  onConfirmed?: () => void,
+): Promise<boolean> {
+  const ok = await Modal.confirm(
+    t('terminal.killAttachedTitle'),
+    t('terminal.killAttachedMessage', { name: attachName }),
+    { confirmText: t('terminal.killAttachedConfirm'), destructive: true },
+  );
+  if (!ok) return false;
+  await closeTerminalNow(machineId, terminalId, onConfirmed, { alsoAttached: true });
   return true;
 }
 
@@ -188,9 +216,10 @@ export async function closeTerminalNow(
   machineId: string,
   terminalId: string,
   onBeforeKill?: () => void,
+  opts?: { alsoAttached?: boolean },
 ): Promise<void> {
   onBeforeKill?.();
-  const killed = await machineKillTerminal(machineId, terminalId);
+  const killed = await machineKillTerminal(machineId, terminalId, opts);
   if (!killed) {
     Modal.alert(t('common.error'), t('sessionInfo.failedToKillSession'));
     return;

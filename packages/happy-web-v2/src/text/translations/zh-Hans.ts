@@ -1230,6 +1230,7 @@ export const zhHans: TranslationStructure = {
         closedTerminalReopen: '在同目录开新终端',
         closedTerminalResume: '在原目录继续这个会话',
         closedTerminalRestore: '恢复这个终端（同 id、标题、标签）',
+        closeWithTmuxSession: '连同 tmux 会话彻底关闭…',
         terminalRestored: '已恢复',
         terminalRestoredHint: '重启后自动恢复：目录相同、对话已接回；进程是新的，屏幕历史从头开始。',
         closedTerminalGap: '重启时结束',
@@ -1699,6 +1700,12 @@ export const zhHans: TranslationStructure = {
         // 同时适用 tmux 与 direct PTY 终端。
         closeTitle: '关闭终端？',
         closeMessage: '终端会移入归档，可从归档恢复（同目录、同标题、同标签；有记录的 claude 对话会自动接回）。终端进程现在结束，屏幕内容不保留。',
+        closeAttachedTitle: '断开这个 tmux 会话？',
+        closeAttachedMessage: ({ name }: { name: string }) => `关闭只是断开连接：你的 tmux 会话「${name}」和里面运行的进程会继续在机器上跑，随时可以重新接入；这一行会移入归档。`,
+        closeAttachedConfirm: '断开',
+        killAttachedTitle: '连同 tmux 会话一起关闭？',
+        killAttachedMessage: ({ name }: { name: string }) => `这会杀掉机器上的 tmux 会话「${name}」和其中所有进程，且无法恢复。`,
+        killAttachedConfirm: '杀掉会话',
         // Used by terminal connection screens
         webBrowserRequired: '需要 Web 浏览器',
         webBrowserRequiredDescription: '出于安全原因，终端连接链接只能在 Web 浏览器中打开。请使用二维码扫描器或在计算机上打开此链接。',

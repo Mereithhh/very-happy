@@ -306,6 +306,8 @@ export const DaemonStateSchema = z.object({
   tmuxSessions: z.object({
     rpcAvailable: z.boolean(),
     detectedAt: z.number(),
+    /** B-282: `kill-terminal` honours `alsoAttached`. */
+    killAttached: z.boolean().optional(),
   }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
   cliUpdate: CliUpdateStateSchema.optional(),
