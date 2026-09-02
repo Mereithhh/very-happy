@@ -50,6 +50,28 @@ describe('Claude SDK query adapter', () => {
         }));
     });
 
+    it('forwards side-question fork options verbatim (B-279)', () => {
+        query({
+            prompt: 'hello',
+            options: { resume: 'abc', forkSession: true, tools: [], persistSession: false, includePartialMessages: true },
+        });
+        expect(sdkQuery.mock.calls[0][0].options).toEqual(expect.objectContaining({
+            resume: 'abc',
+            forkSession: true,
+            tools: [],
+            persistSession: false,
+            includePartialMessages: true,
+        }));
+    });
+
+    it('leaves fork options undefined for ordinary queries', () => {
+        query({ prompt: 'hello', options: { resume: 'abc' } });
+        const options = sdkQuery.mock.calls[0][0].options;
+        expect(options.forkSession).toBeUndefined();
+        expect(options.tools).toBeUndefined();
+        expect(options.persistSession).toBeUndefined();
+    });
+
     it('grants the SDK access to staged attachment directories', () => {
         query({ prompt: 'hello', options: { additionalDirectories: ['/private/chat-files'] } });
         expect(sdkQuery.mock.calls[0][0].options.additionalDirectories).toEqual(['/private/chat-files']);

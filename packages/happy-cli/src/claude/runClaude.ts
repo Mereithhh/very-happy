@@ -21,6 +21,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/utils/generateHookSettings';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
+import { registerSideQuestionHandler } from './registerSideQuestionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
@@ -181,7 +182,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // a brand-new session cannot pick a PDF until after sending once.
         attachmentKinds: [...CLAUDE_ATTACHMENT_KINDS],
         queueCancellation: true,
-        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2'],
+        capabilities: ['claude-steer-v1', 'claude-live-permission-v1', 'claude-live-permission-v2', 'claude-btw-v1'],
         // Effective mode this process enforces. Kept current by
         // publishPermissionMode below; the web renders it instead of guessing.
         permissionMode: mapToClaudeMode(initialPermissionMode ?? 'default'),
@@ -616,6 +617,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // hard-denied — see assistant/dispatcherTools.ts.
     let currentDisallowedTools: string[] | undefined = withAssistantDenylist(undefined, isAssistantVariant);
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+
+    // B-279 `/btw` side questions: answered by a separate single-turn query that
+    // forks the live Claude session. Registered here (not in the launcher) so
+    // it works in both modes and sees the process-level model selection.
+    registerSideQuestionHandler(session.rpcHandlerManager, {
+        getClaudeSessionId: () => currentSession?.sessionId ?? session.getMetadata()?.claudeSessionId ?? null,
+        getModel: () => currentModel,
+        cwd: workingDirectory,
+    });
 
     const resetCurrentModeDefaults = () => {
         // permissionMode deliberately survives an abort: the user's latest

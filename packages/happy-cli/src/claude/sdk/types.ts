@@ -64,6 +64,18 @@ export interface QueryOptions {
      * the SDK silently downgrades it to 'high' on models without it.
      */
     effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    /**
+     * With `resume`: derive a NEW session id instead of appending to the
+     * resumed one. Used by side questions (B-279) so a fork sees the main
+     * conversation's context without ever writing to its transcript.
+     */
+    forkSession?: boolean
+    /** `[]` disables every built-in tool (side questions must not act). */
+    tools?: string[]
+    /** `false` keeps the fork out of ~/.claude/projects (no JSONL, not resumable). */
+    persistSession?: boolean
+    /** Emit `stream_event` partials (token-level text deltas). */
+    includePartialMessages?: boolean
 }
 
 /**
