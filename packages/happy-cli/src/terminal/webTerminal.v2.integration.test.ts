@@ -302,6 +302,52 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         }, 10_000, 'pane resized to the opening client size');
     });
 
+    it('B-287: re-asserts window-size latest so a `manual`-mode session still resizes', async () => {
+        // The stuck-narrow bug: a session made before the create-time override
+        // (or under a user `window-size manual`) silently refuses
+        // refresh-client -C, so the pane froze at the first viewer's width and
+        // no later device could widen it. The per-open override must pull it
+        // back to `latest` on EVERY open, not just create.
+        const id = 'v2ws';
+        await mgr.open({ terminalId: id, cols: 120, rows: 40, streamMode: 'lines' });
+        await waitFor(() => seen(id).length > 0, 15_000, 'session live');
+        // Someone flips the window into manual sizing behind our back.
+        iso.spawn(['set-option', '-w', '-t', `=vh-${id}:`, 'window-size', 'manual'], { stdio: 'ignore' });
+        iso.spawn(['resize-window', '-t', `=vh-${id}:`, '-x', '40', '-y', '10'], { stdio: 'ignore' });
+        await waitFor(() => {
+            const r = iso.spawn(['display', '-p', '-t', `=vh-${id}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
+            return (r.stdout || '').trim() === '40x10';
+        }, 10_000, 'manual size took hold');
+        // A new open at a wider size must re-assert `latest` and actually widen.
+        mgr.unsubscribe(id);
+        const res = await mgr.open({ terminalId: id, cols: 100, rows: 30, streamMode: 'lines', attachOnly: true });
+        expect(res.paneCols).toBe(100);
+        await waitFor(() => {
+            const r = iso.spawn(['display', '-p', '-t', `=vh-${id}:`, '#{pane_width}x#{pane_height}'], { encoding: 'utf8' });
+            return (r.stdout || '').trim() === '100x30';
+        }, 10_000, 'pane widened despite manual mode');
+    });
+
+    it('B-287: a ring-replay re-open still carries the pane geometry', async () => {
+        // The replay branch used to answer without paneCols/paneRows, so a
+        // device landing on it had no authoritative width to adopt and fell
+        // back to its own guess — the leak a stale device width came through.
+        const id = 'v2replay';
+        await mgr.open({ terminalId: id, cols: 111, rows: 33, streamMode: 'lines' });
+        await waitFor(() => seen(id).length > 0, 15_000, 'session live');
+        // Produce a little output so the ring has a seq to replay FROM.
+        mgr.write(id, Buffer.from('echo replay-anchor\r', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('replay-anchor'), 15_000, 'output produced');
+        const before = (await mgr.open({ terminalId: id, cols: 111, rows: 33, streamMode: 'lines', resub: true, attachOnly: true }));
+        const fromSeq = before.seq;
+        mgr.write(id, Buffer.from('echo second\r', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('second'), 15_000, 'more output');
+        const res = await mgr.open({ terminalId: id, cols: 111, rows: 33, streamMode: 'lines', resub: true, attachOnly: true, fromSeq });
+        expect(res.mode).toBe('replay');
+        expect(res.paneCols).toBe(111);
+        expect(res.paneRows).toBe(33);
+    });
+
     it('an external resize is announced IN-BAND, in stream order (B-124 duplicate-status-line regression)', async () => {
         // The client wraps lines itself, so it must switch width exactly where
         // the pane did — an out-of-band event cannot express that ordering, and

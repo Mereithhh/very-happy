@@ -471,7 +471,7 @@ describe('parseSessionListLine', () => {
     const mk = (...fields: string[]) => fields.join(LIST_FIELD_SEP);
 
     it('parses a full line (epoch seconds → ms, trims titles)', () => {
-        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '["prod","Deploy"]', 'my dev', 'node', '✳ task');
+        const line = mk('vh-abc', '1700000000', '1700000100', '/Users/x/code', ' my title ', '1', '["prod","Deploy"]', 'my dev', '198', '40', 'node', '✳ task');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: 1700000000000,
@@ -481,13 +481,15 @@ describe('parseSessionListLine', () => {
             manual: true,
             tags: ['prod', 'Deploy'],
             attachTmux: 'my dev',
+            paneCols: 198,
+            paneRows: 40,
             paneCurrentCommand: 'node',
             paneTitle: '✳ task',
         });
     });
 
     it('empty optional fields become undefined / manual=false', () => {
-        const line = mk('vh-abc', '', '', '', '', '', '', '', '', '');
+        const line = mk('vh-abc', '', '', '', '', '', '', '', '', '', '', '');
         expect(parseSessionListLine(line)).toEqual({
             name: 'vh-abc',
             created: undefined,
@@ -512,11 +514,13 @@ describe('parseSessionListLine', () => {
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 't'))).toBeUndefined();
         // The pre-B-273 9-field shape is malformed too (@vh_attach was added).
         expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'zsh', 't'))).toBeUndefined();
-        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', '[]', '', 'zsh', 't'))).toBeUndefined(); // no name
+        // The pre-B-287 10-field shape (no pane geometry) likewise.
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', '', 'zsh', 't'))).toBeUndefined();
+        expect(parseSessionListLine(mk('', '1', '2', '/x', '', '', '[]', '', '80', '24', 'zsh', 't'))).toBeUndefined(); // no name
     });
 
     it('a pathological separator inside pane_title only garbles the title, never the fields', () => {
-        const line = mk('vh-abc', '1', '2', '/x', 'v', '', '[]', '', 'zsh', `weird${LIST_FIELD_SEP}title`);
+        const line = mk('vh-abc', '1', '2', '/x', 'v', '', '[]', '', '80', '24', 'zsh', `weird${LIST_FIELD_SEP}title`);
         const parsed = parseSessionListLine(line)!;
         expect(parsed.name).toBe('vh-abc');
         expect(parsed.cwd).toBe('/x');
@@ -527,13 +531,22 @@ describe('parseSessionListLine', () => {
     it('pane_current_command sits BEFORE pane_title (a title with a separator cannot shift it)', () => {
         // The whole reason for the field order: if the command were last, a
         // title containing 0x1f would silently steal it.
-        const line = mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '2.1.228', `a${LIST_FIELD_SEP}b`);
+        const line = mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '80', '24', '2.1.228', `a${LIST_FIELD_SEP}b`);
         expect(parseSessionListLine(line)!.paneCurrentCommand).toBe('2.1.228');
     });
 
+    it('B-287: pane geometry rides along; garbage geometry is simply absent', () => {
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '146', '40', 'zsh', 't'))).toMatchObject({ paneCols: 146, paneRows: 40 });
+        const noGeom = parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '', '', 'zsh', 't'))!;
+        expect(noGeom.paneCols).toBeUndefined();
+        expect(noGeom.paneRows).toBeUndefined();
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', '', '0', '24', 'zsh', 't'))!.paneCols).toBeUndefined();
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', '', 'x', '24', 'zsh', 't'))!.paneRows).toBeUndefined();
+    });
+
     it('B-273: @vh_attach carries the attached user session name; control chars fail closed', () => {
-        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', ' dev ', 'tmux', 't'))!.attachTmux).toBe(' dev '); // verbatim: tmux allows edge spaces
-        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'bad\x07name', 'tmux', 't'))!.attachTmux).toBeUndefined();
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', ' dev ', '80', '24', 'tmux', 't'))!.attachTmux).toBe(' dev '); // verbatim: tmux allows edge spaces
+        expect(parseSessionListLine(mk('vh-abc', '1', '2', '/x', '', '', '[]', 'bad\x07name', '80', '24', 'tmux', 't'))!.attachTmux).toBeUndefined();
     });
 });
 

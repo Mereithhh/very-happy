@@ -11,7 +11,7 @@ function line(fields: string[]): string {
 describe('parseVhTerminals', () => {
     it('parses vh-* sessions with stored @vh_title', () => {
         const out = parseVhTerminals(
-            line(['vh-abc12', '1755000000', '1755000100', '/Users/demo/code', '部署检查', '1', '["prod"]', '', 'node', '✳ deploy check']),
+            line(['vh-abc12', '1755000000', '1755000100', '/Users/demo/code', '部署检查', '1', '["prod"]', '', '120', '30', 'node', '✳ deploy check']),
             'my-host',
         )
         expect(out).toEqual([{
@@ -25,7 +25,7 @@ describe('parseVhTerminals', () => {
 
     it('falls back to a meaningful pane title when @vh_title is empty', () => {
         const out = parseVhTerminals(
-            line(['vh-abc12', '1', '2', '/tmp', '', '', '[]', '', 'node', '✳ fixing tests']),
+            line(['vh-abc12', '1', '2', '/tmp', '', '', '[]', '', '120', '30', 'node', '✳ fixing tests']),
             'my-host',
         )
         expect(out[0].title).toBe('fixing tests')
@@ -33,7 +33,7 @@ describe('parseVhTerminals', () => {
 
     it('drops hostname/junk pane titles', () => {
         const out = parseVhTerminals(
-            line(['vh-abc12', '1', '2', '/tmp', '', '', '[]', '', 'zsh', 'my-host']),
+            line(['vh-abc12', '1', '2', '/tmp', '', '', '[]', '', '120', '30', 'zsh', 'my-host']),
             'my-host',
         )
         expect(out[0].title).toBeUndefined()
@@ -41,9 +41,9 @@ describe('parseVhTerminals', () => {
 
     it('ignores non-vh tmux sessions and malformed lines', () => {
         const stdout = [
-            line(['main', '1', '2', '/tmp', '', '', '[]', '', 'zsh', 'zsh']),
+            line(['main', '1', '2', '/tmp', '', '', '[]', '', '120', '30', 'zsh', 'zsh']),
             'garbage-without-separators',
-            line(['vh-ok1', '1', '2', '/tmp', 't', '', '[]', '', 'zsh', 'x']),
+            line(['vh-ok1', '1', '2', '/tmp', 't', '', '[]', '', '120', '30', 'zsh', 'x']),
             '',
         ].join('\n')
         const out = parseVhTerminals(stdout, 'h')
@@ -55,7 +55,7 @@ describe('parseVhTerminals', () => {
         // B-121 grew the set to 8 (pane_current_command). The invariant that
         // actually matters is the LAST field, not the count — but the count is
         // asserted too, because a silent drift here is what broke this file.
-        expect(fields.length).toBe(10) // B-273 added @vh_attach
+        expect(fields.length).toBe(12) // B-273 added @vh_attach; B-287 added pane_width/pane_height
         expect(fields[fields.length - 1]).toBe('#{pane_title}')
         expect(fields).toContain('#{pane_current_command}')
         expect(fields).toContain('#{@vh_tags}')

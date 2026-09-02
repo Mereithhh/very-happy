@@ -933,6 +933,20 @@ export function WebTerminalScreen() {
     const ro = new ResizeObserver(scheduleFit);
     ro.observe(mount);
     window.addEventListener('resize', scheduleFit);
+    // ── Reclaim the pane on RETURN (B-287) ──────────────────────────────────
+    // The daemon runs `window-size latest`: the pane follows whichever viewer
+    // spoke to tmux most recently. A phone that glanced at this terminal left
+    // the pane at ITS width; when you switch back to the desktop the tab is
+    // still `visible` (only the window lost focus), so `visibilitychange` never
+    // fires and nothing re-asserted this viewport — the terminal sat narrow
+    // until you resized the window by hand. The window 'focus' edge is exactly
+    // "this device is being used again": re-propose our size so the pane
+    // reflows to us. `scheduleFit` → `doFit` sends the proposal (and in lines
+    // mode arms the confirm fallback), so a focused desktop always wins its
+    // width back without any per-viewer bookkeeping. Idempotent when we already
+    // own the size (the daemon dedupes an unchanged `refresh-client -C`).
+    const onWindowFocus = () => { if (!disposed && !document.hidden) scheduleFit(); };
+    window.addEventListener('focus', onWindowFocus);
     // Give the terminal keyboard focus back. Three rules, all of them paid for
     // (2026-08-14, CDP-measured):
     //  1. IDEMPOTENT — already focused ⇒ do nothing. A focus() on the element
@@ -2118,6 +2132,7 @@ export function WebTerminalScreen() {
       clearTimeout(t0);
       if (fitRaf) cancelAnimationFrame(fitRaf);
       window.removeEventListener('resize', scheduleFit);
+      window.removeEventListener('focus', onWindowFocus);
       if (geometryFallback) { clearTimeout(geometryFallback); geometryFallback = null; }
       try { geometryOsc?.dispose(); } catch { /* already disposed */ }
       offResume();

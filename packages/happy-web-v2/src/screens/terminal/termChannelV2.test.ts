@@ -261,4 +261,13 @@ describe('geometry ownership (B-124 duplicate status line)', () => {
         expect(ops).toMatch(/paneCols\?: number;/);
         expect(ops).toMatch(/paneCols: result\.paneCols/);
     });
+
+    it('B-287: the window focus edge re-asserts this viewport size (reclaim on return)', () => {
+        // Cmd-Tab back to a still-`visible` desktop fires window 'focus' but not
+        // visibilitychange; without this the pane stayed at whatever width the
+        // phone last set. focus → scheduleFit → doFit → terminal-resize.
+        expect(screen).toMatch(/addEventListener\('focus', onWindowFocus\)/);
+        expect(screen).toMatch(/const onWindowFocus = \(\) => \{[^}]*scheduleFit\(\)/);
+        expect(screen).toMatch(/removeEventListener\('focus', onWindowFocus\)/);
+    });
 });
