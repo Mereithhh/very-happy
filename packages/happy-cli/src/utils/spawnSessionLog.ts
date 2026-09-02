@@ -7,6 +7,7 @@ export type SpawnSessionLogSummary = {
   environmentVariableNames: string[];
   resumesClaude: boolean;
   resumesCodex: boolean;
+  importsClaude: boolean;
   forceNew: boolean;
   permissionMode?: string;
 };
@@ -26,6 +27,7 @@ export function summarizeSpawnSessionForLog(value: unknown): SpawnSessionLogSumm
     environmentVariableNames: Object.keys(environmentVariables).sort(),
     resumesClaude: typeof input.resumeClaudeSessionId === 'string' && input.resumeClaudeSessionId.length > 0,
     resumesCodex: typeof input.resumeCodexThreadId === 'string' && input.resumeCodexThreadId.length > 0,
+    importsClaude: typeof input.importedFromClaudeSessionId === 'string' && input.importedFromClaudeSessionId.length > 0,
     forceNew: input.forceNew === true,
     ...(typeof input.permissionMode === 'string' ? { permissionMode: input.permissionMode } : {}),
   };

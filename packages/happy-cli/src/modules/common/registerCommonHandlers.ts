@@ -148,6 +148,12 @@ export interface SpawnSessionOptions {
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
     /**
+     * B-290: source Claude conversation id of an imported transcript (the
+     * original that `resumeClaudeSessionId` is a copy of). Recorded in session
+     * metadata so the import picker hides it. Old daemons ignore the field.
+     */
+    importedFromClaudeSessionId?: string;
+    /**
      * B-051: spawn the machine's assistant (meta-agent) session. The daemon
      * forces cwd to ~/.happy/assistant (the passed `directory` is ignored),
      * bootstraps that home on first use, injects HAPPY_SESSION_VARIANT=assistant

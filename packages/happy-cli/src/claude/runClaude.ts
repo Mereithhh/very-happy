@@ -161,6 +161,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Lineage from the daemon's spawn RPC (set by app-side fork / duplicate).
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
+    // B-290: import of a claude CLI / desktop / claude.ai transcript.
+    const importedFromClaudeSessionId = process.env.HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID;
 
     let metadata: Metadata = {
         path: workingDirectory,
@@ -191,6 +193,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
+        ...(importedFromClaudeSessionId ? { importedFromClaudeSessionId } : {}),
         ...(isAssistantVariant ? { variant: 'assistant' as const } : {}),
         // B-091: sessions the assistant dispatched (daemon spawn RPC exports
         // HAPPY_SPAWNED_BY, B-069) are born with the 'assistant' tag so every

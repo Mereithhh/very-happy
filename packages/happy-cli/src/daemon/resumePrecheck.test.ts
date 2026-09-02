@@ -19,6 +19,10 @@ describe('B-265 resumePrecheck', () => {
     });
     it('model values are charset-limited so they cannot become another flag', () => {
         expect(sanitizeResumeModel('claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
+        expect(sanitizeResumeModel('opus[1m]')).toBe('opus[1m]');
+        expect(sanitizeResumeModel('fable[1m]')).toBe('fable[1m]');
+        expect(sanitizeResumeModel('opus[2m]')).toBeNull();
+        expect(sanitizeResumeModel('[1m]')).toBeNull();
         expect(sanitizeResumeModel('--dangerously-skip-permissions')).toBeNull();
         expect(sanitizeResumeModel('a b')).toBeNull();
         expect(sanitizeResumeModel(3)).toBeNull();

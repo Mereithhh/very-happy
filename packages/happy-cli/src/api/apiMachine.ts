@@ -24,7 +24,8 @@ import { sendTerminalNotification, terminalNotifyLink, terminalNotifyMessage } f
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
-import { getProjectPath } from '@/claude/utils/path';
+import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
+import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
@@ -340,7 +341,7 @@ export class ApiMachineClient {
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
-            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode } = params || {};
+            const { directory, sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode } = params || {};
             logger.debug('[API MACHINE] Spawning session:', summarizeSpawnSessionForLog(params));
 
             // The assistant variant supplies its own directory (assistant home)
@@ -349,7 +350,7 @@ export class ApiMachineClient {
                 throw new Error('Directory is required');
             }
 
-            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined });
+            const result = await spawnSession({ directory: directory || '', sessionId, machineId, approvedNewDirectoryCreation, agent, environmentVariables, token, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId: typeof importedFromClaudeSessionId === 'string' ? importedFromClaudeSessionId : undefined, variant: variant === 'assistant' ? 'assistant' : undefined, forceNew: forceNew === true, permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined });
 
             switch (result.type) {
                 case 'success':
@@ -648,6 +649,30 @@ export class ApiMachineClient {
                 }
                 throw error;
             }
+        });
+
+        // B-290: list the Claude Code conversations stored on this machine
+        // (CLI / desktop app / SDK all write <config>/projects/<cwd>/<id>.jsonl)
+        // so the web can import one — fork it via `claude-fork-session` and
+        // spawn a Happy session with `resumeClaudeSessionId`. Read-only scan of
+        // file heads; gated web-side by `daemonState.claudeHistory`.
+        this.rpcHandlerManager.registerHandler('claude-list-history', async (params: any) => {
+            const { directory, limit, exclude } = params || {};
+            if (directory !== undefined && (typeof directory !== 'string' || directory.length === 0)) {
+                throw new Error('directory must be a non-empty string when provided');
+            }
+            const projectDirs = typeof directory === 'string'
+                ? [getProjectPath(directory)]
+                : await listClaudeProjectDirs(getClaudeProjectsRoot());
+            const excludeIds = Array.isArray(exclude)
+                ? exclude.filter((id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id))
+                : [];
+            const result = await listClaudeSessionHistory({
+                projectDirs,
+                limit: typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 200)) : 60,
+                exclude: excludeIds,
+            });
+            return { type: 'success', ...result };
         });
 
         this.rpcHandlerManager.registerHandler('codex-fork-thread', async (params: any) => {
@@ -1007,6 +1032,8 @@ export class ApiMachineClient {
                     terminalRestore: { rpcAvailable: true, detectedAt: now },
                     // B-273 capability flag (same restamp discipline).
                     tmuxSessions: { rpcAvailable: true, detectedAt: now, killAttached: true },
+                    // B-290 capability flag: `claude-list-history` (same restamp discipline).
+                    claudeHistory: { rpcAvailable: true, detectedAt: now },
                     // B-084: closed records survive daemon restarts (persisted
                     // in closed-terminals.json), so the connect snapshot ships
                     // them too — not just the incremental pushes.

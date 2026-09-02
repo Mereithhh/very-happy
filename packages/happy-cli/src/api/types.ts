@@ -309,6 +309,15 @@ export const DaemonStateSchema = z.object({
     /** B-282: `kill-terminal` honours `alsoAttached`. */
     killAttached: z.boolean().optional(),
   }).optional(),
+  /**
+   * B-290 capability flag: this daemon answers `claude-list-history` (import a
+   * Claude Code conversation that was never started through very-happy).
+   * Same trust rule (`detectedAt >= startedAt`).
+   */
+  claudeHistory: z.object({
+    rpcAvailable: z.boolean(),
+    detectedAt: z.number(),
+  }).optional(),
   /** Relay-owned CLI compatibility/update policy last checked by this daemon. */
   cliUpdate: CliUpdateStateSchema.optional(),
   /**
@@ -499,6 +508,13 @@ export type Metadata = {
   /** Lineage for sessions created via the fork / duplicate flow. */
   parentSessionId?: string
   forkedFromMessageId?: string
+  /**
+   * B-290: the Claude conversation this session was imported from (the
+   * on-disk transcript written by claude CLI / desktop / claude.ai that was
+   * copied by `claude-fork-session`). Lets the import picker hide originals
+   * that already have a copy here. Absent on every other session.
+   */
+  importedFromClaudeSessionId?: string
   /**
    * B-051: session variant. 'assistant' marks the machine's meta-agent
    * (dispatcher / voice assistant) session — fixed cwd ~/.happy/assistant,
