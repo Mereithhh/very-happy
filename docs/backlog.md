@@ -14,6 +14,7 @@
 > 字段口径：类型 = bug / ux / feat / debt；状态 = todo / doing / done / dropped。
 > done/dropped 项在批次沉淀时移入底部「近期完成」，攒多了直接删（历史在 git）。
 > 真机验证项不进这里，进 `docs/verify-queue.md`。大改动的设计进 `specs/`。
+> 多会话并行时 B-id 会被抢（一个 session 内被抢过 3 次）：领 id 前 `git fetch` 后取 main 上最大 id +1，rebase 后再核对一次没撞。
 
 ## 活跃
 

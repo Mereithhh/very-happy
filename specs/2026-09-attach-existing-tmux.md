@@ -1,6 +1,6 @@
 # 在 Web 里接入机器上已有的 tmux 会话（attach existing tmux）
 
-> 状态：Final（2 轮对抗 review；实现随同一 PR）
+> 状态：Shipped（B-273 `b2a8c817` CLI v0.2.98；跟进 B-280 `cdcb7ccf`、B-281 `75b8a7ca`、B-282 关闭语义 `0a8005ca` CLI v0.2.99）
 > 日期：2026-09-02 ｜ 关联 backlog：B-273（接 B-269/B-270 tmux.conf 加固）｜ 出处：同事实报「web 终端里 `tmux attach` 报 `sessions should be nested with care`」
 
 ## 背景
