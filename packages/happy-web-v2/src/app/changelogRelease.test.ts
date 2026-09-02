@@ -55,7 +55,10 @@ describe('changelog releases', () => {
 
   it('targets the newest companion CLI across the unseen releases', () => {
     const releases = unseenChangelogReleases(CHANGELOG_RELEASES[4].id);
-    expect(changelogCliTarget(releases)?.cliVersion).toBe(CURRENT_CHANGELOG.cliVersion);
+    // The newest release may be web-only (no cliVersion); the CLI target is the
+    // newest release that actually shipped a companion CLI, not necessarily [0].
+    const newestCliVersion = CHANGELOG_RELEASES.find((r) => r.cliVersion)?.cliVersion;
+    expect(changelogCliTarget(releases)?.cliVersion).toBe(newestCliVersion);
     expect(changelogCliTarget([
       { ...CURRENT_CHANGELOG, id: 'a', cliVersion: '0.2.10' },
       { ...CURRENT_CHANGELOG, id: 'b', cliVersion: undefined },
