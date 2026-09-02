@@ -112,7 +112,8 @@
   flex: none;
 }
 @media (max-width: 420px) { .ch-relay { padding-inline: 5px; } }
-.ch-files-toggle.is-active {
+.ch-files-toggle.is-active,
+.ch-btw-toggle.is-active {
   color: var(--accent-2);
   background: var(--accent-dim);
 }

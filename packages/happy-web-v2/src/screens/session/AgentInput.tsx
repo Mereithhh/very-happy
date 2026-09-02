@@ -66,6 +66,8 @@ import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
 import { filterSlashSuggestions, slashCommandText } from './slashSuggestions';
+import { BTW_COMMAND, canOfferBtw, parseBtwCommand } from './btwCommand';
+import { openBtwPanel } from './btwPanelState';
 import {
     COMPOSER_MOBILE_MIN_HEIGHT,
     composerHeightCap,
@@ -139,9 +141,16 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const gate = composerGate(session);
     const restoreState = useRestoreState(sessionId);
     const hasPendingPermission = Object.keys(session?.agentState?.requests ?? {}).length > 0;
+    // B-283: `/btw` is a WEB command (never sent to the CLI) — list it first on
+    // any Claude session; the panel itself explains when the wrapper is too old.
     const slashSuggestions = dismissedSlashText === text
         ? []
-        : filterSlashSuggestions(getAllCommands(sessionId), text);
+        : filterSlashSuggestions(
+            canOfferBtw(session)
+                ? [{ command: BTW_COMMAND, description: t('session.btw.commandDescription') }, ...getAllCommands(sessionId)]
+                : getAllCommands(sessionId),
+            text,
+        );
 
     useEffect(() => {
         setSlashIndex(0);
@@ -289,7 +298,22 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         }
     };
 
+    // B-283: `/btw` is a web command on Claude sessions. This is the ONLY exit
+    // to the main conversation for queued items (auto-release, edit-and-save,
+    // intervene, persisted-queue reload), so the routing lives here too.
+    const routeBtw = (text: string): boolean => {
+        if (!canOfferBtw(session)) return false;
+        const btw = parseBtwCommand(text);
+        if (!btw) return false;
+        openBtwPanel(sessionId, btw.question);
+        return true;
+    };
+
     const sendQueuedItem = async (item: QueuedMessage, delivery: 'queue' | 'steer' = 'queue') => {
+        if (routeBtw(item.text)) {
+            releaseQueuedAttachments(item);
+            return;
+        }
         await sync.sendMessage(sessionId, item.text, {
             source: 'chat',
             delivery,
@@ -319,6 +343,15 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         const value = text.trim();
         const atts = attachments.length > 0 ? attachments : undefined;
         if ((!value && !atts) || sending || !session) return;
+        // B-283: `/btw [question]` opens the side-question panel and NEVER
+        // reaches the main conversation (attachments stay in the composer).
+        // Non-Claude sessions keep sending the text verbatim.
+        if (routeBtw(value)) {
+            setText('');
+            draftRef.current = '';
+            storage.getState().updateSessionDraft(sessionId, null);
+            return;
+        }
         // Captured BEFORE the async send: did the textarea own focus (⇒ the
         // soft keyboard was up) when the user hit send? On iOS, tapping a
         // button does NOT move focus off the textarea, so this stays true for

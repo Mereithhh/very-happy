@@ -743,7 +743,7 @@ export async function machineListTmuxSessions(machineId: string): Promise<UserTm
 }
 
 export async function machineKillTerminal(machineId: string, terminalId: string, opts?: {
-    /** B-282: also kill the user tmux session the terminal is attached to.
+    /** B-283: also kill the user tmux session the terminal is attached to.
      *  Send only when `killAttachedSupported(daemonState)` — an old daemon
      *  ignores the field and kills the web terminal alone. */
     alsoAttached?: boolean;
@@ -1781,3 +1781,86 @@ export type {
     SessionRipgrepResponse,
     SessionKillResponse
 };
+
+// ── `/btw` side questions (B-283) ───────────────────────────────────────────
+// Ask/poll/cancel instead of one blocking RPC: server + relay cap every RPC
+// at 30s and a side answer over a big context routinely takes longer. The
+// CLI keeps the running answer; the web polls until a terminal status.
+export type SideQuestionStatus = 'running' | 'done' | 'error' | 'cancelled';
+export interface SideQuestionExchangeInput {
+    question: string;
+    answer: string;
+}
+export interface SideQuestionAskResponse {
+    requestId: string;
+    /** false when the main session has not produced a Claude session id yet */
+    hadContext: boolean;
+}
+export interface SideQuestionPollResponse {
+    requestId: string;
+    status: SideQuestionStatus;
+    text: string;
+    error?: string;
+    startedAt: number;
+    finishedAt?: number;
+}
+
+// A thrown CLI handler does NOT reject the RPC: RpcHandlerManager answers with
+// `{ error }` under a normal ack. Surface it as a rejection here so the store
+// never treats it as a successful payload (sibling wrappers do the same).
+function throwIfRpcError(raw: unknown): void {
+    const error = (raw && typeof raw === 'object') ? (raw as { error?: unknown }).error : undefined;
+    if (typeof error === 'string' && error) throw new Error(error);
+}
+
+const BTW_SIDE_STATUSES: readonly SideQuestionStatus[] = ['running', 'done', 'error', 'cancelled'];
+
+export async function sessionBtwAsk(
+    sessionId: string,
+    question: string,
+    history: SideQuestionExchangeInput[],
+): Promise<SideQuestionAskResponse> {
+    const raw = await apiSocket.sessionRPC<unknown, { question: string; history: SideQuestionExchangeInput[] }>(
+        sessionId,
+        'btw-ask',
+        { question, history },
+        { timeoutMs: 20_000 },
+    );
+    throwIfRpcError(raw);
+    const ack = raw as Partial<SideQuestionAskResponse> | null;
+    if (!ack || typeof ack.requestId !== 'string' || !ack.requestId) throw new Error('Side question: malformed ask response');
+    return { requestId: ack.requestId, hadContext: ack.hadContext === true };
+}
+
+export async function sessionBtwPoll(sessionId: string, requestId: string): Promise<SideQuestionPollResponse> {
+    const raw = await apiSocket.sessionRPC<unknown, { requestId: string }>(
+        sessionId,
+        'btw-poll',
+        { requestId },
+        { timeoutMs: 20_000 },
+    );
+    throwIfRpcError(raw);
+    const snap = raw as Partial<SideQuestionPollResponse> | null;
+    if (!snap || !BTW_SIDE_STATUSES.includes(snap.status as SideQuestionStatus)) {
+        throw new Error('Side question: malformed poll response');
+    }
+    return {
+        requestId: typeof snap.requestId === 'string' ? snap.requestId : requestId,
+        status: snap.status as SideQuestionStatus,
+        text: typeof snap.text === 'string' ? snap.text : '',
+        error: typeof snap.error === 'string' ? snap.error : undefined,
+        startedAt: typeof snap.startedAt === 'number' ? snap.startedAt : Date.now(),
+        finishedAt: typeof snap.finishedAt === 'number' ? snap.finishedAt : undefined,
+    };
+}
+
+export async function sessionBtwCancel(sessionId: string, requestId: string): Promise<boolean> {
+    const raw = await apiSocket.sessionRPC<unknown, { requestId: string }>(
+        sessionId,
+        'btw-cancel',
+        { requestId },
+        { timeoutMs: 20_000 },
+    );
+    throwIfRpcError(raw);
+    return (raw as { cancelled?: unknown } | null)?.cancelled === true;
+}

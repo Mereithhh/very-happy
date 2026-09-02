@@ -58,6 +58,10 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+        forkSession: opts?.forkSession,
+        tools: opts?.tools,
+        persistSession: opts?.persistSession,
+        includePartialMessages: opts?.includePartialMessages,
         onElicitation: opts?.onElicitation,
         onUserDialog: opts?.onUserDialog,
         supportedDialogKinds: opts?.onUserDialog ? opts.supportedDialogKinds : undefined,
@@ -84,7 +88,10 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     for (const [key, value] of Object.entries(process.env)) {
         if (typeof value === 'string') env[key] = value
     }
-    env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(process.env.CLAUDE_CODE_ENTRYPOINT)
+    for (const [key, value] of Object.entries(opts?.env ?? {})) {
+        if (typeof value === 'string') env[key] = value
+    }
+    env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(env.CLAUDE_CODE_ENTRYPOINT)
     // Keep background/utility calls (built-in session-title generation etc.)
     // on haiku instead of the session's main model. Main model is unaffected.
     pinSmallFastModel(env)

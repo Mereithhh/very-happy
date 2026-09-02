@@ -440,6 +440,28 @@ export const en = {
 
     session: {
         inputPlaceholder: 'Type a message ...',
+        // B-283 `/btw` side questions — answered by a separate single-turn
+        // query that forks the live conversation; never enters the main chat.
+        btw: {
+            title: 'Side question',
+            subtitle: 'not added to the conversation',
+            headerHint: 'Ask a quick side question (/btw)',
+            commandDescription: 'Ask a quick side question without interrupting the current work',
+            placeholder: 'Ask something on the side… (Enter to send)',
+            placeholderShiftEnter: 'Ask something on the side… (Shift+Enter to send)',
+            send: 'Ask',
+            cancel: 'Stop side question',
+            clear: 'Clear side questions',
+            close: 'Close side questions',
+            thinking: 'thinking…',
+            emptyTitle: 'Ask without interrupting',
+            emptyDesc: 'Claude answers from this conversation\'s context in one reply — no tools, nothing added to the main chat. Works while a turn is running.',
+            unsupported: 'This session\'s CLI does not support side questions. Update very-happy-cli and start a new session.',
+            offline: 'Session is offline — side questions need the running agent.',
+            noContext: 'Answered without conversation context (asked before the first turn).',
+            cancelled: 'Side question stopped.',
+            failed: ({ error }: { error: string }) => `Side question failed: ${error}`,
+        },
         // B-098 composer manual expand toggle
         input: {
             expand: 'Expand input',
@@ -1724,7 +1746,7 @@ export const en = {
         // Runtime-neutral because Web terminals may use tmux or direct PTY.
         closeTitle: 'Close terminal?',
         closeMessage: 'The terminal moves to the archive and can be restored from there (same directory, title and tags; a recorded claude conversation is resumed automatically). The terminal process ends now and the screen contents are not kept.',
-        // B-282: attach terminals — closing only disconnects.
+        // B-283: attach terminals — closing only disconnects.
         closeAttachedTitle: 'Disconnect this tmux session?',
         closeAttachedMessage: ({ name }: { name: string }) => `Closing only disconnects: your tmux session “${name}” and everything running in it keep going on the machine. You can attach it again any time; the row moves to the archive.`,
         closeAttachedConfirm: 'Disconnect',

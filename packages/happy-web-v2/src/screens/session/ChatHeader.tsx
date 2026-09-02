@@ -3,7 +3,7 @@
  * and the global back button.
  */
 import { useEffect, useState } from 'react';
-import { StickyNote, Check, FolderTree, Pencil, X } from 'lucide-react';
+import { StickyNote, Check, FolderTree, MessageCircleQuestion, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
 import { useSocketStatus } from '@/app/useConnection';
@@ -30,10 +30,15 @@ export function ChatHeader({
     sessionId,
     filesOpen,
     onToggleFiles,
+    btwOpen,
+    onToggleBtw,
 }: {
     sessionId: string;
     filesOpen?: boolean;
     onToggleFiles?: () => void;
+    /** B-283 `/btw` side-question panel; absent = this session can't host it */
+    btwOpen?: boolean;
+    onToggleBtw?: () => void;
 }) {
     const { t } = useTranslation();
     const session = useSession(sessionId);
@@ -141,6 +146,18 @@ export function ChatHeader({
             >
                 <StickyNote size={16} />
             </button>
+            {onToggleBtw && (
+                <button
+                    type="button"
+                    className={`ch-icon ch-btw-toggle${btwOpen ? ' is-active' : ''}`}
+                    onClick={onToggleBtw}
+                    aria-label={t('session.btw.title')}
+                    title={t('session.btw.headerHint')}
+                    aria-pressed={btwOpen}
+                >
+                    <MessageCircleQuestion size={16} />
+                </button>
+            )}
             {onToggleFiles && (
                 <button
                     type="button"
