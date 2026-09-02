@@ -71,7 +71,7 @@ const en = {
     guides: 'FOCUSED GUIDES · ONE WORKSPACE', interfaceEyebrow: 'THE INTERFACE IN THIS GUIDE', interfaceTitle: 'Learn the product you will actually use.',
     interfaceBody: "The interface below uses the authenticated app's production component styles and Console tokens with sanitized fixture data.",
     openGuide: 'Open guide', fieldGuide: 'FIELD GUIDE', adjacent: 'Adjacent chapters', end: 'Keep the thread.', copyCode: 'Copy', copied: 'Copied',
-    groups: { start: 'Start', understand: 'Understand', operate: 'Operate', extend: 'Extend' },
+    groups: { start: 'Start', work: 'Work', understand: 'Understand', operate: 'Operate', extend: 'Extend' },
   },
 } as const;
 
@@ -141,7 +141,7 @@ const zhHans: PublicCopy = {
     guides: '篇聚焦指南 · 一个工作区', interfaceEyebrow: '指南中的真实界面', interfaceTitle: '学习你真正会使用的产品。',
     interfaceBody: '下方界面使用已认证 App 的生产组件样式与 Console token，并配合脱敏示例数据。',
     openGuide: '打开指南', fieldGuide: '操作指南', adjacent: '相邻章节', end: '保持上下文。', copyCode: '复制', copied: '已复制',
-    groups: { start: '开始', understand: '理解', operate: '运维', extend: '扩展' },
+    groups: { start: '开始', work: '日常使用', understand: '理解', operate: '运维', extend: '扩展' },
   },
 };
 

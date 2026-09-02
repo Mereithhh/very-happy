@@ -61,6 +61,13 @@ export function tmuxSessionsSupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'tmuxSessions');
 }
 
+/** B-290: does this machine's CURRENT daemon answer `claude-list-history`
+ *  (import a Claude Code conversation that was never started through
+ *  very-happy)? */
+export function claudeHistorySupported(daemonState: any): boolean {
+  return daemonRpcFlagSupported(daemonState, 'claudeHistory');
+}
+
 /** B-282: does `kill-terminal` honour `alsoAttached` on this daemon run? */
 export function killAttachedSupported(daemonState: any): boolean {
   return daemonRpcFlagSupported(daemonState, 'tmuxSessions') && daemonState?.tmuxSessions?.killAttached === true;

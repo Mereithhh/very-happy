@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2 } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -36,6 +36,7 @@ import { openCommandPalette } from '@/screens/command/CommandPalette';
 import { NewSessionModal } from './NewSessionModal';
 import { NewTerminalModal } from './NewTerminalModal';
 import { AttachTmuxModal } from './AttachTmuxModal';
+import { ImportClaudeHistoryModal } from './ImportClaudeHistoryModal';
 import { RenameModal } from './RenameModal';
 import { splitPinnedRows } from './sidebarPins';
 import { sortRowsByManualOrder, mergeLegacyPinned, planSidebarOrder, pruneEntries } from './sidebarOrder';
@@ -141,6 +142,7 @@ export function Sidebar() {
   const [showNew, setShowNew] = useState(false);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
+  const [showImportClaude, setShowImportClaude] = useState(false);
   const [cmdHeld, setCmdHeld] = useState(false);
   const terminals = useTerminalSessions((s) => s.terminals);
   const terminalViewDefault = useLocalSetting('terminalViewDefault');
@@ -906,6 +908,14 @@ export function Sidebar() {
                 icon: Cable,
                 onSelect: () => setShowAttachTmux(true),
               },
+              {
+                // B-290: import a Claude Code conversation (CLI / desktop app /
+                // claude.ai) that was never started through very-happy.
+                key: 'import-claude',
+                label: t('newSessionModal.importClaudeTitle'),
+                icon: History,
+                onSelect: () => setShowImportClaude(true),
+              },
             ]}
           >
             <button className="sb-icon-btn" title={t('sidebar.newSession')}>
@@ -1149,6 +1159,7 @@ export function Sidebar() {
       {showNew && <NewSessionModal onClose={() => setShowNew(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
+      {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}
       {renameTarget && (
         <RenameModal
           defaultTitle={renameTarget.title}

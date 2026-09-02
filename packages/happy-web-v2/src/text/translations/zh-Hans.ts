@@ -702,6 +702,7 @@ export const zhHans: TranslationStructure = {
         actionNewTerminal: '新建终端',
         actionNewTerminalAt: '在指定目录新建终端…',
         actionAttachTmux: '接入 tmux 会话…',
+        actionImportClaude: '导入 Claude Code 对话…',
         actionRenameSession: '重命名当前对话',
         actionArchiveSession: '归档当前对话',
         actionRestoreSession: '恢复当前对话',
@@ -990,11 +991,29 @@ export const zhHans: TranslationStructure = {
         offlineTerminalHelp: '终端不可用。请在这台机器运行 `very-happy daemon start`，然后重试。',
         terminalAtTitle: '在指定目录新建终端…',
         terminalAttachTitle: '接入 tmux 会话…',
+        importClaudeTitle: '导入 Claude Code 对话…',
     },
 
     attachTmuxModal: {
         eyebrow: '接入 TMUX',
         title: '接入 tmux 会话',
+    },
+
+    importClaudeHistory: {
+        eyebrow: '导入',
+        title: '导入 Claude Code 对话',
+        intro: '这台机器上由 claude CLI、Claude Code 桌面版或 claude.ai 保存的对话——~/.claude/projects 下所有 Very Happy 尚未接管的记录。',
+        needsCli: '导入需要这台机器运行当前版本的 Very Happy CLI。请先升级 daemon，再重新打开此对话框。',
+        loading: '正在扫描 ~/.claude/projects…',
+        empty: '这台机器上没有可导入的对话——~/.claude/projects 下的记录都已在这里，或者机器上还没有 Claude Code 历史。',
+        loadFailed: '无法读取这台机器上的 Claude Code 历史。',
+        searchPlaceholder: '搜索标题、首条提示、目录或分支',
+        noMatch: '没有匹配项。',
+        truncated: '只列出最近的对话；搜索只在这份列表内筛选，不会扫描更早的文件。',
+        copyNote: '导入会复制这段对话：原文件保持不变、留给写它的工具；新对话在同一目录里接着完整历史继续。',
+        importing: '导入中…',
+        imported: '对话已导入',
+        failed: '导入失败',
     },
     newTerminalModal: {
         eyebrow: '新建终端',
@@ -1586,6 +1605,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03d: {
+                title: 'Fable 5.1，以及导入你的 Claude Code 历史',
+                summary: '模型选择器现在像 Claude Code 一样提供 Fable 5.1（含 1M 上下文变体），claude CLI、Claude Code 桌面版或 claude.ai 里的对话可以一键导入 Very Happy，官网文档也终于补上了最近几周上线的功能。',
+                models: '模型选择器与“设置 → Agent”镜像 Claude Code 2.1.258：fable → Fable 5.1、opus → Opus 5、sonnet → Sonnet 5、haiku → Haiku 4.5，另有 fable[1m] / opus[1m] / sonnet[1m] 的 1M 上下文窗口、best available 与 opus plan。费用估算改用 Claude 5 / Fable 价格，不再回落到 Claude 3。',
+                import: '+ 菜单、⌘K 和机器页新增“导入 Claude Code 对话…”：daemon 列出 ~/.claude/projects 下 Very Happy 尚未接管的记录（标题、目录、分支、来源、大小、时间），点一下就把对话复制成一个接着完整历史继续的新会话。原文件保持不变。',
+                docs: '官网文档新增两篇指南——“Claude 对话”（模型、权限模式、排队/引导、/btw、子 Agent、归档/恢复、导入）和“Web 终端”（接入、恢复、多设备宽度、CJK 字体）——快速开始也指向了导入路径。',
+                cli: 'CLI 0.2.103：daemon 应答 claude-list-history、记录导入对话的来源、恢复时接受 [1m] 模型别名，并正确计价 Claude 5 / Fable 会话。旧版 daemon 会在导入对话框中显示升级提示。',
+            },
             sep03c: {
                 title: '更耐看的终端字体',
                 summary: '终端换用 Maple Mono CN——更柔和圆润的双宽字体,中文照样对齐、logo 和框线依旧像素级严丝合缝,但没那么瘦高。首次打开时会显示「终端字体加载中」的小提示。',
@@ -1964,6 +1991,8 @@ export const zhHans: TranslationStructure = {
         noMachines: '没有已连接的机器',
         noMachinesDescription: '在电脑上启动 Happy 守护进程后会显示在这里。',
         launchNewSessionInDirectory: '在目录中启动新会话',
+        importClaudeHistory: '导入 Claude Code 对话…',
+        importClaudeHistorySubtitle: '把 claude CLI、Claude Code 桌面版或 claude.ai 里的对话接到这里继续',
         offlineUnableToSpawn: '设备离线时无法启动',
         offlineHelp: '• 确保您的计算机在线\n• 运行 `very-happy daemon status` 进行诊断\n• 在诊断页查看 relay 确认的精确版本升级命令',
         daemon: '守护进程',

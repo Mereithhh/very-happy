@@ -86,6 +86,12 @@ export const MetadataSchema = z.object({
     parentSessionId: z.string().optional(),
     forkedFromMessageId: z.string().optional(),
     /**
+     * B-290: the Claude conversation (claude CLI / desktop / claude.ai
+     * transcript) this session was imported from. Written by the CLI at
+     * spawn; the import picker hides originals that already have a copy.
+     */
+    importedFromClaudeSessionId: z.string().optional(),
+    /**
      * User-assigned tags for this session (sidebar chips + `#tag` search).
      * Optional only — NO zod .default([]): clients that never touched tags
      * must not write an empty array into metadata. Edited via the rename

@@ -289,6 +289,31 @@
   font-size: var(--fs-11);
   color: var(--text-faint);
 }
+/* B-290: the Claude Code history picker — wider card, taller list, two-line
+   rows (title + mono meta) because a conversation needs more than a name. */
+.ns-card--wide {
+  max-width: 560px;
+}
+.ns-sessions--tall {
+  max-height: min(48vh, 420px);
+}
+.ns-session--stack {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 10px;
+}
+.ns-session--stack .ns-session-meta {
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ns-search-icon {
+  align-self: center;
+  color: var(--text-faint);
+}
 @media (pointer: coarse) {
   .ns-session { min-height: 44px; }
   .ns-tips-dismiss { min-height: 44px; }

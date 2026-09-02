@@ -237,6 +237,16 @@ Return to the Web UI, choose **New session**, select the connected machine and a
 directory, then choose Claude. This Web-created structured path uses the bundled
 Agent SDK and your Claude provider credentials.
 
+Already have conversations on that machine from the `claude` CLI, the Claude
+Code desktop app, or claude.ai? Choose **Import a Claude Code conversation…**
+from the **+** menu (also in the command palette and on the machine page). The
+daemon lists the transcripts under `~/.claude/projects` that Very Happy does not
+track yet; clicking one copies the transcript and opens a new chat that
+continues from its full history in the same directory. The original file is
+left untouched, so the tool that wrote it keeps working. Importing needs the
+current CLI on that machine (`daemonState.claudeHistory`); older daemons show an
+upgrade hint instead of a list.
+
 You can also choose **New terminal** and run a shell or ordinary
 `xterm-256color`-compatible text workflow. That path carries the real TTY stream
 and does not depend on a coding-agent protocol: shells, vim, lazygit, ssh, and

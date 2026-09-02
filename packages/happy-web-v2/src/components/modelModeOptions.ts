@@ -86,14 +86,26 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
     ];
 }
 
+/**
+ * Claude model picker. Keys are Claude Code `--model` aliases — the CLI, not
+ * this list, decides what they resolve to, so the labels mirror Claude Code's
+ * own /model picker (2.1.258: fable → Fable 5.1, opus → Opus 5, sonnet →
+ * Sonnet 5, haiku → Haiku 4.5) instead of pinning a model id. `[1m]` is Claude
+ * Code's 1M-context marker (accepted by the daemon resume path since B-290).
+ * `fable5` (pinned Fable 5) is deliberately absent: 2.1.258 rejects it with
+ * `unrecognized_model` (probed 2026-09-03).
+ */
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'default', name: 'default model', description: null },
-        { key: 'fable', name: 'fable 5', description: null },
+        { key: 'fable', name: 'fable 5.1', description: 'Most capable for the hardest and longest-running tasks' },
+        { key: 'fable[1m]', name: 'fable 5.1 (1M context)', description: 'Fable 5.1 with the 1M context window for long sessions' },
         { key: 'best', name: 'best available', description: 'Claude Code chooses the strongest available model' },
-        { key: 'opus', name: 'opus 5 (latest)', description: 'Uses the Claude Code opus alias; provider resolution can vary' },
-        { key: 'sonnet', name: 'sonnet 5 (latest)', description: 'Uses the Claude Code sonnet alias; provider resolution can vary' },
-        { key: 'haiku', name: 'haiku 4.5', description: null },
+        { key: 'opus', name: 'opus 5', description: 'Best for everyday, complex tasks (Claude Code opus alias)' },
+        { key: 'opus[1m]', name: 'opus 5 (1M context)', description: 'Opus 5 with the 1M context window for long sessions' },
+        { key: 'sonnet', name: 'sonnet 5', description: 'Efficient for routine tasks (Claude Code sonnet alias)' },
+        { key: 'sonnet[1m]', name: 'sonnet 5 (1M context)', description: 'Sonnet 5 with the 1M context window for long sessions' },
+        { key: 'haiku', name: 'haiku 4.5', description: 'Fastest for quick answers' },
         { key: 'opusplan', name: 'opus plan', description: 'opus for planning, sonnet for execution' },
     ];
 }
