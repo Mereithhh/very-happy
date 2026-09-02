@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   CHANGELOG_RELEASES,
   changelogCliNotices,
+  changelogCliTarget,
   changelogSeenValue,
   CURRENT_CHANGELOG,
+  normalizeChangelogSeen,
   shouldShowChangelog,
+  unseenChangelogReleases,
 } from './changelogRelease';
 
 describe('changelog releases', () => {
@@ -21,6 +24,44 @@ describe('changelog releases', () => {
     expect(shouldShowChangelog(changelogSeenValue())).toBe(false);
     expect(shouldShowChangelog(`${CURRENT_CHANGELOG.id}:202608271200`)).toBe(false);
     expect(shouldShowChangelog('2026-08-26-relay-and-reliability')).toBe(true);
+  });
+
+  it('shows every release published since the receipt, not just the newest', () => {
+    const ids = (releases: { id: string }[]) => releases.map((release) => release.id);
+    const [newest, second, third] = CHANGELOG_RELEASES;
+
+    // Skipped two releases → both of them plus the current one, newest first.
+    expect(ids(unseenChangelogReleases(CHANGELOG_RELEASES[3].id))).toEqual([newest.id, second.id, third.id]);
+    // Up to date → nothing.
+    expect(unseenChangelogReleases(newest.id)).toEqual([]);
+    // Missed exactly one.
+    expect(ids(unseenChangelogReleases(second.id))).toEqual([newest.id]);
+    // Oldest receipt → whole history except the acknowledged one.
+    expect(unseenChangelogReleases(CHANGELOG_RELEASES[CHANGELOG_RELEASES.length - 1].id)).toHaveLength(CHANGELOG_RELEASES.length - 1);
+  });
+
+  it('greets a fresh or unknown receipt with the current release only', () => {
+    expect(unseenChangelogReleases(null)).toEqual([CURRENT_CHANGELOG]);
+    expect(unseenChangelogReleases('')).toEqual([CURRENT_CHANGELOG]);
+    expect(unseenChangelogReleases('1999-01-01-removed-release')).toEqual([CURRENT_CHANGELOG]);
+  });
+
+  it('diffs the legacy build-salted receipt against the release it named', () => {
+    expect(normalizeChangelogSeen(`${CHANGELOG_RELEASES[2].id}:202608271200`)).toBe(CHANGELOG_RELEASES[2].id);
+    expect(unseenChangelogReleases(`${CHANGELOG_RELEASES[2].id}:202608271200`).map((r) => r.id))
+      .toEqual([CHANGELOG_RELEASES[0].id, CHANGELOG_RELEASES[1].id]);
+    expect(unseenChangelogReleases(`${CURRENT_CHANGELOG.id}:202608271200`)).toEqual([]);
+  });
+
+  it('targets the newest companion CLI across the unseen releases', () => {
+    const releases = unseenChangelogReleases(CHANGELOG_RELEASES[4].id);
+    expect(changelogCliTarget(releases)?.cliVersion).toBe(CURRENT_CHANGELOG.cliVersion);
+    expect(changelogCliTarget([
+      { ...CURRENT_CHANGELOG, id: 'a', cliVersion: '0.2.10' },
+      { ...CURRENT_CHANGELOG, id: 'b', cliVersion: undefined },
+      { ...CURRENT_CHANGELOG, id: 'c', cliVersion: '0.2.30' },
+    ])?.id).toBe('c');
+    expect(changelogCliTarget([{ ...CURRENT_CHANGELOG, cliVersion: undefined }])).toBeNull();
   });
 
   it('offers the companion CLI only to active machines that actually need it', () => {

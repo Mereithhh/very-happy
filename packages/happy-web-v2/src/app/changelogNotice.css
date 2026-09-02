@@ -45,6 +45,15 @@
 .wn-list { display: grid; gap: var(--sp-2); margin: var(--sp-4) 0; padding: 0; list-style: none; }
 .wn-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--sp-2); align-items: start; color: var(--text); font-size: var(--fs-13); line-height: 1.5; }
 .wn-list svg { margin-top: 2px; color: var(--text-dim); }
+/* Several releases since the last visit: one bounded section per release, newest first. */
+.wn-releases { display: grid; gap: var(--sp-3); margin: var(--sp-4) 0; }
+.wn-release { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-0); padding: var(--sp-3) var(--sp-4); }
+.wn-release:first-child { border-color: var(--line-2); }
+.wn-release-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); color: var(--text-faint); font: var(--fs-11)/1.4 var(--font-mono); }
+.wn-release-meta span::before { content: '·'; margin-right: var(--sp-2); }
+.wn-release h3 { margin: var(--sp-1) 0 var(--sp-1); font-size: var(--fs-14); }
+.wn-release > p { margin: 0; color: var(--text-dim); font-size: var(--fs-12); line-height: 1.5; }
+.wn-release .wn-list { margin: var(--sp-3) 0 0; }
 .wn-cli { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-0); padding: var(--sp-3); }
 .wn-cli > svg { color: var(--text-dim); }
 .wn-cli strong { font-size: var(--fs-13); }
