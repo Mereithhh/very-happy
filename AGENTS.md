@@ -182,7 +182,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     `options.claudeEnvVars`（`--claude-env` 在 local 模式只进主 Claude 的 spawn env）；用 `--settings {"disableAllHooks":true}`
     否则每次旁路查询都放一遍用户的 SessionStart/Stop/SessionEnd hook。`persistSession:false` + `resume` + `forkSession` 已实证
     不落 JSONL、能拿全上下文。见 `specs/2026-09-btw-side-question.md`（B-283）。
-17. **tmux 格式输出会被按版本/locale munge，探针分隔符只准可打印 ASCII**：`list-sessions -F`/`display-message`
+19. **tmux 格式输出会被按版本/locale munge，探针分隔符只准可打印 ASCII**：`list-sessions -F`/`display-message`
     输出里的控制字符在 ≤3.2a 被换成 `_`（不可逆）、3.4/3.5 转义成 `\037`，C locale 下多字节字符也塌成 `_`
     ——0x1f 分隔符曾让 tmux ≤3.5 机器的终端列表静默全空（B-273 附带修复，哨兵 `<~|~>`）。定位用户会话用
     `$id`（`#{session_id}`）不用名字（≥3.2 名字可含 `:`/`.`，`=name:` 会被 target 解析拆开）。CI 的 vitest
