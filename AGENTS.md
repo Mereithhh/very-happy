@@ -156,6 +156,7 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 15. **reducer 输入契约：一批消息按 seq 升序**（`sortIncomingBySeq` 在 `storage.applyMessages` 与 `reducer()`
     入口各调一次；乐观消息混批保持到达顺序）。历史回填页是 DESC，绕过它会让 sidechain 子行永久平铺、
     子工具永久 running、plan-mode 误进（B-261）。
+16. **「终端里 claude 能用」≠「very-happy 会话能用」**：darwin 上 Claude Code 凭据是 keychain/文件双店，keychain 有项即赢（含空 token 项）、`security` exit 36/44 才回落文件、写路径可能删明文——哪个被读到取决于进程血统。认证类故障先看机器页「Claude 登录状态」（`daemonState.claudeAuth`，daemon 上下文实测），机制、诊断与 `credentialStore=file` 钉死方案见 `specs/2026-09-claude-auth-preflight.md`；不要注入 `CLAUDE_CODE_OAUTH_TOKEN`/`apiKeyHelper`/独立 `CLAUDE_CONFIG_DIR` 绕。
 13. **Web「回前台 / socket 是否还活着」只有一个入口**：`src/sync/resumeSync.ts`（可见性边沿，
     不看 `hasFocus`）→ `sync.onWebResume` → `apiSocket.checkLiveness()`（`ping`/`relay-ping`
     探活、再校验后才 `disconnect();connect()`）。不要再给 screen 加平行的 visibility/focus
