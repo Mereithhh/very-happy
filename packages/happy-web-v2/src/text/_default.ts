@@ -579,6 +579,11 @@ export const en = {
             subagentStatus: { running: 'running', completed: 'done', failed: 'failed', stopped: 'stopped' },
             subagentResult: 'sub-agent report',
             subagentResultTruncated: 'truncated at 16KB',
+            subagentPanelTitle: 'Sub-agent',
+            subagentPrompt: 'prompt',
+            subagentLog: 'process',
+            subagentNoActivity: 'This sub-agent has not reported anything yet.',
+            subagentGone: 'That sub-agent card is not loaded in this transcript.',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `Elapsed ${seconds}s`;
                 const minutes = Math.floor(seconds / 60);
@@ -1662,6 +1667,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03u: {
+                title: 'Sub-agents get a place of their own',
+                summary: 'When the agent launches a sub-agent, the card for it used to unfold its whole briefing and its whole tool log straight into the conversation — dozens of lines of machine-to-machine text between two of your paragraphs. That work now lives in a panel you open from a one-line row.',
+                drawer: 'A sub-agent row shows what it is, what it is doing and how long it has been at it. Clicking it opens a side panel (full screen on a phone) with the briefing folded away, the full run log, and the report it came back with.',
+                stop: 'Stopping a turn now stops it everywhere at once. The bottom-of-the-transcript activity used to keep spinning after the "Stopped by you" line appeared — a sub-agent card carried on claiming it was running, and a background one claimed it forever. An interrupted sub-agent is now shown as stopped rather than, as before, quietly flipping to done.',
+            },
             sep03t: {
                 title: 'Updates stop stranding you on the loading screen',
                 summary: 'The app updates itself in the background. Sometimes that left you watching the loading animation until you force-refreshed, and when it worked it never said anything at all — so it was hard to tell an update from a glitch.',

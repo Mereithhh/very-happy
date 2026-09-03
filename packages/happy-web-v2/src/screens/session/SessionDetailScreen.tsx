@@ -13,6 +13,8 @@ import { AgentInput } from './AgentInput';
 import { FilesPanel } from './FilesPanel';
 import { BtwPanel } from './BtwPanel';
 import { onBtwOpen } from './btwPanelState';
+import { SubagentPanel } from './SubagentPanel';
+import { onSubagentOpen } from './subagentPanelState';
 import { canOfferBtw, supportsBtw } from './btwCommand';
 import { btwStore } from '@/sync/btwStore';
 import { MirrorBanner } from './MirrorBanner';
@@ -20,7 +22,7 @@ import { MirrorInputBar } from './MirrorInputBar';
 import { SessionArchivedBanner } from './SessionArchivedBanner';
 import { canOfferRestore } from '@/app/sessionRestore';
 import { isMirrorSession } from '@/assistant/assistantSession';
-import { readSessionPanel, withSessionPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
+import { readSessionPanel, readSubagentTarget, withSessionPanel, withSubagentPanel, type SessionFilesTab, type SessionPanelTab } from './sessionPanelState';
 import './session.css';
 
 export function SessionDetailScreen() {
@@ -40,11 +42,22 @@ export function SessionDetailScreen() {
     // mirror, pasted URL) is ignored rather than mounting a dead panel.
     const btwAllowed = !!session && !isMirrorSession(session) && canOfferBtw(session);
     const btwOpen = panelTab === 'btw' && btwAllowed;
-    const filesOpen = panelTab !== null && panelTab !== 'btw';
-    const panelOpen = btwOpen || filesOpen;
+    // B-317: the sub-agent drawer is a third tenant. It is only ever opened by
+    // clicking a card, so a `?panel=agent` without a target is not a panel.
+    const subagentTarget = panelTab === 'subagent' ? readSubagentTarget(searchParams) : null;
+    const subagentOpen = subagentTarget !== null;
+    const filesOpen = panelTab !== null && panelTab !== 'btw' && panelTab !== 'subagent';
+    const panelOpen = btwOpen || filesOpen || subagentOpen;
     const setPanel = (tab: SessionPanelTab | null, replace = false) => {
         setSearchParams(withSessionPanel(searchParams, tab), { replace });
     };
+    const openSubagent = (messageId: string, replace: boolean) => {
+        setSearchParams(withSubagentPanel(searchParams, messageId), { replace });
+    };
+    const openSubagentRef = useRef(openSubagent);
+    openSubagentRef.current = openSubagent;
+    const subagentOpenRef = useRef(subagentOpen);
+    subagentOpenRef.current = subagentOpen;
     const setPanelRef = useRef(setPanel);
     setPanelRef.current = setPanel;
     const btwOpenRef = useRef(btwOpen);
@@ -64,6 +77,16 @@ export function SessionDetailScreen() {
             const running = btwStore.getState().sessions[id]?.exchanges.some((e) => e.status === 'running') === true;
             if (supportsBtw(current) && !running) void btwStore.getState().ask(id, question);
             else btwStore.getState().setDraft(id, question);
+        });
+    }, [id]);
+    // A sub-agent card anywhere in the transcript opens the drawer on itself.
+    // Replace (not push) while the drawer is already open, so switching cards
+    // does not stack history entries the back button has to walk through.
+    useEffect(() => {
+        if (!id) return;
+        return onSubagentOpen((detail) => {
+            if (detail.sessionId !== id) return;
+            openSubagentRef.current(detail.messageId, subagentOpenRef.current);
         });
     }, [id]);
     // Desktop (>860px, matching session.css): the files panel is an inline
@@ -164,7 +187,13 @@ export function SessionDetailScreen() {
                         />
                     )}
                     <aside className="sd-files" style={filesWide ? { width: filesWidth } : undefined}>
-                        {btwOpen ? (
+                        {subagentOpen ? (
+                            <SubagentPanel
+                                sessionId={id}
+                                messageId={subagentTarget}
+                                onClose={() => setPanel(null, true)}
+                            />
+                        ) : btwOpen ? (
                             <BtwPanel sessionId={id} onClose={() => setPanel(null, true)} />
                         ) : (
                             <FilesPanel

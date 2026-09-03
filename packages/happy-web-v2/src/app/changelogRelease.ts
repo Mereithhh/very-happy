@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-subagent-drawer',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: the CLI half (publishing `stopped` for an interrupted
+    // sub-agent) is B-318, deliberately not in this release.
+    titleKey: 'changelog.releases.sep03u.title',
+    summaryKey: 'changelog.releases.sep03u.summary',
+    itemKeys: [
+      'changelog.releases.sep03u.drawer',
+      'changelog.releases.sep03u.stop',
+    ],
+  },
+  {
     id: '2026-09-03-update-path',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

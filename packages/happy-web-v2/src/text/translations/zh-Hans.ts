@@ -586,6 +586,11 @@ export const zhHans: TranslationStructure = {
             subagentStatus: { running: '运行中', completed: '已完成', failed: '失败', stopped: '已停止' },
             subagentResult: '子代理报告',
             subagentResultTruncated: '已截断至 16KB',
+            subagentPanelTitle: '子代理',
+            subagentPrompt: '任务说明',
+            subagentLog: '执行过程',
+            subagentNoActivity: '这个子代理还没有任何回报。',
+            subagentGone: '这张子代理卡不在当前已加载的对话里。',
             activityElapsed: ({ seconds }: { seconds: number }) => {
                 if (seconds < 60) return `耗时 ${seconds} 秒`;
                 const minutes = Math.floor(seconds / 60);
@@ -1630,6 +1635,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03u: {
+                title: '子代理有了自己的地方',
+                summary: '主代理开子代理的时候，那张卡以前会把整段任务说明和整份工具日志直接摊进对话里——几十行写给机器看的文字，夹在你自己的两段话之间。现在这些内容收进一个从单行卡片点开的面板。',
+                drawer: '子代理那一行只说三件事：它是谁、正在做什么、跑了多久。点一下打开侧边面板（手机上是整屏），里面有折叠起来的任务说明、完整的执行过程，以及它最后交回来的报告。',
+                stop: '点「终止」现在会一次性停干净。以前对话底部的活动指示在「已由你停止」出现之后还会继续转——子代理卡片仍然声称自己在跑，后台子代理更是永远停不下来。被打断的子代理现在如实显示为「已停止」，而不是像以前那样悄悄翻成「已完成」。',
+            },
             sep03t: {
                 title: '更新不会再把你卡在加载界面',
                 summary: '应用会在后台自动更新。但有时候这会让你一直盯着加载动画、只能强制刷新才进得去；而它成功的时候又什么都不说，于是很难分清是更新了还是卡了。',

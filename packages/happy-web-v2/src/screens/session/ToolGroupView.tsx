@@ -5,7 +5,7 @@
  */
 import { memo, useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ChevronRight, AlertTriangle, Bot, Check, Square } from 'lucide-react';
+import { ChevronRight, AlertTriangle, Bot, Check, PanelRight, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -19,7 +19,10 @@ import { formatElapsed } from './format';
 import { useMediaQuery } from '@/app/useMediaQuery';
 import { toolRunSummary } from './toolRunSummary';
 import { buildSubagentSummary } from './subagentSummary';
+import { presentedSubagentStatus } from './subagentAbort';
+import { openSubagentPanel } from './subagentPanelState';
 import './toolgroup.css';
+import './subagent.css';
 
 type GroupState = 'running' | 'stalled' | 'error' | 'mixed' | 'done';
 
@@ -43,12 +46,19 @@ function groupState(tools: ToolCallMessage[], stalled = false): GroupState {
  *  Deliberately NOT gated on B-295's `stalled`: a background sub-agent
  *  (`async_launched`) legitimately keeps running after its launching turn ends,
  *  and its `running` is an explicit CLI lifecycle event — not the absence of a
- *  closing frame that makes a plain tool call stall. */
-function subagentGlyph(lifecycle: 'running' | 'completed' | 'failed' | 'stopped' | undefined, toolState: string) {
-    if (lifecycle === 'running' || toolState === 'running') return <StatusDot status="thinking" size={7} pulse />;
-    if (lifecycle === 'failed' || toolState === 'error') return <StatusDot status="permission" size={7} />;
-    if (lifecycle === 'completed') return <Check size={13} className="tg-subagent-glyph" aria-hidden />;
-    if (lifecycle === 'stopped') return <Square size={11} className="tg-subagent-glyph" aria-hidden />;
+ *  closing frame that makes a plain tool call stall.
+ *  B-317: a user abort DOES gate it — see subagentAbort.ts. `aborted` covers the
+ *  no-lifecycle case too, where the row would otherwise pulse off `tool.state`
+ *  alone (the closing tool_result is exactly what an aborted turn delays). */
+function subagentGlyph(
+    status: 'running' | 'completed' | 'failed' | 'stopped' | undefined,
+    toolState: string,
+    aborted: boolean,
+) {
+    if (status === 'stopped' || (aborted && status === undefined)) return <Square size={11} className="tg-subagent-glyph" aria-hidden />;
+    if (status === 'running' || (status === undefined && toolState === 'running')) return <StatusDot status="thinking" size={7} pulse />;
+    if (status === 'failed' || toolState === 'error') return <StatusDot status="permission" size={7} />;
+    if (status === 'completed') return <Check size={13} className="tg-subagent-glyph" aria-hidden />;
     // No lifecycle from the CLI (old wrapper / stub completion): neutral, no claim.
     return <Bot size={13} className="tg-subagent-glyph" aria-hidden />;
 }
@@ -58,12 +68,15 @@ function ToolRow({
     defaultOpen,
     collapseOnComplete = false,
     stalled = false,
+    abortedAt = null,
 }: {
     message: ToolCallMessage;
     defaultOpen: boolean;
     collapseOnComplete?: boolean;
     /** B-295: this `running` row can no longer be live — render it unfinished. */
     stalled?: boolean;
+    /** B-317: time of the user abort that ended this turn, if any. */
+    abortedAt?: number | null;
 }) {
     const { t } = useTranslation();
     const tool = message.tool;
@@ -73,6 +86,8 @@ function ToolRow({
     // one-line process summary outside the disclosure panel.
     const isSubagent = tool.name === 'Task' || tool.name === 'Agent';
     const subagentSummary = isSubagent ? buildSubagentSummary(message) : null;
+    const subagentStatus = isSubagent ? presentedSubagentStatus(message, abortedAt) : undefined;
+    const isAborted = abortedAt !== null && message.createdAt <= abortedAt;
     const [open, setOpen] = useState(defaultOpen);
     const wasRunningRef = useRef(tool.state === 'running');
     const bodyId = useId();
@@ -94,13 +109,51 @@ function ToolRow({
         if (collapseOnComplete && !isSubagent && tool.state === 'completed' && wasRunningRef.current) setOpen(false);
         wasRunningRef.current = tool.state === 'running';
     }, [collapseOnComplete, isSubagent, stalled, tool.state]);
+    const subagentLine = subagentSummary && (subagentSummary.toolCount > 0 || subagentStatus) ? (
+        <div className="tg-subagent-line">
+            {subagentStatus
+                ? `${t(`session.chat.subagentStatus.${subagentStatus}` as 'session.chat.subagentStatus.running')} · `
+                : ''}
+            {t('session.chat.usedTools', { count: subagentSummary.toolCount })}
+            {(subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1])
+                ? ` · ${t('session.chat.subagentLatest', { line: subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1] })}`
+                : ''}
+            {subagentSummary.lifecycle?.durationMs != null
+                ? ` · ${formatElapsed(Math.round(subagentSummary.lifecycle.durationMs / 1000))}`
+                : ''}
+        </div>
+    ) : null;
+
+    // B-317: inside a session, a sub-agent row is a POINTER, never a disclosure.
+    // Its prompt and process log open in the aside drawer instead of unfolding
+    // between two paragraphs of the main conversation. Without a session route
+    // (the dev harness) there is no drawer to open, so the old inline
+    // disclosure below stays as the fallback.
+    if (isSubagent && sessionId) {
+        return (
+            <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
+                <button
+                    type="button"
+                    className="tg-subagent-open"
+                    onClick={() => openSubagentPanel(sessionId, message.id)}
+                >
+                    {subagentGlyph(subagentStatus, tool.state, isAborted)}
+                    <span className="tg-tool-label">{label}</span>
+                    {detail && detail !== label && <span className="tg-subagent-open-title">{detail}</span>}
+                    <PanelRight size={13} className="tg-subagent-open-cue" aria-hidden />
+                </button>
+                {subagentLine}
+            </div>
+        );
+    }
+
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
                 <button type="button" className="tg-row-head vh-disclosure-trigger" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={bodyId}>
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                     {isSubagent
-                        ? subagentGlyph(subagentSummary?.lifecycle?.status, tool.state)
+                        ? subagentGlyph(subagentStatus, tool.state, isAborted)
                         : <StatusDot status={status as any} size={7} pulse={tool.state === 'running' && !isStalled} />}
                     <span className="tg-tool-label">{label}</span>
                     {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
@@ -113,22 +166,9 @@ function ToolRow({
                 )}
                 {isStalled && <span className="tg-tool-stalled">{t('session.chat.toolInterrupted')}</span>}
             </div>
-            {subagentSummary && (subagentSummary.toolCount > 0 || subagentSummary.lifecycle) && (
-                <div className="tg-subagent-line">
-                    {subagentSummary.lifecycle
-                        ? `${t(`session.chat.subagentStatus.${subagentSummary.lifecycle.status}` as 'session.chat.subagentStatus.running')} · `
-                        : ''}
-                    {t('session.chat.usedTools', { count: subagentSummary.toolCount })}
-                    {(subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1])
-                        ? ` · ${t('session.chat.subagentLatest', { line: subagentSummary.lifecycle?.latest ?? subagentSummary.recent[subagentSummary.recent.length - 1] })}`
-                        : ''}
-                    {subagentSummary.lifecycle?.durationMs != null
-                        ? ` · ${formatElapsed(Math.round(subagentSummary.lifecycle.durationMs / 1000))}`
-                        : ''}
-                </div>
-            )}
+            {subagentLine}
             <div id={bodyId} className="vh-disclosure-panel" hidden={!open}>
-                {open && <ToolView message={message} />}
+                {open && <ToolView message={message} abortedAt={abortedAt} />}
             </div>
         </div>
     );
@@ -138,11 +178,14 @@ function ToolGroupViewImpl({
     tools,
     collapseCompleted = false,
     stalled = false,
+    abortedAt = null,
 }: {
     tools: ToolCallMessage[];
     collapseCompleted?: boolean;
     /** B-295: the session is not working, so `running` rows here are orphans. */
     stalled?: boolean;
+    /** B-317: time of the user abort that ended this turn, if any. */
+    abortedAt?: number | null;
 }) {
     const { t } = useTranslation();
     const state = groupState(tools, stalled);
@@ -173,6 +216,7 @@ function ToolGroupViewImpl({
                         defaultOpen={collapseCompleted ? running || state === 'error' : !compact || running || state === 'error'}
                         collapseOnComplete={collapseCompleted}
                         stalled={stalled}
+                        abortedAt={abortedAt}
                     />
                 </div>
             </div>
@@ -221,6 +265,7 @@ function ToolGroupViewImpl({
                                 defaultOpen={(m.tool.state === 'running' && !stalled) || m.tool.state === 'error'}
                                 collapseOnComplete={collapseCompleted}
                                 stalled={stalled}
+                                abortedAt={abortedAt}
                             />
                         ))}
                     </>}
@@ -237,4 +282,5 @@ export const ToolGroupView = memo(ToolGroupViewImpl, (prev, next) => (
     sameItems(prev.tools, next.tools)
     && prev.collapseCompleted === next.collapseCompleted
     && prev.stalled === next.stalled
+    && prev.abortedAt === next.abortedAt
 ));

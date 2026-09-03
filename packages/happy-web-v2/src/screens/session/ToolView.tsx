@@ -20,8 +20,8 @@ import { DiffView } from './DiffView';
 import { Markdown } from './Markdown';
 import { AskUserQuestionOptions } from './AskUserQuestionView';
 import { detectSelectedLabels } from './askUserQuestion';
-import { asCommand, extractError, resultToText, toolDetail, toolLabel } from './toolInfo';
-import { buildSubagentSummary } from './subagentSummary';
+import { asCommand, extractError, resultToText } from './toolInfo';
+import { SubagentDetail } from './SubagentDetail';
 import { langForPath } from './langForPath';
 import { FilePathLink } from './FilePathLink';
 
@@ -222,58 +222,11 @@ function SearchView({ tool }: { tool: ToolCall }) {
     );
 }
 
-// ── Task / Agent — sub-agent pointer view (B-260) ─────────────────────────────
-// The card is a POINTER: identity (description + subagent_type badge), the
-// prompt, and a chronological one-line-per-tool process log. It deliberately
-// does NOT nest child tool cards (B-250 keeps the turn activity flat) and
-// does NOT claim status/duration/result — the background stub tool_result is
-// not a real completion (true lifecycle lands with B-260-P2).
-function TaskView({ message }: { message: ToolCallMessage }) {
-    const { t } = useTranslation();
-    const tool = message.tool;
-    const summary = buildSubagentSummary(message, Number.POSITIVE_INFINITY);
-    const prompt = asString(tool.input?.prompt);
-    const out = resultToText(tool.result);
-    const logTools = summary.childTools.slice(-50);
-    return (
-        <div className="tv-stack">
-            <div className="tv-task-head">
-                {summary.subtype && <span className="tv-badge">{summary.subtype}</span>}
-                {summary.toolCount > 0 && (
-                    <span className="tv-task-count">{t('session.chat.usedTools', { count: summary.toolCount })}</span>
-                )}
-            </div>
-            {prompt && <div className="tv-task-prompt">{prompt}</div>}
-            {logTools.length > 0 && (
-                <div className="tv-task-log">
-                    {logTools.map((child) => {
-                        const label = toolLabel(child.tool);
-                        const detail = toolDetail(child.tool);
-                        return (
-                            <div
-                                key={child.id}
-                                className={`tv-task-log-line${child.tool.state === 'error' ? ' tv-task-log-line--error' : ''}`}
-                            >
-                                {detail && detail !== label ? `[${label}] ${detail}` : `[${label}]`}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {summary.lifecycle?.result && (
-                <div className="tv-task-result">
-                    <div className="tv-task-result-label">{t('session.chat.subagentResult')}{summary.lifecycle.result.truncated ? ` · ${t('session.chat.subagentResultTruncated')}` : ''}</div>
-                    <Markdown text={summary.lifecycle.result.text} />
-                </div>
-            )}
-            {!summary.lifecycle?.result && out.trim() && (
-                <Section label={t('tools.fullView.output')} defaultOpen={false}>
-                    <OutputText text={out} />
-                </Section>
-            )}
-        </div>
-    );
-}
+// ── Task / Agent — sub-agent detail (B-260, redesigned in B-317) ─────────────
+// The body now lives in SubagentDetail so the drawer and this inline fallback
+// can never drift apart. Inline only happens where there is no session route to
+// open a drawer from (the dev harness); inside a session, ToolGroupView turns
+// the row into a pointer and never mounts this.
 
 // ── WebFetch / WebSearch ────────────────────────────────────────────────────────
 function WebView({ tool }: { tool: ToolCall }) {
@@ -400,7 +353,7 @@ function prettyInput(input: unknown): string {
     }
 }
 
-export function ToolView({ message }: { message: ToolCallMessage }) {
+export function ToolView({ message, abortedAt = null }: { message: ToolCallMessage; abortedAt?: number | null }) {
     const tool = message.tool;
     const error = tool.state === 'error' ? extractError(tool) : undefined;
     let body: ReactNode;
@@ -444,7 +397,7 @@ export function ToolView({ message }: { message: ToolCallMessage }) {
             break;
         case 'Task':
         case 'Agent':
-            body = <TaskView message={message} />;
+            body = <SubagentDetail message={message} abortedAt={abortedAt} />;
             handlesOwnError = true;
             break;
         case 'WebFetch':

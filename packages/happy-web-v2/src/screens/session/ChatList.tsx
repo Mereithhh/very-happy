@@ -30,6 +30,7 @@ import {
 } from './chatFollow';
 import { isHiddenToolName } from './toolVisibility';
 import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
+import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import './chatlist.css';
 
@@ -75,10 +76,13 @@ export function ChatList({
     // agent's stub tool_result — the CLI publishes its lifecycle.
     // B-295: only the CURRENT turn's sub-agents vote, and a `running` tool call
     // never votes on its own — see sync/agentLiveness.ts for why.
-    const runningSubagents = useMemo(
-        () => countRunningSubagentCards(currentTurnMessages(chronological)),
-        [chronological],
-    );
+    const currentTurn = useMemo(() => currentTurnMessages(chronological), [chronological]);
+    const runningSubagents = useMemo(() => countRunningSubagentCards(currentTurn), [currentTurn]);
+    // B-317: an abort ends the turn it interrupted and nothing else, so both
+    // the marker and the rows it may silence come from the current turn only —
+    // a historical card must never be repainted by a later stop.
+    const abortedAt = useMemo(() => userAbortedAt(currentTurn), [currentTurn]);
+    const currentTurnStartedAt = currentTurn.length > 0 ? currentTurn[0].createdAt : Number.POSITIVE_INFINITY;
     const sessionLive = isAgentWorkLive({
         presence: session?.presence,
         thinking: session?.thinking,
@@ -321,7 +325,12 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                             />
                         ) : row.type === 'toolgroup' ? (
-                            <ToolGroupView key={row.key} tools={row.tools} stalled={!sessionLive} />
+                            <ToolGroupView
+                                key={row.key}
+                                tools={row.tools}
+                                stalled={!sessionLive}
+                                abortedAt={row.tools[0].createdAt >= currentTurnStartedAt ? abortedAt : null}
+                            />
                         ) : (
                             <MessageView
                                 key={row.key}
