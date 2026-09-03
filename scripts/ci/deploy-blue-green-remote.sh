@@ -15,9 +15,16 @@ LEGACY_OVERRIDE="$RELEASE_DIR/legacy-release.override.yml"
 CADDY_FILE=/etc/caddy/Caddyfile
 ACTIVE_INCLUDE="$RELEASE_DIR/active-upstream.caddy"
 PUBLIC_ORIGIN=https://veryhappy.dev
+PUBLIC_HOST=${PUBLIC_ORIGIN#https://}
 PRODUCTION_ENV_FILE="${VH_PRODUCTION_ENV_FILE:-/opt/happy/.env}"
 PROBE_FAILURES=""
 PROBE_PID=""
+PROBE_ORIGIN_FAILURES=""
+PROBE_ORIGIN_PID=""
+# B-307: a release fails on this many CONSECUTIVE failed samples, not on one
+# failed sample anywhere in the window. See start_http_probe.
+PROBE_MAX_STREAK="${VH_RELEASE_PROBE_MAX_STREAK:-3}"
+PROBE_INTERVAL_SECONDS="${VH_RELEASE_PROBE_INTERVAL:-0.2}"
 PHASE=before-switch
 CANDIDATE_STARTED=false
 
@@ -257,19 +264,84 @@ verify_public_release() {
     case "$asset" in *-"$release".js) ;; *) echo "public asset mismatch: $asset" >&2; return 1 ;; esac
 }
 
+# B-307 — why this probe is not zero tolerance any more.
+#
+# `veryhappy.dev` resolves to Cloudflare from this host, not to the host itself,
+# so every sample traverses host -> Cloudflare edge -> origin -> back. Measured
+# on an idle production host with nothing deploying: 6 failures in 2400 samples
+# over the public path (all `curl (28) ... 0 bytes received`, while p99 latency
+# was 0.30s against a 2s timeout — dropped requests, not slow ones), against 0
+# failures in 1800 samples over the same Caddy and slots with Cloudflare taken
+# out of the path. Failures arrive in bursts and predominantly over IPv6.
+#
+# A window running at 5 samples/s for minutes therefore fails a coin toss, and
+# four releases died that way (2026-09-01/02/03). Two of those four failed on a
+# sample recorded BEFORE the Caddy include was even written — public traffic was
+# still being served by the old, untouched slot, so the candidate could not have
+# been responsible.
+#
+# A genuinely broken switch does not drop one request; it is continuously
+# unavailable. So the verdict is now the longest run of CONSECUTIVE failures:
+# `PROBE_MAX_STREAK` samples at `PROBE_INTERVAL_SECONDS` apart is 600ms of
+# uninterrupted unavailability by default, which still catches a real outage
+# inside a second, while every one of the four historical false failures (three
+# isolated samples, one pair 2.24s apart) passes.
+#
+# A second probe runs against the origin directly, bypassing Cloudflare, because
+# that is the part a release actually controls. Both records name their path, so
+# triage no longer means correlating bare timestamps against the workflow log.
+_probe_loop() {
+    local record="$1"; shift
+    local sample=0 rc err
+    while true; do
+        sample=$((sample + 1))
+        rc=0
+        err=$(curl "$@" -fsS --max-time 2 -o /dev/null "$PUBLIC_ORIGIN/health" 2>&1) || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            printf '%s %s %s %s\n' "$sample" "$(date +%s%3N)" "$rc" \
+                "$(printf '%s' "$err" | tr '\n\t' '  ')" >> "$record"
+        fi
+        sleep "$PROBE_INTERVAL_SECONDS"
+    done
+}
+
 start_http_probe() {
-    PROBE_FAILURES=$(mktemp "$RELEASE_DIR/http-probe.XXXXXX")
-    (
-        while true; do
-            curl -fsS --max-time 2 "$PUBLIC_ORIGIN/health" >/dev/null 2>&1 || date +%s%3N >> "$PROBE_FAILURES"
-            sleep 0.2
-        done
-    ) &
+    PROBE_FAILURES=$(mktemp "$RELEASE_DIR/http-probe.public.XXXXXX")
+    PROBE_ORIGIN_FAILURES=$(mktemp "$RELEASE_DIR/http-probe.origin.XXXXXX")
+    _probe_loop "$PROBE_FAILURES" &
     PROBE_PID=$!
+    _probe_loop "$PROBE_ORIGIN_FAILURES" --resolve "$PUBLIC_HOST:443:127.0.0.1" &
+    PROBE_ORIGIN_PID=$!
 }
 
 stop_http_probe() {
     if [ -n "$PROBE_PID" ]; then kill "$PROBE_PID" 2>/dev/null || true; wait "$PROBE_PID" 2>/dev/null || true; PROBE_PID=""; fi
+    if [ -n "$PROBE_ORIGIN_PID" ]; then kill "$PROBE_ORIGIN_PID" 2>/dev/null || true; wait "$PROBE_ORIGIN_PID" 2>/dev/null || true; PROBE_ORIGIN_PID=""; fi
+}
+
+# Longest run of consecutive sample numbers in a probe record (0 when clean).
+probe_longest_streak() {
+    local record="$1"
+    [ -s "$record" ] || { echo 0; return 0; }
+    awk '{ if ($1 == prev + 1) run++; else run = 1; prev = $1; if (run > max) max = run } END { print max + 0 }' "$record"
+}
+
+probe_verdict() {
+    local record="$1" label="$2" streak
+    streak=$(probe_longest_streak "$record")
+    if [ "$streak" -ge "$PROBE_MAX_STREAK" ]; then
+        echo "HTTP probe observed a release-window failure ($label path: $streak consecutive failed samples)" >&2
+        return 1
+    fi
+    if [ -s "$record" ]; then
+        echo "note: $label path recorded $(wc -l < "$record") isolated failed sample(s), longest streak $streak (limit $PROBE_MAX_STREAK); not a release failure" >&2
+    fi
+    return 0
+}
+
+probe_release_verdict() {
+    probe_verdict "$PROBE_FAILURES" public || return 1
+    probe_verdict "$PROBE_ORIGIN_FAILURES" origin || return 1
 }
 
 slot_compose() {
@@ -390,7 +462,7 @@ shadow() {
     start_candidate
     stop_candidate
     stop_http_probe
-    [ ! -s "$PROBE_FAILURES" ] || { echo 'HTTP probe observed a release-window failure' >&2; exit 5; }
+    probe_release_verdict || exit 5
     SHADOW_IMAGE="$IMAGE" SHADOW_RELEASE="$VERSION"
     write_state
     trap - ERR
@@ -452,7 +524,7 @@ switch_release() {
     PHASE=after-old-stop
     verify_public_release "$VERSION"
     stop_http_probe
-    [ ! -s "$PROBE_FAILURES" ] || { echo 'HTTP probe observed a release-window failure' >&2; false; }
+    probe_release_verdict
 
     ROLLBACK_SLOT="$ACTIVE_SLOT" ROLLBACK_PORT="$ACTIVE_PORT" ROLLBACK_IMAGE="$ACTIVE_IMAGE" ROLLBACK_RELEASE="$ACTIVE_RELEASE"
     MODE=bluegreen ACTIVE_SLOT="$CANDIDATE_SLOT" ACTIVE_PORT="$CANDIDATE_PORT" ACTIVE_IMAGE="$IMAGE" ACTIVE_RELEASE="$VERSION"

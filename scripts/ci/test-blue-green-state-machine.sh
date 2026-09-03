@@ -61,6 +61,42 @@ if verify_migration_contract >/dev/null 2>&1; then fail 'changed migrations requ
 printf 'VH_RELEASE_MIGRATIONS_REVIEWED=%s\n' "$VERSION" > "$migration_review_file"
 verify_migration_contract || fail 'exact migration review commit must pass'
 
+# B-307: the release verdict is the longest run of CONSECUTIVE failed samples,
+# not the presence of any failure. Fixtures below are the four real production
+# records that killed a release on 2026-09-01/02/03 plus a synthetic outage.
+probe_case() {
+    local name="$1" expect="$2" body="$3" record got
+    record=$(mktemp)
+    printf '%b' "$body" > "$record"
+    got=$(probe_longest_streak "$record")
+    [ "$got" = "$expect" ] || fail "probe streak for $name: expected $expect, got $got"
+    rm -f "$record"
+}
+
+probe_case 'clean window' 0 ''
+# 2026-09-01, 2026-09-03 00:48 and 2026-09-03 06:07 each recorded one sample.
+probe_case 'single dropped sample' 1 '148 1788263969543 28 curl: (28) Operation timed out\n'
+# 2026-09-02 recorded two samples 2.24s apart — 11 good samples between them.
+probe_case 'two samples seconds apart' 1 '92 1788335002017 28 timeout\n103 1788335004258 28 timeout\n'
+# A real outage drops every sample until it recovers.
+probe_case 'continuous outage' 4 '41 1 28 t\n42 2 28 t\n43 3 28 t\n44 4 28 t\n'
+# The longest run wins even when isolated noise surrounds it.
+probe_case 'outage among noise' 3 '5 1 28 t\n40 2 28 t\n41 3 28 t\n42 4 28 t\n90 5 28 t\n'
+
+probe_verdict_case() {
+    local name="$1" expect_rc="$2" body="$3" record rc=0
+    record=$(mktemp)
+    printf '%b' "$body" > "$record"
+    PROBE_MAX_STREAK=3 probe_verdict "$record" test >/dev/null 2>&1 || rc=$?
+    [ "$rc" = "$expect_rc" ] || fail "probe verdict for $name: expected rc $expect_rc, got $rc"
+    rm -f "$record"
+}
+
+# Every historical false failure now passes; a real outage still fails.
+probe_verdict_case 'isolated drops pass' 0 '10 1 28 t\n40 2 28 t\n99 3 28 t\n'
+probe_verdict_case 'streak at the limit fails' 1 '10 1 28 t\n11 2 28 t\n12 3 28 t\n'
+probe_verdict_case 'streak below the limit passes' 0 '10 1 28 t\n11 2 28 t\n'
+
 run_rollback_case() {
     local phase="$1" expected="$2" forbidden="${3:-}" action_log status
     action_log=$(mktemp)

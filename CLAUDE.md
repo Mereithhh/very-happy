@@ -25,7 +25,7 @@ git worktree list                                   # 派工前看清有哪些�
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
 - 最新 tag / npm `very-happy-cli` = **v0.2.108**（mac-office daemon 同版本；2026-09-03；B-302 改名机器只报一次身份冲突）；线上 Web/server = `main@59bd8faa`（2026-09-03 蓝绿 green→blue，deploy run 33721986229）。同日更早发过 v0.2.107 + `main@8d1d2e2b`（B-294/B-295/B-296/B-297/B-298/B-299/B-300/B-301）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本；**发版前用 `check-release.mjs --mode cli --version <目标>` 核对版本号**，理由见 `docs/PROCESS.md` 编号/版本撞号那几条。
-- 部署报 `HTTP probe observed a release-window failure` 时不要慌：探针零容忍、误报有先例，判读方法（解 `/opt/happy/release/http-probe.*` 的时间戳，看它落在切流量之前还是之后）见 `docs/operations.md`。
+- 部署报 `HTTP probe observed a release-window failure` 时：判据已是「**连续** 3 发失败」（B-307），所以这条现在基本等于真事故——先看它说的是 `public` 还是 `origin` 路径，`origin`（绕开 Cloudflare）失败才是我们自己的问题；记录在 `/opt/happy/release/http-probe.{public,origin}.*`，含样本号与 curl 错误文本。机制见 `docs/operations.md`。
 - **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
   **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
   旧的 Sarasa 仍留在 `/regular,/bold` 作回滚）。**字体不进仓库**；重新发字体用 `wrangler pages deploy`
