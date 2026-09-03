@@ -28,6 +28,53 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     ],
   },
   {
+    id: '2026-09-03-cli-auto-update',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.116',
+    titleKey: 'changelog.releases.sep03ad.title',
+    summaryKey: 'changelog.releases.sep03ad.summary',
+    itemKeys: [
+      'changelog.releases.sep03ad.idle',
+      'changelog.releases.sep03ad.safety',
+    ],
+  },
+  {
+    id: '2026-09-03-terminal-output-coalescing',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.116',
+    titleKey: 'changelog.releases.sep03ag.title',
+    summaryKey: 'changelog.releases.sep03ag.summary',
+    itemKeys: [
+      'changelog.releases.sep03ag.frames',
+      'changelog.releases.sep03ag.latency',
+    ],
+  },
+  {
+    id: '2026-09-03-cli-idle-auto-update',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.116',
+    titleKey: 'changelog.releases.sep03ah.title',
+    summaryKey: 'changelog.releases.sep03ah.summary',
+    itemKeys: [
+      'changelog.releases.sep03ah.idle',
+      'changelog.releases.sep03ah.pinned',
+    ],
+  },
+  {
+    id: '2026-09-03-refresh-never-hangs',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half
+    titleKey: 'changelog.releases.sep03ac.title',
+    summaryKey: 'changelog.releases.sep03ac.summary',
+    itemKeys: [
+      'changelog.releases.sep03ac.hang',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-launch-presets',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

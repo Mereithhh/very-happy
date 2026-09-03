@@ -1682,6 +1682,29 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03ad: {
+                title: 'Machines keep their CLI up to date on their own',
+                summary: 'Keeping the command-line tool current was a manual step, and most machines drifted several versions behind. They now update themselves — but only at a moment when doing so cannot interrupt anything.',
+                idle: 'A machine installs a newer CLI only while it is idle: no session running and no terminal open. Restarting into a new version replaces the process that owns both, so it waits until there is nothing to own.',
+                safety: 'It installs the version that has been recommended for release, never simply the newest thing published, and it runs that version before switching to it — a build that will not start leaves the previous one serving and says so on the machine page. Automatic updates can be turned off per machine.',
+            },
+            sep03ag: {
+                title: 'Starting a TUI paints in one go, not line by line',
+                summary: 'Launching pi or Claude Code inside a web terminal could leave you staring at a half-drawn screen with no input box for a moment. The bytes were all there \u2014 they were just arriving as about a thousand separate messages.',
+                frames: 'tmux reports pane output once per write, and a TUI\u2019s opening frame is thousands of tiny ones: pi\u2019s startup measured 1029 chunks with a median of 9 bytes for 12 KB of text. The daemon now merges them into one frame per display tick before sending, which took the same burst from 395 messages to 5 in the regression test.',
+                latency: 'Typing is untouched: the first chunk after any idle moment still goes out immediately, so an echo never waits. Only a genuine burst is merged, and never for longer than one frame.',
+            },
+            sep03ah: {
+                title: 'The daemon can update itself while the machine is idle',
+                summary: 'Keeping a machine current meant remembering to run the update by hand. It can now do it on its own, but only in the one window where nothing can be interrupted.',
+                idle: 'An update is only attempted when the machine is genuinely idle \u2014 no agent session and no live web terminal, since updating replaces the process hosting them. Each version is tried once, so a bad install can never become a retry loop.',
+                pinned: 'It installs the version the relay recommends, never whatever is newest on npm, and the new bundle has to start successfully before it takes over. Settings \u2192 the machine page shows the result, and `cliAutoUpdate` turns it off.',
+            },
+            sep03ac: {
+                title: 'The refresh button can no longer hang',
+                summary: 'Accepting an update could leave the page on "Refreshing…" and never come back, until you reloaded by hand.',
+                hang: 'Before reloading, the app asked the browser to refresh its cached copy of the site. That request was awaited with no time limit, so if it stalled the reload never happened. It is now capped, and the reload goes ahead regardless — it fetches the new version on its own anyway.',
+            },
             sep03z: {
                 title: 'Messages no longer get stuck in the queue',
                 summary: 'Sending a message while the agent was working could leave it sitting in the composer queue indefinitely, with opening a new tab as the only way out. Two separate causes, both fixed.',
