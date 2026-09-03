@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { ToolCall } from '@/sync/typesMessage';
 import { mapPiToolToKnown, normalizePiToolCall } from './piToolMapping';
@@ -64,5 +65,19 @@ describe('normalizePiToolCall', () => {
     it('unknown piTool stays untouched', () => {
         const tool = { ...base({ piTool: 'weird_tool', rawInput: { a: 1 } }), name: 'other' };
         expect(normalizePiToolCall(tool)).toBe(tool);
+    });
+});
+
+// Source assertions: every consumer that keys on tool identity must go through normalizePiToolCall,
+// otherwise a pi session reads "Execute ×2 · Other" in one place and "Terminal" in another.
+describe('normalizePiToolCall wiring', () => {
+    const src = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+
+    it('is applied at the row, the group summary, the file-path whitelist and the hidden check', () => {
+        expect(src('../../screens/session/ToolGroupView.tsx')).toContain('const tool = normalizePiToolCall(rawMessage.tool);');
+        expect(src('../../screens/session/toolRunSummary.ts')).toContain('const tool = normalizePiToolCall(rawTool);');
+        expect(src('../../screens/session/toolFilePath.ts')).toContain('const tool = normalizePiToolCall(rawTool);');
+        expect(src('../../screens/session/toolVisibility.ts')).toContain('isHiddenToolName(normalizePiToolCall(tool).name)');
+        expect(src('../../screens/session/ChatList.tsx')).toContain('!isHiddenToolCall(message.tool)');
     });
 });

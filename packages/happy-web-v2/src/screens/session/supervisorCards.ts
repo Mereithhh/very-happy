@@ -187,12 +187,16 @@ export type LedgerOp = {
 };
 
 const LEDGER_HEAD = /^(?:\S*\/)?vh-ledger\s+(add|bind|decide)\b/;
+/** Shell control/expansion characters; unquoted, they mean the command is not a bare ledger op. */
+const SHELL_CONTROL = /[;|&`$(){}<>]/;
 
 /** Parse a `vh-ledger add|bind|decide …` shell command into a compact op; null for anything else. */
 export function parseLedgerOp(command: string): LedgerOp | null {
     const trimmed = command.trim();
     const head = LEDGER_HEAD.exec(trimmed);
     if (!head) return null;
+    // splitArgv is null for a chained/piped command (`… && rm -rf x`) — it must not collapse
+    // to a harmless-looking `ledger: T-1 ← accept` header; only the bare ledger op qualifies.
     const argv = splitArgv(trimmed);
     if (!argv) return null;
     const subcommand = head[1] as LedgerOp['subcommand'];
@@ -218,7 +222,8 @@ export function parseLedgerOp(command: string): LedgerOp | null {
     };
 }
 
-/** Minimal POSIX-ish argv split (double/single quotes, backslash escapes); null on unterminated quote. */
+/** Minimal POSIX-ish argv split (double/single quotes, backslash escapes); null on unterminated
+ * quote or on any unquoted shell control/expansion character (quoted `--reason "a & b"` is fine). */
 function splitArgv(cmd: string): string[] | null {
     const out: string[] = [];
     let cur = '';
@@ -235,6 +240,7 @@ function splitArgv(cmd: string): string[] | null {
         if (ch === '"' || ch === "'") { quote = ch; has = true; continue; }
         if (ch === '\\' && i + 1 < cmd.length) { cur += cmd[++i]; has = true; continue; }
         if (/\s/.test(ch)) { if (has) { out.push(cur); cur = ''; has = false; } continue; }
+        if (SHELL_CONTROL.test(ch)) return null;
         cur += ch; has = true;
     }
     if (quote) return null;

@@ -97,4 +97,31 @@ describe('parseLedgerOp', () => {
         expect(parseLedgerOp('vh-ledger decide T-1 --action nope --reason x')).toBeNull();
         expect(parseLedgerOp('vh-ledger decide T-1 --action note --reason "unterminated')).toBeNull();
     });
+
+    it('returns null when the ledger op is chained with other shell (must not collapse to a harmless header)', () => {
+        expect(parseLedgerOp('vh-ledger decide T-1 --action accept && rm -rf x')).toBeNull();
+        expect(parseLedgerOp('vh-ledger decide T-1 --action accept; git push')).toBeNull();
+        expect(parseLedgerOp('vh-ledger decide T-1 --action accept | tee log')).toBeNull();
+        expect(parseLedgerOp('vh-ledger decide T-1 --action accept --reason $(cat x)')).toBeNull();
+        // quoted control characters are plain text
+        expect(parseLedgerOp('vh-ledger decide T-1 --action accept --reason "a & b; (c)"')).toMatchObject({ reason: 'a & b; (c)' });
+    });
+});
+
+// Source assertions (house pattern, cf. askUserQuestion.test.ts): a refactor of MessageView must not
+// silently unhook the cards while every parser test stays green.
+describe('supervisor card wiring', () => {
+    const messageView = readFileSync(new URL('./MessageView.tsx', import.meta.url), 'utf8');
+    const toolInfo = readFileSync(new URL('./toolInfo.ts', import.meta.url), 'utf8');
+
+    it('UserText renders TickReportCard and AgentText renders DecisionCard from the parsers', () => {
+        expect(messageView).toContain('const tick = parseTickReport(parsed.text);');
+        expect(messageView).toContain('if (tick) return <TickReportCard report={tick} />;');
+        expect(messageView).toContain('const decisionBlock = text ? parseDecisionBlock(text) : null;');
+        expect(messageView).toContain('{decisionBlock && <DecisionCard decisions={decisionBlock.decisions} />}');
+    });
+
+    it('the Bash header detail collapses a vh-ledger op via parseLedgerOp', () => {
+        expect(toolInfo).toContain('parseLedgerOp(');
+    });
 });

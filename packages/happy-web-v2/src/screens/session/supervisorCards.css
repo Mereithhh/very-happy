@@ -1,4 +1,6 @@
-/* B-353 supervisor cards — sit on the bg-1 panel step; mono for ids/tags; accent only for attention. */
+/* B-353 supervisor cards — sit on the bg-1 panel step; mono for ids/tags.
+ * Attention (permission/missing, escalate/approve/deny) is --warn ("waiting on permission",
+ * tokens.css header); --accent stays LIVE-only, --danger only for stop. */
 .svc {
   background: var(--bg-1);
   border: 1px solid var(--line);
@@ -6,9 +8,13 @@
   padding: 10px 12px;
   font-size: 13px;
   color: var(--text);
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
   overflow-wrap: anywhere;
 }
+/* DecisionCard sits under the markdown prose inside .msg--agent */
+.msg-agent-text + .svc { margin-top: 8px; }
 .svc-head {
   display: flex;
   align-items: baseline;
@@ -43,11 +49,11 @@
 .svc-kind--attention,
 .svc-action--escalate,
 .svc-action--approve,
-.svc-action--deny { border-color: var(--accent-2); color: var(--accent-2); background: var(--accent-dim); }
+.svc-action--deny { border-color: var(--warn); color: var(--warn); background: var(--warn-dim); }
 .svc-action--stop { border-color: var(--danger); color: var(--danger); background: transparent; }
 .svc-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
-.svc-link { color: var(--accent-2); text-decoration: none; }
-.svc-link:hover { text-decoration: underline; }
+.svc-link { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.svc-link:hover { text-decoration: none; }
 .svc-section { margin-top: 6px; }
 .svc-label { display: block; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
 .svc-list { margin: 0; padding-left: 18px; }

@@ -22,6 +22,12 @@ describe('toolFilePathOf', () => {
 
     it('不带路径的工具一律 null（Bash 的 command 不是路径）', () => {
         expect(toolFilePathOf(tool('Bash', { command: 'cat docs/a.md' }))).toBeNull();
+    });
+
+    it('sees through pi read/write args (B-353)', () => {
+        expect(toolFilePathOf(tool('read', { piTool: 'read', rawInput: { path: 'src/a.ts' } }))).toBe('src/a.ts');
+        expect(toolFilePathOf(tool('edit', { piTool: 'write', rawInput: { path: '/w/b.md', content: '' } }))).toBe('/w/b.md');
+        expect(toolFilePathOf(tool('execute', { piTool: 'bash', command: 'cat src/a.ts' }))).toBeNull();
         expect(toolFilePathOf(tool('Grep', { pattern: 'foo' }))).toBeNull();
         expect(toolFilePathOf(tool('Write', {}))).toBeNull();
         expect(toolFilePathOf(tool('Write', { file_path: '   ' }))).toBeNull();
