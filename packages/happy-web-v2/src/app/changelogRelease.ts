@@ -39,8 +39,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-03-auth-failure-diagnosis',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
-    // Same unreleased CLI as B-294's entry below: both ride the next release.
-    cliVersion: '0.2.106',
+    // v0.2.106 shipped B-294 (the entry below) while this was still in review;
+    // the CLI half of B-297/B-298 lands in the next one.
+    cliVersion: '0.2.107',
     titleKey: 'changelog.releases.sep03i.title',
     summaryKey: 'changelog.releases.sep03i.summary',
     itemKeys: [
