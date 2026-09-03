@@ -12,8 +12,13 @@ describe('metaAgentVariantSupported', () => {
 
     it('never offers it for claude (its meta agent is the /assistant singleton) nor the other current agents', () => {
         expect(metaAgentVariantSupported('claude')).toBe(false);
-        for (const agent of SESSION_AGENTS) {
+        // Explicit list on purpose: SESSION_AGENTS gains 'pi' with the pi runner, and pi is the
+        // one agent that IS offered. Every other current agent must stay false.
+        for (const agent of ['codex', 'gemini', 'openclaw'] as const) {
             expect(metaAgentVariantSupported(agent)).toBe(false);
+        }
+        for (const agent of SESSION_AGENTS) {
+            expect(metaAgentVariantSupported(agent)).toBe(agent === ('pi' as string));
         }
         expect(metaAgentVariantSupported('')).toBe(false);
         expect(metaAgentVariantSupported('Pi')).toBe(false);
