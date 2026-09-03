@@ -166,13 +166,29 @@ npm view very-happy-tools-arm64-darwin@X.Y.Z version
 gh run list --workflow=cli-smoke-test.yml --commit=<tag-sha>
 ```
 
-After the CLI is published and smoke-verified, **pin the relay's version policy**
-or no user is ever told to upgrade:
+The relay's recommended version **advances by itself** (B-348): `publish.yml`
+publishes the main package under `next` and its `promote` job moves the `latest`
+dist-tag only after the smoke matrix for that commit is green; the relay follows
+`latest` via `CLI_VERSION_REGISTRY_LOOKUP=true`, cached one hour. So there is no
+per-release env edit — just confirm it landed:
+
+```sh
+curl -fsS https://veryhappy.dev/v1/version/cli   # source:"registry", recommendedVersion = X.Y.Z
+npm view very-happy-cli version                  # the promoted latest
+npm view very-happy-cli dist-tags                # `next` may be ahead if smoke failed
+```
+
+`latest` still sitting on the previous version means the `promote` job did not
+promote — read its log before doing anything by hand; the usual cause is a red
+smoke run, and that is the gate working.
+
+To **hold or roll back the recommendation** without touching npm, pin it (the
+pin always beats the lookup), then deploy so the candidate reads the new env
+(`restart` does not reread `env_file`):
 
 ```sh
 ssh vh-us
 sed -i 's|^CLI_RECOMMENDED_VERSION=.*|CLI_RECOMMENDED_VERSION=X.Y.Z|' /opt/happy/.env
-# then deploy so the candidate reads the new env (restart does not reread env_file)
 gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
 ```

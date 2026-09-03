@@ -150,7 +150,111 @@ jobs:
             # git@github.com/packages/happy-cli.git instead of packing the
             # checked-out workspace directory.
             npm pack ./packages/happy-cli --pack-destination "$RUNNER_TEMP"
-            npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public
+            # --tag next, NOT latest (B-348). `latest` is what the relay
+            # advertises as `recommendedVersion` once
+            # CLI_VERSION_REGISTRY_LOOKUP is on, and B-327's auto-update
+            # installs exactly that — so `latest` has to mean "the 3-OS smoke
+            # matrix went green", not "npm accepted the tarball". The `promote`
+            # job below moves it. Publishing itself stays unconditional and
+            # unblocked: the emergency channel above is untouched, only the
+            # fleet-wide recommendation waits.
+            npm publish "$RUNNER_TEMP/very-happy-cli-${package_version}.tgz" --access public --tag next
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ── Promote `next` → `latest` once the smoke matrix is green (B-348) ───────
+  # Deliberately a separate job that `needs: publish` — NOT a `needs:` on the
+  # smoke workflow, and NOT a `workflow_run` trigger (banned repo-wide by
+  # scripts/ci/check-public-pr-isolation.mjs: a privileged trigger must never be
+  # able to run fork code). It polls the smoke runs for this very commit.
+  #
+  # Failing this job never un-publishes anything and never moves `latest`: the
+  # version stays on `next`, installable by exact version, and the fleet simply
+  # is not told to take it. That is the intended failure mode.
+  promote:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # read-only, and only to poll this repo's own run conclusions
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Wait for the CLI smoke matrix on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 35 * 60 ))
+          while :; do
+            runs=$(gh run list --workflow=cli-smoke-test.yml --commit="$SHA"                      --json status,conclusion,databaseId,event --limit 20)
+            # Only push-triggered runs: a manual dispatch may be Linux-only.
+            pending=$(node -e '
+              const rs = JSON.parse(process.argv[1]).filter((r) => r.event === "push");
+              process.stdout.write(String(rs.length === 0 ? 1 : rs.filter((r) => r.status !== "completed").length));
+            ' "$runs")
+            if [ "$pending" = 0 ]; then break; fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::smoke runs for $SHA did not finish in time; the dist-tag is left untouched" >&2
+              exit 1
+            fi
+            echo "waiting for smoke ($pending run(s) not finished)"
+            sleep 30
+          done
+          node -e '
+            const rs = JSON.parse(process.argv[1]).filter((r) => r.event === "push");
+            const bad = rs.filter((r) => r.conclusion !== "success");
+            for (const r of rs) console.log(`run ${r.databaseId} ${r.conclusion}`);
+            if (bad.length) { console.error("::error::smoke did not pass; not promoting to latest"); process.exit(1); }
+          ' "$(gh run list --workflow=cli-smoke-test.yml --commit="$SHA" --json status,conclusion,databaseId,event --limit 20)"
+
+      - name: Promote to latest (never backwards, idempotent)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=${VERSION#v}
+          current=$(npm view very-happy-cli version 2>/dev/null || echo '')
+          echo "npm latest=${current:-<none>} candidate=$version"
+          if [ "$current" = "$version" ]; then
+            echo "already latest; nothing to do"
+            exit 0
+          fi
+          # A re-run of an old tag must never drag the fleet back. B-329 fixed
+          # the same class of bug on the daemon side; the registry side needs
+          # the guard too, because `dist-tag add` happily moves backwards.
+          # Compared in plain node: this job installs no dependencies, so there
+          # is no `semver` to call, and every version we publish is strict X.Y.Z.
+          if [ -n "$current" ]; then
+            node -e '
+              const parse = (v) => {
+                const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+                if (!m) { console.error(`::error::not a strict X.Y.Z version: ${v}`); process.exit(1); }
+                return m.slice(1).map(Number);
+              };
+              const [candidate, current] = [parse(process.argv[1]), parse(process.argv[2])];
+              let cmp = 0;
+              for (let i = 0; i < 3; i += 1) {
+                if (candidate[i] !== current[i]) { cmp = candidate[i] > current[i] ? 1 : -1; break; }
+              }
+              if (cmp <= 0) {
+                console.error(`::error::${process.argv[1]} is not newer than the current latest ${process.argv[2]}; refusing to move the dist-tag backwards`);
+                process.exit(1);
+              }
+            ' "$version" "$current"
+          fi
+          npm dist-tag add "very-happy-cli@$version" latest
+          npm view very-happy-cli version
