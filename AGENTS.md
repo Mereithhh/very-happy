@@ -217,14 +217,20 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     探活、再校验后才 `disconnect();connect()`）。不要再给 screen 加平行的 visibility/focus
     监听去重拉或重连，也不要用「最近收到包」判活、不要 `io.open()`（退避中是 no-op 或永久卡死）；
     socket.io 语义由 `socketIoResume.integration.test.ts` 锁住，改法见 `specs/2026-08-web-resume-sync.md`。
-    **同族推论——「agent 此刻是否在跑」也只有一个入口**：`src/sync/agentLiveness.ts`。transcript 里的
-    `tool.state === 'running'` 是**最后已知状态**，收尾的 `tool_result` 恰恰是被杀/重启的 wrapper
-    永远不会再发的东西；活性只认 wrapper 每 2s 的 keepAlive（`session.thinking`，Claude/Codex/Gemini/
-    OpenClaw 四个 runner 都在**整个 turn** 内按住它，天然覆盖工具执行），后台子代理
-    （`async_launched`）是唯一合法活过 turn 的例外，且要求在线 + 属于当前 turn。别再在 screen/sync 里
-    各自 `messages.some(state === 'running')`：B-295 就是三处各算各的，一次重启后 turn 头（「耗时 2094
-    分钟」）、状态条与 `sendMessage` 的 `queuedAt` 同时永久说谎。
-16. **一个 happy session 至多一个活 wrapper，执法点在 wrapper 自己**：启动时、连 server 之前持
+    **同族推论——活性只能从 wrapper 此刻仍在重发的信号推导，且必须校验新鲜度**（唯一入口
+    `src/sync/agentLiveness.ts`）。transcript 里的 `tool.state === 'running'` **只写一次、永不重发**，
+    因此永远没有活性投票权——收尾的 `tool_result` 恰恰是被杀/重启的 wrapper 不会再发的东西。唯一合格
+    的信号是每 2s 的 keepAlive（`session.thinking`，五个 runner 都在**整个 turn** 内按住它，`false` 也
+    重发）。**但心跳中断不等于死亡**：过期阈值必须大于本端已知最坏正常重连间隔，且**本端 socket 断开
+    或标签页不可见期间必须停表**（冻结的标签页收不到 `disconnect`，`socketStatus` 会一直停在
+    `connected`，只看它会在唯一该管用的场景失灵）——租约实现与那四个数见
+    `specs/2026-09-agent-liveness-lease.md`（B-322）。少了新鲜度校验，wrapper 被硬杀后 UI 连续说谎约
+    11 分钟：停止按钮悬在无事可停的会话上、输入被永久扣在本地队列里。后台子代理（`async_launched`）
+    是唯一没有心跳却合法活着的投票者，代价是自带替代过期条件（在线 + 属于当前 turn）。
+    **新增任何活性投票者或「此刻状态」，先回答：它的心跳是什么？没有心跳就说明它的过期条件是什么。**
+    别再在 screen/sync 里各自 `messages.some(state === 'running')`：B-295 是三处各算各的，B-322 又在
+    `AgentInput` 找到漏掉的第四处（一个幽灵 tool 单独就把输入永久扣住，且只有开新标签页能解）。
+20. **一个 happy session 至多一个活 wrapper，执法点在 wrapper 自己**：启动时、连 server 之前持
     `~/.happy/session-locks/<id>.json`（`utils/sessionLock.ts`）；`HAPPY_RECONNECT_*` 即 takeover（杀旧→等退出→
     持锁→reactivate，顺序不可反：旧 wrapper 的 deactivate 会让 server 广播 archive 连坐 successor），杀不掉就让位。
     daemon 认领/停旧/幂等判活以锁为准，`hostPid`/命令行匹配只是存量兜底；新增任何 spawn/resume 路径都不得绕过
