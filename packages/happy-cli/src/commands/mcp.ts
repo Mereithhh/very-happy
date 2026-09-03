@@ -28,14 +28,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { pushClipboardViaDaemon } from '@/daemon/controlClient';
+import { pushClipboardViaDaemon, setTerminalTitleViaDaemon } from '@/daemon/controlClient';
 import { CLIPBOARD_MAX_BYTES, CLIPBOARD_TOOL_DESCRIPTION, CLIPBOARD_TOOL_NAME, CLIPBOARD_TOOL_TITLE } from '@/clipboard/limits';
 import { registerAssistantSessionTools, type AssistantToolRegistrar } from '@/assistant/assistantTools';
 import { logger } from '@/ui/logger';
-import { resolveMcpToolSurface, type McpToolSurface } from './mcpToolSurface';
+import { resolveMcpTerminalId, resolveMcpToolSurface, TERMINAL_TITLE_TOOL_NAME, type McpToolSurface } from './mcpToolSurface';
 
-/** Register every tool of `surface` on `server` (pure over the registrar, unit-tested). */
-export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToolSurface): void {
+/** Register every tool of `surface` (+ the terminal row when `terminalId` is set) on `server` (pure over the registrar, unit-tested). */
+export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToolSurface, terminalId: string | null = null): void {
     server.registerTool(CLIPBOARD_TOOL_NAME, {
         description: CLIPBOARD_TOOL_DESCRIPTION,
         title: CLIPBOARD_TOOL_TITLE,
@@ -69,6 +69,33 @@ export function registerMcpTools(server: AssistantToolRegistrar, surface: McpToo
         };
     });
 
+    if (terminalId) {
+        server.registerTool(TERMINAL_TITLE_TOOL_NAME, {
+            description: 'Change the title of the very-happy web terminal this agent is running in',
+            title: 'Change Terminal Title',
+            inputSchema: {
+                title: z.string().min(1).max(200).describe('The new title for this terminal'),
+            },
+        }, async (args) => {
+            logger.debug(`[MCP] change_title called for terminal ${terminalId}`);
+            const result = await setTerminalTitleViaDaemon(terminalId, args.title);
+            if (result.ok) {
+                return {
+                    content: [{ type: 'text' as const, text: `Successfully changed terminal title to: "${args.title}"` }],
+                    isError: false,
+                };
+            }
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: `Failed to change terminal title: ${result.error || 'unknown error'}. `
+                        + 'The very-happy daemon must be running on this machine (start it with `very-happy daemon start`).',
+                }],
+                isError: true,
+            };
+        });
+    }
+
     if (surface === 'assistant') {
         registerAssistantSessionTools(server);
     }
@@ -81,11 +108,12 @@ export async function handleMcpCommand(): Promise<void> {
     });
 
     const surface = resolveMcpToolSurface(process.env);
-    registerMcpTools(server, surface);
+    const terminalId = resolveMcpTerminalId(process.env);
+    registerMcpTools(server, surface, terminalId);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    logger.debug(`[MCP] very-happy stdio MCP server started (surface=${surface})`);
+    logger.debug(`[MCP] very-happy stdio MCP server started (surface=${surface}, terminal=${terminalId ?? 'none'})`);
 
     // Keep the process alive until stdin closes (client disconnected).
     await new Promise<void>((resolve) => {

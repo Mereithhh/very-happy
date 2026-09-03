@@ -25,7 +25,8 @@ export function startDaemonControlServer({
   onSessionStateEvent,
   onClaudeAuthFailed,
   pushClipboard,
-  onTerminalHook
+  onTerminalHook,
+  setTerminalTitle
 }: {
   /** Fresh per-process bearer token persisted in the private daemon state. */
   controlToken: string;
@@ -45,6 +46,12 @@ export function startDaemonControlServer({
    *  hook JSON + terminalId; parsing/validation is the mirror manager's job.
    *  Optional so older wirings/tests keep working. */
   onTerminalHook?: (body: unknown) => void;
+  /** Title a vh web terminal (tmux `@vh_title`) from a local process inside
+   *  it (`very-happy mcp` change_title with VH_TERMINAL_ID). Same tmux result
+   *  contract as the `set-terminal-title` machine RPC: false = not landed (409);
+   *  `'starting'` = the machine client does not exist yet (503, retryable).
+   *  Optional so older wirings/tests keep working (→ 503). */
+  setTerminalTitle?: (terminalId: string, title: string, ifAbsent: boolean) => boolean | 'starting';
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -315,6 +322,34 @@ export function startDaemonControlServer({
       const { text } = request.body;
       logger.debug(`[CONTROL SERVER] Clipboard push request (${text.length} chars)`);
       return pushClipboard(text);
+    });
+
+    // Title a web terminal from a process running inside it. Local IPC for
+    // `very-happy mcp` change_title (VH_TERMINAL_ID context): the daemon owns
+    // the tmux session, so it is the only place the title can be persisted.
+    typed.post('/terminal-title', {
+      schema: {
+        body: z.object({
+          terminalId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+          title: z.string().min(1).max(200),
+          ifAbsent: z.boolean().optional()
+        }),
+        response: {
+          200: z.object({ status: z.literal('ok') }),
+          409: z.object({ error: z.string() }),
+          503: z.object({ error: z.string() })
+        }
+      }
+    }, async (request, reply) => {
+      const { terminalId, title, ifAbsent } = request.body;
+      const landed = setTerminalTitle ? setTerminalTitle(terminalId, title, !!ifAbsent) : 'starting';
+      if (landed === 'starting') {
+        return reply.code(503).send({ error: 'daemon is still starting up' });
+      }
+      if (!landed) {
+        return reply.code(409).send({ error: 'Failed to set terminal title (tmux unavailable or terminal gone)' });
+      }
+      return { status: 'ok' as const };
     });
 
     // Stop daemon

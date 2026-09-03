@@ -243,6 +243,15 @@ export class ApiMachineClient {
     }
 
     /**
+     * Title a web terminal from inside it (`very-happy mcp` change_title →
+     * daemon /terminal-title → here). Same tmux truthfulness as the
+     * `set-terminal-title` RPC.
+     */
+    setTerminalTitle(terminalId: string, title: string, ifAbsent: boolean): boolean {
+        return this.webTerminal.setTitle(terminalId, title, ifAbsent);
+    }
+
+    /**
      * Push text to the clipboard of every web client the user has open
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
      * Encrypted with the per-machine key; the server relays without reading.

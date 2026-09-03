@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { CLIPBOARD_TOOL_NAME } from '@/clipboard/limits'
 import { ASSISTANT_SESSION_TOOL_NAMES, ASSISTANT_TOOL_NAMES, type AssistantToolRegistrar } from '@/assistant/assistantTools'
-import { mcpToolNamesForSurface, resolveMcpToolSurface } from './mcpToolSurface'
+import { mcpToolNamesForSurface, resolveMcpTerminalId, resolveMcpToolSurface } from './mcpToolSurface'
 import { registerMcpTools } from './mcp'
 
 function recorder(): { names: string[]; server: AssistantToolRegistrar } {
@@ -67,6 +67,37 @@ describe('mcpToolNamesForSurface', () => {
     })
 })
 
+describe('terminal context (VH_TERMINAL_ID)', () => {
+    it('is absent without the env or with an id that is not a vh terminal id', () => {
+        expect(resolveMcpTerminalId({})).toBeNull()
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: '' })).toBeNull()
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'has space' })).toBeNull()
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'x'.repeat(65) })).toBeNull()
+    })
+
+    it('adds change_title after the clipboard tool on either surface', () => {
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'term_1-A' })).toBe('term_1-A')
+        expect(mcpToolNamesForSurface('clipboard', 'term_1-A')).toEqual(['copy_to_clipboard', 'change_title'])
+        expect(mcpToolNamesForSurface('assistant', 'term_1-A')).toEqual([
+            'copy_to_clipboard',
+            'change_title',
+            ...ASSISTANT_SESSION_TOOL_NAMES,
+        ])
+    })
+
+    it('does not change the surface itself', () => {
+        expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1' })).toBe('clipboard')
+        expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1', HAPPY_SESSION_VARIANT: 'assistant' })).toBe('assistant')
+    })
+
+    it('yields to the managed happy server when `very-happy pi` runs inside a web terminal (HAPPY_MCP_URL set)', () => {
+        // runAcp in that shell exports HAPPY_MCP_URL and the ACP child inherits VH_TERMINAL_ID too;
+        // the in-process server owns change_title there, so this row must not register a second one.
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'term_1', HAPPY_MCP_URL: 'http://127.0.0.1:4321/' })).toBeNull()
+        expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1', HAPPY_MCP_URL: 'http://127.0.0.1:4321/', HAPPY_SESSION_VARIANT: 'assistant' })).toBe('assistant')
+    })
+})
+
 describe('registerMcpTools', () => {
     it('registers exactly the names the surface declares (clipboard)', () => {
         const { names, server } = recorder()
@@ -78,5 +109,12 @@ describe('registerMcpTools', () => {
         const { names, server } = recorder()
         registerMcpTools(server, 'assistant')
         expect(names).toEqual([...mcpToolNamesForSurface('assistant')])
+    })
+
+    it.each(['clipboard', 'assistant'] as const)('registers the terminal row on top of the %s surface', (surface) => {
+        const { names, server } = recorder()
+        registerMcpTools(server, surface, 'term_1')
+        expect(names).toEqual([...mcpToolNamesForSurface(surface, 'term_1')])
+        expect(names).toContain('change_title')
     })
 })

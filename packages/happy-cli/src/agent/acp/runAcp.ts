@@ -21,6 +21,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { projectPath } from '@/projectPath';
 import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermissionHandler';
 import { connectionState } from '@/utils/serverConnectionErrors';
+import { TitleGenerator } from '@/claude/utils/titleGenerator';
 import {
   extractConfigOptionsFromPayload,
   extractCurrentModeIdFromPayload,
@@ -534,7 +535,11 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  // Mirrors runClaude: the daemon injects HAPPY_SESSION_VARIANT=assistant for the
+  // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
+  // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
+  const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
+  const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
@@ -542,11 +547,19 @@ export async function runAcp(opts: {
     },
   };
 
+  // pi-acp ignores `mcpServers`, so the agent child also gets the in-process
+  // happy MCP server by env: a pi extension (or any agent that reads env) can
+  // connect to HAPPY_MCP_URL directly. `mcpServers` stays for agents that do
+  // honour the ACP handoff.
   const backend = new AcpBackend({
     agentName: opts.agentName,
     cwd: process.cwd(),
     command: opts.command,
     args: opts.args,
+    env: {
+      HAPPY_MCP_URL: happyServer.url,
+      HAPPY_SESSION_ID: session.sessionId,
+    },
     mcpServers,
     permissionHandler,
     transportHandler: new DefaultTransport(opts.agentName),
@@ -841,10 +854,17 @@ export async function runAcp(opts: {
 
   backend.onMessage(onBackendMessage);
 
+  // Same auto-title trigger as runClaude: the first user prompt of a
+  // title-less session. The generator never overwrites a title the agent
+  // already set through `change_title` (it re-checks `metadata.summary` before
+  // writing), and it never sees assistant output — so pi-acp's startup banner
+  // cannot become a title.
+  const titleGenerator = new TitleGenerator(session);
   session.onUserMessage((message) => {
     if (!message.content.text) {
       return;
     }
+    titleGenerator.maybeGenerate(message.content.text);
 
     if (typeof message.meta?.permissionMode === 'string') {
       currentPermissionMode = message.meta.permissionMode;
