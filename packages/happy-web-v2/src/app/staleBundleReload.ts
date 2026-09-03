@@ -143,19 +143,42 @@ function prepareForUpdateReload(): void {
  * navigation is served from the new precache, and flushes drafts on the way out.
  */
 export async function applyUpdate(serverEntry: string, now = Date.now()): Promise<void> {
-  sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
-    entry: serverEntry,
-    attemptedAt: now,
-  }));
+  try {
+    sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
+      entry: serverEntry,
+      attemptedAt: now,
+    }));
+  } catch { /* private mode — the reload matters more than the guard */ }
+  // B-328: refreshing the registration is best-effort, and it used to be
+  // awaited without a bound. `registration.update()` fetches the worker script
+  // over the network; when that hung, the await never settled, the reload never
+  // ran, and the button sat on "Refreshing…" forever — the frozen page people
+  // escaped with a manual hard refresh. The reload alone already fetches the
+  // new shell, so this can never be allowed to gate it.
+  await withTimeout(refreshServiceWorker(), SW_UPDATE_BUDGET_MS);
+  prepareForUpdateReload();
+  markProgrammaticReload(); // don't let the unload guard block the update
+  window.location.reload();
+}
+
+const SW_UPDATE_BUDGET_MS = 1500;
+
+async function refreshServiceWorker(): Promise<void> {
   try {
     const regs = await navigator.serviceWorker?.getRegistrations?.();
     await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
   } catch {
-    // SW update is best-effort; the reload below still fetches the new shell
+    // Unsupported, blocked, or already updating — the reload still works.
   }
-  prepareForUpdateReload();
-  markProgrammaticReload(); // don't let the unload guard block the update
-  window.location.reload();
+}
+
+/** Resolve when `work` finishes or the budget expires, whichever is first, and
+ *  never reject. Callers use it for steps that must not be able to hang. */
+export function withTimeout(work: Promise<unknown>, budgetMs: number): Promise<void> {
+  return Promise.race([
+    work.then(() => undefined, () => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, budgetMs)),
+  ]);
 }
 
 /** Manual check (Settings → Diagnostics "check for update" button).
@@ -166,10 +189,7 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
   const server = await serverEntryName();
   if (!server) return 'unknown';
   if (server === own) return 'current';
-  try {
-    const regs = await navigator.serviceWorker?.getRegistrations?.();
-    await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
-  } catch { /* best-effort */ }
+  await withTimeout(refreshServiceWorker(), SW_UPDATE_BUDGET_MS);
   // Manual check = explicit user intent: bypass the reload-loop guard window
   // but still stamp it so the automatic path stays throttled.
   sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({

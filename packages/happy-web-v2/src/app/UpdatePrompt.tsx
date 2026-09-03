@@ -26,7 +26,15 @@ export function UpdatePrompt() {
         type="button"
         className="vh-update-prompt-btn"
         disabled={applying}
-        onClick={() => { setApplying(true); void applyUpdate(pending.entry); }}
+        onClick={() => {
+          setApplying(true);
+          // B-328: the reload should replace this page within a moment. If it
+          // has not, something upstream is wedged — give the button back rather
+          // than leaving a dead control on screen, which is exactly what the
+          // frozen-page report looked like.
+          setTimeout(() => setApplying(false), 6000);
+          void applyUpdate(pending.entry);
+        }}
       >
         <RefreshCw size={13} aria-hidden />
         {applying ? t('changelog.updateApplying') : t('changelog.updateApply')}
