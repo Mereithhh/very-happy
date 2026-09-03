@@ -448,6 +448,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         credentials,
         startedBy: parsed.startedBy,
         verbose: parsed.verbose,
+        permissionMode: parsed.permissionMode,
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,

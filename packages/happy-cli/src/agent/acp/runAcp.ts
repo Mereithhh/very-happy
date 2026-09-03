@@ -23,6 +23,12 @@ import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermis
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { TitleGenerator } from '@/claude/utils/titleGenerator';
 import {
+  normalizeAcpPermissionMode,
+  removeSessionModeFile,
+  writeSessionModeFile,
+  type AcpPermissionMode,
+} from './sessionModeFile';
+import {
   extractConfigOptionsFromPayload,
   extractCurrentModeIdFromPayload,
   extractModeStateFromPayload,
@@ -455,6 +461,12 @@ export async function runAcp(opts: {
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
   /**
+   * Initial permission mode (`--permission-mode`, already sanitized). Exported
+   * to the agent child as HAPPY_PERMISSION_MODE and, for agents without a mode
+   * selector, published through the session mode file + metadata.
+   */
+  permissionMode?: AcpPermissionMode;
+  /**
    * Called when the backend reports `status: 'error'` (e.g. the adapter
    * executable is missing). That path stops the runner without throwing, so a
    * caller that wants to print guidance cannot rely on its outer catch.
@@ -535,6 +547,26 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
+  // Mode for agents without an ACP mode selector (pi). The gate on the agent
+  // side reads it from the session mode file; the web reads it from metadata
+  // (rule 14: publish what is in effect, not the intent).
+  const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? 'default';
+  let fileBackedPermissionMode: AcpPermissionMode | null = null;
+  const publishFileBackedPermissionMode = (mode: AcpPermissionMode) => {
+    if (fileBackedPermissionMode === mode) {
+      return;
+    }
+    try {
+      writeSessionModeFile(session.sessionId, mode);
+    } catch (error) {
+      logger.debug(`[${opts.agentName}] Failed to write session mode file:`, error);
+      return;
+    }
+    fileBackedPermissionMode = mode;
+    session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: mode }));
+    logger.debug(`[${opts.agentName}] Published file-backed permission mode: ${mode}`);
+  };
+
   // Mirrors runClaude: the daemon injects HAPPY_SESSION_VARIANT=assistant for the
   // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
   // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
@@ -559,6 +591,7 @@ export async function runAcp(opts: {
     env: {
       HAPPY_MCP_URL: happyServer.url,
       HAPPY_SESSION_ID: session.sessionId,
+      HAPPY_PERMISSION_MODE: initialPermissionMode,
     },
     mcpServers,
     permissionHandler,
@@ -619,6 +652,18 @@ export async function runAcp(opts: {
 
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
     if (!requestedMode) {
+      return;
+    }
+
+    if (!modeSelector && !legacyModes) {
+      // No ACP mode selector (pi-acp): the mode is enforced by a gate on the
+      // agent side that re-reads the session mode file, so publish it there.
+      const mode = normalizeAcpPermissionMode(requestedMode);
+      if (!mode) {
+        logger.debug(`[${opts.agentName}] Ignoring unknown file-backed permission mode request: ${requestedMode}`);
+        return;
+      }
+      publishFileBackedPermissionMode(mode);
       return;
     }
 
@@ -912,6 +957,9 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (!modeSelector && !legacyModes) {
+      publishFileBackedPermissionMode(initialPermissionMode);
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -979,6 +1027,14 @@ export async function runAcp(opts: {
 
     backend.offMessage?.(onBackendMessage);
     await backend.dispose();
+
+    if (fileBackedPermissionMode) {
+      try {
+        removeSessionModeFile(session.sessionId);
+      } catch (error) {
+        logger.debug(`[${opts.agentName}] Failed to remove session mode file:`, error);
+      }
+    }
 
     try {
       happyServer.stop();

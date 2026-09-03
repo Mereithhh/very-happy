@@ -72,6 +72,26 @@ const mocks = vi.hoisted(() => {
       sessions: [] as any[],
       seeds: [] as string[],
     },
+    modeFileState: {
+      writes: [] as Array<{ sessionId: string; mode: string }>,
+      removes: [] as string[],
+    },
+  };
+});
+
+// Keep the pure normalizer; record the file side effects instead of touching
+// the real happy home (sessionModeFile.test.ts covers the on-disk shape).
+vi.mock('./sessionModeFile', async () => {
+  const actual = await vi.importActual<typeof import('./sessionModeFile')>('./sessionModeFile');
+  return {
+    ...actual,
+    writeSessionModeFile: (sessionId: string, mode: string) => {
+      mocks.modeFileState.writes.push({ sessionId, mode });
+      return { permissionMode: mode, updatedAt: 0 };
+    },
+    removeSessionModeFile: (sessionId: string) => {
+      mocks.modeFileState.removes.push(sessionId);
+    },
   };
 });
 
@@ -224,6 +244,8 @@ describe('runAcp', () => {
     mocks.backendState.cancelCalls = [];
     mocks.titleGeneratorState.sessions = [];
     mocks.titleGeneratorState.seeds = [];
+    mocks.modeFileState.writes = [];
+    mocks.modeFileState.removes = [];
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
 
@@ -259,9 +281,106 @@ describe('runAcp', () => {
     expect(mocks.backendState.constructorArgs.env).toEqual({
       HAPPY_MCP_URL: 'http://127.0.0.1:9876',
       HAPPY_SESSION_ID: 'happy-session-1',
+      HAPPY_PERMISSION_MODE: 'default',
     });
     // The ACP handoff stays for agents that honour it.
     expect(mocks.backendState.constructorArgs.mcpServers.happy.args).toEqual(['--url', 'http://127.0.0.1:9876']);
+  });
+
+  describe('file-backed permission mode (agents without an ACP mode selector, i.e. pi)', () => {
+    const publishedModes = () => mocks.mockSession.updateMetadata.mock.calls
+      .map((call) => (call[0] as (meta: Record<string, unknown>) => Record<string, unknown>)({}).permissionMode)
+      .filter((mode) => mode !== undefined);
+
+    it('exports the initial mode to the child env, writes the mode file and publishes metadata on start, removes it on exit', async () => {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+        permissionMode: 'bypassPermissions',
+      });
+      await vi.waitFor(() => {
+        expect(mocks.modeFileState.writes).toHaveLength(1);
+      });
+      expect(mocks.backendState.constructorArgs.env.HAPPY_PERMISSION_MODE).toBe('bypassPermissions');
+      expect(mocks.modeFileState.writes).toEqual([{ sessionId: 'happy-session-1', mode: 'bypassPermissions' }]);
+      expect(publishedModes()).toEqual(['bypassPermissions']);
+      expect(mocks.modeFileState.removes).toEqual([]);
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+      expect(mocks.modeFileState.removes).toEqual(['happy-session-1']);
+    });
+
+    it('rewrites the file and metadata on a live switch from message meta (yolo alias), ignores unknown values and no-op repeats', async () => {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+      });
+      await vi.waitFor(() => {
+        expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+        expect(mocks.modeFileState.writes).toHaveLength(1);
+      });
+      expect(mocks.modeFileState.writes[0]).toEqual({ sessionId: 'happy-session-1', mode: 'default' });
+
+      const send = (text: string, permissionMode: string) => {
+        mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text }, meta: { permissionMode } });
+      };
+      send('go yolo', 'yolo');
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      send('still yolo', 'bypassPermissions');
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(2));
+      send('nonsense', 'safe-yolo');
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(3));
+      send('back', 'default');
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(4));
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.modeFileState.writes.map((w) => w.mode)).toEqual(['default', 'bypassPermissions', 'default']);
+      expect(publishedModes()).toEqual(['default', 'bypassPermissions', 'default']);
+      // Never went through an ACP selector: pi-acp has none.
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(mocks.backendState.setModeCalls).toEqual([]);
+      expect(mocks.modeFileState.removes).toEqual(['happy-session-1']);
+    });
+
+    it('stays out of the way when the agent advertises an ACP mode selector (gemini/opencode path unchanged)', async () => {
+      mocks.backendState.startSessionMessages = [
+        {
+          type: 'event',
+          name: 'config_options_update',
+          payload: {
+            configOptions: [
+              {
+                type: 'select', id: 'permission-mode', name: 'Permission Mode', category: 'mode', currentValue: 'ask',
+                options: [{ value: 'ask', name: 'Ask' }, { value: 'code', name: 'Code' }],
+              },
+            ],
+          },
+        },
+      ];
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'opencode',
+        command: 'opencode',
+        args: ['acp'],
+      });
+      await vi.waitFor(() => expect(mocks.getUserMessageHandler()).toBeTypeOf('function'));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'x' }, meta: { permissionMode: 'Code' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([{ configId: 'permission-mode', value: 'code' }]);
+      expect(mocks.modeFileState.writes).toEqual([]);
+      expect(mocks.modeFileState.removes).toEqual([]);
+      expect(publishedModes()).toEqual([]);
+    });
   });
 
   describe('startHappyServer assistant flag (HAPPY_SESSION_VARIANT, env-only meta-agent spawn)', () => {
