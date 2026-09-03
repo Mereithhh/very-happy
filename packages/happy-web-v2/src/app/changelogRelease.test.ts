@@ -68,6 +68,11 @@ describe('changelog releases', () => {
   });
 
   it('offers the companion CLI only to active machines that actually need it', () => {
+    // Derived, not a literal: which machines get a notice is what this test is
+    // about, and the target version itself is already pinned by the
+    // changelogCliTarget test above. Hard-coding it here only meant every CLI
+    // release had to come back and bump three copies.
+    const target = CHANGELOG_RELEASES.find((r) => r.cliVersion)?.cliVersion
     const notices = changelogCliNotices([
       { id: 'old', active: true, metadata: { displayName: 'Desk', happyCliVersion: '0.2.80' } },
       { id: 'current', active: true, metadata: { host: 'Laptop', happyCliVersion: '0.2.86' } },
@@ -80,19 +85,19 @@ describe('changelog releases', () => {
         machineId: 'old',
         machineName: 'Desk',
         currentVersion: '0.2.80',
-        targetVersion: '0.2.108',
+        targetVersion: target,
       },
       {
         machineId: 'current',
         machineName: 'Laptop',
         currentVersion: '0.2.86',
-        targetVersion: '0.2.108',
+        targetVersion: target,
       },
       {
         machineId: 'latest',
         machineName: 'Studio',
         currentVersion: '0.2.87',
-        targetVersion: '0.2.108',
+        targetVersion: target,
       },
     ]);
   });

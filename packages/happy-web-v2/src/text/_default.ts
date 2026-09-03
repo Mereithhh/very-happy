@@ -1658,11 +1658,19 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
-            sep03l: {
+            sep03n: {
+                title: 'The CLI can now see the work it started',
+                summary: 'A script could start a session and send it messages, but nothing more — no way to list what was running, read what a session said, or stop one. Anything built on top of Very Happy dispatched work and then lost sight of it.',
+                sessions: '`very-happy sessions` lists, reads, stops and archives sessions on this machine — the same four operations the built-in assistant already had, now available to any caller. `--tag` narrows the list to one origin, so a bridge can find its own work among everything else running.',
+                scope: 'Scope is this machine: listing and stopping ask the local daemon, and reading needs the session key this machine stored when it spawned the session. A session belonging to another machine is out of reach rather than forbidden.',
+            },
+            sep03m: {
                 title: 'Sessions a script started now say who started them',
                 summary: 'Work dispatched from outside — a chat bridge, a scheduler — arrived in the list looking exactly like a session you opened yourself, so a list of twenty gave you no way to tell which ones you were responsible for watching.',
                 tag: 'A session spawned with an origin is born carrying that origin as its tag, so it shows up as a chip in the list and is searchable as #<name>. Sessions the built-in assistant dispatches already worked this way; now any external caller gets the same treatment instead of that one hardcoded name.',
                 flag: '`very-happy spawn --spawned-by <name>` sets it. The value is rejected up front unless it reads as a tag — an unattended bridge should hear about a typo, not quietly file every session under nothing.',
+            },
+            sep03l: {
                 title: 'A renamed machine finally shows its new name',
                 summary: 'The name Very Happy showed for a machine was the hostname it had the day it first connected, and it never changed after that — rename the box and the old name stayed forever.',
                 rename: 'A machine now claims its own record when its daemon starts, so a rename shows up in the machine list and the session launcher instead of being frozen at whatever the hostname was on day one. This also settles a daemon-log warning that fired on every start for any machine that had ever been renamed.',
