@@ -31,8 +31,14 @@ export interface AutoUpdateContext {
     enabled: boolean;
     /** What the daemon is running right now. */
     currentVersion: string;
-    /** The relay's recommendation. `null` when the operator has pinned nothing. */
-    recommendedVersion: string | null;
+    /**
+     * B-351: the version an operator has approved for unattended install —
+     * deliberately NOT `recommendedVersion`, which may track the registry.
+     * Telling someone a release exists and installing it on their machine while
+     * they are away are different decisions, and only the second one needs a
+     * person to have said yes. `null` means nothing has been approved.
+     */
+    autoUpdateVersion: string | null;
     /** No session wrappers and no live web terminals. */
     idle: boolean;
     /** Version this daemon already tried and failed to install, if any. */
@@ -41,10 +47,10 @@ export interface AutoUpdateContext {
 
 export function decideAutoUpdate(context: AutoUpdateContext): AutoUpdateDecision {
     if (!context.enabled) return { action: 'skip', reason: 'auto-update disabled' };
-    const target = context.recommendedVersion;
-    // Nothing pinned means the operator has not promoted a release yet. Silence
-    // is not permission to take whatever npm currently calls latest.
-    if (!target) return { action: 'skip', reason: 'no recommended version published' };
+    const target = context.autoUpdateVersion;
+    // Nothing approved means no unattended install. Silence is not permission,
+    // and it is the state that holds while an operator is still deciding.
+    if (!target) return { action: 'skip', reason: 'no version approved for automatic install' };
     // B-329: only ever move FORWARD. Comparing for equality was not enough —
     // a machine running something newer than the recommendation (which is the
     // normal state right after a release, before the operator promotes it) fell
@@ -53,7 +59,7 @@ export function decideAutoUpdate(context: AutoUpdateContext): AutoUpdateDecision
     const ordering = compareExactVersions(context.currentVersion, target);
     if (ordering === null) return { action: 'skip', reason: 'version numbers not comparable' };
     if (ordering === 0) return { action: 'skip', reason: 'already current' };
-    if (ordering > 0) return { action: 'skip', reason: `already ahead of the recommended ${target}` };
+    if (ordering > 0) return { action: 'skip', reason: `already ahead of the approved ${target}` };
     if (context.failedVersion === target) {
         return { action: 'skip', reason: `already failed to install ${target} once` };
     }

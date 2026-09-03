@@ -5,12 +5,27 @@ export type CliVersionPolicySource = 'configured' | 'registry' | 'unavailable';
 export interface CliVersionPolicy {
     recommendedVersion: string | null;
     minimumVersion: string | null;
+    /**
+     * B-351: the version machines may install by themselves, which is NOT the
+     * same question as the version to recommend.
+     *
+     * `recommendedVersion` can track the registry, because telling someone a
+     * newer release exists costs nothing if it turns out to be bad. Installing
+     * it unattended on every idle machine does: it would make `npm publish`
+     * the moment a release reaches everyone, with no human between the two.
+     *
+     * So this is pinned separately and never derived. Unset means no machine
+     * auto-installs anything — the safe default, and the one that holds while
+     * an operator is still deciding.
+     */
+    autoUpdateVersion: string | null;
     checkedAt: number;
     source: CliVersionPolicySource;
 }
 
 export interface CliVersionPolicyConfig {
     recommendedVersion: string | null;
+    autoUpdateVersion: string | null;
     minimumVersion: string | null;
     registryLookup: boolean;
 }
@@ -39,12 +54,14 @@ function optionalBoolean(raw: string | undefined, name: string): boolean {
 export function resolveCliVersionPolicyConfig(env: NodeJS.ProcessEnv = process.env): CliVersionPolicyConfig {
     const recommendedVersion = optionalExactVersion(env.CLI_RECOMMENDED_VERSION, 'CLI_RECOMMENDED_VERSION');
     const minimumVersion = optionalExactVersion(env.CLI_MINIMUM_VERSION, 'CLI_MINIMUM_VERSION');
+    const autoUpdateVersion = optionalExactVersion(env.CLI_AUTO_UPDATE_VERSION, 'CLI_AUTO_UPDATE_VERSION');
     if (recommendedVersion && minimumVersion && semver.gt(minimumVersion, recommendedVersion)) {
         throw new Error('CLI_MINIMUM_VERSION must not be newer than CLI_RECOMMENDED_VERSION');
     }
     return {
         recommendedVersion,
         minimumVersion,
+        autoUpdateVersion,
         registryLookup: optionalBoolean(env.CLI_VERSION_REGISTRY_LOOKUP, 'CLI_VERSION_REGISTRY_LOOKUP'),
     };
 }
@@ -72,6 +89,7 @@ export class CliVersionPolicyProvider {
             return {
                 recommendedVersion: this.config.recommendedVersion,
                 minimumVersion: this.config.minimumVersion,
+                autoUpdateVersion: this.config.autoUpdateVersion,
                 checkedAt: this.now(),
                 source: 'configured',
             };
@@ -80,6 +98,7 @@ export class CliVersionPolicyProvider {
             return {
                 recommendedVersion: null,
                 minimumVersion: this.config.minimumVersion,
+                autoUpdateVersion: this.config.autoUpdateVersion,
                 checkedAt: this.now(),
                 source: 'unavailable',
             };
@@ -112,6 +131,7 @@ export class CliVersionPolicyProvider {
             this.cached = {
                 recommendedVersion,
                 minimumVersion: this.config.minimumVersion,
+                autoUpdateVersion: this.config.autoUpdateVersion,
                 checkedAt: this.now(),
                 source: 'registry',
             };
@@ -123,6 +143,7 @@ export class CliVersionPolicyProvider {
             this.cached = {
                 recommendedVersion: null,
                 minimumVersion: this.config.minimumVersion,
+                autoUpdateVersion: this.config.autoUpdateVersion,
                 checkedAt: this.now(),
                 source: 'unavailable',
             };

@@ -15,6 +15,10 @@ export function versionRoutes(app: Fastify) {
                 200: z.object({
                     recommendedVersion: z.string().nullable(),
                     minimumVersion: z.string().nullable(),
+                    // B-350: pinned separately from `recommendedVersion` — see
+                    // CliVersionPolicy. Old CLIs ignore it and keep their own
+                    // behaviour (iron rule 4).
+                    autoUpdateVersion: z.string().nullable(),
                     checkedAt: z.number(),
                     source: z.enum(['configured', 'registry', 'unavailable']),
                 }),
