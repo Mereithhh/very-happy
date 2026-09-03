@@ -26,7 +26,7 @@ import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionModelModes, saveSessionModelModes, loadSessionEffortLevels, saveSessionEffortLevels, loadUnreadSessionIds, saveUnreadSessionIds } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -432,7 +432,8 @@ export const storage = create<StorageState>()((set, get) => {
         socketLastDisconnectedAt: null,
         isDataReady: false,
         nativeUpdateStatus: null,
-        unreadSessionIds: new Set<string>(),
+        // B-312: seeded from MMKV so a refresh does not erase pending red dots
+        unreadSessionIds: new Set<string>(loadUnreadSessionIds()),
         currentViewingSessionId: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
@@ -713,6 +714,10 @@ export const storage = create<StorageState>()((set, get) => {
                     }
                 }
             });
+
+            // B-312: mirror to MMKV only when the set actually grew — this runs
+            // on every session batch, and an unchanged set must not cost a write.
+            if (unreadSessionIds !== state.unreadSessionIds) saveUnreadSessionIds(unreadSessionIds);
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
@@ -1473,16 +1478,25 @@ export const storage = create<StorageState>()((set, get) => {
             const effortLevels = loadSessionEffortLevels();
             delete effortLevels[sessionId];
             saveSessionEffortLevels(effortLevels);
-            
+
+            // B-312: a deleted session must not leave a persisted red dot behind
+            let unreadSessionIds = state.unreadSessionIds;
+            if (unreadSessionIds.has(sessionId)) {
+                unreadSessionIds = new Set(unreadSessionIds);
+                unreadSessionIds.delete(sessionId);
+                saveUnreadSessionIds(unreadSessionIds);
+            }
+
             // Rebuild sessionListViewData without the deleted session
-            const sessionListViewData = buildSessionListViewData(remainingSessions);
-            
+            const sessionListViewData = buildSessionListViewData(remainingSessions, unreadSessionIds);
+
             return {
                 ...state,
                 sessions: remainingSessions,
                 sessionMessages: remainingSessionMessages,
                 sessionFileCache: remainingFileCache,
-                sessionListViewData
+                sessionListViewData,
+                unreadSessionIds
             };
         }),
         // Friend management methods
@@ -1612,6 +1626,7 @@ export const storage = create<StorageState>()((set, get) => {
             if (!state.unreadSessionIds.has(sessionId)) return state;
             const next = new Set(state.unreadSessionIds);
             next.delete(sessionId);
+            saveUnreadSessionIds(next);
             return {
                 ...state,
                 unreadSessionIds: next,
@@ -1622,6 +1637,7 @@ export const storage = create<StorageState>()((set, get) => {
             if (state.unreadSessionIds.has(sessionId)) return state;
             const next = new Set(state.unreadSessionIds);
             next.add(sessionId);
+            saveUnreadSessionIds(next);
             return {
                 ...state,
                 unreadSessionIds: next,
@@ -1634,6 +1650,9 @@ export const storage = create<StorageState>()((set, get) => {
             const next = sessionId && state.unreadSessionIds.has(sessionId)
                 ? (() => { const s = new Set(state.unreadSessionIds); s.delete(sessionId); return s; })()
                 : state.unreadSessionIds;
+            // opening the session is the ONLY clear path today (markSessionRead has
+            // no callers) — persist it or the dot comes back on the next reload
+            if (next !== state.unreadSessionIds) saveUnreadSessionIds(next);
             return {
                 ...state,
                 currentViewingSessionId: sessionId,

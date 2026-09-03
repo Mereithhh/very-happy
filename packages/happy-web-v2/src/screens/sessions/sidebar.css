@@ -228,9 +228,12 @@
  *   attention — the agent is BLOCKED on the user (permission / needs_input /
  *               LLM review/blocked, board's urgent band). Accent rail (the
  *               live semantic) + heavier title + accent badge dot with glow.
- *   unread    — agent finished a turn while the user was away. Text-stage
- *               only: medium title + a --text dot. NO accent — teal on every
- *               finished turn would drown the real "waiting on you" signal.
+ *   unread    — agent finished a turn while the user was away. Medium title +
+ *               a --danger dot with a --danger-dim halo (B-312: the old --text
+ *               dot was the same ink as the row's own text and went unnoticed
+ *               for weeks — Owner reported the feature as MISSING). NOT accent:
+ *               teal means live, and painting every finished turn teal would
+ *               drown the real "waiting on you" signal.
  * Hover only changes background (rules below never touch box-shadow), so
  * neither marker is swallowed by hover or selection. */
 .sb-row--attention {
@@ -264,8 +267,13 @@
    * on every bg step without a hard-edged second border */
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
+/* red = "there is output you have not looked at" — the universal unread-badge
+ * convention, NOT an error (tokens.css / design-language.md carry the scoped
+ * widening of --danger). Same halo construction as the attention dot so both
+ * levels read at a glance; --danger-dim is translucent in both themes. */
 .sb-row-signal--unread {
-  background: var(--text);
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-dim);
 }
 /* --text-faint sits at only ~2.4:1 on dark --bg-3, so the selected row lifts
  * its metadata / kebab / offline dot one ink step — legibility and the

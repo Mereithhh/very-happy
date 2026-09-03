@@ -4,6 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionModeKey } from '@/components/PermissionModeSelector';
+import { nextUnreadRecord, parseUnreadRecord, pruneUnreadRecord, unreadIdsOf } from './sidebarUnread';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -12,6 +13,7 @@ const VOICE_SOFT_PAYWALL_SHOWN_KEY = 'voice-soft-paywall-shown';
 const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-count';
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 const QUEUED_MESSAGES_KEY = 'queued-messages-v1';
+const UNREAD_SESSIONS_KEY = 'unread-sessions-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -347,4 +349,32 @@ export function resetVoiceLocalCounters() {
 
 export function clearPersistence() {
     mmkv.clearAll();
+}
+
+/**
+ * Sidebar 未读 red dots (B-312), mirrored so a refresh can't erase a pending
+ * "come look at this". Model + guards: sidebarUnread.ts.
+ *
+ * Both halves swallow storage errors and the load guards `localStorage` being
+ * absent, because the store seeds these AT MODULE SCOPE — in the node test
+ * environment (no `test` block in vite.config.ts) that runs before, or without,
+ * installBrowserTestGlobals().
+ */
+export function loadUnreadSessionIds(now: number = Date.now()): string[] {
+    try {
+        if (typeof localStorage === 'undefined') return [];
+        return unreadIdsOf(pruneUnreadRecord(parseUnreadRecord(mmkv.getString(UNREAD_SESSIONS_KEY)), now));
+    } catch {
+        return [];
+    }
+}
+
+export function saveUnreadSessionIds(ids: Iterable<string>, now: number = Date.now()) {
+    try {
+        if (typeof localStorage === 'undefined') return;
+        const previous = parseUnreadRecord(mmkv.getString(UNREAD_SESSIONS_KEY));
+        mmkv.set(UNREAD_SESSIONS_KEY, JSON.stringify(nextUnreadRecord(previous, ids, now)));
+    } catch {
+        // a full / disabled localStorage must not break the session list
+    }
 }

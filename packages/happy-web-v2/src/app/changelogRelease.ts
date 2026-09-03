@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-unread-dot',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half
+    titleKey: 'changelog.releases.sep03s.title',
+    summaryKey: 'changelog.releases.sep03s.summary',
+    itemKeys: [
+      'changelog.releases.sep03s.color',
+      'changelog.releases.sep03s.persist',
+    ],
+  },
+  {
     id: '2026-09-03-rate-limit-self-lock',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

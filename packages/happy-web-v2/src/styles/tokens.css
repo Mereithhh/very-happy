@@ -21,6 +21,10 @@
  *  - overlays: backdrop dim = --scrim; floating-panel shadows = --shadow-pop
  *    (dropdown/toast/hint) or --shadow-modal (modal/palette/auth card).
  *  - fills: text on --accent fill = --accent-ink; on --danger fill = --danger-ink.
+ *  - --danger means error/destructive, with ONE audited widening: the sidebar
+ *    unread badge dot (.sb-row-signal--unread) — accent is reserved for live and
+ *    warn for "waiting on permission", so red is the only free hue, and red=unread
+ *    is the universal badge convention (B-312; registered in design-language.md).
  * Exemptions (the ONLY places literals are allowed; full list in
  * happy/references/very-happy-design-tokens.md):
  *  - the always-dark terminal pane: xterm THEME in WebTerminalScreen.tsx,
