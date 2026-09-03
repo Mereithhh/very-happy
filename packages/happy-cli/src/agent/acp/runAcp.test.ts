@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const sessionHandlers = new Map<string, (params: any) => Promise<any> | any>();
@@ -262,6 +262,41 @@ describe('runAcp', () => {
     });
     // The ACP handoff stays for agents that honour it.
     expect(mocks.backendState.constructorArgs.mcpServers.happy.args).toEqual(['--url', 'http://127.0.0.1:9876']);
+  });
+
+  describe('startHappyServer assistant flag (HAPPY_SESSION_VARIANT, env-only meta-agent spawn)', () => {
+    const runUntilKilled = async () => {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+      });
+      await vi.waitFor(() => {
+        expect(mocks.getKillHandler()).toBeTypeOf('function');
+      });
+      await mocks.getKillHandler()!();
+      await runPromise;
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('passes assistant=true when HAPPY_SESSION_VARIANT=assistant so sessions_* reach pi over HAPPY_MCP_URL', async () => {
+      vi.stubEnv('HAPPY_SESSION_VARIANT', 'assistant');
+      await runUntilKilled();
+      expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: true });
+    });
+
+    it('passes assistant=false when HAPPY_SESSION_VARIANT is unset', async () => {
+      vi.stubEnv('HAPPY_SESSION_VARIANT', '');
+      delete process.env.HAPPY_SESSION_VARIANT;
+      await runUntilKilled();
+      expect(mocks.mockStartHappyServer).toHaveBeenCalledTimes(1);
+      expect(mocks.mockStartHappyServer.mock.calls[0][1]).toEqual({ assistant: false });
+    });
   });
 
   it('seeds the auto-title from the first user prompt only, never from assistant output such as the pi banner', async () => {

@@ -449,6 +449,13 @@ on this surface yet; a meta agent that needs it shells out to
 [`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request)
 (same this-machine scope).
 
+For a **managed pi session** (`very-happy pi` / `spawn --agent pi`, ACP runner) none
+of this registration is needed: the runner passes the same
+`HAPPY_SESSION_VARIANT=assistant` to its in-process happy MCP server, so the
+`sessions_*` tools reach the session through **`HAPPY_MCP_URL`** (the bridge)
+without any `.mcp.json`; the `very-happy mcp` stdio route above remains for pi
+started in a web terminal.
+
 A Claude session never takes this path: `HAPPY_MANAGED=1` on every
 happy-managed `claude` keeps the standalone server clipboard-only there, since
 the in-process assistant tools already cover it.

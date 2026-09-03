@@ -535,7 +535,11 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
-  const happyServer = await startHappyServer(session);
+  // Mirrors runClaude: the daemon injects HAPPY_SESSION_VARIANT=assistant for the
+  // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
+  // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
+  const isAssistantVariant = process.env.HAPPY_SESSION_VARIANT === 'assistant';
+  const happyServer = await startHappyServer(session, { assistant: isAssistantVariant });
   const mcpServers = {
     happy: {
       command: join(projectPath(), 'bin', 'happy-mcp.mjs'),
