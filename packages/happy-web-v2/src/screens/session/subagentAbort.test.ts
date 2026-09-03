@@ -64,6 +64,15 @@ describe('B-317 user abort ends the sub-agents of the turn it interrupted', () =
         expect(presentedSubagentStatus(card(T0, { status: 'failed' }), T0 + 5)).toBe('failed');
     });
 
+    it('progress payloads do not buy a running card out of the abort', () => {
+        // task_progress carries a tool count and tokens while the sub-agent is
+        // still working. Those are progress, not an outcome — a card that was
+        // running when the user hit stop is stopped, whatever it had reported.
+        const busy = card(T0, { status: 'running', usage: { toolUses: 7, totalTokens: 9000 } });
+        expect(presentedSubagentStatus(busy, T0 + 5)).toBe('stopped');
+        expect(countRunningSubagentCards([busy, serviceEvent(T0 + 5, 'Aborted by user')])).toBe(0);
+    });
+
     it('a card started after the abort is a new turn and is untouched', () => {
         expect(presentedSubagentStatus(card(T0 + 100, { status: 'running' }), T0)).toBe('running');
     });

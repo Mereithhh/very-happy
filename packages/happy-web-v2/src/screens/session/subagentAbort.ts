@@ -58,5 +58,10 @@ export function presentedSubagentStatus(
     // 中止之后开的卡不受这条约束（用户中止的是上一轮）。
     if (abortedAt === null || message.createdAt > abortedAt) return lifecycle.status;
     if (lifecycle.status === 'failed' || lifecycle.status === 'stopped') return lifecycle.status;
+    // `running` is unconditional: the abort killed the process, so nothing that
+    // was still running survived it. Progress payloads (task_progress carries
+    // tokens and a tool count) must NOT buy a card out of this — only a stop
+    // event carries a real outcome, and a stop is by definition not `running`.
+    if (lifecycle.status === 'running') return 'stopped';
     return reportedRealOutcome(lifecycle) ? lifecycle.status : 'stopped';
 }
