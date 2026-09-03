@@ -112,14 +112,27 @@ export function interpretPermissionAck(
 ): PermissionAckOutcome {
     if (!ack.ok) {
         const message = ack.error ?? 'RPC call failed'
+        // Server strings from rpcHandler.ts: no room member after the grace
+        // period → 'RPC method not available'; member left mid-call →
+        // 'RPC target disconnected'. Both mean "nobody is there to answer".
         if (message === 'RPC method not available') {
             return { status: 'offline', message: 'no running wrapper has registered the permission RPC for this session' }
         }
-        if (/timed? ?out|disconnected/i.test(message)) {
+        if (message === 'RPC target disconnected') {
+            return { status: 'offline', message: 'the wrapper disconnected while the permission RPC was in flight' }
+        }
+        if (/timed? ?out/i.test(message)) {
             return { status: 'timeout', message }
         }
         return { status: 'rejected', message }
     }
+    // An undecryptable / empty body is deliberately `acknowledged`, not an
+    // error: the wrapper's permission handler returns undefined, which
+    // RpcHandlerManager encrypts as JSON.stringify(undefined) → empty
+    // plaintext, so decrypting it yields '' and JSON.parse throws. Params and
+    // result use the same session key, so a genuine key mismatch would have
+    // failed on the wrapper side first (surfacing as a rule-17 {error} body or
+    // a timeout), never here.
     let body: unknown = null
     if (typeof ack.result === 'string' && ack.result.length > 0) {
         try {
@@ -281,8 +294,13 @@ async function fetchDecryptedAgentState(sessionId: string, persisted: PersistedS
                 'X-Happy-Client': `${PERMISSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
             },
             timeout: 15_000,
+            // 404 is a real answer ("not yours / gone"), not a transport fault.
+            validateStatus: (status) => (status >= 200 && status < 300) || status === 404,
         },
     )
+    if (response.status === 404) {
+        throw new Error(`Session ${sessionId} was not found on this account (it may have been deleted, or the local key belongs to a session on another relay).`)
+    }
     const raw = response.data?.session?.agentState
     if (typeof raw !== 'string' || raw.length === 0) return null
     return decrypt(decodeBase64(persisted.encryptionKey), persisted.encryptionVariant, decodeBase64(raw)) as AgentState | null

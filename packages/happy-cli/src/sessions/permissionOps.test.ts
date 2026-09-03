@@ -37,10 +37,11 @@ describe('buildPermissionRpcPayload — mirrors the web permission card', () => 
 describe('interpretPermissionAck — server ack + rule-17 envelope', () => {
     const identity = (encrypted: string) => JSON.parse(encrypted)
 
-    it('classifies the server refusals: offline / timeout / other', () => {
+    it('classifies the server refusals: offline (no member / member left) / timeout / other', () => {
         expect(interpretPermissionAck({ ok: false, error: 'RPC method not available' }, identity).status).toBe('offline')
         expect(interpretPermissionAck({ ok: false, error: 'operation has timed out' }, identity).status).toBe('timeout')
-        expect(interpretPermissionAck({ ok: false, error: 'RPC target disconnected' }, identity).status).toBe('timeout')
+        // The wrapper dropping mid-call is "nobody there", not "too slow".
+        expect(interpretPermissionAck({ ok: false, error: 'RPC target disconnected' }, identity)).toMatchObject({ status: 'offline', message: expect.stringMatching(/disconnected/) })
         expect(interpretPermissionAck({ ok: false, error: 'RPC rate limit reached' }, identity)).toEqual({ status: 'rejected', message: 'RPC rate limit reached' })
         expect(interpretPermissionAck({ ok: false }, identity)).toEqual({ status: 'rejected', message: 'RPC call failed' })
     })
