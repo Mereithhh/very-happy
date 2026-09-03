@@ -15,6 +15,16 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-connect-machine-in-plus-menu',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep03j.title',
+    summaryKey: 'changelog.releases.sep03j.summary',
+    itemKeys: [
+      'changelog.releases.sep03j.plus',
+    ],
+  },
+  {
     id: '2026-09-03-auth-failure-diagnosis',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

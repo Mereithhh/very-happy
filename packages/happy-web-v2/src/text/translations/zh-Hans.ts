@@ -1623,6 +1623,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03j: {
+                title: '连接新机器进了「+」菜单',
+                summary: '上一版加的引导页此前只在设置和弹窗空态里。现在它落在你真正会去点的地方。',
+                plus: '侧栏「+」菜单最后一项是「连接新机器」，用分隔线隔开——它是唯一不创建会话的入口，而它上面每一项都得先有机器。⌘K 里也有同一个动作。',
+            },
             sep03i: {
                 title: '认证失败这次说得清该怎么办',
                 summary: 'Claude Code 认证失败时，会话里只有一行灰色的 SDK 文本，点不动也看不出下一步。现在它直接给出这台机器的登录状态入口——所有 CLI 版本都有——机器页也会点名「凭据存在但被拒绝」这种最常见的情况。',

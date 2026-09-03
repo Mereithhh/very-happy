@@ -16,6 +16,7 @@ import {
   FolderOpen,
   RotateCcw,
   History,
+  HardDrive,
 } from 'lucide-react';
 import { useSessions, storage } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -214,6 +215,16 @@ export function CommandPalette() {
       icon: <History size={16} />,
       haystack: `import claude code history conversation desktop resume ${(t('commandPalette.actionImportClaude') as string).toLowerCase()}`,
       run: () => setShowImportClaude(true),
+    });
+    out.push({
+      // B-300: the "+" menu's last entry, mirrored here — ⌘K must not be the
+      // one surface that cannot reach the connect-a-machine guide.
+      key: 'action:connect-machine',
+      group: 'actions',
+      title: t('connectMachine.cta'),
+      icon: <HardDrive size={16} />,
+      haystack: `connect machine add daemon install cli ${(t('connectMachine.cta') as string).toLowerCase()}`,
+      run: () => navigate('/machine/connect'),
     });
     out.push({
       key: 'action:new-chat',

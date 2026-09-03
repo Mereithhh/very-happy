@@ -39,6 +39,24 @@ describe('connect-a-machine doorways', () => {
         }
     });
 
+    it('the sidebar "+" menu and ⌘K both carry it (B-300)', () => {
+        const sidebar = read('../sessions/Sidebar.tsx');
+        // Same menu as new chat / new terminal / attach tmux / import, since
+        // every one of those needs a machine first.
+        expect(sidebar).toContain("key: 'connect-machine'");
+        expect(sidebar).toContain("navigate('/machine/connect')");
+        // It creates no session, so it sits below a separator. Assert inside
+        // THIS item — `separatorBefore: true` occurs elsewhere in the file, so
+        // a bare toContain() would pass even after the flag is deleted here.
+        const item = sidebar.slice(sidebar.indexOf("key: 'connect-machine'"));
+        expect(item.slice(0, item.indexOf('},'))).toContain('separatorBefore: true');
+        expect(sidebar.indexOf("key: 'import-claude'")).toBeLessThan(sidebar.indexOf("key: 'connect-machine'"));
+
+        const palette = read('../command/CommandPalette.tsx');
+        expect(palette).toContain("key: 'action:connect-machine'");
+        expect(palette).toContain("navigate('/machine/connect')");
+    });
+
     it('settings → machines links to it', () => {
         const source = read('../settings/MachinesSettings.tsx');
         expect(source).toContain("navigate('/machine/connect')");
