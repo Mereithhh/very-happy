@@ -80,7 +80,11 @@ export interface ClientToServerEvents {
   // existing fs-read RPC — that keeps this relay tiny and adds no new file access.
   'file-preview-push': (data: { payload: string, enc?: boolean, mode?: 'file' | 'diff' }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
-    result: 'error'
+    // B-307: the server has always named account-resource refusals here
+    // (`<resource>_rate_quota_exceeded`); this side just never declared it, so
+    // no client could tell "back off for a minute" from "retry immediately".
+    result: 'error',
+    error?: string
   } | {
     result: 'version-mismatch'
     version: number,
@@ -91,7 +95,8 @@ export interface ClientToServerEvents {
     metadata: string
   }) => void) => void,
   'update-state': (data: { sid: string, expectedVersion: number, agentState: string | null }, cb: (answer: {
-    result: 'error'
+    result: 'error',
+    error?: string   // B-307, as above
   } | {
     result: 'version-mismatch'
     version: number,

@@ -1658,6 +1658,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03q: {
+                title: 'One busy moment could lock the whole account out for an hour',
+                summary: 'Very Happy caps how fast an account may rewrite session and machine state. Two details turned that cap into a trap: a refused write still counted against the budget, and every client retried refused writes within a second and never gave up. Together they kept the budget full — so unrelated things that share it, like opening a new session, were refused for as long as the retries continued.',
+                refusal: 'A refused write now costs nothing. The limit is enforced inside the same database statement that spends the budget, so a refusal updates nothing at all and the window drains on schedule instead of being bought back by the retries.',
+                backoff: 'Clients now read the reason the server sends back. A rate refusal is waited out on the limit\u2019s own timescale — seconds to a minute, with jitter so every session on the account does not come back at the same instant — rather than being retried several times a second. Machine and daemon state updates gained this too; before, a refused one was silently dropped and the machine simply stopped reporting.',
+            },
             sep03p: {
                 title: 'A session started by a script no longer waits forever for permission',
                 summary: 'Sessions spawned from the command line came up in the normal ask-me-first mode. That is right when a person is watching, and a trap when nothing is: the session stopped at the first tool it had to ask about and simply sat there.',

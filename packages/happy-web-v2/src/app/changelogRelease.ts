@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-rate-limit-self-lock',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.112',
+    titleKey: 'changelog.releases.sep03q.title',
+    summaryKey: 'changelog.releases.sep03q.summary',
+    itemKeys: [
+      'changelog.releases.sep03q.refusal',
+      'changelog.releases.sep03q.backoff',
+    ],
+  },
+  {
     id: '2026-09-03-spawn-permission-mode',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
