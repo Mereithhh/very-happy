@@ -22,6 +22,8 @@ There are two directions:
 | Show an external task list in the Todo panel | [Todo provider](#inbound-todo-provider-external-task-lists-in-the-web-ui), in `~/.happy/settings.json` on that machine |
 | Dispatch work from a script, scheduler, or IM bridge | [`very-happy spawn` / `very-happy send`](#inbound-daemon-control-via-the-cli) |
 | Let that script see and steer what it dispatched | [`very-happy sessions`](#very-happy-sessions--inspect-and-control-what-is-running) |
+| See every session on the account, and which ones are waiting on a human | [`very-happy sessions list --all`](#sessions-list---all--the-whole-account-with-an-honest-limit) |
+| Approve or deny a pending permission request from a script | [`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request) |
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
 
@@ -195,8 +197,9 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   `bypassPermissions`. **Omitting it means `default`**, and a `default` session
   stops at the first tool that is not already allowed, waiting for a human to
   approve in the Web UI. For an unattended dispatcher that is a hang, not a
-  prompt: pass `bypassPermissions` (or watch for the `permission` webhook and
-  approve). The CLI rejects an unknown mode instead of passing it on, because
+  prompt: pass `bypassPermissions`, or watch for the `permission` webhook /
+  poll `sessions list --all` and answer with `sessions approve` / `deny`.
+  The CLI rejects an unknown mode instead of passing it on, because
   the daemon's own behaviour for an invalid mode is to drop it and spawn
   without the flag — silently giving you `default` again.
 - `--agent <name>` — `claude` (default), `codex`, `gemini` or `openclaw`.
@@ -224,10 +227,12 @@ Exit codes:
 ### `very-happy sessions` — inspect and control what is running
 
 ```bash
-very-happy sessions list [--tag <name>] [--limit <n>] [--json]
+very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
 very-happy sessions read <id> [--limit <n>] [--json]
 very-happy sessions stop <id> [--json]
 very-happy sessions archive <id> [--json]
+very-happy sessions approve <id> <requestId> [--for-session] [--json]
+very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
 ```
 
 `spawn` and `send` start work; these let an external agent layer *see* it and
@@ -245,15 +250,77 @@ reachable without being the assistant.
 - `stop` — SIGTERM the session's process via the local daemon.
 - `archive` — mark the session inactive server-side; it stays resumable.
 
-Scope is **this machine**: `list`/`stop` ask the local daemon, and `read` needs
-the session key from `~/.happy/sessions.json`, which exists only for sessions
-this machine's daemon spawned and is pruned after 14 days. A session belonging
-to another machine cannot be read or stopped from here — that is a scope limit,
-not a permission error.
+Scope is **this machine**: `list`/`stop` ask the local daemon, and `read`,
+`approve` and `deny` need the session key from `~/.happy/sessions.json`, which
+exists only for sessions this machine's daemon spawned and is pruned after 14
+days. A session belonging to another machine cannot be read, stopped or
+answered from here — that is a scope limit, not a permission error. `list
+--all` (below) widens the *listing* to the account and says per row whether it
+could be read.
 
 Exit codes: `0` success, `1` anything else. Note that `stop` on a session the
 daemon is not running exits `1` — a caller asking to stop something must be
 able to distinguish "stopped it" from "there was nothing to stop".
+
+#### `sessions list --all` — the whole account, with an honest limit
+
+`list --all` asks the server (`GET /v1/sessions`, newest 150) instead of the
+local daemon, so it sees sessions on **every** machine of the account — but it
+can only *read* the ones this machine holds a key for. The server stores each
+session's `metadata` and `agentState` encrypted with that session's key, and
+a CLI holds only the keys it persisted itself in `~/.happy/sessions.json`.
+Every row therefore carries `decryptable`:
+
+- `decryptable: true` — spawned by this machine's daemon (≤14 days ago). The
+  row has `title`, `cwd`, `machineId`, `flavor`, `tags`, and `pending`: the
+  permission / question requests currently waiting on a human, oldest first,
+  each with `id`, `tool`, `createdAt` and `waitingMs`. `attention` is `true`
+  when `pending` is non-empty — this is the "needs me" signal a supervisor
+  polls for.
+- `decryptable: false` — belongs to another machine. Only the server's
+  plaintext columns are present: `active` (a wrapper is attached), `archived`,
+  `activeAt`, `updatedAt`, `url`. `title`/`cwd`/`pending` are *unreadable*,
+  not empty; do not infer "no pending requests" from their absence.
+
+Ordering: attention rows first (longest-waiting request first), then sessions
+running under this daemon (`live`), then the rest newest-first. `--limit`
+caps only that idle tail. `--tag` can only match decryptable rows. Archived
+rows are hidden unless `--include-archived`. `--json` adds fields to the
+local `list` shape and never renames one.
+
+Making the foreign rows full-fidelity (and making `read` / `approve` work on
+them) is a **credentials change** — the CLI would need to hold the account
+content key the way the web does — not a flag on this command. Until then,
+run the poller on each machine that dispatches work.
+
+#### `sessions approve` / `deny` — answer a permission request
+
+A `default`-mode session stops at the first tool that is not already allowed
+and waits for a human. `approve`/`deny` send the wrapper exactly what the web
+permission card sends — a session RPC `permission` with
+`{ id, approved, decision }` (`approved`, `approved_for_session` with
+`--for-session`, or `denied` plus an optional `reason`) — over a short-lived
+user-scoped socket authenticated with the CLI's account token. A plain tool
+approval carries no `mode` and no `allowTools`, on purpose.
+
+Two facts the caller should know:
+
+- The RPC payload is **encrypted with the session key**, so like `read` this
+  works only for sessions in this machine's `~/.happy/sessions.json`. Same
+  scope limit, same fix (above).
+- The wrapper **ignores an unknown request id silently** (it logs "already
+  resolved" and returns success). The CLI therefore reads the session's
+  `agentState` first and refuses to send unless `<requestId>` is actually
+  pending (exit 1 listing the ids that are), then re-reads for up to 5s after
+  the ack and reports `settled: true|false` in `--json` — `false` means the
+  wrapper acknowledged but had not yet written the request out of the pending
+  set when we stopped waiting, not that it refused.
+
+Exit `1` with a precise reason when: no local key; the request is not
+pending; no wrapper is online for the session (`RPC method not available`);
+the RPC timed out (30s); the wrapper's handler returned an `{error}` envelope.
+Find `<requestId>` in `sessions list --all` (`pending[].id`) or in the
+`permission` webhook.
 
 ### `very-happy send` — message an existing session
 
