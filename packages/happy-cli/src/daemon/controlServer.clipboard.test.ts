@@ -84,6 +84,7 @@ describe('control server /clipboard', () => {
         '/spawn-session',
         '/terminal-hook',
         '/clipboard',
+        '/terminal-title',
         '/stop',
     ])('protects %s with the common fail-closed gate', async (path) => {
         const res = await fetch(`http://127.0.0.1:${port}${path}`, {

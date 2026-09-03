@@ -247,6 +247,15 @@ export class ApiMachineClient {
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
      * Encrypted with the per-machine key; the server relays without reading.
      */
+    /**
+     * Title a web terminal from inside it (`very-happy mcp` change_title →
+     * daemon /terminal-title → here). Same tmux truthfulness as the
+     * `set-terminal-title` RPC.
+     */
+    setTerminalTitle(terminalId: string, title: string, ifAbsent: boolean): boolean {
+        return this.webTerminal.setTitle(terminalId, title, ifAbsent);
+    }
+
     pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number; error?: string } {
         const prepared = prepareClipboardText(text);
         if (!this.socket?.connected) {

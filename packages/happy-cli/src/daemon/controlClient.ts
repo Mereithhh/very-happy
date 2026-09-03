@@ -194,6 +194,23 @@ export async function pushClipboardViaDaemon(text: string): Promise<{
 }
 
 /**
+ * `very-happy mcp` change_title (VH_TERMINAL_ID context) → daemon /terminal-title.
+ * Resolves `{ ok: false, error }` for every failure shape (no daemon, 4xx/5xx,
+ * tmux refused) so the MCP tool can report it without throwing.
+ */
+export async function setTerminalTitleViaDaemon(
+  terminalId: string,
+  title: string,
+  ifAbsent = false,
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await daemonPost('/terminal-title', { terminalId, title, ifAbsent });
+  if (result?.error) {
+    return { ok: false, error: result.error };
+  }
+  return { ok: result?.status === 'ok', error: result?.status === 'ok' ? undefined : 'unexpected daemon response' };
+}
+
+/**
  * The version check is still quite naive.
  * For instance we are not handling the case where we upgraded happy,
  * the daemon is still running, and it recieves a new message to spawn a new session.

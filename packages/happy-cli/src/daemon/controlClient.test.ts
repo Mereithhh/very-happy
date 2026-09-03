@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.clearDaemonState,
 }));
 
-import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, spawnDaemonSession } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, setTerminalTitleViaDaemon, spawnDaemonSession } from './controlClient';
 
 const baseState = {
   pid: 4242,
@@ -54,6 +54,31 @@ describe('daemon control client authentication', () => {
 
     const result = await spawnDaemonSession('/tmp/x', undefined, { agent: 'pi' });
     expect(result.error).toContain(hint);
+  });
+
+  it('setTerminalTitleViaDaemon posts /terminal-title and maps 200 / 409 / no-daemon to ok|error', async () => {
+    mocks.readDaemonState.mockResolvedValue({ ...baseState, controlToken: 'state-secret' });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ok' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Failed to set terminal title (tmux unavailable or terminal gone)' }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(setTerminalTitleViaDaemon('term_1', 'pi: fix tests')).resolves.toEqual({ ok: true, error: undefined });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://127.0.0.1:9999/terminal-title');
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body)).toEqual({ terminalId: 'term_1', title: 'pi: fix tests', ifAbsent: false });
+
+    const refused = await setTerminalTitleViaDaemon('term_1', 'again', true);
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toContain('Failed to set terminal title');
+
+    mocks.readDaemonState.mockResolvedValue(null);
+    const noDaemon = await setTerminalTitleViaDaemon('term_1', 'x');
+    expect(noDaemon).toEqual({ ok: false, error: 'No daemon running, no state file found' });
   });
 
   it('falls back to the status code when a non-2xx reply has no error body', async () => {
