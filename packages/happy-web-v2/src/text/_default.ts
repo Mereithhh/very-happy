@@ -1672,6 +1672,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03y: {
+                title: 'A bad update can no longer take a machine offline',
+                summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
+                preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
+            },
             sep03x: {
           title: 'Stop now tells you when it did not work',
           summary: 'Pressing Stop and getting no response at all was the single most confusing failure in the app: every way it could fail looked identical — nothing happened, and nothing was said.',
@@ -2229,6 +2234,9 @@ export const en = {
                 ? `${machine} is on ${current}; update to ${target}. ${count} machines need attention.`
                 : `${machine} is on ${current}; update to ${target}.`,
         copyCommand: 'Copy update command',
+        handoverHeld: 'Update installed but not running',
+        handoverHeldBadge: 'held',
+        handoverHeldHelp: 'the daemon kept the previous version rather than restart into one that would not start',
         copied: 'Exact update command copied.',
         copyFailed: 'Could not copy the update command.',
         details: 'View machines',

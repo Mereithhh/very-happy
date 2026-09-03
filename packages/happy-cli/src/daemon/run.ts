@@ -6,7 +6,7 @@ import axios from 'axios';
 import { ApiClient } from '@/api/api';
 import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession, SessionEncryptionData } from './types';
-import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
+import { MachineMetadata, DaemonState, Metadata, CliUpdateState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { pruneLogsDir } from '@/ui/logPrune';
@@ -30,8 +30,10 @@ import type { SpawnGate } from './assistantSpawn';
 import { startDaemonControlServer } from './controlServer';
 import { assistantHome, bootstrapAssistantHome } from '@/assistant/bootstrap';
 import { getProjectPath } from '@/claude/utils/path';
-import { existsSync, statSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'fs';
 import { join } from 'path';
+import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
@@ -42,6 +44,7 @@ import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
 import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
+import { decideHandover, type HandoverPreflight } from './handoverPreflight';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -84,9 +87,62 @@ export const initialMachineMetadata: MachineMetadata = {
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
+/**
+ * B-321: run the replacement bundle before trusting it. `--version` exercises
+ * the module graph and the native addons that a half-finished npm install
+ * breaks, in an isolated HAPPY_HOME_DIR so it cannot disturb the daemon's own
+ * state. Never throws: any failure is a reason to hold, not to crash.
+ */
+async function preflightNewBundle(bundlePath: string): Promise<HandoverPreflight> {
+  const home = mkdtempSync(join(tmpdir(), 'vh-preflight-'));
+  try {
+    return await new Promise<HandoverPreflight>((resolve) => {
+      let stdout = '';
+      let settled = false;
+      const done = (run: Parameters<typeof decideHandover>[0]) => {
+        if (settled) return;
+        settled = true;
+        resolve(decideHandover(run));
+      };
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(process.execPath, ['--no-warnings', '--no-deprecation', bundlePath, '--version'], {
+          env: { ...process.env, HAPPY_HOME_DIR: home },
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+      } catch (error) {
+        done({ exitCode: null, stdout: '', timedOut: false, spawnError: String(error) });
+        return;
+      }
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        done({ exitCode: null, stdout, timedOut: true });
+      }, HANDOVER_PREFLIGHT_TIMEOUT_MS);
+      child.stdout?.on('data', (chunk: Buffer) => { if (stdout.length < 8192) stdout += chunk.toString('utf8'); });
+      child.on('error', (error) => { clearTimeout(timer); done({ exitCode: null, stdout, timedOut: false, spawnError: String(error) }); });
+      child.on('close', (code) => { clearTimeout(timer); done({ exitCode: code, stdout, timedOut: false }); });
+    });
+  } finally {
+    try { rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+/** Attach (or clear) a handover hold on the published update policy. */
+function withHandoverHold(state: CliUpdateState | null, reason: string | null): CliUpdateState | null {
+  if (!state) return state;
+  return reason ? { ...state, handoverHold: { reason, at: Date.now() } } : { ...state, handoverHold: null };
+}
+
+const HANDOVER_PREFLIGHT_TIMEOUT_MS = 30_000;
+
 export async function startDaemon(): Promise<void> {
   // B-276: hoisted so spawnSession (defined below, called later) never hits the TDZ.
   let claudeAuthServiceRef: ClaudeAuthService | null = null;
+  // B-321: the last published update policy, so a handover hold can be attached
+  // to it, and the reason of the hold currently reported (to avoid re-pushing
+  // the same one on every heartbeat).
+  let cliUpdateStateRef: CliUpdateState | null = null;
+  let lastHandoverHold: string | null = null;
   let claudeCredentialStoreSetting: 'auto' | 'file' = (await readSettings()).claudeCredentialStore === 'file' ? 'file' : 'auto';
   // We don't have cleanup function at the time of server construction
   // Control flow is:
@@ -1578,6 +1634,7 @@ export async function startDaemon(): Promise<void> {
         if (!cliUpdate) return;
         fileState = { ...fileState, cliUpdate };
         writeDaemonState(fileState);
+        cliUpdateStateRef = cliUpdate;
         apiMachine.setCliUpdateState(cliUpdate);
         logger.debug(`[DAEMON RUN] CLI update policy checked: ${cliUpdate.status} (recommended=${cliUpdate.recommendedVersion ?? 'none'}, minimum=${cliUpdate.minimumVersion ?? 'none'})`);
       } catch (error) {
@@ -1641,11 +1698,28 @@ export async function startDaemon(): Promise<void> {
         // TODO: We probably do not want to keep this in-process self-restart logic long-term.
         // A native service manager would make startup and upgrades much simpler: the CLI would
         // ask the OS to start the latest daemon instead of hand-rolling respawn/kill behavior here.
-        logger.debug('[DAEMON RUN] Daemon bundle replaced on disk, handing off to new daemon');
+
+        // B-321: prove the new bundle runs BEFORE giving up ownership. Everything
+        // below this point is irreversible — once the state, lock and socket are
+        // released this process exits no matter what happens, and a handed-over
+        // daemon lives outside launchd, so a bad bundle means a machine that
+        // stays offline until a person notices.
+        const preflight = await preflightNewBundle(bundlePath);
+        if (preflight.action === 'hold') {
+          if (lastHandoverHold !== preflight.reason) {
+            lastHandoverHold = preflight.reason;
+            logger.warn(`[DAEMON RUN] holding handover: ${preflight.reason}`);
+            void apiMachine.setCliUpdateState(withHandoverHold(cliUpdateStateRef, preflight.reason));
+          }
+          // Keep serving on the code we have. The next heartbeat re-checks, so a
+          // still-finishing install is picked up moments later.
+          return;
+        }
+        lastHandoverHold = null;
+        logger.debug('[DAEMON RUN] Daemon bundle replaced on disk and verified, handing off to new daemon');
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
         clearInterval(cliUpdateInterval);
-      claudeAuthService.stop();
         claudeAuthService.stop();
 
         // Release ownership BEFORE spawning the new daemon. Otherwise the spawned

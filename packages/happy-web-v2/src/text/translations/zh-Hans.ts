@@ -1640,6 +1640,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03y: {
+                title: '装坏的更新不会再让机器掉线',
+                summary: '装了新版 CLI 之后，daemon 会重启切换过去。如果那次安装是残缺的，此前它照样会交接，机器就这么掉线了——没有任何解释，也没有任何东西会把它拉回来。',
+                preflight: '现在 daemon 会先把新版本跑一遍再决定是否信任它，起不来就继续用旧版本服务。发生这种情况时机器页会写明原因，而不是机器悄无声息地消失。',
+            },
             sep03x: {
           title: '停止失败时会告诉你了',
           summary: '点了停止却毫无反应，是这个应用里最让人困惑的一种失败：所有可能的失败方式看起来一模一样——什么都没发生，也什么都没说。',
@@ -2131,6 +2136,9 @@ export const zhHans: TranslationStructure = {
                 ? `${machine} 当前为 ${current}，请升级到 ${target}。共有 ${count} 台机器需要处理。`
                 : `${machine} 当前为 ${current}，请升级到 ${target}。`,
         copyCommand: '复制升级命令',
+        handoverHeld: '新版本已安装但没有启用',
+        handoverHeldBadge: '已暂停',
+        handoverHeldHelp: 'daemon 保留了旧版本，没有切换到一个起不来的新版本',
         copied: '已复制精确版本的升级命令。',
         copyFailed: '无法复制升级命令。',
         details: '查看机器',
