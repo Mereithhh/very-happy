@@ -163,7 +163,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
     // B-290: import of a claude CLI / desktop / claude.ai transcript.
     const importedFromClaudeSessionId = process.env.HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID;
-    // B-292: carry the source conversation's title into the fresh session. The
+    // B-294: carry the source conversation's title into the fresh session. The
     // title generator never runs for an import (it only fires on a new user
     // message), so without this the session shows as "New chat".
     const importTitle = process.env.HAPPY_IMPORT_TITLE;

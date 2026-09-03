@@ -795,7 +795,7 @@ export async function machineImportClaudeSession(options: {
     claudeSessionId: string;
     approvedNewDirectoryCreation?: boolean;
     permissionMode?: string;
-    /** B-292: source title, stamped on the new session's metadata by the CLI.
+    /** B-294: source title, stamped on the new session's metadata by the CLI.
      *  Old daemons ignore it; the caller sets the title itself as a fallback. */
     title?: string;
 }): Promise<ImportClaudeSessionResult> {

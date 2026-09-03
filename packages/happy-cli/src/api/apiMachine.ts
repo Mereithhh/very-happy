@@ -404,7 +404,7 @@ export class ApiMachineClient {
                     resumeClaudeSessionId: newClaudeSessionId,
                     importedFromClaudeSessionId: claudeSessionId,
                     permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined,
-                    // B-292: the imported session carries the source title from the
+                    // B-294: the imported session carries the source title from the
                     // start. The CLI's own title generator only fires on a new user
                     // message and skips a session that already has a summary, so an
                     // import without this stays "New chat" forever.

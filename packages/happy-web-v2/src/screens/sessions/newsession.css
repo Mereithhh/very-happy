@@ -319,7 +319,7 @@
   .ns-tips-dismiss { min-height: 44px; }
 }
 
-/* B-292: import run feedback — a real loading row, per-row failure tint and a
+/* B-294: import run feedback — a real loading row, per-row failure tint and a
    progress counter in the footer. */
 .ns-loading-row {
   display: flex;

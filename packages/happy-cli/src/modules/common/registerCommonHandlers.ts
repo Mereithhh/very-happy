@@ -154,7 +154,7 @@ export interface SpawnSessionOptions {
      */
     importedFromClaudeSessionId?: string;
     /**
-     * B-292: title to stamp on the imported session's metadata (the source
+     * B-294: title to stamp on the imported session's metadata (the source
      * conversation's summary / first prompt). Sanitized daemon-side.
      */
     importTitle?: string;
