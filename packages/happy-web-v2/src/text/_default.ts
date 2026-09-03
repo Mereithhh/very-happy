@@ -1693,7 +1693,7 @@ export const en = {
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
                 preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
             },
-            sep03ac: {
+            sep03ae: {
                 title: 'pi joins the launcher, and a script can now approve for you',
                 summary: 'Very Happy is the surface where sessions run and where you watch them. This release opens that surface to an outside supervisor: a third agent to dispatch, a way for automation to see what is waiting for approval, and a way for it to answer.',
                 pi: 'New sessions can run pi (via the pi-acp adapter) next to Claude, Codex and Gemini. It appears in the launcher only on machines whose daemon reports it. A pi session raising a confirmation through its extension shows up as an ordinary permission card.',

@@ -19,12 +19,12 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,
     cliVersion: '0.2.116',
-    titleKey: 'changelog.releases.sep03ac.title',
-    summaryKey: 'changelog.releases.sep03ac.summary',
+    titleKey: 'changelog.releases.sep03ae.title',
+    summaryKey: 'changelog.releases.sep03ae.summary',
     itemKeys: [
-      'changelog.releases.sep03ac.pi',
-      'changelog.releases.sep03ac.approve',
-      'changelog.releases.sep03ac.meta',
+      'changelog.releases.sep03ae.pi',
+      'changelog.releases.sep03ae.approve',
+      'changelog.releases.sep03ae.meta',
     ],
   },
   {
