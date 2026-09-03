@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { mergeSessionSummaries, type LiveSessionLike } from './sessionOps'
+import {
+    mergeSessionSummaries,
+    orderAccountSessions,
+    summarizeAccountSession,
+    type AccountSessionRow,
+    type AccountSessionSummary,
+    type LiveSessionLike,
+} from './sessionOps'
 import type { PersistedSession } from '@/persistence'
+import type { AgentState, Metadata } from '@/api/types'
+import { encodeBase64, encrypt, getRandomBytes } from '@/api/encryption'
 
 function persisted(overrides: Partial<PersistedSession['metadata']> = {}, savedAt = 1_000): PersistedSession {
     return {
@@ -100,5 +109,123 @@ describe('mergeSessionSummaries (B-304)', () => {
             meta: persisted({ variant: 'assistant' } as never),
         })
         expect(out[0].variant).toBe('assistant')
+    })
+})
+
+describe('summarizeAccountSession (sessions list --all)', () => {
+    const key = getRandomBytes(32)
+    const keyed: PersistedSession = { ...persisted({}, 5), encryptionKey: encodeBase64(key), encryptionVariant: 'dataKey' }
+    const seal = (value: unknown) => encodeBase64(encrypt(key, 'dataKey', value))
+    const metadata: Metadata = {
+        path: '/srv/app',
+        host: 'h',
+        machineId: 'machine-A',
+        flavor: 'claude',
+        tags: ['supervisor'],
+        summary: { text: 'Fix login', updatedAt: 1 },
+    } as unknown as Metadata
+    const withRequest: AgentState = { requests: { r1: { tool: 'Bash', arguments: {}, createdAt: 400 } } }
+    const row = (overrides: Partial<AccountSessionRow> = {}): AccountSessionRow => ({
+        id: 'sess-1',
+        active: true,
+        activeAt: 900,
+        updatedAt: 950,
+        archivedAt: null,
+        metadata: seal(metadata),
+        agentState: seal(withRequest),
+        ...overrides,
+    })
+
+    it('decrypts a row we hold the key for: title, cwd, machine, tags, pending with waiting time, attention', () => {
+        const out = summarizeAccountSession(row(), keyed, new Set(), 1_000)
+        expect(out).toMatchObject({
+            id: 'sess-1',
+            decryptable: true,
+            live: false,
+            active: true,
+            archived: false,
+            activeAt: 900,
+            updatedAt: 950,
+            title: 'Fix login',
+            cwd: '/srv/app',
+            machineId: 'machine-A',
+            flavor: 'claude',
+            tags: ['supervisor'],
+            attention: true,
+            pending: [{ id: 'r1', tool: 'Bash', createdAt: 400, waitingMs: 600 }],
+        })
+        expect(out.url).toContain('sess-1')
+    })
+
+    it('a row without a local key is reported with decryptable=false and ONLY the plaintext server columns', () => {
+        const out = summarizeAccountSession(row({ archivedAt: 123 }), undefined, new Set(['sess-1']), 1_000)
+        expect(out).toEqual({
+            id: 'sess-1',
+            live: true,
+            url: out.url,
+            decryptable: false,
+            active: true,
+            archived: true,
+            activeAt: 900,
+            updatedAt: 950,
+            attention: false,
+        })
+        expect(out.title).toBeUndefined()
+        expect(out.pending).toBeUndefined()
+        expect(out.machineId).toBeUndefined()
+    })
+
+    it('a key that does not open the row degrades to the plaintext shape instead of garbage', () => {
+        const wrong: PersistedSession = { ...keyed, encryptionKey: encodeBase64(getRandomBytes(32)) }
+        const out = summarizeAccountSession(row(), wrong, new Set(), 1_000)
+        expect(out.decryptable).toBe(false)
+        expect(out.title).toBeUndefined()
+    })
+
+    it('no pending requests → attention=false and an empty pending list (still decryptable)', () => {
+        const out = summarizeAccountSession(row({ agentState: null }), keyed, new Set(), 1_000)
+        expect(out).toMatchObject({ decryptable: true, attention: false, pending: [] })
+    })
+
+    it('live comes from the local daemon only; active is the server flag', () => {
+        expect(summarizeAccountSession(row({ active: false }), keyed, new Set(['sess-1']), 0)).toMatchObject({ live: true, active: false })
+        expect(summarizeAccountSession(row({ active: true }), keyed, new Set(), 0)).toMatchObject({ live: false, active: true })
+    })
+})
+
+describe('orderAccountSessions', () => {
+    const summary = (id: string, overrides: Partial<AccountSessionSummary> = {}): AccountSessionSummary => ({
+        id, url: `u/${id}`, live: false, decryptable: true, active: false, archived: false, attention: false, updatedAt: 0, ...overrides,
+    })
+
+    it('attention first (longest wait first), then running here, then the rest newest-first', () => {
+        const out = orderAccountSessions([
+            summary('idle-old', { updatedAt: 1 }),
+            summary('wait-short', { attention: true, pending: [{ id: 'a', tool: 'Bash', waitingMs: 10 }] }),
+            summary('running', { live: true, updatedAt: 2 }),
+            summary('idle-new', { updatedAt: 3 }),
+            summary('wait-long', { attention: true, pending: [{ id: 'b', tool: 'Edit', waitingMs: 999 }] }),
+            summary('foreign', { decryptable: false, updatedAt: 2 }),
+        ])
+        expect(out.map((s) => s.id)).toEqual(['wait-long', 'wait-short', 'running', 'idle-new', 'foreign', 'idle-old'])
+    })
+
+    it('drops terminal-mirror shadows (B-105) and --tag can only match decryptable rows', () => {
+        const rows = [
+            summary('mirror', { flavor: 'terminal-mirror', tags: ['x'] }),
+            summary('tagged', { tags: ['x'] }),
+            summary('foreign', { decryptable: false }),
+        ]
+        expect(orderAccountSessions(rows).map((s) => s.id)).toEqual(['tagged', 'foreign'])
+        expect(orderAccountSessions(rows, { tag: 'x' }).map((s) => s.id)).toEqual(['tagged'])
+    })
+
+    it('recentLimit caps only the idle tail — attention and running rows are never cut', () => {
+        const out = orderAccountSessions([
+            summary('a', { attention: true, pending: [] }),
+            summary('r', { live: true }),
+            summary('i1', { updatedAt: 3 }), summary('i2', { updatedAt: 2 }), summary('i3', { updatedAt: 1 }),
+        ], { recentLimit: 1 })
+        expect(out.map((s) => s.id)).toEqual(['a', 'r', 'i1'])
     })
 })
