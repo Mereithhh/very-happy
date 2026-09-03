@@ -150,13 +150,24 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    为准，禁止因仓库已有实现就假定生产已启用。正常蓝绿切换不需要 `vh-update`；只有 CLI
    改动影响 handover/daemon，或初次 groundwork 明确要求时才更新 mac-office。
 6. **CLI 的 npm 包与 tag 是不可变外部发布**：平台包先于主包；任一步失败都不移动或复用
-   已推 tag，修复后递增版本；npm 已可见不等于跨平台 smoke 已通过。
+   已推 tag，修复后递增版本；**npm 上可见 ≠ 该版本被推荐**——主包发布落在 `next`，
+   `latest` 只由 publish workflow 的 `promote` job 在**同一 commit 的三系统 smoke 全绿后**
+   移动（B-348），而 relay 的 `recommendedVersion` 跟着 `latest` 走（1h 缓存），B-327 的空闲
+   自动升级装的就是它。所以**发版不再需要手动 pin**，而 `next` 领先 `latest` 就是「smoke 没过
+   / promote 没跑」的信号：去读那个 job，别手动 `npm dist-tag add` 绕过去。要按住或回滚机队用
+   `CLI_RECOMMENDED_VERSION`（pin 永远赢过 lookup），机制与两个变量的分工见 `docs/configuration.md`。
 7. **面向用户的 CLI 更新命令必须固定目标版本并窄放行安装脚本**：使用
    `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。
    `daemon start` 是幂等的 version/endpoint-aware handover：不在线则启动，不匹配则优雅接管；
    当前没有 `daemon restart` 子命令，禁止凭名字臆造或改成可能把机器留离线的 `stop && start`。
    handover 只替换 daemon；已经运行的 agent session wrapper / SDK Query 仍是旧进程，CLI 新能力必须用
    升级后新建或明确续接重启的会话验收，不得把 daemon 版本等同于存量会话已热升级。
+   **`npm i -g` 自己会失败，且两种形态都出过**（2026-09-03/04 一天内各踩两次）：①它拒绝覆盖
+   **自己建的** bin 符号链（`EEXIST … /opt/homebrew/bin/very-happy`），通常前面还跟着
+   `ENOTEMPTY rmdir .../tools`——包自己的 postinstall 写进去的文件 npm 不记账，旧树删不掉；
+   ②半写坏的树，重试永远同样失败。`scripts/update-daemon.sh` 两种都已处理（装前 unlink **只**指向
+   自己树的那两个链；失败后删掉那一个包目录重装一次）。**`update/autoUpdate.ts` 与 `update/cliUpdate.ts`
+   还没有这层防御**（B-346），而自动升级对同一版本只试一次——一台机器可能就此静默地永远不升级。
 8. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得

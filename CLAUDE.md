@@ -22,9 +22,14 @@ git worktree list                                   # 派工前看清有哪些�
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
+## 当前状态快照（2026-09-04，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.115**（main 上已有 0.2.116 的 changelog 条目但**尚未打 tag**——又一次「changelog 里的 cliVersion ≠ 已发布版本」）；线上 Web/server = `main@b1a2bb41`（2026-09-03 21:06 发，`rollout=switch`）。**同一天 0.2.108→0.2.115 由多个
+- 最新 tag / npm `very-happy-cli` = **v0.2.116**（npm `latest` 已是它）；线上 Web/server = `main@62f24a53`。
+  **发版流程 2026-09-04 变了（B-348，铁律 6）**：主包发到 `next`，publish workflow 的 `promote` job 在同一
+  commit 的三系统 smoke 全绿后才移 `latest`，relay 用 `CLI_VERSION_REGISTRY_LOOKUP=true` 跟着 `latest`（1h 缓存）
+  ——**不用再手动 pin `CLI_RECOMMENDED_VERSION`**（它现在被注释在 `/opt/happy/.env` 里当刹车，pin 永远赢过 lookup）。
+  `next` 领先 `latest` = promote 没跑成，去读那个 job，别手动 `dist-tag add` 绕。0.2.117 是第一个真正跑到 promote 的版本。
+  门禁基线：web 2215+ 测试、cli 1724+ unit、双 tsc 0。**同一天 0.2.108→0.2.115 由多个
   并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
   cliVersion 想当然。**B-/V-/changelog key 三家同理**：用 `node scripts/dev/check-ids.mjs` 取号，rebase 后和开 PR 前
   各 `--claim` 验一次——**但 claim 通过不等于安全，窗口就是 CI 时长**：2026-09-03 一个 PR 连着三轮被挤掉
