@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-spawn-permission-mode',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.110',
+    titleKey: 'changelog.releases.sep03p.title',
+    summaryKey: 'changelog.releases.sep03p.summary',
+    itemKeys: [
+      'changelog.releases.sep03p.mode',
+      'changelog.releases.sep03p.agentEnv',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-mirror-bind-retry',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

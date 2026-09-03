@@ -1658,6 +1658,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03p: {
+                title: 'A session started by a script no longer waits forever for permission',
+                summary: 'Sessions spawned from the command line came up in the normal ask-me-first mode. That is right when a person is watching, and a trap when nothing is: the session stopped at the first tool it had to ask about and simply sat there.',
+                mode: '`very-happy spawn --permission-mode <mode>` picks the mode explicitly, so an unattended dispatcher can start a session that runs to completion. An unknown mode is now refused instead of quietly falling back to asking, which is what made the old failure so hard to spot — it only appeared when the work happened to touch a tool that was not already allowed.',
+                agentEnv: 'Two more spawn options the daemon already understood: `--agent` chooses the backend, and `--env KEY=VALUE` adds environment to the session. A spawned session inherits the daemon\'s environment rather than the caller\'s, so this closes the gap adapters were working around.',
+            },
             sep03o: {
                 title: 'The structured-view toggle stops going missing',
                 summary: 'Type `claude` in a Very Happy terminal and it gets a structured view you can switch to. That link is set up once, the moment Claude starts — and if the server was busy at that exact second, the attempt was dropped and never made again. The terminal then ran for hours with no toggle at all.',
