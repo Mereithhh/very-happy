@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { isAppChord } from '@/app/appChord';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, Settings, TerminalSquare, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
+import { Search, Plus, Settings, TerminalSquare, HardDrive, MoreHorizontal, MessageSquare, MessagesSquare, PanelLeftClose, LayoutGrid, SlidersHorizontal, ArrowUp, ArrowDown, ChevronRight, Pencil, Archive, X, AudioLines, ArrowDownWideNarrow, ListOrdered, Tags, Flag, StickyNote, ListChecks, FolderOpen, FolderTree, FileDiff, Rows3, RotateCcw, Cable, Trash2, History } from 'lucide-react';
 import { useSessions, useSetting, useLocalSetting, useLocalSettingMutable, useAllMachines, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { createTerminalOrPick, createTerminalAt } from '@/app/newTerminal';
@@ -915,6 +915,16 @@ export function Sidebar() {
                 label: t('newSessionModal.importClaudeTitle'),
                 icon: History,
                 onSelect: () => setShowImportClaude(true),
+              },
+              {
+                // B-300: everything above needs a machine, so the way to get
+                // one belongs in the same menu — separated, because it creates
+                // no session. B-296 gave it a page; this is where people look.
+                key: 'connect-machine',
+                label: t('connectMachine.cta'),
+                icon: HardDrive,
+                separatorBefore: true,
+                onSelect: () => navigate('/machine/connect'),
               },
             ]}
           >

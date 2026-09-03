@@ -1655,6 +1655,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03j: {
+                title: 'Connect a machine sits in the "+" menu now',
+                summary: 'The guide added in the previous release lived in Settings and in the dialogs\' empty states. It now sits where you actually go to start something.',
+                plus: 'The sidebar "+" menu ends with "Connect a machine", below a separator because it is the one entry that starts no session — and everything above it needs a machine first. ⌘K carries the same action.',
+            },
             sep03i: {
                 title: 'An auth failure now says what to do about it',
                 summary: 'When Claude Code could not authenticate, the session showed a grey line of SDK text and a dead end. Now it links straight to the machine’s login status — on every CLI version — and the machine page names the case where credentials exist but are being rejected.',
