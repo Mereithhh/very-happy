@@ -1645,6 +1645,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03ad: {
+                title: '机器会自己保持 CLI 最新',
+                summary: '此前保持命令行工具最新是个手动步骤，大部分机器都落后了好几个版本。现在它们会自己更新——但只在不会打断任何事情的时刻。',
+                idle: '机器只在空闲时安装新版 CLI：没有会话在跑、没有终端开着。切换到新版本会替换掉这两者的宿主进程，所以它会一直等到没有东西可打断为止。',
+                safety: '它安装的是已被推荐发布的版本，而不是 npm 上最新的那个；并且会先把这个版本跑一遍再切换过去——起不来的话就继续用旧版本服务，并在机器页写明原因。自动更新可以按机器关闭。',
             sep03ag: {
                 title: '启动 TUI 时一次画完，不再一行一行爬',
                 summary: '在 web 终端里启动 pi 或 Claude Code，有一小会儿会看到画了一半的屏幕、找不到输入框。字节其实一个都不少——只是被拆成了将近一千条消息分别送过来。',
