@@ -440,9 +440,10 @@ to poll `sessions_list` / `session_read` for the outcome. Without it — a
 plain pi you started in a terminal, any ordinary
 session — the same registration yields clipboard only, so registering it
 user-wide is safe: a session only gains machine-control tools when it was
-deliberately started as a meta agent. Permission approval (`session_approve` /
-`session_deny`) is not part of this surface yet; it arrives with the
-`very-happy sessions approve|deny` CLI.
+deliberately started as a meta agent. Permission approval is not an MCP tool
+on this surface yet; a meta agent that needs it shells out to
+[`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request)
+(same this-machine scope).
 
 A Claude session never takes this path: `HAPPY_MANAGED=1` on every
 happy-managed `claude` keeps the standalone server clipboard-only there, since
