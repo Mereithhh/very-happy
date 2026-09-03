@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cliInstallCommand, compareExactVersions, deriveCliUpdateState, deriveLocalCliUpdateSummary, fetchCliUpdateState, resolveCliUpdateCheckInterval, withCurrentCliUpdateState } from './cliUpdate';
+import { cliInstallCommand, compareExactVersions, DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS, deriveCliUpdateState, deriveLocalCliUpdateSummary, fetchCliUpdateState, resolveCliUpdateCheckInterval, withCurrentCliUpdateState } from './cliUpdate';
 
 const policy = (recommendedVersion: string | null, minimumVersion: string | null = null) => ({
   recommendedVersion, minimumVersion, checkedAt: 100, source: 'configured' as const,
@@ -44,9 +44,9 @@ describe('CLI update policy', () => {
 
   it('rejects unsafe update-check intervals', () => {
     expect(resolveCliUpdateCheckInterval('300000')).toBe(300000);
-    expect(resolveCliUpdateCheckInterval('0')).toBe(6 * 60 * 60 * 1000);
-    expect(resolveCliUpdateCheckInterval('-1')).toBe(6 * 60 * 60 * 1000);
-    expect(resolveCliUpdateCheckInterval('6h')).toBe(6 * 60 * 60 * 1000);
+    expect(resolveCliUpdateCheckInterval('0')).toBe(DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS);
+    expect(resolveCliUpdateCheckInterval('-1')).toBe(DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS);
+    expect(resolveCliUpdateCheckInterval('6h')).toBe(DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS);
   });
 
   it('clears a previous daemon generation policy when the current lookup has no result', () => {

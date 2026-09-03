@@ -51,10 +51,16 @@ export function ChangelogNotice() {
     day: 'numeric',
   }).format(new Date(`${date}T00:00:00`));
 
-  const dismiss = () => {
+  // B-315: only a deliberate acknowledgement marks releases read. Esc and a
+  // click on the backdrop close the dialog without writing the receipt —
+  // previously either one silently marked every release seen, and since the
+  // receipt is what suppresses the dialog, one stray Esc meant no viewer ever
+  // saw another release note.
+  const acknowledge = () => {
     writeSeen();
     setOpen(false);
   };
+  const closeWithoutReading = () => setOpen(false);
   const copyCli = async () => {
     if (!cliCommand) return;
     try {
@@ -69,15 +75,13 @@ export function ChangelogNotice() {
   const head = releases[0];
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => next ? setOpen(true) : dismiss()}>
+    <Dialog.Root open={open} onOpenChange={(next) => next ? setOpen(true) : closeWithoutReading()}>
       <Dialog.Portal>
         <Dialog.Overlay className="wn-backdrop" />
         <Dialog.Content className="wn-card" aria-describedby="wn-description" data-multiple={multiple || undefined}>
-          <Dialog.Close asChild>
-            <button type="button" className="wn-close" aria-label={t('common.close')}>
-              <X size={18} />
-            </button>
-          </Dialog.Close>
+          <button type="button" className="wn-close" aria-label={t('common.close')} onClick={acknowledge}>
+            <X size={18} />
+          </button>
           <div className="wn-eyebrow"><Sparkles size={14} />{t('changelog.eyebrow')}</div>
           {head && (multiple ? (
             <>
@@ -136,9 +140,7 @@ export function ChangelogNotice() {
             </div>
           )}
           <a className="wn-more" href={changelogHref} onClick={writeSeen}>{t('changelog.viewAll')}</a>
-          <Dialog.Close asChild>
-            <button type="button" className="wn-done">{t('changelog.done')}</button>
-          </Dialog.Close>
+          <button type="button" className="wn-done" onClick={acknowledge}>{t('changelog.done')}</button>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

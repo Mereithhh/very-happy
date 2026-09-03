@@ -7,7 +7,12 @@ export interface CliVersionPolicyResponse {
   source: 'configured' | 'registry' | 'unavailable';
 }
 
-export const DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// B-315: hourly, because the relay caches its version policy for an hour —
+// checking more often re-reads the same cached answer, and checking less often
+// meant a freshly pinned recommendation took up to six hours to reach anyone.
+// The request goes to our own relay (not npm), costs one 2s-timeout GET, and
+// fails open.
+export const DEFAULT_CLI_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const MIN_CLI_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 export function withCurrentCliUpdateState(current: DaemonState | null, state: CliUpdateState | null): DaemonState {

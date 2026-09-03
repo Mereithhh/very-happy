@@ -28,6 +28,7 @@
  * module exists to retire.
  */
 import { markProgrammaticReload } from '@/app/programmaticReload';
+import { flushPendingDrafts } from '@/app/draftFlush';
 import {
   decideStaleBundleReload,
   serializeStaleBundleReloadGuard,
@@ -35,6 +36,10 @@ import {
 
 const ENTRY_RE = /\/assets\/(index-[A-Za-z0-9_-]+\.js)/;
 const RELOAD_GUARD_KEY = 'vh-stale-bundle-reload-v2';
+/** B-315: survives the reload so the app can say the update happened. Without
+ *  it the page silently blinks and reappears, which reads as a glitch rather
+ *  than an update — and left people unsure whether the deploy had landed. */
+export const UPDATED_NOTICE_KEY = 'vh-bundle-updated';
 const CHECK_INTERVAL_MS = 15 * 60_000;
 const MIN_CHECK_GAP_MS = 60_000;
 
@@ -112,11 +117,26 @@ async function checkOnce(own: string, force = false): Promise<void> {
     } catch {
       // SW update is best-effort; the reload below still fetches the new shell
     }
+    prepareForUpdateReload();
     markProgrammaticReload(); // don't let the unload guard block auto-update
     window.location.reload();
   } finally {
     checking = false;
   }
+}
+
+
+/**
+ * B-315: an auto-update must not eat what someone was in the middle of typing.
+ * The composer persists its draft on a debounce and on unmount, and a
+ * programmatic reload runs neither — `markProgrammaticReload()` deliberately
+ * stands the unload guard down, so there is no prompt and no cleanup pass.
+ * Flush synchronously first, then leave the receipt that tells the next boot to
+ * say what happened.
+ */
+function prepareForUpdateReload(): void {
+  flushPendingDrafts();
+  try { sessionStorage.setItem(UPDATED_NOTICE_KEY, '1'); } catch { /* private mode */ }
 }
 
 /** Manual check (Settings → Diagnostics "check for update" button).
@@ -137,6 +157,7 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
     entry: server,
     attemptedAt: Date.now(),
   }));
+  prepareForUpdateReload();
   markProgrammaticReload(); // explicit user intent — no leave-site dialog
   setTimeout(() => window.location.reload(), 600); // let the toast paint first
   return 'updated';

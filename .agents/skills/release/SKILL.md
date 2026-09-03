@@ -166,6 +166,25 @@ npm view very-happy-tools-arm64-darwin@X.Y.Z version
 gh run list --workflow=cli-smoke-test.yml --commit=<tag-sha>
 ```
 
+After the CLI is published and smoke-verified, **pin the relay's version policy**
+or no user is ever told to upgrade:
+
+```sh
+ssh vh-us
+sed -i 's|^CLI_RECOMMENDED_VERSION=.*|CLI_RECOMMENDED_VERSION=X.Y.Z|' /opt/happy/.env
+# then deploy so the candidate reads the new env (restart does not reread env_file)
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
+curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
+```
+
+Unset, the relay answers `/v1/version/cli` with nulls, `deriveCliUpdateState`
+returns null, and every update surface — the global banner, Diagnostics, the
+machine page — stays silent. That is how the whole fleet drifted 24 versions
+behind while the notice machinery from B-040 sat there working perfectly and
+saying nothing (2026-09-03). `CLI_MINIMUM_VERSION` is separate: it makes the
+banner non-dismissible, so raise it only for a floor below which something is
+actually broken.
+
 Then update mac-office with `vh-update` (repository fallback:
 `bash scripts/update-daemon.sh`) and confirm the running daemon version,
 not only npm metadata. Never use `npm publish`, bare `npx`, `--ignore-scripts`,

@@ -1625,6 +1625,7 @@ export const zhHans: TranslationStructure = {
         cliBody: ({ count, version, machines }: { count: number; version: string; machines: string }) =>
             `${count} 台在线机器低于 v${version}：${machines}。此命令会安装精确版本并安全刷新 daemon。`,
         commandCopied: 'CLI 更新命令已复制',
+        bundleUpdated: '已更新到最新版本',
         commandCopyFailed: '无法复制 CLI 更新命令',
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',

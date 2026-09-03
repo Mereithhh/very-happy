@@ -10,7 +10,8 @@ import {
 import { TokenStorage, type AuthCredentials } from '@/auth/tokenStorage';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
-import { ThemeProvider, ToastProvider } from '@/ui';
+import { ThemeProvider, ToastProvider, useToast } from '@/ui';
+import { UPDATED_NOTICE_KEY } from '@/app/staleBundleReload';
 import { Modal, ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
@@ -69,14 +70,32 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /></>;
+  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /></>;
+}
+
+/** B-315: the auto-update reload is silent by design — it must not ask
+ *  permission, because a viewer who declines keeps speaking an old protocol
+ *  dialect (see staleBundleReload). Silent is not the same as unexplained, so
+ *  say it happened once the new shell is up. */
+function BundleUpdatedNotice() {
+  const toast = useToast();
+  const { t } = useTranslation();
+  useEffect(() => {
+    let updated = false;
+    try {
+      updated = sessionStorage.getItem(UPDATED_NOTICE_KEY) === '1';
+      if (updated) sessionStorage.removeItem(UPDATED_NOTICE_KEY);
+    } catch { /* private mode: skip the notice rather than fail the boot */ }
+    if (updated) toast.success(t('changelog.bundleUpdated'));
+  }, [toast, t]);
+  return null;
 }
 
 function FirstMachineWelcome() {

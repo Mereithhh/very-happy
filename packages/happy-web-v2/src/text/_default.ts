@@ -1657,6 +1657,7 @@ export const en = {
         cliBody: ({ count, version, machines }: { count: number; version: string; machines: string }) =>
             `${count} connected ${count === 1 ? 'machine is' : 'machines are'} below v${version}: ${machines}. This command installs the exact release and safely refreshes the daemon.`,
         commandCopied: 'CLI update command copied',
+        bundleUpdated: 'Updated to the latest version',
         commandCopyFailed: 'Could not copy the CLI update command',
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
