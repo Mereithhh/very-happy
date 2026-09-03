@@ -26,6 +26,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.sep03ae.approve',
       'changelog.releases.sep03ae.meta',
       'changelog.releases.sep03ae.titles',
+      'changelog.releases.sep03ae.yolo',
     ],
   },
   {

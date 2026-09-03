@@ -69,14 +69,14 @@ export function resolveNewSessionPermissionMode(
     flavor: string | null | undefined,
     reviewFirst: boolean,
 ): string {
-    // pi has no Claude/Codex-style mode: its approvals arrive as ACP
-    // request_permission cards (or are decided by a pi-side policy extension),
-    // and the pi runner drops --permission-mode. Without this branch the
-    // launcher would inherit Claude's `bypassPermissions` default via
-    // normalizeAgentKey and record it on the session as if it were in force.
-    if (flavor === 'pi') {
-        return 'default';
-    }
+    // pi follows the Claude keys on purpose: since the pi runner keeps
+    // --permission-mode (HAPPY_PERMISSION_MODE + session-modes file, B-349) the
+    // vh-supervisor permission gate enforces `bypassPermissions` as "auto-allow
+    // every ask rule" and `default` as "ask becomes a permission card"; hard deny
+    // rules are never lifted. `plan`/`acceptEdits` are treated as `default` by
+    // the gate. The CLI publishes the value really in effect in
+    // metadata.permissionMode (rule 14), so what the launcher records is the
+    // intent and the session row shows the fact.
     const explicitDefault = getAgentDefaultOverride(overrides, flavor).permissionMode;
     if (explicitDefault !== undefined) {
         return explicitDefault;
