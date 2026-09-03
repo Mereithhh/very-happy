@@ -49,8 +49,15 @@ jobs:
       - name: Gate - blue-green release state machine
         run: bash scripts/ci/test-blue-green-state-machine.sh
       # B-348: needs the tags, which the default shallow checkout omits.
-      - name: Fetch release tags
-        run: git fetch --tags --force --depth=1 origin
+      # B-347's half also walks history (is this entry's commit inside the tag
+      # it claims), so the clone has to stop being shallow — with --depth=1 the
+      # script can only report that it cannot tell.
+      - name: Fetch release history and tags
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow origin
+          fi
+          git fetch --quiet --tags --force origin
       - name: Gate - changelog cliVersion is not invented
         run: node scripts/release/check-changelog-versions.mjs
 
