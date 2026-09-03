@@ -10,11 +10,13 @@
  * the accent rows are always the ones the board — and the notifications that
  * deep-link into them — call urgent.
  *
- * Level 1 「未读」(unread → text-stage): the agent finished a turn while the
- * user wasn't looking (storage.unreadSessionIds — memory-only, cleared when
- * the session is opened). "跑完待看" earns a visible marker but NOT accent:
- * accent strictly means live/waiting-on-you (tokens.css discipline), and
- * painting every finished turn teal would drown the real signal.
+ * Level 1 「未读」(unread → --danger dot): the agent finished a turn while the
+ * user wasn't looking (storage.unreadSessionIds, seeded from MMKV so a refresh
+ * keeps it — sidebarUnread.ts; cleared when the session is opened). "跑完待看"
+ * earns a visible marker but NOT accent: accent strictly means live/waiting-on-you
+ * (tokens.css discipline), and painting every finished turn teal would drown the
+ * real signal. B-312 made it red — the previous --text dot was literally the
+ * row's own ink color and read as decoration.
  *
  * attention ≻ unread ≻ null. Pure — unit tests in sidebarAttention.test.ts.
  */

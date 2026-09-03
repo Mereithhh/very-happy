@@ -1661,6 +1661,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03s: {
+                title: 'A finished session now says so',
+                summary: 'The session list already tracked which conversations had finished a turn while you were looking elsewhere, but it marked them with a dot the same colour as the row\u2019s own text \u2014 so nobody ever saw it. It is red now, and it survives a reload.',
+                color: 'A session whose agent finished while you were away carries a red dot at the right edge of its row, cleared the moment you open it. A teal dot still means the agent is waiting on you right now, and the pulsing teal dot on the left still means it is running.',
+                persist: 'Those dots used to live only in the open tab, so a refresh silently erased every pending one. They are now remembered on this device, and expire on their own after a week.',
+            },
             sep03r: {
                 title: 'One busy moment could lock the whole account out for an hour',
                 summary: 'Very Happy caps how fast an account may rewrite session and machine state. Two details turned that cap into a trap: a refused write still counted against the budget, and every client retried refused writes within a second and never gave up. Together they kept the budget full — so unrelated things that share it, like opening a new session, were refused for as long as the retries continued.',
