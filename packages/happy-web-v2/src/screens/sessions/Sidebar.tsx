@@ -354,7 +354,7 @@ export function Sidebar() {
   // sidebarAttention.test.ts.
   const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
   const unreadIds = storage((s) => s.unreadSessionIds);
-  // B-324: terminals carry the same 未读 dot, owned by the store that observes
+  // B-330: terminals carry the same 未读 dot, owned by the store that observes
   // their transitions (sync/terminalAgentState.ts).
   const unreadTerminalIds = useTerminalAgentStates((s) => s.unread);
 

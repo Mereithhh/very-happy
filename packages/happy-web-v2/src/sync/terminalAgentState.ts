@@ -18,7 +18,7 @@
  * Old daemons don't report `agentState`: those terminals simply never get an
  * entry, and every consumer treats `undefined` as "keep the current UI".
  *
- * B-324 —— 未读红点也归这里，理由和 needs_input 告警同一条：ingest 是终端状态
+ * B-330 —— 未读红点也归这里，理由和 needs_input 告警同一条：ingest 是终端状态
  * **转换**的唯一观测点。判据是 `working` → `idle`/`shell`（一轮跑完了，或者
  * claude 直接退了），要求：
  *   ① 必须有 `before`——首次观测不算转换，否则重开页面会把每个空闲终端点亮；
@@ -52,7 +52,7 @@ export interface TerminalAgentEntry {
 interface TerminalAgentStates {
   /** terminalId → last known agent state (only terminals whose daemon reports it). */
   states: Record<string, TerminalAgentEntry>;
-  /** B-324: terminals whose agent finished a run while the user was elsewhere. */
+  /** B-330: terminals whose agent finished a run while the user was elsewhere. */
   unread: Set<string>;
   /** The terminal the user currently has open, if any (WebTerminalRoute owns it). */
   viewingTerminalId: string | null;
@@ -156,7 +156,7 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
         changed = true;
         // Alert only on a real transition INTO needs_input — not on the first
         // observation after load, so reopening the app doesn't replay alerts.
-        // B-324: a run that ended while the user was looking elsewhere.
+        // B-330: a run that ended while the user was looking elsewhere.
         if (
           before &&
           before.machineId === machineId &&

@@ -14,7 +14,7 @@ const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-cou
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 const QUEUED_MESSAGES_KEY = 'queued-messages-v1';
 const UNREAD_SESSIONS_KEY = 'unread-sessions-v1';
-// B-324: web terminals get the same "finished while you were away" dot. Its own
+// B-330: web terminals get the same "finished while you were away" dot. Its own
 // key, not a widening of the sessions one: the two are marked by different
 // stores off different signals and cleared by different routes, and merging
 // them would have made an existing user's session marks disappear on upgrade.

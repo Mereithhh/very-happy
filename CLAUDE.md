@@ -24,11 +24,12 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.114**；线上 Web/server = `main@aed3d6b7`。**同一天 0.2.108→0.2.114 由多个
+- 最新 tag / npm `very-happy-cli` = **v0.2.115**；线上 Web/server = `main@6644624d`。**同一天 0.2.108→0.2.115 由多个
   并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
   cliVersion 想当然。**B-/V-/changelog key 三家同理**：用 `node scripts/dev/check-ids.mjs` 取号，rebase 后和开 PR 前
-  各 `--claim` 验一次（2026-09-03 撞了三次：B-312、B-315+sep03t、B-316）。`packages/happy-cli/package.json` 里的 version
-  不是发布版本。
+  各 `--claim` 验一次——**但 claim 通过不等于安全，窗口就是 CI 时长**：2026-09-03 一个 PR 连着三轮被挤掉
+  （B-321→B-322→B-324，sep03y→sep03z→sep03aa），撞过一次之后重编号要留余量，别再取 next free。
+  `packages/happy-cli/package.json` 里的 version 不是发布版本。
 - 部署报 `HTTP probe observed a release-window failure` 时：判据已是「**连续** 3 发失败」（B-308），所以这条现在基本等于真事故——先看它说的是 `public` 还是 `origin` 路径，`origin`（绕开 Cloudflare）失败才是我们自己的问题；记录在 `/opt/happy/release/http-probe.{public,origin}.*`，含样本号与 curl 错误文本。机制见 `docs/operations.md`。
 - **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
   **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
@@ -41,8 +42,8 @@ git worktree list                                   # 派工前看清有哪些�
   destroy-unattached 等 + 0x1f 分隔符被 tmux ≤3.5 munge 的存量修复，见 AGENTS 铁律 17）、B-273/280/281/282
   （接入已有 tmux 会话：能力 + 一等入口 + 直达选择器 + 关闭=仅断开/可选彻底关闭，spec
   `specs/2026-09-attach-existing-tmux.md`）、B-275/276（Claude 认证预检/修复）、B-272（session 单写者锁）。
-- `docs/verify-queue.md` 待验证 **112 项**（V-0xx～V-137），远超「下一批前清账」纪律；发新批前请 Owner 清账或明确批准堆积。
-- 门禁基线：web tsc 0 错误、cli 1690+ unit、web 2130+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
+- `docs/verify-queue.md` 待验证 **113 项**（V-0xx～V-138），远超「下一批前清账」纪律；发新批前请 Owner 清账或明确批准堆积。
+- 门禁基线：web tsc 0 错误、cli 1690+ unit、web 2170+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
   web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让 `installScript.test.ts` 失败，
   CI 不受影响）；happy-cli 的 unit 项目含真实 tmux 测试（CI 也跑，见铁律 17）。
 - 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理

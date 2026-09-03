@@ -21,7 +21,7 @@ function unread(): string[] {
     return [...useTerminalAgentStates.getState().unread];
 }
 
-describe('B-324 terminal 未读红点', () => {
+describe('B-330 terminal 未读红点', () => {
     beforeEach(() => {
         useTerminalAgentStates.setState({ states: {}, unread: new Set(), viewingTerminalId: null });
     });
