@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => {
   let killHandler: (() => Promise<void>) | null = null;
 
   const mockSession = {
+    sessionId: 'happy-session-1',
+    getMetadata: vi.fn(() => ({})),
     onUserMessage: vi.fn((handler: (message: any) => void) => {
       userMessageHandler = handler;
     }),
@@ -66,6 +68,10 @@ const mocks = vi.hoisted(() => {
     },
     mockSession,
     backendState,
+    titleGeneratorState: {
+      sessions: [] as any[],
+      seeds: [] as string[],
+    },
   };
 });
 
@@ -101,6 +107,18 @@ vi.mock('@/claude/registerKillSessionHandler', () => ({
 
 vi.mock('@/claude/utils/startHappyServer', () => ({
   startHappyServer: mocks.mockStartHappyServer,
+}));
+
+// The real generator spawns `claude -p`; record the seed text it is handed.
+vi.mock('@/claude/utils/titleGenerator', () => ({
+  TitleGenerator: class MockTitleGenerator {
+    constructor(session: any) {
+      mocks.titleGeneratorState.sessions.push(session);
+    }
+    maybeGenerate(text: string) {
+      mocks.titleGeneratorState.seeds.push(text);
+    }
+  },
 }));
 
 vi.mock('@/projectPath', () => ({
@@ -204,6 +222,8 @@ describe('runAcp', () => {
     mocks.backendState.startSessionMessages = [];
     mocks.backendState.startSessionCalls = 0;
     mocks.backendState.cancelCalls = [];
+    mocks.titleGeneratorState.sessions = [];
+    mocks.titleGeneratorState.seeds = [];
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
 
@@ -220,6 +240,62 @@ describe('runAcp', () => {
       url: 'http://127.0.0.1:9876',
       stop: vi.fn(),
     });
+  });
+
+  it('exports the happy MCP url and session id into the ACP child env (pi-acp ignores mcpServers)', async () => {
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi',
+      command: 'pi-acp',
+      args: [],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getKillHandler()).toBeTypeOf('function');
+    });
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    expect(mocks.backendState.constructorArgs.env).toEqual({
+      HAPPY_MCP_URL: 'http://127.0.0.1:9876',
+      HAPPY_SESSION_ID: 'happy-session-1',
+    });
+    // The ACP handoff stays for agents that honour it.
+    expect(mocks.backendState.constructorArgs.mcpServers.happy.args).toEqual(['--url', 'http://127.0.0.1:9876']);
+  });
+
+  it('seeds the auto-title from the first user prompt only, never from assistant output such as the pi banner', async () => {
+    mocks.backendState.startSessionMessages = [
+      { type: 'model-output', textDelta: 'pi v0.84.4 — type /help' },
+    ];
+    const runPromise = runAcp({
+      credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+      agentName: 'pi',
+      command: 'pi-acp',
+      args: [],
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.getUserMessageHandler()).toBeTypeOf('function');
+    });
+    expect(mocks.titleGeneratorState.sessions).toEqual([mocks.mockSession]);
+    expect(mocks.titleGeneratorState.seeds).toEqual([]);
+
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: '' } });
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'Summarise the repo' } });
+    mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'second prompt' } });
+
+    // MessageQueue2 may batch the two prompts into one turn; only the seeds matter here.
+    await vi.waitFor(() => {
+      expect(mocks.backendState.prompts.length).toBeGreaterThanOrEqual(1);
+    });
+    await mocks.getKillHandler()!();
+    await runPromise;
+
+    // Empty prompts are dropped before the generator; the generator itself
+    // gates to the first call (titleGenerator.test.ts), so runAcp forwards each
+    // non-empty prompt exactly like runClaude.
+    expect(mocks.titleGeneratorState.seeds).toEqual(['Summarise the repo', 'second prompt']);
   });
 
   it('wires backend messages through mapper into session envelopes', async () => {
