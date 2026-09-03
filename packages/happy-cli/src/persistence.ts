@@ -514,6 +514,35 @@ export function readPersistedSessions(): Record<string, PersistedSession> {
   }
 }
 
+/**
+ * Every Claude conversation id this machine has ever recorded for a Happy
+ * session, plus the originals imported ones came from (B-291).
+ *
+ * Deliberately ignores the 14-day prune `readPersistedSessions` applies: that
+ * window is about which sessions are still live, while "did very-happy already
+ * take this conversation over?" stays true forever. The import picker uses this
+ * as its exclusion set — the web's own view of that is incomplete (it hides
+ * mirror sessions, and the store only holds what has been synced), which is why
+ * the picker used to list conversations very-happy was already driving.
+ */
+export function readTrackedClaudeSessionIds(): string[] {
+  try {
+    if (!existsSync(configuration.sessionsFile)) return [];
+    const data = JSON.parse(readFileSync(configuration.sessionsFile, 'utf-8')) as SessionsFile;
+    if (!data?.sessions || typeof data.sessions !== 'object') return [];
+    const ids = new Set<string>();
+    for (const session of Object.values(data.sessions)) {
+      const metadata = (session ?? {}).metadata as (Metadata & { importedFromClaudeSessionId?: string }) | undefined;
+      for (const id of [metadata?.claudeSessionId, metadata?.importedFromClaudeSessionId]) {
+        if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
+      }
+    }
+    return [...ids];
+  } catch {
+    return [];
+  }
+}
+
 export function persistSession(sessionId: string, session: PersistedSession): void {
   try {
     const existing = readPersistedSessions();

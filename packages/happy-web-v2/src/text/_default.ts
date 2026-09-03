@@ -1634,6 +1634,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03e: {
+                title: 'Import lists only the conversations you have not brought over',
+                summary: 'The import dialog was showing conversations Very Happy already runs — a third of the rows on a busy machine, and the newest ones at that. It now hides everything the machine has ever driven, so what is left is genuinely importable.',
+                tracked: 'The daemon excludes its own record of every conversation it has driven, including sessions you started by hand in a Web terminal (which the browser never saw as its own) and ones archived long ago. Update the CLI on your machines for the fix; the dialog itself needs no change.',
+            },
             sep03d: {
                 title: 'Fable 5.1, and import your Claude Code history',
                 summary: 'The model picker now offers Fable 5.1 (plus 1M-context variants) exactly as Claude Code does, conversations from the claude CLI, the Claude Code desktop app or claude.ai can be imported into Very Happy with one click, and the docs finally describe what shipped over the last weeks.',

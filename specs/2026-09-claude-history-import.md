@@ -52,8 +52,10 @@ very-happy 已经会「继续一个 JSONL」：`claude-fork-session` 复制文�
    `machineListClaudeHistory(machineId, { limit:100, exclude: trackedClaudeSessionIds(sessions) })` → 两行式行（标题 / mono：`~/相对 cwd · 分支 · 来源 · 大小 · 时长`）
    → 点击 = `machineImportClaudeSession(...)`；返回 `requestToApproveDirectoryCreation`（transcript 里的 cwd 已不存在，`~/.claude/projects` 里大量 `/private/tmp`、`/var/folders` 记录属于此类）时
    走与新建会话相同的「创建目录？」确认再带 `approved` 重试 → 跳转。入口：侧栏 + 菜单、⌘K、机器页。纯逻辑在 `claudeHistoryImport.ts`（解析 / 去重 / 搜索 / 格式化）。
-5. **去重**：web 把已知会话的 `metadata.claudeSessionId` 与 `metadata.importedFromClaudeSessionId` 都算「已接管」，既传给 daemon `exclude`
-   也在客户端再过滤。`importedFromClaudeSessionId` 经 spawn RPC → `HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID` → `runClaude.ts` 初始 metadata 写入。
+5. **去重（B-291 修订）**：**权威来源是 daemon 自己的 `~/.happy/sessions.json`**——`readTrackedClaudeSessionIds()` 收集其中每个会话的
+   `metadata.claudeSessionId` 与 `importedFromClaudeSessionId`，且**刻意不套 `readPersistedSessions` 的 14 天剪枝**（那是「会话是否还活着」，与「是否已被接管」无关），
+   RPC 把它与 web 传来的 `exclude` 合并。web 侧只是二次过滤，且必须读 raw `storage.sessions` 而不是 `useAllSessions()`——后者按设计过滤 mirror 会话
+   （网页终端里手敲的 claude 全是 mirror），store 也只有已同步的会话：初版就是这么让 33% 的行变成自家会话的（本机 421→284）。`importedFromClaudeSessionId` 经 spawn RPC → `HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID` → `runClaude.ts` 初始 metadata 写入。
 6. **模型选择器**（同批）：`getClaudeModelModes()` 镜像 2.1.258 别名；`sanitizeResumeModel` 放行 `[1m]` 后缀；CLI `pricing.ts` 补 Claude 5 / Fable 行并按家族+代次解析别名。
 
 否掉的方案：直接 `--resume` 原件（不复制）——与桌面版共用一份 JSONL 会出现双写者，且 very-happy 的单写者锁只管自己的 wrapper。

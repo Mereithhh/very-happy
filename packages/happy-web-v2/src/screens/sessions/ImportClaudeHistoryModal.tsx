@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { storage, useAllMachines, useAllSessions, useLocalSetting, useSetting } from '@/sync/storage';
+import { storage, useAllMachines, useLocalSetting, useSetting } from '@/sync/storage';
 import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
 import { machineImportClaudeSession, machineListClaudeHistory } from '@/sync/ops';
 import { claudeHistorySupported } from '@/sync/closedTerminals';
@@ -46,7 +46,11 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
   const { t } = useTranslation();
   const machines = useAllMachines({ includeOffline: true });
   const online = useMemo(() => machines.filter(isMachineOnline), [machines]);
-  const sessions = useAllSessions();
+  // Raw record, not useAllSessions(): that lane hides mirror sessions (every
+  // claude started by hand in a web terminal is one), and those are exactly the
+  // conversations very-happy already owns — B-291. The daemon excludes its own
+  // record too; this keeps the list honest between fetches.
+  const sessionsById = storage((state) => state.sessions);
   const agentDefaultOverrides = useSetting('agentDefaultOverrides');
   const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
@@ -72,7 +76,7 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
   // Conversations very-happy already owns (on any machine): sent to the daemon
   // as `exclude` so the scan skips them, and filtered again client-side for
   // sessions that land after the fetch.
-  const tracked = useMemo(() => trackedClaudeSessionIds(sessions), [sessions]);
+  const tracked = useMemo(() => trackedClaudeSessionIds(Object.values(sessionsById)), [sessionsById]);
 
   useEffect(() => {
     setEntries([]);

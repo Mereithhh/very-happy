@@ -25,6 +25,7 @@ import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import { shouldReconnect } from '@/utils/lidState';
 import { getClaudeProjectsRoot, getProjectPath } from '@/claude/utils/path';
+import { readTrackedClaudeSessionIds } from '@/persistence';
 import { listClaudeProjectDirs, listClaudeSessionHistory } from '@/claude/utils/claudeSessionHistory';
 import {
     forkSession as claudeForkSession,
@@ -714,9 +715,16 @@ export class ApiMachineClient {
             const projectDirs = typeof directory === 'string'
                 ? [getProjectPath(directory)]
                 : await listClaudeProjectDirs(getClaudeProjectsRoot());
-            const excludeIds = Array.isArray(exclude)
-                ? exclude.filter((id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id))
-                : [];
+            // The web can only exclude what its store knows (mirror sessions are
+            // filtered out of it, old ones may not be synced), so the daemon adds
+            // its own record of every conversation it has driven — B-291: a third
+            // of the listed rows were sessions very-happy already owned.
+            const excludeIds = [
+                ...(Array.isArray(exclude)
+                    ? exclude.filter((id: unknown): id is string => typeof id === 'string' && UUID_RE.test(id))
+                    : []),
+                ...readTrackedClaudeSessionIds(),
+            ];
             const result = await listClaudeSessionHistory({
                 projectDirs,
                 limit: typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 200)) : 60,

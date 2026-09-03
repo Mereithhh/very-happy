@@ -1605,6 +1605,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03e: {
+                title: '导入列表只留你还没接过来的对话',
+                summary: '导入弹窗此前会列出 Very Happy 已经在跑的对话——在常用的机器上占了三分之一，而且都排在最前面。现在会隐藏这台机器接管过的全部对话，剩下的才是真正可导入的。',
+                tracked: 'daemon 改用自己的记录做排除，覆盖在网页终端里手敲启动的会话（浏览器从来不把它们算作自己的）以及很早就归档的会话。升级机器上的 CLI 即可生效，弹窗本身不用改。',
+            },
             sep03d: {
                 title: 'Fable 5.1，以及导入你的 Claude Code 历史',
                 summary: '模型选择器现在像 Claude Code 一样提供 Fable 5.1（含 1M 上下文变体），claude CLI、Claude Code 桌面版或 claude.ai 里的对话可以一键导入 Very Happy，官网文档也终于补上了最近几周上线的功能。',
