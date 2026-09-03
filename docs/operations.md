@@ -256,6 +256,27 @@ Do not use `sudo very-happy daemon install`: the upstream macOS installer is dea
 code for this fork, targets a root LaunchDaemon, cannot see the user's home/keychain,
 and invokes a nonexistent command.
 
+## Account resource limits
+
+Server-side quotas are per account and read from the deployment environment at
+call time (`configuredResourceLimit`). The one that bites first is
+`MAX_SESSIONS_PER_ACCOUNT`: upstream defaults it to **500**, it counts archived
+sessions too, and once reached **every** new session fails with HTTP 429
+`limit-reached` — new chats, imports, spawns alike. On 2026-09-03 the owner
+account hit exactly 500 (498 of them archived) and could not start anything;
+production now sets it explicitly. Sessions themselves are cheap: 500 of them
+were 66 MB of messages in a 186 MB database.
+
+Changing a limit is an environment change, so it follows the env rule above:
+edit `/opt/happy/.env` (keep a dated backup), then deploy the current `main`
+with `rollout=switch` so the candidate container reads it. `docker compose
+restart` does not reread `env_file`.
+
+```bash
+ssh vh-us "docker exec happy-postgres psql -U happy -d happy -tAc \
+  'select \"accountId\", count(*) from \"Session\" group by 1 order by 2 desc limit 5;'"
+```
+
 ## Diagnosis
 
 Public endpoint:
@@ -267,6 +288,12 @@ curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascri
 ```
 
 Daemon:
+
+A spawn that fails reports `Session webhook timeout for PID <pid>` after 15
+seconds, which says nothing about the cause — the child usually died in the
+first second. The child writes its own log: `~/.happy/logs/*-pid-<pid>.log`, and
+its last line is the real error (a 429 quota, an auth failure, a missing
+binary). Read that before theorising about the feature that triggered the spawn.
 
 ```bash
 very-happy daemon status
