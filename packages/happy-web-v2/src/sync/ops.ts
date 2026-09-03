@@ -1400,14 +1400,21 @@ export async function sessionApplyMetadata(
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
+    // B-320: a handler that throws answers with `{ error }` under a NORMAL ack
+    // (铁律 17), so without this check a failed stop resolves as success and the
+    // user sees nothing at all.
+    const raw = await apiSocket.sessionRPC(sessionId, 'abort', {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
+    throwIfRpcError(raw);
 }
 
 /** Gracefully redirect a live Claude turn while preserving the long-lived query. */
 export async function sessionSteer(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'steer', {});
+    // B-320: same 铁律 17 swallow as sessionAbort — a refused steer must not
+    // look like a delivered one.
+    const raw = await apiSocket.sessionRPC(sessionId, 'steer', {});
+    throwIfRpcError(raw);
 }
 
 /** Change the permission mode of the active Claude SDK Query. */
@@ -1415,11 +1422,15 @@ export async function sessionSetPermissionMode(
     sessionId: string,
     mode: string,
 ): Promise<SessionPermissionModeChangeResponse> {
-    return apiSocket.sessionRPC<SessionPermissionModeChangeResponse, { mode: string }>(
+    // B-320: 铁律 17 — check before trusting the payload, or the store reads
+    // `undefined` off an error envelope and reports a mode that never applied.
+    const raw = await apiSocket.sessionRPC<SessionPermissionModeChangeResponse, { mode: string }>(
         sessionId,
         'set-permission-mode',
         { mode },
     );
+    throwIfRpcError(raw);
+    return raw;
 }
 
 export async function sessionCancelQueuedMessage(
@@ -1433,6 +1444,10 @@ export async function sessionCancelQueuedMessage(
         'cancelQueuedMessage',
         { localKey, text },
     );
+    // B-320: without this a thrown handler arrives as `{ error }` with no
+    // `removed`, and the caller renders "已经开始了，来不及取消" — an error
+    // painted as a normal business outcome.
+    throwIfRpcError(response);
     if (!response?.removed) return false;
     await sync.recordQueueCancellation(sessionId, targetLocalKeys);
     return true;
@@ -1443,7 +1458,9 @@ export async function sessionCancelQueuedMessage(
  */
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session', updatedInput?: Record<string, unknown>): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision, updatedInput };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+    // B-320: 铁律 17. A silently swallowed approval leaves the request hanging.
+    const raw = await apiSocket.sessionRPC(sessionId, 'permission', request);
+    throwIfRpcError(raw);
 }
 
 /**
@@ -1451,7 +1468,10 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+    // B-320: 铁律 17. A swallowed DENY is the dangerous one — the user believes
+    // they refused while the request is still outstanding.
+    const raw = await apiSocket.sessionRPC(sessionId, 'permission', request);
+    throwIfRpcError(raw);
 }
 
 /**

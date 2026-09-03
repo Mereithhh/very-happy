@@ -6,7 +6,11 @@ const source = readFileSync(new URL('./AgentInput.tsx', import.meta.url), 'utf8'
 describe('AgentInput queue controls', () => {
     it('keeps Queue, Steer, and Stop as separate actions while working', () => {
         expect(source).toContain("aria-label={t('session.chat.stop')}");
-        expect(source).toContain('onClick={() => void doAbort()}');
+        // B-320: the Stop button's outcome is CONSUMED. `void doAbort()` (what
+        // this used to assert) made every failed stop invisible — the user's
+        // report was "点停止也无法停止" with no error anywhere.
+        expect(source).toContain('void doAbort().then((outcome) =>');
+        expect(source).not.toContain('void doAbort()}');
         expect(source).toContain("metadata?.capabilities?.includes('claude-steer-v1')");
         expect(source).toContain("aria-label={t('session.chat.queueIntervene')}");
         expect(source).toContain("await sendQueuedItem(item, 'steer')");
