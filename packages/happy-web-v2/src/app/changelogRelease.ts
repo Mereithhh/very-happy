@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-handover-preflight',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.121',
+    titleKey: 'changelog.releases.sep03y.title',
+    summaryKey: 'changelog.releases.sep03y.summary',
+    itemKeys: [
+      'changelog.releases.sep03y.preflight',
+    ],
+  },
+  {
     id: '2026-09-03-stop-feedback',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

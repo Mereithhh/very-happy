@@ -220,6 +220,14 @@ export function MachineScreen() {
   const cliUpdate = machineCliUpdateNotice(machine);
   const cliUpdateState = daemon?.cliUpdate;
   const cliUpdatePolicyKnown = hasValidCliUpdatePolicy(machine);
+  // B-321: a new CLI is installed but refused to run, so the daemon is still on
+  // the old code. Surfacing it is the whole point — this used to be a debug log
+  // on a machine nobody was looking at. daemonState is untyped on the web, so
+  // read it defensively rather than trusting the shape.
+  const rawHold = (cliUpdateState as { handoverHold?: unknown } | undefined)?.handoverHold;
+  const handoverHold = rawHold && typeof rawHold === 'object' && typeof (rawHold as { reason?: unknown }).reason === 'string'
+    ? (rawHold as { reason: string })
+    : null;
 
   async function copyUpdateCommand() {
     const command = cliUpdate ? cliUpdateInstallCommand(cliUpdate.targetVersion) : null;
@@ -349,6 +357,13 @@ export function MachineScreen() {
                         : t('cliUpdate.current')}
                   </Badge>
                 }
+              />
+            )}
+            {handoverHold && (
+              <Item
+                title={t('cliUpdate.handoverHeld')}
+                detail={`${String(handoverHold.reason)} · ${t('cliUpdate.handoverHeldHelp')}`}
+                right={<Badge tone="err">{t('cliUpdate.handoverHeldBadge')}</Badge>}
               />
             )}
             {cliUpdate && (

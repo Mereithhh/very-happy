@@ -195,6 +195,12 @@ export const CliUpdateStateSchema = z.object({
   minimumVersion: z.string().nullable(),
   status: z.enum(['current', 'available', 'required']),
   checkedAt: z.number(),
+  /**
+   * B-321: a new bundle is on disk but refused to run, so the daemon is still
+   * serving the old code. Present only while that is true. Optional and additive:
+   * old web builds ignore it, old daemons never send it (iron rule 4).
+   */
+  handoverHold: z.object({ reason: z.string(), at: z.number() }).nullable().optional(),
 })
 
 export type CliUpdateState = z.infer<typeof CliUpdateStateSchema>

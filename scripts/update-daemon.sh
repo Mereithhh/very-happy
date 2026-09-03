@@ -35,9 +35,14 @@ case "$INSTALLED_VERSION" in
     *) echo "version verification failed: expected $LATEST_VERSION, got $INSTALLED_VERSION" >&2; exit 1 ;;
 esac
 
-echo "==> restart daemon"
-very-happy daemon stop 2>/dev/null || true
-rm -f "$HOME/.happy/daemon.state.json.lock" 2>/dev/null || true
+echo "==> hand over to the new daemon"
+# B-321: `daemon start` is the idempotent, version- and endpoint-aware handover:
+# it stops a mismatched daemon itself and exits quietly if one already matches.
+# The old `stop` + `rm lock` + `start` sequence is what iron rule 7 warns
+# against — it takes the machine offline first, so any failure after that point
+# leaves it offline, and a handed-over daemon runs outside launchd where nothing
+# will restart it. Removing the lock file by hand was part of the same pattern:
+# it exists to stop two daemons racing, and deleting it defeats that.
 very-happy daemon start
 
 echo "==> status"
