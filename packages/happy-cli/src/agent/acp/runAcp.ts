@@ -563,6 +563,14 @@ export async function runAcp(opts: {
   const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? 'default';
   // Set once startSession has shown there is no ACP mode selector.
   let fileBackedModeActive = false;
+  // pi never has an ACP permission-mode selector: pi-acp advertises the *thinking
+  // level* through the legacy `modes` field ("Thinking: off/low/…") and `model` /
+  // `thought_level` config options, so the generic "does the agent expose a mode
+  // selector?" test is wrong for it and used to route every permission switch of
+  // a pi session into the thinking-level picker (B-349). The permission layer
+  // for pi is the pi-side gate, fed through the session-modes file.
+  const permissionModeIsFileBacked = (): boolean =>
+    opts.agentName === 'pi' || (!modeSelector && !legacyModes);
   let fileBackedPermissionMode: AcpPermissionMode | null = null;
   // Returns false when the file could not be written: nothing is published
   // then, so the web keeps showing the mode that is really in effect.
@@ -670,7 +678,7 @@ export async function runAcp(opts: {
       return;
     }
 
-    if (!modeSelector && !legacyModes) {
+    if (permissionModeIsFileBacked()) {
       // No ACP mode selector (pi-acp): the mode is enforced by a gate on the
       // agent side that re-reads the session mode file, so publish it there.
       const mode = normalizeAcpPermissionMode(requestedMode);
@@ -993,7 +1001,7 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
-    if (!modeSelector && !legacyModes) {
+    if (permissionModeIsFileBacked()) {
       fileBackedModeActive = true;
       publishFileBackedPermissionMode(initialPermissionMode);
     }

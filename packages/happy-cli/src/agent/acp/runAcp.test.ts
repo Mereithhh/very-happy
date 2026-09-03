@@ -404,6 +404,45 @@ describe('runAcp', () => {
       expect(mocks.backendState.constructorArgs.env.HAPPY_PERMISSION_MODE).toBe('bypassPermissions');
     });
 
+    it('pi stays file-backed even though pi-acp advertises legacy modes (they are thinking levels, B-349)', async () => {
+      mocks.backendState.startSessionMessages = [
+        {
+          type: 'event',
+          name: 'modes_update',
+          payload: {
+            currentModeId: 'medium',
+            availableModes: [{ id: 'off', name: 'Thinking: off' }, { id: 'medium', name: 'Thinking: medium' }],
+          },
+        },
+        {
+          type: 'event',
+          name: 'config_options_update',
+          payload: {
+            configOptions: [
+              { type: 'select', id: 'model', name: 'Model', category: 'model', currentValue: 'a', options: [{ value: 'a', name: 'A' }] },
+              { type: 'select', id: 'thought_level', name: 'Thinking', category: 'thought_level', currentValue: 'medium', options: [{ value: 'medium', name: 'medium' }] },
+            ],
+          },
+        },
+      ];
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+      });
+      await vi.waitFor(() => expect(mocks.modeFileState.writes).toHaveLength(1));
+      mocks.getUserMessageHandler()!({ role: 'user', content: { type: 'text', text: 'x' }, meta: { permissionMode: 'yolo' } });
+      await vi.waitFor(() => expect(mocks.backendState.prompts).toHaveLength(1));
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.modeFileState.writes.map((w) => w.mode)).toEqual(['default', 'bypassPermissions']);
+      expect(mocks.backendState.setModeCalls).toEqual([]);
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(publishedModes()).toEqual(['default', 'bypassPermissions']);
+    });
+
     it('stays out of the way when the agent advertises an ACP mode selector (gemini/opencode path unchanged)', async () => {
       mocks.backendState.startSessionMessages = [
         {
