@@ -404,7 +404,7 @@ describe('runAcp', () => {
       expect(mocks.backendState.constructorArgs.env.HAPPY_PERMISSION_MODE).toBe('bypassPermissions');
     });
 
-    it('pi stays file-backed even though pi-acp advertises legacy modes (they are thinking levels, B-349)', async () => {
+    it('pi stays file-backed even though pi-acp advertises legacy modes (they are thinking levels, B-350)', async () => {
       mocks.backendState.startSessionMessages = [
         {
           type: 'event',
@@ -998,7 +998,7 @@ describe('runAcp', () => {
   });
 });
 
-describe('extractConfigSelector (B-349)', () => {
+describe('extractConfigSelector (B-350)', () => {
   it('does not mistake a categorised model option for the mode selector (pi-acp shape)', async () => {
     const { extractConfigSelector } = await import('./runAcp');
     const options = [

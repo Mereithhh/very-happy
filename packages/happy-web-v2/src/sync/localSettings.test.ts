@@ -29,7 +29,7 @@ describe('new-session permission resolution', () => {
         expect(resolveNewSessionPermissionMode({ codex: { permissionMode: 'safe-yolo' } }, 'codex', false)).toBe('safe-yolo');
     });
 
-    it('pi follows the Claude permission-mode keys now that the pi runner keeps them (B-349)', () => {
+    it('pi follows the Claude permission-mode keys now that the pi runner keeps them (B-350)', () => {
         expect(resolveNewSessionPermissionMode({}, 'pi', false)).toBe('bypassPermissions');
         expect(resolveNewSessionPermissionMode({}, 'pi', true)).toBe('plan');
         expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'default' } }, 'pi', false)).toBe('default');

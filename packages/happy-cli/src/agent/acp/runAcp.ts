@@ -339,7 +339,7 @@ export function extractConfigSelector(
     // for the *mode* selector because 'model'.includes('mode'), which routed
     // every permission-mode switch of a pi session into the model picker and
     // kept the session-modes file (the gate's live-switch channel) from ever
-    // being written (B-349).
+    // being written (B-350).
     if (option.category) {
       return false;
     }
@@ -567,7 +567,7 @@ export async function runAcp(opts: {
   // level* through the legacy `modes` field ("Thinking: off/low/…") and `model` /
   // `thought_level` config options, so the generic "does the agent expose a mode
   // selector?" test is wrong for it and used to route every permission switch of
-  // a pi session into the thinking-level picker (B-349). The permission layer
+  // a pi session into the thinking-level picker (B-350). The permission layer
   // for pi is the pi-side gate, fed through the session-modes file.
   const permissionModeIsFileBacked = (): boolean =>
     opts.agentName === 'pi' || (!modeSelector && !legacyModes);

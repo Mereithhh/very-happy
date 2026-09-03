@@ -70,7 +70,7 @@ export function resolveNewSessionPermissionMode(
     reviewFirst: boolean,
 ): string {
     // pi follows the Claude keys on purpose: since the pi runner keeps
-    // --permission-mode (HAPPY_PERMISSION_MODE + session-modes file, B-349) the
+    // --permission-mode (HAPPY_PERMISSION_MODE + session-modes file, B-350) the
     // vh-supervisor permission gate enforces `bypassPermissions` as "auto-allow
     // every ask rule" and `default` as "ask becomes a permission card"; hard deny
     // rules are never lifted. `plan`/`acceptEdits` are treated as `default` by
