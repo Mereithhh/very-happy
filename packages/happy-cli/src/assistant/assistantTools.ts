@@ -5,6 +5,14 @@
  * runs with HAPPY_SESSION_VARIANT=assistant (see startHappyServer.ts).
  * Normal sessions keep the stock two tools.
  *
+ * The six session tools are also what a NON-Claude meta-agent (pi over ACP,
+ * codex, …) gets from the standalone `very-happy mcp` stdio server when it
+ * runs inside an assistant-variant session (see commands/mcpToolSurface.ts).
+ * That is why they live behind their own `registerAssistantSessionTools`:
+ * one implementation, two hosts. The terminal / memory / journal tools stay
+ * Claude-assistant-only — they assume the ~/.happy/assistant home and its
+ * CLAUDE.md conventions.
+ *
  * Design rules:
  *  - Everything executes locally and returns fast. Dispatch-style tools
  *    (session_spawn / session_send) return as soon as the work is handed
@@ -37,13 +45,18 @@ import { applyMemorySectionUpdate, journalPathForDate, PERSONAL_MEMORY_SOFT_LIMI
 import { assistantPersonalMemoryPath, bootstrapAssistantHome } from './bootstrap'
 import { normalizeSpawnDirectory } from './spawnDirectory'
 
-export const ASSISTANT_TOOL_NAMES = [
+/** Session tools: shared by the Claude assistant and `very-happy mcp` (runner-agnostic). */
+export const ASSISTANT_SESSION_TOOL_NAMES = [
     'sessions_list',
     'session_read',
     'session_send',
     'session_spawn',
     'session_kill',
     'session_archive',
+] as const
+
+export const ASSISTANT_TOOL_NAMES = [
+    ...ASSISTANT_SESSION_TOOL_NAMES,
     'terminals_list',
     'terminal_read',
     'terminal_send',
@@ -52,6 +65,12 @@ export const ASSISTANT_TOOL_NAMES = [
 ] as const
 
 const MCP_CLIENT_TAG = 'assistant-mcp'
+
+/**
+ * The subset of McpServer both hosts need. Typed structurally so a test can
+ * hand in a recorder and assert exactly which tools each surface registers.
+ */
+export type AssistantToolRegistrar = Pick<McpServer, 'registerTool'>
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError: boolean }
 
@@ -91,7 +110,13 @@ function describeSummary(summary: SessionSummary): string {
     return parts.join(' ')
 }
 
-export function registerAssistantTools(mcp: McpServer): void {
+export function registerAssistantTools(mcp: AssistantToolRegistrar): void {
+    registerAssistantSessionTools(mcp)
+    registerAssistantMachineTools(mcp)
+}
+
+/** sessions_list / session_read / session_send / session_spawn / session_kill / session_archive. */
+export function registerAssistantSessionTools(mcp: AssistantToolRegistrar): void {
     // ── sessions_list ────────────────────────────────────────────────────────
     mcp.registerTool('sessions_list', {
         description: 'List Claude Code sessions on this machine: sessions currently tracked by the local daemon (running) plus recently seen ones. Returns id, title, working directory, agent flavor and web URL for each.',
@@ -226,7 +251,10 @@ export function registerAssistantTools(mcp: McpServer): void {
             return fail(`Failed to archive session: ${error instanceof Error ? error.message : String(error)}`)
         }
     })
+}
 
+/** terminals_* / memory_update / journal_append — Claude assistant home only. */
+function registerAssistantMachineTools(mcp: AssistantToolRegistrar): void {
     // ── terminals_list ───────────────────────────────────────────────────────
     mcp.registerTool('terminals_list', {
         description: 'List the web terminals (tmux sessions) on this machine with their id, title and working directory.',
