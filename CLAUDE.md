@@ -22,9 +22,14 @@ git worktree list                                   # 派工前看清有哪些�
   （见 AGENTS.md 铁律 5/7）。旧记忆里的 `happy.mereith.com` / hw-sg web 部署已作废，
   生产是 `veryhappy.dev` on vh-us，操作手册 `docs/operations.md`。
 
-## 当前状态快照（2026-09-02，会过期；以 backlog/verify-queue 为准）
+## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.100**（mac-office daemon 同版本；2026-09-02；含 B-283 /btw 侧问 capability `claude-btw-v1`）；线上 Web = `main@892be05e`（2026-09-02 蓝绿；含 /btw、B-284 更新弹窗堆叠未读版本）。发布前先跑 `scripts/changelog/check-release.mjs`（B-285 门禁，CI 也拦）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- 最新 tag / npm `very-happy-cli` = **v0.2.103**（mac-office daemon 同版本；2026-09-03）；线上 Web = `main@c0ee1a82`（2026-09-03 蓝绿）。发布前先跑 `scripts/changelog/check-release.mjs`（B-285 门禁，CI 也拦）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
+  **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
+  旧的 Sarasa 仍留在 `/regular,/bold` 作回滚）。**字体不进仓库**；重新发字体用 `wrangler pages deploy`
+  （需 Owner 先 `wrangler login`）。选型与「严丝合缝」定律见
+  `specs/2026-09-terminal-font-and-seamless-rendering.md`（含 WebGL 被否决的理由）。
 - `docs/backlog.md` 活跃区约 31 项非 done（8 `doing`：B-216 终端 tag、B-209 对话降噪、B-208 工作区视图、
   B-211 统一 Usage、B-192 多地域 relay、B-031 CI gitleaks 等）；改 doing 项前先读对应 `specs/`。
   **2026-09-02 已发布**：v0.2.93–v0.2.99 一大批——B-269/B-270（用户 tmux.conf 打坏 web 终端：base-index、

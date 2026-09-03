@@ -152,10 +152,20 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得
    渲染成普通 assistant 回复。
-9. xterm+FitAddon 的 padding / floor 余量坑反复重现：改终端布局前搜历史
+9. **终端字形渲染三条硬事实**（机制全文见
+   `specs/2026-09-terminal-font-and-seamless-rendering.md`，2026-09 连踩 6 个 PR 换来）：
+   ①「严丝合缝」=（字体方块字形填满整格）×（`lineHeight` 1.0），**缺一不可**——「字体有该
+   码位」≠ 能无缝拼接（IBM Plex Mono 实测有缝），改字体或改行高前**并排实测截图**；
+   ② **canvas/WebGL 渲染器已评估并否决**：它把文字画进 canvas、DOM 内无文字节点，会**废掉
+   移动端原生长按复制**（`terminal.css` 专门放行 `.xterm-rows` 的 user-select），
+   不先解决移动端复制就别再提；③ **终端历史不可重排**（Ink 折行写字面量 `\n`，ink#883；
+   `-J`/emulator 只接自己的软折行），**只能预防不能回溯,别向用户承诺**。
+   另：xterm+FitAddon 的 padding / floor 余量坑反复重现，改终端布局前搜历史
    （`bf07e4aa`/`fe5172b6`/`4849fb5e`）。
 10. push 后 ≥20s 再触发 CI，`gh run view --json headSha` 核对构建 sha（踩过构建到
-   旧 commit、push 静默失败两种事故）。
+   旧 commit、push 静默失败两种事故）。**PR 号一律取 `gh pr create` 的真实返回值，绝不顺推**
+   （踩过 land 到别人的 Dependabot PR）；判 workflow 成败**必须读 `conclusion`，不能只看
+   `status: completed`**（completed+failure 曾被当成功报给 Owner）。
 11. 明文密钥永不进 repo；推公开 remote 前跑 secret 扫描。
 12. PostgreSQL `SERIALIZABLE` 冲突经 Prisma model API 常表现为 `P2034`，经 raw query
     会表现为 `P2010` + SQLSTATE `40001`；事务层必须同时重试。CLI 对 session
