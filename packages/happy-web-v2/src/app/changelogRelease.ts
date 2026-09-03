@@ -18,7 +18,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-03-spawn-permission-mode',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
-    cliVersion: '0.2.110',
+    // 0.2.110 was tagged from e71fe597 (the mirror-bind retry) while this was
+    // still in review, so B-306 ships in the next one.
+    cliVersion: '0.2.111',
     titleKey: 'changelog.releases.sep03p.title',
     summaryKey: 'changelog.releases.sep03p.summary',
     itemKeys: [
