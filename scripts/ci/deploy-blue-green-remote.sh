@@ -21,7 +21,7 @@ PROBE_FAILURES=""
 PROBE_PID=""
 PROBE_ORIGIN_FAILURES=""
 PROBE_ORIGIN_PID=""
-# B-307: a release fails on this many CONSECUTIVE failed samples, not on one
+# B-308: a release fails on this many CONSECUTIVE failed samples, not on one
 # failed sample anywhere in the window. See start_http_probe.
 PROBE_MAX_STREAK="${VH_RELEASE_PROBE_MAX_STREAK:-3}"
 PROBE_INTERVAL_SECONDS="${VH_RELEASE_PROBE_INTERVAL:-0.2}"
@@ -264,7 +264,7 @@ verify_public_release() {
     case "$asset" in *-"$release".js) ;; *) echo "public asset mismatch: $asset" >&2; return 1 ;; esac
 }
 
-# B-307 — why this probe is not zero tolerance any more.
+# B-308 — why this probe is not zero tolerance any more.
 #
 # `veryhappy.dev` resolves to Cloudflare from this host, not to the host itself,
 # so every sample traverses host -> Cloudflare edge -> origin -> back. Measured

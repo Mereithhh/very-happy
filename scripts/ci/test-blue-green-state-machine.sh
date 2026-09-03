@@ -61,7 +61,7 @@ if verify_migration_contract >/dev/null 2>&1; then fail 'changed migrations requ
 printf 'VH_RELEASE_MIGRATIONS_REVIEWED=%s\n' "$VERSION" > "$migration_review_file"
 verify_migration_contract || fail 'exact migration review commit must pass'
 
-# B-307: the release verdict is the longest run of CONSECUTIVE failed samples,
+# B-308: the release verdict is the longest run of CONSECUTIVE failed samples,
 # not the presence of any failure. Fixtures below are the four real production
 # records that killed a release on 2026-09-01/02/03 plus a synthetic outage.
 probe_case() {
