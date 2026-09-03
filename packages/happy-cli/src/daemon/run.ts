@@ -20,7 +20,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
-import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
+import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
@@ -337,7 +337,7 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      if (options.variant !== 'assistant') {
+      if (assistantSpawnMode(options) !== 'claude-singleton') {
         return spawnSessionImpl(options);
       }
       return options.forceNew
@@ -372,7 +372,15 @@ export async function startDaemon(): Promise<void> {
       //      session row and key (nothing can decrypt-mismatch old rows).
       // forceNew skips 1–2: it stops any surviving assistant process, purges
       // the sessions.json entries, and always takes path 3.
-      if (options.variant === 'assistant') {
+      //
+      // Only a CLAUDE assistant request enters this block. For any other runner
+      // (`assistantSpawnMode` = 'env-only') the variant means just the
+      // HAPPY_SESSION_VARIANT env on the child (set with the other extraEnv
+      // below): requested directory honoured, no singleton, TrackedSession not
+      // tagged — see assistantSpawn.ts for why.
+      const assistantMode = assistantSpawnMode(options);
+      const trackedVariant = assistantMode === 'claude-singleton' ? options.variant : undefined;
+      if (assistantMode === 'claude-singleton') {
         options = { ...options, directory: assistantHome() };
 
         if (options.forceNew) {
@@ -576,7 +584,10 @@ export async function startDaemon(): Promise<void> {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
         }
         // B-051: mark the spawned CLI as the assistant variant (fresh-spawn
-        // path; the re-attach path above sets it directly on its env).
+        // path; the re-attach path above sets it directly on its env). This is
+        // the ONE thing 'env-only' mode (non-Claude meta-agent) shares with the
+        // Claude singleton: the runner passes the env to its agent, the agent
+        // to its MCP servers, and `very-happy mcp` reads it (mcpToolSurface.ts).
         if (options.variant === 'assistant') {
           extraEnv.HAPPY_SESSION_VARIANT = 'assistant';
         }
@@ -701,7 +712,7 @@ export async function startDaemon(): Promise<void> {
               startedBy: 'daemon',
               pid: tmuxResult.pid, // Real PID from tmux -P flag
               tmuxSessionId: tmuxResult.sessionId,
-              variant: options.variant,
+              variant: trackedVariant,
               spawnedBy: options.spawnedBy,
               directoryCreated,
               message: directoryCreated
@@ -798,7 +809,7 @@ export async function startDaemon(): Promise<void> {
             },
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
-            variant: options.variant,
+            variant: trackedVariant,
             spawnedBy: options.spawnedBy,
           });
         }

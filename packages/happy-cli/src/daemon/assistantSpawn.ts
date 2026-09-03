@@ -11,6 +11,32 @@
 import type { TrackedSession } from '@/daemon/types';
 import type { PersistedSession } from '@/persistence';
 import type { Metadata } from '@/api/types';
+import type { SpawnSessionOptions } from '@/modules/common/registerCommonHandlers';
+
+/**
+ * What `variant: 'assistant'` means for a given spawn request.
+ *
+ *  - `claude-singleton`: the B-051 voice assistant — cwd forced to
+ *    ~/.happy/assistant, per-machine singleton (live check + sessions.json
+ *    re-attach), TrackedSession tagged at spawn time. Only Claude has the
+ *    in-process assistant tool surface and the CLAUDE.md charter that home
+ *    bootstraps, and the re-attach path spawns `claude` by name, so only a
+ *    Claude request may enter it.
+ *  - `env-only`: any other runner (pi over ACP, codex, …). The request gets
+ *    HAPPY_SESSION_VARIANT=assistant on the child — which the runner passes to
+ *    its agent and the agent to its MCP servers, so `very-happy mcp` exposes the
+ *    session tools — and NOTHING else: the requested directory is honoured and
+ *    the TrackedSession is not tagged. Tagging it would let a pi meta-agent
+ *    satisfy `findLiveAssistant` and be handed back to the /assistant screen
+ *    the next time it asks for its Claude singleton.
+ *  - `none`: not an assistant request.
+ */
+export type AssistantSpawnMode = 'claude-singleton' | 'env-only' | 'none';
+
+export function assistantSpawnMode(options: Pick<SpawnSessionOptions, 'variant' | 'agent'>): AssistantSpawnMode {
+    if (options.variant !== 'assistant') return 'none';
+    return options.agent === undefined || options.agent === 'claude' ? 'claude-singleton' : 'env-only';
+}
 
 /**
  * A tracked session counts as the assistant if it was tagged at spawn time
