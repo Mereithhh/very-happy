@@ -1659,6 +1659,10 @@ export const en = {
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
             sep03l: {
+                title: 'Sessions a script started now say who started them',
+                summary: 'Work dispatched from outside — a chat bridge, a scheduler — arrived in the list looking exactly like a session you opened yourself, so a list of twenty gave you no way to tell which ones you were responsible for watching.',
+                tag: 'A session spawned with an origin is born carrying that origin as its tag, so it shows up as a chip in the list and is searchable as #<name>. Sessions the built-in assistant dispatches already worked this way; now any external caller gets the same treatment instead of that one hardcoded name.',
+                flag: '`very-happy spawn --spawned-by <name>` sets it. The value is rejected up front unless it reads as a tag — an unattended bridge should hear about a typo, not quietly file every session under nothing.',
                 title: 'A renamed machine finally shows its new name',
                 summary: 'The name Very Happy showed for a machine was the hostname it had the day it first connected, and it never changed after that — rename the box and the old name stayed forever.',
                 rename: 'A machine now claims its own record when its daemon starts, so a rename shows up in the machine list and the session launcher instead of being frozen at whatever the hostname was on day one. This also settles a daemon-log warning that fired on every start for any machine that had ever been renamed.',

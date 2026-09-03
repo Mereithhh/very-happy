@@ -36,6 +36,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
+import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
 import { logger } from '@/ui/logger'
 
 // Re-exported for back-compat (tests and external imports historically used
@@ -47,6 +48,8 @@ export interface SpawnCommandOptions {
     dir?: string
     prompt?: string
     promptFile?: string
+    /** B-303: spawn origin — becomes the new session's tag (e.g. 'tanka'). */
+    spawnedBy?: string
     json: boolean
     help: boolean
 }
@@ -68,6 +71,16 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
             const value = args[++i]
             if (value === undefined) throw new Error('--prompt-file requires a value')
             options.promptFile = value
+        } else if (arg === '--spawned-by') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--spawned-by requires a value')
+            // Validate here, not at the daemon: a typo'd origin would otherwise
+            // spawn a perfectly good but silently untagged session, and the
+            // caller (an unattended adapter) would never notice.
+            if (!isValidSpawnOrigin(value)) {
+                throw new Error('--spawned-by must be 1-24 chars of [a-z0-9] plus - or _, starting with a letter or digit')
+            }
+            options.spawnedBy = value
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -93,6 +106,9 @@ ${chalk.bold('Options:')}
   --dir, -d <path>       Working directory for the new session (required)
   --prompt, -p <text>    First message to send after the session starts
   --prompt-file <file>   Read the first message from a file (UTF-8)
+  --spawned-by <name>    Tag the new session with its origin (e.g. tanka).
+                            1-24 chars: [a-z0-9] plus - or _. Shows as a chip in
+                            the web list and is searchable as #<name>.
   --json                 Machine-readable output: {"sessionId", "url"}
   -h, --help             Show this help
 
@@ -180,7 +196,9 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     }
 
     logger.debug(`[SPAWN CMD] Spawning session in ${directory}`)
-    const result = await spawnDaemonSession(directory)
+    // A daemon older than B-069 strips the unknown `spawnedBy` key from its zod
+    // body schema, so the session still spawns — just untagged (铁律 4).
+    const result = await spawnDaemonSession(directory, undefined, { spawnedBy: options.spawnedBy })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'
         console.error(chalk.red('Error:'), `Failed to spawn session: ${message}`)
@@ -201,6 +219,9 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
 
     if (options.json) {
         const payload: Record<string, unknown> = { sessionId, url }
+        if (options.spawnedBy !== undefined) {
+            payload.spawnedBy = options.spawnedBy
+        }
         if (prompt !== undefined) {
             payload.promptDelivered = promptError === null
         }

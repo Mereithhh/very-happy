@@ -36,6 +36,27 @@ describe('parseSpawnArgs', () => {
         expect(parseSpawnArgs(['-h']).help).toBe(true)
     })
 
+    it('parses --spawned-by (B-303 origin tag)', () => {
+        const options = parseSpawnArgs(['--dir', '/tmp/foo', '--spawned-by', 'tanka'])
+        expect(options.spawnedBy).toBe('tanka')
+    })
+
+    it('omits spawnedBy when the flag is absent (untagged session)', () => {
+        expect(parseSpawnArgs(['--dir', '/tmp/foo']).spawnedBy).toBeUndefined()
+    })
+
+    it('rejects a --spawned-by value that would not render as a tag chip', () => {
+        // Fail here rather than at the daemon: an unattended adapter would
+        // otherwise get a healthy but silently untagged session.
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--spawned-by', 'Tanka'])).toThrow(/--spawned-by/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--spawned-by', 'two words'])).toThrow(/--spawned-by/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--spawned-by', 'x'.repeat(25)])).toThrow(/--spawned-by/)
+    })
+
+    it('rejects --spawned-by without a value', () => {
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--spawned-by'])).toThrow(/requires a value/)
+    })
+
     it('rejects --prompt together with --prompt-file', () => {
         expect(() => parseSpawnArgs(['--dir', '/tmp', '--prompt', 'x', '--prompt-file', '/tmp/p.txt']))
             .toThrow(/mutually exclusive/)

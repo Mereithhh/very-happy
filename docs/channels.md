@@ -172,7 +172,8 @@ message delivery encrypts the user envelope with the session key from
 ### `very-happy spawn` — start a session
 
 ```bash
-very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
+very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
+  [--spawned-by <name>] [--json]
 ```
 
 - `--dir, -d <path>` — working directory for the new session (required; must
@@ -180,8 +181,17 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
 - `--prompt, -p <text>` / `--prompt-file <file>` — optional first user message
   (mutually exclusive; file is read as UTF-8). Without either, the session is
   spawned idle.
-- `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`.
-  Without it, a human-readable line with a clickable session URL is printed.
+- `--spawned-by <name>` — the spawn origin. The session is **born carrying it
+  as its tag**: a chip in the Web list, searchable as `#<name>`, so dispatched
+  work stays distinguishable from sessions the user opened by hand. The value
+  must read as a tag — 1-24 chars of `[a-z0-9]` plus `-`/`_`, starting with a
+  letter or digit — and the CLI rejects anything else up front rather than
+  handing an unattended adapter a healthy but silently untagged session. Omit
+  it and the session is simply untagged. A daemon predating the field strips it
+  and still spawns, so **a missing tag is not a spawn failure**.
+- `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`,
+  plus `"spawnedBy"` when the flag was given. Without it, a human-readable line
+  with a clickable session URL is printed.
 
 Requires the daemon to be running (same semantics as spawning from the web:
 an offline machine cannot spawn). It will **not** auto-start the daemon.
