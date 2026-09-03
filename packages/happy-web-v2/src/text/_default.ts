@@ -1682,6 +1682,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep04a: {
+                title: 'Automatic updates only ever move forward',
+                summary: 'A machine running a newer build than the one currently recommended could have installed the older one and restarted into it.',
+                forward: 'The update check compared versions for equality rather than order, so a machine that was ahead of the recommendation — the normal state between publishing a release and promoting it, and for anything upgraded by hand — was not recognised as already up to date. It now refuses to install anything older than what it is running.',
+            },
             sep03ad: {
                 title: 'Machines keep their CLI up to date on their own',
                 summary: 'Keeping the command-line tool current was a manual step, and most machines drifted several versions behind. They now update themselves — but only at a moment when doing so cannot interrupt anything.',
