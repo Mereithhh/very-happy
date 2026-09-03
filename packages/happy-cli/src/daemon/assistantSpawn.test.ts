@@ -232,7 +232,9 @@ describe('assistantSpawnMode', () => {
         // that combination would start a Claude with HAPPY_SESSION_VARIANT=assistant in the
         // user's cwd, outside the singleton. One rejection per spawn path.
         expect(run.match(/Unsupported agent type: '\$\{options\.agent\}'/g)).toHaveLength(2)
-        expect(run).toContain("if (agent !== 'claude' && agent !== 'codex' && agent !== 'gemini' && agent !== 'openclaw') {")
+        // the tmux path validates against the shared SPAWN_AGENTS list (utils/spawnAgents.ts),
+        // not a hand-copied name list, so adding a backend there cannot reopen the fallback
+        expect(run).toContain("const agent = options.agent ?? 'claude';\n          if (!isSpawnAgent(agent)) {")
         // no "anything else means claude" expression anywhere in the daemon
         expect(run).not.toMatch(/: 'claude'[;)]/)
     })
