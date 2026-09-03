@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { terminalCjkFontLinks, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFont';
+import { TERM_FONT, TERM_FONT_STACK } from './termFont';
 
 describe('terminal CJK font', () => {
     it('exposes the dual-width family used as the primary terminal font', () => {
@@ -30,9 +31,13 @@ describe('terminal CJK font', () => {
     });
 
     it('TERM_FONT lists the CJK family first in the terminal stack', () => {
-        const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
-        expect(screen).toMatch(/const TERM_FONT = "'Maple Mono CN',/);
+        // B-316: asserted against the shared constant rather than the screen's
+        // source text — the stack moved into termFont.ts precisely so the face
+        // we wait for and the face we render with cannot drift apart.
+        expect(TERM_FONT_STACK[0]).toBe(TERMINAL_CJK_FONT_FAMILY);
+        expect(TERM_FONT.startsWith(`'${TERMINAL_CJK_FONT_FAMILY}'`)).toBe(true);
         // and the loader is invoked on mount
+        const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
         expect(screen).toContain('ensureTerminalCjkFont();');
     });
 
