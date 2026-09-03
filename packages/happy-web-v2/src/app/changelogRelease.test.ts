@@ -19,6 +19,35 @@ describe('changelog releases', () => {
     );
   });
 
+  /**
+   * Two entries pointing at the same `changelog.releases.<key>` block is the
+   * collision that nothing else catches. Unique ids do not help (the ids差异
+   * still differ), and tsc is happy because both keys are valid — a duplicate
+   * `titleKey` is only a duplicate at runtime, where the two releases render
+   * identical text. It happened on 2026-09-03: two parallel sessions both took
+   * `sep03y`, git auto-merged the release list without a conflict, and the only
+   * reason it surfaced was that the TEXT file happened to conflict too.
+   */
+  it('gives every release its own text-key block', () => {
+    const prefixes = CHANGELOG_RELEASES.map((release) => {
+      const match = /^changelog\.releases\.([A-Za-z0-9]+)\./.exec(release.titleKey);
+      expect(match, `unrecognised titleKey on ${release.id}: ${release.titleKey}`).not.toBeNull();
+      return match![1];
+    });
+    const duplicates = prefixes.filter((key, i) => prefixes.indexOf(key) !== i);
+    expect(duplicates, `two releases share a changelog text key: ${[...new Set(duplicates)].join(', ')}`).toEqual([]);
+    // Every itemKey/summaryKey must live under its own release's block too — a
+    // renumber that renamed the block but missed an item would otherwise point
+    // into the neighbour's text. Only the PREFIX is checked here on purpose: a
+    // misspelt leaf (`…sep03aa.dxt`) is not a valid SimpleTranslationKey, so
+    // tsc owns that half (seen this session as TS2820).
+    for (const [i, release] of CHANGELOG_RELEASES.entries()) {
+      for (const key of [release.summaryKey, ...release.itemKeys]) {
+        expect(key, `${release.id} points outside its own block`).toContain(`changelog.releases.${prefixes[i]}.`);
+      }
+    }
+  });
+
   it('keys the receipt to a release rather than a timestamp-salted build', () => {
     expect(shouldShowChangelog(null)).toBe(true);
     expect(shouldShowChangelog(changelogSeenValue())).toBe(false);

@@ -53,12 +53,12 @@ describe('sidebar unread dot (B-312)', () => {
 });
 
 /**
- * B-324: the same dot for web terminals. The store side is behaviour-tested in
+ * B-330: the same dot for web terminals. The store side is behaviour-tested in
  * sync/terminalUnread.test.ts; what needs pinning here is the wiring, because
  * a terminal row that never consults the terminal set renders nothing and the
  * feature is invisible again — exactly how it was reported missing.
  */
-describe('sidebar unread dot — terminals (B-324)', () => {
+describe('sidebar unread dot — terminals (B-330)', () => {
     const sidebar = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');
     const route = readFileSync(new URL('../terminal/WebTerminalRoute.tsx', import.meta.url), 'utf8');
 

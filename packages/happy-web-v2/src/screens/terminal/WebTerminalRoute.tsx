@@ -27,7 +27,7 @@ export function WebTerminalRoute() {
   const meta = terminals.find((x) => x.id === tid);
   const viewDefault = useLocalSetting('terminalViewDefault');
   const viewOverrides = useLocalSetting('terminalViewOverrides');
-  // B-324: opening a terminal is what clears its 未读 red dot, and registering
+  // B-330: opening a terminal is what clears its 未读 red dot, and registering
   // it as "being viewed" stops a run that finishes under the user's eyes from
   // marking it. Lives here, not in WebTerminalScreen: this component already
   // owns `tid`, it mounts on both faces (it may redirect to the structured
