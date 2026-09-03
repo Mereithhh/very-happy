@@ -119,9 +119,18 @@ triage（分独立/冲突域）
   涉及协议字段时按实现报告里的兼容矩阵定顺序，**双向兼容（旧端忽略新字段）是设计要求**不是可选项。
 - **部署核对**：push 后 ≥20s 再触发 CI；`gh run view --json headSha` 核对构建 sha = 预期 commit
   （踩过构建到旧 commit、push 静默失败两种事故）。
+- **「有没有上线」只能问线上，不能问会话记忆**：多会话并行下，你的 commit 常常已经被**别的会话**的发布
+  顺带带上去了（2026-09-03 实例：B-320/B-322 我一直按「已合入、待发」向 Owner 汇报，实际早随
+  `de77a41f` 上线，那次发布真正新增的只有 B-334）。判据不用登机器也不用翻 run 列表：
+  `node scripts/changelog/check-release.mjs --mode web --live https://veryhappy.dev --sha <目标>`
+  头两行就打印 live release 与目标 SHA（顺带把 changelog 门禁验掉）；只判断单个 commit 在不在线上用
+  `git merge-base --is-ancestor <commit> <live-sha>`。**在向 Owner 说「这个还没上线」之前先跑一次**。
 - **回滚**：CLI = `npm i -g very-happy-cli@<上一版>` + 重启；web = hw-sg `webapp.prev` 或重发上一 sha；
   server = git revert + 重部署。每批发布信息里写明本批的回滚点。
-- **server 部署后必须 vh-update**（daemon RPC 重注册的已知问题，未根治前是流程项）。
+- **常规蓝绿切换不需要 `vh-update`**（这条曾写成「server 部署后必须 vh-update」，蓝绿落地后已作废，
+  与 AGENTS 铁律 5 一致）：候选 slot 会等齐所有 `rpc-registered` 再关旧 slot。只有 CLI/daemon 改动
+  影响 handover 时才更新 mac-office。2026-09-03 `b1a2bb41` 那次 `rollout=switch` 未动 daemon，
+  发布后 `/health` 与线上资产核对均正常。
 
 ### CI 跑在哪 / 托管分钟口径（2026-08-14 起）
 
