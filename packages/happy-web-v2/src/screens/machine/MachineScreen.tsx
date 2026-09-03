@@ -464,7 +464,7 @@ export function MachineScreen() {
           </ItemGroup>
         </ItemList>
       </div>
-      {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}
+      {showImportClaude && <ImportClaudeHistoryModal initialMachineId={machine.id} onClose={() => setShowImportClaude(false)} />}
     </div>
   );
 }

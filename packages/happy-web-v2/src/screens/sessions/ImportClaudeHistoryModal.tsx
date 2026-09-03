@@ -6,21 +6,22 @@
  * conversations immediately (newest first, already-tracked ones hidden),
  * click one to import it.
  *
- * Import = copy, not move: the daemon forks the transcript
- * (`claude-fork-session`) and a fresh Happy session resumes the copy with its
- * history backfilled (`spawn-happy-session` + `resumeClaudeSessionId`). The
- * original file stays untouched for the tool that wrote it.
+ * Import = copy, not move: one `claude-import-session` RPC forks the
+ * transcript and spawns a Happy session that resumes the copy with its history
+ * backfilled, deleting the copy again on any failure. The original file stays
+ * untouched for the tool that wrote it.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { storage, useAllMachines, useAllSessions, useLocalSetting, useSetting } from '@/sync/storage';
 import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
-import { claudeForkSession, machineListClaudeHistory, machineSpawnNewSession } from '@/sync/ops';
+import { machineImportClaudeSession, machineListClaudeHistory } from '@/sync/ops';
 import { claudeHistorySupported } from '@/sync/closedTerminals';
 import { resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import { recordRecentMachinePath } from '@/app/newChat';
 import { Button, useToast } from '@/ui';
+import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { formatSessionAge } from './newTerminalAttach';
 import {
@@ -34,7 +35,12 @@ import {
 } from './claudeHistoryImport';
 import './newsession.css';
 
-export function ImportClaudeHistoryModal({ onClose }: { onClose: () => void }) {
+export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
+  onClose: () => void;
+  /** Preselect this machine (the machine page opens the dialog for its own
+   *  machine; without this the picker would default to the newest one). */
+  initialMachineId?: string;
+}) {
   const navigate = useNavigate();
   const toast = useToast();
   const { t } = useTranslation();
@@ -44,7 +50,7 @@ export function ImportClaudeHistoryModal({ onClose }: { onClose: () => void }) {
   const agentDefaultOverrides = useSetting('agentDefaultOverrides');
   const reviewFirst = useLocalSetting('newSessionReviewFirst');
 
-  const [machineId, setMachineId] = useState(() => pickDefaultMachineId(online.map((m) => m.id)));
+  const [machineId, setMachineId] = useState(() => pickDefaultMachineId(online.map((m) => m.id), initialMachineId));
   const [entries, setEntries] = useState<ClaudeHistoryEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -56,9 +62,9 @@ export function ImportClaudeHistoryModal({ onClose }: { onClose: () => void }) {
   // Same cold-start re-derive as NewTerminalModal (B-146).
   const onlineIds = useMemo(() => online.map((m) => m.id), [online]);
   useEffect(() => {
-    const next = pickDefaultMachineId(onlineIds, machineId);
+    const next = pickDefaultMachineId(onlineIds, machineId || initialMachineId);
     if (next !== machineId) setMachineId(next);
-  }, [onlineIds, machineId]);
+  }, [initialMachineId, onlineIds, machineId]);
 
   const machine = online.find((m) => m.id === machineId);
   const homeDir = (machine as any)?.metadata?.homeDir as string | undefined;
@@ -91,40 +97,51 @@ export function ImportClaudeHistoryModal({ onClose }: { onClose: () => void }) {
 
   const visible = useMemo(() => filterImportableHistory(entries, tracked, query), [entries, tracked, query]);
 
-  async function importEntry(entry: ClaudeHistoryEntry) {
+  async function importEntry(entry: ClaudeHistoryEntry, approved = false) {
+    // The machine can drop between the listing and the click (B-146 rule).
+    const live = storage.getState().machines[machineId];
+    if (!live || !isMachineOnline(live)) {
+      toast.error(t('newSession.machineOffline'));
+      return;
+    }
+    const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, 'claude', reviewFirst);
+    const res = await machineImportClaudeSession({
+      machineId,
+      directory: entry.cwd,
+      claudeSessionId: entry.claudeSessionId,
+      approvedNewDirectoryCreation: approved,
+      permissionMode,
+    });
+    // A transcript often names a directory that no longer exists (a checkout
+    // that moved, a /tmp workspace). Offer to recreate it instead of failing
+    // with a generic error — the daemon has already discarded its copy, so a
+    // confirmed retry starts from a clean fork.
+    if (res.type === 'requestToApproveDirectoryCreation') {
+      const ok = await Modal.confirm(
+        t('newSession.createDirTitle'),
+        t('newSession.createDirMessage', { directory: res.directory }),
+        { confirmText: t('common.create') },
+      );
+      if (ok) return importEntry(entry, true);
+      return;
+    }
+    if (res.type !== 'success') {
+      toast.error(res.errorMessage || t('importClaudeHistory.failed'));
+      return;
+    }
+    storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
+    recordRecentMachinePath(machineId, entry.cwd);
+    toast.success(t('importClaudeHistory.imported'));
+    onClose();
+    navigate(`/session/${res.sessionId}`);
+  }
+
+  async function onRowActivate(entry: ClaudeHistoryEntry) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusyId(entry.claudeSessionId);
     try {
-      // The machine can drop between the listing and the click (B-146 rule).
-      const live = storage.getState().machines[machineId];
-      if (!live || !isMachineOnline(live)) {
-        toast.error(t('newSession.machineOffline'));
-        return;
-      }
-      const fork = await claudeForkSession({ machineId, directory: entry.cwd, claudeSessionId: entry.claudeSessionId });
-      if (fork.type !== 'success') {
-        toast.error(fork.errorMessage || t('importClaudeHistory.failed'));
-        return;
-      }
-      const permissionMode = resolveNewSessionPermissionMode(agentDefaultOverrides, 'claude', reviewFirst);
-      const res = await machineSpawnNewSession({
-        machineId,
-        directory: entry.cwd,
-        agent: 'claude',
-        permissionMode,
-        resumeClaudeSessionId: fork.newClaudeSessionId,
-        importedFromClaudeSessionId: entry.claudeSessionId,
-      });
-      if (res.type !== 'success') {
-        toast.error(res.type === 'error' ? (res.errorMessage || t('importClaudeHistory.failed')) : t('importClaudeHistory.failed'));
-        return;
-      }
-      storage.getState().updateSessionPermissionMode(res.sessionId, permissionMode);
-      recordRecentMachinePath(machineId, entry.cwd);
-      toast.success(t('importClaudeHistory.imported'));
-      onClose();
-      navigate(`/session/${res.sessionId}`);
+      await importEntry(entry);
     } catch (e: any) {
       toast.error(e?.message || t('importClaudeHistory.failed'));
     } finally {
@@ -194,9 +211,9 @@ export function ImportClaudeHistoryModal({ onClose }: { onClose: () => void }) {
                           tabIndex={0}
                           aria-disabled={busyId !== null}
                           aria-busy={importing}
-                          onClick={() => void importEntry(entry)}
+                          onClick={() => void onRowActivate(entry)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void importEntry(entry); }
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onRowActivate(entry); }
                           }}
                         >
                           <span className="ns-session-name" title={entry.firstPrompt}>{historyEntryTitle(entry)}</span>

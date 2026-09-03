@@ -16,9 +16,11 @@ import { Usage } from '../api/types';
  * sessions report Claude 3 Opus prices (15/75) before this table existed.
  */
 export const PRICING = {
-    // --- Claude Fable (Mythos-class tier) ---
+    // --- Claude Fable / Mythos (same tier, same price) ---
     'claude-fable-5-1': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 0.25 },
     'claude-fable-5': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 1.0 },
+    'claude-mythos-5-1': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 0.25 },
+    'claude-mythos-5': { input: 10.0, output: 50.0, cache_write: 12.5, cache_read: 1.0 },
 
     // --- Claude 5 ---
     'claude-opus-5': { input: 5.0, output: 25.0, cache_write: 6.25, cache_read: 0.50 },
@@ -51,8 +53,10 @@ export type ModelId = keyof typeof PRICING;
 /** Unknown / missing model → current Claude Code default (Opus 5). */
 const DEFAULT_MODEL: ModelId = 'claude-opus-5';
 
-const FAMILY_DEFAULTS: Record<'fable' | 'opus' | 'sonnet' | 'haiku', ModelId> = {
+const FAMILY_DEFAULTS: Record<'fable' | 'mythos' | 'opus' | 'sonnet' | 'haiku', ModelId> = {
     fable: 'claude-fable-5-1',
+    // Project Glasswing counterpart of Fable: same tier, same published rates.
+    mythos: 'claude-mythos-5-1',
     opus: 'claude-opus-5',
     sonnet: 'claude-sonnet-5',
     haiku: 'claude-haiku-4-5',
@@ -73,7 +77,7 @@ export function resolvePricingKey(modelId?: string | null): ModelId {
     const id = raw.replace(/\[1m\]$/, '');
     if (id in PRICING) return id as ModelId;
 
-    const family = (['fable', 'opus', 'sonnet', 'haiku'] as const).find((f) => id.includes(f));
+    const family = (['fable', 'mythos', 'opus', 'sonnet', 'haiku'] as const).find((f) => id.includes(f));
     if (!family) return DEFAULT_MODEL;
 
     // Generation: "5-1" / "5.1" / "4-8" / "4.8" / "3-5" … / bare "5" / "4".
@@ -84,7 +88,7 @@ export function resolvePricingKey(modelId?: string | null): ModelId {
     if (key && key in PRICING) return key as ModelId;
 
     // Claude 3 rows are dated; pick by minor version when the id says 3.x.
-    if (major === '3') {
+    if (major === '3' && family !== 'fable' && family !== 'mythos') {
         if (family === 'opus') return 'claude-3-opus-20240229';
         if (family === 'haiku') return minor === '5' ? 'claude-3-5-haiku-20241022' : 'claude-3-haiku-20240307';
         if (minor === '7') return 'claude-3-7-sonnet-20250219';

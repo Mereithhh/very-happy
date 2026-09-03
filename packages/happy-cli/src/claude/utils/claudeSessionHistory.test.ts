@@ -3,6 +3,7 @@ import { mkdir, writeFile, rm, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { BOARD_ANALYZER_PROMPT_PREFIX, TITLE_PROMPT_PREFIX } from './oneShotPrompts';
 import {
     listClaudeProjectDirs,
     listClaudeSessionHistory,
@@ -90,6 +91,24 @@ describe('claudeSessionHistory', () => {
 
         const result = await listClaudeSessionHistory({ projectDirs: [projA], exclude: [idA.toUpperCase()] });
         expect(result.entries).toEqual([]);
+    });
+
+    it('lists one row per conversation id when the same id exists in two project dirs', async () => {
+        await writeJsonl(projA, idA, [userLine('older copy')], 1000);
+        await writeJsonl(projB, idA, [userLine('newer copy', { cwd: '/work/other' })], 3000);
+
+        const result = await listClaudeSessionHistory({ projectDirs: [projA, projB] });
+        expect(result.entries).toHaveLength(1);
+        expect(result.entries[0]).toMatchObject({ claudeSessionId: idA, cwd: '/work/other', firstPrompt: 'newer copy' });
+    });
+
+    it("hides very-happy's own one-shot helper transcripts", async () => {
+        await writeJsonl(projA, idA, [userLine(`${TITLE_PROMPT_PREFIX} (match the message's language). …\n\nMessage: "fix the tests"`)]);
+        await writeJsonl(projB, idB, [userLine(`${BOARD_ANALYZER_PROMPT_PREFIX} Analyze this session snapshot …`, { cwd: '/work/other' })]);
+        await writeJsonl(projA, idC, [userLine('a real conversation')]);
+
+        const result = await listClaudeSessionHistory({ projectDirs: [projA, projB] });
+        expect(result.entries.map((e) => e.firstPrompt)).toEqual(['a real conversation']);
     });
 
     it('honours limit and reports truncation without reading every file', async () => {

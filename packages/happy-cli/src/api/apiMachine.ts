@@ -30,6 +30,7 @@ import {
     forkSession as claudeForkSession,
     forkAndTruncateSession as claudeForkAndTruncateSession,
     listClaudeRewindPoints,
+    discardForkedSession,
     ForkTruncateUuidNotFoundError,
     ForkSourceMissingError,
 } from '@/claude/utils/claudeSessionFork';
@@ -364,6 +365,55 @@ export class ApiMachineClient {
                 case 'error':
                     throw new Error(result.errorMessage);
             }
+        });
+
+        // B-290: import a Claude Code conversation in ONE round trip — fork the
+        // transcript, then spawn a Happy session that resumes the copy. Atomic
+        // on purpose: a client-side fork+spawn pair leaves an orphan copy
+        // behind whenever the spawn fails (missing cwd, machine dropped), and
+        // that orphan then shows up in the import list as a second original,
+        // once per retry. Every non-success path deletes the copy, including
+        // `requestToApproveDirectoryCreation` — the web re-calls with
+        // `approvedNewDirectoryCreation` and a fresh fork is made then.
+        this.rpcHandlerManager.registerHandler('claude-import-session', async (params: any) => {
+            const { directory, claudeSessionId, approvedNewDirectoryCreation, permissionMode } = params || {};
+            if (typeof directory !== 'string' || directory.length === 0) {
+                throw new Error('directory is required');
+            }
+            if (typeof claudeSessionId !== 'string' || !UUID_RE.test(claudeSessionId)) {
+                throw new Error('claudeSessionId must be a valid UUID');
+            }
+            const projectDir = getProjectPath(directory);
+            let newClaudeSessionId: string;
+            try {
+                newClaudeSessionId = await claudeForkSession(projectDir, claudeSessionId);
+            } catch (error) {
+                if (error instanceof ForkSourceMissingError) {
+                    throw new Error('Claude session file not found on this machine');
+                }
+                throw error;
+            }
+            let result: SpawnSessionResult;
+            try {
+                result = await spawnSession({
+                    directory,
+                    machineId: this.machine.id,
+                    approvedNewDirectoryCreation: approvedNewDirectoryCreation === true,
+                    agent: 'claude',
+                    resumeClaudeSessionId: newClaudeSessionId,
+                    importedFromClaudeSessionId: claudeSessionId,
+                    permissionMode: typeof permissionMode === 'string' ? permissionMode : undefined,
+                });
+            } catch (error) {
+                await discardForkedSession(projectDir, newClaudeSessionId);
+                throw error;
+            }
+            if (result.type !== 'success') {
+                await discardForkedSession(projectDir, newClaudeSessionId);
+                return result;
+            }
+            logger.debug(`[API MACHINE] Imported Claude conversation ${claudeSessionId} as session ${result.sessionId}`);
+            return { type: 'success', sessionId: result.sessionId, newClaudeSessionId };
         });
 
         this.syncResumeSessionRpcRegistration();

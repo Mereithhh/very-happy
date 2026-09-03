@@ -17,6 +17,7 @@
  */
 import { open, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isVeryHappyOneShotPrompt } from './oneShotPrompts';
 
 export type ClaudeHistoryEntry = {
     /** Claude conversation UUID (= JSONL basename). */
@@ -109,7 +110,17 @@ async function collectCandidates(projectDirs: string[], exclude: Set<string>): P
         }
     }
     out.sort((a, b) => b.updatedAt - a.updatedAt);
-    return out;
+    // The same conversation id can exist under two project dirs (`claude
+    // --resume <id>` in a different cwd writes a second file). Keep the most
+    // recently touched one: two rows with one id would collide as React keys
+    // and leave the import ambiguous about which file it copies.
+    const seen = new Set<string>();
+    return out.filter((c) => {
+        const key = c.id.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 async function readHead(path: string, bytes: number): Promise<string> {
@@ -187,6 +198,10 @@ export function parseClaudeHistoryHead(
                 if (block) text = block.text;
             }
             if (text) {
+                // very-happy's own `claude -p` helpers (title generation, board
+                // analysis) persist a transcript each. They are machinery, not
+                // conversations — never offer them for import.
+                if (isVeryHappyOneShotPrompt(text)) return null;
                 const cleaned = oneLine(stripHarnessTags(text), promptChars);
                 if (cleaned) firstPrompt = cleaned;
             }

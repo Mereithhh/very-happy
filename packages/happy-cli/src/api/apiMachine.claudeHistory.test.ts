@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -61,5 +61,99 @@ describe('ApiMachineClient claude-list-history RPC (B-290)', () => {
 
         await expect(handler!({ directory: '' })).rejects.toThrow(/directory/);
         await expect(handler!({ directory: 42 })).rejects.toThrow(/directory/);
+    });
+});
+
+describe('ApiMachineClient claude-import-session RPC (B-290)', () => {
+    let configDir: string;
+    let projectDir: string;
+
+    beforeEach(async () => {
+        configDir = join(tmpdir(), `vh-claude-import-rpc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        process.env = { ...originalEnv, CLAUDE_CONFIG_DIR: configDir };
+        projectDir = join(configDir, 'projects', '-work-app');
+        await mkdir(projectDir, { recursive: true });
+        await writeFile(
+            join(projectDir, `${id}.jsonl`),
+            JSON.stringify({ type: 'user', cwd: '/work/app', message: { role: 'user', content: 'hello' } }) + '\n',
+        );
+    });
+
+    afterEach(async () => {
+        process.env = { ...originalEnv };
+        await rm(configDir, { recursive: true, force: true });
+    });
+
+    async function transcriptsInProject(): Promise<string[]> {
+        return (await readdir(projectDir)).filter((n) => n.endsWith('.jsonl')).sort();
+    }
+
+    async function clientWith(spawnSession: any) {
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({ spawnSession, stopSession: vi.fn(), requestShutdown: vi.fn() });
+        return handlersFrom(client).get('machine-1:claude-import-session')!;
+    }
+
+    it('forks the transcript and spawns a Claude session that resumes the copy', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-1' });
+        const handler = await clientWith(spawnSession);
+
+        const result = await handler({ directory: '/work/app', claudeSessionId: id, permissionMode: 'plan' });
+
+        expect(result.type).toBe('success');
+        expect(result.sessionId).toBe('happy-1');
+        expect(result.newClaudeSessionId).not.toBe(id);
+        expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
+            directory: '/work/app',
+            agent: 'claude',
+            resumeClaudeSessionId: result.newClaudeSessionId,
+            importedFromClaudeSessionId: id,
+            permissionMode: 'plan',
+            approvedNewDirectoryCreation: false,
+        }));
+        // original + copy both on disk; the source is never moved
+        expect(await transcriptsInProject()).toHaveLength(2);
+    });
+
+    it('discards the copy when the spawn fails, so a retry cannot pile up orphans', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'error', errorMessage: 'boom' });
+        const handler = await clientWith(spawnSession);
+
+        const result = await handler({ directory: '/work/app', claudeSessionId: id });
+
+        expect(result).toEqual({ type: 'error', errorMessage: 'boom' });
+        expect(await transcriptsInProject()).toEqual([`${id}.jsonl`]);
+    });
+
+    it('discards the copy when the spawn throws', async () => {
+        const spawnSession = vi.fn().mockRejectedValue(new Error('daemon gone'));
+        const handler = await clientWith(spawnSession);
+
+        await expect(handler({ directory: '/work/app', claudeSessionId: id })).rejects.toThrow('daemon gone');
+        expect(await transcriptsInProject()).toEqual([`${id}.jsonl`]);
+    });
+
+    it('forwards the directory-creation request without keeping the copy, and honours the approval on retry', async () => {
+        const spawnSession = vi.fn()
+            .mockResolvedValueOnce({ type: 'requestToApproveDirectoryCreation', directory: '/work/app' })
+            .mockResolvedValueOnce({ type: 'success', sessionId: 'happy-2' });
+        const handler = await clientWith(spawnSession);
+
+        const first = await handler({ directory: '/work/app', claudeSessionId: id });
+        expect(first).toEqual({ type: 'requestToApproveDirectoryCreation', directory: '/work/app' });
+        expect(await transcriptsInProject()).toEqual([`${id}.jsonl`]);
+
+        const second = await handler({ directory: '/work/app', claudeSessionId: id, approvedNewDirectoryCreation: true });
+        expect(second.type).toBe('success');
+        expect(spawnSession).toHaveBeenLastCalledWith(expect.objectContaining({ approvedNewDirectoryCreation: true }));
+        expect(await transcriptsInProject()).toHaveLength(2);
+    });
+
+    it('validates its parameters and reports a missing source file', async () => {
+        const handler = await clientWith(vi.fn());
+        await expect(handler({ claudeSessionId: id })).rejects.toThrow(/directory/);
+        await expect(handler({ directory: '/work/app', claudeSessionId: 'nope' })).rejects.toThrow(/UUID/);
+        await expect(handler({ directory: '/work/app', claudeSessionId: other })).rejects.toThrow(/not found/);
     });
 });

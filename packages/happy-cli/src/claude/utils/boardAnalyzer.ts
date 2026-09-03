@@ -39,6 +39,7 @@ import { logger } from '@/ui/logger';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { RawJSONLines } from '@/claude/types';
 import { resolveClaudeBinary, runClaudeOneShot } from './titleGenerator';
+import { BOARD_ANALYZER_PROMPT_PREFIX } from './oneShotPrompts';
 import { type SelfReportState, isSelfReportFresh } from './boardReport';
 
 export const ANALYZE_MIN_INTERVAL_MS = 5 * 60 * 1000;
@@ -155,7 +156,7 @@ export function buildBoardPrompt(input: BoardAnalysisInput): string {
         : '(no tasks defined)';
     const todoBlock = input.todos.length > 0 ? input.todos.join('\n') : '(none)';
     return [
-        'You are a status analyzer for a task board of coding-agent sessions. Analyze this session snapshot and reply with ONLY a strict JSON object, no markdown, no explanations:',
+        `${BOARD_ANALYZER_PROMPT_PREFIX} Analyze this session snapshot and reply with ONLY a strict JSON object, no markdown, no explanations:`,
         '{"taskId": string|null, "attention": "none"|"review"|"blocked", "progress": string}',
         '',
         'Rules:',

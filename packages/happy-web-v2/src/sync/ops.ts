@@ -779,6 +779,50 @@ export async function machineListClaudeHistory(
     }
 }
 
+/** B-290: import a Claude Code conversation in one round trip. The daemon
+ *  forks the transcript and spawns a Happy session that resumes the copy,
+ *  deleting the copy on every non-success path — so a failed import cannot
+ *  leave an orphan that the picker lists as a second original. Returns the
+ *  same three shapes as a spawn, so the caller can run the usual
+ *  "create the directory?" confirmation and retry with `approved`. */
+export type ImportClaudeSessionResult =
+    | { type: 'success'; sessionId: string; newClaudeSessionId?: string }
+    | { type: 'requestToApproveDirectoryCreation'; directory: string }
+    | { type: 'error'; errorMessage: string };
+export async function machineImportClaudeSession(options: {
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+    approvedNewDirectoryCreation?: boolean;
+    permissionMode?: string;
+}): Promise<ImportClaudeSessionResult> {
+    const { machineId, directory, claudeSessionId, approvedNewDirectoryCreation = false, permissionMode } = options;
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<ImportClaudeSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+            approvedNewDirectoryCreation?: boolean;
+            permissionMode?: string;
+        }>(
+            machineId,
+            'claude-import-session',
+            { directory, claudeSessionId, approvedNewDirectoryCreation, permissionMode },
+            { timeoutMs: 25_000 },
+        );
+        // A handler that throws comes back as a normal ack carrying `error`
+        // (iron rule 17), so check that before trusting the payload.
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { type: 'error', errorMessage: error };
+        if (result && (result.type === 'success' || result.type === 'requestToApproveDirectoryCreation' || result.type === 'error')) {
+            return result;
+        }
+        return { type: 'error', errorMessage: 'Unexpected import response' };
+    } catch (error) {
+        return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
+    }
+}
+
 export async function machineKillTerminal(machineId: string, terminalId: string, opts?: {
     /** B-283: also kill the user tmux session the terminal is attached to.
      *  Send only when `killAttachedSupported(daemonState)` — an old daemon

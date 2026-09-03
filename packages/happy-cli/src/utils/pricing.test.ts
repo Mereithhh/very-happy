@@ -27,8 +27,18 @@ describe('pricing.resolvePricingKey', () => {
         expect(resolvePricingKey('claude-3-7-sonnet-20250219')).toBe('claude-3-7-sonnet-20250219');
     });
 
+    it('prices the Mythos counterparts like Fable, not like Opus', () => {
+        expect(resolvePricingKey('claude-mythos-5-1')).toBe('claude-mythos-5-1');
+        expect(resolvePricingKey('claude-mythos-5')).toBe('claude-mythos-5');
+        expect(resolvePricingKey('mythos')).toBe('claude-mythos-5-1');
+        expect(PRICING['claude-mythos-5-1']).toEqual(PRICING['claude-fable-5-1']);
+        expect(PRICING['claude-mythos-5'].input).toBe(10.0);
+    });
+
     it('never falls back to a Claude 3 rate for an unknown modern id', () => {
         expect(resolvePricingKey('claude-fable-6')).toBe('claude-fable-5-1');
+        expect(resolvePricingKey('claude-fable-3')).toBe('claude-fable-5-1');
+        expect(resolvePricingKey('claude-mythos-6')).toBe('claude-mythos-5-1');
         expect(resolvePricingKey('claude-opus-6')).toBe('claude-opus-5');
         expect(resolvePricingKey(undefined)).toBe('claude-opus-5');
         expect(resolvePricingKey('something-else')).toBe('claude-opus-5');
