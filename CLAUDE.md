@@ -24,7 +24,7 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.105**（mac-office daemon 同版本；2026-09-03；含 B-292 模型活切 `setModel` + `LaunchModeGate` + `meta.effort` 补进 CLI `MessageMetaSchema`）；线上 Web = `main@d0785bd9`（2026-09-03 蓝绿；含 B-293 移动端 header 收纳）。**注意 main 已在其后合入 B-294 导入体验，尚未发布。**发布前先跑 `scripts/changelog/check-release.mjs`（B-285 门禁，CI 也拦）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
+- 最新 tag / npm `very-happy-cli` = **v0.2.107**（mac-office daemon 同版本；2026-09-03；含 B-297 认证诊断 `credentials-rejected` + Linux 诊断补齐、credentialStore shim 覆盖全部 spawn 路径、`~/.happy` 被复制检测）；线上 Web/server = `main@8d1d2e2b`（2026-09-03 蓝绿 blue→green，deploy run 33718815590；含 B-294 导入批量、B-295/B-296、B-297/B-298、B-299、B-300、B-301）。**v0.2.106 是 B-294 那一批**（tag 在 `2357adb7`）——这批的 CLI 改动因此走 0.2.107，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的 cliVersion 想当然。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
 - **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
   **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
   旧的 Sarasa 仍留在 `/regular,/bold` 作回滚）。**字体不进仓库**；重新发字体用 `wrangler pages deploy`
