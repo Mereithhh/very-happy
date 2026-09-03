@@ -28,6 +28,13 @@
   两个会话同日各取下一个字母就会选中同一个。2026-09-03 两个会话同时用了 `sep03f`：squash 合并保留了先合的一方，
   **后合的一方代码全在、release 条目却被静默吞掉**（deploy 的 changelog 门禁这才拦下来）。开条目前照 B-id 的做法
   `git fetch` 看 origin/main 上已用到哪个字母；发现被吞就补一个新 key 重发，不要去改对方的条目。
+- **npm 版本号也会被并行会话取走，而且取走之后无法挽回**：CLI 版本由 `v*` tag 决定，不看
+  `package.json`。写 changelog 条目时填的 `cliVersion` 是**预测**，在你 review 期间可能有别的会话
+  先把那个号发掉。2026-09-03：`sep03i` 写着 `cliVersion: '0.2.106'`，而 v0.2.106 已在 `2357adb7`
+  （B-294 那批）打好并发到 npm——那个版本里根本没有这批改动。**发版前一律先跑
+  `check-release.mjs --mode cli --version <目标版本>` 核对，别照 changelog 里已写好的 cliVersion
+  想当然**；它会告诉你上一个 tag 是谁、这段区间有哪些 user-facing 提交。tag 是不可变外部发布
+  （铁律 6），发错只能递增版本号重来。
 - **别人的 migration 会挡住你的纯 web 发布**：server/web 是同一个不可变镜像，只要 main 上任何人加了
   migration，`VH_RELEASE_MIGRATIONS_REVIEWED` 门禁就会拦下整次 deploy（在 `before-switch` 阶段失败并
   自动还原 active upstream，生产不受影响）。这个确认是 **commit-bound 的生产写入**，不属于「顺手放行」：

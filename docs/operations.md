@@ -85,6 +85,18 @@ The workflow has three explicit `rollout` phases:
    register every RPC before closing old. Old clients retain a compatibility
    grace, then use the existing reconnect + durable resync fallback.
 
+The public HTTP probe is **zero tolerance**: it curls `/health` every 200ms for
+the entire release window, and a *single* failed sample fails the whole release
+(`HTTP probe observed a release-window failure`, exit 5 in shadow). Rollback is
+automatic and traffic is never left on a half-switched state, so a failure here
+costs a retry, not an incident. It has fired on unrelated blips on 2026-09-01,
+09-02 and 09-03. Triage before retrying, because the probe cannot tell you which
+slot was serving: each run leaves `/opt/happy/release/http-probe.XXXXXX`, where a
+**non-empty file is the failure timestamp in epoch milliseconds**. Decode it and
+compare against the run log — a sample *before* the Caddy include write hit the
+old, unchanged slot and says nothing about the candidate (retry it); a sample
+*after* the switch is the candidate failing and must be investigated instead.
+
 Before starting candidate, the helper verifies the packaged Prisma schema
 matches the generated Client schema. Before drain, any failure stops only the
 candidate. After drain, rollback first cancels the old slot's drain state; if an
