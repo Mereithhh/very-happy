@@ -14,6 +14,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
 import { handleFilePreviewPush } from '@/sync/filePreviewPush';
+import { handleSessionStream } from '@/sync/liveStreamStore';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage, isSessionDeleted } from './storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -2371,6 +2372,12 @@ class Sync {
         // one handler per event name, so never reuse a name above.
         apiSocket.onMessage('file-preview-push', (data) => {
             void handleFilePreviewPush(this.encryption, data);
+        });
+        // B-309: token-level drafts for a running turn. Relayed, never stored;
+        // decrypt + fold live in liveStreamStore, deliberately outside the
+        // message pipeline (a draft must not re-render the transcript).
+        apiSocket.onMessage('session-stream', (data) => {
+            void handleSessionStream(this.encryption, data);
         });
         apiSocket.onMessage('session-message-committed', (data) => {
             void this.handleRelayCommittedMessages(data);

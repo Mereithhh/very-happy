@@ -74,6 +74,8 @@ export interface ClientToServerEvents {
   // `payload` is the clipboard text, encrypted with the session key when
   // `enc` is true. `truncated`/`totalBytes` describe producer-side capping.
   'clipboard-push': (data: { payload: string, enc?: boolean, truncated?: boolean, totalBytes?: number }) => void,
+  /** B-309: encrypted live stream frame; relayed, never stored. */
+  'session-stream': (data: { payload: string, enc?: boolean }) => void,
   // B-131 file preview push: session → server → all of the user's web clients.
   // `payload` is the file's ABSOLUTE PATH (not its contents), encrypted with the
   // session key when `enc` is true. The web client reads the file itself over the

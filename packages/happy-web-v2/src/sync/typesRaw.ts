@@ -199,6 +199,11 @@ const sessionEnvelopeSchema = z.object({
     claudeUuid: z.string().min(1).optional(),
     // Codex app-server item id for precise thread rollback points.
     codexItemId: z.string().min(1).optional(),
+    // B-309: identity of the live draft this envelope supersedes,
+    // `"<api message id>:<content block index>"`. Present only on Claude
+    // text/thinking envelopes from a CLI that streams; a missing key just
+    // means there is no draft to claim.
+    streamKey: z.string().min(1).optional(),
     // B-108: per-API-call token usage of the assistant line this envelope was
     // mapped from. Envelope-level so every ev type carries it uniformly —
     // this is what feeds the context meter under the session protocol.
@@ -625,6 +630,8 @@ export type NormalizedMessage = ({
      */
     claudeUuid?: string,
     codexItemId?: string,
+    /** B-309: the live draft this message replaces (see envelope schema). */
+    streamKey?: string,
 };
 
 function normalizeSessionEnvelope(
@@ -767,6 +774,7 @@ function normalizeSessionEnvelope(
                 meta,
                 claudeUuid: envelope.claudeUuid,
                 codexItemId: envelope.codexItemId,
+                streamKey: envelope.streamKey,
             } satisfies NormalizedMessage;
         }
 
@@ -793,6 +801,7 @@ function normalizeSessionEnvelope(
             usage: envelope.usage,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
+            streamKey: envelope.streamKey,
         } satisfies NormalizedMessage;
     }
 

@@ -23,6 +23,7 @@ export function CodeView({
     copyable = true,
     showLineNumbers = false,
     collapsible = true,
+    plain = false,
 }: {
     code: string;
     lang?: string | null;
@@ -30,6 +31,13 @@ export function CodeView({
     showLineNumbers?: boolean;
     /** File viewers (own scroll surface) disable transcript-style collapsing. */
     collapsible?: boolean;
+    /**
+     * B-309: skip syntax highlighting entirely. Set for a live streaming
+     * draft, whose `code` changes ~12 times a second — re-highlighting each
+     * revision burns the main thread to paint text that is about to be
+     * replaced by the persisted (and highlighted) message anyway.
+     */
+    plain?: boolean;
 }) {
     const { t } = useTranslation();
     const [html, setHtml] = useState<string | null>(null);
@@ -39,6 +47,7 @@ export function CodeView({
     useEffect(() => {
         let cancelled = false;
         setHtml(null);
+        if (plain) return;
         if (!normalizeLang(lang)) return;
         // Skip highlighting very large blobs to stay responsive.
         if (code.length > 100_000) return;
@@ -48,7 +57,7 @@ export function CodeView({
         return () => {
             cancelled = true;
         };
-    }, [code, lang]);
+    }, [code, lang, plain]);
 
     const lineCount = countLines(code);
     const canCollapse = collapsible && shouldCollapseCode(lineCount);

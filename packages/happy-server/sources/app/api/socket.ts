@@ -14,12 +14,13 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { terminalHandler } from "./socket/terminalHandler";
 import { clipboardHandler } from "./socket/clipboardHandler";
+import { sessionStreamHandler } from "./socket/sessionStreamHandler";
 import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
 import { recordClientVersion } from './socket/clientVersion';
-import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
+import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveSessionStreamRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
 import { resolveReleaseConfig } from '@/app/release/releaseConfig';
 import { ReleaseCoordinator } from '@/app/release/releaseCoordinator';
@@ -71,6 +72,9 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
     });
     const terminalRateLimiter = new AccountTerminalRateLimiter(resolveTerminalRelayLimit());
     const rpcRateLimiter = new AccountTerminalRateLimiter(resolveRpcRelayLimit());
+    // B-309: separate bucket — a burst of disposable drafts must not be able to
+    // drain the allowance that disconnects the user's terminal socket.
+    const sessionStreamRateLimiter = new AccountTerminalRateLimiter(resolveSessionStreamRelayLimit());
 
     const releaseConfig = resolveReleaseConfig();
     if (releaseConfig && !process.env.REDIS_URL) {
@@ -385,6 +389,7 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         accessKeyHandler(userId, socket, terminalRateLimiter);
         terminalHandler(userId, socket, io, connection, terminalRateLimiter);
         clipboardHandler(userId, socket, io, connection, terminalRateLimiter);
+        sessionStreamHandler(userId, socket, io, connection, sessionStreamRateLimiter);
         filePreviewHandler(userId, socket, io, connection, terminalRateLimiter);
 
         // Ready
