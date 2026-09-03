@@ -3,7 +3,7 @@
  * Rendered as mono chips below the final agent-text message of a turn.
  */
 import type { MessageUsage } from '@/sync/typesMessage';
-import { formatCost, formatDurationMs, formatTokens } from './format';
+import { formatCost, formatDurationMs, formatTokens, hasDisplayableCost } from './format';
 import './meta.css';
 
 export function MessageMetaRow({
@@ -19,7 +19,8 @@ export function MessageMetaRow({
 }) {
     const cache = (usage?.cacheCreation ?? 0) + (usage?.cacheRead ?? 0);
     const hasUsage = !!usage && (usage.inputTokens > 0 || usage.outputTokens > 0 || cache > 0);
-    if (!hasUsage && !model && costUsd == null && totalDurationMs == null) {
+    const showCost = hasDisplayableCost(costUsd);
+    if (!hasUsage && !model && !showCost && totalDurationMs == null) {
         return null;
     }
 
@@ -40,7 +41,7 @@ export function MessageMetaRow({
                     )}
                 </span>
             )}
-            {costUsd != null && <span className="meta-chip meta-chip--mono">{formatCost(costUsd)}</span>}
+            {showCost && <span className="meta-chip meta-chip--mono">{formatCost(costUsd)}</span>}
             {totalDurationMs != null && (
                 <span className="meta-chip meta-chip--mono">{formatDurationMs(totalDurationMs)}</span>
             )}
