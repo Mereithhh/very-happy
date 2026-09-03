@@ -662,8 +662,18 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          // Determine agent command. Unknown agents are rejected here exactly like
+          // the plain-spawn path below: silently falling back to claude would, with
+          // variant:'assistant', start a Claude carrying HAPPY_SESSION_VARIANT in the
+          // user's cwd (full in-process assistant tools, untracked) whenever a newer
+          // client names a backend this daemon does not know.
+          const agent: string = options.agent ?? 'claude';
+          if (agent !== 'claude' && agent !== 'codex' && agent !== 'gemini' && agent !== 'openclaw') {
+            return {
+              type: 'error',
+              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+            };
+          }
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);

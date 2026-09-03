@@ -225,4 +225,15 @@ describe('assistantSpawnMode', () => {
         // the env is the one thing both modes share, still keyed on the variant
         expect(run).toContain("if (options.variant === 'assistant') {\n          extraEnv.HAPPY_SESSION_VARIANT = 'assistant';")
     })
+
+    it('both spawn paths (tmux and plain) reject an unknown agent instead of falling back to claude', () => {
+        const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
+        // env-only mode is only safe if an unknown agent can never be silently run as claude:
+        // that combination would start a Claude with HAPPY_SESSION_VARIANT=assistant in the
+        // user's cwd, outside the singleton. One rejection per spawn path.
+        expect(run.match(/Unsupported agent type: '\$\{options\.agent\}'/g)).toHaveLength(2)
+        expect(run).toContain("if (agent !== 'claude' && agent !== 'codex' && agent !== 'gemini' && agent !== 'openclaw') {")
+        // no "anything else means claude" expression anywhere in the daemon
+        expect(run).not.toMatch(/: 'claude'[;)]/)
+    })
 })
