@@ -23,6 +23,26 @@ case "$LATEST_VERSION" in
     *) echo "invalid registry version: $LATEST_VERSION" >&2; exit 1 ;;
 esac
 
+# npm i -g can fail with EEXIST on the bin symlinks IT created itself: when
+# cleanup of the previous global tree fails first, the old links survive and
+# npm refuses to overwrite them. Observed on mac-office 2026-09-04 upgrading
+# 0.2.115 -> 0.2.116 — `ENOTEMPTY: rmdir .../very-happy-cli/tools` (the
+# tool-unpack postinstall writes files npm does not track), then EEXIST on
+# `very-happy`, twice in a row; removing the two links made the very same
+# command succeed. So clear them first: only links that resolve INTO our own
+# tree, so a same-named binary someone else owns is never touched. Idempotent —
+# npm recreates them, and a missing link is the normal first-install state.
+NPM_BIN_DIR="$(npm prefix -g)/bin"
+for b in very-happy very-happy-mcp; do
+    link="$NPM_BIN_DIR/$b"
+    [ -L "$link" ] || continue
+    target="$(readlink "$link")"
+    case "$target" in
+        *very-happy-cli/bin/*) echo "==> unlink $link (npm will relink it)"; rm -f "$link" ;;
+        *) echo "==> leaving $link alone (points at $target)" ;;
+    esac
+done
+
 echo "==> npm i -g very-happy-cli@$LATEST_VERSION"
 # npm 11 blocks previously unseen install scripts unless they are allowlisted.
 # These are the package's reviewed tool-unpack hook and node-pty's native
