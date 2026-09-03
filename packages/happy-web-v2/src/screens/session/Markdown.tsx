@@ -233,8 +233,10 @@ function renderEmphasis(text: string): React.ReactNode[] {
 interface PathLinkCtx { sessionId: string; allowlist: ReadonlySet<string> }
 const PathLinkContext = React.createContext<PathLinkCtx | null>(null);
 
-/** 在这棵子树里关掉路径链接（用于 markdown 链接的 label，见 finding 3）。 */
-function NoPathLinks({ children }: { children: React.ReactNode }) {
+/** 在这棵子树里关掉路径链接（用于 markdown 链接的 label，见 finding 3；
+ *  B-309 的流式草稿也用它——每帧对每个叶子跑一遍 `findPathHits` 纯属浪费，
+ *  1.5 秒后落地的持久化消息照样会把路径链上）。 */
+export function NoPathLinks({ children }: { children: React.ReactNode }) {
     return <PathLinkContext.Provider value={null}>{children}</PathLinkContext.Provider>;
 }
 
@@ -277,9 +279,11 @@ function renderBoldItalic(text: string): React.ReactNode[] {
     return nodes;
 }
 
-export function Markdown({ text, onOption }: {
+export function Markdown({ text, onOption, plainCode = false }: {
     text: string;
     onOption?: (option: string) => void;
+    /** B-309: render fenced code without highlighting (streaming drafts). */
+    plainCode?: boolean;
 }) {
     const blocks = React.useMemo(() => parseBlocks(text), [text]);
     const body = (
@@ -301,7 +305,7 @@ export function Markdown({ text, onOption }: {
                             </p>
                         );
                     case 'code':
-                        return <CodeView key={idx} code={b.code} lang={b.lang} />;
+                        return <CodeView key={idx} code={b.code} lang={b.lang} plain={plainCode} />;
                     case 'list':
                         return b.ordered ? (
                             <ol key={idx} className="md-ol">
@@ -388,9 +392,21 @@ export function Markdown({ text, onOption }: {
  */
 export function MarkdownPathProvider({ sessionId, children }: { sessionId: string; children: React.ReactNode }) {
     const { messages } = useSessionMessages(sessionId);
-    const value = React.useMemo(
-        () => ({ sessionId, allowlist: collectSessionFilePaths(messages) }),
-        [sessionId, messages],
-    );
+    // B-311: `messages` gets a new identity on every applyMessages, so the
+    // memo above rebuilt the context value on every incoming message even
+    // though the allowlist almost never changes — and a new context value
+    // re-renders EVERY TextLeaf/FilePathLink in the transcript. Keep the
+    // previous value whenever the set of paths is unchanged. (Writing the ref
+    // during render is safe here: the computation is pure and a double
+    // invocation produces the identical signature.)
+    const cache = React.useRef<{ signature: string; value: { sessionId: string; allowlist: Set<string> } } | null>(null);
+    const value = React.useMemo(() => {
+        const allowlist = collectSessionFilePaths(messages);
+        const signature = `${sessionId}\u0000${[...allowlist].sort().join('\n')}`;
+        if (cache.current?.signature === signature) return cache.current.value;
+        const next = { sessionId, allowlist };
+        cache.current = { signature, value: next };
+        return next;
+    }, [sessionId, messages]);
     return <PathLinkContext.Provider value={value}>{children}</PathLinkContext.Provider>;
 }

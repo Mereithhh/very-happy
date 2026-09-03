@@ -83,6 +83,19 @@ export const websocketEventsCounter = new Counter({
     registers: [register]
 });
 
+/**
+ * B-309: live session-stream frames, by what happened to them. Drafts are
+ * dropped rather than disconnecting the producer, so without a counter a
+ * throttled or disabled relay is completely invisible — the symptom on the
+ * client is just "streaming feels choppy" with nothing to check.
+ */
+export const sessionStreamFramesCounter = new Counter({
+    name: 'session_stream_frames_total',
+    help: 'Live session stream frames by outcome (relayed / dropped)',
+    labelNames: ['outcome'] as const,
+    registers: [register]
+});
+
 export const httpRequestsCounter = new Counter({
     name: 'http_requests_total',
     help: 'Total number of HTTP requests',

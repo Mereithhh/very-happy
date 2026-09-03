@@ -5,7 +5,7 @@ export type TerminalRelayLimit = {
     burstEvents: number;
 };
 
-export type RelayLimitResource = 'terminal-relay' | 'clipboard-relay' | 'file-preview-relay' | 'access-key-read';
+export type RelayLimitResource = 'terminal-relay' | 'clipboard-relay' | 'file-preview-relay' | 'access-key-read' | 'session-stream-relay';
 
 type RelaySocket = {
     emit: (event: string, data: unknown) => unknown;
@@ -60,6 +60,41 @@ export function resolveTerminalRelayLimit(env: NodeJS.ProcessEnv = process.env):
         burstEvents: nonNegativeInteger(
             env.TERMINAL_RELAY_BURST_EVENTS,
             eventsPerSecond === 0 ? 0 : Math.max(DEFAULT_LIMIT.burstEvents, eventsPerSecond),
+        ),
+    };
+}
+
+/**
+ * B-309: live session-stream drafts get their OWN bucket, deliberately not the
+ * shared interactive one.
+ *
+ * The shared bucket's overflow policy is to disconnect (see
+ * allowAccountRelay), and drafts are a steady ~17 events/s per running
+ * session — around a dozen concurrent sessions would drain the account
+ * allowance and take the user's TERMINAL socket down with it. Drafts are
+ * disposable; terminal input is not. Separate buckets keep a burst of the
+ * former from being able to touch the latter.
+ */
+const DEFAULT_SESSION_STREAM_LIMIT: TerminalRelayLimit = {
+    bytesPerSecond: 512 * 1024,
+    burstBytes: 2 * 1024 * 1024,
+    eventsPerSecond: 400,
+    burstEvents: 800,
+};
+
+export function resolveSessionStreamRelayLimit(env: NodeJS.ProcessEnv = process.env): TerminalRelayLimit {
+    const bytesPerSecond = nonNegativeInteger(env.SESSION_STREAM_RELAY_BYTES_PER_SECOND, DEFAULT_SESSION_STREAM_LIMIT.bytesPerSecond);
+    const eventsPerSecond = nonNegativeInteger(env.SESSION_STREAM_RELAY_EVENTS_PER_SECOND, DEFAULT_SESSION_STREAM_LIMIT.eventsPerSecond);
+    return {
+        bytesPerSecond,
+        eventsPerSecond,
+        burstBytes: nonNegativeInteger(
+            env.SESSION_STREAM_RELAY_BURST_BYTES,
+            bytesPerSecond === 0 ? 0 : Math.max(DEFAULT_SESSION_STREAM_LIMIT.burstBytes, bytesPerSecond),
+        ),
+        burstEvents: nonNegativeInteger(
+            env.SESSION_STREAM_RELAY_BURST_EVENTS,
+            eventsPerSecond === 0 ? 0 : Math.max(DEFAULT_SESSION_STREAM_LIMIT.burstEvents, eventsPerSecond),
         ),
     };
 }
@@ -152,6 +187,22 @@ export function relayPayloadBytes(payload: unknown): number {
     } catch {
         return Number.MAX_SAFE_INTEGER;
     }
+}
+
+/**
+ * Budget check for relay traffic that is DISPOSABLE (B-309 session stream
+ * drafts). Over-budget frames are dropped silently instead of disconnecting
+ * the producer: these frames are already best-effort (`volatile` on the CLI
+ * side, swept on turn end), so losing a few is invisible, while killing the
+ * socket would take the session's real message path down with it.
+ */
+export function allowDroppableRelay(options: {
+    limiter?: AccountTerminalRateLimiter;
+    accountId: string;
+    payload: unknown;
+}): boolean {
+    if (!options.limiter) return true;
+    return options.limiter.consume(options.accountId, relayPayloadBytes(options.payload));
 }
 
 export function allowAccountRelay(options: {

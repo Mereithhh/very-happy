@@ -36,3 +36,16 @@
     min-height: 40px;
   }
 }
+
+/* B-310: the cycling glyph stands in for the pulse dot while the model
+   thinks. `--accent` is correct here and only here — this IS the live signal
+   (see tokens.css: phosphor teal means live, never decoration). */
+.lsb-spark {
+  flex: none;
+  width: 1ch;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  line-height: 1;
+  text-align: center;
+}

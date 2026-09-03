@@ -16,6 +16,8 @@ import { ToolGroupView } from './ToolGroupView';
 import { MarkdownPathProvider } from './Markdown';
 import { PermissionCard } from './PermissionCard';
 import { SessionLiveStatusBar } from './SessionLiveStatusBar';
+import { LiveStreamView } from './LiveStreamView';
+import { endLiveStreamTurn } from '@/sync/liveStreamStore';
 import { TurnActivityView } from './TurnActivityView';
 import { buildChatRows } from './chatTurns';
 import {
@@ -254,6 +256,13 @@ export function ChatList({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, isLoaded]);
 
+    // B-309: a wrapper that dies mid-turn never sends `turn-end`, so liveness
+    // dropping is the other signal that drafts are done. Arms the same delayed
+    // sweep — not an immediate clear (see endLiveStreamTurn).
+    useEffect(() => {
+        if (!sessionLive) endLiveStreamTurn(sessionId);
+    }, [sessionLive, sessionId]);
+
     if (isLoaded && messages.length === 0) {
         return (
             <div className="cl cl--empty">
@@ -323,6 +332,12 @@ export function ChatList({
                             />
                         ),
                     )}
+                    {/* B-309: the draft of what is being generated right now,
+                        between the last persisted message and the status bar.
+                        Not a row: it has no id, no seq, no place in history —
+                        storage claims it away the instant the real message
+                        lands. */}
+                    <LiveStreamView sessionId={sessionId} />
                     {/* Keep a dedicated running pulse at the end of the transcript for
                         the whole turn. Activity rows can contain streamed assistant text
                         and tools, but they are content rather than a persistent liveness

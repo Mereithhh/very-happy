@@ -4,6 +4,7 @@ import {
     createEnvelope,
     type SessionEnvelope,
     type SessionTurnEndStatus,
+    streamKeyOf,
 } from '@slopus/happy-wire';
 import {
     capSubagentText,
@@ -35,6 +36,16 @@ export type ClaudeSessionProtocolState = {
     /** Sub-agents whose tool_result was the async stub — their stop comes from task_notification. */
     stubSubagents?: Set<string>;
     progressThrottle?: Map<string, ProgressThrottleState>;
+    /**
+     * B-309: how many content blocks of the CURRENT assistant message have
+     * already been mapped. The SDK splits one API message across several
+     * `assistant` frames — one block each, measured 2026-09-03 — so an
+     * envelope's position in `message.content` is NOT the block index the
+     * stream used. Two scalars rather than a map: frames for one message id
+     * arrive consecutively, and a map would grow for the life of the process.
+     */
+    streamBlockMessageId?: string;
+    streamBlockCursor?: number;
     /** Injectable clock for tests. */
     now?: () => number;
 };
@@ -689,15 +700,47 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         maybeEmitSubagentStart(state, turnId, subagent, envelopes);
         const usage = pickAssistantUsage(message);
         const blocks = Array.isArray(message.message?.content) ? message.message.content : [];
+        // B-309: the API message id plus the content block index identify the
+        // live draft this envelope supersedes.
+        //
+        // The index is NOT the position in this frame's `content` array. The
+        // SDK delivers one API message as several `assistant` frames carrying
+        // one block each (measured 2026-09-03: a thinking block and a tool_use
+        // block of the same `msg_…` id arrived as two frames, streamed as
+        // index 0 and 1). Using the array position would key every frame at 0,
+        // so the answer's draft would never be claimed and would sit
+        // duplicated under the real message until the sweep.
+        //
+        // So: carry a cursor across frames of the same message id, advancing
+        // by the full block count — blocks skipped below (empty text, tool_use)
+        // still consumed an index in the stream the web drafted from.
+        // Sidechain (sub-agent) messages are excluded on purpose. Their frames
+        // interleave with the main chain's in this one mapper state, so letting
+        // them touch the cursor would reset it mid-message and hand two frames
+        // the same key. They also have no draft to claim: sub-agent partials
+        // never reach the relay (claudeRemote filters on parent_tool_use_id).
+        const apiMessageId = !isSidechainMessage(message) && typeof message.message?.id === 'string' && message.message.id.length > 0
+            ? message.message.id
+            : undefined;
+        let blockCursor = 0;
+        if (apiMessageId) {
+            if (state.streamBlockMessageId !== apiMessageId) {
+                state.streamBlockMessageId = apiMessageId;
+                state.streamBlockCursor = 0;
+            }
+            blockCursor = state.streamBlockCursor ?? 0;
+            state.streamBlockCursor = blockCursor + blocks.length;
+        }
+        const draftKey = (index: number) => (apiMessageId ? streamKeyOf(apiMessageId, blockCursor + index) : undefined);
 
-        for (const block of blocks) {
+        for (const [blockIndex, block] of blocks.entries()) {
             if (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid, usage }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.text }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
                 continue;
             }
 
             if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking.trim().length > 0) {
-                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid, usage }));
+                envelopes.push(createEnvelope('agent', { t: 'text', text: block.thinking, thinking: true }, { turn: turnId, subagent, claudeUuid, usage, streamKey: draftKey(blockIndex) }));
                 continue;
             }
 

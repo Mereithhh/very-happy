@@ -16,7 +16,7 @@ import { ReleaseDrainNoticeSchema, type ReleaseDrainNotice } from '@slopus/happy
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
-import { RelayAssignmentResponseSchema, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
+import { RelayAssignmentResponseSchema, type SessionEnvelope, type SessionStreamFrame, type SessionTurnEndStatus } from '@slopus/happy-wire';
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -908,6 +908,35 @@ export class ApiSessionClient extends EventEmitter {
             thinking,
             mode
         });
+    }
+
+    /**
+     * B-309: push one live stream frame (thinking/text delta or progress) to
+     * this account's web clients.
+     *
+     * Encrypted with the SESSION key and relayed without being stored —
+     * clipboard-push's shape, for clipboard-push's reasons: the relay must not
+     * be able to read thinking text, and the session id is stamped by the
+     * server from the authenticated connection rather than trusted from here.
+     *
+     * `volatile` on purpose. A draft that misses the wire while disconnected
+     * is worth nothing — the persisted message is still coming, and replaying
+     * stale deltas after a reconnect would paint text that has already landed.
+     */
+    sendStreamFrame(frame: SessionStreamFrame) {
+        if (!this.socket.connected) return;
+        try {
+            this.socket.volatile.emit('session-stream', {
+                // The frame object, NOT a JSON string: `encrypt` serializes
+                // internally, so pre-stringifying would double-encode and
+                // escape every quote in the streamed text.
+                payload: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, frame)),
+                enc: true,
+            });
+        } catch (error) {
+            // A dropped draft is cosmetic; never let it surface into the turn.
+            logger.debug(`[API] Failed to relay stream frame: ${error}`);
+        }
     }
 
     /**

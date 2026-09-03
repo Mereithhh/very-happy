@@ -1,0 +1,37 @@
+/* B-309: live draft blocks. Visually identical to the persisted message they
+   become — a draft that looked different would make every turn flash a style
+   change at the exact moment the real message lands. */
+.ls {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A draft thinking block is always open (no disclosure control yet — there is
+   nothing to collapse to until the turn ends), so the head is a label, not a
+   button. */
+.ls-thinking-head {
+  cursor: default;
+}
+
+/* Terminal-style caret on the block still receiving text. */
+.ls-cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: vh-ls-caret 1.1s steps(1, end) infinite;
+}
+
+@keyframes vh-ls-caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ls-cursor {
+    animation: none;
+    opacity: 0.6;
+  }
+}

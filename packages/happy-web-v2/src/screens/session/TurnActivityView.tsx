@@ -1,6 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Message } from '@/sync/typesMessage';
+import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
 import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
@@ -15,7 +16,7 @@ function activityStart(messages: Message[]): number | null {
     return Math.min(...messages.map((message) => message.createdAt));
 }
 
-export function TurnActivityView({
+function TurnActivityViewImpl({
     messages,
     live,
     sessionId,
@@ -91,3 +92,12 @@ export function TurnActivityView({
         </section>
     );
 }
+
+/** B-311: see rowMemo — same rebuilt-array-of-stable-elements shape as
+ *  ToolGroupView. */
+export const TurnActivityView = memo(TurnActivityViewImpl, (prev, next) => (
+    sameItems(prev.messages, next.messages)
+    && prev.live === next.live
+    && prev.sessionId === next.sessionId
+    && prev.durationSeconds === next.durationSeconds
+));
