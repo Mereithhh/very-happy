@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-terminal-cell-width',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only. Entry written by the releasing agent — B-316 (#219) landed
+    // without one, and every user-facing change in a release needs coverage
+    // (AGENTS 「每次发布必须带 changelog」).
+    titleKey: 'changelog.releases.sep03v.title',
+    summaryKey: 'changelog.releases.sep03v.summary',
+    itemKeys: [
+      'changelog.releases.sep03v.width',
+    ],
+  },
+  {
     id: '2026-09-03-subagent-drawer',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
