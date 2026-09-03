@@ -56,7 +56,7 @@ import { shellescape } from '@/utils/shellescape';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** B-292: an imported session's title rides an env var into the wrapper, so it
+/** B-294: an imported session's title rides an env var into the wrapper, so it
  *  must be a single sane line — collapse whitespace, drop control characters,
  *  clamp the length. Returns null when nothing usable is left. */
 export function sanitizeImportTitle(value: unknown): string | null {

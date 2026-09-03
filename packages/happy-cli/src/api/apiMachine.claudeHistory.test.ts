@@ -141,7 +141,7 @@ describe('ApiMachineClient claude-import-session RPC (B-290)', () => {
         expect(await transcriptsInProject()).toHaveLength(2);
     });
 
-    it('stamps the source title on the imported session (B-292)', async () => {
+    it('stamps the source title on the imported session (B-294)', async () => {
         const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-1' });
         const handler = await clientWith(spawnSession);
 

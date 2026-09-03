@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-import-batch-and-titles',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.106',
+    titleKey: 'changelog.releases.sep03g.title',
+    summaryKey: 'changelog.releases.sep03g.summary',
+    itemKeys: [
+      'changelog.releases.sep03g.titles',
+      'changelog.releases.sep03g.batch',
+    ],
+  },
+  {
     id: '2026-09-03-model-switch-and-mobile-headers',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

@@ -1,5 +1,5 @@
 /**
- * ImportClaudeHistoryModal (B-290, batch + progress in B-292) — import Claude
+ * ImportClaudeHistoryModal (B-290, batch + progress in B-294) — import Claude
  * Code conversations that were never started through very-happy (claude CLI,
  * the Claude Code desktop app, claude.ai remote sessions, SDK runs).
  *

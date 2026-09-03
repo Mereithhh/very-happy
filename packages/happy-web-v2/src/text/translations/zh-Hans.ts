@@ -1614,6 +1614,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03g: {
+                title: '导入支持批量，并且带上标题',
+                summary: '导入进来的对话此前都叫「新会话」，而且一次只能导一条、等待时只有一行字。现在标题会跟着过来，可以一次选多条，每行都会报告自己在干什么。',
+                titles: '导入的对话会保留 Claude Code 记录的标题（没有就用首条提示），不再显示成「新会话」——Agent 自己的标题生成只在有新消息时触发，导入永远碰不到它。',
+                batch: '可以一次选中任意多条一起导入：行内显示排队中 / 导入中 / 已导入 / 失败(原因)，底部有进度计数，整个过程串行执行，批量再大也不会把机器打满。只导一条且成功时仍然直接跳进新对话。',
+            },
             sep03f: {
                 title: '切换模型这次是真的切了',
                 summary: '对话中途换模型可能被静默忽略，思考深度（effort）在 Claude 会话里更是从来没生效过。两个都修好了；切换改成对运行中的会话原地生效，不再重启 Claude Code。移动端会话 header 也不再把自己的按钮挤出屏幕。',

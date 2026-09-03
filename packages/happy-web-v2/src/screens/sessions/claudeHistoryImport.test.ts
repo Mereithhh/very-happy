@@ -80,7 +80,7 @@ describe('B-290 claudeHistoryImport', () => {
         expect(formatHistorySize(3.4 * 1024 * 1024)).toBe('3.4 MB');
     });
 
-    it('B-292 selection helpers: toggle, prune to what is visible, import in list order', () => {
+    it('B-294 selection helpers: toggle, prune to what is visible, import in list order', () => {
         expect(toggleImportSelection([], A)).toEqual([A]);
         expect(toggleImportSelection([A, B], A)).toEqual([B]);
 
@@ -94,7 +94,7 @@ describe('B-290 claudeHistoryImport', () => {
         expect(orderSelectionForImport([C], visible)).toEqual([]);
     });
 
-    it('B-292 summarizes a run and only offers a target session when exactly one imported', () => {
+    it('B-294 summarizes a run and only offers a target session when exactly one imported', () => {
         expect(summarizeImportRun(new Map())).toEqual({ total: 0, done: 0, failed: 0 });
         expect(summarizeImportRun(new Map([
             [A, { kind: 'done', sessionId: 's1' }],

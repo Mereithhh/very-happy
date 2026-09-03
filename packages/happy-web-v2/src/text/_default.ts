@@ -1034,7 +1034,7 @@ export const en = {
         skippedNoDirectory: 'directory was not created',
         imported: 'Conversation imported',
         failed: 'Import failed',
-        // B-292: select any number of conversations and import them in one run.
+        // B-294: select any number of conversations and import them in one run.
         importAction: ({ count }: { count: number }) => count <= 1 ? 'Import' : `Import ${count} conversations`,
         progress: ({ done, total }: { done: number; total: number }) => `${done}/${total}`,
         batchImported: ({ count }: { count: number }) => `${count} conversations imported`,
@@ -1644,6 +1644,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03g: {
+                title: 'Import several conversations at once, with their titles',
+                summary: 'Imported conversations arrived as "New chat" and could only be brought over one at a time, with nothing but a line of text while you waited. Now they keep their title, you can select as many as you want, and every row reports what it is doing.',
+                titles: 'An imported conversation keeps the title Claude Code recorded for it (or its first prompt) instead of showing as "New chat" — the agent\'s own title generator never ran for an import, because it only fires on a new message.',
+                batch: 'Select any number of conversations and import them in one run: rows show queued / importing / imported / failed with the reason, the footer counts progress, and the run is sequential so a big batch cannot flood the machine. A single clean import still jumps straight into the new chat.',
+            },
             sep03f: {
                 title: 'Switching model actually switches the model',
                 summary: 'Picking a different model mid-conversation could be silently ignored, and the thinking-depth picker never did anything at all on Claude sessions. Both are fixed, the switch now happens in place instead of restarting Claude Code, and the mobile session headers stopped hiding their own buttons.',

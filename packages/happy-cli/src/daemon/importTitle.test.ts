@@ -3,7 +3,7 @@ import { sanitizeImportTitle } from './run';
 
 const CONTROL = String.fromCharCode(27) + '[31m';
 
-describe('sanitizeImportTitle (B-292)', () => {
+describe('sanitizeImportTitle (B-294)', () => {
     it('collapses a transcript title into one env-safe line', () => {
         expect(sanitizeImportTitle('  Login bug\n investigation  ')).toBe('Login bug investigation');
         expect(sanitizeImportTitle('\u4fee\u590d\u767b\u5f55\t\u95ee\u9898')).toBe('\u4fee\u590d\u767b\u5f55 \u95ee\u9898');

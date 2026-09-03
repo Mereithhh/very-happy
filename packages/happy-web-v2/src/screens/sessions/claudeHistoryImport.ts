@@ -120,7 +120,7 @@ export function formatHistorySize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Per-row state of a batch import run (B-292). */
+/** Per-row state of a batch import run (B-294). */
 export type ImportRowState =
     | { kind: 'idle' }
     | { kind: 'queued' }
