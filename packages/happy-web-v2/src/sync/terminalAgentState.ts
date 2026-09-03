@@ -17,11 +17,26 @@
  *
  * Old daemons don't report `agentState`: those terminals simply never get an
  * entry, and every consumer treats `undefined` as "keep the current UI".
+ *
+ * B-324 —— 未读红点也归这里，理由和 needs_input 告警同一条：ingest 是终端状态
+ * **转换**的唯一观测点。判据是 `working` → `idle`/`shell`（一轮跑完了，或者
+ * claude 直接退了），要求：
+ *   ① 必须有 `before`——首次观测不算转换，否则重开页面会把每个空闲终端点亮；
+ *   ② 当前没在看这个终端（`viewingTerminalId`，由 WebTerminalRoute 挂载时登记）。
+ * `working` → `needs_input` **不**标未读：那一档由 attention（青色）表达，且
+ * rowSignalOf 里 attention 本来就压过 unread，重复标记只会在它转 idle 之后留下
+ * 一个已经被处理过的红点。
+ *
+ * 为什么不复用 storage.unreadSessionIds：两者由不同的 store、不同的信号标记，
+ * 也由不同的路由清除；而且**终端这一档刻意不看机器是否在线**——会话那半正是被
+ * 「离线就不画」拦掉的（B-312 的已知缺口），跑完了就是跑完了，机器后来掉线不该
+ * 让这个提醒消失。
  */
 import { create } from 'zustand';
 import { t } from '@/text';
 import type { MachineTerminal, TerminalAgentState } from '@/sync/ops';
 import { useTerminalSessions } from '@/sync/terminalSessions';
+import { loadUnreadTerminalIds, saveUnreadTerminalIds } from '@/sync/persistence';
 
 export interface TerminalAgentEntry {
   machineId: string;
@@ -37,8 +52,14 @@ export interface TerminalAgentEntry {
 interface TerminalAgentStates {
   /** terminalId → last known agent state (only terminals whose daemon reports it). */
   states: Record<string, TerminalAgentEntry>;
+  /** B-324: terminals whose agent finished a run while the user was elsewhere. */
+  unread: Set<string>;
+  /** The terminal the user currently has open, if any (WebTerminalRoute owns it). */
+  viewingTerminalId: string | null;
   /** Feed one machine's pushed terminal list (daemonState.webTerminals). */
   ingest(machineId: string, terminals: MachineTerminal[]): void;
+  setViewingTerminal(terminalId: string | null): void;
+  markTerminalRead(terminalId: string): void;
 }
 
 /** Prefix the tab title with "(!) " while some terminal needs input.
@@ -83,8 +104,20 @@ function notifyNeedsInput(terminalId: string, terminalTitle: string) {
 
 export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => ({
   states: {},
+  unread: new Set<string>(loadUnreadTerminalIds()),
+  viewingTerminalId: null,
+  setViewingTerminal: (terminalId) => set({ viewingTerminalId: terminalId }),
+  markTerminalRead: (terminalId) => set((state) => {
+    if (!state.unread.has(terminalId)) return state;
+    const unread = new Set(state.unread);
+    unread.delete(terminalId);
+    saveUnreadTerminalIds(unread);
+    return { unread };
+  }),
   ingest: (machineId, terminals) => {
     const prev = get().states;
+    const viewing = get().viewingTerminalId;
+    let unread = get().unread;
     const next: Record<string, TerminalAgentEntry> = {};
     let changed = false;
 
@@ -123,6 +156,18 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
         changed = true;
         // Alert only on a real transition INTO needs_input — not on the first
         // observation after load, so reopening the app doesn't replay alerts.
+        // B-324: a run that ended while the user was looking elsewhere.
+        if (
+          before &&
+          before.machineId === machineId &&
+          before.state === 'working' &&
+          (state === 'idle' || state === 'shell') &&
+          term.id !== viewing &&
+          !unread.has(term.id)
+        ) {
+          unread = new Set(unread);
+          unread.add(term.id);
+        }
         if (state === 'needs_input' && before && before.state !== 'needs_input') {
           const record = useTerminalSessions
             .getState()
@@ -135,7 +180,10 @@ export const useTerminalAgentStates = create<TerminalAgentStates>((set, get) => 
     }
 
     if (!changed && Object.keys(next).length !== Object.keys(prev).length) changed = true;
-    if (changed) set({ states: next });
+    // Mirror to MMKV only when the set actually grew — ingest runs on every
+    // daemon push and an unchanged set must not cost a write (B-312's rule).
+    if (unread !== get().unread) saveUnreadTerminalIds(unread);
+    if (changed || unread !== get().unread) set({ ...(changed ? { states: next } : {}), unread });
     // Re-assert every ingest (idempotent): navigation may have rewritten the title.
     const current = changed ? next : prev;
     applyTitleFlag(Object.values(current).some((e) => e.state === 'needs_input'));

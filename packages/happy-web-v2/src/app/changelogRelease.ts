@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-terminal-unread-dot',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: the daemon already reports the terminal's agent state.
+    titleKey: 'changelog.releases.sep03aa.title',
+    summaryKey: 'changelog.releases.sep03aa.summary',
+    itemKeys: [
+      'changelog.releases.sep03aa.dot',
+      'changelog.releases.sep03aa.rules',
+    ],
+  },
+  {
     id: '2026-09-03-liveness-lease',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

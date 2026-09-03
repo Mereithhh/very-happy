@@ -1683,6 +1683,12 @@ export const en = {
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
                 preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
             },
+            sep03aa: {
+                title: 'Terminals get the red dot too',
+                summary: 'A conversation that finished a turn while you were looking elsewhere already carried a red dot in the sidebar. A web terminal running Claude Code did not \u2014 only "waiting for your input" showed there, so a run that simply ended left no trace to come back to.',
+                dot: 'When the agent in a terminal stops running \u2014 a turn ends, or Claude exits back to the shell \u2014 that terminal\u2019s row gets the same red dot, cleared the moment you open it. It is remembered on this device, so a reload does not erase it.',
+                rules: 'Two things deliberately do not mark it: the terminal you are currently looking at, and the first status seen after a reload (otherwise every idle terminal would light up on load). A terminal waiting for your input keeps the teal marker, which still outranks the red one.',
+            },
             sep03x: {
           title: 'Stop now tells you when it did not work',
           summary: 'Pressing Stop and getting no response at all was the single most confusing failure in the app: every way it could fail looked identical — nothing happened, and nothing was said.',
