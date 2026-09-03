@@ -958,3 +958,25 @@ describe('runAcp', () => {
     expect(mocks.backendState.setModelCalls).toEqual([]);
   });
 });
+
+describe('extractConfigSelector (B-349)', () => {
+  it('does not mistake a categorised model option for the mode selector (pi-acp shape)', async () => {
+    const { extractConfigSelector } = await import('./runAcp');
+    const options = [
+      { id: 'model', category: 'model', name: 'Model', type: 'select', currentValue: 'a', options: [{ value: 'a', name: 'A' }] },
+      { id: 'thought_level', category: 'thought_level', name: 'Thinking', type: 'select', currentValue: 'low', options: [{ value: 'low', name: 'low' }] },
+    ] as any;
+    expect(extractConfigSelector(options, 'mode')).toBeNull();
+    expect(extractConfigSelector(options, 'model')?.configId).toBe('model');
+  });
+
+  it('still finds an uncategorised mode option by name, and never by "model"', async () => {
+    const { extractConfigSelector } = await import('./runAcp');
+    const options = [
+      { id: 'model', name: 'Model', type: 'select', currentValue: 'a', options: [{ value: 'a', name: 'A' }] },
+      { id: 'approval', name: 'Permission mode', type: 'select', currentValue: 'ask', options: [{ value: 'ask', name: 'ask' }] },
+    ] as any;
+    expect(extractConfigSelector(options, 'mode')?.configId).toBe('approval');
+    expect(extractConfigSelector(options, 'model')?.configId).toBe('model');
+  });
+});

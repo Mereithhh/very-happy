@@ -326,7 +326,7 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
   return flattened;
 }
 
-function extractConfigSelector(
+export function extractConfigSelector(
   configOptions: SessionConfigOption[],
   category: 'mode' | 'model',
 ): AcpConfigSelector | null {
@@ -334,13 +334,23 @@ function extractConfigSelector(
     if (option.category === category) {
       return true;
     }
+    // An option that declares a different category is never a fallback
+    // candidate: pi-acp's `model` option (category 'model') used to be taken
+    // for the *mode* selector because 'model'.includes('mode'), which routed
+    // every permission-mode switch of a pi session into the model picker and
+    // kept the session-modes file (the gate's live-switch channel) from ever
+    // being written (B-349).
+    if (option.category) {
+      return false;
+    }
     // Some ACP providers omit category; fallback to id/name heuristics.
     const id = normalizeComparable(option.id);
     const name = normalizeComparable(option.name);
     if (category === 'model') {
       return id.includes('model') || name.includes('model');
     }
-    return id.includes('mode') || id.includes('permission') || name.includes('mode') || name.includes('permission');
+    const mentionsMode = (value: string): boolean => value.includes('permission') || (value.includes('mode') && !value.includes('model'));
+    return mentionsMode(id) || mentionsMode(name);
   };
 
   for (const option of configOptions) {
