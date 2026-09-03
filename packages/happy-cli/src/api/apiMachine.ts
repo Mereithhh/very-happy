@@ -14,7 +14,8 @@ import { registerFsHandlers } from '../modules/fs/fsRpc';
 import { registerTodoHandlers } from '@/modules/todo/todoRpc';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
-import { backoff } from '@/utils/time';
+import { backoff, delay } from '@/utils/time';
+import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { WebTerminalManager, TerminalListItem } from '@/terminal/webTerminal';
 import { sendToVhTerminal } from '@/assistant/terminals';
@@ -94,7 +95,10 @@ interface DaemonToServerEvents {
         metadata: string; // Encrypted MachineMetadata
         expectedVersion: number
     }, cb: (answer: {
-        result: 'error'
+        // B-307: the server has always named account-resource refusals here
+        // (`<resource>_rate_quota_exceeded`); this side just never declared it.
+        result: 'error',
+        error?: string
     } | {
         result: 'version-mismatch'
         version: number,
@@ -110,7 +114,8 @@ interface DaemonToServerEvents {
         daemonState: string; // Encrypted DaemonState
         expectedVersion: number
     }, cb: (answer: {
-        result: 'error'
+        result: 'error',
+        error?: string   // B-307, as above
     } | {
         result: 'version-mismatch'
         version: number,
@@ -968,6 +973,7 @@ export class ApiMachineClient {
      * for example to set a custom name.
      */
     async updateMachineMetadata(handler: (metadata: MachineMetadata | null) => MachineMetadata): Promise<void> {
+        let rateRefusals = 0; // B-307
         await backoff(async () => {
             const updated = handler(this.machine.metadata);
 
@@ -980,6 +986,7 @@ export class ApiMachineClient {
             if (answer.result === 'success') {
                 this.machine.metadata = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(answer.metadata));
                 this.machine.metadataVersion = answer.version;
+                rateRefusals = 0;
                 logger.debug('[API MACHINE] Metadata updated successfully');
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.machine.metadataVersion) {
@@ -987,6 +994,21 @@ export class ApiMachineClient {
                     this.machine.metadata = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(answer.metadata));
                 }
                 throw new Error('Metadata version mismatch'); // Triggers retry
+            } else if (answer.result === 'error') {
+                // B-307: this branch did not exist — a refused machine write was
+                // silently dropped, so a rate-limited daemon simply stopped
+                // reporting. Retry, but on the bucket's timescale.
+                if (isRateQuotaCode(answer.error)) {
+                    rateRefusals += 1;
+                    await pauseForRateQuota({
+                        label: 'machine metadata',
+                        code: answer.error,
+                        attempt: rateRefusals,
+                        sleep: delay,
+                        log: (message) => logger.debug(message),
+                    });
+                }
+                throw new Error('Machine metadata update failed');
             }
         });
     }
@@ -996,6 +1018,7 @@ export class ApiMachineClient {
      * Simplified without lock - relies on backoff for retry
      */
     async updateDaemonState(handler: (state: DaemonState | null) => DaemonState): Promise<void> {
+        let rateRefusals = 0; // B-307
         await backoff(async () => {
             const updated = handler(this.machine.daemonState);
 
@@ -1008,6 +1031,7 @@ export class ApiMachineClient {
             if (answer.result === 'success') {
                 this.machine.daemonState = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(answer.daemonState));
                 this.machine.daemonStateVersion = answer.version;
+                rateRefusals = 0;
                 logger.debug('[API MACHINE] Daemon state updated successfully');
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.machine.daemonStateVersion) {
@@ -1015,6 +1039,19 @@ export class ApiMachineClient {
                     this.machine.daemonState = decrypt(this.machine.encryptionKey, this.machine.encryptionVariant, decodeBase64(answer.daemonState));
                 }
                 throw new Error('Daemon state version mismatch'); // Triggers retry
+            } else if (answer.result === 'error') {
+                // B-307, same as updateMachineMetadata above.
+                if (isRateQuotaCode(answer.error)) {
+                    rateRefusals += 1;
+                    await pauseForRateQuota({
+                        label: 'daemon state',
+                        code: answer.error,
+                        attempt: rateRefusals,
+                        sleep: delay,
+                        log: (message) => logger.debug(message),
+                    });
+                }
+                throw new Error('Daemon state update failed');
             }
         });
     }

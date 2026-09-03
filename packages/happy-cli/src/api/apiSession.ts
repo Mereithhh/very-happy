@@ -5,6 +5,7 @@ import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSch
 import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { prepareClipboardText } from '@/clipboard/limits';
 import { backoff, delay } from '@/utils/time';
+import { isRateQuotaCode, pauseForRateQuota } from './stateWriteRetry';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
@@ -1084,12 +1085,17 @@ export class ApiSessionClient extends EventEmitter {
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         this.metadataLock.inLock(async () => {
+            // B-307: consecutive RATE refusals for this one write. The enclosing
+            // backoff retries within a second and never gives up — correct for a
+            // dropped packet, an amplifier against an account-wide bucket.
+            let rateRefusals = 0;
             await backoff(async () => {
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
                 if (answer.result === 'success') {
                     this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
                     this.metadataVersion = answer.version;
+                    rateRefusals = 0;
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.metadataVersion) {
                         this.metadataVersion = answer.version;
@@ -1097,6 +1103,16 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {
+                    if (isRateQuotaCode(answer.error)) {
+                        rateRefusals += 1;
+                        await pauseForRateQuota({
+                            label: 'session metadata',
+                            code: answer.error,
+                            attempt: rateRefusals,
+                            sleep: delay,
+                            log: (message) => logger.debug(message),
+                        });
+                    }
                     throw new Error('Metadata update failed');
                 }
             });
@@ -1110,12 +1126,14 @@ export class ApiSessionClient extends EventEmitter {
     updateAgentState(handler: (metadata: AgentState) => AgentState) {
         logger.debugLargeJson('Updating agent state', this.agentState);
         this.agentStateLock.inLock(async () => {
+            let rateRefusals = 0; // B-307, same reasoning as updateMetadata
             await backoff(async () => {
                 let updated = handler(this.agentState || {});
                 const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
                 if (answer.result === 'success') {
                     this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
                     this.agentStateVersion = answer.version;
+                    rateRefusals = 0;
                     logger.debug('Agent state updated', this.agentState);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.agentStateVersion) {
@@ -1128,6 +1146,19 @@ export class ApiSessionClient extends EventEmitter {
                     // drop the newest state (notably permission requests).
                     // Throw so the enclosing backoff retries the same reducer
                     // against the last acknowledged version.
+                    // B-307: a RATE refusal is not transient on that timescale —
+                    // still retry (dropping a permission request is worse), but
+                    // on the bucket's own timescale, not the packet-loss one.
+                    if (isRateQuotaCode(answer.error)) {
+                        rateRefusals += 1;
+                        await pauseForRateQuota({
+                            label: 'session agent state',
+                            code: answer.error,
+                            attempt: rateRefusals,
+                            sleep: delay,
+                            log: (message) => logger.debug(message),
+                        });
+                    }
                     throw new Error('Agent state update failed');
                 }
             });

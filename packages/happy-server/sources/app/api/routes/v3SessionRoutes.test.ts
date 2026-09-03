@@ -2,6 +2,7 @@ import fastify from "fastify";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fastify } from "../types";
+import { applyFakeRateLimitBucket } from '@/app/api/testing/fakeRateLimitBucket';
 
 type SessionRecord = {
     id: string;
@@ -189,10 +190,7 @@ const {
 
     const rawQuery = vi.fn(async (sql: string, ...args: any[]) => {
         if (sql.includes('INSERT INTO "AuthRateLimitBucket"')) {
-            const key = String(args[0]);
-            const count = (state.rateCountByKey.get(key) ?? 0) + Number(args[3] ?? 1);
-            state.rateCountByKey.set(key, count);
-            return [{ count }];
+            return applyFakeRateLimitBucket(state.rateCountByKey, args);
         }
         if (sql.includes('FROM "Account"') && sql.includes('FOR UPDATE')) {
             return [{ id: String(args[0]) }];

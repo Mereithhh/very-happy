@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-rate-limit-self-lock',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // Ships in the same CLI release as the entry below it.
+    cliVersion: '0.2.112',
+    titleKey: 'changelog.releases.sep03r.title',
+    summaryKey: 'changelog.releases.sep03r.summary',
+    itemKeys: [
+      'changelog.releases.sep03r.refusal',
+      'changelog.releases.sep03r.backoff',
+    ],
+  },
+  {
     id: '2026-09-03-answers-arrive-as-they-are-written',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
