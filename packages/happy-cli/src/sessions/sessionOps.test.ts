@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
     mergeSessionSummaries,
+    sessionLiveness,
     orderAccountSessions,
     summarizeAccountSession,
     type AccountSessionRow,
@@ -109,6 +111,26 @@ describe('mergeSessionSummaries (B-304)', () => {
             meta: persisted({ variant: 'assistant' } as never),
         })
         expect(out[0].variant).toBe('assistant')
+    })
+})
+
+describe('sessionLiveness (sessions read shares the list merge)', () => {
+    it('a session the daemon lists is live with its pid', () => {
+        expect(sessionLiveness([{ happySessionId: 'a', pid: 7 }, { happySessionId: 'b' }], 'a')).toEqual({ live: true, pid: 7 })
+        expect(sessionLiveness([{ happySessionId: 'b' }], 'b')).toEqual({ live: true, pid: undefined })
+    })
+
+    it('a session the daemon does not list (or an unreachable daemon → []) is not live', () => {
+        expect(sessionLiveness([{ happySessionId: 'a', pid: 7 }], 'z')).toEqual({ live: false })
+        expect(sessionLiveness([], 'a')).toEqual({ live: false })
+    })
+
+    it('readSessionTranscript builds its summary from the daemon /list, not a hardcoded live:false', () => {
+        const source = readFileSync(new URL('./sessionOps.ts', import.meta.url), 'utf8')
+        const read = source.slice(source.indexOf('export async function readSessionTranscript'), source.indexOf('export async function stopSession'))
+        expect(read).toContain('await listDaemonSessions()')
+        expect(read).toContain('sessionLiveness(live, sessionId)')
+        expect(read).not.toContain('{ live: false }')
     })
 })
 

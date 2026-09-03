@@ -100,10 +100,7 @@ export function mergeSessionSummaries(
         const id = typeof child.happySessionId === 'string' ? child.happySessionId : undefined
         if (!id || seen.has(id)) continue
         seen.add(id)
-        summaries.push(toSummary(id, persisted[id], {
-            live: true,
-            pid: typeof child.pid === 'number' ? child.pid : undefined,
-        }))
+        summaries.push(toSummary(id, persisted[id], livenessOf(child)))
     }
 
     const rest = Object.entries(persisted)
@@ -118,6 +115,21 @@ export function mergeSessionSummaries(
     if (!options.tag) return summaries
     const wanted = options.tag
     return summaries.filter((summary) => summary.tags?.includes(wanted) === true)
+}
+
+function livenessOf(child: LiveSessionLike): { live: boolean; pid?: number } {
+    return { live: true, pid: typeof child.pid === 'number' ? child.pid : undefined }
+}
+
+/**
+ * The liveness part of one session's summary from the daemon's `/list`. The
+ * single source `sessions list` and `sessions read` share, so a poller that
+ * only calls `read` sees the same `live`/`pid` as `list` (an unreachable daemon
+ * lists nothing, so both degrade to `live: false` together).
+ */
+export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: string): { live: boolean; pid?: number } {
+    const child = live.find((entry) => entry.happySessionId === sessionId)
+    return child ? livenessOf(child) : { live: false }
 }
 
 function toSummary(
@@ -350,6 +362,8 @@ export async function readSessionTranscript(sessionId: string, limit: number): P
     // `before_seq` returns newest-first — flip to chronological order.
     messages.reverse()
     const key = decodeBase64(persisted.encryptionKey)
+    // Same daemon `/list` merge as `sessions list`; unreachable daemon → [] → live: false.
+    const live = await listDaemonSessions() as LiveSessionLike[]
     const bodies = messages.map((message) => {
         if (message.content?.t !== 'encrypted') return null
         try {
@@ -359,7 +373,7 @@ export async function readSessionTranscript(sessionId: string, limit: number): P
         }
     })
     return {
-        summary: toSummary(sessionId, persisted, { live: false }),
+        summary: toSummary(sessionId, persisted, sessionLiveness(live, sessionId)),
         messageCount: messages.length,
         transcript: formatTranscript(bodies),
     }
