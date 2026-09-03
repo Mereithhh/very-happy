@@ -166,7 +166,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'p', text: 'The first paint waits for the terminal font to load before measuring, so a new session renders its first output at the correct width instead of freezing a narrow copy into the scrollback.' },
       ] },
       { heading: 'Chinese, block art, and fonts', blocks: [
-        { type: 'list', items: ['The terminal uses a dual-width CJK font (Sarasa Fixed SC) loaded on demand, so Chinese and other ideographs occupy exactly two cells and never overlap.', 'The daemon forces a UTF-8 locale for tmux (C.UTF-8 on Linux, en_US.UTF-8 on macOS) so CJK is counted as width-2 even on minimal hosts started with LC_ALL=C.', 'Line height is 1.0 so the Claude Code startup logo and TUI frame borders tile seamlessly.'] },
+        { type: 'list', items: ['The terminal uses a dual-width CJK font (Maple Mono CN) loaded on demand, so Chinese and other ideographs occupy exactly two cells and never overlap. The first open shows a short "loading terminal font" hint while it downloads; later opens use the cached font.', 'The daemon forces a UTF-8 locale for tmux (C.UTF-8 on Linux, en_US.UTF-8 on macOS) so CJK is counted as width-2 even on minimal hosts started with LC_ALL=C.', 'Line height is 1.0 so the Claude Code startup logo and TUI frame borders tile seamlessly.'] },
       ] },
       { heading: 'Claude and files inside a terminal', blocks: [
         { type: 'p', text: 'With the optional very-happy install-terminal-hooks, a claude process started by hand inside a Web terminal is mirrored into a read-only structured conversation, and the header toggles between the native TUI and the transcript. SDK-backed chats do not need the hooks.' },
