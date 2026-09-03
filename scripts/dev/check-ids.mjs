@@ -70,11 +70,22 @@ function todayKeyPrefix(now = new Date()) {
     return `${MONTHS[now.getMonth()]}${String(now.getDate()).padStart(2, '0')}`;
 }
 
+const LETTERS = [...'abcdefghijklmnopqrstuvwxyz'];
+
+/** a…z, then aa…az, ba… — the single-letter series ran out on 2026-09-03
+ *  (26 releases in one day across parallel sessions) and this returned null,
+ *  which reads as "no key available" at exactly the wrong moment. */
+function* keySuffixes() {
+    yield* LETTERS;
+    for (const first of LETTERS) for (const second of LETTERS) yield first + second;
+}
+
 function nextKey(taken, prefix) {
     // The bare prefix is only offered when the day has NO entry yet: once
     // `sep03a` exists, `sep03` is unused but wrong — the series is lettered.
     const started = [...taken].some((k) => k.startsWith(prefix));
-    for (const suffix of started ? [...'abcdefghijklmnopqrstuvwxyz'] : ['']) {
+    if (!started) return prefix;
+    for (const suffix of keySuffixes()) {
         if (!taken.has(prefix + suffix)) return prefix + suffix;
     }
     return null;
