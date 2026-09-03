@@ -24,6 +24,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     itemKeys: [
       'changelog.releases.sep03ad.idle',
       'changelog.releases.sep03ad.safety',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-output-coalescing',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
