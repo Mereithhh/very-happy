@@ -54,10 +54,16 @@ describe('changelog releases', () => {
   });
 
   it('targets the newest companion CLI across the unseen releases', () => {
-    const releases = unseenChangelogReleases(CHANGELOG_RELEASES[4].id);
+    // Anchor on the newest release that actually shipped a companion CLI
+    // rather than a hardcoded index: adding a web-only release at the top used
+    // to break this test for a reason that has nothing to do with what it
+    // asserts (B-320 landed one and hit exactly that).
+    const newestCliIndex = CHANGELOG_RELEASES.findIndex((r) => r.cliVersion);
+    expect(newestCliIndex).toBeGreaterThanOrEqual(0);
+    const releases = unseenChangelogReleases(CHANGELOG_RELEASES[newestCliIndex + 1].id);
     // The newest release may be web-only (no cliVersion); the CLI target is the
     // newest release that actually shipped a companion CLI, not necessarily [0].
-    const newestCliVersion = CHANGELOG_RELEASES.find((r) => r.cliVersion)?.cliVersion;
+    const newestCliVersion = CHANGELOG_RELEASES[newestCliIndex].cliVersion;
     expect(changelogCliTarget(releases)?.cliVersion).toBe(newestCliVersion);
     expect(changelogCliTarget([
       { ...CURRENT_CHANGELOG, id: 'a', cliVersion: '0.2.10' },

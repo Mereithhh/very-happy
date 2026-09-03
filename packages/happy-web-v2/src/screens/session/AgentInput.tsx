@@ -63,7 +63,8 @@ import {
     SUPPORTED_IMAGE_MIME_TYPES,
 } from './useAttachments';
 import { Modal } from '@/modal';
-import { Spinner } from '@/ui';
+import { Spinner, useToast } from '@/ui';
+import { abortOutcomeForError, type AbortOutcome } from './abortOutcome';
 import { contextPercentOf, contextWindowFor } from './contextWindow';
 import { formatTokens } from './format';
 import { getAllCommands } from '@/sync/suggestionCommands';
@@ -89,6 +90,7 @@ const IS_COARSE_POINTER =
 
 export function AgentInput({ sessionId }: { sessionId: string }) {
     const { t } = useTranslation();
+    const toast = useToast();
     const session = useSession(sessionId);
     const usage = useSessionUsage(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
@@ -339,15 +341,17 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         releaseQueuedAttachments(item);
     };
 
-    const doAbort = async (): Promise<boolean> => {
-        if (aborting) return false;
+    const doAbort = async (): Promise<AbortOutcome> => {
+        if (aborting) return 'failed';
         setAborting(true);
         const started = Date.now();
         try {
             await sessionAbort(sessionId);
-            return true;
-        } catch {
-            return false;
+            return 'ok';
+        } catch (error) {
+            // B-320: never swallow. See ./abortOutcome.ts for why timeout and
+            // failure must be told apart before they reach the user.
+            return abortOutcomeForError(error);
         } finally {
             const elapsed = Date.now() - started;
             if (elapsed < 300) await new Promise((r) => setTimeout(r, 300 - elapsed));
@@ -845,7 +849,15 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                             <button
                                 type="button"
                                 className="ci-send ci-send--abort"
-                                onClick={() => void doAbort()}
+                                onClick={() => {
+                                    // B-320: the outcome MUST be consumed here.
+                                    // This used to be `void doAbort()`, so every
+                                    // failed stop was invisible.
+                                    void doAbort().then((outcome) => {
+                                        if (outcome === 'timeout') toast.error(t('session.chat.stopStillSettling'));
+                                        else if (outcome === 'failed') toast.error(t('session.chat.stopFailed'));
+                                    });
+                                }}
                                 disabled={aborting}
                                 aria-busy={aborting}
                                 aria-label={t('session.chat.stop')}

@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-stop-feedback',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: 版本无关，对存量 wrapper 立即生效（B-320）
+    titleKey: 'changelog.releases.sep03x.title',
+    summaryKey: 'changelog.releases.sep03x.summary',
+    itemKeys: [
+      'changelog.releases.sep03x.stop',
+      'changelog.releases.sep03x.rpc',
+    ],
+  },
+  {
     id: '2026-09-03-update-prompt',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

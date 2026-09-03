@@ -537,6 +537,8 @@ export const zhHans: TranslationStructure = {
             send: '发送',
             queueSend: '排队发送',
             stop: '停止',
+            stopFailed: '没能停下这一轮。会话可能已经不在运行了——刷新页面，或重启会话。',
+            stopStillSettling: '停止请求已发出，这一轮还在收尾。',
             sending: '发送中…',
             stopping: '停止中…',
             queueTitle: '已排队',
@@ -1638,7 +1640,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
-            sep03w: {
+            sep03x: {
+          title: '停止失败时会告诉你了',
+          summary: '点了停止却毫无反应，是这个应用里最让人困惑的一种失败：所有可能的失败方式看起来一模一样——什么都没发生，也什么都没说。',
+          stop: '停不下来会明说；只是收尾慢，也会说清楚是在收尾。这两件事以前分不开，于是一个真的正在停下的会话，可能在 transcript 出现「已由你停止」的几秒之前，先被报成失败。',
+          rpc: '同样的沉默还影响别的会话操作。批准或拒绝权限请求、插话、切换权限模式、取消排队消息，都可能一声不吭地失败——其中被吞掉的「拒绝」最危险，它看起来已经答复了，实际请求还挂着。',
+        },
+        sep03w: {
                 title: '更新前会先问你一句',
                 summary: '此前只要有新版本，页面就会自己重新加载。快是快、也安全，但页面毫无预兆地消失再回来，看着就像出了 bug——所以现在改成先征求你同意。',
                 prompt: '有新版本时会出现一个小小的「刷新」提示，而不是直接在你眼皮底下重载。不理它也没关系：等你切走这个标签页时它会自己完成更新，所以不会长期停在旧版本上。',

@@ -530,6 +530,8 @@ export const en = {
             send: 'Send',
             queueSend: 'Queue message',
             stop: 'Stop',
+            stopFailed: 'Could not stop this turn. The session may not be running any more — reload, or restart the session.',
+            stopStillSettling: 'Stop request sent; the turn is still winding down.',
             sending: 'Sending…',
             stopping: 'Stopping…',
             queueTitle: 'Queued',
@@ -1670,7 +1672,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
-            sep03w: {
+            sep03x: {
+          title: 'Stop now tells you when it did not work',
+          summary: 'Pressing Stop and getting no response at all was the single most confusing failure in the app: every way it could fail looked identical — nothing happened, and nothing was said.',
+          stop: 'A stop that fails now says so, and a stop that is merely slow to unwind says that instead. Those two used to be indistinguishable, which meant a turn that really was stopping could be reported as a failure seconds before the transcript said it had stopped.',
+          rpc: 'The same silence affected other session actions. Approving or denying a permission request, steering a turn, changing the permission mode, and cancelling a queued message could all fail without a word — a swallowed denial was the worst of them, since it left the request outstanding while looking answered.',
+        },
+        sep03w: {
                 title: 'Updates ask before they refresh the page',
                 summary: 'The app used to reload itself the moment a new version was available. It was quick and it was safe, but having the page vanish and come back with no warning reads as a bug — so now it offers.',
                 prompt: 'A new version shows a small "Refresh" offer instead of reloading underneath you. Ignoring it is fine: it applies itself the next time you switch away from the tab, so nothing stays out of date for long.',
