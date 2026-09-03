@@ -213,7 +213,10 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   daemon machine needs both `pi` and `pi-acp` on the daemon's PATH
   (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`). The daemon
   reports that as `cliAvailability.pi`; the Web launcher offers pi only when a
-  daemon reports the field, and enables it only when it is `true`. Note that
+  daemon reports the field, and enables it only when it is `true`, and the
+  daemon's `/spawn-session` refuses `agent: 'pi'` while it is `false` — `spawn
+  --agent pi` then exits 1 with the install hint instead of starting a wrapper
+  that dies on `spawn pi-acp ENOENT` (invisible from the daemon). Note that
   `--permission-mode` is a Claude/Codex vocabulary: the pi runner accepts and
   drops it. pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and

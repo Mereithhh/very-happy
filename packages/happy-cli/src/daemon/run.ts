@@ -40,7 +40,8 @@ import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTm
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { daemonEndpointsMatch, resolveClaudeCredentialReadiness } from '@/ui/doctorReadiness';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
-import { detectCLIAvailability } from '@/utils/detectCLI';
+import { spawnAgentUnavailableError } from '@/daemon/spawnAgentAvailability';
+import { detectCLIAvailability, type CLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
@@ -77,6 +78,7 @@ export function sanitizeImportTitle(value: unknown): string | null {
 // is visually distinct from the stable one in the machine list (they otherwise
 // share the same hostname and look identical).
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
+const startupCliAvailability = detectCLIAvailability();
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
@@ -84,7 +86,7 @@ export const initialMachineMetadata: MachineMetadata = {
   homeDir: os.homedir(),
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
-  cliAvailability: detectCLIAvailability(),
+  cliAvailability: startupCliAvailability,
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
@@ -402,6 +404,11 @@ export async function startDaemon(): Promise<void> {
         : assistantSpawnGate.join(() => spawnSessionImpl(options));
     };
 
+    // The same availability the machine metadata advertises: keep-alive
+    // re-probes once connected, startup probe before that.
+    const currentCliAvailability = (): CLIAvailability =>
+      apiMachineRef?.getCLIAvailability() ?? startupCliAvailability;
+
     const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', summarizeSpawnSessionForLog(options));
 
@@ -413,6 +420,15 @@ export async function startDaemon(): Promise<void> {
       const spawnPermissionMode = sanitizeSpawnPermissionMode(options.permissionMode);
       if (options.permissionMode !== undefined && spawnPermissionMode === null) {
         logger.warn('[DAEMON RUN] Ignoring invalid permissionMode in spawn request');
+      }
+
+      // Fail fast (before any tmux/plain spawn) when this machine cannot run
+      // the requested agent — the wrapper's own ENOENT hint is invisible from
+      // here (stdio 'ignore'). See spawnAgentAvailability.ts.
+      const unavailable = spawnAgentUnavailableError(options.agent, currentCliAvailability());
+      if (unavailable) {
+        logger.warn(`[DAEMON RUN] Refusing spawn of agent '${options.agent}': ${unavailable.errorMessage}`);
+        return unavailable;
       }
 
       // ── B-051 assistant variant ────────────────────────────────────────────

@@ -228,6 +228,15 @@ export class ApiMachineClient {
     });
 
     /**
+     * The CLI availability last advertised in machine metadata (re-probed by
+     * the keep-alive). Null until the first keep-alive tick; the daemon falls
+     * back to its startup probe then.
+     */
+    getCLIAvailability(): CLIAvailability | null {
+        return this.lastKnownCLIAvailability;
+    }
+
+    /**
      * Push text to the clipboard of every web client the user has open
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
      * Encrypted with the per-machine key; the server relays without reading.

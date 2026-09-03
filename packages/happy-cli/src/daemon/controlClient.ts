@@ -48,7 +48,12 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
     });
     
     if (!response.ok) {
-      const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
+      // The daemon puts the reason in `error` (e.g. /spawn-session 500 with the
+      // pi-acp install hint); surface it instead of only the status code so the
+      // CLI can show the user what to do.
+      const failure = await response.json().catch(() => null) as { error?: unknown } | null;
+      const reason = typeof failure?.error === 'string' && failure.error ? failure.error : `HTTP ${response.status}`;
+      const errorMessage = `Request failed: ${path}, ${reason}`;
       logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
       return {
         error: errorMessage
