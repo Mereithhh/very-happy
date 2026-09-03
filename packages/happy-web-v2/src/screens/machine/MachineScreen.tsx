@@ -421,7 +421,12 @@ export function MachineScreen() {
               title={t('machine.cliAvailability')}
               footer={`${t('machine.lastDetected')}: ${new Date(cli.detectedAt).toLocaleString()}`}
             >
-              {(['claude', 'codex', 'gemini', 'openclaw'] as const).map((tool) => (
+              {([
+                'claude', 'codex', 'gemini', 'openclaw',
+                // Only daemons with the pi runner report this field; older ones
+                // cannot spawn pi, so showing "not found" there would mislead.
+                ...(cli.pi !== undefined ? ['pi' as const] : []),
+              ] as const).map((tool) => (
                 <Item
                   key={tool}
                   title={tool}

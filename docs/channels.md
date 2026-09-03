@@ -199,7 +199,18 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   approve). The CLI rejects an unknown mode instead of passing it on, because
   the daemon's own behaviour for an invalid mode is to drop it and spawn
   without the flag — silently giving you `default` again.
-- `--agent <name>` — `claude` (default), `codex`, `gemini` or `openclaw`.
+- `--agent <name>` — `claude` (default), `codex`, `gemini`, `openclaw` or
+  `pi`. `pi` runs through the [pi-acp](https://www.npmjs.com/package/pi-acp)
+  adapter (`very-happy pi` = the generic ACP runner with `pi-acp`), so the
+  daemon machine needs both `pi` and `pi-acp` on the daemon's PATH
+  (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`). The daemon
+  reports that as `cliAvailability.pi`; the Web launcher offers pi only when a
+  daemon reports the field, and enables it only when it is `true`. Note that
+  `--permission-mode` is a Claude/Codex vocabulary: the pi runner accepts and
+  drops it. pi's approvals surface as ACP `request_permission` cards in the
+  Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
+  `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
+  at a wrapper that loads such extensions.
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a
