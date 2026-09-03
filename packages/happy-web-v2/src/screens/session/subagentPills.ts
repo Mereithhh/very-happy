@@ -11,6 +11,7 @@
  * 药丸照旧渲染。
  */
 import type { Message } from '@/sync/typesMessage';
+import { presentedSubagentStatus, userAbortedAt } from './subagentAbort';
 
 export function collectSubagentCardIds(messages: Message[]): Set<string> {
     const ids = new Set<string>();
@@ -41,11 +42,17 @@ export function countSubagentCards(messages: Message[]): number {
     return count;
 }
 
-/** B-260-P2: sub-agent cards whose CLI-published lifecycle is still running. */
+/**
+ * B-260-P2: sub-agent cards whose CLI-published lifecycle is still running.
+ * B-317: a card the user aborted is not running, whatever its last lifecycle
+ * event said — see subagentAbort.ts for why the transcript keeps lying here.
+ */
 export function countRunningSubagentCards(messages: Message[]): number {
+    const abortedAt = userAbortedAt(messages);
     let count = 0;
     for (const message of messages) {
-        if (message.kind === 'tool-call' && message.subagent?.status === 'running') count++;
+        if (message.kind !== 'tool-call') continue;
+        if (presentedSubagentStatus(message, abortedAt) === 'running') count++;
     }
     return count;
 }

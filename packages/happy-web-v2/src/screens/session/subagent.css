@@ -1,0 +1,195 @@
+/* Sub-agent drawer + shared detail body (B-317).
+   Token discipline: no raw colours. `--accent` stays reserved for LIVE, so it
+   appears here only on a genuinely running sub-agent; every other status is a
+   text step, `--warn` (stopped by the user) or `--danger` (failed). */
+
+/* ── the aside tenant ─────────────────────────────────────────────────── */
+.sap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+}
+.sap-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  padding-top: max(var(--sp-2), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+}
+.sap-head-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+.sap-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+.sap-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+}
+.sap-icon:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.sap-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-3);
+}
+
+/* ── shared detail body ───────────────────────────────────────────────── */
+.sa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.sa-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  min-width: 0;
+}
+.sa-facts {
+  color: var(--text-dim);
+  /* The facts are one string; without these it overflows the drawer instead of
+     wrapping (measured at 1400px AND 390px). */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sa-status {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+}
+.sa-status--running { color: var(--accent); }
+.sa-status--failed { color: var(--danger); }
+.sa-status--stopped { color: var(--warn); }
+
+.sa-section-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+  margin-bottom: var(--sp-1);
+}
+
+.sa-fold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.sa-fold-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}
+.sa-fold-head:hover { color: var(--text-dim); }
+
+.sa-prompt {
+  position: relative;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  max-height: 320px;
+  overflow: auto;
+}
+.sa-prompt-text {
+  margin: 0;
+  padding: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  line-height: 1.55;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sa-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--text-dim);
+  min-width: 0;
+}
+.sa-log-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Same zero-intrinsic-width trick as .tg-subagent-line: a nowrap one-liner
+     must not widen the drawer on a 390px viewport. */
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+.sa-log-line--error { color: var(--danger); }
+
+.sa-result {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-2);
+  min-width: 0;
+}
+.sa-empty {
+  color: var(--text-faint);
+  font-size: var(--fs-12);
+}
+
+/* ── the transcript pointer row ───────────────────────────────────────── */
+/* One line, always. Clicking anywhere on it opens the drawer; the row itself
+   never expands, which is the whole point of B-317. */
+.tg-subagent-open {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  padding: 2px 4px 2px 0;
+  border-radius: var(--r-sm);
+}
+.tg-subagent-open:hover {
+  background: var(--bg-2);
+}
+.tg-subagent-open .tg-tool-label {
+  flex: none;
+}
+.tg-subagent-open-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.tg-subagent-open-cue {
+  flex: none;
+  color: var(--text-faint);
+}

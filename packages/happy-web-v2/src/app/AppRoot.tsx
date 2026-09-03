@@ -158,6 +158,9 @@ const MobileChatHarness = import.meta.env.DEV
 const ChangelogHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/ChangelogHarness').then((m) => ({ default: m.ChangelogHarness })))
   : null;
+const SubagentHarness = import.meta.env.DEV
+  ? lazy(() => import('@/dev/SubagentHarness').then((m) => ({ default: m.SubagentHarness })))
+  : null;
 const TerminalKeyboardHarness = import.meta.env.DEV
   ? lazy(() => import('@/dev/TerminalKeyboardHarness').then((m) => ({ default: m.TerminalKeyboardHarness })))
   : null;
@@ -183,6 +186,9 @@ const router = createBrowserRouter(
           { path: '/dev/changelog', element: <Lazy><ChangelogHarness /></Lazy> },
           { path: '/dev/changelog-history', element: <Lazy><ChangelogScreen /></Lazy> },
         ]
+      : []),
+    ...(SubagentHarness
+      ? [{ path: '/dev/subagent/:id', element: <Lazy><SubagentHarness /></Lazy> }]
       : []),
     ...(TerminalKeyboardHarness
       ? [{ path: '/dev/terminal-keyboard', element: <Lazy><TerminalKeyboardHarness /></Lazy> }]

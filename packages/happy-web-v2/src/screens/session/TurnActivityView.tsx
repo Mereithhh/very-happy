@@ -7,6 +7,7 @@ import { MessageView } from './MessageView';
 import { ToolGroupView } from './ToolGroupView';
 import { activityDurationSeconds, buildLeafRows } from './chatTurns';
 import { countRunningSubagentCards, countSubagentCards } from './subagentPills';
+import { userAbortedAt } from './subagentAbort';
 import { StatusDot } from '@/ui';
 import { useElapsedSeconds } from './useElapsed';
 import './turnactivity.css';
@@ -46,6 +47,9 @@ function TurnActivityViewImpl({
     // B-260: a folded turn should still say how many sub-agents ran inside it.
     const subagentCount = useMemo(() => countSubagentCards(messages), [messages]);
     const runningSubagents = useMemo(() => countRunningSubagentCards(messages), [messages]);
+    // B-317: a user abort inside this turn ends its sub-agents, whatever their
+    // last lifecycle event said (subagentAbort.ts).
+    const abortedAt = useMemo(() => userAbortedAt(messages), [messages]);
 
     const elapsed = useElapsedSeconds(live ? activityStart(messages) : null);
     const duration = live ? elapsed : durationSeconds ?? activityDurationSeconds(messages);
@@ -76,7 +80,7 @@ function TurnActivityViewImpl({
                 <div id={detailId} className="ta-detail vh-disclosure-panel">
                     {rows.map((row) =>
                         row.type === 'toolgroup' ? (
-                            <ToolGroupView key={row.key} tools={row.tools} collapseCompleted stalled={!live} />
+                            <ToolGroupView key={row.key} tools={row.tools} collapseCompleted stalled={!live} abortedAt={abortedAt} />
                         ) : (
                             <MessageView
                                 key={row.key}

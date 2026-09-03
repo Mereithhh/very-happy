@@ -27,9 +27,19 @@ describe('app visual language', () => {
         ['sub-agent type badge', css('../screens/session/toolview.css'), '.tv-badge'],
         ['sub-agent process line', css('../screens/session/toolgroup.css'), '.tg-subagent-line'],
         ['turn sub-agent chip', css('../screens/session/turnactivity.css'), '.ta-subagents'],
+        ['sub-agent pointer row', css('../screens/session/subagent.css'), '.tg-subagent-open'],
+        ['sub-agent status label', css('../screens/session/subagent.css'), '.sa-status'],
     ])('%s stays neutral — accent is reserved for live states', (_name, source, selector) => {
         const declarations = rule(source, selector);
         expect(declarations).not.toContain('var(--accent');
+    });
+
+    it('the one sub-agent status that may wear the accent is a running one (B-317)', () => {
+        const source = css('../screens/session/subagent.css');
+        expect(rule(source, '.sa-status--running')).toContain('var(--accent)');
+        // Stopped is a user decision, not a fault: --warn, never --danger.
+        expect(rule(source, '.sa-status--stopped')).toContain('var(--warn)');
+        expect(rule(source, '.sa-status--failed')).toContain('var(--danger)');
     });
 
     it.each([
