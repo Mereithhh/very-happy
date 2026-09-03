@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-import-hides-owned-conversations',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.104',
+    titleKey: 'changelog.releases.sep03e.title',
+    summaryKey: 'changelog.releases.sep03e.summary',
+    itemKeys: [
+      'changelog.releases.sep03e.tracked',
+    ],
+  },
+  {
     id: '2026-09-03-fable-51-claude-history-import',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

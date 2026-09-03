@@ -37,6 +37,31 @@ describe('ApiMachineClient claude-list-history RPC (B-290)', () => {
         await rm(configDir, { recursive: true, force: true });
     });
 
+    it('also excludes conversations the daemon itself already drives (B-291)', async () => {
+        // sessions.json is the daemon's own record; the web cannot see all of it
+        // (mirror sessions are hidden from its store), so the RPC must exclude it.
+        const happyHome = join(configDir, 'happy-home');
+        await mkdir(happyHome, { recursive: true });
+        await writeFile(join(happyHome, 'sessions.json'), JSON.stringify({
+            sessions: {
+                'happy-1': { savedAt: 0, metadata: { claudeSessionId: id.toUpperCase() } },
+                'happy-2': { savedAt: 0, metadata: { importedFromClaudeSessionId: other } },
+                'happy-3': { savedAt: 0, metadata: {} },
+            },
+        }));
+        process.env.HAPPY_HOME_DIR = happyHome;
+        vi.resetModules();
+
+        const { ApiMachineClient } = await import('./apiMachine');
+        const client = new ApiMachineClient('token', machineClient());
+        client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn() });
+        const handler = handlersFrom(client).get('machine-1:claude-list-history')!;
+
+        // Both transcripts are on disk and the web sends no exclusions at all.
+        const result = await handler({});
+        expect(result.entries).toEqual([]);
+    });
+
     it('lists transcripts machine-wide, honours exclude and limit, and validates directory', async () => {
         const { ApiMachineClient } = await import('./apiMachine');
         const client = new ApiMachineClient('token', machineClient());
