@@ -347,7 +347,12 @@ With the variable the server registers `copy_to_clipboard` plus
 `session_kill` and `session_archive` — the same implementations, same
 this-machine scope and same "dispatch returns immediately" semantics as the
 Claude assistant's tools (`session_spawn` starts Claude workers via the local
-daemon). Without it — a plain pi you started in a terminal, any ordinary
+daemon). Two consequences of "same implementations" are worth knowing:
+workers spawned this way carry the `assistant` origin tag, and the daemon
+routes their completion reports to the machine's *Claude* assistant singleton
+(if one is live) rather than back to the pi meta agent — a pi meta agent has
+to poll `sessions_list` / `session_read` for the outcome. Without it — a
+plain pi you started in a terminal, any ordinary
 session — the same registration yields clipboard only, so registering it
 user-wide is safe: a session only gains machine-control tools when it was
 deliberately started as a meta agent. Permission approval (`session_approve` /
@@ -358,9 +363,15 @@ A Claude session never takes this path: `HAPPY_MANAGED=1` on every
 happy-managed `claude` keeps the standalone server clipboard-only there, since
 the in-process assistant tools already cover it.
 
-Setting `HAPPY_SESSION_VARIANT=assistant` by hand (e.g. in that MCP entry's
-`env`) opts a manually started agent into the same tools; that is the same
-high-privilege surface as the Web Assistant, so do it knowingly.
+The variable is inherited down the process tree. Anything a meta agent starts
+from its own shell (a nested `pi`, a hand-typed `claude`, a script) sees
+`HAPPY_SESSION_VARIANT=assistant` too and, if it loads the same user-wide
+registration and is not a happy-managed Claude, gets the session tools as
+well. Treat a meta-agent session's subprocesses as part of the same
+high-privilege surface. Setting `HAPPY_SESSION_VARIANT=assistant` by hand
+(e.g. in that MCP entry's `env`) opts a manually started agent into the same
+tools deliberately; that is the same high-privilege surface as the Web
+Assistant, so do it knowingly.
 
 ---
 
