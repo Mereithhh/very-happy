@@ -36,7 +36,7 @@ import {
   type FocusOwnershipWatchdog,
 } from './termFocusOwnership';
 import { installTermDiag } from './termDiag';
-import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS } from './termFont';
+import { awaitTerminalFont, FONT_WAIT_FRESH_MS, FONT_WAIT_ATTACH_MS, TERM_FONT } from './termFont';
 import { ensureTerminalCjkFont, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFont';
 import { shouldReassertGeometry } from './termGeometryReassert';
 import { installTermInput, pickFieldPolicy, resolveInputOwnership } from './termInputHost';
@@ -151,8 +151,8 @@ const THEME = {
 // the grid (叠字), and its block/box glyphs fill the cell so the logo/TUI frames
 // tile seamlessly. Loaded lazily from the CDN by ensureTerminalCjkFont() on
 // mount; IBM Plex Mono stays as the already-bundled Latin fallback until the
-// slices arrive.
-const TERM_FONT = "'Maple Mono CN', 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+// slices arrive. B-316: the stack now lives in termFont.ts so the face we WAIT
+// for and the face we RENDER with cannot drift apart again.
 const TERM_FONT_SIZE_FINE = 13;
 const TERM_FONT_SIZE_COARSE = 12;
 
