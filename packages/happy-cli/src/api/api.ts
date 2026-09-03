@@ -243,7 +243,10 @@ export class ApiClient {
             `   → This usually happens after re-authenticating with a different account`
           ));
           console.log(chalk.yellow(
-            `   → Run 'very-happy doctor clean' to reset local state and generate a new machine ID`
+            // B-297: `doctor clean` only kills processes — it has never reset local
+            // state or minted a machine id. `auth login --force` is the command
+            // that does (it regenerates machineId, src/ui/auth.ts).
+            `   → Run 'very-happy auth login --force' to re-authenticate and generate a new machine ID`
           ));
           console.log(chalk.yellow(
             `   → Open a GitHub issue if this problem persists`

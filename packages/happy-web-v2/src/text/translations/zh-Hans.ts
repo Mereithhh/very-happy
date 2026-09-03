@@ -1623,6 +1623,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03i: {
+                title: '认证失败这次说得清该怎么办',
+                summary: 'Claude Code 认证失败时，会话里只有一行灰色的 SDK 文本，点不动也看不出下一步。现在它直接给出这台机器的登录状态入口——所有 CLI 版本都有——机器页也会点名「凭据存在但被拒绝」这种最常见的情况。',
+                card: 'Claude 认证失败会渲染成真正的卡片，带一个跳到该机器登录状态的按钮；用旧 CLI 起的、从来不打这个标记的会话同样有。此前这些会话只会在「Agent 进程意外退出」旁边显示一行灰色的 authentication_failed。',
+                rejected: '新增最常见那种情况的诊断：凭据文件里有 token，但 Claude Code 在这里不认——refresh token 被另一处凭据存储、或另一台用同一份凭据副本的机器刷新时旋转掉了。Linux 机器此前完全没有诊断。',
+                copied: 'daemon 现在会发现这台机器的 id 属于另一台主机——只有 ~/.happy 被复制过来才会这样，而它会让两台机器抢同一条记录、轮流把对方的 Claude 登录顶掉。提示里给的是真正能换一个机器 id 的那条命令。',
+                store: '把凭据钉死到文件存储，现在对恢复和重启的会话同样生效，不再只对新开的会话生效。',
+            },
             sep03h: {
                 title: '重启过的会话不再谎称自己还在跑',
                 summary: '重启 agent 之后，最后一轮可能永远停在「耗时 2094 分钟」——它当时在跑的工具再也等不到收尾结果。另外，接一台新机器的说明在已经有机器之后又能找到了。',
@@ -2099,6 +2107,7 @@ export const zhHans: TranslationStructure = {
                 'keychain-empty-item': 'login keychain 里有一条 token 为空的 Claude Code 凭据项，Claude Code 优先读它而不是有效的凭据文件。',
                 'store-divergence': 'keychain 与凭据文件的 refresh token 不一致，其中一处会在下次刷新时失效。',
                 'no-credentials': 'daemon 上下文找不到任何 Claude Code 凭据，请在本机用 `claude` 登录。',
+                'credentials-rejected': '凭据文件里有 token，但这个上下文里的 Claude Code 不认。最可能是 refresh token 被另一处凭据存储、或另一台用同一份凭据的机器刷新时旋转掉了（Claude Code 每次刷新都会轮换 refresh token）。请在这台机器上用 `claude` 重新登录。',
                 'sdk-binary-missing': 'Agent SDK 自带的 Claude Code 二进制缺失，请重装 very-happy-cli。',
                 'probe-timeout': '`claude auth status` 检测超时。',
                 'probe-crash': '`claude auth status` 没有返回可用输出。',

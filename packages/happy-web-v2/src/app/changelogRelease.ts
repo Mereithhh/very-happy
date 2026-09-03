@@ -15,6 +15,21 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-auth-failure-diagnosis',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // Same unreleased CLI as B-294's entry below: both ride the next release.
+    cliVersion: '0.2.106',
+    titleKey: 'changelog.releases.sep03i.title',
+    summaryKey: 'changelog.releases.sep03i.summary',
+    itemKeys: [
+      'changelog.releases.sep03i.card',
+      'changelog.releases.sep03i.rejected',
+      'changelog.releases.sep03i.copied',
+      'changelog.releases.sep03i.store',
+    ],
+  },
+  {
     id: '2026-09-03-stalled-tools-and-connect-guide',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

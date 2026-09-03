@@ -15,7 +15,7 @@ export const CLAUDE_AUTH_PROBE_VERSION = 1 as const;
 
 export type ClaudeAuthStatus = 'ok' | 'not-logged-in' | 'unknown' | 'error' | 'claude-missing';
 export type ClaudeAuthDiagnosis =
-    | 'keychain-empty-item' | 'store-divergence' | 'no-credentials'
+    | 'keychain-empty-item' | 'store-divergence' | 'no-credentials' | 'credentials-rejected'
     | 'sdk-binary-missing' | 'probe-timeout' | 'probe-crash';
 export type ClaudeAuthLineage = 'launchd' | 'inherited-env' | 'other';
 export type ClaudeCredentialStore = 'auto' | 'file';
@@ -168,6 +168,17 @@ function tokenTail(token: string): string {
     return token ? createHash('sha256').update(token).digest('hex').slice(-6) : '';
 }
 
+/**
+ * B-297: the credentials file has both tokens, yet the daemon context is told it
+ * is not logged in. That is a rejected refresh token, not a missing one — the
+ * usual cause is that some other holder of the SAME refresh token refreshed
+ * first, because Claude Code rotates it on every refresh. Two stores on one
+ * machine do this to each other (spec D8), and so does one credentials file
+ * copied to a second machine.
+ */
+export const CREDENTIALS_REJECTED_DETAIL =
+    'Credentials exist but Claude Code rejects them in the daemon context — the refresh token has most likely been rotated away by another store or another machine using the same credentials. Log in again with `claude` on this machine.';
+
 export function diagnoseStores(input: {
     status: ClaudeAuthStatus;
     keychain: KeychainRead;
@@ -196,7 +207,7 @@ export function diagnoseStores(input: {
         return { diagnosis: 'no-credentials', detail: 'No Claude Code credentials found for this daemon context; log in with `claude` on this machine.' };
     }
     if (keychain.kind === 'unreadable' && file.hasTokens && status === 'not-logged-in') {
-        return { detail: 'The daemon context cannot read the keychain and the file credentials were not accepted; compare `claude auth status` on the machine.' };
+        return { diagnosis: 'credentials-rejected', detail: CREDENTIALS_REJECTED_DETAIL };
     }
     if (keychain.kind === 'error') {
         return { detail: `keychain check failed: ${keychain.detail}` };

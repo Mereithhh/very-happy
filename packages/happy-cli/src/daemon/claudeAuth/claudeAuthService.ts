@@ -12,7 +12,7 @@ import {
     buildClaudeAuthState, classifyAuthStatus, classifyLineage, claudeAuthStateChanged, diagnoseStores,
     interpretCredentialsFile, interpretSecurityRead, keychainOffShimDir, keychainIdentityFor, parseLaunchctlPid,
     resolveSdkClaudeBinary, securityDeleteArgs, securityReadArgs, withKeychainOffPath,
-    HAPPY_DAEMON_LAUNCHD_LABEL,
+    HAPPY_DAEMON_LAUNCHD_LABEL, CREDENTIALS_REJECTED_DETAIL,
     type ClaudeAuthLineage, type ClaudeAuthState, type ClaudeCredentialStore, type DiagnosisResult, type ProbeRun, type SecurityResult,
 } from './claudeAuthProbe';
 
@@ -150,9 +150,24 @@ export class ClaudeAuthService {
             && (classification.status === 'not-logged-in' || (withDiagnosis && classification.status !== 'unknown'))) {
             diagnosis = await this.diagnose(classification.status);
             this.lastDiagnosis = diagnosis;
-        } else if (classification.status === 'not-logged-in' && store === 'file') {
+        } else if (classification.status === 'not-logged-in') {
+            // No keychain is in play here: `credentialStore=file` deliberately
+            // hides it, and non-darwin has none at all. The credentials file is
+            // therefore the whole truth, so both outcomes are unambiguous.
+            // B-297: previously this branch required store === 'file', which left
+            // every Linux machine with `not-logged-in` and no diagnosis at all —
+            // the one platform where the file answer is always conclusive.
             const file = interpretCredentialsFile(this.readCredentialsFile());
-            if (!file.hasTokens) diagnosis = { diagnosis: 'no-credentials', detail: 'credentialStore=file and ~/.claude/.credentials.json has no tokens; log in with `claude` from a terminal on this machine.' };
+            if (!file.hasTokens) {
+                diagnosis = {
+                    diagnosis: 'no-credentials',
+                    detail: store === 'file'
+                        ? 'credentialStore=file and ~/.claude/.credentials.json has no tokens; log in with `claude` from a terminal on this machine.'
+                        : 'No Claude Code credentials found for this daemon context; log in with `claude` on this machine.',
+                };
+            } else {
+                diagnosis = { diagnosis: 'credentials-rejected', detail: CREDENTIALS_REJECTED_DETAIL };
+            }
         }
         if (storeRequested === 'file' && store === 'auto') {
             diagnosis = { ...(diagnosis ?? {}), detail: `credentialStore=file requested but the keychain-off shim is missing under ${keychainOffShimDir(this.opts.happyLibDir)}; running in auto mode.` };
