@@ -1,0 +1,39 @@
+/* B-319: sits above the composer, out of the way of the content. Deliberately
+ * not a modal — an update offer must never block what someone was doing. */
+.vh-update-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 28%);
+  font-size: var(--fs-12);
+}
+.vh-update-prompt-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vh-update-prompt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--canvas);
+  font: inherit;
+  font-weight: 560;
+  cursor: pointer;
+}
+.vh-update-prompt-btn:disabled { opacity: 0.6; cursor: default; }
+@media (pointer: coarse) {
+  .vh-update-prompt-btn { min-height: 36px; }
+}

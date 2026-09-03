@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-update-prompt',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half
+    titleKey: 'changelog.releases.sep03w.title',
+    summaryKey: 'changelog.releases.sep03w.summary',
+    itemKeys: [
+      'changelog.releases.sep03w.prompt',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-cell-width',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { syncRestore } from '@/sync/sync';
 import { ThemeProvider, ToastProvider, useToast } from '@/ui';
 import { UPDATED_NOTICE_KEY } from '@/app/staleBundleReload';
+import { UpdatePrompt } from '@/app/UpdatePrompt';
 import { Modal, ModalProvider } from '@/modal';
 import { LoginScreen } from '@/screens/auth/LoginScreen';
 import { AppLayout } from '@/screens/AppLayout';
@@ -70,14 +71,14 @@ function RequireAuth() {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
-  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /></>;
+  return <><Outlet /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /></>;
 }
 
 function RootGate() {
   const { isAuthenticated } = useAuth();
   useGlobalBackNav();
   if (!isAuthenticated) return <LandingScreen />;
-  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /></>;
+  return <><AppLayout /><CliUpdateBanner /><FirstMachineWelcome /><ChangelogNotice /><BundleUpdatedNotice /><UpdatePrompt /></>;
 }
 
 /** B-315: the auto-update reload is silent by design — it must not ask

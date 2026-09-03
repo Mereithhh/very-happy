@@ -1663,10 +1663,18 @@ export const en = {
             `${count} connected ${count === 1 ? 'machine is' : 'machines are'} below v${version}: ${machines}. This command installs the exact release and safely refreshes the daemon.`,
         commandCopied: 'CLI update command copied',
         bundleUpdated: 'Updated to the latest version',
+        updateReady: 'A new version is ready',
+        updateApply: 'Refresh',
+        updateApplying: 'Refreshing…',
         commandCopyFailed: 'Could not copy the CLI update command',
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03w: {
+                title: 'Updates ask before they refresh the page',
+                summary: 'The app used to reload itself the moment a new version was available. It was quick and it was safe, but having the page vanish and come back with no warning reads as a bug — so now it offers.',
+                prompt: 'A new version shows a small "Refresh" offer instead of reloading underneath you. Ignoring it is fine: it applies itself the next time you switch away from the tab, so nothing stays out of date for long.',
+            },
             sep03v: {
                 title: 'A new terminal no longer opens at the wrong width',
                 summary: 'The web terminal holds its opening paint until its font is ready, so it can measure a character cell correctly. It was waiting on the wrong font in the stack — the bundled fallback, not the one it actually renders with — and measured the cell before the real font arrived.',
