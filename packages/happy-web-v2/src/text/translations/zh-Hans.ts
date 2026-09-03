@@ -1626,6 +1626,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03l: {
+                title: '改过名的机器，显示的名字终于跟着变了',
+                summary: 'Very Happy 里显示的机器名，一直是它第一次连上那天的主机名，之后再改名也不会同步——老名字会一直留着。',
+                rename: '机器的 daemon 启动时会认领自己那条记录，改过的主机名因此能出现在机器列表和新建会话的选择器里，不再被冻结在第一天的值上。顺带也消掉了一条 daemon 日志里的告警：任何改过名的机器此前每次启动都会报一次。',
+            },
             sep03k: {
                 title: '界面上两处会让你误会的地方',
                 summary: '新建会话的机器选择器从来不说这台机器到底能不能跑 Claude，你只能等第一轮失败了才知道。另外，一轮压根没计费的失败也照样显示花费。',

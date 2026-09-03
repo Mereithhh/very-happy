@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-machine-name-follows-rename',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.108',
+    titleKey: 'changelog.releases.sep03l.title',
+    summaryKey: 'changelog.releases.sep03l.summary',
+    itemKeys: [
+      'changelog.releases.sep03l.rename',
+    ],
+  },
+  {
     id: '2026-09-03-launcher-tells-the-truth',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
