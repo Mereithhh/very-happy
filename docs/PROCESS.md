@@ -24,6 +24,11 @@
 - **编号分配（多会话并行）**：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
   不要拿本地分支或记忆里的号；rebase 遇到同号先到者优先，后到者在整个分支上重编号（代码注释、测试名、spec、
   verify-queue、PR 标题都要改）。2026-09-02 一天内 B-279、B-282 各被两个会话撞号，各多花一轮 rebase+CI。
+  **长任务要重复做这件事**：号是在开工时取的，而 main 在你写代码、跑门禁、做 review 的这几小时里会一直前进——
+  2026-09-03 的 B-309/310/311 连撞两次（第一次 B-304/305、重编到 306 又被占），每次 rebase 后都要重新
+  `git show origin/main:docs/backlog.md` 核一遍最大号。**CLI 版本号同理且更贵**：同一天 0.2.109/110/111 被
+  三个会话依次取走，changelog 里的 `cliVersion` 每次都要跟着改；已推的 tag 不可动（铁律 6），所以只能往后让。
+  发 tag 前用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里已写好的号想当然。
 - **changelog 文本 key 同样会撞，而且撞了不报错**：`changelog.releases.<key>` 用日期序（`sep03a/b/c…`），
   两个会话同日各取下一个字母就会选中同一个。2026-09-03 两个会话同时用了 `sep03f`：squash 合并保留了先合的一方，
   **后合的一方代码全在、release 条目却被静默吞掉**（deploy 的 changelog 门禁这才拦下来）。开条目前照 B-id 的做法
