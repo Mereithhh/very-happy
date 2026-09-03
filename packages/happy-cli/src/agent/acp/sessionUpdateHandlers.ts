@@ -280,6 +280,7 @@ export function startToolCall(
       ctx.activeToolCalls.delete(toolCallId);
       ctx.toolCallStartTimes.delete(toolCallId);
       ctx.toolCallTimeouts.delete(toolCallId);
+      ctx.toolCallOutputs.delete(toolCallId);
 
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
@@ -307,8 +308,8 @@ export function startToolCall(
     args.locations = update.locations;
   }
 
-  // Additive pi-acp fidelity fields (acpTitle/acpKind/rawInput/piTool/command); toolName stays `kind`.
-  Object.assign(args, deriveAcpToolArgs(update));
+  // Additive ACP fidelity fields; toolName stays `kind`. piTool/command are pi-only (see deriveAcpToolArgs).
+  Object.assign(args, deriveAcpToolArgs(update, { agentName: ctx.transport.agentName }));
 
   ctx.emit({
     type: 'tool-call',

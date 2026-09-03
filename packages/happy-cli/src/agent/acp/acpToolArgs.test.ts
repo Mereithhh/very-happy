@@ -8,6 +8,7 @@ import {
   buildAcpPermissionMeta,
   deriveAcpToolArgs,
   readAcpTerminalMeta,
+  resolveAcpPermissionRequest,
 } from './acpToolArgs';
 import { handleToolCall, handleToolCallUpdate, type HandlerContext } from './sessionUpdateHandlers';
 import { AcpSessionManager } from './AcpSessionManager';
@@ -22,28 +23,36 @@ const probe = {
 };
 
 describe('deriveAcpToolArgs', () => {
+  const pi = { agentName: 'pi' };
   it('bash: kind execute → piTool bash + command from title, no rawInput', () => {
-    expect(deriveAcpToolArgs(probe.bash)).toEqual({ acpTitle: 'echo probe', acpKind: 'execute', piTool: 'bash', command: 'echo probe' });
+    expect(deriveAcpToolArgs(probe.bash, pi)).toEqual({ acpTitle: 'echo probe', acpKind: 'execute', piTool: 'bash', command: 'echo probe' });
   });
 
   it('read/write/edit/other: piTool from title, rawInput passed through', () => {
-    expect(deriveAcpToolArgs(probe.read)).toEqual({ acpTitle: 'read', acpKind: 'read', piTool: 'read', rawInput: { path: '/tmp/a.txt', limit: 10 } });
-    expect(deriveAcpToolArgs(probe.write)).toEqual({ acpTitle: 'write', acpKind: 'edit', piTool: 'write', rawInput: { path: '/tmp/b.txt', content: 'hi' } });
-    expect(deriveAcpToolArgs(probe.edit)).toEqual({ acpTitle: 'edit', acpKind: 'edit', piTool: 'edit', rawInput: { path: '/tmp/b.txt', oldText: 'a', newText: 'b' } });
-    expect(deriveAcpToolArgs(probe.bridge)).toEqual({ acpTitle: 'session_spawn', acpKind: 'other', piTool: 'session_spawn', rawInput: { prompt: 'go' } });
+    expect(deriveAcpToolArgs(probe.read, pi)).toEqual({ acpTitle: 'read', acpKind: 'read', piTool: 'read', rawInput: { path: '/tmp/a.txt', limit: 10 } });
+    expect(deriveAcpToolArgs(probe.write, pi)).toEqual({ acpTitle: 'write', acpKind: 'edit', piTool: 'write', rawInput: { path: '/tmp/b.txt', content: 'hi' } });
+    expect(deriveAcpToolArgs(probe.edit, pi)).toEqual({ acpTitle: 'edit', acpKind: 'edit', piTool: 'edit', rawInput: { path: '/tmp/b.txt', oldText: 'a', newText: 'b' } });
+    expect(deriveAcpToolArgs(probe.bridge, pi)).toEqual({ acpTitle: 'session_spawn', acpKind: 'other', piTool: 'session_spawn', rawInput: { prompt: 'go' } });
   });
 
   it('missing title / non-identifier title → no piTool, never throws', () => {
-    expect(deriveAcpToolArgs({ kind: 'read' })).toEqual({ acpKind: 'read' });
-    expect(deriveAcpToolArgs({ title: 'Confirm: git push', kind: 'other' })).toEqual({ acpTitle: 'Confirm: git push', acpKind: 'other' });
-    expect(deriveAcpToolArgs({ kind: 'execute' })).toEqual({ acpKind: 'execute', piTool: 'bash' });
-    expect(deriveAcpToolArgs({ title: 42, kind: null, rawInput: [1] })).toEqual({});
-    expect(deriveAcpToolArgs({})).toEqual({});
+    expect(deriveAcpToolArgs({ kind: 'read' }, pi)).toEqual({ acpKind: 'read' });
+    expect(deriveAcpToolArgs({ title: 'Confirm: git push', kind: 'other' }, pi)).toEqual({ acpTitle: 'Confirm: git push', acpKind: 'other' });
+    expect(deriveAcpToolArgs({ kind: 'execute' }, pi)).toEqual({ acpKind: 'execute', piTool: 'bash' });
+    expect(deriveAcpToolArgs({ title: 42, kind: null, rawInput: [1] }, pi)).toEqual({});
+    expect(deriveAcpToolArgs({}, pi)).toEqual({});
+  });
+
+  it('non-pi ACP agents get acpTitle/acpKind/rawInput but never piTool/command', () => {
+    expect(deriveAcpToolArgs({ title: 'rm file.txt [cwd /x] (cleanup)', kind: 'execute' }, { agentName: 'gemini' }))
+      .toEqual({ acpTitle: 'rm file.txt [cwd /x] (cleanup)', acpKind: 'execute' });
+    expect(deriveAcpToolArgs(probe.read, { agentName: 'opencode' })).toEqual({ acpTitle: 'read', acpKind: 'read', rawInput: probe.read.rawInput });
+    expect(deriveAcpToolArgs(probe.bash)).toEqual({ acpTitle: 'echo probe', acpKind: 'execute' });
   });
 
   it('oversize rawInput is dropped with a rawInputTruncated marker', () => {
     const big = { content: 'x'.repeat(ACP_RAW_INPUT_MAX_BYTES + 1) };
-    expect(deriveAcpToolArgs({ title: 'write', kind: 'edit', rawInput: big })).toEqual({ acpTitle: 'write', acpKind: 'edit', piTool: 'write', rawInputTruncated: true });
+    expect(deriveAcpToolArgs({ title: 'write', kind: 'edit', rawInput: big }, pi)).toEqual({ acpTitle: 'write', acpKind: 'edit', piTool: 'write', rawInputTruncated: true });
   });
 });
 
@@ -74,6 +83,34 @@ describe('buildAcpPermissionMeta', () => {
       .toEqual({ acpTitle: 'ask-git-push', acpKind: 'other', message: 'Pushing needs the owner' });
     expect(buildAcpPermissionMeta(undefined)).toEqual({});
     expect(buildAcpPermissionMeta({ title: '', rawInput: null })).toEqual({});
+  });
+});
+
+describe('resolveAcpPermissionRequest', () => {
+  const newId = () => 'uuid-1';
+  const piGate = {
+    toolCall: { toolCallId: 'pi-ui-3', title: 'ask-git-push', kind: 'other', rawInput: { method: 'confirm', title: 'ask-git-push', message: 'Pushing needs the owner' } },
+    options: [{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' }],
+  };
+
+  it('pi gate: id is a fresh uuid (never the ACP toolCallId), rawInput + gate meta land in input', () => {
+    expect(resolveAcpPermissionRequest(piGate, newId)).toEqual({
+      toolCallId: 'uuid-1',
+      toolName: 'other',
+      input: { method: 'confirm', title: 'ask-git-push', message: 'Pushing needs the owner', acpTitle: 'ask-git-push', acpKind: 'other' },
+    });
+  });
+
+  it('ACP toolCallId of a real tool call is not reused as permission id (web would drop the real result)', () => {
+    const gemini = { toolCall: { toolCallId: 'call-42', kind: 'execute', title: 'rm f' } };
+    expect(resolveAcpPermissionRequest(gemini, newId).toolCallId).toBe('uuid-1');
+    expect(resolveAcpPermissionRequest({ toolCall: { id: 'legacy-7', kind: 'read' } }, newId).toolCallId).toBe('legacy-7');
+  });
+
+  it('explicit input/arguments win over rawInput; no toolCall falls back to params', () => {
+    expect(resolveAcpPermissionRequest({ toolCall: { kind: 'edit', input: { a: 1 }, rawInput: { b: 2 } } }, newId).input).toEqual({ acpKind: 'edit', a: 1 });
+    expect(resolveAcpPermissionRequest({ kind: 'other', arguments: { x: 1 } }, newId)).toEqual({ toolCallId: 'uuid-1', toolName: 'other', input: { x: 1 } });
+    expect(resolveAcpPermissionRequest({}, newId)).toEqual({ toolCallId: 'uuid-1', toolName: 'Unknown tool', input: {} });
   });
 });
 
@@ -121,6 +158,33 @@ describe('handleToolCall args shape (pi-acp probe payloads)', () => {
     expect(result.result).toEqual({ text: 'probe\n', exitCode: 2 });
     expect(ctx.toolCallOutputs.size).toBe(0);
     expect(emitted.filter((m) => m.type === 'tool-call')).toHaveLength(1);
+  });
+
+  it('tool-call timeout drops the buffered bash output', () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx } = makeCtx();
+      ctx.transport.getToolCallTimeout = () => 1000;
+      handleToolCall(probe.bash, ctx);
+      handleToolCallUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'tc-bash', status: 'in_progress', _meta: { terminal_output: { terminal_id: 'tc-bash', data: 'partial' } } }, ctx);
+      expect(ctx.toolCallOutputs.get('tc-bash')).toBe('partial');
+      vi.advanceTimersByTime(1000);
+      expect(ctx.activeToolCalls.has('tc-bash')).toBe(false);
+      expect(ctx.toolCallOutputs.has('tc-bash')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('non-pi agent: tool-call args carry acpTitle/acpKind but no piTool/command', () => {
+    const { ctx, emitted } = makeCtx();
+    ctx.transport = { ...ctx.transport, agentName: 'gemini' };
+    handleToolCall(probe.bash, ctx);
+    const call = emitted.find((m) => m.type === 'tool-call') as Extract<AgentMessage, { type: 'tool-call' }>;
+    expect(call.args).toMatchObject({ acpTitle: 'echo probe', acpKind: 'execute' });
+    expect(call.args).not.toHaveProperty('piTool');
+    expect(call.args).not.toHaveProperty('command');
+    for (const t of ctx.toolCallTimeouts.values()) clearTimeout(t);
   });
 
   it('non-bash completion keeps the ACP content as result (unchanged path)', () => {

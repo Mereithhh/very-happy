@@ -250,6 +250,9 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   with `rawInputTruncated: true` above 64 KiB) and a derived `piTool`
   (`execute` → `bash` with `command` = the title; otherwise the title when it is
   a plain tool identifier such as `read`, `edit`, `write`, `session_spawn`).
+  `acpTitle` / `acpKind` / `rawInput` are generic ACP passthrough (Gemini, OpenCode,
+  `acp -- <cmd>` get them too); `piTool` / `command` are only derived when the
+  agent is `pi`, so the Web may treat `piTool` as evidence that a session is pi.
   bash output streamed via pi-acp's `_meta.terminal_output` is accumulated and
   sent as the `tool-call-end` `result.text` (`isError` + `[exit code N]` suffix
   when non-zero, last 64 KiB kept). The permission request's `arguments` gain

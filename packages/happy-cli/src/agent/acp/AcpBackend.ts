@@ -108,7 +108,7 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
-import { buildAcpPermissionMeta } from './acpToolArgs';
+import { resolveAcpPermissionRequest } from './acpToolArgs';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -575,23 +575,13 @@ export class AcpBackend implements AgentBackend {
           
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
-          let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
-          // Use toolCallId as the single source of truth for permission ID
-          // This ensures mobile app sends back the same ID that we use to store pending requests
-          const toolCallId = toolCall?.id || toolCall?.toolCallId || randomUUID();
-          const permissionId = toolCallId; // Use same ID for consistency!
-          
-          // Extract input/arguments from various possible locations FIRST (before checking toolName)
-          let input: Record<string, unknown> = {};
-          if (toolCall) {
-            input = toolCall.input || toolCall.arguments || toolCall.rawInput || toolCall.content || {};
-          } else {
-            // If no toolCall, try to extract from params directly
-            input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
-          }
-          // B-353: surface ACP title/kind so the web ask card can show pi's gate rule id + reason
-          // (pi-acp puts them in toolCall.title / rawInput.{title,message}) instead of a bare "other".
-          input = { ...input, ...buildAcpPermissionMeta(toolCall) };
+          const resolved = resolveAcpPermissionRequest(extendedParams, randomUUID);
+          let toolName = resolved.toolName;
+          // Permission id == the id the web echoes back for pendingPermissions. See
+          // resolveAcpPermissionRequest for why it is never the ACP toolCallId.
+          const toolCallId = resolved.toolCallId;
+          const permissionId = toolCallId;
+          const input = resolved.input;
           
           // If toolName is "other" or "Unknown tool", try to determine real tool name
           const context: ToolNameContext = {

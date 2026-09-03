@@ -34,12 +34,21 @@ export interface AcpToolArgs {
 /**
  * Derive the additive args for a `tool-call` event from an ACP `tool_call`
  * update. Pure; never throws.
+ *
+ * `acpTitle` / `acpKind` / `rawInput` are generic ACP passthrough. `piTool` /
+ * `command` are only derived when `agentName === 'pi'`: they encode pi-acp's
+ * title convention (execute title = the command; other titles = the pi tool
+ * name), and the web uses `piTool` as evidence that a session *is* pi. Gemini's
+ * execute titles look like `rm f [cwd /x] (desc)` and must not become `command`.
  */
-export function deriveAcpToolArgs(update: {
-  title?: unknown;
-  kind?: unknown;
-  rawInput?: unknown;
-}): AcpToolArgs {
+export function deriveAcpToolArgs(
+  update: {
+    title?: unknown;
+    kind?: unknown;
+    rawInput?: unknown;
+  },
+  options: { agentName?: string } = {}
+): AcpToolArgs {
   const args: AcpToolArgs = {};
   const title = typeof update.title === 'string' ? update.title : undefined;
   const kind = typeof update.kind === 'string' ? update.kind : undefined;
@@ -55,6 +64,8 @@ export function deriveAcpToolArgs(update: {
       args.rawInputTruncated = true;
     }
   }
+
+  if (options.agentName !== 'pi') return args;
 
   if (kind === 'execute') {
     args.piTool = 'bash';
@@ -72,6 +83,55 @@ function serializedSize(value: unknown): number {
   } catch {
     return Number.POSITIVE_INFINITY;
   }
+}
+
+/**
+ * Resolve the id / tool name / `arguments` for an ACP `request_permission`.
+ *
+ * The permission id is `toolCall.id` (legacy transports) or a fresh UUID —
+ * deliberately NOT ACP's `toolCall.toolCallId`: `AcpBackend` answers an
+ * approval with a `tool-result` keyed by the permission id, and if that id were
+ * the real tool call id the web would close the tool row at approval time and
+ * drop the genuine completed/failed result that follows (Gemini flow; review
+ * of B-353 lane I). pi-acp's gate ids (`pi-ui-<n>`) never appear as a
+ * standalone `tool_call`, so pi does not need the stable id either.
+ *
+ * `input` prefers explicit `input`/`arguments`, then pi-acp's `rawInput`, then
+ * `content`; pi gate title / reason are merged in as optional fields.
+ * Pure apart from the UUID; never throws.
+ */
+export function resolveAcpPermissionRequest(params: {
+  toolCall?: {
+    id?: string;
+    toolCallId?: string;
+    title?: string;
+    kind?: string;
+    toolName?: string;
+    input?: Record<string, unknown>;
+    arguments?: Record<string, unknown>;
+    rawInput?: Record<string, unknown>;
+    content?: Record<string, unknown>;
+  };
+  kind?: string;
+  input?: Record<string, unknown>;
+  arguments?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+}, newId: () => string): { toolCallId: string; toolName: string; input: Record<string, unknown> } {
+  const toolCall = params.toolCall;
+  const toolName = toolCall?.kind || toolCall?.toolName || params.kind || 'Unknown tool';
+  const toolCallId = toolCall?.id || newId();
+
+  let input: Record<string, unknown>;
+  if (toolCall) {
+    input = toolCall.input || toolCall.arguments || toolCall.rawInput || toolCall.content || {};
+  } else {
+    input = params.input || params.arguments || params.content || {};
+  }
+  // B-353: surface ACP title/kind so the web ask card can show pi's gate rule id + reason
+  // (pi-acp puts them in toolCall.title / rawInput.{title,message}) instead of a bare "other".
+  input = { ...input, ...buildAcpPermissionMeta(toolCall) };
+
+  return { toolCallId, toolName, input };
 }
 
 export interface AcpTerminalMeta {
