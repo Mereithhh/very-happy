@@ -270,3 +270,16 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     `$id`（`#{session_id}`）不用名字（≥3.2 名字可含 `:`/`.`，`=name:` 会被 target 解析拆开）。CI 的 vitest
     unit 项目在 ubuntu-latest 上**真跑 tmux**（当前 3.4：`window-size manual` 下建会话即崩 server，须版本 gate），
     integration-* 项目则不在 CI 跑——别把「本地绿」当「CI 会绿」。
+21. **pi 会话的三件反直觉事实（B-340/343/350，2026-09-04 全部实撞）**：① pi-acp **不透传** ACP `mcpServers`，
+    也**没有**权限模式选择器——它在 legacy `modes` 里报的是**思考等级**（`Thinking: off/low/…`），而
+    `config_options` 的 `model` 又会被 `extractConfigSelector` 的 `'model'.includes('mode')` 误认成 mode 选择器；
+    所以 pi 的 MCP 走 `HAPPY_MCP_URL` 环境变量 + pi 侧 bridge 扩展，权限模式走 `HAPPY_PERMISSION_MODE` +
+    `<happy home>/session-modes/<sid>.json`，**唯一执法点是 pi 侧的 permission-gate**（`deny` 永不解除）。
+    别再试图用 ACP mode/selector 或 `mcpServers` 给 pi 传东西。② daemon 起的会话继承 daemon 的整份 env，
+    而 web 终端里手敲 `very-happy pi` 会同时拿到 `VH_TERMINAL_ID` 与 `HAPPY_MCP_URL`——两套上下文都可能同时成立，
+    判定要有优先级（`HAPPY_MCP_URL` 赢），否则同名工具（`change_title`）注册两次。③ **改 happy-cli 也要跑 web 的
+    `src/screens/public` 测试**：`publicContent.test.ts` 用源码断言钉着 `commands/mcp.ts`、`runAcp.ts` 等 CLI 文件的
+    形状，Lane E 只跑了 cli 门禁、合并时才在 web 门禁上红。
+22. **非 Claude runner 拿 assistant 变体要显式传标志**：`startHappyServer(session, { assistant })` 只有 `runClaude`
+    传了；`runAcp` 曾漏传导致 pi meta 会话拿不到 `sessions_*`（B-343 e2e T3）。`runGemini`/`runCodex` 至今仍未传——
+    给别的 runner 加 meta 变体时先补这一行。
