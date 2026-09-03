@@ -775,8 +775,9 @@ ${chalk.bold('Usage:')}
                             print its web URL (for automation; see spawn --help)
   very-happy send              Send a message into an existing session
                             (for automation; see send --help)
-  very-happy sessions          List, read, stop or archive sessions on this
-                            machine (for automation; see sessions --help)
+  very-happy sessions          List, read, stop, archive, approve or deny
+                            sessions and their permission requests (for
+                            automation; see sessions --help)
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
   very-happy acp               Start a generic ACP-compatible agent
