@@ -29,6 +29,20 @@ pnpm -C packages/happy-web-v2 exec tsc --noEmit
 pnpm -C packages/happy-web-v2 exec vite build
 ```
 
+Verify a test actually pins the line it claims to (source-assertion tests can
+pass after the asserted string is deleted — see `docs/PROCESS.md`):
+
+```bash
+node scripts/dev/mutation-check.mjs --pkg happy-web-v2 \
+  --test src/screens/onboarding/connectMachine.test.ts \
+  --mutate "packages/happy-web-v2/src/screens/sessions/Sidebar.tsx:key: 'connect-machine'"
+```
+
+Vitest runs happy-web-v2 in the **node** environment, so a test that renders a
+real component must call `installBrowserTestGlobals()` from
+`@/testing/browserTestGlobals` before importing it (dynamically — static imports
+hoist above the setup). Pure-function modules need nothing.
+
 Standalone server (PGlite, no Postgres/Redis/S3 required):
 
 ```bash

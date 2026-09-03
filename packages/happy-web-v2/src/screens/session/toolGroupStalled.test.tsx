@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { ToolCallMessage } from '@/sync/typesMessage';
+import { installBrowserTestGlobals } from '@/testing/browserTestGlobals';
 
 /**
  * B-295 behaviour, not source text: a tool call whose wrapper died keeps
@@ -9,21 +10,13 @@ import type { ToolCallMessage } from '@/sync/typesMessage';
  * ticking, phosphor-teal run — "耗时 2094 分钟" on a session that had been
  * restarted a day earlier.
  *
- * `ToolGroupView` is imported lazily because the i18n module reads MMKV
- * (localStorage) at import time and vitest runs in the node environment.
+ * `ToolGroupView` is imported lazily so the browser globals exist first —
+ * see `@/testing/browserTestGlobals`.
  */
 let ToolGroupView: typeof import('./ToolGroupView').ToolGroupView;
 
 beforeAll(async () => {
-    const store = new Map<string, string>();
-    (globalThis as Record<string, unknown>).localStorage = {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => void store.set(k, v),
-        removeItem: (k: string) => void store.delete(k),
-        clear: () => store.clear(),
-        key: () => null,
-        length: 0,
-    };
+    installBrowserTestGlobals();
     ({ ToolGroupView } = await import('./ToolGroupView'));
 });
 
