@@ -182,6 +182,21 @@ npm view very-happy-cli dist-tags                # `next` may be ahead if smoke 
 promote — read its log before doing anything by hand; the usual cause is a red
 smoke run, and that is the gate working.
 
+**Recommending a release and installing it for people are two decisions**
+(B-351). The step above only advances `recommendedVersion` — the banners. The
+version machines may install unattended is `CLI_AUTO_UPDATE_VERSION`, pinned
+separately and never derived from the registry: **unset, nothing auto-installs.**
+That manual step is deliberate — following the dist-tag here would make
+`npm publish` the moment a release reaches every machine, with no human in
+between. Advance it once the release has actually been used:
+
+```sh
+ssh vh-us
+sed -i 's|^#* *CLI_AUTO_UPDATE_VERSION=.*|CLI_AUTO_UPDATE_VERSION=X.Y.Z|' /opt/happy/.env
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
+curl -fsS https://veryhappy.dev/v1/version/cli   # autoUpdateVersion = X.Y.Z
+```
+
 To **hold or roll back the recommendation** without touching npm, pin it (the
 pin always beats the lookup), then deploy so the candidate reads the new env
 (`restart` does not reread `env_file`):

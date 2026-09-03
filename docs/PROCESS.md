@@ -117,10 +117,11 @@ triage（分独立/冲突域）
   - **别替别的会话补条目，除非先确认没有在飞的 changelog PR**。2026-09-04 我为了让门禁「覆盖每一行」
     替 B-327 代写了一条，同时 owning session 自己也在写——同一版本上线了**两条一模一样的更新说明**，
     只能再发一次去删。要补就先 `gh pr list --search changelog`，或者干脆只在 PR 里点名「这行还没人写」。
-  - **门禁验不出「条目声称的 `cliVersion` 是否真含它自己的代码」**：条目在打 tag 之前写，写的是预测。
-    2026-09-04 `2026-09-04-pi-and-supervisor-surface` 声称 0.2.116，而它的代码晚于 `v0.2.116`
-    （`git merge-base --is-ancestor <commit> v<version>` 为假）——用户会被告知拿到了并不存在的能力。
-    发完 tag 后对每条声称该版本的条目跑一次这个 merge-base 检查。
+  - **「条目声称的 `cliVersion` 是否真含它自己的代码」`check-release.mjs` 验不出**（它只验有没有一条
+    带该版本）。2026-09-04 `2026-09-04-pi-and-supervisor-surface` 声称 0.2.116，而它的代码晚于
+    `v0.2.116`，用户会被告知拿到了并不存在的能力。**现在由 `scripts/release/check-changelog-versions.mjs`
+    在每个 PR 上拦**（随条目一起进来的代码必须是它所声称 tag 的祖先；纯 docs 的补写、以及一次引入多个
+    版本的历史导入都跳过），不用再手工跑 merge-base。
 - **版本**：CLI = semver patch（推 tag 自动发 npm）；同一 tag 先发布六个
   `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
   `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。

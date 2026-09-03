@@ -75,6 +75,9 @@ git worktree list                                   # 派工前看清有哪些�
   更不能照抄（`__APP_VERSION__` 进内容哈希，CI 和本地不同名）。
 - CLI 实验永远用一次性 home：`HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs …`，
   **不要动 `~/.happy`**（那是 mac-office 生产 daemon 的状态）。
+- 终端「慢 / 一行一行地画」先跑 `node scripts/dev/term-burst.mjs '<命令>'`（隔离 socket，报块数、
+  中位块大小与按停顿切开的密集段）。**别看首尾跨度**——它把进程启动算进绘制，据此下的结论会把
+  「传输放大」说成「源头本来就慢」（B-335 实踩）。
 - 取号/验号 `node scripts/dev/check-ids.mjs`（B-/V-/changelog key 三家一起，只认 `origin/main`；
   `--claim <id>…` 撞号即非 0 退出）。纪律与撞号后的重编号见 `docs/PROCESS.md` 编号分配那条。
 - **main 受保护，`git push origin main` 会被 repository rule 直接拒**（连一行 docs 也不例外）：
