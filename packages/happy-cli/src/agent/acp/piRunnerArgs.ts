@@ -22,6 +22,20 @@ export type PiRunnerArgs = {
 
 const IGNORED_FLAGS_WITH_VALUE = new Set(['--happy-starting-mode', '--permission-mode']);
 
+/** Pinned on purpose: an unpinned install hint violates the no-@latest rule. */
+export const PI_ADAPTER_INSTALL_HINT = 'very-happy pi needs the pi-acp adapter on PATH: npm install -g pi-acp@0.0.33';
+
+/**
+ * The install hint when a backend failure means "pi-acp is not installed",
+ * otherwise null. A missing executable surfaces two ways: as a thrown error
+ * when a prompt turn is in flight, and as a `status: 'error'` backend message
+ * (`spawn pi-acp ENOENT`) when nothing is in flight — both must show the hint,
+ * so the decision lives here instead of in one catch block.
+ */
+export function piAdapterMissingHint(detail: string | undefined | null): string | null {
+  return detail && /ENOENT/.test(detail) ? PI_ADAPTER_INSTALL_HINT : null;
+}
+
 export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
   const parsed: PiRunnerArgs = { verbose: false, passthrough: [] };
   for (let i = 0; i < args.length; i++) {

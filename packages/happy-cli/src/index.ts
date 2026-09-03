@@ -37,6 +37,7 @@ import { handleCodexCommand } from './commands/codexCommand'
 import { isStandaloneVersionRequest } from './utils/versionArgs'
 import { configuration } from './configuration'
 import { daemonEndpointsMatch } from './ui/doctorReadiness'
+import { parsePiRunnerArgs, piAdapterMissingHint } from '@/agent/acp/piRunnerArgs'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 
 
@@ -424,9 +425,19 @@ Conversation history is preserved on the server, but in-flight tool calls are in
     // pi via the generic ACP runner + pi-acp adapter. Kept as its own
     // subcommand so the daemon can spawn it with the same argv shape it uses
     // for every backend (see parsePiRunnerArgs for why those flags are dropped).
+    // A missing adapter surfaces as a backend `status: 'error'` (which may or
+    // may not also throw, depending on whether a prompt is in flight), so the
+    // hint is printed from whichever path reports it first, once.
+    let hintPrinted = false;
+    const printHint = (detail: string | undefined) => {
+      const hint = piAdapterMissingHint(detail);
+      if (hint && !hintPrinted) {
+        hintPrinted = true;
+        console.error(chalk.gray(hint));
+      }
+    };
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
-      const { parsePiRunnerArgs } = await import('@/agent/acp/piRunnerArgs');
 
       const parsed = parsePiRunnerArgs(args.slice(1));
       const resolved = resolveAcpAgentConfig(['pi', ...parsed.passthrough]);
@@ -440,12 +451,12 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,
+        onBackendError: printHint,
       });
+      if (hintPrinted) process.exit(1)
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
-      if (error instanceof Error && /ENOENT/.test(error.message)) {
-        console.error(chalk.gray('very-happy pi needs the pi-acp adapter on PATH: npm install -g pi-acp@0.0.33'))
-      }
+      printHint(error instanceof Error ? error.message : undefined)
       if (process.env.DEBUG) {
         console.error(error)
       }
