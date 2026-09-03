@@ -33,6 +33,7 @@ import { countRunningSubagentCards, suppressSubagentPills } from './subagentPill
 import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import './chatlist.css';
+import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
 export function ChatList({
     sessionId,
@@ -83,10 +84,13 @@ export function ChatList({
     // a historical card must never be repainted by a later stop.
     const abortedAt = useMemo(() => userAbortedAt(currentTurn), [currentTurn]);
     const currentTurnStartedAt = currentTurn.length > 0 ? currentTurn[0].createdAt : Number.POSITIVE_INFINITY;
+    // B-322: thinking 是租约不是闩锁（sync/heartbeatLease.ts）。
+    const leaseFresh = useHeartbeatFresh(sessionId);
     const sessionLive = isAgentWorkLive({
         presence: session?.presence,
         thinking: session?.thinking,
         runningSubagentsInTurn: runningSubagents,
+        heartbeatFresh: leaseFresh,
     });
     const rows = useMemo(
         () => buildChatRows(chronological, sessionLive),

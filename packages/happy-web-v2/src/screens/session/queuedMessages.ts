@@ -12,12 +12,38 @@ export type QueuedMessage = {
 export type PersistedQueuedMessage = Omit<QueuedMessage, 'attachments'>;
 export type QueueDeliveryPhase = 'idle' | 'waiting-start' | 'waiting-finish' | 'intervening';
 
+/**
+ * B-322: how long `waiting-start` may wait for a turn that may never begin.
+ * Generous on purpose — the normal path leaves this state within one render of
+ * the agent picking the message up; this only has to beat "never".
+ */
+export const QUEUE_START_TIMEOUT_MS = 30_000;
+
+/**
+ * B-322 —— `waiting-start` used to be a state with NO EXIT.
+ *
+ * The only edge out of it required observing `isWorking === true` at least
+ * once, i.e. it assumed the message we just released always makes the agent
+ * start working. Three ways that assumption is false, all reachable today:
+ *   ① `sync.sendMessage` returns silently (no throw) when the session or its
+ *      encryption key is missing — the release effect's `.catch` never fires,
+ *      so the phase is never reset AND the message is silently lost;
+ *   ② the released item is a `/btw` command — `sendQueuedItem` opens the panel
+ *      and returns without sending, same outcome;
+ *   ③ the write lands but no live wrapper ever picks it up.
+ * In all three the rest of the queue is stuck forever and only opening a new
+ * tab recovers it (a fresh mount resets this ref) — which is precisely the
+ * "开个新 chrome tab 就好了" the users reported. Verified by iterating this
+ * function 1000× with isWorking=false before the fix: still `waiting-start`.
+ */
 export function advanceQueueDeliveryPhase(
     phase: QueueDeliveryPhase,
     isWorking: boolean,
+    waitingStartAgeMs = 0,
 ): QueueDeliveryPhase {
     if (isWorking && phase === 'waiting-start') return 'waiting-finish';
     if (!isWorking && phase === 'waiting-finish') return 'idle';
+    if (!isWorking && phase === 'waiting-start' && waitingStartAgeMs >= QUEUE_START_TIMEOUT_MS) return 'idle';
     return phase;
 }
 

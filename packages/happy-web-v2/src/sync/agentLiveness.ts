@@ -36,12 +36,22 @@ export type AgentLivenessInput = {
     thinking: boolean | undefined;
     /** 当前 turn 内、CLI 生命周期仍为 running 的子代理卡数量 */
     runningSubagentsInTurn: number;
+    /**
+     * B-322：`thinking` 的心跳是否仍在按时到达（`sync/heartbeatLease.ts`）。
+     * **必填，不给默认值**——漏改一处调用点必须由 `tsc --noEmit` 当场报出来，
+     * 而不是静默沿用「永远新鲜」。
+     */
+    heartbeatFresh: boolean;
 };
 
 /** 会话此刻是否真的有活在跑（唯一判据）。 */
 export function isAgentWorkLive(input: AgentLivenessInput): boolean {
     if (input.presence !== 'online') return false;
-    if (input.thinking === true) return true;
+    // B-322：thinking 是**租约**不是闩锁。心跳停了就是 wrapper 死了、SDK 卡住，
+    // 或链路正在重连——三者本端不可分辨，所以阈值取重连上界之上、宁可晚灭
+    // （`heartbeatLease.ts` 文件头有那四个数）。少了这一句，硬杀之后 UI 会连续
+    // 说谎约 11 分钟（服务端 presence 超时 10min + 60s 轮询）。
+    if (input.thinking === true) return input.heartbeatFresh;
     return input.runningSubagentsInTurn > 0;
 }
 

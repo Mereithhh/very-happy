@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-liveness-lease',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: 版本无关，对存量 wrapper 立即生效（B-322）
+    titleKey: 'changelog.releases.sep03z.title',
+    summaryKey: 'changelog.releases.sep03z.summary',
+    itemKeys: [
+      'changelog.releases.sep03z.lease',
+      'changelog.releases.sep03z.queue',
+    ],
+  },
+  {
     id: '2026-09-03-handover-preflight',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

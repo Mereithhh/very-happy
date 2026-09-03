@@ -43,6 +43,7 @@ import {
 import { withSessionPermissionMode } from './sessionPermissionPreference';
 import { collectYoloDecisions, newPermissionRequests, type YoloEnforcementDecision } from './yoloEnforcement';
 import { sanitizeSessionPermissionModes } from './permissionModeOutbound';
+import { forgetHeartbeat } from './heartbeatLease';
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1452,6 +1453,11 @@ export const storage = create<StorageState>()((set, get) => {
             // Tombstone first so any concurrently-processing update or fetch
             // can no longer re-insert this session via applySessions.
             deletedSessionTombstones.add(sessionId);
+
+            // B-322: module-level lease state is invisible to this cleanup
+            // unless it is named here — same leak shape B-312 fixed for the
+            // unread dot. Drops the Map entry and clears the pending timer.
+            forgetHeartbeat(sessionId);
 
             // Remove session from sessions
             const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;

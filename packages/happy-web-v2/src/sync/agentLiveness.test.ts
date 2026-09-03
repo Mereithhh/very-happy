@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { Message } from './typesMessage';
 import { currentTurnMessages, isAgentWorkLive } from './agentLiveness';
 
-const base = { presence: 'online' as const, thinking: false, runningSubagentsInTurn: 0 };
+const base = { presence: 'online' as const, thinking: false, runningSubagentsInTurn: 0, heartbeatFresh: true };
 
 describe('isAgentWorkLive', () => {
     it('trusts the keepAlive, not the transcript', () => {
@@ -23,6 +23,21 @@ describe('isAgentWorkLive', () => {
 
     it('an unknown thinking flag is treated as idle, never as live', () => {
         expect(isAgentWorkLive({ ...base, thinking: undefined })).toBe(false);
+    });
+
+    it('B-322: a latched `thinking` expires once the keepAlive stops arriving', () => {
+        // The hard-kill case: `finally` never ran so no interrupted tool_result
+        // was written, presence is still online (server timeout is 10min + 60s
+        // polling) and REST can never lower `thinking` again
+        // (preserveSessionActivityFromStore). Without the lease the UI keeps
+        // claiming the agent is working for ~11 minutes.
+        expect(isAgentWorkLive({ ...base, thinking: true, heartbeatFresh: false })).toBe(false);
+    });
+
+    it('B-322: a stale heartbeat does not silence a background sub-agent', () => {
+        // `async_launched` legitimately outlives its turn and has no heartbeat
+        // of its own — the lease governs `thinking`, not that vote (B-260-P2).
+        expect(isAgentWorkLive({ ...base, thinking: false, runningSubagentsInTurn: 1, heartbeatFresh: false })).toBe(true);
     });
 });
 
@@ -73,7 +88,27 @@ describe('every liveness consumer goes through the one module', () => {
 
     it('sendMessage only stamps queuedAt while the agent is genuinely live', () => {
         const source = read('./sync.ts');
-        expect(source).toContain('const hasRunningTool = agentLive &&');
+        // B-322: the old assertion pinned `const hasRunningTool = agentLive &&`,
+        // which was dead code — `agentLive` already implies `thinking === true`,
+        // so the extra term could never change the result and only cost a full
+        // transcript scan per send. What must hold is that the stamp uses the
+        // one liveness judgement, lease included.
+        expect(source).toContain('queuedAtForSend(agentLive, source)');
+        expect(source).toContain('heartbeatFresh: isHeartbeatFresh(sessionId)');
+        expect(source).not.toContain('const hasRunningTool');
+    });
+
+    it('B-322: the composer asks the same question, instead of trusting a running tool', () => {
+        const source = read('../screens/session/AgentInput.tsx');
+        expect(source).toContain('const isWorking = isAgentWorkLive({');
+        expect(source).not.toContain("session?.thinking === true || !!runningTool");
+    });
+
+    it('B-322: the heartbeat is stamped before the activity accumulator debounces it', () => {
+        const source = read('./sync.ts');
+        expect(source).toContain('recordHeartbeat(updateData.id, updateData.thinking === true);');
+        expect(source.indexOf('recordHeartbeat(updateData.id'))
+            .toBeLessThan(source.indexOf('this.activityAccumulator.addUpdate(updateData)'));
     });
 
     it('a stalled tool group loses the live accent instead of ticking forever', () => {

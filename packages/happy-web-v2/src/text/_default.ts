@@ -1672,6 +1672,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03z: {
+                title: 'Messages no longer get stuck in the queue',
+                summary: 'Sending a message while the agent was working could leave it sitting in the composer queue indefinitely, with opening a new tab as the only way out. Two separate causes, both fixed.',
+                lease: 'A session now stops claiming to be working once its heartbeat stops arriving. Previously, if the agent process was killed outright, nothing could lower that flag again for about eleven minutes — the Stop button stayed up over a session with nothing to stop, and new messages were held back the whole time. Brief disconnections and backgrounded tabs are explicitly not treated as death.',
+                queue: 'The queue also had a state it could never leave: it waited for the agent to pick the released message up, and if that never happened — a send that failed quietly, a /btw command, or no live agent at all — everything behind it waited forever. It now gives up waiting and drains.',
+            },
             sep03y: {
                 title: 'A bad update can no longer take a machine offline',
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
