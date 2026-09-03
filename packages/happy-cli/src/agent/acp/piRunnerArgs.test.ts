@@ -10,13 +10,28 @@ describe('parsePiRunnerArgs', () => {
     });
   });
 
-  it('drops --permission-mode instead of forwarding it to pi-acp', () => {
-    // The Web launcher always sends one; pi-acp would reject it as an unknown option.
+  it('captures --permission-mode (sanitized) instead of forwarding it to pi-acp', () => {
+    // The Web launcher always sends one; pi-acp would reject it as an unknown option,
+    // so it never reaches passthrough — it goes to the pi-side gate via env/mode file.
     const parsed = parsePiRunnerArgs([
-      '--happy-starting-mode', 'remote', '--started-by', 'daemon', '--permission-mode', 'default',
+      '--happy-starting-mode', 'remote', '--started-by', 'daemon', '--permission-mode', 'bypassPermissions',
     ]);
     expect(parsed.passthrough).toEqual([]);
     expect(parsed.startedBy).toBe('daemon');
+    expect(parsed.permissionMode).toBe('bypassPermissions');
+  });
+
+  it('maps the yolo alias to bypassPermissions and drops values outside the allowlist', () => {
+    expect(parsePiRunnerArgs(['--permission-mode', 'yolo']).permissionMode).toBe('bypassPermissions');
+    expect(parsePiRunnerArgs(['--permission-mode', 'plan']).permissionMode).toBe('plan');
+    expect(parsePiRunnerArgs(['--permission-mode', 'acceptEdits']).permissionMode).toBe('acceptEdits');
+    expect(parsePiRunnerArgs(['--permission-mode', 'default']).permissionMode).toBe('default');
+    expect(parsePiRunnerArgs(['--permission-mode', 'safe-yolo']).permissionMode).toBeUndefined();
+    expect(parsePiRunnerArgs(['--permission-mode', 'rm -rf'])).not.toHaveProperty('permissionMode');
+  });
+
+  it('still drops --happy-starting-mode and its value', () => {
+    expect(parsePiRunnerArgs(['--happy-starting-mode', 'remote'])).toEqual({ verbose: false, passthrough: [] });
   });
 
   it('passes everything after -- to the adapter untouched', () => {
