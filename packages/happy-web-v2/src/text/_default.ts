@@ -564,6 +564,7 @@ export const en = {
             contextLeft: ({ percent }: { percent: number }) => `${percent}% left`,
             toolRunning: 'Running',
             toolError: 'Error',
+            toolInterrupted: 'Unfinished',
             toolDone: 'Done',
             usedTools: ({ count }: { count: number }) => count === 1 ? '1 tool call' : `${count} tool calls`,
             subagentCount: ({ count }: { count: number }) => count === 1 ? '1 sub-agent' : `${count} sub-agents`,
@@ -1472,6 +1473,16 @@ export const en = {
         expandSidebar: 'Expand sidebar',
     },
 
+    connectMachine: {
+        // B-296 /machine/connect — the same guide FirstRunScreen shows, but
+        // reachable once the account already has machines.
+        eyebrow: 'Add a machine',
+        title: 'Connect another machine',
+        intro: 'Run these on the machine you want to reach from here. It shows up in every picker as soon as its daemon is up.',
+        cta: 'Connect a machine',
+        groupTitle: 'Add',
+        settingsSubtitle: 'Install the CLI, sign in and start the daemon',
+    },
     settingsMachines: {
         title: 'Machines',
         subtitle: 'Rename machines, spawn sessions, browse recent paths',
@@ -1644,6 +1655,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03h: {
+                title: 'A restarted session stops claiming it is still working',
+                summary: 'After restarting an agent, the last turn could sit there reporting "2094 minutes" forever, because the tool it was running never got a closing result. Also: the instructions for connecting a machine are reachable again once you already have one.',
+                stalled: 'A tool call whose agent restarted or was killed is now shown as unfinished instead of a live, ticking run. The transcript kept saying "running" because the closing result is exactly what a stopped agent never sends — so a single restart left the turn permanently open, the status bar permanently busy, and every later message stamped as queued. Liveness now comes from the session itself, and the running-tool marker is trusted only while the agent reports it is working.',
+                connect: 'Connecting another machine has a page again: Settings → Machines links to it, the new-session and new-terminal dialogs keep a link to it next to the machine picker, and every "no machine available" dead end now offers it. The steps used to exist only on the welcome screen, which disappears for good once your first machine connects.',
+            },
             sep03g: {
                 title: 'Import several conversations at once, with their titles',
                 summary: 'Imported conversations arrived as "New chat" and could only be brought over one at a time, with nothing but a line of text while you waited. Now they keep their title, you can select as many as you want, and every row reports what it is doing.',

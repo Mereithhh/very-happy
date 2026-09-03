@@ -27,6 +27,7 @@ import { recordRecentMachinePath } from '@/app/newChat';
 import { Button, Spinner, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
+import { NoMachinesNotice } from './NoMachinesNotice';
 import { formatSessionAge } from './newTerminalAttach';
 import {
   filterImportableHistory,
@@ -233,7 +234,7 @@ export function ImportClaudeHistoryModal({ onClose, initialMachineId }: {
         <div className="ns-hint" style={{ marginTop: 0 }}>{t('importClaudeHistory.intro')}</div>
 
         {online.length === 0 ? (
-          <div className="ns-empty">{t('machine.noMachines')}</div>
+          <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
             {online.length > 1 && (

@@ -75,7 +75,7 @@ export function TurnActivityView({
                 <div id={detailId} className="ta-detail vh-disclosure-panel">
                     {rows.map((row) =>
                         row.type === 'toolgroup' ? (
-                            <ToolGroupView key={row.key} tools={row.tools} collapseCompleted />
+                            <ToolGroupView key={row.key} tools={row.tools} collapseCompleted stalled={!live} />
                         ) : (
                             <MessageView
                                 key={row.key}

@@ -28,7 +28,10 @@ describe('shouldShowWorkspaceGuide', () => {
 });
 
 describe('first-machine command sequence', () => {
-  const screen = readFileSync(new URL('./FirstRunScreen.tsx', import.meta.url), 'utf8');
+  // B-296: the command sequence moved into the shared guide; FirstRunScreen
+  // and /machine/connect both render it, so assert against the one source.
+  const screen = readFileSync(new URL('./ConnectMachineGuide.tsx', import.meta.url), 'utf8');
+  const firstRunScreen = readFileSync(new URL('./FirstRunScreen.tsx', import.meta.url), 'utf8');
   const english = readFileSync(new URL('../../text/_default.ts', import.meta.url), 'utf8');
   const chinese = readFileSync(new URL('../../text/translations/zh-Hans.ts', import.meta.url), 'utf8');
 
@@ -38,6 +41,7 @@ describe('first-machine command sequence', () => {
       login: 'very-happy auth login',
       daemon: 'very-happy daemon start',
     });
+    expect(firstRunScreen).toContain('<ConnectMachineGuide />');
     expect(screen).toContain('<Command value={bootstrapCommand} />');
     expect(screen).toContain('<ShellCommands posix={commands.daemon} powershell={commands.daemonPowerShell} />');
     expect(screen.indexOf("t('onboarding.linkTitle')")).toBeLessThan(screen.indexOf("t('onboarding.daemonTitle')"));

@@ -9,6 +9,7 @@ import { getAgentDefaultOverride, getCodeAgentDefaults } from '@/sync/agentDefau
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
+import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
@@ -705,9 +706,18 @@ class Sync {
         // must not wait behind the ordinary chat queue. For normal input, keep
         // sending durably right away but tell the Web that the current turn has
         // not consumed it yet. Old CLIs safely strip this optional meta field.
-        const hasRunningTool = storage.getState().sessionMessages[sessionId]?.messages.some(
+        // B-295: a `running` tool call that lost its wrapper never closes, so
+        // it may only mean "the turn hasn't consumed this yet" while the
+        // session is genuinely working (sync/agentLiveness.ts). Otherwise every
+        // message sent after one restart was stamped queued forever.
+        const agentLive = isAgentWorkLive({
+            presence: session.presence,
+            thinking: session.thinking,
+            runningSubagentsInTurn: 0,
+        });
+        const hasRunningTool = agentLive && (storage.getState().sessionMessages[sessionId]?.messages.some(
             (message) => message.kind === 'tool-call' && message.tool.state === 'running',
-        ) ?? false;
+        ) ?? false);
         const queuedAt = delivery === 'steer'
             ? undefined
             : queuedAtForSend(session.thinking || hasRunningTool, source);

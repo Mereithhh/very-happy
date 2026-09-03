@@ -42,6 +42,7 @@ const SettingsRoutes = lazy(() => import('@/screens/settings/SettingsRoutes').th
 const WebTerminalRoute = lazy(() => import('@/screens/terminal/WebTerminalRoute').then((m) => ({ default: m.WebTerminalRoute })));
 const TerminalPickerScreen = lazy(() => import('@/screens/terminal/TerminalPickerScreen').then((m) => ({ default: m.TerminalPickerScreen })));
 const MachineScreen = lazy(() => import('@/screens/machine/MachineScreen').then((m) => ({ default: m.MachineScreen })));
+const ConnectMachineScreen = lazy(() => import('@/screens/onboarding/ConnectMachineScreen').then((m) => ({ default: m.ConnectMachineScreen })));
 const TaskBoardScreen = lazy(() => import('@/screens/board/TaskBoardScreen').then((m) => ({ default: m.TaskBoardScreen })));
 const AssistantScreen = lazy(() => import('@/screens/assistant/AssistantScreen').then((m) => ({ default: m.AssistantScreen })));
 const NotesScreen = lazy(() => import('@/screens/notes/NotesScreen').then((m) => ({ default: m.NotesScreen })));
@@ -215,6 +216,8 @@ const router = createBrowserRouter(
             { path: 'session/:id', element: <Lazy><SessionDetailScreen /></Lazy> },
             { path: 'terminal', element: <Lazy><TerminalPickerScreen /></Lazy> },
             { path: 'terminal/:machineId', element: <Lazy><WebTerminalRoute /></Lazy> },
+            // B-296: static segment, so it outranks `machine/:id` in the router.
+            { path: 'machine/connect', element: <Lazy><ConnectMachineScreen /></Lazy> },
             { path: 'machine/:id', element: <Lazy><MachineScreen /></Lazy> },
             { path: 'settings/*', element: <Lazy><SettingsRoutes /></Lazy> },
           ],

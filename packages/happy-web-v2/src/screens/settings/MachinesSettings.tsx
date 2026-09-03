@@ -13,7 +13,7 @@
 
 import { type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, HardDrive } from 'lucide-react';
+import { ChevronRight, HardDrive, PlusCircle } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { ItemList, ItemGroup, Item, StatusDot } from '@/ui';
 import { useAllMachines } from '@/sync/storage';
@@ -48,6 +48,17 @@ export function MachinesSettings() {
         <Page>
             <Header title={t('settingsMachines.title')} />
             <ItemList>
+                {/* B-296: connecting another machine was only ever documented on
+                    FirstRunScreen, which disappears for good after machine #1. */}
+                <ItemGroup title={t('connectMachine.groupTitle')}>
+                    <Item
+                        title={t('connectMachine.cta')}
+                        subtitle={t('connectMachine.settingsSubtitle')}
+                        left={<PlusCircle size={18} />}
+                        right={<ChevronRight size={16} />}
+                        onClick={() => navigate('/machine/connect')}
+                    />
+                </ItemGroup>
                 <ItemGroup title={t('settingsMachines.listTitle')} footer={t('settingsMachines.footer')}>
                     {machines.length === 0 && <Item title={t('settingsMachines.empty')} />}
                     {machines.map((m) => {

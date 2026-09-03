@@ -571,6 +571,7 @@ export const zhHans: TranslationStructure = {
             contextLeft: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
             toolRunning: '运行中',
             toolError: '出错',
+            toolInterrupted: '未完成',
             toolDone: '完成',
             usedTools: ({ count }: { count: number }) => `${count} 次工具调用`,
             subagentCount: ({ count }: { count: number }) => `${count} 个子代理`,
@@ -1443,6 +1444,14 @@ export const zhHans: TranslationStructure = {
         expandSidebar: '展开侧边栏',
     },
 
+    connectMachine: {
+        eyebrow: '添加机器',
+        title: '连接一台新机器',
+        intro: '在你想从这里控制的那台机器上依次执行。daemon 起来后，它会立刻出现在所有选择器里。',
+        cta: '连接新机器',
+        groupTitle: '添加',
+        settingsSubtitle: '装 CLI、登录、启动 daemon',
+    },
     settingsMachines: {
         title: '机器',
         subtitle: '改名、开会话、看最近路径',
@@ -1614,6 +1623,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03h: {
+                title: '重启过的会话不再谎称自己还在跑',
+                summary: '重启 agent 之后，最后一轮可能永远停在「耗时 2094 分钟」——它当时在跑的工具再也等不到收尾结果。另外，接一台新机器的说明在已经有机器之后又能找到了。',
+                stalled: 'agent 重启或被杀掉之后留下的工具调用，现在显示为「未完成」，不再是一条还在跳动的活动记录。会话记录之所以一直写着「运行中」，是因为收尾结果恰恰是停掉的 agent 永远不会再发的东西——于是一次重启就让这一轮永远展开、状态条永远显示忙碌、之后每条消息都被标成排队中。是否还在跑现在只由会话自己上报，工具的「运行中」只在 agent 报告自己在工作时才被采信。',
+                connect: '连接新机器重新有了入口：设置 → 机器里有链接，新建会话/新建终端的对话框在机器选择器旁边常驻一个入口，四处「没有可用机器」的死胡同也都能一键跳过去。这些步骤此前只长在欢迎页上，而欢迎页在第一台机器连上之后就永远消失了。',
+            },
             sep03g: {
                 title: '导入支持批量，并且带上标题',
                 summary: '导入进来的对话此前都叫「新会话」，而且一次只能导一条、等待时只有一行字。现在标题会跟着过来，可以一次选多条，每行都会报告自己在干什么。',

@@ -5,6 +5,7 @@
 import { useSession, useSessionRunningTool } from '@/sync/storage';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
+import { isAgentWorkLive } from '@/sync/agentLiveness';
 import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import './statusbar.css';
@@ -14,13 +15,22 @@ export function SessionLiveStatusBar({ sessionId }: { sessionId: string }) {
     const session = useSession(sessionId);
     const runningTool = useSessionRunningTool(sessionId);
 
-    const isThinking = session?.thinking === true;
+    // B-295: `runningTool` is last-known transcript state and never closes
+    // itself after a wrapper restart, so it may not vote on its own — the
+    // session's own keepAlive decides whether anything is live at all
+    // (sync/agentLiveness.ts). Sub-agents don't reach this bar: their Task
+    // tool_result already landed, so `runningTool` is null for them.
+    const agentLive = isAgentWorkLive({
+        presence: session?.presence,
+        thinking: session?.thinking,
+        runningSubagentsInTurn: 0,
+    });
 
-    const kind: 'tool' | 'thinking' | null = runningTool
+    const kind: 'tool' | 'thinking' | null = !agentLive
+        ? null
+        : runningTool
             ? 'tool'
-            : isThinking
-                ? 'thinking'
-                : null;
+            : 'thinking';
 
     const anchor =
         kind === 'tool' ? runningTool!.startedAt : kind === 'thinking' ? session?.thinkingStartedAt ?? null : null;

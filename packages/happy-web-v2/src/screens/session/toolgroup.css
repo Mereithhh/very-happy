@@ -21,6 +21,11 @@
 .tg--mixed .tg-spine {
   background: var(--warn);
 }
+/* B-295: an orphaned `running` tool keeps the neutral spine — phosphor teal
+   means live, and this one provably is not (sync/agentLiveness.ts). */
+.tg--stalled .tg-spine {
+  background: var(--line-2);
+}
 .tg-content {
   flex: 1;
   min-width: 0;
@@ -82,6 +87,14 @@
 }
 .tg-elapsed--err {
   color: var(--danger);
+}
+.tg-elapsed--stalled {
+  color: var(--text-faint);
+}
+.tg-tool-stalled {
+  flex: none;
+  color: var(--text-faint);
+  font-size: var(--fs-11);
 }
 .tg-chevron {
   flex: none;

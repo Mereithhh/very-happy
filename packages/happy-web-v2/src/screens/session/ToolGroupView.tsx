@@ -20,18 +20,29 @@ import { toolRunSummary } from './toolRunSummary';
 import { buildSubagentSummary } from './subagentSummary';
 import './toolgroup.css';
 
-type GroupState = 'running' | 'error' | 'mixed' | 'done';
+type GroupState = 'running' | 'stalled' | 'error' | 'mixed' | 'done';
 
-function groupState(tools: ToolCallMessage[]): GroupState {
+/**
+ * B-295: `stalled` = the transcript still says `running`, but the session is
+ * demonstrably not working (see sync/agentLiveness.ts). The closing
+ * tool_result is exactly what a killed/restarted wrapper never sends, so this
+ * state is permanent — it must read as "unfinished", never as a live pulse
+ * (phosphor teal is reserved for genuinely live, docs/design-language.md).
+ */
+function groupState(tools: ToolCallMessage[], stalled = false): GroupState {
     const states = tools.map((m) => m.tool.state);
-    if (states.some((s) => s === 'running')) return 'running';
+    if (states.some((s) => s === 'running')) return stalled ? 'stalled' : 'running';
     const errors = states.filter((s) => s === 'error').length;
     if (errors === states.length && errors > 0) return 'error';
     if (errors > 0) return 'mixed';
     return 'done';
 }
 
-/** B-260-P2: the only accent on a sub-agent row is a genuinely running lifecycle. */
+/** B-260-P2: the only accent on a sub-agent row is a genuinely running lifecycle.
+ *  Deliberately NOT gated on B-295's `stalled`: a background sub-agent
+ *  (`async_launched`) legitimately keeps running after its launching turn ends,
+ *  and its `running` is an explicit CLI lifecycle event — not the absence of a
+ *  closing frame that makes a plain tool call stall. */
 function subagentGlyph(lifecycle: 'running' | 'completed' | 'failed' | 'stopped' | undefined, toolState: string) {
     if (lifecycle === 'running' || toolState === 'running') return <StatusDot status="thinking" size={7} pulse />;
     if (lifecycle === 'failed' || toolState === 'error') return <StatusDot status="permission" size={7} />;
@@ -45,10 +56,13 @@ function ToolRow({
     message,
     defaultOpen,
     collapseOnComplete = false,
+    stalled = false,
 }: {
     message: ToolCallMessage;
     defaultOpen: boolean;
     collapseOnComplete?: boolean;
+    /** B-295: this `running` row can no longer be live — render it unfinished. */
+    stalled?: boolean;
 }) {
     const { t } = useTranslation();
     const tool = message.tool;
@@ -65,18 +79,20 @@ function ToolRow({
     const { id: sessionId } = useParams();
     // B-145: 带文件路径的工具，头部的 detail 变成可点——点开预览而不是折叠这一行
     const filePath = toolFilePathOf(tool);
-    const status =
-        tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
+    const isStalled = stalled && tool.state === 'running';
+    const status = isStalled
+        ? 'offline'
+        : tool.state === 'running' ? 'thinking' : tool.state === 'error' ? 'permission' : 'connected';
     const label = toolLabel(tool);
     const detail = toolDetail(tool);
     // A live or failed operation must surface itself even when the mobile
     // overview initially collapsed this row. Turn activity rows fold exactly
     // once on running→completed; legacy tool groups preserve their old state.
     useEffect(() => {
-        if (tool.state === 'running' || tool.state === 'error') setOpen(true);
+        if ((tool.state === 'running' && !stalled) || tool.state === 'error') setOpen(true);
         if (collapseOnComplete && !isSubagent && tool.state === 'completed' && wasRunningRef.current) setOpen(false);
         wasRunningRef.current = tool.state === 'running';
-    }, [collapseOnComplete, isSubagent, tool.state]);
+    }, [collapseOnComplete, isSubagent, stalled, tool.state]);
     return (
         <div className={`tg-row${tool.state === 'error' ? ' tg-row--error' : ''}`}>
             <div className="tg-row-head-wrap">
@@ -84,7 +100,7 @@ function ToolRow({
                     <ChevronRight size={13} className={`tg-chevron${open ? ' is-open' : ''}`} />
                     {isSubagent
                         ? subagentGlyph(subagentSummary?.lifecycle?.status, tool.state)
-                        : <StatusDot status={status as any} size={7} pulse={tool.state === 'running'} />}
+                        : <StatusDot status={status as any} size={7} pulse={tool.state === 'running' && !isStalled} />}
                     <span className="tg-tool-label">{label}</span>
                     {detail && detail !== label && !filePath && <span className="tg-tool-detail">{detail}</span>}
                 </button>
@@ -94,6 +110,7 @@ function ToolRow({
                 {detail && detail !== label && filePath && !sessionId && (
                     <span className="tg-tool-detail">{detail}</span>
                 )}
+                {isStalled && <span className="tg-tool-stalled">{t('session.chat.toolInterrupted')}</span>}
             </div>
             {subagentSummary && (subagentSummary.toolCount > 0 || subagentSummary.lifecycle) && (
                 <div className="tg-subagent-line">
@@ -119,12 +136,15 @@ function ToolRow({
 export function ToolGroupView({
     tools,
     collapseCompleted = false,
+    stalled = false,
 }: {
     tools: ToolCallMessage[];
     collapseCompleted?: boolean;
+    /** B-295: the session is not working, so `running` rows here are orphans. */
+    stalled?: boolean;
 }) {
     const { t } = useTranslation();
-    const state = groupState(tools);
+    const state = groupState(tools, stalled);
     const running = state === 'running';
     const compact = useMediaQuery('(max-width: 860px)');
     // collapsed by default once done; open while running.
@@ -151,6 +171,7 @@ export function ToolGroupView({
                         message={tools[0]}
                         defaultOpen={collapseCompleted ? running || state === 'error' : !compact || running || state === 'error'}
                         collapseOnComplete={collapseCompleted}
+                        stalled={stalled}
                     />
                 </div>
             </div>
@@ -178,6 +199,11 @@ export function ToolGroupView({
                             <StatusDot status="thinking" size={7} pulse />
                             {formatElapsed(elapsed)}
                         </span>
+                    ) : state === 'stalled' ? (
+                        <span className="tg-elapsed tg-elapsed--stalled">
+                            <Square size={11} />
+                            {t('session.chat.toolInterrupted')}
+                        </span>
                     ) : state === 'error' || state === 'mixed' ? (
                         <span className="tg-elapsed tg-elapsed--err">
                             <AlertTriangle size={12} />
@@ -191,8 +217,9 @@ export function ToolGroupView({
                             <ToolRow
                                 key={m.id}
                                 message={m}
-                                defaultOpen={m.tool.state === 'running' || m.tool.state === 'error'}
+                                defaultOpen={(m.tool.state === 'running' && !stalled) || m.tool.state === 'error'}
                                 collapseOnComplete={collapseCompleted}
+                                stalled={stalled}
                             />
                         ))}
                     </>}

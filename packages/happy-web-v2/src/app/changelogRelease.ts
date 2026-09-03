@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-stalled-tools-and-connect-guide',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep03h.title',
+    summaryKey: 'changelog.releases.sep03h.summary',
+    itemKeys: [
+      'changelog.releases.sep03h.stalled',
+      'changelog.releases.sep03h.connect',
+    ],
+  },
+  {
     id: '2026-09-03-import-batch-and-titles',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

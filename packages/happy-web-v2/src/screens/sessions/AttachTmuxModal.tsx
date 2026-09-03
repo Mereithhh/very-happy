@@ -19,6 +19,7 @@ import { machineListTmuxSessions } from '@/sync/ops';
 import { tmuxSessionsSupported } from '@/sync/closedTerminals';
 import { Button, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { NoMachinesNotice } from './NoMachinesNotice';
 import { formatSessionAge, type UserTmuxSession } from './newTerminalAttach';
 import './newsession.css';
 
@@ -74,7 +75,7 @@ export function AttachTmuxModal({ onClose }: { onClose: () => void }) {
         <div className="ns-title">{t('attachTmuxModal.title')}</div>
 
         {online.length === 0 ? (
-          <div className="ns-empty">{t('machine.noMachines')}</div>
+          <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
             {online.length > 1 && (
