@@ -81,3 +81,16 @@ describe('normalizePiToolCall wiring', () => {
         expect(src('../../screens/session/ChatList.tsx')).toContain('!isHiddenToolCall(message.tool)');
     });
 });
+
+describe('pi edit tool shape (probed pi-acp 0.0.33)', () => {
+    it('maps { path, edits:[one] } to Edit and { path, edits:[many] } to MultiEdit', () => {
+        const one = mapPiToolToKnown({ piTool: 'edit', rawInput: { path: 'a.json', edits: [{ oldText: 'x', newText: 'y' }] } });
+        expect(one).toEqual({ name: 'Edit', input: { file_path: 'a.json', old_string: 'x', new_string: 'y' } });
+        const many = mapPiToolToKnown({ piTool: 'edit', rawInput: { path: 'a.json', edits: [{ oldText: 'x', newText: 'y' }, { oldText: 'p', newText: 'q' }] } });
+        expect(many).toEqual({ name: 'MultiEdit', input: { file_path: 'a.json', edits: [{ old_string: 'x', new_string: 'y' }, { old_string: 'p', new_string: 'q' }] } });
+    });
+    it('returns null when edits carry no usable pair and there is no flat oldText/newText', () => {
+        expect(mapPiToolToKnown({ piTool: 'edit', rawInput: { path: 'a.json', edits: [{ oldText: 'x' }] } })).toBeNull();
+        expect(mapPiToolToKnown({ piTool: 'edit', rawInput: { path: 'a.json' } })).toBeNull();
+    });
+});

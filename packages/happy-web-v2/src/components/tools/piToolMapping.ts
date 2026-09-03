@@ -59,10 +59,27 @@ export function mapPiToolToKnown(args: PiToolArgs | null | undefined): MappedKno
             return { name: 'Read', input: compact({ file_path: path, limit: num(raw.limit), offset: num(raw.offset) }) };
         }
         case 'edit': {
+            // pi's edit tool (probed 2026-09-04 via pi-acp 0.0.33) sends
+            // `{ path, edits: [{ oldText, newText }, …] }`; a single edit renders
+            // as Claude's Edit, several as MultiEdit. Flat `oldText/newText` is
+            // accepted too in case a future pi flattens single edits.
             const path = str(raw.path);
+            if (!path) return null;
+            const edits = Array.isArray(raw.edits)
+                ? raw.edits
+                    .map((e) => obj(e))
+                    .map((e) => ({ old_string: str(e.oldText), new_string: str(e.newText) }))
+                    .filter((e): e is { old_string: string; new_string: string } => e.old_string !== undefined && e.new_string !== undefined)
+                : [];
+            if (edits.length === 1) {
+                return { name: 'Edit', input: { file_path: path, old_string: edits[0].old_string, new_string: edits[0].new_string } };
+            }
+            if (edits.length > 1) {
+                return { name: 'MultiEdit', input: { file_path: path, edits } };
+            }
             const oldText = str(raw.oldText);
             const newText = str(raw.newText);
-            if (!path || oldText === undefined || newText === undefined) return null;
+            if (oldText === undefined || newText === undefined) return null;
             return { name: 'Edit', input: { file_path: path, old_string: oldText, new_string: newText } };
         }
         case 'write': {
