@@ -1,11 +1,27 @@
 import type { ToolCall } from '@/sync/typesMessage';
+import { parseLedgerOp } from './supervisorCards';
+
+/** B-353: `vh-ledger decide T-012 --action accept --cite 0,2 …` → `ledger: T-012 ← accept (cite 0,2)`. */
+export function ledgerOpDetail(command: string): string | null {
+    const op = parseLedgerOp(command);
+    if (!op) return null;
+    const cite = op.cite.length > 0 ? ` (cite ${op.cite.join(',')})` : '';
+    switch (op.subcommand) {
+        case 'decide':
+            return `ledger: ${op.taskId ?? '?'} ← ${op.action ?? 'decide'}${op.requestId ? ` ${op.requestId}` : ''}${cite}`;
+        case 'bind':
+            return `ledger: ${op.taskId ?? '?'} ↔ ${op.sessionId ?? '?'}`;
+        case 'add':
+            return `ledger: add${op.goal ? ` “${op.goal}”` : ''}`;
+    }
+}
 
 /** A short, human-friendly subtitle/detail for a tool call (path, command, etc). */
 export function toolDetail(tool: ToolCall): string | null {
     const input = tool.input ?? {};
     switch (tool.name) {
         case 'Bash':
-            return typeof input.command === 'string' ? input.command : null;
+            return typeof input.command === 'string' ? (ledgerOpDetail(input.command) ?? input.command) : null;
         case 'Read':
         case 'Write':
         case 'Edit':

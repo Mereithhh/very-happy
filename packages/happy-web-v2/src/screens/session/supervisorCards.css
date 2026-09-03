@@ -1,0 +1,60 @@
+/* B-353 supervisor cards — sit on the bg-1 panel step; mono for ids/tags; accent only for attention. */
+.svc {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.svc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.svc-title { font-weight: 600; }
+.svc-mono { font-family: var(--font-mono); font-size: 12px; }
+.svc-dim { color: var(--text-dim); }
+.svc-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.svc-item {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.svc-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.svc-goal { flex: 1 1 auto; }
+.svc-kind,
+.svc-action {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line-2);
+  color: var(--text-dim);
+  background: var(--bg-3);
+}
+.svc-kind--attention,
+.svc-action--escalate,
+.svc-action--approve,
+.svc-action--deny { border-color: var(--accent-2); color: var(--accent-2); background: var(--accent-dim); }
+.svc-action--stop { border-color: var(--danger); color: var(--danger); background: transparent; }
+.svc-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.svc-link { color: var(--accent-2); text-decoration: none; }
+.svc-link:hover { text-decoration: underline; }
+.svc-section { margin-top: 6px; }
+.svc-label { display: block; font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.svc-list { margin: 0; padding-left: 18px; }
+.svc-acceptance li { margin: 1px 0; }
+.svc-req-id { color: var(--text); }
+.svc-wait { color: var(--warn); }
+.svc-reason { margin-top: 4px; }
+.svc-message { margin-top: 4px; color: var(--text-dim); white-space: pre-wrap; }
+.svc-command { display: block; margin-top: 6px; padding: 4px 8px; background: var(--bg-0); border: 1px solid var(--line); border-radius: 4px; white-space: pre-wrap; }
+.svc-foot { margin-top: 8px; font-size: 12px; }

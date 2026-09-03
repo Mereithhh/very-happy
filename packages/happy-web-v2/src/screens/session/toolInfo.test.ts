@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ToolCall } from '@/sync/typesMessage';
-import { asCommand, commandOutputText, extractError, resultToText } from './toolInfo';
+import { asCommand, commandOutputText, extractError, ledgerOpDetail, resultToText, toolDetail } from './toolInfo';
 
 describe('resultToText', () => {
     it('returns empty string for null/undefined', () => {
@@ -100,5 +100,17 @@ describe('extractError', () => {
         expect(extractError({ name: 'X', state: 'error', result: { error: 'e' } } as ToolCall)).toBe('e');
         expect(extractError({ name: 'X', state: 'error', result: { message: 'm' } } as ToolCall)).toBe('m');
         expect(extractError({ name: 'X', state: 'error', result: {} } as ToolCall)).toBeUndefined();
+    });
+});
+
+describe('ledgerOpDetail (B-353)', () => {
+    it('compacts vh-ledger commands and leaves other commands to the plain detail', () => {
+        expect(ledgerOpDetail('vh-ledger decide T-012 --action accept --reason "ok" --cite 0,2')).toBe('ledger: T-012 ← accept (cite 0,2)');
+        expect(ledgerOpDetail('vh-ledger decide T-001 --action approve --request r1 --reason ok')).toBe('ledger: T-001 ← approve r1');
+        expect(ledgerOpDetail('bin/vh-ledger bind T-002 cmtabc')).toBe('ledger: T-002 ↔ cmtabc');
+        expect(ledgerOpDetail('vh-ledger add --goal "Fix it" --cwd /w')).toBe('ledger: add “Fix it”');
+        expect(ledgerOpDetail('git status')).toBeNull();
+        expect(toolDetail({ name: 'Bash', state: 'completed', input: { command: 'vh-ledger bind T-1 s1' }, createdAt: 0, startedAt: null, completedAt: null, description: null })).toBe('ledger: T-1 ↔ s1');
+        expect(toolDetail({ name: 'Bash', state: 'completed', input: { command: 'ls -la' }, createdAt: 0, startedAt: null, completedAt: null, description: null })).toBe('ls -la');
     });
 });

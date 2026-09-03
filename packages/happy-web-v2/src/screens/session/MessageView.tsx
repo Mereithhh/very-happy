@@ -19,6 +19,8 @@ import { stripHarnessBlocks, parseLocalCommandMessage, parseTaskNotification } f
 import { estimateWrappedLines, shouldCollapseBubble } from './codeCollapse';
 import { stripThinkingWrapper, formatThoughtFor, thinkingPreview, isLiveThinking } from './thinking';
 import { presentServiceEvent } from './serviceEvent';
+import { parseDecisionBlock, parseTickReport } from './supervisorCards';
+import { DecisionCard, TickReportCard } from './SupervisorCardViews';
 import './message.css';
 
 function UserText({ message }: { message: UserTextMessage }) {
@@ -47,6 +49,11 @@ function UserText({ message }: { message: UserTextMessage }) {
     const parsed = parseLocalCommandMessage(raw);
 
     if (parsed.kind === 'caveat') return null;
+    // B-353: a vh-supervisor tick is a machine-composed user message; render its items as cards.
+    if (parsed.kind === 'text') {
+        const tick = parseTickReport(parsed.text);
+        if (tick) return <TickReportCard report={tick} />;
+    }
     if (parsed.kind === 'command-run') {
         return (
             <div className="msg msg--user">
@@ -161,15 +168,19 @@ function AgentText({
 
     const text = stripHarnessBlocks(message.text);
     if (!text && !showMeta) return null;
+    // B-353: charter decisions JSON at the end of a supervisor reply → card; prose above stays markdown.
+    const decisionBlock = text ? parseDecisionBlock(text) : null;
+    const prose = decisionBlock ? decisionBlock.prose : text;
     return (
         <div className="msg msg--agent">
-            {text && (
+            {prose && (
                 <div className="msg-agent-text vh-copyhost">
-                    <Markdown text={text} onOption={onOption} />
+                    <Markdown text={prose} onOption={onOption} />
                     {/* copies the markdown SOURCE of the whole message, not the rendered text */}
                     <CopyButton text={text} className="vh-copy--overlay msg-copy--agent" label={t('message.copyMessage')} />
                 </div>
             )}
+            {decisionBlock && <DecisionCard decisions={decisionBlock.decisions} />}
             {showMeta && (
                 <MessageMetaRow
                     usage={message.usage}
