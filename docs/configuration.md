@@ -20,6 +20,7 @@ state. Never commit production values.
 | `AUTH_ALLOW_LEGACY_PAIRING` | Temporarily accept pairing without a one-time claim secret | Unset/`false`; enable only during the documented CLI rollout |
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
 | `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
+| `CLI_AUTO_UPDATE_VERSION` | Exact version an idle machine may install **by itself**. Never derived from the registry, and unset means no machine auto-installs anything | Unset until a release has been out long enough to trust unattended |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
 | `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `true` since B-348 — `latest` is now promoted only after the 3-OS smoke matrix passes, so following it is the reviewed default. Set `CLI_RECOMMENDED_VERSION` to override it (that pin always wins) |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
@@ -90,6 +91,19 @@ blast radius.
 - `CLI_RECOMMENDED_VERSION` pins an exact version and **overrides the lookup**.
   It is the brake: set it to hold the fleet at a known-good release (or to roll
   the recommendation back) without touching npm.
+
+`CLI_AUTO_UPDATE_VERSION` answers a different question and is therefore a
+different variable (B-351). Recommending a release costs nothing if it later
+turns out to be bad — the worst case is someone reads a banner. Installing it
+unattended on every idle machine is not reversible in the same way, and letting
+it follow the registry would make `npm publish` the moment a release reaches the
+entire fleet, with no person in between.
+
+So it is pinned by hand, always, and unset means no machine auto-installs
+anything. That manual step is deliberate: it is the only place a human decides
+that a release is safe to push onto other people's machines while they are away.
+If it ever feels like friction worth removing, re-read this paragraph — removing
+it is exactly the change it exists to prevent.
 
 ## Google login
 

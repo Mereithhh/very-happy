@@ -152,10 +152,16 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 6. **CLI 的 npm 包与 tag 是不可变外部发布**：平台包先于主包；任一步失败都不移动或复用
    已推 tag，修复后递增版本；**npm 上可见 ≠ 该版本被推荐**——主包发布落在 `next`，
    `latest` 只由 publish workflow 的 `promote` job 在**同一 commit 的三系统 smoke 全绿后**
-   移动（B-348），而 relay 的 `recommendedVersion` 跟着 `latest` 走（1h 缓存），B-327 的空闲
-   自动升级装的就是它。所以**发版不再需要手动 pin**，而 `next` 领先 `latest` 就是「smoke 没过
-   / promote 没跑」的信号：去读那个 job，别手动 `npm dist-tag add` 绕过去。要按住或回滚机队用
-   `CLI_RECOMMENDED_VERSION`（pin 永远赢过 lookup），机制与两个变量的分工见 `docs/configuration.md`。
+   移动（B-348），而 relay 的 `recommendedVersion` 跟着 `latest` 走（1h 缓存）。所以**发版不再
+   需要手动 pin 推荐版本**，而 `next` 领先 `latest` 就是「smoke 没过 / promote 没跑」的信号：
+   去读那个 job，别手动 `npm dist-tag add` 绕过去。要按住或回滚机队用 `CLI_RECOMMENDED_VERSION`
+   （pin 永远赢过 lookup）。
+   **但「推荐」与「替用户装」是两个问题，用两个变量（B-351）**：`recommendedVersion` 可以跟着
+   registry 走——告诉一个人有新版，事后发现它坏了也没有代价；而 B-327 的空闲自动升级装的是
+   **单独 pin 的 `CLI_AUTO_UPDATE_VERSION`，从不由 registry 推导**，不设就没有任何机器会自动装。
+   这个手动步骤是**故意保留**的：让它跟 `latest` 走，等于 `npm publish` 那一刻就是发布抵达全机队
+   的时刻，中间没有人。别因为「还要手动 pin 很碍事」把它接回 lookup——那正是这条规则要防的事。
+   两个变量的分工见 `docs/configuration.md`。
 7. **面向用户的 CLI 更新命令必须固定目标版本并窄放行安装脚本**：使用
    `npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version> && very-happy daemon start`。
    `daemon start` 是幂等的 version/endpoint-aware handover：不在线则启动，不匹配则优雅接管；

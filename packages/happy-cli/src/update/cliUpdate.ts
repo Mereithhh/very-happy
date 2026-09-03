@@ -3,6 +3,10 @@ import type { CliUpdateState, DaemonState } from '@/api/types';
 export interface CliVersionPolicyResponse {
   recommendedVersion: string | null;
   minimumVersion: string | null;
+  /** B-351: the version a machine may install unattended, pinned separately
+   *  from `recommendedVersion` and never derived from the registry. Absent from
+   *  older relays, which simply means no machine auto-installs anything. */
+  autoUpdateVersion?: string | null;
   checkedAt: number;
   source: 'configured' | 'registry' | 'unavailable';
 }
@@ -79,6 +83,9 @@ export function deriveCliUpdateState(
   const minimum = policy.minimumVersion && parseExactVersion(policy.minimumVersion)
     ? policy.minimumVersion.replace(/^v/, '')
     : null;
+  const autoUpdate = policy.autoUpdateVersion && parseExactVersion(policy.autoUpdateVersion)
+    ? policy.autoUpdateVersion.replace(/^v/, '')
+    : null;
   if (!recommended && !minimum) return null;
   const belowMinimum = minimum ? compareExactVersions(currentVersion, minimum) === -1 : false;
   const belowRecommended = recommended ? compareExactVersions(currentVersion, recommended) === -1 : false;
@@ -87,6 +94,7 @@ export function deriveCliUpdateState(
     recommendedVersion: recommended ? parseExactVersion(recommended)!.exact : null,
     minimumVersion: minimum ? parseExactVersion(minimum)!.exact : null,
     status: belowMinimum ? 'required' : belowRecommended ? 'available' : 'current',
+    autoUpdateVersion: autoUpdate ? parseExactVersion(autoUpdate)!.exact : null,
     checkedAt: policy.checkedAt,
   };
 }
@@ -157,9 +165,11 @@ export async function fetchCliUpdateState(
     if (!['configured', 'registry', 'unavailable'].includes(String(raw.source))) return null;
     if (raw.recommendedVersion !== null && raw.recommendedVersion !== undefined && typeof raw.recommendedVersion !== 'string') return null;
     if (raw.minimumVersion !== null && raw.minimumVersion !== undefined && typeof raw.minimumVersion !== 'string') return null;
+    if (raw.autoUpdateVersion !== null && raw.autoUpdateVersion !== undefined && typeof raw.autoUpdateVersion !== 'string') return null;
     return deriveCliUpdateState(currentVersion, {
       recommendedVersion: raw.recommendedVersion ?? null,
       minimumVersion: raw.minimumVersion ?? null,
+      autoUpdateVersion: raw.autoUpdateVersion ?? null,
       checkedAt: raw.checkedAt!,
       source: raw.source as CliVersionPolicyResponse['source'],
     });

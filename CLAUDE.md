@@ -28,6 +28,8 @@ git worktree list                                   # 派工前看清有哪些�
   **发版流程 2026-09-04 变了（B-348，铁律 6）**：主包发到 `next`，publish workflow 的 `promote` job 在同一
   commit 的三系统 smoke 全绿后才移 `latest`，relay 用 `CLI_VERSION_REGISTRY_LOOKUP=true` 跟着 `latest`（1h 缓存）
   ——**不用再手动 pin `CLI_RECOMMENDED_VERSION`**（它现在被注释在 `/opt/happy/.env` 里当刹车，pin 永远赢过 lookup）。
+  **但自动升级另有一个必须手动 pin 的 `CLI_AUTO_UPDATE_VERSION`**（B-351，铁律 6）：不设就没有机器会自动装，
+  这个手动步骤是故意的——推荐一个版本和替用户装上它是两个决定。发完并确认无碍后再 pin 它。
   `next` 领先 `latest` = promote 没跑成，去读那个 job，别手动 `dist-tag add` 绕。0.2.117 是第一个真正跑到 promote 的版本。
   门禁基线：web 2215+ 测试、cli 1724+ unit、双 tsc 0。**同一天 0.2.108→0.2.115 由多个
   并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
@@ -47,7 +49,9 @@ git worktree list                                   # 派工前看清有哪些�
   destroy-unattached 等 + 0x1f 分隔符被 tmux ≤3.5 munge 的存量修复，见 AGENTS 铁律 17）、B-273/280/281/282
   （接入已有 tmux 会话：能力 + 一等入口 + 直达选择器 + 关闭=仅断开/可选彻底关闭，spec
   `specs/2026-09-attach-existing-tmux.md`）、B-275/276（Claude 认证预检/修复）、B-272（session 单写者锁）。
-- `docs/verify-queue.md` 待验证 **113 项**（V-0xx～V-138），远超「下一批前清账」纪律；发新批前请 Owner 清账或明确批准堆积。
+- `docs/verify-queue.md` 有 113 项（V-0xx～V-138）。**别再往里堆等 Owner 验的项**——Owner 明确说过
+  没时间清、「用户没反馈就是修好了」。验收纪律以 AGENTS.md 为准：能用浏览器验的当批自己验完，
+  只有真机专属项（IME、触屏手感、多设备时序）才登记，且要写清为什么浏览器验不了。
 - 门禁基线：web tsc 0 错误、cli 1690+ unit、web 2170+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
   web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让 `installScript.test.ts` 失败，
   CI 不受影响）；happy-cli 的 unit 项目含真实 tmux 测试（CI 也跑，见铁律 17）。

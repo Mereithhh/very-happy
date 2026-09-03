@@ -1708,7 +1708,7 @@ export async function startDaemon(): Promise<void> {
       const decision = decideAutoUpdate({
         enabled: (settings.cliAutoUpdate ?? 'idle') !== 'off',
         currentVersion: cliUpdate.currentVersion,
-        recommendedVersion: cliUpdate.recommendedVersion,
+        autoUpdateVersion: cliUpdate.autoUpdateVersion ?? null,
         idle: pidToTrackedSession.size === 0 && !apiMachine.hasLiveTerminals(),
         failedVersion: autoUpdateFailedVersion,
       });
