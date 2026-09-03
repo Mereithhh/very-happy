@@ -26,6 +26,10 @@
   下面是这条纪律的来历与手工做法（脚本挂了或要改它时看）：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
   不要拿本地分支或记忆里的号；rebase 遇到同号先到者优先，后到者在整个分支上重编号（代码注释、测试名、spec、
   verify-queue、PR 标题都要改）。2026-09-02 一天内 B-279、B-282 各被两个会话撞号，各多花一轮 rebase+CI。
+  **changelog key 撞号有一个静默形状**：两条 release 文案在 `releases: {}` 里相邻，冲突块从对象**中间**开始，
+  于是「两边都留」的机械解法会把两条**合并进同一个 key**（前一半的字段被后一半覆盖，少的那条无声消失）。
+  唯一防线是 tsc 的 duplicate-key 报错——解完这类冲突必须跑 `tsc --noEmit`，别只看 vitest
+  （2026-09-03 实踩：B-315/sep03t 被并行会话同取，重编号时正是这个形状）。
   **长任务要重复做这件事**：号是在开工时取的，而 main 在你写代码、跑门禁、做 review 的这几小时里会一直前进——
   2026-09-03 的 B-309/310/311 连撞两次（第一次 B-304/305、重编到 306 又被占），每次 rebase 后都要重新
   `git show origin/main:docs/backlog.md` 核一遍最大号。**CLI 版本号同理且更贵**：同一天 0.2.109/110/111 被
@@ -186,6 +190,9 @@ curl -s -o /dev/null -w '%{content_type}\n' "https://veryhappy.dev$M"   # 必须
 - **自动化验不了的**（真机 IME/触屏/视觉观感）：当批产出「留真机验证」清单 →
   登记 `docs/verify-queue.md`，**下一批开始前先清账**——不许无限堆积；
   验证不通过当场转 backlog.md 建 bug 项。
+- **发布后必须证明本次改动真在线上**（workflow 绿 ≠ 上线）：
+  `node scripts/dev/check-shipped.mjs --needle '<只有新代码才有的串>'`，非 0 即没上。
+  别手搓 curl——三次手搓三次读出相反结论，坑写在脚本头部。
 - 浏览器判断「没生效」前先在原标签页记录实际加载的 entry/CSS URL、目标元素
   computed style 与关键 CSS variable，并和服务器当前 entry 对比；再用普通 reload
   验证版本迁移。只有证据留存后才 hard refresh/unregister 做恢复；强刷后正常不能

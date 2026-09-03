@@ -13,6 +13,14 @@
  *        Fails when packages/happy-cli|happy-wire have feat/fix/perf commits
  *        since the previous v* tag and no entry carries cliVersion 'X.Y.Z'.
  *
+ * The gate is a floor, not proof of coverage: it asks whether the release added
+ * SOME entry, not whether every user-facing commit in the range is described by
+ * one. A batch where three sessions land and only two write an entry passes on
+ * the back of the other two (2026-09-03: B-316 shipped uncovered that way). So
+ * a passing run prints the user-facing commits it saw — read that list against
+ * the entries before releasing; one entry legitimately covers several commits,
+ * which is exactly why this cannot be machine-checked.
+ *
  * Escape hatches (always logged): `--skip "<reason>"`, or for CLI tags an
  * annotated tag message containing `[changelog-skip: <reason>]`.
  * On failure the conventional-commit draft is printed so the entry can be
@@ -181,7 +189,18 @@ async function main() {
   out(`  user-facing:  ${result.facing.length}`);
   out(`  verdict:      ${result.ok ? 'OK' : 'FAIL'} — ${result.reason}`);
 
-  if (result.ok) return;
+  if (result.ok) {
+    // The gate cannot tell which commit each entry describes, so it shows the
+    // work and leaves the judgement to the releasing agent (see the header).
+    if (result.facing.length > 0) {
+      out();
+      out('  covering (check every line has an entry — the gate only checks that one was added):');
+      for (const commit of result.facing) {
+        out(`    ${commit.hash}  ${commit.type}${commit.scope ? `(${commit.scope})` : ''}${commit.breaking ? '!' : ''}: ${commit.subject}`);
+      }
+    }
+    return;
+  }
 
   const skip = (explicitSkip && explicitSkip.trim()) || result.tagSkipReason;
   if (skip) {
