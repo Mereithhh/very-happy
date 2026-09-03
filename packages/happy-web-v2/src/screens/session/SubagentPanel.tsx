@@ -33,7 +33,7 @@ export function SubagentPanel({
     // The drawer must tell the same story as the row it was opened from, so it
     // derives the abort marker the same way ChatList does (B-317). Storage
     // keeps messages newest-first; every helper here wants ascending.
-    const { messages } = useSessionMessages(sessionId);
+    const { messages, isLoaded } = useSessionMessages(sessionId);
     const abortedAt = useMemo(
         () => userAbortedAt(currentTurnMessages([...messages].reverse())),
         [messages],
@@ -53,9 +53,13 @@ export function SubagentPanel({
             <div className="sap-body">
                 {card
                     ? <SubagentDetail message={card} abortedAt={abortedAt} />
-                    // The card can be missing legitimately: a deep link, or a
-                    // transcript page that has not been loaded back in yet.
-                    : <div className="sa-empty">{t('session.chat.subagentGone')}</div>}
+                    // "Not here" and "not here YET" are different answers. A
+                    // reload with `?panel=agent&sub=…` in the URL mounts this
+                    // before the transcript has been fetched; claiming the card
+                    // is gone during that window is simply wrong.
+                    : !isLoaded
+                        ? <div className="sa-empty">{t('session.chat.loadingMessages')}</div>
+                        : <div className="sa-empty">{t('session.chat.subagentGone')}</div>}
             </div>
         </div>
     );
