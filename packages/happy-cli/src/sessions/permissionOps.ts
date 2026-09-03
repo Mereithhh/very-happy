@@ -171,8 +171,24 @@ export interface ResolvePermissionResult {
     settled?: boolean
 }
 
+/** Slack past the transport's own timer before we declare the call hung ourselves. */
+const RPC_DEADLINE_GRACE_MS = 2_000
+
+/** Pure: reject with `message` if `promise` has not settled within `ms`. */
+export function withDeadline<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`${message} (timed out)`)), ms)
+        promise.then(
+            (value) => { clearTimeout(timer); resolve(value) },
+            (error) => { clearTimeout(timer); reject(error) },
+        )
+    })
+}
+
 export interface ResolvePermissionDeps {
     now?: () => number
+    /** Test hook: shrink the RPC deadline. */
+    rpcTimeoutMs?: number
     readPersisted?: () => Record<string, PersistedSession>
     fetchAgentState?: (sessionId: string, persisted: PersistedSession, token: string) => Promise<AgentState | null>
     openTransport?: (token: string) => Promise<UserRpcTransport>
@@ -216,11 +232,18 @@ export async function resolvePermissionRequest(
     const key = decodeBase64(persisted.encryptionKey)
     const params = encodeBase64(encrypt(key, persisted.encryptionVariant, payload))
     const transport = await (deps.openTransport ?? openUserScopedSocket)(token)
+    const rpcTimeoutMs = deps.rpcTimeoutMs ?? PERMISSION_RPC_TIMEOUT_MS
     let ack: RpcCallAck
     try {
-        ack = await transport.rpcCall({ method: `${sessionId}:permission`, params }, PERMISSION_RPC_TIMEOUT_MS)
+        // socket.io has its own ack timer, but this deadline is OURS: a CLI
+        // invocation must terminate even if the transport never settles
+        // (a one-shot command that hangs is worse than one that fails).
+        ack = await withDeadline(
+            transport.rpcCall({ method: `${sessionId}:permission`, params }, rpcTimeoutMs),
+            rpcTimeoutMs + RPC_DEADLINE_GRACE_MS,
+            `permission RPC did not settle within ${rpcTimeoutMs}ms`,
+        )
     } catch (error) {
-        // socket.io rejects the emitWithAck promise on its own timer.
         ack = { ok: false, error: error instanceof Error ? error.message : 'RPC call failed' }
     } finally {
         transport.close()

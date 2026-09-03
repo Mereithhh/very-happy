@@ -166,6 +166,16 @@ describe('resolvePermissionRequest — end to end over a fake transport', () => 
         expect(transport.closed).toBe(true)
     })
 
+    it('terminates with a timeout outcome even when the transport never settles (owned deadline)', async () => {
+        const transport = fakeTransport(() => new Promise<RpcCallAck>(() => { /* never */ }))
+        const started = Date.now()
+        const result = await resolvePermissionRequest(SID, REQ, { kind: 'approve' }, { ...deps([pendingState], transport), rpcTimeoutMs: 20 })
+        expect(Date.now() - started).toBeLessThan(2_000 + 1_500)
+        expect(result.outcome.status).toBe('timeout')
+        expect(result.outcome).toMatchObject({ message: expect.stringMatching(/did not settle within 20ms .*timed out/) })
+        expect(transport.closed).toBe(true)
+    })
+
     it('surfaces a handler {error} envelope (rule 17) instead of calling it success', async () => {
         const transport = fakeTransport(() => ({ ok: true, result: encodeBase64(encrypt(key, 'dataKey', { error: 'handler exploded' })) }))
         const result = await resolvePermissionRequest(SID, REQ, { kind: 'approve' }, deps([pendingState], transport))
