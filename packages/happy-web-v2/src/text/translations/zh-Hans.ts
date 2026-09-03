@@ -1002,6 +1002,8 @@ export const zhHans: TranslationStructure = {
         agentUnavailableTitle: ({ agent }: { agent: string }) => `这台机器上无法使用 ${agent}`,
         agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `要使用 ${agent}，请在 daemon 机器运行 \`${command}\` 后重启 daemon；也可切换到 Claude。`,
         openClawSetupHelp: '要使用 OpenClaw，请为 daemon 用户配置本地网关，或设置 OPENCLAW_GATEWAY_URL 与 token/password，然后重启 daemon。详见“文档 → 配置”。',
+        metaAgent: '元代理（meta agent）',
+        metaAgentHelp: '可以列出、阅读、给本机会话发消息，以及派发、停止和归档会话。需要先在该 agent 自己的 MCP 配置里注册 `very-happy mcp`，见“文档 → Channels”。',
         offlineMachine: '离线',
         offlineTerminalHelp: '终端不可用。请在这台机器运行 `very-happy daemon start`，然后重试。',
         terminalAtTitle: '在指定目录新建终端…',

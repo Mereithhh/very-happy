@@ -5,10 +5,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import type { TrackedSession } from '@/daemon/types'
 import type { PersistedSession } from '@/persistence'
 import type { Metadata } from '@/api/types'
 import {
+    assistantSpawnMode,
     createSpawnGate,
     findLiveAssistant,
     isAssistantTracked,
@@ -181,5 +183,57 @@ describe('createSpawnGate (C2a)', () => {
         rejectFirst(new Error('spawn failed'))
         await expect(first).rejects.toThrow('spawn failed')
         await expect(second).resolves.toBe('fresh')
+    })
+})
+
+// ── variant:'assistant' × agent → which spawn path ─────────────────────────
+// A pi / codex meta-agent shares only the HAPPY_SESSION_VARIANT env with the
+// Claude voice assistant; it must never enter (or be counted by) the Claude
+// singleton machinery. Pinned in two halves: the pure decision, and run.ts
+// actually consulting it at every place the singleton used to key on
+// `options.variant` alone.
+describe('assistantSpawnMode', () => {
+    it('claude (explicit or default) with variant assistant keeps the singleton / re-attach path', () => {
+        expect(assistantSpawnMode({ variant: 'assistant', agent: 'claude' })).toBe('claude-singleton')
+        expect(assistantSpawnMode({ variant: 'assistant' })).toBe('claude-singleton')
+        expect(assistantSpawnMode({ variant: 'assistant', agent: undefined })).toBe('claude-singleton')
+    })
+
+    it('any other runner gets env-only: no singleton, directory honoured, tracked session untagged', () => {
+        for (const agent of ['codex', 'gemini', 'openclaw', 'pi'] as const) {
+            expect(assistantSpawnMode({ variant: 'assistant', agent: agent as never })).toBe('env-only')
+        }
+    })
+
+    it('a non-assistant request is none regardless of agent', () => {
+        expect(assistantSpawnMode({})).toBe('none')
+        expect(assistantSpawnMode({ agent: 'claude' })).toBe('none')
+        expect(assistantSpawnMode({ agent: 'codex' as never, variant: undefined })).toBe('none')
+    })
+
+    it('run.ts keys the gate, the singleton block and the tracked tag on the mode — not on variant alone', () => {
+        const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
+        // the serializing gate only wraps Claude singleton spawns
+        expect(run).toContain("if (assistantSpawnMode(options) !== 'claude-singleton') {\n        return spawnSessionImpl(options);")
+        // the forced-cwd / live-singleton / re-attach block is entered by mode
+        expect(run).toContain('const assistantMode = assistantSpawnMode(options);')
+        expect(run).toContain("if (assistantMode === 'claude-singleton') {\n        options = { ...options, directory: assistantHome() };")
+        // TrackedSession.variant is set from the mode at both spawn sites (tmux + plain)
+        expect(run).toContain("const trackedVariant = assistantMode === 'claude-singleton' ? options.variant : undefined;")
+        expect(run.match(/variant: trackedVariant,/g)).toHaveLength(2)
+        expect(run).not.toMatch(/variant: options\.variant,/)
+        // the env is the one thing both modes share, still keyed on the variant
+        expect(run).toContain("if (options.variant === 'assistant') {\n          extraEnv.HAPPY_SESSION_VARIANT = 'assistant';")
+    })
+
+    it('both spawn paths (tmux and plain) reject an unknown agent instead of falling back to claude', () => {
+        const run = readFileSync(new URL('./run.ts', import.meta.url), 'utf8')
+        // env-only mode is only safe if an unknown agent can never be silently run as claude:
+        // that combination would start a Claude with HAPPY_SESSION_VARIANT=assistant in the
+        // user's cwd, outside the singleton. One rejection per spawn path.
+        expect(run.match(/Unsupported agent type: '\$\{options\.agent\}'/g)).toHaveLength(2)
+        expect(run).toContain("if (agent !== 'claude' && agent !== 'codex' && agent !== 'gemini' && agent !== 'openclaw') {")
+        // no "anything else means claude" expression anywhere in the daemon
+        expect(run).not.toMatch(/: 'claude'[;)]/)
     })
 })

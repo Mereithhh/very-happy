@@ -1012,6 +1012,11 @@ export const en = {
         agentUnavailableTitle: ({ agent }: { agent: string }) => `${agent} is not available on this machine`,
         agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `To use ${agent}, run \`${command}\` on the daemon machine, then restart the daemon — or choose Claude.`,
         openClawSetupHelp: 'To use OpenClaw, configure its local gateway or OPENCLAW_GATEWAY_URL and token/password for the daemon user, then restart the daemon. See Docs → Configuration.',
+        // Meta agent (variant 'assistant') for non-Claude runners: the daemon
+        // sets HAPPY_SESSION_VARIANT=assistant on the session and `very-happy mcp`
+        // exposes the sessions_* tools inside it (docs/channels.md).
+        metaAgent: 'Meta agent',
+        metaAgentHelp: 'Can list, read, message, spawn, stop and archive the sessions on this machine. Needs `very-happy mcp` registered in the agent’s own MCP config — see Docs → Channels.',
         offlineMachine: 'Offline',
         offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
         // B-144: same terminal, but the working directory is chosen first.

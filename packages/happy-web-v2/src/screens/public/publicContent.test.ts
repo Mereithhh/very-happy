@@ -314,13 +314,21 @@ describe('public documentation registry', () => {
       expect(channels).toContain(tool);
     }
     expect(managedClaude).toContain('...(options?.assistant ? ASSISTANT_TOOL_NAMES : [])');
+    // The standalone server inlines exactly one tool (clipboard); the six
+    // session tools are delegated to the assistant module and only behind the
+    // assistant surface (HAPPY_SESSION_VARIANT=assistant, not happy-managed
+    // claude) — mcpToolSurface.test.ts pins the surface rule itself.
     expect(standaloneMcp.match(/registerTool\(/g)).toHaveLength(1);
     expect(standaloneMcp).toContain('CLIPBOARD_TOOL_NAME');
+    expect(standaloneMcp).toContain("if (surface === 'assistant') {\n        registerAssistantSessionTools(server);");
+    expect(standaloneMcp).not.toContain('registerAssistantTools(');
     expect(standaloneMcp).not.toContain('VH_TERMINAL_ID');
     expect(text).toContain('--scope user');
     expect(text).toContain('every Claude session for that OS user');
     expect(channels).toContain('not bound to a Very Happy terminal');
     expect(channels).toContain('`copy_to_clipboard` only');
+    expect(channels).toContain('`HAPPY_SESSION_VARIANT=assistant`');
+    expect(channels).toContain('stays clipboard-only under a happy-managed Claude');
   });
 
   it('backs the public ACP claim with the shipped SDK, routes, and compatibility boundary', () => {

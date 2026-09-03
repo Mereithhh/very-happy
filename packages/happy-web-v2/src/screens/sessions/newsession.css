@@ -382,3 +382,19 @@
   font-size: var(--fs-11);
   color: var(--text-faint);
 }
+.ns-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.ns-check input {
+  accent-color: var(--text);
+}
+.ns-check .ns-agent-help {
+  flex-basis: 100%;
+}
