@@ -4,6 +4,15 @@ set -u
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
+# Optional non-secret environment for the daemon and everything it spawns
+# (e.g. PI_ACP_PI_COMMAND so pi sessions run through a wrapper). Kept outside
+# this script so a reinstall never loses it. Secrets do not belong here: the
+# daemon's environment is inherited by every session it starts.
+if [ -f "$HOME/.config/very-happy/daemon.env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.config/very-happy/daemon.env"
+fi
+
 STATE="$HOME/.happy/daemon.state.json"
 LOG="$HOME/.local/state/happy/daemon-launchd.log"
 mkdir -p "$(dirname "$LOG")"
