@@ -203,6 +203,9 @@ model Session {
     agentState        String?
     agentStateVersion Int              @default(0)
     dataEncryptionKey Bytes?
+    // B-297 - plaintext, self-reported client identity ("cli-coding-session/0.2.105").
+    lastHappyClient   String?
+    lastHappyClientAt DateTime?
     seq               Int              @default(0)
     active            Boolean          @default(true)
     archivedAt        DateTime?
@@ -314,6 +317,11 @@ model Machine {
     metadataVersion    Int         @default(0)
     daemonState        String? // Encrypted - contains dynamic daemon state
     daemonStateVersion Int         @default(0)
+    // B-297 - plaintext, self-reported client identity ("cli-daemon/0.2.105").
+    // The CLI version also lives inside the encrypted `metadata` blob, which the
+    // server never parses; this column is the only SQL-queryable copy.
+    lastHappyClient    String?
+    lastHappyClientAt  DateTime?
     dataEncryptionKey  Bytes?
     seq                Int         @default(0)
     active             Boolean     @default(true)

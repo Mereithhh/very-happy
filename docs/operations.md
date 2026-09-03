@@ -283,6 +283,36 @@ startup mechanisms.
 Web terminals are tmux processes and do not survive a Mac reboot. Persisted chat
 sessions may return while terminal tabs are gone; that is expected.
 
+### Which CLI version is a user running? (B-298)
+
+`Machine.metadata` and `Session.metadata` are client-encrypted and the server
+never parses them, so the CLI version inside them is not queryable. The
+plaintext answer lives in `Machine.lastHappyClient` / `Session.lastHappyClient`,
+written from the socket handshake's self-reported client identity on every
+connect where the value changed. Rows predating that column, and clients that
+never reconnected since, are `NULL`.
+
+```sql
+-- Fleet-wide version spread for daemons seen in the last week.
+SELECT "lastHappyClient", count(*), max("lastHappyClientAt")
+FROM "Machine"
+WHERE "lastHappyClientAt" > now() - interval '7 days'
+GROUP BY 1 ORDER BY 2 DESC;
+
+-- One account's machines, and the CLI each session actually ran on. The wrapper
+-- of a running session never picks up a daemon upgrade (iron rule 14), so these
+-- two columns legitimately disagree.
+SELECT m."id", m."lastHappyClient", m."lastActiveAt"
+FROM "Machine" m WHERE m."accountId" = $1 ORDER BY m."lastActiveAt" DESC;
+
+SELECT s."id", s."lastHappyClient", s."active", s."lastActiveAt"
+FROM "Session" s WHERE s."accountId" = $1 ORDER BY s."lastActiveAt" DESC LIMIT 20;
+```
+
+Identify the account first from the plaintext identity tables (`AccountIdentity`
+holds provider/email, `AccountCredential` holds the username). The client string
+is self-reported and unvalidated — treat it as a hint, not proof.
+
 ## Rollback
 
 - Web/server after blue-green activation: read the validated rollback slot/image

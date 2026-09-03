@@ -34,7 +34,7 @@ import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
 import '@/screens/settings/settings.css';
 import { cliUpdateInstallCommand, hasValidCliUpdatePolicy, machineCliUpdateNotice } from '@/app/cliUpdatePolicy';
-import { claudeAuthTone, isClaudeAuthStale, readClaudeAuth } from '@/sync/claudeAuth';
+import { claudeAuthTone, isClaudeAuthStale, isKnownClaudeAuthDiagnosis, readClaudeAuth } from '@/sync/claudeAuth';
 import { machineClaudeAuthProbe, machineClaudeAuthRepair, machineClaudeAuthSetStore, type ClaudeAuthRpcResult } from '@/sync/ops';
 
 export function MachineScreen() {
@@ -385,7 +385,12 @@ export function MachineScreen() {
                 detail={claudeAuth.status === 'ok' ? [claudeAuth.authMethod, claudeAuth.subscriptionType].filter(Boolean).join(' · ') : undefined}
               />
               {claudeAuth.diagnosis && (
-                <Item title={t('machine.claudeAuth.diagnosis')} detail={t(`machine.claudeAuth.diagnosisText.${claudeAuth.diagnosis}` as 'machine.claudeAuth.diagnosisText.no-credentials')} />
+                <Item
+                  title={t('machine.claudeAuth.diagnosis')}
+                  detail={isKnownClaudeAuthDiagnosis(claudeAuth.diagnosis)
+                    ? t(`machine.claudeAuth.diagnosisText.${claudeAuth.diagnosis}` as 'machine.claudeAuth.diagnosisText.no-credentials')
+                    : claudeAuth.detail ?? claudeAuth.diagnosis}
+                />
               )}
               <Item title={t('machine.claudeAuth.lineage')} detail={`${claudeAuth.context.lineage} · ${claudeAuth.context.platform}`} />
               <Item

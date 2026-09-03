@@ -18,6 +18,7 @@ import { filePreviewHandler } from "./socket/filePreviewHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { parseSocketClientType, validateSocketOwnership } from './socket/socketIdentity';
+import { recordClientVersion } from './socket/clientVersion';
 import { AccountTerminalRateLimiter, resolveRpcRelayLimit, resolveTerminalRelayLimit } from './socket/terminalRateLimit';
 import { resolveSocketConnectionLimit } from './socket/socketConnectionLimit';
 import { resolveReleaseConfig } from '@/app/release/releaseConfig';
@@ -250,6 +251,13 @@ export async function startSocket(app: Fastify, staticDir?: string): Promise<Rel
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
         const happyClient = socket.data.happyClient as string | undefined;
+        // B-297: keep a plaintext, SQL-queryable copy of the client version.
+        // Fire-and-forget and self-swallowing — never gate the connection on it.
+        if (metadata.clientType === 'machine-scoped' && machineId) {
+            void recordClientVersion(userId, { kind: 'machine', machineId }, happyClient);
+        } else if (metadata.clientType === 'session-scoped' && sessionId) {
+            void recordClientVersion(userId, { kind: 'session', sessionId }, happyClient);
+        }
         let connection: ClientConnection;
         if (metadata.clientType === 'session-scoped' && sessionId) {
             connection = {
