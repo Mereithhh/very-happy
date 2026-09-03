@@ -217,9 +217,21 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   daemon reports the field, and enables it only when it is `true`, and the
   daemon's `/spawn-session` refuses `agent: 'pi'` while it is `false` — `spawn
   --agent pi` then exits 1 with the install hint instead of starting a wrapper
-  that dies on `spawn pi-acp ENOENT` (invisible from the daemon). Note that
-  `--permission-mode` is a Claude/Codex vocabulary: the pi runner accepts and
-  drops it. pi's approvals surface as ACP `request_permission` cards in the
+  that dies on `spawn pi-acp ENOENT` (invisible from the daemon). pi has no
+  permission layer of its own and pi-acp exposes no ACP mode selector, so
+  `--permission-mode` never reaches pi-acp; the runner sanitizes it (`default |
+  acceptEdits | plan | bypassPermissions`, `yolo` → `bypassPermissions`, anything
+  else dropped) and hands it to the pi side out-of-band: **`HAPPY_PERMISSION_MODE`**
+  in the pi-acp child env at spawn, and for live switches (Web picker / `send`
+  meta) **`<happy home>/session-modes/<HAPPY_SESSION_ID>.json`**
+  (`{ "permissionMode": "...", "updatedAt": ms }`, 0600, atomic rename; written
+  on start and on every switch, removed when the wrapper exits). What is written
+  there is also published as `metadata.permissionMode`, so the Web shows the
+  effective value. Enforcement is entirely the pi-side gate extension's job
+  (vh-supervisor's `permission-gate`, which re-reads the file on every tool
+  call): `bypassPermissions` turns its `ask` rules into `allow`; its `deny` rules
+  are never lifted by any mode. Without such an extension the mode is inert.
+  pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
   `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
   at a wrapper that loads such extensions. pi-acp prints pi's startup banner
