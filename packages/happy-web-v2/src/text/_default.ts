@@ -1065,7 +1065,12 @@ export const en = {
         title: 'Terminal in a directory',
         browse: 'Browse the machine',
         create: 'Open terminal',
-        startupHint: 'Starts here, then runs the startup command from Settings → Terminal.',
+        startupHint: 'The terminal starts in this directory and then runs the command above. Both are remembered for next time.',
+        // B-334: per-open startup command
+        commandSection: 'Startup command',
+        commandDefault: ({ command }: { command: string }) => `${command} (default)`,
+        commandNone: 'No command',
+        commandPlaceholder: 'claude — leave empty for a plain shell',
         // B-273: attach an existing tmux session
         attachSection: 'Attach an existing tmux session',
         attachLoading: 'Looking for tmux sessions on this machine…',
@@ -1695,6 +1700,12 @@ export const en = {
                 approve: '`very-happy sessions list --all` lists every session on the account, with the pending permission requests and how long each has waited for the sessions this machine holds keys for. `very-happy sessions approve` / `deny` answer a request with exactly what the web card would send.',
                 meta: 'The session tools the built-in assistant uses (list, read, send, spawn, kill, archive) are now available to any runner through `very-happy mcp` when a session is started as a meta agent \u2014 pick "Meta agent" when launching pi.',
             },
+            sep03ab: {
+                title: 'Pick the directory AND the command when you open a terminal',
+                summary: 'Which agent a new web terminal boots into was one global setting: switching between claude and something else meant a trip to Settings every time. And the directory list only held what you had explicitly bookmarked.',
+                command: 'The "Terminal in a directory" dialog now has a startup command field: your Settings default, the commands you have launched from here before, and an explicit "No command" for a plain shell. Whatever you type is remembered as a chip for next time, so alternating between two agents is one click.',
+                recents: 'The directory chips now also include the directories you recently opened on that machine \u2014 the same list new chats remember, and a terminal opened here feeds it too. Bookmarked directories still come first and are the only ones with a delete button; recents age out on their own.',
+            },
             sep03aa: {
                 title: 'Terminals get the red dot too',
                 summary: 'A conversation that finished a turn while you were looking elsewhere already carried a red dot in the sidebar. A web terminal running Claude Code did not \u2014 only "waiting for your input" showed there, so a run that simply ended left no trace to come back to.',
@@ -2259,6 +2270,7 @@ export const en = {
                 : `${machine} is on ${current}; update to ${target}.`,
         copyCommand: 'Copy update command',
         handoverHeld: 'Update installed but not running',
+        autoUpdate: 'Automatic update',
         handoverHeldBadge: 'held',
         handoverHeldHelp: 'the daemon kept the previous version rather than restart into one that would not start',
         copied: 'Exact update command copied.',

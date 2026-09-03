@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     expandHomePath,
+    mergeDirectoryChoices,
     normalizeCwdInput,
     removePathPreset,
     upsertPathPreset,
@@ -105,5 +106,41 @@ describe('removePathPreset', () => {
     it('is a no-op for an unknown id', () => {
         const list: PathPreset[] = [{ id: 'a', path: '1' }];
         expect(removePathPreset(list, 'zz')).toHaveLength(1);
+    });
+});
+
+describe('B-334 mergeDirectoryChoices', () => {
+    const presets: PathPreset[] = [{ id: 'a', path: '~/code/one', label: 'one' }];
+    const recents = [
+        { machineId: 'm1', path: '~/code/two' },
+        { machineId: 'm2', path: '~/other' },
+        { machineId: 'm1', path: '~/code/one/' },
+    ];
+
+    it('puts curated presets first, then this machine own recents', () => {
+        const out = mergeDirectoryChoices(presets, recents, 'm1');
+        expect(out.map((c) => c.path)).toEqual(['~/code/one', '~/code/two']);
+        expect(out.map((c) => c.saved)).toEqual([true, false]);
+        expect(out[0].label).toBe('one');
+    });
+
+    it('drops another machine recents', () => {
+        expect(mergeDirectoryChoices([], recents, 'm2').map((c) => c.path)).toEqual(['~/other']);
+    });
+
+    it('dedupes a recent that is already bookmarked, trailing slash included', () => {
+        // '~/code/one/' normalizes onto the preset, so the pill is not doubled.
+        expect(mergeDirectoryChoices(presets, recents, 'm1')).toHaveLength(2);
+    });
+
+    it('caps the recents but never the curated list', () => {
+        const many = Array.from({ length: 10 }, (_, i) => ({ machineId: 'm1', path: `/r${i}` }));
+        const out = mergeDirectoryChoices(presets, many, 'm1', 3);
+        expect(out.filter((c) => c.saved)).toHaveLength(1);
+        expect(out.filter((c) => !c.saved)).toHaveLength(3);
+    });
+
+    it('handles missing settings (never synced) as empty', () => {
+        expect(mergeDirectoryChoices(undefined, undefined, 'm1')).toEqual([]);
     });
 });

@@ -202,6 +202,13 @@ export const CliUpdateStateSchema = z.object({
    * old web builds ignore it, old daemons never send it (iron rule 4).
    */
   handoverHold: z.object({ reason: z.string(), at: z.number() }).nullable().optional(),
+  /** B-327: the last thing the machine's auto-update did, or why it did nothing. */
+  autoUpdate: z.object({
+    state: z.union([z.enum(['installing', 'installed', 'failed', 'skipped']), z.string()]),
+    version: z.string().nullable(),
+    detail: z.string().optional(),
+    at: z.number(),
+  }).nullable().optional(),
 })
 
 export type CliUpdateState = z.infer<typeof CliUpdateStateSchema>

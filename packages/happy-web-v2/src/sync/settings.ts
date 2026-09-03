@@ -90,6 +90,15 @@ export const SettingsSchema = z.object({
     // Kept as a plain string (not a boolean+string pair) so a future per-machine
     // map can supersede it without a schema fight.
     terminalStartupCommand: z.string().describe('Command auto-run when a new web terminal is created (empty = disabled)'),
+    // B-334: MRU of startup commands offered when opening a terminal in a
+    // directory (`claude` / `pi` / …). terminalStartupCommand above stays THE
+    // default; this is only the switcher's memory. Synced; no zod .default()
+    // (same ghost-pending footgun as above).
+    terminalStartupPresets: z.array(z.object({
+        id: z.string(),
+        command: z.string(),
+        label: z.string().optional(),
+    })).describe('Recently used web-terminal startup commands, most recent first'),
     // User-managed default-directory presets for new session creation. Synced;
     // no zod .default() (same footgun as recentMachinePaths/promptPresets).
     sessionPathPresets: z.array(z.object({
@@ -205,6 +214,7 @@ export const settingsDefaults: Settings = {
     // every account on this server (invite-only but multi-tenant); each user
     // sets their own in Settings → Snippets (synced across devices).
     terminalStartupCommand: '',
+    terminalStartupPresets: [],
     sessionPathPresets: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,

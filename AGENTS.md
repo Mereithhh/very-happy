@@ -92,8 +92,10 @@ pnpm -C packages/happy-server exec vitest run
 
 ## 验收
 
-- 自动化能验的当批验掉（E2E 冒烟有先例脚本手法）；验不了的（真机 IME/触屏/
-  视觉观感）登记 `docs/verify-queue.md`，下一批开始前 Owner 清账。
+- 自动化能验的当批验掉（E2E 冒烟有先例脚本手法）。**验不了的先用浏览器自己验**——Owner 明确说过
+  没有时间清 verify queue，「用户没反馈就是修好了」，所以把项目堆进 `docs/verify-queue.md`
+  等人来验等于没验（2026-09-03 已积到 140+ 项）。只有真正只有真人能判的（真机 IME、触屏手感、
+  多设备时序）才登记，而且要写清为什么浏览器验不了。
 - 窄屏、主题或第三方嵌入组件的视觉改动，除测试/build/tsc 外，还要在受影响的真实浏览器
   视口验证交互、溢出与布局；本地浏览器能验的当批验，只有真机专属项才留 verify queue。
   **窄屏量尺寸必须按 `pointer: coarse` 的真实控件尺寸量**（`.sb-icon-btn` 38px、`.vh-back` 40px、

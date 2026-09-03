@@ -28,6 +28,19 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     ],
   },
   {
+    id: '2026-09-03-terminal-launch-presets',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: no protocol change — the daemon has always taken cwd and a
+    // startup command on the create-open (B-334).
+    titleKey: 'changelog.releases.sep03ab.title',
+    summaryKey: 'changelog.releases.sep03ab.summary',
+    itemKeys: [
+      'changelog.releases.sep03ab.command',
+      'changelog.releases.sep03ab.recents',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-unread-dot',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

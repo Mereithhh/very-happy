@@ -70,6 +70,13 @@ interface Settings {
    */
   claudeCredentialStore?: 'auto' | 'file'
   /**
+   * B-327: install a newly recommended CLI by itself while the machine is idle.
+   * `idle` (the default) upgrades only with no session wrapper and no live web
+   * terminal; `off` never does. Only ever installs the version the relay
+   * recommends, so nothing lands that an operator has not promoted.
+   */
+  cliAutoUpdate?: 'off' | 'idle'
+  /**
    * B-007: external todo provider — a user-supplied command that speaks the
    * contract in docs/channels.md (`<command> list|complete <id>|create <title>`).
    *

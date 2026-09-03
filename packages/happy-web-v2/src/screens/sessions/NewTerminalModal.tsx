@@ -14,6 +14,17 @@
  * The saved directories are the SAME `sessionPathPresets` the chat dialog
  * edits, so one curated list serves both. Path arithmetic lives in
  * utils/terminalCwd.ts (unit-tested); this file is wiring only.
+ *
+ * B-334 adds the two things that made this dialog a detour rather than a home:
+ *  · the directory chips now include the AUTO-remembered recents
+ *    (`recentMachinePaths`, the MRU quick-chat already keeps) for the selected
+ *    machine, and a create here feeds that same MRU — so the list is populated
+ *    without anyone remembering to bookmark;
+ *  · the startup command is choosable per open, from an MRU of the commands
+ *    you actually launched (`claude` today, `pi` tomorrow), with Settings →
+ *    Terminal still the default and an explicit "no command" for a bare shell.
+ * The selection travels as an ID (utils/terminalStartup.ts) — never as a
+ * command line in the URL.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +33,7 @@ import { useAllMachines, useLocalSettingMutable, useSettingMutable } from '@/syn
 import { isMachineOnline, machineLabel, pickDefaultMachineId } from '@/utils/machineUtils';
 import { createTerminalAt } from '@/app/newTerminal';
 import { machineFsList } from '@/sync/fsOps';
+import { recordRecentMachinePath } from '@/app/newChat';
 import { machineListTmuxSessions } from '@/sync/ops';
 import { tmuxSessionsSupported } from '@/sync/closedTerminals';
 import {
@@ -40,11 +52,19 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import {
   expandHomePath,
+  mergeDirectoryChoices,
   normalizeCwdInput,
   removePathPreset,
   upsertPathPreset,
   type PathPreset,
 } from '@/utils/terminalCwd';
+import {
+  normalizeStartupCommand,
+  removeStartupPreset,
+  selectionForLaunch,
+  startupChoices,
+  type StartupPreset,
+} from '@/utils/terminalStartup';
 import './newsession.css';
 
 function newId(): string {
@@ -60,9 +80,21 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
   const online = useMemo(() => machines.filter(isMachineOnline), [machines]);
   const [presets, setPresets] = useSettingMutable('sessionPathPresets');
   const list = (presets as PathPreset[] | undefined) ?? [];
+  // B-334: the startup-command switcher. `globalCommand` (Settings → Terminal)
+  // stays the default; `startupList` is the MRU of everything launched here.
+  const [startupPresets, setStartupPresets] = useSettingMutable('terminalStartupPresets');
+  const startupList = (startupPresets as StartupPreset[] | undefined) ?? [];
+  const [globalCommand] = useSettingMutable('terminalStartupCommand');
+  const [recents] = useSettingMutable('recentMachinePaths');
 
   const [machineId, setMachineId] = useState(() => pickDefaultMachineId(online.map((m) => m.id)));
   const [directory, setDirectory] = useState(list[0]?.path ?? '~');
+  // The command shown in the input IS the selection: a chip click writes it,
+  // typing overrides it, and the chip that matches the current text renders as
+  // active. One source of truth, so the two can never disagree.
+  const [command, setCommand] = useState(
+    () => normalizeStartupCommand(globalCommand ?? '') || startupList[0]?.command || '',
+  );
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [browsing, setBrowsing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -109,6 +141,29 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; };
   }, [machineId, attachSupported]);
   const matchesEditing = editingId != null && list.find((p) => p.id === editingId)?.path === trimmed;
+  // Curated presets + the machine's remembered recents (B-334).
+  const dirChoices = useMemo(
+    () => mergeDirectoryChoices(list, recents, machineId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `list` is derived from `presets`
+    [presets, recents, machineId],
+  );
+  const cmdChoices = useMemo(
+    () => startupChoices(startupList, globalCommand),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `startupList` is derived from `startupPresets`
+    [startupPresets, globalCommand],
+  );
+  const typedCommand = normalizeStartupCommand(command);
+  const activeCommandId = cmdChoices.find((c) => c.command === typedCommand)?.id ?? null;
+
+  /** The id to send with this create: an existing chip, or a newly recorded
+   *  MRU entry for a command typed by hand. Never the command text itself. */
+  function resolveStartupSelection(): string | undefined {
+    const res = selectionForLaunch(startupList, globalCommand, command, newId);
+    // applySettings writes the store synchronously, so the terminal screen
+    // resolves the brand-new id on the very next render.
+    if (res.nextPresets) setStartupPresets(res.nextPresets as any);
+    return res.selectionId;
+  }
 
   function savePreset() {
     const res = upsertPathPreset(list, trimmed, editingId, newId);
@@ -147,10 +202,13 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
       // B-146: the machine can drop between the probe above and this call.
       // Closing the dialog unconditionally would leave the user with a
       // dismissed dialog, no terminal, and no explanation.
-      if (!createTerminalAt(navigate, machineId, { cwd })) {
+      if (!createTerminalAt(navigate, machineId, { cwd, startupSelectionId: resolveStartupSelection() })) {
         toast.error(t('newSession.machineOffline'));
         return;
       }
+      // Feed the same MRU quick-chat keeps, so the next open offers this
+      // directory without anyone having bookmarked it.
+      recordRecentMachinePath(machineId, cwd);
       onClose();
     } catch (e: any) {
       toast.error(e?.message || t('errors.networkError'));
@@ -248,31 +306,37 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
               <div className="ns-hint">{t('newTerminalModal.attachIgnoresCwd')}</div>
             ) : (
             <>
-            {list.length > 0 && (
+            {dirChoices.length > 0 && (
               <div className="ns-presets">
-                {list.map((p) => (
+                {dirChoices.map((p) => (
                   <span
                     key={p.id}
-                    className={`ns-preset${editingId === p.id ? ' is-on' : ''}`}
+                    className={`ns-preset${p.saved ? '' : ' ns-preset-plain ns-preset-recent'}${
+                      (p.saved ? editingId === p.id : trimmed === p.path) ? ' is-on' : ''
+                    }`}
                     role="button"
                     tabIndex={0}
                     onClick={() => {
                       setDirectory(p.path);
-                      setEditingId(p.id);
+                      // A recent is not an edit target: bookmarking it must ADD
+                      // a curated preset, not rewrite whichever one was selected.
+                      setEditingId(p.saved ? p.id : null);
                     }}
                   >
                     <span className="ns-preset-path">{p.label || p.path}</span>
-                    <button
-                      className="ns-preset-x"
-                      title={t('common.delete')}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPresets(removePathPreset(list, p.id) as any);
-                        if (editingId === p.id) setEditingId(null);
-                      }}
-                    >
-                      <X size={12} />
-                    </button>
+                    {p.saved && (
+                      <button
+                        className="ns-preset-x"
+                        title={t('common.delete')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPresets(removePathPreset(list, p.id) as any);
+                          if (editingId === p.id) setEditingId(null);
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -327,6 +391,56 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
                 />
               </div>
             )}
+
+            {/* B-334: the startup command for THIS terminal. Chips are the
+                default (Settings → Terminal), the MRU of what was launched
+                here, and an explicit "no command"; the input is the truth and
+                a typed line is recorded on launch. */}
+            <label className="ns-label">{t('newTerminalModal.commandSection')}</label>
+            <div className="ns-presets">
+              {cmdChoices.map((c) => (
+                <span
+                  key={c.id}
+                  className={`ns-preset${c.removable ? '' : ' ns-preset-plain'}${activeCommandId === c.id ? ' is-on' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setCommand(c.command)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCommand(c.command); }
+                  }}
+                >
+                  <span className="ns-preset-path">
+                    {c.id === 'default'
+                      ? t('newTerminalModal.commandDefault', { command: c.command })
+                      : c.command || t('newTerminalModal.commandNone')}
+                  </span>
+                  {c.removable && (
+                    <button
+                      className="ns-preset-x"
+                      title={t('common.delete')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStartupPresets(removeStartupPreset(startupList, c.id) as any);
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            <input
+              className="ns-input mono"
+              value={command}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              placeholder={t('newTerminalModal.commandPlaceholder')}
+              onChange={(e) => setCommand(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void onCreate(); }
+              }}
+            />
 
             <div className="ns-hint">{t('newTerminalModal.startupHint')}</div>
             </>
