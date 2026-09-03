@@ -1012,6 +1012,11 @@ export const en = {
         agentUnavailableTitle: ({ agent }: { agent: string }) => `${agent} is not available on this machine`,
         agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `To use ${agent}, run \`${command}\` on the daemon machine, then restart the daemon — or choose Claude.`,
         openClawSetupHelp: 'To use OpenClaw, configure its local gateway or OPENCLAW_GATEWAY_URL and token/password for the daemon user, then restart the daemon. See Docs → Configuration.',
+        // Meta agent (variant 'assistant') for non-Claude runners: the daemon
+        // sets HAPPY_SESSION_VARIANT=assistant on the session and `very-happy mcp`
+        // exposes the sessions_* tools inside it (docs/channels.md).
+        metaAgent: 'Meta agent',
+        metaAgentHelp: 'Can list, read, message, spawn, stop and archive the sessions on this machine. Needs `very-happy mcp` registered in the agent’s own MCP config — see Docs → Channels.',
         offlineMachine: 'Offline',
         offlineTerminalHelp: 'Terminal unavailable. On that machine, run `very-happy daemon start`, then try again.',
         // B-144: same terminal, but the working directory is chosen first.
@@ -1710,6 +1715,13 @@ export const en = {
                 title: 'A bad update can no longer take a machine offline',
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
                 preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
+            },
+            sep03ae: {
+                title: 'pi joins the launcher, and a script can now approve for you',
+                summary: 'Very Happy is the surface where sessions run and where you watch them. This release opens that surface to an outside supervisor: a third agent to dispatch, a way for automation to see what is waiting for approval, and a way for it to answer.',
+                pi: 'New sessions can run pi (via the pi-acp adapter) next to Claude, Codex and Gemini. It appears in the launcher only on machines whose daemon reports it. A pi session raising a confirmation through its extension shows up as an ordinary permission card.',
+                approve: '`very-happy sessions list --all` lists every session on the account, with the pending permission requests and how long each has waited for the sessions this machine holds keys for. `very-happy sessions approve` / `deny` answer a request with exactly what the web card would send.',
+                meta: 'The session tools the built-in assistant uses (list, read, send, spawn, kill, archive) are now available to any runner through `very-happy mcp` when a session is started as a meta agent \u2014 pick "Meta agent" when launching pi.',
             },
             sep03ab: {
                 title: 'Pick the directory AND the command when you open a terminal',

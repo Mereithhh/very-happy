@@ -453,6 +453,12 @@ export async function runAcp(opts: {
   args: string[];
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
+  /**
+   * Called when the backend reports `status: 'error'` (e.g. the adapter
+   * executable is missing). That path stops the runner without throwing, so a
+   * caller that wants to print guidance cannot rely on its outer catch.
+   */
+  onBackendError?: (detail: string | undefined) => void;
 }): Promise<void> {
   const verbose = opts.verbose === true;
   const sessionTag = randomUUID();
@@ -816,6 +822,7 @@ export async function runAcp(opts: {
         clearPendingTurn();
       }
       if (msg.status === 'error' || msg.status === 'stopped') {
+        if (msg.status === 'error') opts.onBackendError?.(msg.detail);
         stopRunnerFromBackendStatus(msg.status, msg.detail);
       }
     }

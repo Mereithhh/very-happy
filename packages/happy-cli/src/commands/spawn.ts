@@ -62,8 +62,9 @@ export interface SpawnCommandOptions {
 }
 
 /** Pure argv parser (exported for tests). Throws on malformed input. */
-/** Backends the daemon's spawn RPC accepts (its zod enum). */
-export const SPAWN_AGENTS = ['claude', 'codex', 'gemini', 'openclaw'] as const
+/** Backends the daemon's spawn RPC accepts — the shared list in utils/spawnAgents. */
+import { SPAWN_AGENTS } from '@/utils/spawnAgents'
+export { SPAWN_AGENTS }
 
 /** Pure parser for one `--env KEY=VALUE` pair (exported for tests). */
 export function parseEnvAssignment(raw: string): [string, string] {
@@ -159,7 +160,7 @@ ${chalk.bold('Options:')}
                             to approve — if nothing is watching, it just hangs.
                             Unattended dispatchers want bypassPermissions.
   --agent <name>         Backend to run: claude (default), codex, gemini,
-                            openclaw.
+                            openclaw, pi (needs pi-acp on the daemon's PATH).
   --env KEY=VALUE        Extra environment for the session process. Repeatable.
                             \${VAR} is expanded against the daemon's environment;
                             an unresolved reference fails the spawn.

@@ -8,6 +8,7 @@ import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata, CliUpdateState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import { isSpawnAgent } from '@/utils/spawnAgents';
 import { logger } from '@/ui/logger';
 import { pruneLogsDir } from '@/ui/logPrune';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
@@ -20,7 +21,7 @@ import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquire
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
-import { createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
+import { assistantSpawnMode, createSpawnGate, findLiveAssistant, isAssistantTracked, listPersistedAssistantIds, pickLatestAssistantEntry, resolveAssistantClaudeSessionId } from './assistantSpawn';
 import { decideAssistantReport, formatAssistantReportMessage, resolveReportSessionTitle, type AssistantReportEvent } from './assistantReport';
 import { sendUserMessage } from '@/commands/sessionMessage';
 import { sanitizeSpawnPermissionMode } from './spawnPermissionMode';
@@ -39,7 +40,8 @@ import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTm
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { daemonEndpointsMatch, resolveClaudeCredentialReadiness } from '@/ui/doctorReadiness';
 import { summarizeSpawnSessionForLog } from '@/utils/spawnSessionLog';
-import { detectCLIAvailability } from '@/utils/detectCLI';
+import { spawnAgentUnavailableError } from '@/daemon/spawnAgentAvailability';
+import { detectCLIAvailability, type CLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
@@ -77,6 +79,7 @@ export function sanitizeImportTitle(value: unknown): string | null {
 // is visually distinct from the stable one in the machine list (they otherwise
 // share the same hostname and look identical).
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
+const startupCliAvailability = detectCLIAvailability();
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
@@ -84,7 +87,7 @@ export const initialMachineMetadata: MachineMetadata = {
   homeDir: os.homedir(),
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
-  cliAvailability: detectCLIAvailability(),
+  cliAvailability: startupCliAvailability,
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
@@ -416,13 +419,18 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      if (options.variant !== 'assistant') {
+      if (assistantSpawnMode(options) !== 'claude-singleton') {
         return spawnSessionImpl(options);
       }
       return options.forceNew
         ? assistantSpawnGate.replace(() => spawnSessionImpl(options))
         : assistantSpawnGate.join(() => spawnSessionImpl(options));
     };
+
+    // The same availability the machine metadata advertises: keep-alive
+    // re-probes once connected, startup probe before that.
+    const currentCliAvailability = (): CLIAvailability =>
+      apiMachineRef?.getCLIAvailability() ?? startupCliAvailability;
 
     const spawnSessionImpl = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', summarizeSpawnSessionForLog(options));
@@ -435,6 +443,15 @@ export async function startDaemon(): Promise<void> {
       const spawnPermissionMode = sanitizeSpawnPermissionMode(options.permissionMode);
       if (options.permissionMode !== undefined && spawnPermissionMode === null) {
         logger.warn('[DAEMON RUN] Ignoring invalid permissionMode in spawn request');
+      }
+
+      // Fail fast (before any tmux/plain spawn) when this machine cannot run
+      // the requested agent — the wrapper's own ENOENT hint is invisible from
+      // here (stdio 'ignore'). See spawnAgentAvailability.ts.
+      const unavailable = spawnAgentUnavailableError(options.agent, currentCliAvailability());
+      if (unavailable) {
+        logger.warn(`[DAEMON RUN] Refusing spawn of agent '${options.agent}': ${unavailable.errorMessage}`);
+        return unavailable;
       }
 
       // ── B-051 assistant variant ────────────────────────────────────────────
@@ -451,7 +468,15 @@ export async function startDaemon(): Promise<void> {
       //      session row and key (nothing can decrypt-mismatch old rows).
       // forceNew skips 1–2: it stops any surviving assistant process, purges
       // the sessions.json entries, and always takes path 3.
-      if (options.variant === 'assistant') {
+      //
+      // Only a CLAUDE assistant request enters this block. For any other runner
+      // (`assistantSpawnMode` = 'env-only') the variant means just the
+      // HAPPY_SESSION_VARIANT env on the child (set with the other extraEnv
+      // below): requested directory honoured, no singleton, TrackedSession not
+      // tagged — see assistantSpawn.ts for why.
+      const assistantMode = assistantSpawnMode(options);
+      const trackedVariant = assistantMode === 'claude-singleton' ? options.variant : undefined;
+      if (assistantMode === 'claude-singleton') {
         options = { ...options, directory: assistantHome() };
 
         if (options.forceNew) {
@@ -655,7 +680,10 @@ export async function startDaemon(): Promise<void> {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
         }
         // B-051: mark the spawned CLI as the assistant variant (fresh-spawn
-        // path; the re-attach path above sets it directly on its env).
+        // path; the re-attach path above sets it directly on its env). This is
+        // the ONE thing 'env-only' mode (non-Claude meta-agent) shares with the
+        // Claude singleton: the runner passes the env to its agent, the agent
+        // to its MCP servers, and `very-happy mcp` reads it (mcpToolSurface.ts).
         if (options.variant === 'assistant') {
           extraEnv.HAPPY_SESSION_VARIANT = 'assistant';
         }
@@ -730,8 +758,18 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          // Determine agent command. Unknown agents are rejected here exactly like
+          // the plain-spawn path below: silently falling back to claude would, with
+          // variant:'assistant', start a Claude carrying HAPPY_SESSION_VARIANT in the
+          // user's cwd (full in-process assistant tools, untracked) whenever a newer
+          // client names a backend this daemon does not know.
+          const agent = options.agent ?? 'claude';
+          if (!isSpawnAgent(agent)) {
+            return {
+              type: 'error',
+              errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
+            };
+          }
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
@@ -780,7 +818,7 @@ export async function startDaemon(): Promise<void> {
               startedBy: 'daemon',
               pid: tmuxResult.pid, // Real PID from tmux -P flag
               tmuxSessionId: tmuxResult.sessionId,
-              variant: options.variant,
+              variant: trackedVariant,
               spawnedBy: options.spawnedBy,
               directoryCreated,
               message: directoryCreated
@@ -841,6 +879,10 @@ export async function startDaemon(): Promise<void> {
             case 'openclaw':
               agentCommand = 'openclaw';
               break;
+            case 'pi':
+              // `very-happy pi` = the generic ACP runner with the pi-acp adapter
+              agentCommand = 'pi';
+              break;
             default:
               return {
                 type: 'error',
@@ -877,7 +919,7 @@ export async function startDaemon(): Promise<void> {
             },
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
-            variant: options.variant,
+            variant: trackedVariant,
             spawnedBy: options.spawnedBy,
           });
         }

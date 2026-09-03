@@ -234,6 +234,15 @@ export class ApiMachineClient {
     });
 
     /**
+     * The CLI availability last advertised in machine metadata (re-probed by
+     * the keep-alive). Null until the first keep-alive tick; the daemon falls
+     * back to its startup probe then.
+     */
+    getCLIAvailability(): CLIAvailability | null {
+        return this.lastKnownCLIAvailability;
+    }
+
+    /**
      * Push text to the clipboard of every web client the user has open
      * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
      * Encrypted with the per-machine key; the server relays without reading.
@@ -1285,7 +1294,7 @@ export class ApiMachineClient {
             const prev = this.lastKnownCLIAvailability;
             const newResumeSupport = detectResumeSupport();
             const prevResume = this.lastKnownResumeSupport;
-            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw;
+            const cliAvailabilityChanged = !prev || prev.claude !== newAvailability.claude || prev.codex !== newAvailability.codex || prev.gemini !== newAvailability.gemini || prev.openclaw !== newAvailability.openclaw || prev.pi !== newAvailability.pi;
             const resumeSupportChanged = !prevResume
                 || prevResume.rpcAvailable !== newResumeSupport.rpcAvailable
                 || prevResume.happyAgentAuthenticated !== newResumeSupport.happyAgentAuthenticated;

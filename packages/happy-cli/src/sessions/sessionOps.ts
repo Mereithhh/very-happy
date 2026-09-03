@@ -15,6 +15,19 @@
  * `mergeSessionSummaries` is deliberately pure (live + persisted in, sorted
  * list out) so the ordering, the terminal-mirror exclusion and the tag filter
  * are unit-testable without a daemon or a server.
+ *
+ * `listAccountSessions` (`sessions list --all`) widens the *listing* to the
+ * whole account over REST, but not the *reading*: the server stores session
+ * `metadata` and `agentState` encrypted with the per-session key
+ * (`happy-server/sources/app/api/routes/sessionRoutes.ts` returns the
+ * ciphertext strings as-is), and a CLI holding `dataKey` credentials
+ * (`persistence.ts` `Credentials.encryption`: publicKey + machineKey only) can
+ * unwrap only the keys it persisted itself in `~/.happy/sessions.json`. So a
+ * row from another machine is reported with `decryptable: false` and just the
+ * server's plaintext columns (active / archived / timestamps). Full-fidelity
+ * cross-machine rows need the CLI to hold the account content key — a
+ * credentials change, tracked separately, not something this listing can
+ * paper over.
  */
 
 import axios from 'axios'
@@ -24,6 +37,8 @@ import { listDaemonSessions, stopDaemonSession } from '@/daemon/controlClient'
 import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
 import { sessionWebUrl } from '@/commands/sessionMessage'
 import { formatTranscript } from '@/assistant/transcript'
+import { pendingRequestsOf, type PendingPermissionRequest } from '@/sessions/permissionOps'
+import type { AgentState, Metadata } from '@/api/types'
 
 /** Client tag on the REST calls these operations make. */
 const SESSION_OPS_CLIENT = 'session-ops'
@@ -85,10 +100,7 @@ export function mergeSessionSummaries(
         const id = typeof child.happySessionId === 'string' ? child.happySessionId : undefined
         if (!id || seen.has(id)) continue
         seen.add(id)
-        summaries.push(toSummary(id, persisted[id], {
-            live: true,
-            pid: typeof child.pid === 'number' ? child.pid : undefined,
-        }))
+        summaries.push(toSummary(id, persisted[id], livenessOf(child)))
     }
 
     const rest = Object.entries(persisted)
@@ -103,6 +115,21 @@ export function mergeSessionSummaries(
     if (!options.tag) return summaries
     const wanted = options.tag
     return summaries.filter((summary) => summary.tags?.includes(wanted) === true)
+}
+
+function livenessOf(child: LiveSessionLike): { live: boolean; pid?: number } {
+    return { live: true, pid: typeof child.pid === 'number' ? child.pid : undefined }
+}
+
+/**
+ * The liveness part of one session's summary from the daemon's `/list`. The
+ * single source `sessions list` and `sessions read` share, so a poller that
+ * only calls `read` sees the same `live`/`pid` as `list` (an unreachable daemon
+ * lists nothing, so both degrade to `live: false` together).
+ */
+export function sessionLiveness(live: readonly LiveSessionLike[], sessionId: string): { live: boolean; pid?: number } {
+    const child = live.find((entry) => entry.happySessionId === sessionId)
+    return child ? livenessOf(child) : { live: false }
 }
 
 function toSummary(
@@ -129,6 +156,165 @@ function toSummary(
 export async function listSessions(options: ListSessionsOptions = {}): Promise<SessionSummary[]> {
     const live = await listDaemonSessions()
     return mergeSessionSummaries(live as LiveSessionLike[], readPersistedSessions(), options)
+}
+
+/** One row of the server's `/v1/sessions` list, narrowed to what we use. Ciphertext stays ciphertext here. */
+export interface AccountSessionRow {
+    id: string
+    active: boolean
+    activeAt?: number
+    updatedAt?: number
+    createdAt?: number
+    archivedAt?: number | null
+    /** base64 ciphertext (session key). */
+    metadata: string
+    /** base64 ciphertext (session key) or null. */
+    agentState: string | null
+}
+
+/**
+ * A `--all` row. Superset of `SessionSummary` so `--json` consumers of the
+ * local listing keep every field they already read; the new fields only add.
+ */
+export interface AccountSessionSummary extends SessionSummary {
+    /**
+     * Whether THIS machine could decrypt the row. False means the session
+     * belongs to a machine whose key is not in ~/.happy/sessions.json: only
+     * the server's plaintext columns below are meaningful, and title / cwd /
+     * machineId / pending are absent because they are unreadable, not empty.
+     */
+    decryptable: boolean
+    /** Server-side `active` flag (the wrapper deactivates on exit). */
+    active: boolean
+    archived: boolean
+    activeAt?: number
+    updatedAt?: number
+    /** Which machine's daemon owns the session (from decrypted metadata). */
+    machineId?: string
+    /** Pending permission / question requests, oldest first (decryptable rows only). */
+    pending?: PendingPermissionRequest[]
+    /** True when at least one request is pending — the "needs a human" signal. */
+    attention: boolean
+}
+
+/**
+ * Pure: fold one server row + what this machine knows into a summary.
+ *
+ * `liveIds` are the local daemon's running children — the only source of
+ * `live`; another machine's running sessions are `live: false` here because
+ * this daemon is not running them, while `active` still tells whether SOME
+ * wrapper is attached server-side.
+ */
+export function summarizeAccountSession(
+    row: AccountSessionRow,
+    persisted: PersistedSession | undefined,
+    liveIds: ReadonlySet<string>,
+    now: number,
+): AccountSessionSummary {
+    const base: AccountSessionSummary = {
+        id: row.id,
+        live: liveIds.has(row.id),
+        url: sessionWebUrl(row.id),
+        decryptable: false,
+        active: row.active === true,
+        archived: typeof row.archivedAt === 'number',
+        ...(typeof row.activeAt === 'number' ? { activeAt: row.activeAt } : {}),
+        ...(typeof row.updatedAt === 'number' ? { updatedAt: row.updatedAt } : {}),
+        attention: false,
+    }
+    if (!persisted) return base
+
+    const key = decodeBase64(persisted.encryptionKey)
+    let metadata: Metadata | null = null
+    let agentState: AgentState | null = null
+    try {
+        metadata = row.metadata ? decrypt(key, persisted.encryptionVariant, decodeBase64(row.metadata)) as Metadata | null : null
+        agentState = row.agentState ? decrypt(key, persisted.encryptionVariant, decodeBase64(row.agentState)) as AgentState | null : null
+    } catch {
+        // A key we hold that does not open this row is a corrupt entry, not a
+        // foreign machine — but the caller cannot tell the difference and
+        // must not be shown ciphertext-derived garbage either.
+        return base
+    }
+    if (!metadata) return base
+
+    const meta = metadata as Metadata & { variant?: string }
+    const pending = pendingRequestsOf(agentState, now)
+    return {
+        ...base,
+        decryptable: true,
+        ...(meta.summary?.text ? { title: meta.summary.text } : {}),
+        ...(meta.path ? { cwd: meta.path } : {}),
+        ...(meta.flavor ? { flavor: meta.flavor } : {}),
+        ...(meta.tags?.length ? { tags: [...meta.tags] } : {}),
+        ...(meta.variant ? { variant: meta.variant } : {}),
+        ...(meta.machineId ? { machineId: meta.machineId } : {}),
+        ...(persisted.savedAt !== undefined ? { savedAt: persisted.savedAt } : {}),
+        pending,
+        attention: pending.length > 0,
+    }
+}
+
+/**
+ * Pure: order and filter the account-wide list.
+ *
+ * Attention first (longest-waiting request first), then running-here, then
+ * everything else newest-first. Terminal-mirror shadows are dropped for the
+ * same reason as in `mergeSessionSummaries`. `--tag` can only match rows we
+ * could decrypt, so it implicitly hides foreign rows — a filter that cannot
+ * be evaluated is a miss, not a match. `recentLimit` caps only the idle tail,
+ * as in the local listing: attention and running rows are never cut.
+ */
+export function orderAccountSessions(
+    summaries: readonly AccountSessionSummary[],
+    options: ListSessionsOptions = {},
+): AccountSessionSummary[] {
+    const oldestWait = (summary: AccountSessionSummary) =>
+        Math.max(0, ...(summary.pending ?? []).map((request) => request.waitingMs ?? 0))
+    const rank = (summary: AccountSessionSummary) => summary.attention ? 0 : summary.live ? 1 : 2
+    let rows = summaries
+        .filter((summary) => summary.flavor !== 'terminal-mirror')
+        .slice()
+        .sort((a, b) => {
+            const byRank = rank(a) - rank(b)
+            if (byRank !== 0) return byRank
+            if (a.attention && b.attention) return oldestWait(b) - oldestWait(a)
+            return (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+        })
+    if (options.tag) {
+        const wanted = options.tag
+        rows = rows.filter((summary) => summary.tags?.includes(wanted) === true)
+    }
+    const recentLimit = Math.max(0, options.recentLimit ?? DEFAULT_RECENT_LIMIT)
+    let idleKept = 0
+    return rows.filter((summary) => rank(summary) < 2 || idleKept++ < recentLimit)
+}
+
+export interface ListAccountSessionsOptions extends ListSessionsOptions {
+    /** Include rows the server has already archived (default: hide them). */
+    includeArchived?: boolean
+}
+
+/** Account-wide listing over REST (`/v1/sessions`, newest 150). See the header note on `decryptable`. */
+export async function listAccountSessions(options: ListAccountSessionsOptions = {}): Promise<AccountSessionSummary[]> {
+    const token = await bearerToken()
+    const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-Happy-Client': `${SESSION_OPS_CLIENT}/${configuration.currentCliVersion}`,
+        },
+        timeout: 15_000,
+    })
+    const rows: AccountSessionRow[] = Array.isArray(response.data?.sessions) ? response.data.sessions : []
+    const persisted = readPersistedSessions()
+    const live = await listDaemonSessions() as LiveSessionLike[]
+    const liveIds = new Set(live.map((child) => child.happySessionId).filter((id): id is string => typeof id === 'string'))
+    const now = Date.now()
+    const summaries = rows
+        .filter((row) => typeof row?.id === 'string')
+        .map((row) => summarizeAccountSession(row, persisted[row.id], liveIds, now))
+        .filter((summary) => options.includeArchived || !summary.archived)
+    return orderAccountSessions(summaries, options)
 }
 
 export interface SessionTranscript {
@@ -176,6 +362,8 @@ export async function readSessionTranscript(sessionId: string, limit: number): P
     // `before_seq` returns newest-first — flip to chronological order.
     messages.reverse()
     const key = decodeBase64(persisted.encryptionKey)
+    // Same daemon `/list` merge as `sessions list`; unreachable daemon → [] → live: false.
+    const live = await listDaemonSessions() as LiveSessionLike[]
     const bodies = messages.map((message) => {
         if (message.content?.t !== 'encrypted') return null
         try {
@@ -185,7 +373,7 @@ export async function readSessionTranscript(sessionId: string, limit: number): P
         }
     })
     return {
-        summary: toSummary(sessionId, persisted, { live: false }),
+        summary: toSummary(sessionId, persisted, sessionLiveness(live, sessionId)),
         messageCount: messages.length,
         transcript: formatTranscript(bodies),
     }

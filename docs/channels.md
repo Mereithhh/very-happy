@@ -22,8 +22,11 @@ There are two directions:
 | Show an external task list in the Todo panel | [Todo provider](#inbound-todo-provider-external-task-lists-in-the-web-ui), in `~/.happy/settings.json` on that machine |
 | Dispatch work from a script, scheduler, or IM bridge | [`very-happy spawn` / `very-happy send`](#inbound-daemon-control-via-the-cli) |
 | Let that script see and steer what it dispatched | [`very-happy sessions`](#very-happy-sessions--inspect-and-control-what-is-running) |
+| See every session on the account, and which ones are waiting on a human | [`very-happy sessions list --all`](#sessions-list---all--the-whole-account-with-an-honest-limit) |
+| Approve or deny a pending permission request from a script | [`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request) |
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
+| Give a pi (or other non-Claude) meta agent the session tools | [`very-happy mcp` inside a meta-agent session](#very-happy-mcp-as-the-meta-agent-tool-surface-for-pi-and-other-non-claude-runners) |
 
 ## MCP capability matrix
 
@@ -34,16 +37,20 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
-| User-scoped plain `claude` after explicit setup | `copy_to_clipboard` only |
+| Assistant/meta-agent variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
+| User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, e.g. pi started with the new-session dialog's "meta agent" option) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
 
 The first two paths are injected by their managed runners. The assistant-only
 additions can read and mutate sessions, terminals, memory, and journals; treat
 that variant and its prompt/tool permissions as a high-privilege machine
-control surface. The standalone `very-happy mcp` command is deliberately
-narrower and does not expose session spawn/send, provider routing, preview,
-title, or progress tools. External automation should use the explicit CLI
-contracts below.
+control surface. The standalone `very-happy mcp` command is narrower: outside a
+meta-agent session it is clipboard-only, and even inside one it never exposes
+terminal, memory, journal, provider routing, preview, title, or progress
+tools. It also stays clipboard-only under a happy-managed Claude
+(`HAPPY_MANAGED=1`), so a Claude assistant that happens to have the user-scoped
+registration too does not see the session tools twice. External automation
+should use the explicit CLI contracts below.
 
 ## Architecture
 
@@ -195,11 +202,29 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   `bypassPermissions`. **Omitting it means `default`**, and a `default` session
   stops at the first tool that is not already allowed, waiting for a human to
   approve in the Web UI. For an unattended dispatcher that is a hang, not a
-  prompt: pass `bypassPermissions` (or watch for the `permission` webhook and
-  approve). The CLI rejects an unknown mode instead of passing it on, because
+  prompt: pass `bypassPermissions`, or watch for the `permission` webhook /
+  poll `sessions list --all` and answer with `sessions approve` / `deny`.
+  The CLI rejects an unknown mode instead of passing it on, because
   the daemon's own behaviour for an invalid mode is to drop it and spawn
   without the flag — silently giving you `default` again.
-- `--agent <name>` — `claude` (default), `codex`, `gemini` or `openclaw`.
+- `--agent <name>` — `claude` (default), `codex`, `gemini`, `openclaw` or
+  `pi`. `pi` runs through the [pi-acp](https://www.npmjs.com/package/pi-acp)
+  adapter (`very-happy pi` = the generic ACP runner with `pi-acp`), so the
+  daemon machine needs both `pi` and `pi-acp` on the daemon's PATH
+  (`npm install -g @earendil-works/pi-coding-agent pi-acp@0.0.33`). The daemon
+  reports that as `cliAvailability.pi`; the Web launcher offers pi only when a
+  daemon reports the field, and enables it only when it is `true`, and the
+  daemon's `/spawn-session` refuses `agent: 'pi'` while it is `false` — `spawn
+  --agent pi` then exits 1 with the install hint instead of starting a wrapper
+  that dies on `spawn pi-acp ENOENT` (invisible from the daemon). Note that
+  `--permission-mode` is a Claude/Codex vocabulary: the pi runner accepts and
+  drops it. pi's approvals surface as ACP `request_permission` cards in the
+  Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
+  `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
+  at a wrapper that loads such extensions. pi-acp prints pi's startup banner
+  (version, skills, extensions) as the first assistant message of every
+  session; set `quietStartup: true` in `~/.pi/agent/settings.json` on the
+  daemon machine to silence it.
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a
@@ -224,10 +249,12 @@ Exit codes:
 ### `very-happy sessions` — inspect and control what is running
 
 ```bash
-very-happy sessions list [--tag <name>] [--limit <n>] [--json]
+very-happy sessions list [--all [--include-archived]] [--tag <name>] [--limit <n>] [--json]
 very-happy sessions read <id> [--limit <n>] [--json]
 very-happy sessions stop <id> [--json]
 very-happy sessions archive <id> [--json]
+very-happy sessions approve <id> <requestId> [--for-session] [--json]
+very-happy sessions deny <id> <requestId> [--reason <text>] [--json]
 ```
 
 `spawn` and `send` start work; these let an external agent layer *see* it and
@@ -245,15 +272,81 @@ reachable without being the assistant.
 - `stop` — SIGTERM the session's process via the local daemon.
 - `archive` — mark the session inactive server-side; it stays resumable.
 
-Scope is **this machine**: `list`/`stop` ask the local daemon, and `read` needs
-the session key from `~/.happy/sessions.json`, which exists only for sessions
-this machine's daemon spawned and is pruned after 14 days. A session belonging
-to another machine cannot be read or stopped from here — that is a scope limit,
-not a permission error.
+Scope is **this machine**: `list`/`stop` ask the local daemon, and `read`,
+`approve` and `deny` need the session key from `~/.happy/sessions.json`, which
+exists only for sessions this machine's daemon spawned and is pruned after 14
+days. A session belonging to another machine cannot be read, stopped or
+answered from here — that is a scope limit, not a permission error. `list
+--all` (below) widens the *listing* to the account and says per row whether it
+could be read.
 
 Exit codes: `0` success, `1` anything else. Note that `stop` on a session the
 daemon is not running exits `1` — a caller asking to stop something must be
 able to distinguish "stopped it" from "there was nothing to stop".
+
+#### `sessions list --all` — the whole account, with an honest limit
+
+`list --all` asks the server (`GET /v1/sessions`, newest 150) instead of the
+local daemon, so it sees sessions on **every** machine of the account — but it
+can only *read* the ones this machine holds a key for. The server stores each
+session's `metadata` and `agentState` encrypted with that session's key, and
+a CLI holds only the keys it persisted itself in `~/.happy/sessions.json`.
+Every row therefore carries `decryptable`:
+
+- `decryptable: true` — spawned by this machine's daemon (≤14 days ago). The
+  row has `title`, `cwd`, `machineId`, `flavor`, `tags`, and `pending`: the
+  permission / question requests currently waiting on a human, oldest first,
+  each with `id`, `tool`, `createdAt` and `waitingMs`. `attention` is `true`
+  when `pending` is non-empty — this is the "needs me" signal a supervisor
+  polls for.
+- `decryptable: false` — belongs to another machine. Only the server's
+  plaintext columns are present: `active` (a wrapper is attached), `archived`,
+  `activeAt`, `updatedAt`, `url`. `title`/`cwd`/`pending` are *unreadable*,
+  not empty; do not infer "no pending requests" from their absence.
+
+Ordering: attention rows first (longest-waiting request first), then sessions
+running under this daemon (`live`), then the rest newest-first. `--limit`
+caps only that idle tail. `--tag` can only match decryptable rows. Archived
+rows are hidden unless `--include-archived`. `--json` adds fields to the
+local `list` shape and never renames one.
+
+Making the foreign rows full-fidelity (and making `read` / `approve` work on
+them) is a **credentials change** — the CLI would need to hold the account
+content key the way the web does — not a flag on this command. Until then,
+run the poller on each machine that dispatches work.
+
+#### `sessions approve` / `deny` — answer a permission request
+
+A `default`-mode session stops at the first tool that is not already allowed
+and waits for a human. `approve`/`deny` send the wrapper exactly what the web
+permission card sends — a session RPC `permission` with
+`{ id, approved, decision }` (`approved`, `approved_for_session` with
+`--for-session`, or `denied` plus an optional `reason`) — over a short-lived
+user-scoped socket authenticated with the CLI's account token. A plain tool
+approval carries no `mode` and no `allowTools`, on purpose.
+
+Two facts the caller should know:
+
+- The RPC payload is **encrypted with the session key**, so like `read` this
+  works only for sessions in this machine's `~/.happy/sessions.json`. Same
+  scope limit, same fix (above).
+- The wrapper **ignores an unknown request id silently** (it logs "already
+  resolved" and returns success). The CLI therefore reads the session's
+  `agentState` first and refuses to send unless `<requestId>` is actually
+  pending (exit 1 listing the ids that are), then re-reads for up to 5s after
+  the ack and reports `settled: true|false` in `--json` — `false` means the
+  wrapper acknowledged but had not yet written the request out of the pending
+  set when we stopped waiting, not that it refused.
+
+Exit `1` with a precise reason when: no local key; the session is not on
+this account (404); the request is not pending; no wrapper is online for the
+session (`RPC method not available`, or it disconnected mid-call); the RPC
+timed out (30s); the wrapper's handler returned an `{error}` envelope. With
+`--json`, every one of these still prints a record on stdout
+(`{sessionId, requestId, error}` for the pre-RPC refusals, the full result
+with `outcome.status` for the RPC-level ones), so a poller never has to parse
+an empty string. Find `<requestId>` in `sessions list --all` (`pending[].id`)
+or in the `permission` webhook.
 
 ### `very-happy send` — message an existing session
 
@@ -305,6 +398,69 @@ forwarded to the local daemon over its 127.0.0.1 control server
 (`POST /clipboard`), relayed
 over the authenticated machine socket, and fanned out to the clipboard of
 every web client the user has open. Payloads over 256KB are truncated.
+
+### `very-happy mcp` as the meta-agent tool surface for pi and other non-Claude runners
+
+The Web Assistant above is Claude-only because its session tools are injected
+in-process by the Claude runner. Any other runner that loads its own MCP config
+gets the same six session tools from the standalone server instead, gated by
+one environment variable the daemon already sets:
+
+1. Register `very-happy mcp` once in the agent's own MCP config. For pi
+   (via [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)) that is
+   `~/.pi/agent/mcp.json`:
+
+   ```jsonc
+   {
+     "mcpServers": {
+       "very-happy": { "command": "very-happy", "args": ["mcp"] }
+     }
+   }
+   ```
+
+   (`~/.agents/mcp.json` and a project `.mcp.json` are read too; the daemon
+   user's PATH must resolve `very-happy`.)
+
+2. Start the session as a meta agent: in the new-session dialog pick the agent
+   and tick **Meta agent**. The Web sends `variant: 'assistant'`; for a
+   non-Claude agent the daemon turns that into exactly one thing —
+   `HAPPY_SESSION_VARIANT=assistant` in the session's environment — and
+   otherwise treats the spawn normally (your directory is used, there is no
+   per-machine singleton, the /assistant screen is unaffected). The runner
+   passes its environment to the agent process, the agent to the MCP servers
+   it starts, and `very-happy mcp` reads the variable when it comes up.
+
+With the variable the server registers `copy_to_clipboard` plus
+`sessions_list`, `session_read`, `session_send`, `session_spawn`,
+`session_kill` and `session_archive` — the same implementations, same
+this-machine scope and same "dispatch returns immediately" semantics as the
+Claude assistant's tools (`session_spawn` starts Claude workers via the local
+daemon). Two consequences of "same implementations" are worth knowing:
+workers spawned this way carry the `assistant` origin tag, and the daemon
+routes their completion reports to the machine's *Claude* assistant singleton
+(if one is live) rather than back to the pi meta agent — a pi meta agent has
+to poll `sessions_list` / `session_read` for the outcome. Without it — a
+plain pi you started in a terminal, any ordinary
+session — the same registration yields clipboard only, so registering it
+user-wide is safe: a session only gains machine-control tools when it was
+deliberately started as a meta agent. Permission approval is not an MCP tool
+on this surface yet; a meta agent that needs it shells out to
+[`very-happy sessions approve` / `deny`](#sessions-approve--deny--answer-a-permission-request)
+(same this-machine scope).
+
+A Claude session never takes this path: `HAPPY_MANAGED=1` on every
+happy-managed `claude` keeps the standalone server clipboard-only there, since
+the in-process assistant tools already cover it.
+
+The variable is inherited down the process tree. Anything a meta agent starts
+from its own shell (a nested `pi`, a hand-typed `claude`, a script) sees
+`HAPPY_SESSION_VARIANT=assistant` too and, if it loads the same user-wide
+registration and is not a happy-managed Claude, gets the session tools as
+well. Treat a meta-agent session's subprocesses as part of the same
+high-privilege surface. Setting `HAPPY_SESSION_VARIANT=assistant` by hand
+(e.g. in that MCP entry's `env`) opts a manually started agent into the same
+tools deliberately; that is the same high-privilege surface as the Web
+Assistant, so do it knowingly.
 
 ---
 

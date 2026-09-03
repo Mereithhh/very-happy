@@ -37,6 +37,7 @@ import { handleCodexCommand } from './commands/codexCommand'
 import { isStandaloneVersionRequest } from './utils/versionArgs'
 import { configuration } from './configuration'
 import { daemonEndpointsMatch } from './ui/doctorReadiness'
+import { parsePiRunnerArgs, piAdapterMissingHint } from '@/agent/acp/piRunnerArgs'
 import { CLAUDE_OPTIONS_HELP, DAEMON_STOP_HELP } from './commands/helpFacts'
 
 
@@ -420,6 +421,48 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'pi') {
+    // pi via the generic ACP runner + pi-acp adapter. Kept as its own
+    // subcommand so the daemon can spawn it with the same argv shape it uses
+    // for every backend (see parsePiRunnerArgs for why those flags are dropped).
+    // A missing adapter surfaces as a backend `status: 'error'` (which may or
+    // may not also throw, depending on whether a prompt is in flight), so the
+    // hint is printed from whichever path reports it first, once.
+    let hintPrinted = false;
+    const printHint = (detail: string | undefined) => {
+      const hint = piAdapterMissingHint(detail);
+      if (hint && !hintPrinted) {
+        hintPrinted = true;
+        console.error(chalk.gray(hint));
+      }
+    };
+    try {
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+
+      const parsed = parsePiRunnerArgs(args.slice(1));
+      const resolved = resolveAcpAgentConfig(['pi', ...parsed.passthrough]);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy: parsed.startedBy,
+        verbose: parsed.verbose,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+        onBackendError: printHint,
+      });
+      if (hintPrinted) process.exit(1)
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      printHint(error instanceof Error ? error.message : undefined)
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'acp') {
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
@@ -775,10 +818,12 @@ ${chalk.bold('Usage:')}
                             print its web URL (for automation; see spawn --help)
   very-happy send              Send a message into an existing session
                             (for automation; see send --help)
-  very-happy sessions          List, read, stop or archive sessions on this
-                            machine (for automation; see sessions --help)
+  very-happy sessions          List, read, stop, archive, approve or deny
+                            sessions and their permission requests (for
+                            automation; see sessions --help)
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
+  very-happy pi                Start pi mode (ACP via the pi-acp adapter)
   very-happy acp               Start a generic ACP-compatible agent
   very-happy openclaw          Connect through a configured OpenClaw gateway
   very-happy install-terminal-hooks
@@ -804,6 +849,7 @@ ${chalk.bold('Examples:')}
   very-happy --js-runtime bun   Use bun instead of node to spawn Claude Code
   very-happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
+  very-happy pi                 Start pi (needs pi-acp on PATH)
   very-happy acp gemini         Start Gemini via generic ACP runner
   very-happy acp opencode   Start OpenCode through its built-in ACP adapter
   very-happy acp -- your-agent --acp

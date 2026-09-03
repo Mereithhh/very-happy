@@ -3,9 +3,18 @@ export type AcpAgentConfig = {
   args: string[];
 };
 
+/**
+ * pi has no ACP mode of its own; `pi-acp` (npm, MIT) wraps `pi --mode rpc`
+ * and speaks ACP over stdio. It honours `PI_ACP_PI_COMMAND` for the pi
+ * executable, which is how a wrapper (extensions, policy gate) gets injected
+ * without changing anything here.
+ */
+export const PI_ACP_COMMAND = 'pi-acp';
+
 export const KNOWN_ACP_AGENTS: Record<string, AcpAgentConfig> = {
   gemini: { command: 'gemini', args: ['--experimental-acp'] },
   opencode: { command: 'opencode', args: ['acp'] },
+  pi: { command: PI_ACP_COMMAND, args: [] },
 };
 
 export type ResolvedAcpAgentConfig = {

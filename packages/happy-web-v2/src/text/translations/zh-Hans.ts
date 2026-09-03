@@ -1002,6 +1002,8 @@ export const zhHans: TranslationStructure = {
         agentUnavailableTitle: ({ agent }: { agent: string }) => `这台机器上无法使用 ${agent}`,
         agentInstallHelp: ({ agent, command }: { agent: string; command: string }) => `要使用 ${agent}，请在 daemon 机器运行 \`${command}\` 后重启 daemon；也可切换到 Claude。`,
         openClawSetupHelp: '要使用 OpenClaw，请为 daemon 用户配置本地网关，或设置 OPENCLAW_GATEWAY_URL 与 token/password，然后重启 daemon。详见“文档 → 配置”。',
+        metaAgent: '元代理（meta agent）',
+        metaAgentHelp: '可以列出、阅读、给本机会话发消息，以及派发、停止和归档会话。需要先在该 agent 自己的 MCP 配置里注册 `very-happy mcp`，见“文档 → Channels”。',
         offlineMachine: '离线',
         offlineTerminalHelp: '终端不可用。请在这台机器运行 `very-happy daemon start`，然后重试。',
         terminalAtTitle: '在指定目录新建终端…',
@@ -1678,6 +1680,13 @@ export const zhHans: TranslationStructure = {
                 title: '装坏的更新不会再让机器掉线',
                 summary: '装了新版 CLI 之后，daemon 会重启切换过去。如果那次安装是残缺的，此前它照样会交接，机器就这么掉线了——没有任何解释，也没有任何东西会把它拉回来。',
                 preflight: '现在 daemon 会先把新版本跑一遍再决定是否信任它，起不来就继续用旧版本服务。发生这种情况时机器页会写明原因，而不是机器悄无声息地消失。',
+            },
+            sep03ae: {
+                title: 'pi 进了启动器，脚本也能替你批了',
+                summary: 'very-happy 是会话跑起来、被你盯着的那个面。这个版本把它向外部的「监督者」打开：多一个可派发的 agent，让自动化看得见谁在等审批，也让它答得上来。',
+                pi: '新建会话可以选 pi（经 pi-acp 适配器），与 Claude、Codex、Gemini 并列；只在 daemon 报告装了它的机器上出现。pi 会话通过扩展发起的确认，会以普通权限卡片的形式出现。',
+                approve: '`very-happy sessions list --all` 列出账号下所有会话；本机持有密钥的会话还带待审批请求与各自等了多久。`very-happy sessions approve` / `deny` 用与网页卡片完全相同的内容回应请求。',
+                meta: '内置助手用的那套会话工具（列出、读取、发送、派发、终止、归档）现在任何 runner 都能经 `very-happy mcp` 拿到——启动 pi 时勾「Meta agent」即可。',
             },
             sep03ab: {
                 title: '开终端时，目录和启动命令都能选了',

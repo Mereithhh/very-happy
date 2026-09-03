@@ -15,6 +15,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-pi-and-supervisor-surface',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.116',
+    titleKey: 'changelog.releases.sep03ae.title',
+    summaryKey: 'changelog.releases.sep03ae.summary',
+    itemKeys: [
+      'changelog.releases.sep03ae.pi',
+      'changelog.releases.sep03ae.approve',
+      'changelog.releases.sep03ae.meta',
+    ],
+  },
+  {
     id: '2026-09-03-cli-auto-update',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

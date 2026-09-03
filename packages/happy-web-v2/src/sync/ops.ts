@@ -148,7 +148,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'pi';
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
@@ -173,7 +173,10 @@ export interface SpawnSessionOptions {
     /**
      * Session variant tag forwarded to the daemon (e.g. 'assistant' for the
      * meta-agent voice session). New daemons use it to pick their own cwd and
-     * dedupe the singleton; old daemons ignore the unknown field (bidirectional
+     * dedupe the singleton — for `agent: 'claude'`. For any other agent the
+     * daemon only sets HAPPY_SESSION_VARIANT=assistant on the session (the
+     * new-session dialog's "meta agent" option; directory honoured, no
+     * singleton). Old daemons ignore the unknown field (bidirectional
      * compatibility is a design requirement).
      */
     variant?: string;
@@ -299,7 +302,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'pi',
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,

@@ -8,6 +8,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
+import type { SpawnAgent } from '@/utils/spawnAgents';
 import { configuration } from '@/configuration';
 import {
     createUploadFileHandlers,
@@ -127,7 +128,7 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini' | 'openclaw';
+    agent?: SpawnAgent;
     environmentVariables?: Record<string, string>;
     token?: string;
     /**

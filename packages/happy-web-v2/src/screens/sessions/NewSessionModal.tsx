@@ -15,10 +15,12 @@ import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
 import { useImeGuard } from '@/utils/ime';
 import {
   agentSetupInstruction,
+  isAgentOffered,
   resolveAgentAvailability,
   SESSION_AGENTS,
   type SessionAgent,
 } from '@/utils/agentAvailability';
+import { metaAgentVariantSupported } from '@/utils/metaAgentOption';
 import './newsession.css';
 
 interface PathPreset {
@@ -64,6 +66,11 @@ export function NewSessionModal({
   const [directory, setDirectory] = useState(list[0]?.path ?? '');
   const [editingId, setEditingId] = useState<string | null>(list[0]?.id ?? null);
   const [agent, setAgent] = useState<SessionAgent>(() => normalizeAgentKey(defaultAgent));
+  // Meta agent (variant 'assistant') — only meaningful for the agents
+  // metaAgentVariantSupported names; the flag is ignored for any other agent
+  // at spawn time, so switching agents never smuggles it along.
+  const [metaAgent, setMetaAgent] = useState(false);
+  const metaAgentOffered = metaAgentVariantSupported(agent);
   const [initialCommand, setInitialCommand] = useState(initialCommandDefault ?? '');
   const ime = useImeGuard();
   const [busy, setBusy] = useState(false);
@@ -171,6 +178,7 @@ export function NewSessionModal({
       agent,
       permissionMode,
       approvedNewDirectoryCreation: approve,
+      ...(metaAgent && metaAgentOffered ? { variant: 'assistant' } : {}),
     });
     if (res.type === 'requestToApproveDirectoryCreation') {
       const ok = await Modal.confirm(
@@ -302,7 +310,7 @@ export function NewSessionModal({
 
             <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
-              {SESSION_AGENTS.map((a) => {
+              {SESSION_AGENTS.filter((a) => isAgentOffered(selectedMachine?.metadata, a)).map((a) => {
                 const availability = resolveAgentAvailability(selectedMachine?.metadata, a);
                 const unavailable = !availability.available;
                 const suffix = a === 'claude'
@@ -341,6 +349,7 @@ export function NewSessionModal({
                 {[
                   ...SESSION_AGENTS
                       .filter((candidate): candidate is Exclude<SessionAgent, 'claude'> => candidate !== 'claude')
+                      .filter((candidate) => isAgentOffered(selectedMachine.metadata, candidate))
                       .filter((candidate) => !resolveAgentAvailability(selectedMachine.metadata, candidate).available)
                       .map((candidate) => {
                         const setup = agentSetupInstruction(candidate);
@@ -350,6 +359,18 @@ export function NewSessionModal({
                       }),
                 ].filter(Boolean).join(' · ')}
               </div>
+            )}
+
+            {metaAgentOffered && (
+              <label className="ns-check">
+                <input
+                  type="checkbox"
+                  checked={metaAgent}
+                  onChange={(e) => setMetaAgent(e.target.checked)}
+                />
+                <span>{t('newSessionModal.metaAgent')}</span>
+                <span className="ns-agent-help">{t('newSessionModal.metaAgentHelp')}</span>
+              </label>
             )}
 
             <label className="ns-label">{t('newSession.initialCommand')}</label>

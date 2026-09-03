@@ -10,7 +10,7 @@ vi.mock('@/persistence', () => ({
   clearDaemonState: mocks.clearDaemonState,
 }));
 
-import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions } from './controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions, spawnDaemonSession } from './controlClient';
 
 const baseState = {
   pid: 4242,
@@ -41,6 +41,27 @@ describe('daemon control client authentication', () => {
       'Content-Type': 'application/json',
       Authorization: 'Bearer state-secret',
     });
+  });
+
+  it("surfaces the daemon's error body on a non-2xx reply (spawn --agent pi install hint)", async () => {
+    mocks.readDaemonState.mockResolvedValue({ ...baseState, controlToken: 'state-secret' });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    const hint = 'very-happy pi needs the pi-acp adapter on PATH: npm install -g pi-acp@0.0.33';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: false, error: hint }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+
+    const result = await spawnDaemonSession('/tmp/x', undefined, { agent: 'pi' });
+    expect(result.error).toContain(hint);
+  });
+
+  it('falls back to the status code when a non-2xx reply has no error body', async () => {
+    mocks.readDaemonState.mockResolvedValue({ ...baseState, controlToken: 'state-secret' });
+    vi.spyOn(process, 'kill').mockImplementation(() => true);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 502 })));
+
+    await expect(listDaemonSessions()).resolves.toEqual([]);
   });
 
   it('omits authorization for an old daemon state without a token', async () => {
