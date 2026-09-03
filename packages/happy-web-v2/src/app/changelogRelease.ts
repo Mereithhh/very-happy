@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-cli-auto-update',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.116',
+    titleKey: 'changelog.releases.sep03ad.title',
+    summaryKey: 'changelog.releases.sep03ad.summary',
+    itemKeys: [
+      'changelog.releases.sep03ad.idle',
+      'changelog.releases.sep03ad.safety',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-output-coalescing',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

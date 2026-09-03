@@ -1677,6 +1677,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03ad: {
+                title: 'Machines keep their CLI up to date on their own',
+                summary: 'Keeping the command-line tool current was a manual step, and most machines drifted several versions behind. They now update themselves — but only at a moment when doing so cannot interrupt anything.',
+                idle: 'A machine installs a newer CLI only while it is idle: no session running and no terminal open. Restarting into a new version replaces the process that owns both, so it waits until there is nothing to own.',
+                safety: 'It installs the version that has been recommended for release, never simply the newest thing published, and it runs that version before switching to it — a build that will not start leaves the previous one serving and says so on the machine page. Automatic updates can be turned off per machine.',
+            },
             sep03ag: {
                 title: 'Starting a TUI paints in one go, not line by line',
                 summary: 'Launching pi or Claude Code inside a web terminal could leave you staring at a half-drawn screen with no input box for a moment. The bytes were all there \u2014 they were just arriving as about a thousand separate messages.',
