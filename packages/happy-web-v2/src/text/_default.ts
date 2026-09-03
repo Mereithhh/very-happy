@@ -1658,6 +1658,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03l: {
+                title: 'A renamed machine finally shows its new name',
+                summary: 'The name Very Happy showed for a machine was the hostname it had the day it first connected, and it never changed after that — rename the box and the old name stayed forever.',
+                rename: 'A machine now claims its own record when its daemon starts, so a rename shows up in the machine list and the session launcher instead of being frozen at whatever the hostname was on day one. This also settles a daemon-log warning that fired on every start for any machine that had ever been renamed.',
+            },
             sep03k: {
                 title: 'Two places the interface was quietly misleading you',
                 summary: 'The new-session picker never said whether a machine could actually run Claude, so you found out when the first turn failed. And a turn that failed before it billed anything still printed a cost.',
