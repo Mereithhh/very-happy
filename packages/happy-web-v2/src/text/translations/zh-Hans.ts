@@ -1586,6 +1586,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03c: {
+                title: '更耐看的终端字体',
+                summary: '终端换用 Maple Mono CN——更柔和圆润的双宽字体,中文照样对齐、logo 和框线依旧像素级严丝合缝,但没那么瘦高。首次打开时会显示「终端字体加载中」的小提示。',
+                font: '终端字体切换到 Maple Mono CN:方块/框线一样无缝拼接、中文一样 2 倍宽,但字形更暖更开(也消除了旧字体分片加载时短暂的粗细不匀闪烁)。',
+                loading: '第一次打开终端时,右上角会显示「终端字体加载中」小提示,字体从 CDN 下载完就消失——期间终端一直可用,之后再打开会直接用缓存、瞬开。',
+            },
             sep03b: {
                 title: '更多 daemon 宿主上的中文宽度修复',
                 summary: 'daemon 现在更稳地强制 UTF-8 locale,即使宿主以 LC_ALL=C 启动、或没有生成 en_US.UTF-8,终端里的中文也按双宽处理、不再叠字——更新 CLI 与新终端字体配套。',
@@ -1802,6 +1808,7 @@ export const zhHans: TranslationStructure = {
         claudeNeedsInput: 'Claude：等待输入',
         claudeNeedsInputBody: 'Claude 需要你的输入',
         structuredView: '结构化视图',
+        fontLoading: '终端字体加载中…',
         refitWidth: '重新适配宽度',
         refitWidthHint: '让终端按本设备宽度重新适配。上方已滚过的旧内容仍保持当时打印的宽度——终端无法重排它们。',
         selectMode: '选择/复制模式',

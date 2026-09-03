@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-terminal-font-maple',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep03c.title',
+    summaryKey: 'changelog.releases.sep03c.summary',
+    itemKeys: [
+      'changelog.releases.sep03c.font',
+      'changelog.releases.sep03c.loading',
+    ],
+  },
+  {
     id: '2026-09-03-tmux-cjk-locale',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
