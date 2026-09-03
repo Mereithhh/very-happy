@@ -24,7 +24,7 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.115**；线上 Web/server = `main@6644624d`。**同一天 0.2.108→0.2.115 由多个
+- 最新 tag / npm `very-happy-cli` = **v0.2.115**（main 上已有 0.2.116 的 changelog 条目但**尚未打 tag**——又一次「changelog 里的 cliVersion ≠ 已发布版本」）；线上 Web/server = `main@b1a2bb41`（2026-09-03 21:06 发，`rollout=switch`）。**同一天 0.2.108→0.2.115 由多个
   并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
   cliVersion 想当然。**B-/V-/changelog key 三家同理**：用 `node scripts/dev/check-ids.mjs` 取号，rebase 后和开 PR 前
   各 `--claim` 验一次——**但 claim 通过不等于安全，窗口就是 CI 时长**：2026-09-03 一个 PR 连着三轮被挤掉
