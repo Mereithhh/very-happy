@@ -1043,7 +1043,12 @@ export const zhHans: TranslationStructure = {
         title: '在指定目录新建终端',
         browse: '浏览这台机器',
         create: '打开终端',
-        startupHint: '终端会在这个目录启动，然后执行「设置 → 终端」里的启动命令。',
+        startupHint: '终端在这个目录启动，然后执行上面选中的命令；两者都会记住，下次直接选。',
+        // B-334：每次启动单独选命令
+        commandSection: '启动命令',
+        commandDefault: ({ command }: { command: string }) => `${command}（默认）`,
+        commandNone: '不执行命令',
+        commandPlaceholder: 'claude —— 留空则只开一个 shell',
         attachSection: '接入已有 tmux 会话',
         attachLoading: '正在查找这台机器上的 tmux 会话…',
         attachEmpty: '这台机器上没有你自己的 tmux 会话——web 终端（vh-*）不在列表里。',
@@ -1650,6 +1655,12 @@ export const zhHans: TranslationStructure = {
                 title: '装坏的更新不会再让机器掉线',
                 summary: '装了新版 CLI 之后，daemon 会重启切换过去。如果那次安装是残缺的，此前它照样会交接，机器就这么掉线了——没有任何解释，也没有任何东西会把它拉回来。',
                 preflight: '现在 daemon 会先把新版本跑一遍再决定是否信任它，起不来就继续用旧版本服务。发生这种情况时机器页会写明原因，而不是机器悄无声息地消失。',
+            },
+            sep03ab: {
+                title: '开终端时，目录和启动命令都能选了',
+                summary: '新终端启动进哪个 agent，以前只有一个全局设置：想在 claude 和别的之间来回换，每次都得去「设置」改一遍。目录也只有你手动收藏过的那几个。',
+                command: '「在目录里开终端」现在多了启动命令一栏：设置里的默认值、你以前从这里启动过的命令，以及一个明确的「不执行命令」（只开一个 shell）。手打的命令会被记成一个 chip，下次一键切换。',
+                recents: '目录 chip 里现在还会带上你最近在那台机器上开过的目录——和新建对话记住的是同一份，从这里开终端也会写进去。收藏过的目录仍然排在前面，也只有它们带删除按钮；最近用过的会自己淘汰。',
             },
             sep03aa: {
                 title: '终端也有红点了',

@@ -1060,7 +1060,12 @@ export const en = {
         title: 'Terminal in a directory',
         browse: 'Browse the machine',
         create: 'Open terminal',
-        startupHint: 'Starts here, then runs the startup command from Settings → Terminal.',
+        startupHint: 'The terminal starts in this directory and then runs the command above. Both are remembered for next time.',
+        // B-334: per-open startup command
+        commandSection: 'Startup command',
+        commandDefault: ({ command }: { command: string }) => `${command} (default)`,
+        commandNone: 'No command',
+        commandPlaceholder: 'claude — leave empty for a plain shell',
         // B-273: attach an existing tmux session
         attachSection: 'Attach an existing tmux session',
         attachLoading: 'Looking for tmux sessions on this machine…',
@@ -1682,6 +1687,12 @@ export const en = {
                 title: 'A bad update can no longer take a machine offline',
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
                 preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
+            },
+            sep03ab: {
+                title: 'Pick the directory AND the command when you open a terminal',
+                summary: 'Which agent a new web terminal boots into was one global setting: switching between claude and something else meant a trip to Settings every time. And the directory list only held what you had explicitly bookmarked.',
+                command: 'The "Terminal in a directory" dialog now has a startup command field: your Settings default, the commands you have launched from here before, and an explicit "No command" for a plain shell. Whatever you type is remembered as a chip for next time, so alternating between two agents is one click.',
+                recents: 'The directory chips now also include the directories you recently opened on that machine \u2014 the same list new chats remember, and a terminal opened here feeds it too. Bookmarked directories still come first and are the only ones with a delete button; recents age out on their own.',
             },
             sep03aa: {
                 title: 'Terminals get the red dot too',

@@ -17,3 +17,26 @@ describe('B-273 newTerminalSearch', () => {
         expect(q.toString()).toBe('tid=abc&fresh=1&attach=%243&attachName=my+dev');
     });
 });
+
+describe('B-334 startup command selection', () => {
+    it('carries the selection id and never a command line', () => {
+        expect(newTerminalSearch('abc', { startupSelectionId: 'a1b2c3' }).get('cmd')).toBe('a1b2c3');
+        expect(newTerminalSearch('abc', { startupSelectionId: 'none' }).get('cmd')).toBe('none');
+        // Anything command-shaped is dropped by the id guard, so a caller
+        // passing text by mistake cannot put it in a shareable URL.
+        expect(newTerminalSearch('abc', { startupSelectionId: 'claude --resume' }).has('cmd')).toBe(false);
+    });
+    it('omits the default selection so an unchanged flow yields the old URL', () => {
+        expect(newTerminalSearch('abc', { startupSelectionId: 'default' }).toString()).toBe('tid=abc&fresh=1');
+        expect(newTerminalSearch('abc', { startupSelectionId: undefined }).toString()).toBe('tid=abc&fresh=1');
+    });
+    it('yields to resume and to attach, which both decide the command themselves', () => {
+        const resume = newTerminalSearch('abc', { startupSelectionId: 'a1b2c3', resumeClaudeSessionId: 'c0c26854-5e0c-4063-aaeb-d4428fe8ed94' });
+        expect(resume.has('cmd')).toBe(false);
+        const attach = newTerminalSearch('abc', { startupSelectionId: 'a1b2c3', attachTmux: { id: '$3', name: 'dev' } });
+        expect(attach.has('cmd')).toBe(false);
+    });
+    it('keeps the selection when the resume id is invalid (nothing overrode it)', () => {
+        expect(newTerminalSearch('abc', { startupSelectionId: 'a1b2c3', resumeClaudeSessionId: '../x' }).get('cmd')).toBe('a1b2c3');
+    });
+});
