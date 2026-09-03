@@ -31,6 +31,11 @@
   color: var(--text-dim);
   margin-top: var(--sp-2);
 }
+.ns-label-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
 .ns-select,
 .ns-input {
   background: var(--bg-2);
@@ -94,7 +99,22 @@
   color: var(--text-faint);
   font-size: var(--fs-13);
   padding: var(--sp-4) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
 }
+.ns-empty-text { margin: 0; }
+/* B-296: a quiet doorway, not a CTA — accent stays reserved for "live". */
+.ns-connect-link {
+  margin-left: auto;
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  min-height: 32px;
+}
+.ns-connect-link:hover { color: var(--text); }
 .ns-actions {
   display: flex;
   justify-content: flex-end;

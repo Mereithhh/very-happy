@@ -6,7 +6,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Trash2 } from 'lucide-react';
-import { useSession, useSessionMessages, useSessionRunningTool } from '@/sync/storage';
+import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionCancelQueuedMessage } from '@/sync/ops';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -28,6 +28,7 @@ import {
 } from './chatFollow';
 import { isHiddenToolName } from './toolVisibility';
 import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
+import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
 import './chatlist.css';
 
 export function ChatList({
@@ -40,7 +41,6 @@ export function ChatList({
     const { t } = useTranslation();
     const toast = useToast();
     const session = useSession(sessionId);
-    const runningTool = useSessionRunningTool(sessionId);
     const { messages, isLoaded, hasMoreOlder, isLoadingOlder } = useSessionMessages(sessionId);
     const scrollRef = useRef<HTMLDivElement>(null);
     const innerRef = useRef<HTMLDivElement>(null);
@@ -71,8 +71,17 @@ export function ChatList({
     );
     // B-260-P2: a background sub-agent keeps the turn live after the main
     // agent's stub tool_result — the CLI publishes its lifecycle.
-    const runningSubagents = useMemo(() => countRunningSubagentCards(chronological), [chronological]);
-    const sessionLive = session?.thinking === true || !!runningTool || runningSubagents > 0;
+    // B-295: only the CURRENT turn's sub-agents vote, and a `running` tool call
+    // never votes on its own — see sync/agentLiveness.ts for why.
+    const runningSubagents = useMemo(
+        () => countRunningSubagentCards(currentTurnMessages(chronological)),
+        [chronological],
+    );
+    const sessionLive = isAgentWorkLive({
+        presence: session?.presence,
+        thinking: session?.thinking,
+        runningSubagentsInTurn: runningSubagents,
+    });
     const rows = useMemo(
         () => buildChatRows(chronological, sessionLive),
         [chronological, sessionLive],
@@ -303,7 +312,7 @@ export function ChatList({
                                 durationSeconds={row.durationSeconds}
                             />
                         ) : row.type === 'toolgroup' ? (
-                            <ToolGroupView key={row.key} tools={row.tools} />
+                            <ToolGroupView key={row.key} tools={row.tools} stalled={!sessionLive} />
                         ) : (
                             <MessageView
                                 key={row.key}

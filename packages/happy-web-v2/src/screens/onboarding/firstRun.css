@@ -95,3 +95,5 @@
   .fr-fast-path { padding: var(--sp-4); }
   .fr-steps li { padding: var(--sp-4); }
 }
+
+.fr-hero-back { margin-bottom: var(--sp-2); }

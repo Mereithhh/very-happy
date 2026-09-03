@@ -10,6 +10,7 @@ import { sync } from '@/sync/sync';
 import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
+import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import { useImeGuard } from '@/utils/ime';
 import {
   agentSetupInstruction,
@@ -213,10 +214,13 @@ export function NewSessionModal({
         <div className="ns-title">{t('newSessionModal.chatTitle')}</div>
 
         {online.length === 0 ? (
-          <div className="ns-empty">{t('machine.noMachines')}</div>
+          <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
-            <label className="ns-label">{t('newSession.machine')}</label>
+            <div className="ns-label-row">
+              <label className="ns-label">{t('newSession.machine')}</label>
+              <ConnectMachineLink onClose={onClose} />
+            </div>
             <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
               {online.map((m) => (
                 <option key={m.id} value={m.id}>

@@ -37,6 +37,7 @@ import { FsBrowser } from '@/screens/files/FsBrowser';
 import { fsFailureText } from '@/screens/files/fsFailureText';
 import { Button, useToast } from '@/ui';
 import { useTranslation } from '@/i18n/useTranslation';
+import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
 import {
   expandHomePath,
   normalizeCwdInput,
@@ -182,10 +183,13 @@ export function NewTerminalModal({ onClose }: { onClose: () => void }) {
         )}
 
         {online.length === 0 ? (
-          <div className="ns-empty">{t('machine.noMachines')}</div>
+          <NoMachinesNotice onClose={onClose} />
         ) : (
           <>
-            <label className="ns-label">{t('newSession.machine')}</label>
+            <div className="ns-label-row">
+              <label className="ns-label">{t('newSession.machine')}</label>
+              <ConnectMachineLink onClose={onClose} />
+            </div>
             <select
               className="ns-select"
               value={machineId}
