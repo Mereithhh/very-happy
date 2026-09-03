@@ -1539,6 +1539,32 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    // B-302: a `weak` conflict is a hostname that no longer matches, and at a
+    // single start the innocent cause — the box was renamed — is
+    // indistinguishable from the guilty one, because `getOrCreateMachine`
+    // freezes the metadata written at first registration and never refreshes
+    // it. Left alone, one rename warns on every start forever; mac-office did
+    // exactly that the moment B-297 shipped.
+    //
+    // Claiming the row heals it: a rename mismatches once and is quiet after.
+    // Two daemons genuinely sharing a machine id keep overwriting each other, so
+    // the warning returns on every start of BOTH — that flapping is the real
+    // signal, and a much better one than a single stale comparison.
+    //
+    // A `strong` conflict (platform or home dir differs) is not something a
+    // rename explains and is never healed; the record stays as evidence.
+    //
+    // Deliberately not awaited: `updateMachineMetadata` retries with backoff
+    // behind the socket, and daemon startup must not block on it.
+    if (identityConflict?.confidence === 'weak') {
+      void apiMachine.updateMachineMetadata((current) => ({
+        ...(current ?? initialMachineMetadata),
+        host: initialMachineMetadata.host,
+      }))
+        .then(() => logger.debug(`[DAEMON RUN] claimed the machine record for host ${initialMachineMetadata.host}`))
+        .catch((error) => logger.debug('[DAEMON RUN] could not refresh the recorded host:', error));
+    }
+
     // The daemon is the long-lived, relay-aware update checker. It never runs
     // npm: it only publishes the relay's version policy for Web/CLI UX. A
     // successful local npm install is already handed over by the bundle-mtime

@@ -16,7 +16,12 @@
  * take turns invalidating each other's Claude login.
  *
  * We only report; the operator decides. Renaming a host is a legitimate reason
- * for `host` alone to differ, which is why that case is reported as `weak`.
+ * for `host` alone to differ, which is why that case is reported as `weak` —
+ * and why the daemon then claims the record (B-302). The recorded metadata is
+ * frozen at first registration, so without that a machine renamed once would
+ * warn on every start for the rest of its life. After healing, a rename
+ * mismatches exactly once; two daemons genuinely sharing an id overwrite each
+ * other and keep warning on both, which is the signal worth having.
  */
 
 export interface MachineIdentityFacts {
