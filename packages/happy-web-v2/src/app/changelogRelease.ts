@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-refresh-never-hangs',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half
+    titleKey: 'changelog.releases.sep03ac.title',
+    summaryKey: 'changelog.releases.sep03ac.summary',
+    itemKeys: [
+      'changelog.releases.sep03ac.hang',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-launch-presets',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

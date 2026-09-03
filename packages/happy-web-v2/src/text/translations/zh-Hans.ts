@@ -1645,6 +1645,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03ac: {
+                title: '「刷新」按钮不会再卡住',
+                summary: '点了更新之后，页面可能一直停在「刷新中…」再也回不来，只能手动强制刷新。',
+                hang: '重新加载之前，应用会让浏览器刷新它缓存的站点副本。这一步此前是无限期等待的，一旦卡住，重新加载就永远不会发生。现在给它加了时限，无论结果如何都会继续重新加载——反正加载本身就会取到新版本。',
+            },
             sep03z: {
                 title: '消息不会再卡在队列里出不去',
                 summary: 'agent 在工作时发的消息，可能会一直停在输入框的队列里，唯一的出路是开一个新标签页。两个互不相干的成因，都修了。',

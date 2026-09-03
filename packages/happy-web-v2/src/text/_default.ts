@@ -1677,6 +1677,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03ac: {
+                title: 'The refresh button can no longer hang',
+                summary: 'Accepting an update could leave the page on "Refreshing…" and never come back, until you reloaded by hand.',
+                hang: 'Before reloading, the app asked the browser to refresh its cached copy of the site. That request was awaited with no time limit, so if it stalled the reload never happened. It is now capped, and the reload goes ahead regardless — it fetches the new version on its own anyway.',
+            },
             sep03z: {
                 title: 'Messages no longer get stuck in the queue',
                 summary: 'Sending a message while the agent was working could leave it sitting in the composer queue indefinitely, with opening a new tab as the only way out. Two separate causes, both fixed.',
