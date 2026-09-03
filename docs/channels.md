@@ -316,11 +316,15 @@ Two facts the caller should know:
   wrapper acknowledged but had not yet written the request out of the pending
   set when we stopped waiting, not that it refused.
 
-Exit `1` with a precise reason when: no local key; the request is not
-pending; no wrapper is online for the session (`RPC method not available`);
-the RPC timed out (30s); the wrapper's handler returned an `{error}` envelope.
-Find `<requestId>` in `sessions list --all` (`pending[].id`) or in the
-`permission` webhook.
+Exit `1` with a precise reason when: no local key; the session is not on
+this account (404); the request is not pending; no wrapper is online for the
+session (`RPC method not available`, or it disconnected mid-call); the RPC
+timed out (30s); the wrapper's handler returned an `{error}` envelope. With
+`--json`, every one of these still prints a record on stdout
+(`{sessionId, requestId, error}` for the pre-RPC refusals, the full result
+with `outcome.status` for the RPC-level ones), so a poller never has to parse
+an empty string. Find `<requestId>` in `sessions list --all` (`pending[].id`)
+or in the `permission` webhook.
 
 ### `very-happy send` — message an existing session
 
