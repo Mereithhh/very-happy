@@ -32,6 +32,19 @@ describe('decideAutoUpdate', () => {
         expect(decideAutoUpdate({ ...base, currentVersion: '0.2.115' }).action).toBe('skip');
     });
 
+    it('never downgrades a machine that is ahead of the recommendation', () => {
+        // The normal state right after a release: the machine took the new
+        // version before the operator promoted it. Equality alone let this
+        // through, and the machine would have installed the older build.
+        expect(decideAutoUpdate({ ...base, currentVersion: '0.2.116', recommendedVersion: '0.2.115' }))
+            .toEqual({ action: 'skip', reason: 'already ahead of the recommended 0.2.115' });
+    });
+
+    it('refuses to act on versions it cannot compare', () => {
+        expect(decideAutoUpdate({ ...base, currentVersion: 'dev' }).action).toBe('skip');
+        expect(decideAutoUpdate({ ...base, recommendedVersion: 'latest' }).action).toBe('skip');
+    });
+
     it('does not retry a version that already failed to install', () => {
         // npm has left a half-written tree in production once; retrying in a
         // loop is how that becomes permanent.
