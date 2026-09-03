@@ -222,6 +222,25 @@ CLI capability with a session started after the upgrade, or explicitly stop and
 resume the target session when interrupting it is acceptable; daemon version
 alone is not evidence that an existing session hot-loaded the new capability.
 
+A CLI upgrade's handover leaves the new daemon outside launchd. `very-happy
+daemon start` (and `vh-update`, which wraps it) hands over by starting the new
+daemon from the calling shell, so `launchctl print gui/$(id -u)/com.mereith.happy-daemon`
+reports `state = not running` afterwards and KeepAlive will not restart the
+daemon if it dies (verified 2026-09-03 upgrading to 0.2.103). Re-adopt it as the
+last step of every upgrade, and check the state, not just `daemon status`:
+
+```bash
+very-happy daemon stop
+launchctl kickstart gui/$(id -u)/com.mereith.happy-daemon
+launchctl print gui/$(id -u)/com.mereith.happy-daemon | grep 'state = '   # must say running
+very-happy daemon status                                                  # running daemon = installed CLI
+```
+
+Use `kickstart` without `-k` after an explicit `daemon stop`. Sending `-k` while
+a same-version daemon is still alive makes the relaunch script yield to it, both
+processes exit, and `KeepAlive SuccessfulExit=false` does not restart them —
+leaving the machine with no daemon at all.
+
 The daemon needs `~/.local/bin` in PATH to find Claude Code. SSH and launchd do
 not source interactive `.zshrc`, so the LaunchAgent wrapper sets PATH explicitly.
 Install or refresh repository-owned launchd support with:
