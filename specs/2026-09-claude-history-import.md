@@ -1,6 +1,6 @@
 # 导入 Claude Code 历史（claude CLI / 桌面版 / claude.ai 对话 → very-happy 会话）
 
-> 状态：Final（实现随本 spec 同 PR）
+> 状态：Shipped（commit `c0ee1a82`，PR #166；CLI v0.2.103）
 > 日期：2026-09-03 ｜ 关联 backlog：B-290 ｜ 出处/前身：Owner 2026-09-03「claude code desktop 的 history 能不能迁移到 veryhappy 下」
 
 ## 背景
@@ -83,7 +83,7 @@ very-happy 已经会「继续一个 JSONL」：`claude-fork-session` 复制文�
 - [x] `discardForkedSession` 单测（删副本不动原件、文件已不在时幂等）。
 - [x] web 纯函数测试；模型列表测试；pricing 测试（含 Mythos 同价）；`sanitizeResumeModel` 测试。
 - [x] 门禁：cli build+test+smoke、web vitest+build+tsc、server tsc+vitest。
-- [ ] 真机：mac-office 升级后在 veryhappy.dev 导入一条 CLI 对话并继续（V-121）。
+- [ ] 真机：mac-office 升级后在 veryhappy.dev 导入一条 CLI 对话并继续（V-121，Owner 清账）。
 
 ## 留真机验证项
 
