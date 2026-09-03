@@ -85,17 +85,32 @@ The workflow has three explicit `rollout` phases:
    register every RPC before closing old. Old clients retain a compatibility
    grace, then use the existing reconnect + durable resync fallback.
 
-The public HTTP probe is **zero tolerance**: it curls `/health` every 200ms for
-the entire release window, and a *single* failed sample fails the whole release
-(`HTTP probe observed a release-window failure`, exit 5 in shadow). Rollback is
-automatic and traffic is never left on a half-switched state, so a failure here
-costs a retry, not an incident. It has fired on unrelated blips on 2026-09-01,
-09-02 and 09-03. Triage before retrying, because the probe cannot tell you which
-slot was serving: each run leaves `/opt/happy/release/http-probe.XXXXXX`, where a
-**non-empty file is the failure timestamp in epoch milliseconds**. Decode it and
-compare against the run log — a sample *before* the Caddy include write hit the
-old, unchanged slot and says nothing about the candidate (retry it); a sample
-*after* the switch is the candidate failing and must be investigated instead.
+Two HTTP probes run for the whole release window, both curling `/health` every
+200ms with a 2s timeout: one over the **public** path and one over the
+**origin** path (same Caddy, `--resolve`d to 127.0.0.1, so Cloudflare is out of
+the picture). A release fails on `PROBE_MAX_STREAK` *consecutive* failed samples
+on either path — 600ms of uninterrupted unavailability by default
+(`VH_RELEASE_PROBE_MAX_STREAK`). Isolated failures are recorded and reported but
+do not fail the release.
+
+It is deliberately not one-strike, because `veryhappy.dev` resolves to
+Cloudflare from the production host: every public sample crosses
+host → Cloudflare edge → origin → back, and that leg drops requests. Measured on
+an idle host with nothing deploying: 6 failures in 2400 public samples (all
+`curl (28) … 0 bytes received` while p99 latency was 0.30s against the 2s
+timeout — dropped, not slow), against 0 in 1800 samples over the origin path.
+Failures come in bursts and almost entirely over IPv6. At 5 samples/s a release
+window was therefore a coin toss, and four releases died on it
+(2026-09-01/02/03); two of those four failed on a sample recorded *before* the
+Caddy include was written, while public traffic was still on the old untouched
+slot. A genuinely broken switch is continuously unavailable, so a streak
+distinguishes the two and still catches a real outage inside a second.
+
+Each run leaves `/opt/happy/release/http-probe.public.XXXXXX` and
+`http-probe.origin.XXXXXX`. A line is `<sample-number> <epoch-ms> <curl-exit>
+<error text>`; the sample numbers are what makes a streak visible, and the error
+text says what actually happened. `origin` failures are the interesting ones —
+that path is the part a release controls.
 
 Before starting candidate, the helper verifies the packaged Prisma schema
 matches the generated Client schema. Before drain, any failure stops only the
