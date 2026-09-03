@@ -49,12 +49,17 @@ function commandExistsWindows(name: string): boolean {
   }
 }
 
+/** Plain executable names only; `commandOnPath` interpolates into a shell string. */
+const SAFE_COMMAND_NAME = /^[A-Za-z0-9._-]+$/;
+
 /**
  * Whether `name` resolves on this process's PATH, without running it. For
  * tools that have no `--version` (pi-acp starts serving ACP on stdin the
- * moment it runs), this is the only safe presence check.
+ * moment it runs), this is the only safe presence check. Anything that is not
+ * a bare command name is reported absent rather than handed to the shell.
  */
 export function commandOnPath(name: string): boolean {
+  if (!SAFE_COMMAND_NAME.test(name)) return false;
   return os.platform() === 'win32' ? commandExistsWindows(name) : commandExists(name);
 }
 
