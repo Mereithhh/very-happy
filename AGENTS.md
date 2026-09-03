@@ -162,6 +162,17 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
    query），改 `claudeRemote*` / `claudeModeHash` 前先读
    `specs/2026-09-claude-mode-live-vs-relaunch.md`——别因为「SDK 提供了这个 setter」就换过去，
    先证明它能回报当前真正生效的值（`applyFlagSettings` 对乱填的 effort 也照样 resolve）。
+   **消息形状另有三条硬事实**（2026-09-03 实跑 SDK 0.3.232 取证，机制见
+   `specs/2026-09-sdk-chat-streaming-ux.md`）：① SDK **把一条 API 消息按 content block 炸成 N 条
+   `assistant` 帧、每帧 `content` 长度恒为 1**（本机 transcript 10264/10264；块索引只用于派生
+   uuid，不进 message 对象）——凡是拿 `message.content` 的数组下标当「API 块序号」的代码都是错的，
+   要跨帧维护游标，且 sidechain 帧会插在主链两帧之间；② **thinking 正文被 API redact**，
+   `thinking_delta.thinking` 与最终消息里的 thinking block **都是空串**，只有 `estimated_tokens`
+   有值——B-253 记的「SDK 未暴露思考正文」观察对、归因错，别再试图把正文接出来；终端里像「看得见
+   思考」的东西 = 流式正文 + token 计数；③ 前两条**读 `sdk.d.ts` 和读我们自己的代码都会得出相反
+   结论**，只有跑一次真实 query 才拿得到——碰 SDK 行为前先写一个 20 行的 probe（隔离 home 直接
+   `query({options:{includePartialMessages:true}})`，把帧类型/字段打出来；数据表在上述 spec 的
+   「实测校正」节）。
 9. **终端字形渲染三条硬事实**（机制全文见
    `specs/2026-09-terminal-font-and-seamless-rendering.md`，2026-09 连踩 6 个 PR 换来）：
    ①「严丝合缝」=（字体方块字形填满整格）×（`lineHeight` 1.0），**缺一不可**——「字体有该
