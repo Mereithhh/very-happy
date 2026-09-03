@@ -23,6 +23,12 @@ import { BasePermissionHandler, type PermissionResult } from '@/utils/BasePermis
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { TitleGenerator } from '@/claude/utils/titleGenerator';
 import {
+  normalizeAcpPermissionMode,
+  removeSessionModeFile,
+  writeSessionModeFile,
+  type AcpPermissionMode,
+} from './sessionModeFile';
+import {
   extractConfigOptionsFromPayload,
   extractCurrentModeIdFromPayload,
   extractModeStateFromPayload,
@@ -320,7 +326,7 @@ function flattenSelectOptions(options: unknown): AcpSelectableOption[] {
   return flattened;
 }
 
-function extractConfigSelector(
+export function extractConfigSelector(
   configOptions: SessionConfigOption[],
   category: 'mode' | 'model',
 ): AcpConfigSelector | null {
@@ -328,13 +334,23 @@ function extractConfigSelector(
     if (option.category === category) {
       return true;
     }
+    // An option that declares a different category is never a fallback
+    // candidate: pi-acp's `model` option (category 'model') used to be taken
+    // for the *mode* selector because 'model'.includes('mode'), which routed
+    // every permission-mode switch of a pi session into the model picker and
+    // kept the session-modes file (the gate's live-switch channel) from ever
+    // being written (B-350).
+    if (option.category) {
+      return false;
+    }
     // Some ACP providers omit category; fallback to id/name heuristics.
     const id = normalizeComparable(option.id);
     const name = normalizeComparable(option.name);
     if (category === 'model') {
       return id.includes('model') || name.includes('model');
     }
-    return id.includes('mode') || id.includes('permission') || name.includes('mode') || name.includes('permission');
+    const mentionsMode = (value: string): boolean => value.includes('permission') || (value.includes('mode') && !value.includes('model'));
+    return mentionsMode(id) || mentionsMode(name);
   };
 
   for (const option of configOptions) {
@@ -455,6 +471,12 @@ export async function runAcp(opts: {
   startedBy?: 'daemon' | 'terminal';
   verbose?: boolean;
   /**
+   * Initial permission mode (`--permission-mode`, already sanitized). Exported
+   * to the agent child as HAPPY_PERMISSION_MODE and, for agents without a mode
+   * selector, published through the session mode file + metadata.
+   */
+  permissionMode?: AcpPermissionMode;
+  /**
    * Called when the backend reports `status: 'error'` (e.g. the adapter
    * executable is missing). That path stops the runner without throwing, so a
    * caller that wants to print guidance cannot rely on its outer catch.
@@ -535,6 +557,39 @@ export async function runAcp(opts: {
   let sawModes = false;
   let sawModels = false;
 
+  // Mode for agents without an ACP mode selector (pi). The gate on the agent
+  // side reads it from the session mode file; the web reads it from metadata
+  // (rule 14: publish what is in effect, not the intent).
+  const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? 'default';
+  // Set once startSession has shown there is no ACP mode selector.
+  let fileBackedModeActive = false;
+  // pi never has an ACP permission-mode selector: pi-acp advertises the *thinking
+  // level* through the legacy `modes` field ("Thinking: off/low/…") and `model` /
+  // `thought_level` config options, so the generic "does the agent expose a mode
+  // selector?" test is wrong for it and used to route every permission switch of
+  // a pi session into the thinking-level picker (B-350). The permission layer
+  // for pi is the pi-side gate, fed through the session-modes file.
+  const permissionModeIsFileBacked = (): boolean =>
+    opts.agentName === 'pi' || (!modeSelector && !legacyModes);
+  let fileBackedPermissionMode: AcpPermissionMode | null = null;
+  // Returns false when the file could not be written: nothing is published
+  // then, so the web keeps showing the mode that is really in effect.
+  const publishFileBackedPermissionMode = (mode: AcpPermissionMode): boolean => {
+    if (fileBackedPermissionMode === mode) {
+      return true;
+    }
+    try {
+      writeSessionModeFile(session.sessionId, mode);
+    } catch (error) {
+      logger.debug(`[${opts.agentName}] Failed to write session mode file:`, error);
+      return false;
+    }
+    fileBackedPermissionMode = mode;
+    session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: mode }));
+    logger.debug(`[${opts.agentName}] Published file-backed permission mode: ${mode}`);
+    return true;
+  };
+
   // Mirrors runClaude: the daemon injects HAPPY_SESSION_VARIANT=assistant for the
   // meta-agent spawn (env-only, no .mcp.json); only the in-process MCP server
   // reached via HAPPY_MCP_URL can expose the sessions_* tools to a pi session.
@@ -559,6 +614,7 @@ export async function runAcp(opts: {
     env: {
       HAPPY_MCP_URL: happyServer.url,
       HAPPY_SESSION_ID: session.sessionId,
+      HAPPY_PERMISSION_MODE: initialPermissionMode,
     },
     mcpServers,
     permissionHandler,
@@ -619,6 +675,18 @@ export async function runAcp(opts: {
 
   const switchPermissionModeIfRequested = async (requestedMode: string): Promise<void> => {
     if (!requestedMode) {
+      return;
+    }
+
+    if (permissionModeIsFileBacked()) {
+      // No ACP mode selector (pi-acp): the mode is enforced by a gate on the
+      // agent side that re-reads the session mode file, so publish it there.
+      const mode = normalizeAcpPermissionMode(requestedMode);
+      if (!mode) {
+        logger.debug(`[${opts.agentName}] Ignoring unknown file-backed permission mode request: ${requestedMode}`);
+        return;
+      }
+      publishFileBackedPermissionMode(mode);
       return;
     }
 
@@ -902,6 +970,27 @@ export async function runAcp(opts: {
   }
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
+  // The web picker calls this (instead of message meta) while the session is
+  // working, because pi is presented with the Claude flavor. Only the
+  // file-backed path can honour it; agents with an ACP selector switch via
+  // message meta and never receive this RPC. Rejecting surfaces as an `{error}`
+  // ack the web shows (rule 17) rather than a silently unapplied mode.
+  session.rpcHandlerManager.registerHandler<{ mode?: unknown }, { mode: AcpPermissionMode }>(
+    'set-permission-mode',
+    async (request) => {
+      if (!fileBackedModeActive) {
+        throw new Error(`${opts.agentName} does not support live permission mode changes`);
+      }
+      const mode = typeof request?.mode === 'string' ? normalizeAcpPermissionMode(request.mode) : null;
+      if (!mode) {
+        throw new Error('Invalid permission mode');
+      }
+      if (!publishFileBackedPermissionMode(mode)) {
+        throw new Error('Failed to write session mode file');
+      }
+      return { mode };
+    },
+  );
   registerKillSessionHandler(session.rpcHandlerManager, async () => {
     shouldExit = true;
     messageQueue.close();
@@ -912,6 +1001,10 @@ export async function runAcp(opts: {
   try {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
+    if (permissionModeIsFileBacked()) {
+      fileBackedModeActive = true;
+      publishFileBackedPermissionMode(initialPermissionMode);
+    }
     if (verbose) {
       if (!sawSlashCommands) {
         logAcp('muted', `Outgoing slash commands from ${opts.agentName}: not reported yet`);
@@ -979,6 +1072,14 @@ export async function runAcp(opts: {
 
     backend.offMessage?.(onBackendMessage);
     await backend.dispose();
+
+    if (fileBackedPermissionMode) {
+      try {
+        removeSessionModeFile(session.sessionId);
+      } catch (error) {
+        logger.debug(`[${opts.agentName}] Failed to remove session mode file:`, error);
+      }
+    }
 
     try {
       happyServer.stop();

@@ -1717,6 +1717,7 @@ export const en = {
                 approve: '`very-happy sessions list --all` lists every session on the account, with the pending permission requests and how long each has waited for the sessions this machine holds keys for. `very-happy sessions approve` / `deny` answer a request with exactly what the web card would send.',
                 meta: 'The session tools the built-in assistant uses (list, read, send, spawn, kill, archive) are now available to any runner through `very-happy mcp` when a session is started as a meta agent \u2014 pick "Meta agent" when launching pi.',
                 titles: 'pi sessions now get an automatic title like Claude sessions do, and pi can change its own title and reach the same tools (title, progress, clipboard) through the bridge \u2014 including a pi typed by hand inside a web terminal.',
+                yolo: 'pi sessions have a yolo mode: pick it in the launcher or pass `--permission-mode yolo` and the pi-side policy gate stops asking for the routine actions, while its hard deny rules (force pushes, production hosts, cluster mutations) still block.',
             },
             sep03ab: {
                 title: 'Pick the directory AND the command when you open a terminal',

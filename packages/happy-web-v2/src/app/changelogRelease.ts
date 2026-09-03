@@ -18,7 +18,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-04-pi-and-supervisor-surface',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,
-    cliVersion: '0.2.116',
+    cliVersion: '0.2.117',
     titleKey: 'changelog.releases.sep03ae.title',
     summaryKey: 'changelog.releases.sep03ae.summary',
     itemKeys: [
@@ -26,6 +26,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
       'changelog.releases.sep03ae.approve',
       'changelog.releases.sep03ae.meta',
       'changelog.releases.sep03ae.titles',
+      'changelog.releases.sep03ae.yolo',
     ],
   },
   {

@@ -1682,6 +1682,7 @@ export const zhHans: TranslationStructure = {
                 approve: '`very-happy sessions list --all` 列出账号下所有会话；本机持有密钥的会话还带待审批请求与各自等了多久。`very-happy sessions approve` / `deny` 用与网页卡片完全相同的内容回应请求。',
                 meta: '内置助手用的那套会话工具（列出、读取、发送、派发、终止、归档）现在任何 runner 都能经 `very-happy mcp` 拿到——启动 pi 时勾「Meta agent」即可。',
                 titles: 'pi 会话现在也像 Claude 会话一样自动出标题；pi 自己也能改标题、拿到同一套工具（标题、进度、剪贴板）——包括在 web 终端里手敲的 pi。',
+                yolo: 'pi 会话有 yolo 模式了：启动器里选，或传 `--permission-mode yolo`，pi 侧的策略闸就不再为常规动作发问；硬性 deny 规则（force push、生产机、集群变更）照样拦。',
             },
             sep03ab: {
                 title: '开终端时，目录和启动命令都能选了',
