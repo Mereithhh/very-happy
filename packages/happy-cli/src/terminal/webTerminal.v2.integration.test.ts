@@ -96,6 +96,26 @@ describe.skipIf(!tmuxAvailable)('terminal channel v2 (real tmux control mode, is
         expect(seen(id)).not.toContain('\x1b[?1049h');
     });
 
+    it('B-334: merges a line-buffered burst into few frames, byte-for-byte intact', async () => {
+        // tmux emits one %output per producer write, so 400 `echo`s used to be
+        // 400+ socket frames for ~4KB (measured 2026-09-03: pi's startup frame
+        // was 1029 chunks of a median 9 bytes). The coalescer merges them per
+        // 16ms window BEFORE they take a seq — the stream must stay identical.
+        const id = 'v2coal1';
+        await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });
+        await waitFor(() => seen(id).length > 0, 15_000, 'prompt');
+        const before = (out.get(id) ?? []).length;
+        mgr.write(id, Buffer.from('for i in $(seq 1 400); do echo "coal-$i"; done\r', 'utf8').toString('base64'));
+        await waitFor(() => seen(id).includes('coal-400'), 20_000, 'burst finished');
+        const text = seen(id);
+        for (const n of [1, 137, 400]) expect(text).toContain(`coal-${n}`);
+        expect(text.indexOf('coal-1\r\n')).toBeLessThan(text.indexOf('coal-400'));
+        const frames = (out.get(id) ?? []).length - before;
+        expect(frames).toBeGreaterThan(0);
+        // Measured on this harness: 395 frames before the coalescer, 5 after.
+        expect(frames).toBeLessThan(120);
+    });
+
     it('write() round-trips ASCII, CJK code points and C0 bytes into the pane', async () => {
         const id = 'v2write1';
         await mgr.open({ terminalId: id, cols: 80, rows: 24, streamMode: 'lines' });

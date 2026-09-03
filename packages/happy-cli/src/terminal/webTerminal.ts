@@ -83,6 +83,7 @@ import {
     type PaneState,
 } from './captureAssembly';
 import { SnapshotStore } from './snapshotStore';
+import { createOutputCoalescer, type OutputCoalescer } from './outputCoalescer';
 import { unescapeOctal } from './controlModeDecoder';
 import { encodeTerminalWrite, buildPastePlan, toControlStdin } from './sendKeysEncoding';
 import { configuration } from '@/configuration';
@@ -1270,6 +1271,18 @@ class TerminalSession {
     lastOutputAt?: number;
     cols: number;
     rows: number;
+    /**
+     * B-334: `%output` arrives as one message per producer write — pi's startup
+     * frame measured 1029 chunks of a median 9 bytes. Merging them before they
+     * are given a seq is what keeps the wire (and the web's write chain) from
+     * carrying a thousand frames for 12 KB. See outputCoalescer.ts.
+     */
+    private readonly coalescer: OutputCoalescer = createOutputCoalescer();
+    private flushTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Set by the manager right after construction: how a merged chunk reaches
+     *  the subscribers. Left undefined ⇒ the session buffers and drops nothing,
+     *  it just has nobody to tell. */
+    onOutputChunk?: (chunk: OutputChunk) => void;
 
     constructor(id: string, transport: SessionTransport, tmuxSession: string | undefined, cols: number, rows: number) {
         this.id = id;
@@ -1323,6 +1336,62 @@ class TerminalSession {
     }
 
     /**
+     * The live-output entry point (B-334). Every `%output` / pty chunk goes
+     * through here instead of straight to `ingest`: the coalescer decides
+     * whether this byte run is emitted now (the common interactive case — an
+     * echo after an idle window pays zero extra latency) or merged into the
+     * frame currently forming. Merging is byte-exact concatenation, so one seq
+     * covering the merged run is indistinguishable from tmux having handed us
+     * one bigger read — the ring/replay/gap protocol is untouched.
+     */
+    pushOutput(data: Buffer): void {
+        const ready = this.coalescer.push(data, Date.now());
+        if (ready) {
+            this.clearFlushTimer();
+            this.emitOutput(ready);
+        }
+        this.armFlushTimer();
+    }
+
+    /**
+     * Emit whatever is buffered right now. MUST be called before anything that
+     * reads or changes the screen's identity, because buffered bytes have not
+     * been ingested yet and therefore own no seq:
+     *  - the capture anchor (`runCaptureBatch`) — pre-anchor output is already
+     *    inside the capture, so it has to own a seq <= `seqAtAnchor` or the
+     *    client applies it a second time on top of the restore;
+     *  - `resizeHeadless` — those bytes were produced at the OLD size;
+     *  - transport exit — otherwise the last frame before a shell dies is lost.
+     */
+    flushOutput(): void {
+        this.clearFlushTimer();
+        const ready = this.coalescer.flush(Date.now());
+        if (ready) this.emitOutput(ready);
+    }
+
+    private emitOutput(data: Buffer): void {
+        const chunk = this.ingest(data);
+        this.onOutputChunk?.(chunk);
+    }
+
+    private armFlushTimer(): void {
+        const due = this.coalescer.dueAt();
+        if (due === null) { this.clearFlushTimer(); return; }
+        if (this.flushTimer) return; // already armed for the window that is forming
+        const timer = setTimeout(() => { this.flushTimer = null; this.flushOutput(); }, Math.max(0, due - Date.now()));
+        // A 16ms coalescing window must never be a reason for the daemon
+        // process to stay alive.
+        timer.unref?.();
+        this.flushTimer = timer;
+    }
+
+    private clearFlushTimer(): void {
+        if (!this.flushTimer) return;
+        clearTimeout(this.flushTimer);
+        this.flushTimer = null;
+    }
+
+    /**
      * Write a RESTORE payload (the open capture) into the authoritative screen
      * WITHOUT giving it a seq: it is not a live chunk, so it must not enter the
      * ring, must not be broadcast, and must not move any client's baseline.
@@ -1342,6 +1411,9 @@ class TerminalSession {
     /** Keep the authoritative screen's dimensions in lockstep with the terminal
      *  so a later snapshot serialize() reflects the real geometry. */
     resizeHeadless(cols: number, rows: number) {
+        // B-334: buffered bytes were produced at the OLD geometry — they must
+        // reach the screen (and the clients) before it changes under them.
+        this.flushOutput();
         this.cols = cols;
         this.rows = rows;
         try { this.headless.resize(cols, rows); } catch { /* invalid dims — ignore */ }
@@ -1424,6 +1496,7 @@ class TerminalSession {
         } else {
             try { this.transport.pty.kill(); } catch { /* already gone */ }
         }
+        this.clearFlushTimer();
         try { this.headless.dispose(); } catch { /* already disposed */ }
         this.ring = [];
         this.ringBytes = 0;
@@ -2469,6 +2542,10 @@ export class WebTerminalManager {
                 kind: 'control',
                 client: undefined as unknown as ControlClient, // replaced below
             }, tmuxSession, cols, rows);
+            created.onOutputChunk = (chunk) => {
+                this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
+                this.noteActivity();
+            };
             const client = new ControlClient(tmuxSession, env, {
                 onOutput: (pane, data) => {
                     if (this.terminals.get(id) !== created) return;
@@ -2479,9 +2556,7 @@ export class WebTerminalManager {
                     // Single-pane declaration: a split the user made locally is
                     // not mirrored (spec D1).
                     if (created.paneId && pane !== created.paneId) return;
-                    const chunk = created.ingest(data);
-                    this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
-                    this.noteActivity();
+                    created.pushOutput(data);
                 },
                 onNotification: (name, args2) => {
                     if (this.terminals.get(id) !== created) return;
@@ -2493,6 +2568,9 @@ export class WebTerminalManager {
                         const size = parseLayoutSize(args2);
                         if (!size) return;
                         if (size.cols === created.announcedCols && size.rows === created.announcedRows) return;
+                        // resizeHeadless flushes any coalesced pre-resize output
+                        // first (B-334), so the marker below can never be given a
+                        // seq ahead of bytes that were printed before it.
                         created.resizeHeadless(size.cols, size.rows);
                         created.announcedCols = size.cols;
                         created.announcedRows = size.rows;
@@ -2512,6 +2590,9 @@ export class WebTerminalManager {
                 },
                 onExit: (code) => {
                     if (this.terminals.get(id) !== created) return;
+                    // The last frame a dying shell printed is still in the
+                    // coalescer — deliver it before the session goes away.
+                    created.flushOutput();
                     this.terminals.delete(id);
                     this.snapshots.drop(id);
                     created.dispose();
@@ -2537,14 +2618,17 @@ export class WebTerminalManager {
                 try { proc.write(startup + '\r'); } catch { /* best-effort */ }
             }
             const created = new TerminalSession(id, { kind: 'pty', pty: proc }, undefined, cols, rows);
-            proc.onData((data) => {
-                if (this.terminals.get(id) !== created) return;
-                const chunk = created.ingest(Buffer.from(data, 'utf8'));
+            created.onOutputChunk = (chunk) => {
                 this.emit('terminal-output', { terminalId: id, data: chunk.data, seq: chunk.seq });
                 this.noteActivity();
+            };
+            proc.onData((data) => {
+                if (this.terminals.get(id) !== created) return;
+                created.pushOutput(Buffer.from(data, 'utf8'));
             });
             proc.onExit(({ exitCode }) => {
                 if (this.terminals.get(id) !== created) return;
+                created.flushOutput();
                 this.terminals.delete(id);
                 this.snapshots.drop(id);
                 created.dispose();
@@ -2719,6 +2803,11 @@ export class WebTerminalManager {
             label: c.key,
             onBlock: c.key === 'anchor'
                 ? () => {
+                    // B-334: output printed BEFORE the anchor is inside the
+                    // capture. Anything still sitting in the coalescer owns no
+                    // seq yet, so without this flush it would be re-delivered
+                    // above `seqAtAnchor` and the client would paint it twice.
+                    session.flushOutput();
                     seqAtAnchor = session.seq;
                     // A fresh client starts ingesting exactly here.
                     if (fresh) session.ingesting = true;
