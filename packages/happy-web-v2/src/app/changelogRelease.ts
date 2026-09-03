@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-auto-update-forward-only',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.117',
+    titleKey: 'changelog.releases.sep04a.title',
+    summaryKey: 'changelog.releases.sep04a.summary',
+    itemKeys: [
+      'changelog.releases.sep04a.forward',
+    ],
+  },
+  {
     id: '2026-09-04-pi-and-supervisor-surface',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,

@@ -1647,6 +1647,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep04a: {
+                title: '自动更新只会往前走',
+                summary: '如果机器上跑的版本比当前推荐的还新，它有可能去装那个更旧的版本并重启切过去。',
+                forward: '更新检查此前只比较版本是否相等、没有比较先后，于是「比推荐版本新」的机器没被识别成已是最新——而这恰恰是发布之后、推荐版本被提上去之前的常态，手动升过级的机器也一样。现在它拒绝安装任何比正在运行的更旧的版本。',
+            },
             sep03ad: {
                 title: '机器会自己保持 CLI 最新',
                 summary: '此前保持命令行工具最新是个手动步骤，大部分机器都落后了好几个版本。现在它们会自己更新——但只在不会打断任何事情的时刻。',
