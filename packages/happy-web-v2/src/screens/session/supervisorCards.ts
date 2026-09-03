@@ -124,7 +124,8 @@ export function parseTickReport(text: string): TickReport | null {
 }
 
 export type Decision = {
-    taskId: string;
+    /** null for decisions about untracked sessions (orphan escalations). */
+    taskId: string | null;
     action: DecisionAction;
     reason: string | null;
     citedAcceptance: number[];
@@ -158,10 +159,10 @@ export function parseDecisionBlock(text: string): DecisionBlock | null {
     for (const entry of parsed) {
         if (typeof entry !== 'object' || entry === null) return null;
         const e = entry as Record<string, unknown>;
-        if (typeof e.taskId !== 'string' || typeof e.action !== 'string') return null;
+        if (!(typeof e.taskId === 'string' || e.taskId === null) || typeof e.action !== 'string') return null;
         if (!(DECISION_ACTIONS as readonly string[]).includes(e.action)) return null;
         decisions.push({
-            taskId: e.taskId,
+            taskId: typeof e.taskId === 'string' ? e.taskId : null,
             action: e.action as DecisionAction,
             reason: typeof e.reason === 'string' ? e.reason : null,
             citedAcceptance: Array.isArray(e.citedAcceptance) ? e.citedAcceptance.filter((n): n is number => Number.isInteger(n)) : [],

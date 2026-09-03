@@ -89,10 +89,10 @@ export function DecisionCard({ decisions }: { decisions: Decision[] }) {
             </div>
             <ul className="svc-items">
                 {decisions.map((d, i) => (
-                    <li key={`${d.taskId}-${i}`} className="svc-item">
+                    <li key={`${d.taskId ?? "orphan"}-${i}`} className="svc-item">
                         <div className="svc-item-head">
                             <span className={`svc-action svc-action--${d.action}`}>{d.action}</span>
-                            <span className="svc-mono">{d.taskId}</span>
+                            {d.taskId && <span className="svc-mono">{d.taskId}</span>}
                             {d.requestId && <span className="svc-mono svc-dim">{d.requestId}</span>}
                             {d.citedAcceptance.length > 0 && (
                                 <span className="svc-mono svc-dim">{t('message.supervisorCited', { items: d.citedAcceptance.join(',') })}</span>

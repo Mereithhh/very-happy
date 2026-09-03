@@ -141,3 +141,17 @@ describe('parseLedgerOp with the global --ledger flag and an absolute bin path',
         expect(parseLedgerOp('cd /x; bin/vh-ledger --ledger /tmp/l.json decide T-1 --action note')).toBeNull();
     });
 });
+
+describe('parseDecisionBlock tolerates taskId: null (orphan escalations)', () => {
+    it('keeps the card when an entry has taskId null and a valid action', () => {
+        const text = 'text\n```json\n[{"taskId":null,"action":"escalate","reason":"orphan o1"}]\n```';
+        const r = parseDecisionBlock(text);
+        expect(r?.decisions).toHaveLength(1);
+        expect(r?.decisions[0].taskId).toBeNull();
+        expect(r?.decisions[0].action).toBe('escalate');
+    });
+    it('still rejects a missing taskId key or a non-string action', () => {
+        expect(parseDecisionBlock('```json\n[{"action":"note"}]\n```')).toBeNull();
+        expect(parseDecisionBlock('```json\n[{"taskId":"T-1","action":7}]\n```')).toBeNull();
+    });
+});
