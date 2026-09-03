@@ -23,6 +23,7 @@ import { useElapsedSeconds } from './useElapsed';
 import { formatElapsed } from './format';
 import { liveStatusDetail, sparkFrameAt, SPARK_FRAMES, SPARK_FRAME_MS, vibingVerbAt } from './liveStatus';
 import './statusbar.css';
+import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
 function prefersReducedMotion(): boolean {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -60,10 +61,13 @@ export const SessionLiveStatusBar = memo(function SessionLiveStatusBar({ session
     // session's own keepAlive decides whether anything is live at all
     // (sync/agentLiveness.ts). Sub-agents don't reach this bar: their Task
     // tool_result already landed, so `runningTool` is null for them.
+    // B-322: thinking 是租约不是闩锁（sync/heartbeatLease.ts）。
+    const leaseFresh = useHeartbeatFresh(sessionId);
     const agentLive = isAgentWorkLive({
         presence: session?.presence,
         thinking: session?.thinking,
         runningSubagentsInTurn: 0,
+        heartbeatFresh: leaseFresh,
     });
 
     const kind: 'tool' | 'thinking' | null = !agentLive

@@ -13,7 +13,6 @@ import { sessionAbort, sessionSetPermissionMode } from '@/sync/ops';
 import {
     useSession,
     useSessionUsage,
-    useSessionRunningTool,
     useSetting,
     storage,
 } from '@/sync/storage';
@@ -41,6 +40,7 @@ import { deriveRunningModelSubtitle } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
+    QUEUE_START_TIMEOUT_MS,
     canReleaseQueuedMessage,
     parsePersistedQueuedMessages,
     persistableQueuedMessages,
@@ -81,6 +81,8 @@ import { shouldApplyPermissionModeLive } from './livePermissionMode';
 import { derivePermissionModeDisplay } from './permissionModeDisplay';
 import { resolveIntentSource } from '@/sync/yoloEnforcement';
 import { getAgentDefaultOverride } from '@/sync/agentDefaults';
+import { isAgentWorkLive } from '@/sync/agentLiveness';
+import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
 // Touch-first device — gates the conditional refocus below; desktop keeps the
 // historical unconditional refocus (mouse-clicking Send should return the
@@ -93,7 +95,6 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const toast = useToast();
     const session = useSession(sessionId);
     const usage = useSessionUsage(sessionId);
-    const runningTool = useSessionRunningTool(sessionId);
     const enterToSend = useSetting('agentInputEnterToSend');
     const agentDefaultOverrides = useSetting('agentDefaultOverrides');
 
@@ -122,6 +123,9 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const queuedRef = useRef(queued);
     queuedRef.current = queued;
     const deliveryPhaseRef = useRef<QueueDeliveryPhase>('idle');
+    /** B-322: when we entered `waiting-start`, so it can time out (queuedMessages.ts). */
+    const waitingStartSinceRef = useRef<number | null>(null);
+    const [stuckTick, setStuckTick] = useState(0);
 
     useEffect(() => () => {
         for (const item of queuedRef.current) {
@@ -139,7 +143,19 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     const attachmentKinds = metadata?.attachmentKinds ?? [];
     const supportsAnyAttachments = attachmentKinds.includes('*/*');
     const supportsPdfAttachments = attachmentKinds.includes('application/pdf');
-    const isWorking = session?.thinking === true || !!runningTool;
+    // B-322: the fourth site B-295 missed. `runningTool` is last-known
+    // transcript state — a tool call whose wrapper was killed never closes, and
+    // it used to pin `isWorking` true forever, which held every new message in
+    // the tab-local queue and kept the Stop button up over a session that had
+    // nothing to stop. Liveness has exactly one entry point (铁律 13), lease
+    // included.
+    const leaseFresh = useHeartbeatFresh(sessionId);
+    const isWorking = isAgentWorkLive({
+        presence: session?.presence,
+        thinking: session?.thinking,
+        runningSubagentsInTurn: 0,
+        heartbeatFresh: leaseFresh,
+    });
     // B-265: an archived session's composer restores first and queues; the
     // queue releases once the session is back (archivedAt cleared + online).
     const gate = composerGate(session);
@@ -437,6 +453,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
         try {
             await sendQueuedItem(item, 'steer');
             deliveryPhaseRef.current = 'waiting-start';
+            waitingStartSinceRef.current = Date.now();
         } catch {
             setQueued((current) => [...current.slice(0, index), item, ...current.slice(index)]);
             deliveryPhaseRef.current = 'idle';
@@ -456,7 +473,12 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     // async send makes the action idempotent across renders; a failed send is
     // restored at the head for an explicit retry.
     useEffect(() => {
-        deliveryPhaseRef.current = advanceQueueDeliveryPhase(deliveryPhaseRef.current, isWorking);
+        deliveryPhaseRef.current = advanceQueueDeliveryPhase(
+            deliveryPhaseRef.current,
+            isWorking,
+            waitingStartSinceRef.current === null ? 0 : Date.now() - waitingStartSinceRef.current,
+        );
+        if (deliveryPhaseRef.current !== 'waiting-start') waitingStartSinceRef.current = null;
         // B-265: hold while archived AND while a restore is still settling
         // (the store entry is dropped once presence held 'online' for 2 s).
         const releaseGate = gate === 'restore-first' || (restoreState && restoreState.phase !== 'failed') ? 'restore-first' : 'send';
@@ -464,12 +486,23 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
 
         const item = queued[0];
         deliveryPhaseRef.current = 'waiting-start';
+        waitingStartSinceRef.current = Date.now();
         setQueued((current) => current.slice(1));
         void sendQueuedItem(item).catch(() => {
             setQueued((current) => [item, ...current]);
             deliveryPhaseRef.current = 'idle';
         });
-    }, [isWorking, queued, sessionId, gate, restoreState]);
+    }, [isWorking, queued, sessionId, gate, restoreState, stuckTick]);
+
+    // B-322: the timeout above needs a clock of its own. Being stuck in
+    // `waiting-start` is by definition the case where nothing changes, so
+    // nothing re-runs the effect and the escape edge would never be evaluated.
+    // One timer, armed only while actually waiting with a non-empty queue.
+    useEffect(() => {
+        if (deliveryPhaseRef.current !== 'waiting-start' || queued.length === 0) return;
+        const timer = setTimeout(() => setStuckTick((n) => n + 1), QUEUE_START_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, [queued, stuckTick, isWorking]);
 
     const insertPreset = (presetText: string) => {
         setText((prev) => (prev.trim().length === 0 ? presetText : `${prev.replace(/\s*$/, '')}\n${presetText}`));

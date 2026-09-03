@@ -10,6 +10,7 @@ import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForSession } from '@/sync/activityOverlay';
 import { isAgentWorkLive } from '@/sync/agentLiveness';
+import { isHeartbeatFresh, recordHeartbeat, setHeartbeatSocketStatusReader } from '@/sync/heartbeatLease';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { handleClipboardPush } from '@/sync/clipboardPush';
@@ -316,6 +317,12 @@ class Sync {
     }
 
     async #init() {
+
+        // B-322: the lease must stop the clock while THIS tab's socket is down
+        // — a frozen background tab receives no ephemerals because it is not
+        // listening, not because the wrapper stopped. Injected rather than
+        // imported so heartbeatLease stays free of a storage import cycle.
+        setHeartbeatSocketStatusReader(() => storage.getState().socketStatus);
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -711,17 +718,23 @@ class Sync {
         // it may only mean "the turn hasn't consumed this yet" while the
         // session is genuinely working (sync/agentLiveness.ts). Otherwise every
         // message sent after one restart was stamped queued forever.
+        // B-322: `hasRunningTool` was dead code. It was gated on `agentLive`,
+        // and `agentLive` already implies `thinking === true`, so
+        // `thinking || hasRunningTool` could never differ from `thinking` — it
+        // just re-scanned the whole transcript on every send. B-295 patched the
+        // gate on without re-deriving the invariant. Stamping now goes through
+        // the SAME liveness judgement as everything else, lease included:
+        // otherwise a latched `thinking` keeps painting messages as queued
+        // forever, which is exactly what this batch is fixing elsewhere.
         const agentLive = isAgentWorkLive({
             presence: session.presence,
             thinking: session.thinking,
             runningSubagentsInTurn: 0,
+            heartbeatFresh: isHeartbeatFresh(sessionId),
         });
-        const hasRunningTool = agentLive && (storage.getState().sessionMessages[sessionId]?.messages.some(
-            (message) => message.kind === 'tool-call' && message.tool.state === 'running',
-        ) ?? false);
         const queuedAt = delivery === 'steer'
             ? undefined
-            : queuedAtForSend(session.thinking || hasRunningTool, source);
+            : queuedAtForSend(agentLive, source);
 
         // File attachments are wired into the Claude pipeline only; Codex /
         // Gemini / OpenClaw runners read message.content.text and ignore
@@ -2539,6 +2552,11 @@ class Sync {
                     
                     if (isTaskComplete || isTaskStarted) {
                         console.log(`🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`);
+                        // B-322: this is the SECOND writer of `thinking`, and it
+                        // carries no heartbeat. Without stamping here, a turn that
+                        // starts from a lifecycle event would look instantly stale
+                        // and flash "not live" at the top of every turn.
+                        recordHeartbeat(updateData.body.sid, isTaskStarted);
                     }
 
                     // Update session
@@ -3114,6 +3132,11 @@ class Sync {
 
         // Process activity updates through smart debounce accumulator
         if (updateData.type === 'activity') {
+            // B-322: stamp the LOCAL receive time here, BEFORE the accumulator.
+            // A plain timestamp heartbeat is not a "significant change", so it
+            // sits in a 2s debounce whose timer is deliberately not reset —
+            // stamping at flush time would silently eat that much of the TTL.
+            recordHeartbeat(updateData.id, updateData.thinking === true);
             // console.log('adding activity update ' + updateData.id);
             this.activityAccumulator.addUpdate(updateData);
         }
