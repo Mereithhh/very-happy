@@ -250,10 +250,29 @@ GROUP BY s."accountId";
 const [[dbSize]] = psql(opts, 'SELECT pg_database_size(current_database());');
 const disk = ssh(opts.host, "df -B1 --output=size,used,avail / | tail -1").trim().split(/\s+/).map(Number);
 
+/**
+ * Where the disk ACTUALLY goes. Account quotas were the obvious suspect and
+ * were wrong by two orders of magnitude: on 2026-09-03 the database was 201MB
+ * while docker images were 22.9GB, 15.7GB of it reclaimable — every blue-green
+ * deploy leaves another ~2.2GB image behind, and we ship several times a day.
+ * Any budget report that omits this is measuring the wrong thing.
+ */
+function dockerFootprint(host) {
+    const rows = ssh(host, 'docker system df --format "{{.Type}}|{{.TotalCount}}|{{.Active}}|{{.Size}}|{{.Reclaimable}}"')
+        .split('\n').map((line) => line.trim()).filter(Boolean).map((line) => line.split('|'));
+    return rows.map(([type, total, active, size, reclaimable]) => ({ type, total, active, size, reclaimable }));
+}
+const docker = dockerFootprint(opts.host);
+
 // ── report ───────────────────────────────────────────────────────────────────
 console.log(`\nhost ${opts.host} · server ${serverContainer}`);
 console.log(`accounts ${accounts} (${withMessages} with messages) · sessions ${sessionCount} · machines ${machineCount}`);
-console.log(`database ${bytes(+dbSize)} · disk ${bytes(disk[1])} used of ${bytes(disk[0])}, ${bytes(disk[2])} free\n`);
+console.log(`database ${bytes(+dbSize)} · disk ${bytes(disk[1])} used of ${bytes(disk[0])}, ${bytes(disk[2])} free`);
+for (const row of docker) {
+    if (row.type !== 'Images' && row.type !== 'Local Volumes') continue;
+    console.log(`docker ${row.type.toLowerCase().padEnd(13)} ${row.size} in ${row.total} (${row.active} active) · ${row.reclaimable} reclaimable`);
+}
+console.log('');
 
 const limits = [
     ['MAX_MESSAGES_PER_ACCOUNT', 'messages', (row) => row.messages, false],
@@ -307,9 +326,11 @@ console.log(`\nper-account byte entitlement  ${bytes(perAccountEntitlement)}  ($
 console.log(`signup mode ${env.get('SIGNUP_MODE') ?? 'unset'} · cap ${env.get('SIGNUP_MAX_ACCOUNTS') ?? 'unlimited'}`);
 console.log(`worst case  ${maxAccounts} × ${bytes(perAccountEntitlement)} = ${bytes(entitled)} against ${bytes(disk[2])} free  →  ${ratio.toFixed(1)}× oversubscribed`);
 if (ratio > 1) {
-    console.log('  ⚠ the per-account limits cannot protect this disk: a few heavy accounts fill it');
-    console.log('    before any of them is refused. Lower SIGNUP_MAX_ACCOUNTS, lower the byte');
-    console.log('    limits, or accept it deliberately and write down why (docs/operations.md).');
+    console.log('  ⚠ per-account limits cannot protect this disk on their own: a few heavy accounts');
+    console.log('    fill it before any of them is refused. On veryhappy.dev this is ACCEPTED —');
+    console.log('    signup is deliberately open and the totals are sized as abuse guards, not as');
+    console.log('    a capacity plan; the guard that actually catches abuse is the per-minute rate');
+    console.log('    bucket, not the total. See docs/operations.md before "fixing" this number.');
 }
 if (unresolved.length > 0) {
     console.log(`\nunresolved fallbacks (shown as "unset", NOT counted in the entitlement above):`);
