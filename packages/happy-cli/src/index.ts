@@ -424,7 +424,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
   } else if (subcommand === 'pi') {
     // pi via the generic ACP runner + pi-acp adapter. Kept as its own
     // subcommand so the daemon can spawn it with the same argv shape it uses
-    // for every backend (see parsePiRunnerArgs for why those flags are dropped).
+    // for every backend (see parsePiRunnerArgs for which flags are consumed or dropped).
     // A missing adapter surfaces as a backend `status: 'error'` (which may or
     // may not also throw, depending on whether a prompt is in flight), so the
     // hint is printed from whichever path reports it first, once.
@@ -448,6 +448,7 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         credentials,
         startedBy: parsed.startedBy,
         verbose: parsed.verbose,
+        permissionMode: parsed.permissionMode,
         agentName: resolved.agentName,
         command: resolved.command,
         args: resolved.args,

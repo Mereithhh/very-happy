@@ -4,23 +4,29 @@
  * The daemon spawns every backend with the same shape of argv —
  * `<agent> --happy-starting-mode remote --started-by daemon [--permission-mode <m>]`
  * — because it does not know which flags a given runner consumes. The Claude
- * runner reads all three; the ACP runners have no starting-mode concept and no
- * Claude-style permission vocabulary (pi's approvals arrive as ACP
- * `request_permission` and are decided by the user in the Web UI, or by a
- * policy extension on the pi side). So this parser deliberately *consumes and
- * drops* those two flags instead of forwarding them to pi-acp, which would
- * reject unknown options and fail every daemon spawn.
+ * runner reads all three; the ACP runners have no starting-mode concept, so
+ * `--happy-starting-mode` is consumed and dropped. `--permission-mode` is kept:
+ * pi has no permission layer and pi-acp has no mode selector, so the runner
+ * hands the mode to the pi-side gate extension out-of-band (env at spawn,
+ * `session-modes/<id>.json` for live switches — see sessionModeFile.ts). It is
+ * sanitized here with the Claude allowlist (`yolo` → `bypassPermissions`); an
+ * unknown value is dropped rather than forwarded, since pi-acp would reject
+ * any unknown option and fail every daemon spawn.
  *
  * Everything after `--` is passed through to the adapter untouched.
  */
+import { normalizeAcpPermissionMode, type AcpPermissionMode } from './sessionModeFile';
+
 export type PiRunnerArgs = {
   startedBy?: 'daemon' | 'terminal';
   verbose: boolean;
+  /** Sanitized `--permission-mode`; absent when not given or not in the allowlist. */
+  permissionMode?: AcpPermissionMode;
   /** Extra args for the pi-acp process (after `--`). */
   passthrough: string[];
 };
 
-const IGNORED_FLAGS_WITH_VALUE = new Set(['--happy-starting-mode', '--permission-mode']);
+const IGNORED_FLAGS_WITH_VALUE = new Set(['--happy-starting-mode']);
 
 /** Pinned on purpose: an unpinned install hint violates the no-@latest rule. */
 export const PI_ADAPTER_INSTALL_HINT = 'very-happy pi needs the pi-acp adapter on PATH: npm install -g pi-acp@0.0.33';
@@ -51,6 +57,11 @@ export function parsePiRunnerArgs(args: readonly string[]): PiRunnerArgs {
     }
     if (arg === '--verbose') {
       parsed.verbose = true;
+      continue;
+    }
+    if (arg === '--permission-mode') {
+      const mode = normalizeAcpPermissionMode(args[++i]);
+      if (mode) parsed.permissionMode = mode;
       continue;
     }
     if (IGNORED_FLAGS_WITH_VALUE.has(arg)) {
