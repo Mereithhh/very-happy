@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-role-aware-session-cards',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.118',
+    titleKey: 'changelog.releases.sep04b.title',
+    summaryKey: 'changelog.releases.sep04b.summary',
+    itemKeys: [
+      'changelog.releases.sep04b.tools',
+      'changelog.releases.sep04b.cards',
+    ],
+  },
+  {
     id: '2026-09-04-auto-update-forward-only',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,
