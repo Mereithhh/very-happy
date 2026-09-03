@@ -1,5 +1,6 @@
 #!/bin/bash
-# land-pr.sh <pr-number> [--no-merge] — wait for CI on a PR's CURRENT head and
+# land-pr.sh <pr-number> [--no-merge] [--no-update] — wait for CI on a PR's
+# CURRENT head and
 # squash-merge it when green. Extracted from a session that hand-rolled this
 # loop eight times (B-269..B-282); encodes the gotchas so agents stop
 # rediscovering them:
@@ -11,10 +12,25 @@
 #   * run-id lists must be iterated line-wise (zsh does not word-split
 #     unquoted vars);
 #   * branch protection re-checks lag after CI turns green — the merge is
-#     retried a few times before giving up.
+#     retried a few times before giving up;
+#   * `behind` is the common case on a busy main, and the fix is mechanical, so
+#     this now performs it: it calls GitHub's update-branch and waits for the new
+#     head instead of telling a human to go do the same thing. One session ran
+#     that exact api call by hand ten times. The merge commit update-branch
+#     creates is squashed away by the merge below, so it never reaches main.
+#     `--no-update` restores the old "stop and tell me" behaviour.
 set -u
-PR="${1:?usage: land-pr.sh <pr-number> [--no-merge]}"
-NO_MERGE="${2:-}"
+PR="${1:?usage: land-pr.sh <pr-number> [--no-merge] [--no-update]}"
+NO_MERGE=""
+NO_UPDATE=""
+shift
+for arg in "$@"; do
+  case "$arg" in
+    --no-merge)  NO_MERGE="--no-merge" ;;
+    --no-update) NO_UPDATE=1 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
 REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 
 head_sha() { gh api "repos/$REPO/pulls/$PR" --jq .head.sha; }
@@ -27,10 +43,30 @@ case "$(state)" in
     echo "✗ merge conflict with base — rebase and push first (conflicted PRs never trigger CI)." >&2
     exit 2 ;;
   behind)
-    # Strict required checks: an out-of-date branch cannot merge even with
-    # green CI — rebasing (which re-runs CI) is the only way forward.
-    echo "✗ branch is behind base — rebase and push first (strict status checks refuse stale heads)." >&2
-    exit 2 ;;
+    # Strict required checks: an out-of-date branch cannot merge even with green
+    # CI. Updating it from base is exactly what a human would do next, so do it.
+    if [ -n "$NO_UPDATE" ]; then
+      echo "✗ branch is behind base — rebase and push first (strict status checks refuse stale heads)." >&2
+      exit 2
+    fi
+    echo "· behind base — updating from base and waiting for the new head"
+    if ! gh api -X PUT "repos/$REPO/pulls/$PR/update-branch" >/dev/null 2>&1; then
+      echo "✗ could not update the branch from base — rebase and push by hand." >&2
+      exit 2
+    fi
+    # The new head appears asynchronously; CI is looked up by commit, so keep
+    # going only once the SHA has actually moved.
+    for _ in $(seq 1 30); do
+      sleep 2
+      NEW=$(head_sha)
+      [ "$NEW" != "$H" ] && break
+    done
+    H=$(head_sha)
+    echo "PR #$PR head ${H:0:8} state=$(state) (updated from base)"
+    if [ "$(state)" = dirty ]; then
+      echo "✗ updating from base produced a conflict — resolve it locally." >&2
+      exit 2
+    fi ;;
 esac
 
 # Runs can take ~1 min to appear after a push.

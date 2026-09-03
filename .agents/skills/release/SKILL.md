@@ -199,6 +199,20 @@ not be offered the release — a pin holding it back, or a `latest` that never
 moved because smoke was red. It does not fail the run, because holding a release
 back is legitimate, but you will not silently forget again.
 
+**Unattended installs are a separate pin, and not part of a normal release**
+(B-351). `CLI_AUTO_UPDATE_VERSION` is what an idle machine may install by
+itself; it is never derived from the registry, and unset means no machine
+auto-installs anything. Promote it deliberately, after a release has been out
+long enough that you would be comfortable with it landing on someone else's
+machine while they are away — deliberately lagging `latest` by a release or two
+is what gives the fleet a staged rollout:
+
+```sh
+ssh vh-us
+sed -i 's|^CLI_AUTO_UPDATE_VERSION=.*|CLI_AUTO_UPDATE_VERSION=X.Y.Z|' /opt/happy/.env
+gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
+```
+
 Unset, the relay answers `/v1/version/cli` with nulls, `deriveCliUpdateState`
 returns null, and every update surface — the global banner, Diagnostics, the
 machine page — stays silent. That is how the whole fleet drifted 24 versions
