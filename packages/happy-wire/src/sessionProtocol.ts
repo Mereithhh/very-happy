@@ -168,6 +168,14 @@ export const sessionEnvelopeSchema = z
     // Codex app-server item id for this envelope. Used as the precise
     // rollback point for Codex thread duplicate/fork-from-message.
     codexItemId: z.string().min(1).optional(),
+    // B-309: identity of the live draft this envelope supersedes,
+    // `"<api message id>:<content block index>"`. Set on text/thinking
+    // envelopes mapped from a Claude assistant message so the web can replace
+    // the streamed draft with the persisted message in a single frame instead
+    // of letting it flicker out and back in. Absent from every other producer
+    // (and from CLIs older than the streaming relay) — consumers must treat a
+    // missing key as "no draft to claim", never as an error.
+    streamKey: z.string().min(1).optional(),
     // Per-API-call token usage of the assistant message this envelope was
     // mapped from (B-108). Envelope-level (not inside `ev`) so every envelope
     // type carries it uniformly — the web feeds it into its context meter.
@@ -208,6 +216,7 @@ export type CreateEnvelopeOptions = {
   subagent?: string;
   claudeUuid?: string;
   codexItemId?: string;
+  streamKey?: string;
   usage?: SessionTurnUsage;
 };
 
@@ -220,6 +229,7 @@ export function createEnvelope(role: SessionRole, ev: SessionEvent, opts: Create
     ...(opts.subagent ? { subagent: opts.subagent } : {}),
     ...(opts.claudeUuid ? { claudeUuid: opts.claudeUuid } : {}),
     ...(opts.codexItemId ? { codexItemId: opts.codexItemId } : {}),
+    ...(opts.streamKey ? { streamKey: opts.streamKey } : {}),
     ...(opts.usage ? { usage: opts.usage } : {}),
     ev,
   });

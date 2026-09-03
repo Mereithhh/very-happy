@@ -53,6 +53,10 @@ export async function claudeRemote(opts: {
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
+    /** B-309: token-level partials and progress frames, split off BEFORE
+     *  onMessage. They are relayed live on a bypass channel and must never
+     *  reach the persisted transcript — see streamRelay.ts. */
+    onStreamFrame?: (message: import('./streamRelay').StreamRelayInput) => void,
     onCompletionEvent?: (message: string) => void,
     /** B-276: the turn ended with an auth failure that poisons this Query. */
     onAuthFailure?: (reason: string) => void,
@@ -158,6 +162,13 @@ export async function claudeRemote(opts: {
         supportedDialogKinds: opts.onUserDialog ? ['refusal_fallback_prompt'] : undefined,
         abort: opts.signal,
         settingsPath: opts.hookSettingsPath,
+        // B-309: token-level partials. Without this the SDK emits nothing
+        // between "turn started" and "entire assistant message", which is
+        // exactly why the web used to show a spinner where the terminal shows
+        // the model thinking out loud. The partials do NOT enter the
+        // transcript; they are split off below and relayed on a side channel.
+        // Only pay for them when someone is listening.
+        includePartialMessages: opts.onStreamFrame ? true : undefined,
     }
 
     // Track thinking state
@@ -222,10 +233,45 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
+            // B-309: partials leave here and never come back. This sits ABOVE
+            // the debug log on purpose — `stream_event` arrives ~100 times a
+            // second, and `contentLogMetadata` stringifies the whole message
+            // while `logToFile` writes synchronously, so logging them would
+            // put a full serialize + blocking disk write on the token path.
+            // They must not continue into onMessage either: they would
+            // traverse the converter only to be dropped, hammering the
+            // ordering queue the real messages depend on.
+            if (message.type === 'stream_event') {
+                // A sub-agent's partials must never join the main draft — they
+                // would interleave another agent's sentences into the answer
+                // being written. Today the SDK does not forward them at all
+                // (`forwardSubagentText` defaults false; measured 2026-09-03:
+                // every frame of a Task-running turn came back parent-less),
+                // so this guards against that default changing under us.
+                if (opts.onStreamFrame && !(message as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
+                    opts.onStreamFrame({ type: 'stream_event', event: (message as { event: unknown }).event });
+                }
+                continue;
+            }
+
             logger.debug(`[claudeRemote] Message ${message.type}`, contentLogMetadata(message));
 
             if (message.type === 'assistant' && message.error) {
                 lastAssistantError = message.error;
+            }
+
+            // Progress-bearing system frames. Unlike stream_event these are
+            // low-rate, so they keep flowing to onMessage as before (where
+            // OutgoingMessageQueue drops them) and are merely copied out.
+            if (opts.onStreamFrame && message.type === 'system') {
+                const subtype = (message as { subtype?: string }).subtype;
+                if (subtype === 'thinking_tokens') {
+                    const tokens = message as { estimated_tokens?: number };
+                    opts.onStreamFrame({ type: 'system', subtype: 'thinking_tokens', estimated_tokens: tokens.estimated_tokens });
+                } else if (subtype === 'status') {
+                    const status = message as { status?: string | null };
+                    opts.onStreamFrame({ type: 'system', subtype: 'status', status: status.status });
+                }
             }
 
             // Handle messages. During /compact, Claude emits the generated

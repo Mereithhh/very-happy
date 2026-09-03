@@ -567,6 +567,9 @@ export const zhHans: TranslationStructure = {
             thinking: ({ seconds }: { seconds: string }) => `思考 ${seconds}`,
             working: ({ seconds }: { seconds: string }) => `运行 ${seconds}`,
             runningTool: ({ name, seconds }: { name: string; seconds: string }) => `${name} · ${seconds}`,
+            liveCompacting: '压缩上下文中',
+            liveWorking: ({ verb, detail }: { verb: string; detail: string }) => `${verb}…  ${detail}`,
+            liveRunningTool: ({ name, detail }: { name: string; detail: string }) => `${name} · ${detail}`,
             needsPermission: '需要你的批准',
             commandRan: ({ name }: { name: string }) => `已运行 /${name}`,
             thoughtFor: ({ seconds }: { seconds: string }) => `思考了 ${seconds}`,
@@ -1626,6 +1629,13 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03q: {
+                title: '回答现在是一边写一边出来的',
+                summary: 'Claude 会话在跑的时候，界面上此前什么都没有——一个转圈，然后整段回复一次性蹦出来。实测过一次：二十秒空白，接着四千字瞬间出现。现在文字会像终端里那样，随着模型的输出逐段出现。',
+                streaming: '回复在生成过程中就逐字出现，两三秒内就能看到开头，不用等整轮结束。实时显示的是预览：它不会被存下来，等真正的消息落地时会被无缝替换，中间不闪。Claude 自己的思考正文仍然看不到——API 对任何客户端都不放出这部分——所以改用下面那个 token 计数来体现进度。',
+                status: '运行指示器从一个脉冲点，换成了终端里那一套：跳动的符号、轮换的动词、已用时间，以及思考期间持续增长的 token 数。机器上跑的是旧版 CLI 时，就只显示已用时间，和以前一样。',
+                perf: '长会话不再每两秒把整个对话重画一遍。几百条消息的会话里，滚动、输入和工具输出都更跟手了。',
+            },
             sep03p: {
                 title: '脚本起的会话不会再永远等在权限审批上了',
                 summary: '命令行派起来的会话落在「每步先问」的默认档。有人看着时这是对的，没人看着时就是陷阱：会话停在第一个需要问的工具上，然后就一直坐在那儿。',

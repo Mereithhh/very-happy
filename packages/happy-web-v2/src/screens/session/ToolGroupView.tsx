@@ -3,10 +3,11 @@
  * collapsible block with a mono font and a teal accent left-spine. The spine
  * color encodes state: teal=running, danger=error, warn=mixed, line=done.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronRight, AlertTriangle, Bot, Check, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
+import { sameItems } from './rowMemo';
 import { useTranslation } from '@/i18n/useTranslation';
 import { StatusDot } from '@/ui';
 import { ToolView } from './ToolView';
@@ -133,7 +134,7 @@ function ToolRow({
     );
 }
 
-export function ToolGroupView({
+function ToolGroupViewImpl({
     tools,
     collapseCompleted = false,
     stalled = false,
@@ -228,3 +229,12 @@ export function ToolGroupView({
         </div>
     );
 }
+
+/** B-311: see rowMemo — the tools array is rebuilt every render, its elements
+ *  are not. Without this, one running tool's per-second timer re-rendered
+ *  every other tool group in the transcript. */
+export const ToolGroupView = memo(ToolGroupViewImpl, (prev, next) => (
+    sameItems(prev.tools, next.tools)
+    && prev.collapseCompleted === next.collapseCompleted
+    && prev.stalled === next.stalled
+));

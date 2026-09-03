@@ -15,6 +15,8 @@ import type { ProjectFilesList } from "./projectFiles";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { compareMessagesNewestFirst, sortIncomingBySeq } from "./messageOrder";
+import { claimLiveStreamKeys } from '@/sync/liveStreamStore';
+import { streamKeysOf } from '@/sync/liveStream';
 import { resolvePlanModeFromBatch } from "./planModeBatch";
 import { resolveIncomingPermissionMode, resolveSessionPermissionMode } from './sessionModeSync';
 import { NormalizedMessage } from "./typesRaw";
@@ -756,6 +758,12 @@ export const storage = create<StorageState>()((set, get) => {
             // chronological order. Sorts only fully seq-carrying batches
             // (mixed/optimistic batches keep arrival order — see helper doc).
             const messages = sortIncomingBySeq(rawMessages);
+
+            // B-309: a persisted message supersedes the draft it was streamed
+            // from. Claim BEFORE the reducer runs so the draft disappears in
+            // the same commit the real message appears in — claiming after
+            // would leave one frame showing both.
+            claimLiveStreamKeys(sessionId, streamKeysOf(messages));
 
             // Track plan mode transitions through the batch in order.
             // History replays contain both Enter + Exit, so an ordered batch
@@ -1647,6 +1655,18 @@ export function useSession(id: string): Session | null {
 }
 
 /**
+ * B-311: just the "is the agent working" bit.
+ *
+ * `useSession` shallow-compares the whole Session, and the CLI's 2s keepAlive
+ * moves `activeAt` on every beat — so every subscriber re-rendered twice a
+ * second whether or not anything it displayed had changed. Components that
+ * only need the boolean subscribe here instead.
+ */
+export function useSessionThinking(id: string): boolean {
+    return storage((state) => state.sessions[id]?.thinking === true);
+}
+
+/**
  * Sessions that need the user's attention right now: online and blocked on a
  * pending permission request. Drives the "needs attention" queue in the sidebar
  * so the user can jump straight to whatever is waiting on them.
@@ -1705,10 +1725,21 @@ export function useMessage(sessionId: string, messageId: string): Message | null
  * derived {name, startedAt} so per-second elapsed ticks happen in the UI, not
  * here (avoids re-subscribing on every message change).
  */
+/**
+ * B-311: memoised on the messages array identity. This selector runs on EVERY
+ * store change — including each 2s keepAlive, which touches `sessions` and
+ * leaves `sessionMessages` untouched — and a full scan of a long transcript on
+ * every beat is pure waste. The array is replaced whenever messages actually
+ * change, so identity is an exact cache key.
+ */
+const runningToolCache = new WeakMap<object, { name: string; startedAt: number } | null>();
+
 export function useSessionRunningTool(sessionId: string): { name: string; startedAt: number } | null {
     return storage(useShallow((state) => {
         const session = state.sessionMessages[sessionId];
         if (!session) return null;
+        const cached = runningToolCache.get(session.messages);
+        if (cached !== undefined) return cached;
         let best: { name: string; startedAt: number } | null = null;
         for (const message of session.messages) {
             if (message.kind !== 'tool-call') continue;
@@ -1719,6 +1750,7 @@ export function useSessionRunningTool(sessionId: string): { name: string; starte
                 best = { name: tool.name, startedAt };
             }
         }
+        runningToolCache.set(session.messages, best);
         return best;
     }));
 }

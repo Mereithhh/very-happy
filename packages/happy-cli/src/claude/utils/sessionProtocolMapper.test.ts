@@ -486,3 +486,156 @@ describe('assistant usage stamping (B-108)', () => {
         }
     });
 });
+
+describe('streamKey (B-309)', () => {
+    it('stamps text and thinking envelopes with "<api message id>:<block index>"', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-1',
+            message: {
+                role: 'assistant',
+                id: 'msg_01ABC',
+                content: [
+                    { type: 'thinking', thinking: 'reasoning' },
+                    { type: 'text', text: 'answer' },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: 'turn-1' });
+
+        const keys = result.envelopes.map((envelope) => envelope.streamKey);
+        expect(keys).toEqual(['msg_01ABC:0', 'msg_01ABC:1']);
+    });
+
+    it('uses the ORIGINAL block index, so a skipped empty block does not shift the key', () => {
+        // The web drafted from the stream, where the empty block still consumed
+        // an index. Numbering by emitted envelopes instead would misalign every
+        // key after the first empty block and leave stale drafts on screen.
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-2',
+            message: {
+                role: 'assistant',
+                id: 'msg_02',
+                content: [
+                    { type: 'text', text: '' },
+                    { type: 'text', text: 'real answer' },
+                ],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: 'turn-1' });
+
+        expect(result.envelopes).toHaveLength(1);
+        expect(result.envelopes[0].streamKey).toBe('msg_02:1');
+    });
+
+    it('continues the block index across the frames the SDK splits one message into', () => {
+        // Measured against the SDK: one API message arrives as several
+        // `assistant` frames, one block each, while the stream numbered those
+        // blocks 0,1,2… Keying each frame from its own array would put every
+        // envelope at index 0 — the answer's draft would never be claimed and
+        // would sit duplicated under the real message until the sweep.
+        const state = { currentTurnId: 'turn-1' };
+        const frame = (blocks: unknown[]) => mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-split',
+            message: { role: 'assistant', id: 'msg_split', content: blocks },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, state as any);
+
+        const first = frame([{ type: 'thinking', thinking: 'reasoning' }]);
+        const second = frame([{ type: 'tool_use', id: 'call-1', name: 'Bash', input: {} }]);
+        const third = frame([{ type: 'text', text: 'the answer' }]);
+
+        expect(first.envelopes.map((e) => e.streamKey)).toEqual(['msg_split:0']);
+        // The tool_use frame carries no key but still consumed index 1.
+        expect(second.envelopes.every((e) => e.streamKey === undefined)).toBe(true);
+        expect(third.envelopes.map((e) => e.streamKey)).toEqual(['msg_split:2']);
+    });
+
+    it('restarts the cursor when a new message id begins', () => {
+        const state = { currentTurnId: 'turn-1' };
+        const frame = (id: string, blocks: unknown[]) => mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: `a-${id}`,
+            message: { role: 'assistant', id, content: blocks },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, state as any);
+
+        frame('msg_a', [{ type: 'text', text: 'first' }]);
+        const next = frame('msg_b', [{ type: 'text', text: 'second' }]);
+
+        expect(next.envelopes.map((e) => e.streamKey)).toEqual(['msg_b:0']);
+    });
+
+    it('omits the key when the assistant message has no id (nothing to claim)', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-3',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'answer' }] },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: 'turn-1' });
+
+        expect(result.envelopes[0].streamKey).toBeUndefined();
+    });
+
+    it('does not stamp tool-call envelopes — only text is ever drafted', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-4',
+            message: {
+                role: 'assistant',
+                id: 'msg_04',
+                content: [{ type: 'tool_use', id: 'call-1', name: 'Bash', input: { command: 'ls' } }],
+            },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: 'turn-1' });
+
+        const toolStart = result.envelopes.find((envelope) => envelope.ev.t === 'tool-call-start');
+        expect(toolStart).toBeDefined();
+        expect(toolStart!.streamKey).toBeUndefined();
+    });
+});
+
+describe('streamKey and sidechain interleaving (B-309)', () => {
+    it('a sub-agent message between two frames of one main message does not reset the cursor', () => {
+        // The mapper state is shared by both chains. Letting a sidechain frame
+        // move the cursor would hand the main message's second frame the same
+        // key as its first — the real message would then claim the wrong
+        // draft and the answer would sit duplicated until the sweep.
+        const state = { currentTurnId: 'turn-1' };
+        const main = (blocks: unknown[]) => mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-main',
+            message: { role: 'assistant', id: 'msg_main', content: blocks },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, state as any);
+
+        const first = main([{ type: 'thinking', thinking: 'reasoning' }]);
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-sub',
+            isSidechain: true,
+            parent_tool_use_id: 'call-1',
+            message: { role: 'assistant', id: 'msg_sub', content: [{ type: 'text', text: 'sub-agent says hi' }] },
+            timestamp: '2025-01-01T00:00:02.000Z',
+        } as any, state as any);
+        const second = main([{ type: 'text', text: 'the answer' }]);
+
+        expect(first.envelopes.map((e) => e.streamKey)).toEqual(['msg_main:0']);
+        expect(second.envelopes.map((e) => e.streamKey)).toEqual(['msg_main:1']);
+    });
+
+    it('never stamps a sidechain envelope — there is no draft for it to claim', () => {
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'a-sub',
+            isSidechain: true,
+            parent_tool_use_id: 'call-1',
+            message: { role: 'assistant', id: 'msg_sub', content: [{ type: 'text', text: 'hi' }] },
+            timestamp: '2025-01-01T00:00:01.000Z',
+        } as any, { currentTurnId: 'turn-1' } as any);
+
+        expect(result.envelopes.every((e) => e.streamKey === undefined)).toBe(true);
+    });
+});

@@ -3,12 +3,12 @@
  * upstream in ChatList; here we render the leaf kinds and (for grouped tool
  * runs) hand off to ToolGroupView.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Bot, Brain, Check, ChevronDown, ChevronRight, Square, Terminal } from 'lucide-react';
 import type { Message, AgentTextMessage, UserTextMessage, ModeSwitchMessage } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
-import { useSession, useMachine } from '@/sync/storage';
+import { useSession, useSessionThinking, useMachine } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { restartBrokenSession, useRestartState } from '@/app/sessionRestartAction';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -107,7 +107,9 @@ function AgentText({
     // message follows this thinking block yet, it's the one being streamed —
     // open it. When it stops being live (turn ended / next message arrived),
     // fold it back, unless the user toggled it by hand.
-    const sessionThinking = useSession(sessionId)?.thinking ?? false;
+    // B-311: subscribe to the boolean, not the whole Session — the keepAlive
+    // moves `activeAt` every 2s and used to re-render every thinking block.
+    const sessionThinking = useSessionThinking(sessionId);
     const live =
         message.isThinking === true &&
         isLiveThinking({
@@ -315,7 +317,14 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
     );
 }
 
-export function MessageView({
+/**
+ * B-311: memoised. The transcript has no virtualisation, so without this every
+ * store change — a 2s keepAlive, a per-second elapsed tick inside one running
+ * tool, a single new message — re-rendered every message ever loaded, markdown
+ * and all. `message` objects come from the reducer, which only rebuilds the
+ * ones that actually changed, so reference equality is an exact test.
+ */
+export const MessageView = memo(function MessageView({
     message,
     showMeta,
     sessionId,
@@ -350,4 +359,4 @@ export function MessageView({
                 </div>
             );
     }
-}
+});

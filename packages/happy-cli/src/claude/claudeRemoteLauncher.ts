@@ -15,6 +15,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
+import { StreamRelay } from './streamRelay';
 import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
@@ -160,6 +161,16 @@ export async function claudeRemoteLauncher(
     // reset() moves any stale entries to completedRequests with status
     // 'canceled' so the UI reflects what actually happened.
     permissionHandler.reset('Previous CLI process exited before responding');
+
+    // B-309: live draft relay. Deliberately a sibling of the message queue,
+    // not a client of it: drafts must not inherit the queue's ordering, its
+    // 250ms tool delay, or persistence — they are disposable by design.
+    // Off switch mirroring the server's SESSION_STREAM_RELAY_DISABLED, so a
+    // machine can stop producing drafts without waiting for a CLI release.
+    const streamingEnabled = process.env.HAPPY_SESSION_STREAM_DISABLED !== '1';
+    const streamRelay = new StreamRelay({
+        send: (frame) => session.client.sendStreamFrame(frame),
+    });
 
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
@@ -534,6 +545,7 @@ export async function claudeRemoteLauncher(
                         };
                     },
                     onThinkingChange: session.onThinkingChange,
+                    onStreamFrame: streamingEnabled ? (frame) => streamRelay.ingest(frame) : undefined,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
@@ -630,6 +642,14 @@ export async function claudeRemoteLauncher(
                 await messageQueue.flush();
                 messageQueue.destroy();
                 logger.debug('[remote]: message queue flushed');
+
+                // Sweep AFTER the flush, never before. `turn-end` starts a
+                // 1.5s countdown on the web, and the bypass channel already
+                // outruns the message queue (which holds tool_use frames for
+                // 250ms) — arming it while this turn's messages were still
+                // queued could blank the transcript's tail before they land.
+                streamRelay.endTurn();
+                streamRelay.dispose();
 
                 // Reset abort controller and future
                 abortController = null;

@@ -15,6 +15,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-answers-arrive-as-they-are-written',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // NOT 0.2.109/110/111: all three were already published while this was
+    // in review (AGENTS 铁律 6 — published tags are immutable). Rides 0.2.112
+    // as the next one.
+    cliVersion: '0.2.112',
+    titleKey: 'changelog.releases.sep03q.title',
+    summaryKey: 'changelog.releases.sep03q.summary',
+    itemKeys: [
+      'changelog.releases.sep03q.streaming',
+      'changelog.releases.sep03q.status',
+      'changelog.releases.sep03q.perf',
+    ],
+  },
+  {
     id: '2026-09-03-spawn-permission-mode',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
@@ -35,7 +51,7 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     // NOT 0.2.109: that tag was already published from 598bc632 (B-303/B-304)
     // while this was still in review, and a published tag is immutable
     // (AGENTS 铁律 6). This ships in the next one.
-    cliVersion: '0.2.110',
+    cliVersion: '0.2.112',
     titleKey: 'changelog.releases.sep03o.title',
     summaryKey: 'changelog.releases.sep03o.summary',
     itemKeys: [

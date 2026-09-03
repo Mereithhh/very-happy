@@ -560,6 +560,9 @@ export const en = {
             thinking: ({ seconds }: { seconds: string }) => `Thinking ${seconds}`,
             working: ({ seconds }: { seconds: string }) => `Working ${seconds}`,
             runningTool: ({ name, seconds }: { name: string; seconds: string }) => `${name} · ${seconds}`,
+            liveCompacting: 'Compacting',
+            liveWorking: ({ verb, detail }: { verb: string; detail: string }) => `${verb}…  ${detail}`,
+            liveRunningTool: ({ name, detail }: { name: string; detail: string }) => `${name} · ${detail}`,
             needsPermission: 'Needs your approval',
             commandRan: ({ name }: { name: string }) => `Ran /${name}`,
             thoughtFor: ({ seconds }: { seconds: string }) => `Thought for ${seconds}`,
@@ -1658,6 +1661,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03q: {
+                title: 'Answers now arrive as they are written',
+                summary: 'A Claude session used to show nothing at all while it worked — a spinner, then the whole reply at once. In one measured run that was twenty seconds of blank screen followed by four thousand characters appearing in a single frame. The text now streams in as the model writes it, the way it does in the terminal.',
+                streaming: 'Replies appear word by word while they are being written, starting within a couple of seconds instead of after the turn finishes. The live text is a preview: it is never stored, and it is replaced by the real message the moment that lands, with no flicker in between. Claude’s own reasoning stays hidden — the API does not release it to any client — so it is represented by the token counter below rather than as text.',
+                status: 'The working indicator went from a single pulsing dot to what the terminal shows: a cycling glyph, a rotating verb, elapsed time, and a token count that climbs while the model thinks. Sessions on a machine running an older CLI simply show the elapsed time, as before.',
+                perf: 'Long conversations no longer redraw every message in the transcript twice a second. Scrolling, typing and tool output stay smooth in sessions with hundreds of messages.',
+            },
             sep03p: {
                 title: 'A session started by a script no longer waits forever for permission',
                 summary: 'Sessions spawned from the command line came up in the normal ask-me-first mode. That is right when a person is watching, and a trap when nothing is: the session stopped at the first tool it had to ask about and simply sat there.',
