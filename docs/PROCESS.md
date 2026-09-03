@@ -21,7 +21,9 @@
 - **单写者纪律**：backlog.md 只由主 agent（或 Owner）写；Owner 在对话里说的需求，
   主 agent 当场记入（不靠记忆）；实现 agent 只读不写。
 - 产品内 task board 管"会话/任务运行态"，backlog.md 管"产品迭代项"——两者不混。
-- **编号分配（多会话并行）**：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
+- **编号分配（多会话并行）**：`node scripts/dev/check-ids.mjs` 报下一个可用的 B-/V-/changelog key，
+  `--claim B-xxx --claim V-xxx --claim <key>` 验号（撞了就非 0 退出）；**每次 rebase 后、开 PR 前都要再验一次**。
+  下面是这条纪律的来历与手工做法（脚本挂了或要改它时看）：新开 B-/V- 编号前先 `git fetch origin main`，取 **origin/main** 上的最大号 +1，
   不要拿本地分支或记忆里的号；rebase 遇到同号先到者优先，后到者在整个分支上重编号（代码注释、测试名、spec、
   verify-queue、PR 标题都要改）。2026-09-02 一天内 B-279、B-282 各被两个会话撞号，各多花一轮 rebase+CI。
   **长任务要重复做这件事**：号是在开工时取的，而 main 在你写代码、跑门禁、做 review 的这几小时里会一直前进——
