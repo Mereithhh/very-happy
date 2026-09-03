@@ -96,7 +96,7 @@ describe('doctor runtime readiness', () => {
             return { status: null, stdout: '', stderr: '', error: new Error('ENOENT') };
         }) as Parameters<typeof collectRuntimeReadiness>[0];
 
-        const result = collectRuntimeReadiness(run, 'v22.19.0');
+        const result = collectRuntimeReadiness(run, 'v22.19.0', () => false);
         expect(result.node.supported).toBe(true);
         expect(result.tmux.supportsSessionEnv).toBe(true);
         expect(result.agents.find(agent => agent.command === 'codex')).toMatchObject({
@@ -106,6 +106,21 @@ describe('doctor runtime readiness', () => {
         expect(result.agents.find(agent => agent.command === 'claude')?.available).toBe(false);
         expect(calls).toContainEqual(['tmux', ['-V']]);
         expect(calls).toContainEqual(['codex', ['--version']]);
+    });
+
+    it('checks the pi-acp adapter by PATH lookup, never by running it', () => {
+        // pi-acp has no --version: running it would block on stdin serving ACP.
+        const calls: string[] = [];
+        const run = ((command: string) => {
+            calls.push(command);
+            return { status: 0, stdout: `${command} 1.0\n`, stderr: '', error: undefined };
+        }) as Parameters<typeof collectRuntimeReadiness>[0];
+        const looked: string[] = [];
+        const result = collectRuntimeReadiness(run, 'v22.19.0', (name) => { looked.push(name); return name === 'pi-acp'; });
+        expect(result.agents.find(agent => agent.command === 'pi')?.available).toBe(true);
+        expect(result.piAdapter.available).toBe(true);
+        expect(looked).toEqual(['pi-acp']);
+        expect(calls).not.toContain('pi-acp');
     });
 
     it('keeps the command name next to otherwise ambiguous agent versions', () => {

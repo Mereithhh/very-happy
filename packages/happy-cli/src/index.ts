@@ -420,6 +420,38 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'pi') {
+    // pi via the generic ACP runner + pi-acp adapter. Kept as its own
+    // subcommand so the daemon can spawn it with the same argv shape it uses
+    // for every backend (see parsePiRunnerArgs for why those flags are dropped).
+    try {
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+      const { parsePiRunnerArgs } = await import('@/agent/acp/piRunnerArgs');
+
+      const parsed = parsePiRunnerArgs(args.slice(1));
+      const resolved = resolveAcpAgentConfig(['pi', ...parsed.passthrough]);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy: parsed.startedBy,
+        verbose: parsed.verbose,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (error instanceof Error && /ENOENT/.test(error.message)) {
+        console.error(chalk.gray('very-happy pi needs the pi-acp adapter on PATH: npm install -g pi-acp@0.0.33'))
+      }
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'acp') {
     try {
       const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
@@ -779,6 +811,7 @@ ${chalk.bold('Usage:')}
                             machine (for automation; see sessions --help)
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
+  very-happy pi                Start pi mode (ACP via the pi-acp adapter)
   very-happy acp               Start a generic ACP-compatible agent
   very-happy openclaw          Connect through a configured OpenClaw gateway
   very-happy install-terminal-hooks
@@ -804,6 +837,7 @@ ${chalk.bold('Examples:')}
   very-happy --js-runtime bun   Use bun instead of node to spawn Claude Code
   very-happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
+  very-happy pi                 Start pi (needs pi-acp on PATH)
   very-happy acp gemini         Start Gemini via generic ACP runner
   very-happy acp opencode   Start OpenCode through its built-in ACP adapter
   very-happy acp -- your-agent --acp

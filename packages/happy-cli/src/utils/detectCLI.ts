@@ -8,6 +8,13 @@ export interface CLIAvailability {
   codex: boolean;
   gemini: boolean;
   openclaw: boolean;
+  /**
+   * pi is spawnable only through the pi-acp adapter (`very-happy pi`), so this
+   * is "both `pi` and `pi-acp` resolve on PATH". Older daemons never send the
+   * field; the Web launcher treats absence as unavailable (unlike the other
+   * agents), because such a daemon cannot spawn pi at all.
+   */
+  pi: boolean;
   detectedAt: number;
 }
 
@@ -33,6 +40,24 @@ function commandExists(command: string): boolean {
   }
 }
 
+function commandExistsWindows(name: string): boolean {
+  try {
+    execSync(`powershell -NoProfile -Command "Get-Command ${name} -ErrorAction SilentlyContinue"`, { stdio: 'ignore', windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether `name` resolves on this process's PATH, without running it. For
+ * tools that have no `--version` (pi-acp starts serving ACP on stdin the
+ * moment it runs), this is the only safe presence check.
+ */
+export function commandOnPath(name: string): boolean {
+  return os.platform() === 'win32' ? commandExistsWindows(name) : commandExists(name);
+}
+
 function detectPosix(): CLIAvailability {
   const claude = commandExists('claude');
   const codex = commandExists('codex');
@@ -43,19 +68,13 @@ function detectPosix(): CLIAvailability {
   const openclawConfig = existsSync(join(os.homedir(), '.openclaw', 'openclaw.json'));
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
+  const pi = commandExists('pi') && commandExists('pi-acp');
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  return { claude, codex, gemini, openclaw, pi, detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
-  const checkCommand = (name: string): boolean => {
-    try {
-      execSync(`powershell -NoProfile -Command "Get-Command ${name} -ErrorAction SilentlyContinue"`, { stdio: 'ignore', windowsHide: true });
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const checkCommand = commandExistsWindows;
 
   const claude = checkCommand('claude');
   const codex = checkCommand('codex');
@@ -66,6 +85,7 @@ function detectWindows(): CLIAvailability {
   const openclawConfig = existsSync(join(process.env.USERPROFILE || os.homedir(), '.openclaw', 'openclaw.json'));
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
+  const pi = checkCommand('pi') && checkCommand('pi-acp');
 
-  return { claude, codex, gemini, openclaw, detectedAt: Date.now() };
+  return { claude, codex, gemini, openclaw, pi, detectedAt: Date.now() };
 }

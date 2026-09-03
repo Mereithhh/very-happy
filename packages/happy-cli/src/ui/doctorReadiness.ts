@@ -2,6 +2,7 @@ import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { commandOnPath } from '@/utils/detectCLI';
 
 export const MIN_NODE_VERSION = '20.19.0';
 export const SUPPORTED_NODE_LABEL = '20.19+ within 20.x, 22.13+ within 22.x, or 24+';
@@ -9,7 +10,7 @@ export const MIN_TMUX_ENV_MAJOR = 3;
 export const MIN_TMUX_ENV_MINOR = 2;
 
 export type ToolProbe = {
-    command: 'tmux' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+    command: 'tmux' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'pi';
     available: boolean;
     version?: string;
 };
@@ -18,6 +19,12 @@ export type RuntimeReadiness = {
     node: { version: string; supported: boolean };
     tmux: ToolProbe & { supportsSessionEnv: boolean };
     agents: ToolProbe[];
+    /**
+     * `very-happy pi` runs pi through the pi-acp adapter, so pi on PATH is not
+     * enough. pi-acp has no --version (it starts serving ACP on stdin), hence a
+     * PATH lookup rather than a probe.
+     */
+    piAdapter: { available: boolean };
 };
 
 export type ClaudeCredentialSource =
@@ -230,6 +237,7 @@ export function daemonReadiness(
 export function collectRuntimeReadiness(
     run: SpawnProbe = spawnSync,
     currentNodeVersion = process.version,
+    onPath: (name: string) => boolean = commandOnPath,
 ): RuntimeReadiness {
     const tmux = probe('tmux', run);
     return {
@@ -241,7 +249,8 @@ export function collectRuntimeReadiness(
             ...tmux,
             supportsSessionEnv: tmux.available && tmuxSupportsSessionEnv(tmux.version),
         },
-        agents: (['claude', 'codex', 'gemini', 'opencode', 'openclaw'] as const)
+        agents: (['claude', 'codex', 'gemini', 'opencode', 'openclaw', 'pi'] as const)
             .map(command => probe(command, run)),
+        piAdapter: { available: onPath('pi-acp') },
     };
 }
