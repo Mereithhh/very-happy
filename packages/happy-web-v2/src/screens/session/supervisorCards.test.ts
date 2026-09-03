@@ -125,3 +125,19 @@ describe('supervisor card wiring', () => {
         expect(toolInfo).toContain('parseLedgerOp(');
     });
 });
+
+describe('parseLedgerOp with the global --ledger flag and an absolute bin path', () => {
+    it('parses `/abs/bin/vh-ledger --ledger <path> decide T-001 --action note …`', () => {
+        const op = parseLedgerOp('/Users/x/vh-supervisor/bin/vh-ledger --ledger /tmp/l.json decide T-001 --action note --reason "rendering test" --json');
+        expect(op?.subcommand).toBe('decide');
+        expect(op?.taskId).toBe('T-001');
+        expect(op?.action).toBe('note');
+        expect(op?.reason).toBe('rendering test');
+    });
+    it('still parses add with --ledger and refuses a chained command', () => {
+        const op = parseLedgerOp('bin/vh-ledger --ledger /tmp/l.json add --goal "g" --cwd /w --acceptance "a" --json');
+        expect(op?.subcommand).toBe('add');
+        expect(op?.goal).toBe('g');
+        expect(parseLedgerOp('cd /x; bin/vh-ledger --ledger /tmp/l.json decide T-1 --action note')).toBeNull();
+    });
+});

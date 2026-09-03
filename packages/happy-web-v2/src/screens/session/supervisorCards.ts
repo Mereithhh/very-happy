@@ -186,7 +186,8 @@ export type LedgerOp = {
     raw: string;
 };
 
-const LEDGER_HEAD = /^(?:\S*\/)?vh-ledger\s+(add|bind|decide)\b/;
+// Global `--ledger <path>` may precede the subcommand (vh-ledger's only global flag).
+const LEDGER_HEAD = /^(?:\S*\/)?vh-ledger\s+(?:--ledger\s+\S+\s+)?(add|bind|decide)\b/;
 /** Shell control/expansion characters; unquoted, they mean the command is not a bare ledger op. */
 const SHELL_CONTROL = /[;|&`$(){}<>]/;
 
@@ -200,7 +201,9 @@ export function parseLedgerOp(command: string): LedgerOp | null {
     const argv = splitArgv(trimmed);
     if (!argv) return null;
     const subcommand = head[1] as LedgerOp['subcommand'];
-    const rest = argv.slice(2);
+    const subIndex = argv.indexOf(subcommand, 1);
+    if (subIndex < 1) return null;
+    const rest = argv.slice(subIndex + 1);
     const flag = (name: string): string | null => {
         const i = rest.indexOf(name);
         return i >= 0 && i + 1 < rest.length ? rest[i + 1] : null;
