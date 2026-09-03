@@ -595,6 +595,7 @@ export const en = {
             defaultModelUnknown: 'CLI default',
             defaultModelResolved: ({ model }: { model: string }) => `${model} (default)`,
             slashCommands: 'Commands and skills',
+            moreActions: 'More session actions',
             relayRegion: 'Realtime relay region',
             effortDefault: 'default',
             effortDefaultDesc: "engine default (currently high; may downgrade per model)",
@@ -1634,6 +1635,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03f: {
+                title: 'Switching model actually switches the model',
+                summary: 'Picking a different model mid-conversation could be silently ignored, and the thinking-depth picker never did anything at all on Claude sessions. Both are fixed, the switch now happens in place instead of restarting Claude Code, and the mobile session headers stopped hiding their own buttons.',
+                model: 'A model change now takes effect from the next message you send, every time. It used to be dropped whenever it landed right after a previous mode change — the running Claude Code process kept the old model and nothing on screen disagreed. The switch is also applied to the live session instead of respawning the agent, so it no longer costs a restart and a transcript reload. The picker shows which model is actually running.',
+                effort: 'The thinking-depth (effort) picker works on Claude sessions. Its value was being stripped in transit and never reached the agent on any previous release.',
+                header: 'Terminal header on phones: the action buttons no longer get pushed off the screen while a terminal is connecting or its font is loading — which is what hid the "switch to chat view" button. That toggle stays on the bar; notes, select mode, files, refit width and tmux help moved into one "⋯" menu, touch targets grew, and the terminal title is readable again instead of squeezed to nothing.',
+                chatHeader: 'Chat header on phones: notes, /btw and files collapse into the same "⋯" menu so the conversation title gets the width, and renaming a session now gives you a usable text field instead of a few pixels.',
+            },
             sep03e: {
                 title: 'Import lists only the conversations you have not brought over',
                 summary: 'The import dialog was showing conversations Very Happy already runs — a third of the rows on a busy machine, and the newest ones at that. It now hides everything the machine has ever driven, so what is left is genuinely importable.',
@@ -1874,6 +1883,7 @@ export const en = {
         // P1 multi-device: header button to reclaim this viewport's width when
         // another (narrower) device left the shared pane narrow.
         fontLoading: 'Loading terminal font…',
+        moreActions: 'More terminal actions',
         refitWidth: 'Refit width',
         refitWidthHint: 'Fit the terminal to this device’s width. Lines already scrolled above keep the width they were printed at — terminals cannot reflow them.',
         selectMode: 'Select / copy mode',

@@ -18,17 +18,43 @@
   flex-shrink: 0;
 }
 /* the back arrow is now the shared .vh-back control (styles/base.css) */
+/* Containment group: the title and every status chip live here, and this is
+   the ONLY flexible item on the bar. Anything that grows inside it (a longer
+   title, a "loading…" chip) is absorbed or clipped HERE — it can no longer push
+   the action cluster past the right edge, where .app-detail clips it and no
+   scroll can reach it. That failure mode cost the structured-view toggle its
+   visibility on phones (measured 167-237px of overflow at 360-390px). */
+.term-header-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  /* The clip would otherwise eat the focus ring of .term-title (a real
+     focusable button): the app-wide indicator is a 3px box-shadow, and an
+     ancestor's overflow clips descendant box-shadows AND outlines alike.
+     Padding gives the ring room inside the clip box; the negative margin puts
+     the border box back where it was, so nothing shifts. */
+  padding: 3px;
+  margin: -3px;
+}
 .term-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1;
+  /* the title is what absorbs the squeeze — it ellipsises gracefully, a
+     truncated status chip ("终端字…") does not. But never below a readable
+     stub: a 0px title (what the old `flex: 1` produced on every phone) leaves
+     no way to tell which terminal you are looking at. */
+  flex: 1 1 auto;
   color: var(--text);
   font-size: var(--fs-14);
   font-weight: 500;
 }
 .term-title-text {
+  min-width: 3rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -41,7 +67,10 @@
 }
 .term-title:hover .term-title-edit { opacity: 1; }
 .term-relay {
-  flex-shrink: 0;
+  /* rigid at its natural width (capped): the title yields instead. The
+     containment group's overflow:hidden is the backstop if even that is not
+     enough — at 320px the two are within a few px of each other. */
+  flex: none;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -67,9 +96,23 @@
   gap: var(--sp-2);
   flex-shrink: 0;
 }
+/* Touch targets. The bar used to carry up to six 38px buttons (the shared
+   .sb-icon-btn coarse size) with no room to grow them; now that everything
+   secondary lives behind one "⋯" trigger (termHeaderLayout.ts) there is room
+   for the 44px floor design-language.md:46 asks for. */
+@media (pointer: coarse) {
+  .term-header .sb-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+}
 .term-connecting {
   font-size: var(--fs-11);
   color: var(--text-faint);
+  /* one line — a wrapped chip doubles the header height on a phone. Rigid for
+     the same reason as .term-relay: the title is the thing that yields. */
+  white-space: nowrap;
+  flex: none;
 }
 .term-host {
   flex: 1;

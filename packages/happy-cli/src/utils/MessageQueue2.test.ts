@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { MessageQueue2 } from './MessageQueue2';
 import { hashObject } from './deterministicJson';
+import { claudeModeHash } from '@/claude/claudeModeHash';
+import type { EnhancedMode } from '@/claude/loop';
 
 describe('MessageQueue2', () => {
     it('should create a queue', () => {
@@ -484,5 +486,45 @@ describe('MessageQueue2', () => {
         const batch3 = await queue.waitForMessagesAndGetAsString();
         expect(batch3?.message).toBe('after-isolated');
         expect(batch3?.mode.type).toBe('B');
+    });
+});
+
+describe('MessageQueue2 batching with the real Claude mode hash', () => {
+    /**
+     * B-292 follow-up. The Claude hasher deliberately omits `model` (claudeRemote
+     * switches it live on the running Query, so it needs no relaunch) — but the
+     * same hash is ALSO the batching key here. Two messages that differ only in
+     * model therefore merge into one turn, and if the batch kept the FIRST
+     * item's mode the merged turn would run on the model the user just moved
+     * away from: the switch is silently dropped for exactly the turn that
+     * carried it. Newest intent wins instead.
+     */
+    it('merges messages that differ only in model, and keeps the NEWEST model', async () => {
+        const queue = new MessageQueue2<EnhancedMode>(claudeModeHash);
+        queue.push('first', { permissionMode: 'default', model: 'sonnet' } as EnhancedMode);
+        queue.push('then switch', { permissionMode: 'default', model: 'opus' } as EnhancedMode);
+
+        const batch = await queue.waitForMessagesAndGetAsString();
+        expect(batch?.message).toBe('first\nthen switch');
+        expect(batch?.mode.model).toBe('opus');
+    });
+
+    it('still splits on anything that needs a fresh SDK Query', async () => {
+        const queue = new MessageQueue2<EnhancedMode>(claudeModeHash);
+        queue.push('low', { permissionMode: 'default', effort: 'low' } as EnhancedMode);
+        queue.push('max', { permissionMode: 'default', effort: 'max' } as EnhancedMode);
+
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('low');
+        expect((await queue.waitForMessagesAndGetAsString())?.message).toBe('max');
+    });
+
+    it('keeps the newest permission mode too, since only plan/non-plan is hashed', async () => {
+        const queue = new MessageQueue2<EnhancedMode>(claudeModeHash);
+        queue.push('a', { permissionMode: 'acceptEdits' } as EnhancedMode);
+        queue.push('b', { permissionMode: 'bypassPermissions' } as EnhancedMode);
+
+        const batch = await queue.waitForMessagesAndGetAsString();
+        expect(batch?.message).toBe('a\nb');
+        expect(batch?.mode.permissionMode).toBe('bypassPermissions');
     });
 });

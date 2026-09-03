@@ -355,6 +355,15 @@ export const MessageMetaSchema = z.object({
   appendSystemPrompt: z.string().nullable().optional(), // Append to system prompt for this message (null = reset)
   allowedTools: z.array(z.string()).nullable().optional(), // Allowed tools for this message (null = reset)
   disallowedTools: z.array(z.string()).nullable().optional(), // Disallowed tools for this message (null = reset)
+  /**
+   * Thinking depth for this message (null = reset to the machine default).
+   * Deliberately a plain string, not an enum: an unknown value must not make
+   * zod reject the WHOLE message the way the `dontAsk` permission enum did
+   * (AGENTS 铁律 14). runClaude validates it against its own allow-list and
+   * ignores anything else. Absent here until 0.2.105, which is why every
+   * released CLI silently dropped the web's effort selection.
+   */
+  effort: z.string().nullable().optional(),
   /** Omitted/queue waits for the current turn; steer targets the live turn. */
   delivery: z.enum(['queue', 'steer']).optional()
 })

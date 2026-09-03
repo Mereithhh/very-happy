@@ -10,7 +10,7 @@ import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { hashObject } from '@/utils/deterministicJson';
+import { claudeModeHash } from './claudeModeHash';
 import { assistantSpawnTags } from '@/utils/createSessionMetadata';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -553,16 +553,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
-        isPlan: mode.permissionMode === 'plan',
-        model: mode.model,
-        fallbackModel: mode.fallbackModel,
-        customSystemPrompt: mode.customSystemPrompt,
-        appendSystemPrompt: mode.appendSystemPrompt,
-        allowedTools: mode.allowedTools,
-        disallowedTools: mode.disallowedTools,
-        effort: mode.effort,
-    }));
+    const messageQueue = new MessageQueue2<EnhancedMode>(claudeModeHash);
 
     session.rpcHandlerManager.registerHandler<
         { localKey?: unknown; text?: unknown },

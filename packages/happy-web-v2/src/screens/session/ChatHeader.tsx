@@ -3,14 +3,16 @@
  * and the global back button.
  */
 import { useEffect, useState } from 'react';
-import { StickyNote, Check, FolderTree, MessageCircleQuestion, Pencil, X } from 'lucide-react';
+import { StickyNote, Check, FolderTree, MessageCircleQuestion, MoreHorizontal, Pencil, X } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { useSession } from '@/sync/storage';
 import { useSocketStatus } from '@/app/useConnection';
 import { sessionUpdateTitle } from '@/sync/ops';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { useTranslation } from '@/i18n/useTranslation';
-import { Spinner, StatusDot, type Status } from '@/ui';
+import { ActionDropdownMenu, Spinner, StatusDot, type MenuItemDef, type Status } from '@/ui';
+import { useIsTablet } from '@/app/useMediaQuery';
+import { planChatHeaderActions, type ChatHeaderActionKey } from './chatHeaderLayout';
 import { useImeGuard } from '@/utils/ime';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { getServerUrl } from '@/sync/serverConfig';
@@ -47,6 +49,7 @@ export function ChatHeader({
     const [draft, setDraft] = useState('');
     const [saving, setSaving] = useState(false);
     const ime = useImeGuard();
+    const isTablet = useIsTablet();
 
     const meta = session?.metadata;
     const title = meta?.summary?.text?.trim() || t('session.newChat');
@@ -93,6 +96,76 @@ export function ChatHeader({
         }
     };
 
+    // Header composition — see chatHeaderLayout.ts. On mobile this header is a
+    // session's only chrome, and three rigid icon buttons next to the relay pill
+    // left the title 8-12 characters at 360-390px.
+    const plan = planChatHeaderActions({
+        compact: !isTablet,
+        hasBtw: !!onToggleBtw,
+        hasFiles: !!onToggleFiles,
+    });
+    const overflowHasActive = plan.overflow.some(
+        (key) => (key === 'btw' && btwOpen) || (key === 'files' && filesOpen),
+    );
+    const menuItem = (key: ChatHeaderActionKey): MenuItemDef => {
+        switch (key) {
+            case 'notes':
+                return { key, label: t('notes.title'), icon: StickyNote, onSelect: toggleNotesPanel };
+            // `checked` ⇒ menuitemcheckbox, so these keep the aria-pressed state
+            // they had as header buttons before B-293 collapsed them.
+            case 'btw':
+                return { key, label: t('session.btw.title'), icon: MessageCircleQuestion, checked: !!btwOpen, onSelect: () => onToggleBtw?.() };
+            case 'files':
+                return { key, label: t('session.chat.files'), icon: FolderTree, checked: !!filesOpen, onSelect: () => onToggleFiles?.() };
+        }
+    };
+    const renderAction = (key: ChatHeaderActionKey) => {
+        switch (key) {
+            case 'notes':
+                // B-115: quick notes entry.
+                return (
+                    <button
+                        key={key}
+                        type="button"
+                        className="ch-icon"
+                        onClick={toggleNotesPanel}
+                        aria-label={t('notes.title')}
+                        title={t('notes.title')}
+                    >
+                        <StickyNote size={16} />
+                    </button>
+                );
+            case 'btw':
+                return (
+                    <button
+                        key={key}
+                        type="button"
+                        className={`ch-icon ch-btw-toggle${btwOpen ? ' is-active' : ''}`}
+                        onClick={onToggleBtw}
+                        aria-label={t('session.btw.title')}
+                        title={t('session.btw.headerHint')}
+                        aria-pressed={btwOpen}
+                    >
+                        <MessageCircleQuestion size={16} />
+                    </button>
+                );
+            case 'files':
+                return (
+                    <button
+                        key={key}
+                        type="button"
+                        className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
+                        onClick={onToggleFiles}
+                        aria-label={t('session.chat.files')}
+                        title={t('session.chat.files')}
+                        aria-pressed={filesOpen}
+                    >
+                        <FolderTree size={16} />
+                    </button>
+                );
+        }
+    };
+
     return (
         <header className="ch">
             <BackButton />
@@ -131,44 +204,26 @@ export function ChatHeader({
                     </div>
                 )}
             </div>
-            <div className="ch-status">
-                <span className="ch-relay" title={t('session.chat.relayRegion')}>{relayLabel}</span>
-                <StatusDot status={status} size={9} pulse={status === 'connected'} />
-            </div>
-            {/* B-115: quick notes entry — the dock's only reachable entry on
-                mobile (⌘J / sidebar footer don't exist there). */}
-            <button
-                type="button"
-                className="ch-icon"
-                onClick={toggleNotesPanel}
-                aria-label={t('notes.title')}
-                title={t('notes.title')}
-            >
-                <StickyNote size={16} />
-            </button>
-            {onToggleBtw && (
-                <button
-                    type="button"
-                    className={`ch-icon ch-btw-toggle${btwOpen ? ' is-active' : ''}`}
-                    onClick={onToggleBtw}
-                    aria-label={t('session.btw.title')}
-                    title={t('session.btw.headerHint')}
-                    aria-pressed={btwOpen}
-                >
-                    <MessageCircleQuestion size={16} />
-                </button>
+            {/* Rename takes the whole bar: with the status pill and icons in
+                place the input measured 4px wide at 360px — unusable. */}
+            {!editing && (
+                <div className="ch-status">
+                    <span className="ch-relay" title={t('session.chat.relayRegion')}>{relayLabel}</span>
+                    <StatusDot status={status} size={9} pulse={status === 'connected'} />
+                </div>
             )}
-            {onToggleFiles && (
-                <button
-                    type="button"
-                    className={`ch-icon ch-files-toggle${filesOpen ? ' is-active' : ''}`}
-                    onClick={onToggleFiles}
-                    aria-label={t('session.chat.files')}
-                    title={t('session.chat.files')}
-                    aria-pressed={filesOpen}
-                >
-                    <FolderTree size={16} />
-                </button>
+            {!editing && plan.inline.map(renderAction)}
+            {!editing && plan.overflow.length > 0 && (
+                <ActionDropdownMenu items={plan.overflow.map(menuItem)}>
+                    <button
+                        type="button"
+                        className={`ch-icon${overflowHasActive ? ' is-active' : ''}`}
+                        aria-label={t('session.chat.moreActions')}
+                        title={t('session.chat.moreActions')}
+                    >
+                        <MoreHorizontal size={16} />
+                    </button>
+                </ActionDropdownMenu>
             )}
         </header>
     );

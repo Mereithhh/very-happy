@@ -36,6 +36,7 @@ import {
 import { ModeMenu } from './ModeMenu';
 import { SessionOptionsDialog } from './SessionOptionsDialog';
 import { resolveMessageModeMeta } from '@/sync/messageMeta';
+import { deriveRunningModelSubtitle } from './modelDisplay';
 import { loadQueuedMessages, saveQueuedMessages } from '@/sync/persistence';
 import {
     advanceQueueDeliveryPhase,
@@ -223,6 +224,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
             case 'unconfirmed-other': return t('session.chat.permissionModeState.unconfirmedOther');
         }
     })();
+    // B-292: the selector value is client intent and flips on tap; this is the
+    // only thing on screen that reports what the agent is actually running.
+    const modelSubtitle = deriveRunningModelSubtitle({
+        isClaude: isClaudeFlavor,
+        selectedKey: modelKey,
+        running: metadata?.currentModelCode,
+    });
     const sessionOptionsSummary = [selectedModel?.name, selectedPermission?.name]
         .filter(Boolean)
         .join(' · ');
@@ -616,6 +624,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         options: models,
                         value: modelKey,
                         onChange: (key) => setMode('updateSessionModelMode', 'modelMode', key),
+                        hint: modelSubtitle,
                     }}
                     permission={{
                         label: t('session.chat.permissionLabel'),
@@ -861,6 +870,7 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
                         options={models}
                         value={modelKey}
                         onChange={(key) => setMode('updateSessionModelMode', 'modelMode', key)}
+                        subtitle={modelSubtitle}
                     />
                     <ModeMenu
                         label={t('session.chat.permissionLabel')}

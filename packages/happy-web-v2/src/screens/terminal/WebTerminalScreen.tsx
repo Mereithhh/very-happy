@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { createTerminalRenderer, type TerminalRenderer } from './renderer';
-import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X, RefreshCw } from 'lucide-react';
+import { Pencil, HelpCircle, TextSelect, Keyboard, TextCursorInput, FolderOpen, MessagesSquare, StickyNote, X, RefreshCw, MoreHorizontal } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import { apiSocket, type MachineRelayStatus } from '@/sync/apiSocket';
 import { sync as appSync } from '@/sync/sync';
@@ -55,7 +55,9 @@ import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
 import { resumeStartupCommand } from '@/sync/closedTerminals';
-import { useIsDesktop, useMediaQuery } from '@/app/useMediaQuery';
+import { useIsDesktop, useIsTablet, useMediaQuery } from '@/app/useMediaQuery';
+import { planTermHeaderActions, type TermHeaderActionKey } from './termHeaderLayout';
+import { termHeaderStatusChips } from './termHeaderStatus';
 import { useFilesPanelWidth } from '../files/useFilesPanelWidth';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ensureImeFix } from './imeFix';
@@ -80,7 +82,7 @@ import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import { createTermWriteHold } from './termWriteHold';
 import { createTermStreamSync } from './termStreamSync';
 import { quoteTerminalUploadPath, terminalUploadName, uploadTerminalFile } from './terminalFileUpload';
-import { useToast } from '@/ui';
+import { ActionDropdownMenu, useToast, type MenuItemDef } from '@/ui';
 import {
   createTermAssembly,
   prefixAlternateEnter,
@@ -176,6 +178,9 @@ export function WebTerminalScreen() {
   const tid = params.get('tid') ?? undefined;
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
+  // Header collapse threshold: below the tablet breakpoint the full action
+  // cluster does not fit next to the title (measured, see termHeaderLayout.ts).
+  const isTablet = useIsTablet();
   const { t } = useTranslation();
   const toast = useToast();
   const machine = useMachine(machineId || '');
@@ -2437,44 +2442,68 @@ export function WebTerminalScreen() {
     { label: '-', seq: '-', aria: 'Dash' },
   ];
 
-  return (
-    <div className="term-screen" ref={screenRef}>
-      <header className="term-header">
-        <BackButton />
-        <button className="term-title" onClick={onRename} title={t('common.rename')}>
-          <span className="term-title-text">{title}</span>
-          <Pencil size={13} className="term-title-edit" />
-        </button>
-        <span
-          className={`term-relay mono is-${relayStatus.state}`}
-          title={relayStatus.transport === 'regional'
-            ? `${formatRelayRegion(relayStatus.region)} · browser RTT ${relayLatency}`
-            : 'Control relay fallback'}
-        >
-          {relayStatus.state === 'connecting'
-            ? 'RELAY…'
-            : relayStatus.transport === 'regional'
-              ? `${formatRelayRegion(relayStatus.region)} · ${relayLatency}`
-              : 'CONTROL'}
-        </span>
-        <div className="term-header-right">
-          {(connecting || !surfaceReady) && <span className="term-connecting mono">{t('common.loading')}</span>}
-          {cjkFontLoading && <span className="term-connecting mono">{t('terminal.fontLoading')}</span>}
-          {/* B-105: structured-view toggle — header-level on purpose (mobile
-              must reach it in one glance, never inside a menu). Only exists
-              while the daemon reports a mirror session for this terminal. */}
-          {mirrorSessionId && (
-            <button
-              className="sb-icon-btn"
-              title={t('terminal.structuredView')}
-              aria-label={t('terminal.structuredView')}
-              onClick={goStructured}
-            >
-              <MessagesSquare size={18} />
-            </button>
-          )}
-          {/* B-115: quick notes entry (prompt stash lives one tap away). */}
+  // ── header composition (see termHeaderLayout.ts for the priority policy) ──
+  const statusChips = termHeaderStatusChips({
+    compact: !isTablet,
+    connecting: connecting || !surfaceReady,
+    fontLoading: cjkFontLoading,
+  });
+  const headerPlan = planTermHeaderActions({
+    compact: !isTablet,
+    hasMirror: !!mirrorSessionId,
+    showSelect: !isDesktop,
+    showPresets: !IS_COARSE_POINTER,
+    hasTmuxSession,
+  });
+  // Toggles that moved into the menu still have to LOOK on when they are on,
+  // or a collapsed "select mode" reads as if it silently turned itself off.
+  const overflowHasActive = headerPlan.overflow.some(
+    (key) => (key === 'select' && selectMode) || (key === 'files' && filesOpen),
+  );
+  const headerActionMenuItem = (key: TermHeaderActionKey): MenuItemDef | null => {
+    switch (key) {
+      case 'notes':
+        return { key, label: t('notes.title'), icon: StickyNote, onSelect: toggleNotesPanel };
+      // `checked` makes these render as menuitemcheckbox, so a toggle that moved
+      // into the menu keeps the on/off state it had as an aria-pressed button.
+      case 'select':
+        return { key, label: t('terminal.selectMode'), icon: TextSelect, checked: selectMode, onSelect: toggleSelectMode };
+      case 'files':
+        return { key, label: t('session.chat.files'), icon: FolderOpen, checked: filesOpen, onSelect: () => setFilesOpen((v) => !v) };
+      case 'refit':
+        return { key, label: t('terminal.refitWidth'), icon: RefreshCw, onSelect: () => refitWidthRef.current?.(true) };
+      case 'tmuxHelp':
+        return { key, label: t('tmuxHelp.title'), icon: HelpCircle, onSelect: () => setShowHelp(true) };
+      // Spelled out rather than a `default`, so adding a TermHeaderActionKey
+      // without deciding its menu form is a compile error (TS2366) instead of a
+      // control that silently vanishes on mobile — the B-293 failure shape.
+      case 'structured':
+      case 'presets':
+        return null; // inline-only by policy, see termHeaderLayout.ts
+    }
+  };
+  const renderHeaderAction = (key: TermHeaderActionKey) => {
+    switch (key) {
+      case 'structured':
+        // B-105: header-level on purpose — mobile must reach the structured
+        // face in one glance, never inside a menu. That rule is why everything
+        // ELSE collapses on a phone: the cluster no longer fits beside it.
+        return (
           <button
+            key={key}
+            className="sb-icon-btn"
+            title={t('terminal.structuredView')}
+            aria-label={t('terminal.structuredView')}
+            onClick={goStructured}
+          >
+            <MessagesSquare size={18} />
+          </button>
+        );
+      case 'notes':
+        // B-115: quick notes entry (prompt stash lives one tap away).
+        return (
+          <button
+            key={key}
             type="button"
             className="sb-icon-btn"
             title={t('notes.title')}
@@ -2483,32 +2512,40 @@ export function WebTerminalScreen() {
           >
             <StickyNote size={18} />
           </button>
-          {!isDesktop && (
-            <button
-              className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}
-              title={t('terminal.selectMode')}
-              aria-pressed={selectMode}
-              onClick={toggleSelectMode}
-            >
-              <TextSelect size={18} />
-            </button>
-          )}
-          {/* Unified shortcuts (absorbed the old quick-commands menu):
-              desktop entry lives here; touch devices get the key-bar entry
-              instead (their keyboard affordances live there). */}
-          {!IS_COARSE_POINTER && (
-            <TermPresetsMenu
-              variant="header"
-              onPick={insertPreset}
-              onRun={execPreset}
-              onManage={() => navigateTo('/settings/snippets')}
-              // Keyboard cancel (Esc / ⌘.) — back to the terminal, matching
-              // where focus lived before the chord opened the menu.
-              // Input-element coupling point 7/11 (spec 现状表).
-              onCancel={() => termRef.current?.focusInput()}
-            />
-          )}
+        );
+      case 'select':
+        return (
           <button
+            key={key}
+            className={`sb-icon-btn${selectMode ? ' is-active' : ''}`}
+            title={t('terminal.selectMode')}
+            aria-pressed={selectMode}
+            onClick={toggleSelectMode}
+          >
+            <TextSelect size={18} />
+          </button>
+        );
+      case 'presets':
+        // Unified shortcuts (absorbed the old quick-commands menu): desktop
+        // entry lives here; touch devices get the key-bar entry instead (their
+        // keyboard affordances live there).
+        return (
+          <TermPresetsMenu
+            key={key}
+            variant="header"
+            onPick={insertPreset}
+            onRun={execPreset}
+            onManage={() => navigateTo('/settings/snippets')}
+            // Keyboard cancel (Esc / ⌘.) — back to the terminal, matching where
+            // focus lived before the chord opened the menu.
+            // Input-element coupling point 7/11 (spec 现状表).
+            onCancel={() => termRef.current?.focusInput()}
+          />
+        );
+      case 'files':
+        return (
+          <button
+            key={key}
             className={`sb-icon-btn${filesOpen ? ' is-active' : ''}`}
             title={t('session.chat.files')}
             aria-pressed={filesOpen}
@@ -2516,11 +2553,15 @@ export function WebTerminalScreen() {
           >
             <FolderOpen size={18} />
           </button>
-          {/* P1 multi-device: reclaim this device's width when a narrower one
-              (a phone) left the shared pane narrow. Auto-reclaim rides real
-              pointer/keys (reassertGeometry); this is the explicit lever and
-              carries the "old lines can't reflow" explanation in its tooltip. */}
+        );
+      case 'refit':
+        // P1 multi-device: reclaim this device's width when a narrower one (a
+        // phone) left the shared pane narrow. Auto-reclaim rides real
+        // pointer/keys (reassertGeometry); this is the explicit lever and
+        // carries the "old lines can't reflow" explanation in its tooltip.
+        return (
           <button
+            key={key}
             type="button"
             className="sb-icon-btn"
             title={t('terminal.refitWidthHint')}
@@ -2530,13 +2571,67 @@ export function WebTerminalScreen() {
           >
             <RefreshCw size={18} />
           </button>
-          {hasTmuxSession && <button
+        );
+      case 'tmuxHelp':
+        return (
+          <button
+            key={key}
             className="sb-icon-btn"
             title={t('tmuxHelp.title')}
             onClick={() => setShowHelp(true)}
           >
             <HelpCircle size={18} />
-          </button>}
+          </button>
+        );
+    }
+  };
+
+  return (
+    <div className="term-screen" ref={screenRef}>
+      <header className="term-header">
+        <BackButton />
+        {/* One shrinkable middle group owns the title AND every status chip, so
+            a transient chip can never push the action cluster off a phone
+            screen again (it did — measured 167-237px of unreachable overflow at
+            360-390px, which is how the structured-view toggle disappeared).
+            The title truncates first; the chips clip only after that. */}
+        <div className="term-header-main">
+          <button className="term-title" onClick={onRename} title={t('common.rename')}>
+            <span className="term-title-text">{title}</span>
+            <Pencil size={13} className="term-title-edit" />
+          </button>
+          {statusChips.includes('relay') && (
+            <span
+              className={`term-relay mono is-${relayStatus.state}`}
+              title={relayStatus.transport === 'regional'
+                ? `${formatRelayRegion(relayStatus.region)} · browser RTT ${relayLatency}`
+                : 'Control relay fallback'}
+            >
+              {relayStatus.state === 'connecting'
+                ? 'RELAY…'
+                : relayStatus.transport === 'regional'
+                  ? `${formatRelayRegion(relayStatus.region)} · ${relayLatency}`
+                  : 'CONTROL'}
+            </span>
+          )}
+          {statusChips.includes('connecting') && <span className="term-connecting mono">{t('common.loading')}</span>}
+          {statusChips.includes('font') && <span className="term-connecting mono">{t('terminal.fontLoading')}</span>}
+        </div>
+        <div className="term-header-right">
+          {headerPlan.inline.map((key) => renderHeaderAction(key))}
+          {headerPlan.overflow.length > 0 && (
+            <ActionDropdownMenu items={headerPlan.overflow.map(headerActionMenuItem).filter(Boolean) as MenuItemDef[]}>
+              <button
+                type="button"
+                className={`sb-icon-btn${overflowHasActive ? ' is-active' : ''}`}
+                title={t('terminal.moreActions')}
+                aria-label={t('terminal.moreActions')}
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+            </ActionDropdownMenu>
+          )}
         </div>
       </header>
       {/* term-mid: desktop (fine pointer, wide) = flex ROW so the file browser

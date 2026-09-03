@@ -15,6 +15,7 @@ import type { CanUseTool, OnElicitation, OnUserDialog, PermissionResult } from "
 import type { JsRuntime } from "./runClaude";
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
 import type { ClaudeSdkMetadata } from './claudeSdkMetadata';
+import { modelSwitchFailureNotice, modelTarget, needsModelSwitch } from './claudeLiveModel';
 
 export async function claudeRemote(opts: {
 
@@ -33,6 +34,8 @@ export async function claudeRemote(opts: {
     /** Called when the Query object is ready — exposes live query controls. */
     onQueryReady?: (query: {
         setPermissionMode: (mode: string) => Promise<void>;
+        /** Live model switch; rejects on an alias Claude Code does not know. */
+        setModel: (model?: string) => Promise<void>;
         interrupt: () => Promise<void>;
         steer: (message: MessageParam['content'], mode: EnhancedMode) => void;
     }) => void,
@@ -191,9 +194,13 @@ export async function claudeRemote(opts: {
     if (opts.onQueryReady) {
         opts.onQueryReady({
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+            setModel: (model?: string) => response.setModel(modelTarget(model)),
             interrupt: async () => { await response.interrupt(); },
             steer: (message, nextMode) => {
-                mode = nextMode;
+                // Steer injects into the CURRENT turn, and a model cannot change
+                // mid-turn — keep the one that is actually running so the next
+                // turn boundary still sees (and applies) the difference.
+                mode = { ...nextMode, model: mode.model };
                 messages.push({
                     type: 'user',
                     parent_tool_use_id: null,
@@ -247,7 +254,10 @@ export async function claudeRemote(opts: {
                         mcpServers: systemInit.mcp_servers?.map(s => ({ name: s.name, status: s.status })),
                         skills: systemInit.skills,
                         model: systemInit.model,
-                        modelIsDefault: initial.mode.model == null,
+                        // `mode`, not `initial.mode`: the model can move mid-Query
+                        // via setModel, and init is re-emitted every turn with the
+                        // model actually in force.
+                        modelIsDefault: modelTarget(mode.model) === undefined,
                         // The SDK's own verdict on the mode it will enforce —
                         // settings (permissions.deny/ask/defaultMode/
                         // disableBypassPermissionsMode) can override what we
@@ -322,19 +332,35 @@ export async function claudeRemote(opts: {
                 // Wait for next user message without blocking the message loop.
                 // Background task messages (task_started, task_progress, task_notification)
                 // continue flowing through while we wait for user input.
-                opts.nextMessage().then((next) => {
+                opts.nextMessage().then(async (next) => {
                     if (!next) {
                         messages.end();
-                    } else {
-                        mode = next.mode;
-                        updateThinking(true);
-                        messages.push({
-                            type: 'user',
-                            parent_tool_use_id: null,
-                            origin: { kind: 'human' },
-                            message: { role: 'user', content: next.message },
-                        });
+                        return;
                     }
+                    // A model change is applied IN PLACE (see claudeLiveModel.ts)
+                    // — this is the only mode field the SDK can move on a live
+                    // Query, which is why `model` is deliberately NOT part of the
+                    // launcher's relaunch hash. A rejected switch (a dead alias
+                    // from a stale client) must not take the turn down: report it
+                    // and keep running the model that is already loaded.
+                    if (needsModelSwitch(mode.model, next.mode.model)) {
+                        try {
+                            await response.setModel(modelTarget(next.mode.model));
+                            logger.debug(`[claudeRemote] Model switched to ${modelTarget(next.mode.model) ?? 'default'}`);
+                        } catch (e) {
+                            logger.debug(`[claudeRemote] setModel failed: ${e instanceof Error ? e.message : String(e)}`);
+                            opts.onCompletionEvent?.(modelSwitchFailureNotice(next.mode.model, e));
+                            next = { ...next, mode: { ...next.mode, model: mode.model } };
+                        }
+                    }
+                    mode = next.mode;
+                    updateThinking(true);
+                    messages.push({
+                        type: 'user',
+                        parent_tool_use_id: null,
+                        origin: { kind: 'human' },
+                        message: { role: 'user', content: next.message },
+                    });
                 }).catch(() => {
                     messages.end();
                 });

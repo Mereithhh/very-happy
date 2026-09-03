@@ -28,6 +28,7 @@ import { configuration } from '@/configuration';
 import { ensurePrivateDirectory } from '@/utils/secureFiles';
 import { isClaudeEdeOnlySdkError, isClaudeInterruptSentinelContent } from './utils/interruptNoise';
 import { parseClaudePermissionMode, type ClaudeSdkPermissionMode } from './utils/permissionMode';
+import { LaunchModeGate } from './launchModeGate';
 
 interface PermissionsField {
     date: number;
@@ -336,11 +337,18 @@ export async function claudeRemoteLauncher(
         }
     }
 
+    type ParkedMessage = {
+        message: MessageParam['content'];
+        mode: EnhancedMode;
+    };
+
     try {
-        let pending: {
-            message: MessageParam['content'];
-            mode: EnhancedMode;
-        } | null = null;
+        // Process-scoped, NOT per-launch: it carries the parked message across
+        // the relaunch that message caused. `reset()` in each launch's finally
+        // clears only the adopted mode, which is what makes a fresh launch
+        // accept its first message. Parking and adopting live together here on
+        // purpose — see launchModeGate.ts.
+        const modeGate = new LaunchModeGate<EnhancedMode, ParkedMessage>(session.queue.modeHasher);
 
         // Track session ID to detect when it actually changes
         // This prevents context loss when mode changes (permission mode, model, etc.)
@@ -368,26 +376,19 @@ export async function claudeRemoteLauncher(
             const controller = new AbortController();
             abortController = controller;
             abortFuture = new Future<void>();
-            let modeHash: string | null = null;
-            let mode: EnhancedMode | null = null;
             // Process-level mode owner: every path that changes the effective mode
             // (idle RPC, plan approval, approve-with-mode) lands here so the queue
             // hash, the local enforcer and runClaude's published metadata agree.
             const commitPermissionMode = (nextMode: ClaudeSdkPermissionMode): ClaudeSdkPermissionMode => {
                 permissionHandler.handleModeChange(nextMode);
-                if (mode) {
-                    mode = { ...mode, permissionMode: nextMode };
-                    modeHash = session.queue.modeHasher(mode);
-                }
+                modeGate.amend({ permissionMode: nextMode });
                 // B-262 batch 2: messages already queued carry the mode snapshot
                 // taken when they were enqueued. An explicit switch (idle RPC,
                 // plan approval, approve-with-mode) is newer than all of them —
                 // rewrite their snapshots so the next queued message cannot
                 // pull the process back to a stale plan/default.
                 rewriteQueuedPermissionMode(session.queue.queue, session.queue.modeHasher, nextMode);
-                if (pending) {
-                    pending = { ...pending, mode: { ...pending.mode, permissionMode: nextMode } };
-                }
+                modeGate.amendParked({ permissionMode: nextMode });
                 onPermissionModeChange?.(nextMode);
                 return nextMode;
             };
@@ -411,25 +412,46 @@ export async function claudeRemoteLauncher(
                         return permissionHandler.isAborted(toolCallId);
                     },
                     nextMessage: async () => {
-                        if (pending) {
-                            let p = pending;
-                            pending = null;
-                            permissionHandler.handleModeChange(p.mode.permissionMode);
-                            return p;
+                        // takeParked() adopts as it hands the message over — this
+                        // launch exists BECAUSE of that mode. (The two used to be
+                        // separate steps and the adopt was missing: B-292.)
+                        const parked = modeGate.takeParked();
+                        if (parked) {
+                            permissionHandler.handleModeChange(parked.mode.permissionMode);
+                            return parked;
                         }
 
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                         // Check if mode has changed
                         if (msg) {
-                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+                            if (modeGate.requiresRelaunch(msg.hash, msg.isolate)) {
                                 logger.debug('[remote]: mode has changed, pending message');
-                                pending = msg;
+                                // Stage NOW, not on replay: the queue item is the
+                                // only reference to these bytes
+                                // (drainAttachmentsForUserMessage hands the bucket
+                                // over destructively), and the replay path returns
+                                // the parked value verbatim. Parking the raw
+                                // message dropped every attachment that travelled
+                                // with a mode change — silently, with the model
+                                // answering as if no image had been sent.
+                                const parkedAttachments = msg.attachments ?? [];
+                                const parkedStaged = parkedAttachments.length > 0
+                                    ? await stageClaudeAttachments(parkedAttachments, {
+                                        happyHomeDir: configuration.happyHomeDir,
+                                        sessionId: session.client.sessionId,
+                                    })
+                                    : [];
+                                modeGate.park({
+                                    message: parkedStaged.length > 0
+                                        ? appendStagedAttachmentsToPrompt(msg.message, parkedStaged)
+                                        : msg.message,
+                                    mode: msg.mode,
+                                });
                                 return null;
                             }
-                            modeHash = msg.hash;
-                            mode = msg.mode;
-                            permissionHandler.handleModeChange(mode.permissionMode);
+                            modeGate.adopt(msg.mode);
+                            permissionHandler.handleModeChange(msg.mode.permissionMode);
 
                             // Per-message attachments are already claimed by the message
                             // when it was pushed onto the queue, so there is no race window
@@ -475,10 +497,15 @@ export async function claudeRemoteLauncher(
                     onQueryReady: (q) => {
                         turnSteering.setInterrupt(q.interrupt);
                         session.setSteerHandler(async (input) => {
-                            // A live query cannot atomically switch model,
-                            // prompt, tools, effort, or permission mode.
-                            const expectedHash = session.queue.modeHasher(input.mode);
-                            if (!modeHash || expectedHash !== modeHash) return false;
+                            // Steer injects into the RUNNING turn, so it is only
+                            // legal when the live Query was built for this mode.
+                            // The gate's hash covers exactly what query() fixes at
+                            // creation — `model` is deliberately NOT among them
+                            // (claudeModeHash): a steer that also moves the model
+                            // is accepted and runs on the loaded model, and
+                            // claudeRemote.steer keeps that model so the switch
+                            // still lands at the next turn boundary.
+                            if (!modeGate.matches(input.mode)) return false;
 
                             let message: MessageParam['content'] = input.message;
                             if (input.attachments?.length) {
@@ -492,7 +519,7 @@ export async function claudeRemoteLauncher(
                             // Staging can outlive the turn. Recheck before
                             // touching the live input stream; false falls back
                             // to the ordinary durable queue in runClaude.
-                            if (!session.thinking || modeHash !== expectedHash) return false;
+                            if (!session.thinking || !modeGate.matches(input.mode)) return false;
                             q.steer(message, input.mode);
                             return true;
                         });
@@ -501,10 +528,7 @@ export async function claudeRemoteLauncher(
                         });
                         livePermissionModeHandler = async (nextMode) => {
                             await permissionHandler.setLivePermissionMode(nextMode);
-                            if (mode) {
-                                mode = { ...mode, permissionMode: nextMode };
-                                modeHash = session.queue.modeHasher(mode);
-                            }
+                            modeGate.amend({ permissionMode: nextMode });
                             onPermissionModeChange?.(nextMode);
                             return nextMode;
                         };
@@ -539,7 +563,7 @@ export async function claudeRemoteLauncher(
                             closeFailed: (error) => session.client.closeClaudeSessionTurn('failed', { error }),
                             onFailed: (error) => session.onSessionError(error),
                             onCompleted: () => {
-                                const idle = !pending && session.queue.size() === 0;
+                                const idle = !modeGate.hasParked && session.queue.size() === 0;
                                 // Account-encrypted feed notification on turn end:
                                 // reply_done if Claude produced output, else input_needed
                                 // when the session is idle awaiting the user (best-effort).
@@ -613,8 +637,7 @@ export async function claudeRemoteLauncher(
                 abortFuture = null;
                 logger.debug('[remote]: launch done');
                 permissionHandler.reset();
-                modeHash = null;
-                mode = null;
+                modeGate.reset();
             }
         }
     } finally {
