@@ -136,20 +136,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # B-348: the relay's recommended version is what makes every update
-      # surface appear. Pinning it is a manual step in the release runbook, and
-      # a manual step is one that gets skipped: it was never set at all until
-      # 2026-09-03, so the whole notice mechanism shipped and stayed silent, and
-      # it was then forgotten again on the very next release. Publishing without
-      # promoting is not an error, so this reports rather than fails — but it
-      # reports loudly, in the run that just published, instead of leaving the
-      # discrepancy to be noticed weeks later.
-      - name: Check the relay recommends what was just published
-        if: always()
-        run: node scripts/release/check-recommended.mjs "$(node -p "require('./packages/happy-cli/package.json').version")"
-        env:
-          VH_PUBLIC_ORIGIN: https://veryhappy.dev
-
       - name: Publish main CLI package to npm
         # --no-git-checks because publishing from a tagged, detached state.
         # A retry after a partial platform-package publication is safe.
@@ -272,3 +258,16 @@ jobs:
           fi
           npm dist-tag add "very-happy-cli@$version" latest
           npm view very-happy-cli version
+
+      # B-348: publishing tells nobody — the update surfaces read the relay's
+      # recommendation. This runs AFTER the promotion (not next to the publish
+      # step, where it would fire on every single release: the relay follows the
+      # dist-tag with a one-hour cache, so "not yet" is normal there). Reports
+      # rather than fails: holding a release back is legitimate, and a red X on
+      # a successful publish teaches people to ignore red Xs.
+      - name: Check the relay will recommend what was just published
+        if: always()
+        run: node scripts/release/check-recommended.mjs "${VERSION#v}"
+        env:
+          VH_PUBLIC_ORIGIN: https://veryhappy.dev
+          VERSION: ${{ github.ref_name }}
