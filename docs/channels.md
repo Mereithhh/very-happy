@@ -210,7 +210,10 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   drops it. pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
   `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
-  at a wrapper that loads such extensions.
+  at a wrapper that loads such extensions. pi-acp prints pi's startup banner
+  (version, skills, extensions) as the first assistant message of every
+  session; set `quietStartup: true` in `~/.pi/agent/settings.json` on the
+  daemon machine to silence it.
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a
