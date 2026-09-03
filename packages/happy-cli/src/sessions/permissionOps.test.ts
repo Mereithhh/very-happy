@@ -78,7 +78,7 @@ describe('pendingRequestsOf', () => {
     it('is empty for null / missing / malformed state', () => {
         expect(pendingRequestsOf(null, 0)).toEqual([])
         expect(pendingRequestsOf({}, 0)).toEqual([])
-        expect(pendingRequestsOf({ requests: null }, 0)).toEqual([])
+        expect(pendingRequestsOf({ requests: null } as unknown as AgentState, 0)).toEqual([])
     })
 })
 
