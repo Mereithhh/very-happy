@@ -84,6 +84,7 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
         { type: 'code', code: 'cd /path/to/your/project\nvery-happy          # local Claude TUI; requires external claude\nvery-happy codex    # Codex\nvery-happy gemini   # Gemini through ACP (beta)\nvery-happy acp opencode\nvery-happy openclaw # OpenClaw gateway\nvery-happy acp -- your-agent --agent-specific-acp-flag' },
         { type: 'p', text: 'Local CLI modes require their matching command or gateway. The beta Agent Client Protocol backend includes Gemini and OpenCode presets plus a generic runner; a custom command must expose a compatible ACP endpoint over stdio. OpenClaw uses its own local gateway protocol, not ACP. Run very-happy daemon status if the machine remains offline.' },
         { type: 'note', text: 'In a Web terminal, paste a clipboard image/file or drop a file to hand it to the selected machine. Terminal uploads are capped at 8 MB, staged under ~/.happy/uploads/terminal/, and return a path quoted for the daemon default shell at the cursor without pressing Enter. Larger uploads and native Windows path insertion require the current daemon.' },
+        { type: 'p', text: 'Already have conversations from the claude CLI, the Claude Code desktop app, or claude.ai on that machine? Choose Import a Claude Code conversation from the + menu to continue one of them here; the Claude conversations guide explains what is copied.' },
       ] },
       { heading: '8. Learn the workspace', blocks: [
         { type: 'p', text: 'After the first machine connects, an account with no conversation or terminal opens the compact Help & getting started page automatically, including on mobile. Return any time from the top-left Very Happy mark or Settings. Start both a structured AI conversation and a real Web terminal; expand a help topic when you need details about shortcuts, files, notes, Todo, terminal views, and clipboard handoffs.' },
@@ -111,6 +112,65 @@ const PUBLIC_DOCS_SOURCE: PublicDoc[] = [
       { heading: 'Touch and mobile', blocks: [
         { type: 'p', text: 'Every keyboard-only workflow has a visible touch path: sidebar search for the command palette, header controls for files, notes and structured/terminal handoff, the New button for sessions, and Back controls plus edge swipe for navigation. The mobile terminal also exposes touch-first input controls rather than requiring a hardware keyboard.' },
         { type: 'p', text: 'Installing as a PWA removes browser chrome and makes browser-reserved application chords available where the operating system delivers them. Installation is optional; the responsive Web UI remains fully usable in a normal tab.' },
+      ] },
+    ],
+  },
+  {
+    slug: 'sessions', label: 'Claude conversations', summary: 'Start, import, steer, and recover structured Claude sessions from any device.',
+    sections: [
+      { heading: 'Start or import a conversation', blocks: [
+        { type: 'p', text: 'New chat spawns a structured Claude session on a connected machine through the bundled Agent SDK: pick the machine, the working directory, and the agent; the quick + path reuses the last machine and directory, and New chat (choose options) opens the full dialog. Sessions are ordinary Claude Code conversations on that machine, so their transcripts live under ~/.claude/projects exactly like a terminal session would.' },
+        { type: 'p', text: 'Conversations that were not started here can be imported. Choose Import a Claude Code conversation from the + menu, the command palette, or the machine page: the daemon lists the transcripts stored on the machine by the claude CLI, the Claude Code desktop app, claude.ai remote sessions, or SDK runs, newest first, hiding the ones Very Happy already tracks. Clicking one copies the transcript and opens a new chat that continues from its full history in the same directory.' },
+        { type: 'list', items: ['Import is a copy, not a move: the original file stays untouched for the tool that wrote it, and the two conversations diverge from that point.', 'The list shows the title Claude Code recorded (or the first prompt), the directory, the git branch, where the conversation came from, its size, and how long ago it was last active. Search narrows the listed rows; only the most recent transcripts are scanned.', 'Importing needs the current Very Happy CLI on that machine. An older daemon shows an upgrade hint instead of a list.'] },
+        { type: 'note', text: 'Claude Code stores transcripts per working directory. If that directory is gone — a checkout that moved, a temporary workspace — the import asks before recreating it, and the agent still will not find the files that used to be there.' },
+      ] },
+      { heading: 'Models and effort', blocks: [
+        { type: 'p', text: 'The model picker in the composer and under Settings → Agents mirrors Claude Code’s own /model aliases: default follows whatever claude on that machine is configured with, and fable 5.1, opus 5, sonnet 5, and haiku 4.5 pass the matching alias so the machine’s Claude Code decides the exact model and provider. The 1M-context variants, best available, and opus plan (Opus for planning, Sonnet for execution) are offered the same way.' },
+        { type: 'list', items: ['The meta line under each assistant reply shows the model that actually answered, the effort level, token usage, and an estimated cost from published Anthropic rates.', 'Effort ranges from low to max; leave it on the machine default unless a task needs more depth.', 'Context usage is shown as a percentage of the real window (200K, or 1M for 1M-context models); compacting is one click when it gets high.', 'Settings → Agents sets per-agent defaults for permission mode, model, and effort; a session can override them without changing the defaults.'] },
+        { type: 'note', text: 'Very Happy never pins a model id itself. When Claude Code moves an alias to a newer model, existing sessions follow it after their next turn, and the label in the picker is updated with the next Web release.' },
+      ] },
+      { heading: 'Permission modes', blocks: [
+        { type: 'p', text: 'Claude sessions run in one of Claude Code’s permission modes: default asks before tools run, plan only plans, accept edits auto-applies file changes, and yolo skips approvals. The mode shown in the selector is the one the CLI has confirmed, synced live across devices; changing it mid-conversation applies immediately and becomes the default for new sessions.' },
+        { type: 'list', items: ['A fresh browser starts new sessions in Review Changes First mode; turn it off under Settings → Agents when you intentionally want auto-apply.', 'In yolo, Claude Code itself skips tool approvals on current CLIs; questions and plan approvals still wait for you.', 'Approving a plan continues in the mode you chose, so post-plan commands do not start prompting again.', 'Permission cards support approving several requests at once, and every approval, question, and answer stays in the conversation.'] },
+      ] },
+      { heading: 'Queue, steer, stop', blocks: [
+        { type: 'p', text: 'Sending while Claude is working queues the message as the next turn. Steer injects it into the running turn as a course correction instead, and Stop ends the turn. Queued messages stay editable and can be cancelled on current daemons.' },
+        { type: 'p', text: 'Type /btw, or press the side-question button in the session header, to ask something without touching the main conversation: a separate, tool-less, single-turn Claude process forks the session context and answers in a right-hand panel, even while a turn is running. Sessions started before CLI 0.2.100 show an upgrade hint instead.' },
+      ] },
+      { heading: 'Sub-agents, tools, files', blocks: [
+        { type: 'list', items: ['Tool calls render as expandable cards with their input and result; thinking is shown as a collapsible trace that survives navigation and reloads.', 'Sub-agent cards carry the real state of each background agent — running, finished, failed — with its tool count, latest action, duration, and final report.', 'Attach any file from the picker, clipboard, or drag-and-drop (up to 50 MB per file). Files land in a private machine-local directory and the agent receives the exact path.', 'File paths emitted by tools are clickable and open the same preview surface as the Files browser in the session header.', 'Sessions can be renamed, tagged, pinned, grouped by workspace, and searched with #tag filters from the sidebar or Command/Ctrl K.'] },
+      ] },
+      { heading: 'Archive, restore, restart', blocks: [
+        { type: 'p', text: 'Archiving is reversible: an archived chat has a Restore action in its row, its detail banner, and the command palette, and comes back at the same URL with its history intact. Typing into an archived chat restores it first and queues the message.' },
+        { type: 'list', items: ['Restart relaunches the session process on the machine when it is stuck; Restore reattaches a session whose process is gone, resuming the recorded Claude conversation.', 'One session is driven by exactly one CLI process: a restart replaces the previous process instead of running beside it, which is what used to duplicate messages.', 'Fork continues a conversation in a new session from its current state; rewind duplicates it up to an earlier message so you can try a different path.'] },
+      ] },
+      { heading: 'Continuity across devices', blocks: [
+        { type: 'p', text: 'Returning to Very Happy from the background re-syncs the session list, the open conversation, and every terminal on its own, and replaces a connection the OS silently dropped within seconds. Web push notifications report completed turns and permission requests; on iOS, install the app to the Home Screen first.' },
+        { type: 'note', text: 'Release notes appear in the app after each Web release and stack every version you missed. When a change needs a newer CLI, the notice shows the exact update command for the machines that are behind.' },
+      ] },
+    ],
+  },
+  {
+    slug: 'terminals', label: 'Web terminals', summary: 'Real tmux-backed shells and TUIs in the browser, from any device.',
+    sections: [
+      { heading: 'What a Web terminal is', blocks: [
+        { type: 'p', text: 'A Web terminal is a real TTY on the machine: the daemon runs a tmux session under a pseudo-terminal and streams its bytes through the relay to xterm.js in the browser. Shells, vim, lazygit, ssh, database consoles, and agent CLIs all use the same transport; the terminal is not a screenshot or a browser reimplementation.' },
+        { type: 'list', items: ['With tmux installed, a terminal keeps running while the browser is closed or disconnected, and reconnects to the live screen.', 'Without tmux, the direct-shell fallback works but is not durable across disconnects.', 'TERM is xterm-256color. Terminal-specific graphics such as sixel or Kitty images are not a compatibility promise.', 'The header shows the regional relay in use and the browser-to-relay round-trip time.'] },
+      ] },
+      { heading: 'Create, attach, restore', blocks: [
+        { type: 'p', text: 'New terminal opens a shell in the machine home; New terminal in a directory asks for the working directory first so the configured startup command runs inside the project. Attach a tmux session lists the machine’s own tmux sessions and connects a Web terminal to one of them without restarting anything.' },
+        { type: 'list', items: ['Closing a terminal moves it to the archive; Restore brings it back with the same id, title, and tags, and resumes a recorded claude conversation in that directory.', 'After a machine reboot, the daemon restores the most recent terminals automatically (defaults: up to 6 within 24 hours; tune terminalAutoRestore, terminalAutoRestoreMax, and terminalAutoRestoreWindowHours in ~/.happy/settings.json). Scrollback is not restored.', 'Disconnecting an attached tmux session leaves it running on the machine; Kill session ends it together with everything inside.', 'Terminals can be renamed and tagged; rows, search, and the command palette use the same #tag grammar as chats.'] },
+      ] },
+      { heading: 'Multiple devices and width', blocks: [
+        { type: 'p', text: 'One terminal can be open on several devices. The terminal takes the size of the device you last interacted with, so switching from a phone back to a desktop widens it again on the first click or keypress; the refit-width button in the header does the same on demand. Lines already scrolled above keep the width they were printed at, because terminals cannot reflow history.' },
+        { type: 'p', text: 'The first paint waits for the terminal font to load before measuring, so a new session renders its first output at the correct width instead of freezing a narrow copy into the scrollback.' },
+      ] },
+      { heading: 'Chinese, block art, and fonts', blocks: [
+        { type: 'list', items: ['The terminal uses a dual-width CJK font (Maple Mono CN) loaded on demand, so Chinese and other ideographs occupy exactly two cells and never overlap. The first open shows a short "loading terminal font" hint while it downloads; later opens use the cached font.', 'The daemon forces a UTF-8 locale for tmux (C.UTF-8 on Linux, en_US.UTF-8 on macOS) so CJK is counted as width-2 even on minimal hosts started with LC_ALL=C.', 'Line height is 1.0 so the Claude Code startup logo and TUI frame borders tile seamlessly.'] },
+      ] },
+      { heading: 'Claude and files inside a terminal', blocks: [
+        { type: 'p', text: 'With the optional very-happy install-terminal-hooks, a claude process started by hand inside a Web terminal is mirrored into a read-only structured conversation, and the header toggles between the native TUI and the transcript. SDK-backed chats do not need the hooks.' },
+        { type: 'list', items: ['Paste a clipboard image or file, or drop a file on the terminal, to upload it to the machine (8 MB per file, staged under ~/.happy/uploads/terminal/) and insert a safely quoted path at the cursor without pressing Enter.', 'Open Files from the terminal header to browse and preview the working directory.', 'On touch devices the terminal offers modifier keys, arrows, and paste controls; the sidebar and header expose every keyboard-only action.'] },
       ] },
     ],
   },

@@ -57,11 +57,28 @@ function isUserPrompt(parsed: any): boolean {
 }
 
 /**
+ * Delete a fork that was created for a session that never started (B-290:
+ * import forks the transcript before spawning; a failed spawn would otherwise
+ * leave an orphan copy that the import picker lists as a second original,
+ * once per retry). Best effort: a missing file is the desired end state.
+ */
+/**
  * Copy the source JSONL to a new file under the same project dir.
  * Returns the new Claude session UUID. The file copy is atomic at the FS
  * level (single copyFile call), so concurrent writes by Claude to the
  * source do not corrupt the destination.
  */
+export async function discardForkedSession(projectDir: string, claudeSessionId: string): Promise<void> {
+    try {
+        await unlink(jsonlPath(projectDir, claudeSessionId));
+        logger.debug(`[CLAUDE FORK] Discarded unused fork ${claudeSessionId}`);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            logger.debug(`[CLAUDE FORK] Failed to discard fork ${claudeSessionId}:`, error);
+        }
+    }
+}
+
 export async function forkSession(projectDir: string, sourceClaudeSessionId: string): Promise<string> {
     const newId = randomUUID();
     const src = jsonlPath(projectDir, sourceClaudeSessionId);

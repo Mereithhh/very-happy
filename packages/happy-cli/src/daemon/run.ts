@@ -54,6 +54,8 @@ import { readSessionLock } from '@/utils/sessionLock';
 
 import { shellescape } from '@/utils/shellescape';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -547,6 +549,9 @@ export async function startDaemon(): Promise<void> {
         // historical messages, so the app shows an empty chat.
         if (options.resumeClaudeSessionId) {
           extraEnv.HAPPY_FORK_CLAUDE_SESSION_ID = options.resumeClaudeSessionId;
+        }
+        if (options.importedFromClaudeSessionId && UUID_RE.test(options.importedFromClaudeSessionId)) {
+          extraEnv.HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID = options.importedFromClaudeSessionId;
         }
         if (options.resumeCodexThreadId) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;

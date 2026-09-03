@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-fable-51-claude-history-import',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.103',
+    titleKey: 'changelog.releases.sep03d.title',
+    summaryKey: 'changelog.releases.sep03d.summary',
+    itemKeys: [
+      'changelog.releases.sep03d.models',
+      'changelog.releases.sep03d.import',
+      'changelog.releases.sep03d.docs',
+      'changelog.releases.sep03d.cli',
+    ],
+  },
+  {
     id: '2026-09-03-terminal-font-maple',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

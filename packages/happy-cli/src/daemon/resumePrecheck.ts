@@ -43,8 +43,10 @@ export function resumePrecheck(
 }
 
 /** `--model` rides argv verbatim (no shell), so the only risk is a value that
- *  parses as another flag; keep it to a model-name charset. */
+ *  parses as another flag; keep it to a model-name charset. The only bracket
+ *  form allowed is Claude Code's own 1M-context marker (`opus[1m]`,
+ *  `fable[1m]`), which the web model picker offers since Fable 5.1. */
 export function sanitizeResumeModel(value: unknown): string | null {
     if (typeof value !== 'string') return null;
-    return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(value) ? value : null;
+    return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}(\[1m\])?$/i.test(value) ? value : null;
 }

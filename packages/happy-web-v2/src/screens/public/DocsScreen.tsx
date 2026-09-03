@@ -15,6 +15,7 @@ function DocNav({ docs, label, onNavigate }: { docs: PublicDoc[]; label: string;
 
 const DOC_GROUPS = [
   { key: 'start' as const, slugs: ['quickstart', 'keyboard', 'cli', 'cloud', 'self-hosting'] },
+  { key: 'work' as const, slugs: ['sessions', 'terminals'] },
   { key: 'understand' as const, slugs: ['architecture', 'security'] },
   { key: 'operate' as const, slugs: ['configuration', 'accounts-and-quotas', 'upgrades', 'troubleshooting'] },
   { key: 'extend' as const, slugs: ['integrations', 'contributing'] },

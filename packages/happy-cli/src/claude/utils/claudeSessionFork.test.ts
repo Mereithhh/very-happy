@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import {
+    discardForkedSession,
     forkSession,
     forkAndTruncateSession,
     ForkTruncateUuidNotFoundError,
@@ -170,6 +171,25 @@ describe('claudeSessionFork', () => {
         it('throws ForkSourceMissingError when source jsonl is absent', async () => {
             await expect(forkAndTruncateSession(projectDir, 'does-not-exist', 'u1'))
                 .rejects.toBeInstanceOf(ForkSourceMissingError);
+        });
+    });
+
+    describe('discardForkedSession', () => {
+        it('removes a fork that was created for a session that never started', async () => {
+            await writeSource([
+                { type: 'user', uuid: 'u1', message: { role: 'user', content: 'hi' } },
+            ]);
+            const newId = await forkSession(projectDir, sourceId);
+            expect(existsSync(join(projectDir, `${newId}.jsonl`))).toBe(true);
+
+            await discardForkedSession(projectDir, newId);
+            expect(existsSync(join(projectDir, `${newId}.jsonl`))).toBe(false);
+            // the source is never touched
+            expect(existsSync(join(projectDir, `${sourceId}.jsonl`))).toBe(true);
+        });
+
+        it('is a no-op when the file is already gone', async () => {
+            await expect(discardForkedSession(projectDir, '11111111-1111-1111-1111-111111111111')).resolves.toBeUndefined();
         });
     });
 });

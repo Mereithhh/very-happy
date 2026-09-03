@@ -18,6 +18,7 @@
 
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { TITLE_PROMPT_PREFIX } from './oneShotPrompts';
 import { randomUUID } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { logger } from '@/ui/logger';
@@ -51,9 +52,12 @@ export function resolveClaudeBinary(): string {
     return process.env.HAPPY_CLAUDE_PATH || 'claude';
 }
 
-function buildPrompt(firstUserMessage: string): string {
+/** Exported for the one-shot marker test only (oneShotPrompts.test.ts): the
+ *  import picker hides transcripts whose prompt starts with
+ *  `TITLE_PROMPT_PREFIX`, so the two must not drift apart. */
+export function buildPrompt(firstUserMessage: string): string {
     const sample = firstUserMessage.slice(0, MAX_PROMPT_SAMPLE_CHARS);
-    return `Summarize the SPECIFIC topic/request of this message into a 3-6 word title (match the message's language). Be concrete — name the actual task/subject. Do NOT output generic placeholders like "新对话"/"New chat"/"Conversation"/"Untitled". No quotes, no trailing punctuation. Reply with ONLY the title.\n\nMessage: "${sample}"`;
+    return `${TITLE_PROMPT_PREFIX} (match the message's language). Be concrete — name the actual task/subject. Do NOT output generic placeholders like "新对话"/"New chat"/"Conversation"/"Untitled". No quotes, no trailing punctuation. Reply with ONLY the title.\n\nMessage: "${sample}"`;
 }
 
 // Generic/placeholder titles we'd rather drop than display (they look identical

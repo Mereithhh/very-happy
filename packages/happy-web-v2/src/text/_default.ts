@@ -702,6 +702,7 @@ export const en = {
         actionNewTerminal: 'New terminal',
         actionNewTerminalAt: 'New terminal in a directory…',
         actionAttachTmux: 'Attach a tmux session…',
+        actionImportClaude: 'Import a Claude Code conversation…',
         actionRenameSession: 'Rename current chat',
         actionArchiveSession: 'Archive current chat',
         actionRestoreSession: 'Restore current chat',
@@ -1001,12 +1002,33 @@ export const en = {
         // B-144: same terminal, but the working directory is chosen first.
         terminalAtTitle: 'Web terminal in a directory…',
         terminalAttachTitle: 'Attach a tmux session…',
+        // B-290: import a Claude Code conversation stored on a machine.
+        importClaudeTitle: 'Import a Claude Code conversation…',
     },
 
     attachTmuxModal: {
         // B-281: the dedicated attach picker
         eyebrow: 'ATTACH TMUX',
         title: 'Attach a tmux session',
+    },
+
+    importClaudeHistory: {
+        // B-290: import a Claude Code conversation (claude CLI, desktop app,
+        // claude.ai, SDK) that lives on the machine but was not started here.
+        eyebrow: 'IMPORT',
+        title: 'Import a Claude Code conversation',
+        intro: 'Conversations stored on this machine by the claude CLI, the Claude Code desktop app or claude.ai — anything under ~/.claude/projects that Very Happy does not track yet.',
+        needsCli: 'Importing needs the current Very Happy CLI on this machine. Update the daemon, then reopen this dialog.',
+        loading: 'Scanning ~/.claude/projects…',
+        empty: 'No importable conversations on this machine — everything under ~/.claude/projects is already tracked here, or the machine has no Claude Code history yet.',
+        loadFailed: 'Could not read the Claude Code history on this machine.',
+        searchPlaceholder: 'Search title, first prompt, directory or branch',
+        noMatch: 'Nothing matches.',
+        truncated: 'Only the most recent conversations are listed; the search narrows this list, it does not scan older files.',
+        copyNote: 'Import copies the conversation: the original stays untouched for the tool that wrote it, and the new chat continues from the full history in the same directory.',
+        importing: 'importing…',
+        imported: 'Conversation imported',
+        failed: 'Import failed',
     },
     newTerminalModal: {
         // Used by NewTerminalModal (B-144)
@@ -1612,6 +1634,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03d: {
+                title: 'Fable 5.1, and import your Claude Code history',
+                summary: 'The model picker now offers Fable 5.1 (plus 1M-context variants) exactly as Claude Code does, conversations from the claude CLI, the Claude Code desktop app or claude.ai can be imported into Very Happy with one click, and the docs finally describe what shipped over the last weeks.',
+                models: 'Model picker and Settings → Agents mirror Claude Code 2.1.258: fable → Fable 5.1, opus → Opus 5, sonnet → Sonnet 5, haiku → Haiku 4.5, with fable[1m] / opus[1m] / sonnet[1m] for the 1M context window, best available and opus plan. Cost estimates use the Claude 5 / Fable rates instead of Claude 3 fallbacks.',
+                import: 'New "Import a Claude Code conversation…" in the + menu, ⌘K and the machine page: the daemon lists the transcripts under ~/.claude/projects that Very Happy does not track yet (title, directory, branch, source, size, age), and one click copies the conversation into a new chat that continues from its full history. The original file is left untouched.',
+                docs: 'Public docs gained two guides — Claude conversations (models, permission modes, queue/steer, /btw, sub-agents, archive/restore, import) and Web terminals (attach, restore, multi-device width, CJK font) — and the quick start points at the import path.',
+                cli: 'CLI 0.2.103: the daemon answers claude-list-history, records where an imported conversation came from, accepts the [1m] model aliases on resume, and prices Claude 5 / Fable sessions correctly. Older daemons show an upgrade hint in the import dialog.',
+            },
             sep03c: {
                 title: 'A warmer terminal font',
                 summary: 'The terminal now uses Maple Mono CN — a softer, rounder dual-width font that keeps Chinese aligned and the logo/frames pixel-seamless, but reads less thin and tall than before. A small “loading terminal font” hint shows on first open while it downloads.',
@@ -2056,6 +2086,8 @@ export const en = {
         noMachines: 'No machines connected',
         noMachinesDescription: 'Start the Happy daemon on a computer to see it here.',
         launchNewSessionInDirectory: 'Launch New Session in Directory',
+        importClaudeHistory: 'Import a Claude Code conversation…',
+        importClaudeHistorySubtitle: 'Continue a chat from the claude CLI, the Claude Code desktop app or claude.ai here',
         offlineUnableToSpawn: 'Launcher disabled while machine is offline',
         offlineHelp: '• Make sure your computer is online\n• Run `very-happy daemon status` to diagnose\n• Open Diagnostics for the relay-approved exact update command',
         daemon: 'Daemon',

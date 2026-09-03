@@ -11,6 +11,7 @@ import { normalizeClaudeOutboundMode } from './permissionModeOutbound';
 import type { MachineMetadata, Metadata } from './storageTypes';
 import { ClaudeAuthStateSchema, type ClaudeAuthState } from './claudeAuth';
 import { commitSessionResume } from './sessionResumeFlow';
+import { parseClaudeHistory, type ClaudeHistoryEntry } from '@/screens/sessions/claudeHistoryImport';
 
 // Strict type definitions for all operations
 
@@ -164,6 +165,12 @@ export interface SpawnSessionOptions {
     /** Happy message id used as the rewind point (only set for "duplicate"). */
     forkedFromMessageId?: string;
     /**
+     * B-290: source Claude conversation id when `resumeClaudeSessionId` is a
+     * copy made by the import flow. Recorded in session metadata by the CLI
+     * so the import picker hides the original. Old daemons ignore it.
+     */
+    importedFromClaudeSessionId?: string;
+    /**
      * Session variant tag forwarded to the daemon (e.g. 'assistant' for the
      * meta-agent voice session). New daemons use it to pick their own cwd and
      * dedupe the singleton; old daemons ignore the unknown field (bidirectional
@@ -284,7 +291,7 @@ export function machineClaudeAuthSetStore(machineId: string, store: 'auto' | 'fi
 
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -297,13 +304,14 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             resumeCodexThreadId?: string,
             parentSessionId?: string,
             forkedFromMessageId?: string,
+            importedFromClaudeSessionId?: string,
             variant?: string,
             forceNew?: boolean,
             permissionMode?: string,
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, variant, forceNew, permissionMode }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, resumeClaudeSessionId, resumeCodexThreadId, parentSessionId, forkedFromMessageId, importedFromClaudeSessionId, variant, forceNew, permissionMode }
         );
         return result;
     } catch (error) {
@@ -739,6 +747,79 @@ export async function machineListTmuxSessions(machineId: string): Promise<UserTm
         return parseTmuxSessions(result);
     } catch {
         return [];
+    }
+}
+
+/** B-290: list the Claude Code conversations stored on a machine so one can
+ *  be imported. Callers must check `claudeHistorySupported(daemonState)` first
+ *  (an unregistered RPC makes the server wait before failing). Never throws —
+ *  a failure surfaces as `{ ok: false }` so the picker can say so instead of
+ *  showing an empty list. */
+export async function machineListClaudeHistory(
+    machineId: string,
+    opts?: { directory?: string; limit?: number; exclude?: string[] },
+): Promise<{ ok: true; entries: ClaudeHistoryEntry[]; truncated: boolean } | { ok: false; message?: string }> {
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<unknown, { directory?: string; limit?: number; exclude?: string[] }>(
+            machineId,
+            'claude-list-history',
+            {
+                ...(opts?.directory ? { directory: opts.directory } : {}),
+                ...(typeof opts?.limit === 'number' ? { limit: opts.limit } : {}),
+                ...(opts?.exclude && opts.exclude.length > 0 ? { exclude: opts.exclude } : {}),
+            },
+            { timeoutMs: 20_000 },
+        );
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { ok: false, message: error };
+        return { ok: true, entries: parseClaudeHistory(result), truncated: (result as any)?.truncated === true };
+    } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+/** B-290: import a Claude Code conversation in one round trip. The daemon
+ *  forks the transcript and spawns a Happy session that resumes the copy,
+ *  deleting the copy on every non-success path — so a failed import cannot
+ *  leave an orphan that the picker lists as a second original. Returns the
+ *  same three shapes as a spawn, so the caller can run the usual
+ *  "create the directory?" confirmation and retry with `approved`. */
+export type ImportClaudeSessionResult =
+    | { type: 'success'; sessionId: string; newClaudeSessionId?: string }
+    | { type: 'requestToApproveDirectoryCreation'; directory: string }
+    | { type: 'error'; errorMessage: string };
+export async function machineImportClaudeSession(options: {
+    machineId: string;
+    directory: string;
+    claudeSessionId: string;
+    approvedNewDirectoryCreation?: boolean;
+    permissionMode?: string;
+}): Promise<ImportClaudeSessionResult> {
+    const { machineId, directory, claudeSessionId, approvedNewDirectoryCreation = false, permissionMode } = options;
+    try {
+        await ensureMachineEncryption(machineId);
+        const result = await apiSocket.machineRPC<ImportClaudeSessionResult, {
+            directory: string;
+            claudeSessionId: string;
+            approvedNewDirectoryCreation?: boolean;
+            permissionMode?: string;
+        }>(
+            machineId,
+            'claude-import-session',
+            { directory, claudeSessionId, approvedNewDirectoryCreation, permissionMode },
+            { timeoutMs: 25_000 },
+        );
+        // A handler that throws comes back as a normal ack carrying `error`
+        // (iron rule 17), so check that before trusting the payload.
+        const error = (result as { error?: unknown } | null)?.error;
+        if (typeof error === 'string' && error) return { type: 'error', errorMessage: error };
+        if (result && (result.type === 'success' || result.type === 'requestToApproveDirectoryCreation' || result.type === 'error')) {
+            return result;
+        }
+        return { type: 'error', errorMessage: 'Unexpected import response' };
+    } catch (error) {
+        return { type: 'error', errorMessage: error instanceof Error ? error.message : String(error) };
     }
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Pencil, Play, Terminal, ChevronRight } from 'lucide-react';
+import { Pencil, Play, Terminal, ChevronRight, History } from 'lucide-react';
 import { BackButton } from '@/app/BackButton';
 import {
   EmptyState,
@@ -27,6 +27,8 @@ import {
 } from '@/sync/ops';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useImeGuard } from '@/utils/ime';
+import { ImportClaudeHistoryModal } from '@/screens/sessions/ImportClaudeHistoryModal';
+import { claudeHistorySupported } from '@/sync/closedTerminals';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { getSessionName, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { normalizeAgentKey, resolveNewSessionPermissionMode } from '@/sync/agentDefaults';
@@ -53,6 +55,7 @@ export function MachineScreen() {
   const [stopping, setStopping] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showImportClaude, setShowImportClaude] = useState(false);
 
   const online = machine ? isMachineOnline(machine) : false;
   const name = machine?.metadata?.displayName || machine?.metadata?.host || id || '';
@@ -290,6 +293,15 @@ export function MachineScreen() {
                   {t('newSession.startSession')}
                 </Button>
               </div>
+              {claudeHistorySupported(machine.daemonState) && (
+                <Item
+                  title={t('machine.importClaudeHistory')}
+                  subtitle={t('machine.importClaudeHistorySubtitle')}
+                  left={<History size={16} />}
+                  onClick={() => setShowImportClaude(true)}
+                  right={<ChevronRight size={16} />}
+                />
+              )}
             </ItemGroup>
           ) : (
             <ItemGroup>
@@ -452,6 +464,7 @@ export function MachineScreen() {
           </ItemGroup>
         </ItemList>
       </div>
+      {showImportClaude && <ImportClaudeHistoryModal initialMachineId={machine.id} onClose={() => setShowImportClaude(false)} />}
     </div>
   );
 }

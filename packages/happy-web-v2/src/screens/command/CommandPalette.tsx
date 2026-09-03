@@ -15,6 +15,7 @@ import {
   ListChecks,
   FolderOpen,
   RotateCcw,
+  History,
 } from 'lucide-react';
 import { useSessions, storage } from '@/sync/storage';
 import { isHiddenSession } from '@/assistant/assistantSession';
@@ -31,6 +32,7 @@ import { useImeGuard } from '@/utils/ime';
 import { NewSessionModal } from '@/screens/sessions/NewSessionModal';
 import { NewTerminalModal } from '@/screens/sessions/NewTerminalModal';
 import { AttachTmuxModal } from '@/screens/sessions/AttachTmuxModal';
+import { ImportClaudeHistoryModal } from '@/screens/sessions/ImportClaudeHistoryModal';
 import { openClipboardHistory } from '@/screens/clipboard/ClipboardHistoryPanel';
 import { toggleNotesPanel } from '@/screens/notes/notesPanelState';
 import {
@@ -84,6 +86,7 @@ export function CommandPalette() {
   const [showNewSession, setShowNewSession] = useState(false);
   const [showNewTerminal, setShowNewTerminal] = useState(false);
   const [showAttachTmux, setShowAttachTmux] = useState(false);
+  const [showImportClaude, setShowImportClaude] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -202,6 +205,15 @@ export function CommandPalette() {
       icon: <TerminalSquare size={16} />,
       haystack: `tmux attach session ${(t('commandPalette.actionAttachTmux') as string).toLowerCase()}`,
       run: () => setShowAttachTmux(true),
+    });
+    out.push({
+      // B-290: import a Claude Code conversation stored on a machine.
+      key: 'action:import-claude-history',
+      group: 'actions',
+      title: t('commandPalette.actionImportClaude'),
+      icon: <History size={16} />,
+      haystack: `import claude code history conversation desktop resume ${(t('commandPalette.actionImportClaude') as string).toLowerCase()}`,
+      run: () => setShowImportClaude(true),
     });
     out.push({
       key: 'action:new-chat',
@@ -518,6 +530,7 @@ export function CommandPalette() {
       {showNewSession && <NewSessionModal onClose={() => setShowNewSession(false)} />}
       {showNewTerminal && <NewTerminalModal onClose={() => setShowNewTerminal(false)} />}
       {showAttachTmux && <AttachTmuxModal onClose={() => setShowAttachTmux(false)} />}
+      {showImportClaude && <ImportClaudeHistoryModal onClose={() => setShowImportClaude(false)} />}
     </>
   );
 }
