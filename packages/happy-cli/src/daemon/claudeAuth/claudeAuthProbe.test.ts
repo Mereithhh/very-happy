@@ -69,7 +69,10 @@ describe('diagnoseStores', () => {
     it('no-credentials when keychain absent/unreadable and file has no tokens', () => {
         expect(diagnoseStores({ status: 'not-logged-in', keychain: { kind: 'absent' }, file: file(false) }).diagnosis).toBe('no-credentials');
         expect(diagnoseStores({ status: 'not-logged-in', keychain: { kind: 'unreadable' }, file: interpretCredentialsFile(null) }).diagnosis).toBe('no-credentials');
-        expect(diagnoseStores({ status: 'not-logged-in', keychain: { kind: 'unreadable' }, file: file(true) })).toEqual({ detail: expect.stringContaining('cannot read the keychain') });
+        // B-297: file has both tokens but the daemon context is told it is not
+        // logged in — a rotated-away refresh token, now a named diagnosis.
+        expect(diagnoseStores({ status: 'not-logged-in', keychain: { kind: 'unreadable' }, file: file(true) }))
+            .toMatchObject({ diagnosis: 'credentials-rejected', detail: expect.stringContaining('rotated away') });
     });
 });
 

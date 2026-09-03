@@ -236,6 +236,20 @@ function MachineAuthLink({ sessionId }: { sessionId: string }) {
     );
 }
 
+/** B-276/B-297: the one auth-failure card, reached both from the structured
+ *  `claude-auth-failed` event (CLI ≥ v0.2.97) and from the raw SDK text that
+ *  older wrappers emit. Restart is not repeated here — on the old-CLI path the
+ *  adjacent `Process exited unexpectedly` event already carries it. */
+function ClaudeAuthFailedBlock({ sessionId }: { sessionId: string }) {
+    const { t } = useTranslation();
+    return (
+        <div className="msg msg--event">
+            <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.claudeAuthFailed')}</span>
+            <MachineAuthLink sessionId={sessionId} />
+        </div>
+    );
+}
+
 function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; sessionId: string }) {
     const { t } = useTranslation();
     const ev = message.event;
@@ -248,15 +262,14 @@ function AgentEventBlock({ message, sessionId }: { message: ModeSwitchMessage; s
         case 'message':
             {
                 if (ev.kind === 'claude-auth-failed') {
-                    return (
-                        <div className="msg msg--event">
-                            <span className="msg-event-line msg-event-line--error"><AlertTriangle size={13} />{t('session.chat.claudeAuthFailed')}</span>
-                            <MachineAuthLink sessionId={sessionId} />
-                        </div>
-                    );
+                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
                 }
                 const presentation = presentServiceEvent(ev.message);
                 if (presentation.kind === 'hidden') return null;
+                // B-297: same card for CLIs too old to tag the event structurally.
+                if (presentation.kind === 'claude-auth') {
+                    return <ClaudeAuthFailedBlock sessionId={sessionId} />;
+                }
                 if (presentation.kind === 'stopped') {
                     return <div className="msg msg--event"><span className="msg-event-line msg-event-line--stopped"><Square size={11} fill="currentColor" />{t(presentation.textKey)}</span></div>;
                 }

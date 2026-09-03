@@ -101,7 +101,9 @@ claudeAuth?: {
    - keychain present ∧ 有 token ∧ file.hasTokens ∧ 尾哈希不同 → `store-divergence`（只告警：「两处凭据已分叉，某一处会在下次刷新失效；以 daemon 上下文登录为准」）。
    - keychain absent/unreadable ∧ ¬file.hasTokens → `no-credentials`。
    - 其余（含 keychain unreadable 且文件有 token 却 not-logged-in）→ 无 diagnosis，`detail` 写「daemon 上下文读不到 keychain 且文件凭据未被接受，请在机器上 `claude auth status` 对照」。
-4. 非 darwin：只可能 `no-credentials`。
+4. 非 darwin：D2（keychain 诊断）不适用，但**文件仍然是全部真相**，所以结论只可能是两种之一——`no-credentials`（文件没有 token）或 `credentials-rejected`（文件有 token 却被 daemon 上下文拒绝）。
+
+> **2026-09-03 订正（B-297）**：本条原文写「非 darwin：只可能 `no-credentials`」，实现却把这条分支门在 `credentialStore === 'file'` 上，于是**所有 Linux 机器的 `not-logged-in` 一律没有任何 diagnosis**——恰好是文件答案最确定的那个平台。用户实报的 DSW（Linux）机器因此在机器页上只显示「未登录」，说不出为什么。同时补上 `credentials-rejected`：文件里有 token 但 daemon 上下文判未登录，等价于 refresh token 已被旋转掉（同机两处存储互打，或**同一份凭据被复制到第二台机器**——后者本 spec 原先没有覆盖）。darwin 上原先「keychain unreadable + 文件有 token + not-logged-in → 只给 detail 不给 diagnosis」的那一支同样升级成这个 diagnosis。
 
 ### D3 失败信号（wrapper → daemon，复用控制面）
 
@@ -154,7 +156,8 @@ claudeAuth?: {
   - **`-i` 交互形态（Claude 的常规写路径）**：读完 stdin，若首条命令匹配 `^(add|find|delete)-generic-password\b` 且其 `-s` 值（stdin 命令行里带双引号，argv 形态不带；两种都要归一）以 `Claude Code` 开头 → `exit 36`；否则把 stdin 原样喂给 `exec /usr/bin/security -i`。**漏掉这一形态 = GUI 上下文写 keychain 成功 + 复合 update 看到 keychain 读为 null → 删除 `.credentials.json`**（M1 灾难路径在 `file` 模式下静默发生），所以验收必须覆盖 `-i` + stdin。
   - 退出码必须精确 36 或 44；其它退出码会被判 `READ_FAILED`（用缓存/瞬态）而不是回落文件。
   - 真实 `security` 路径可用 env `HAPPY_SECURITY_BIN` 覆盖（默认 `/usr/bin/security`），单测用它指向记录 argv/stdin 的假脚本，避免测试误写 CI/开发机的 login keychain。
-- 效果：SDK Query / titleGenerator / boardAnalyzer（都在 wrapper 进程内，继承 wrapper env）与 D1 探测只用 `.credentials.json`，与 ssh 终端一致。用户在自己终端跑 `very-happy claude`（本地模式，不经 daemon）**不加 shim**，与该终端里的 `claude` 血统一致。daemon 自身 PATH、web 终端（tmux）、用户 shell 不动。
+- 效果：SDK Query / titleGenerator / boardAnalyzer（都在 wrapper 进程内，继承 wrapper env）与 D1 探测只用 `.credentials.json`，与 ssh 终端一致。
+  **2026-09-03 订正（B-297）**：首版只把 shim 注进 `run.ts` 的 `extraEnv`，也就是**只有新建会话**（tmux / 非 tmux）拿得到；`resume-happy-session`、`restart-session`、assistant 重连三条路各自单独拼 env，静默跑在 `auto` 模式——同一台机器上「恢复出来的会话」和「旁边新建的会话」读的是不同存储，正是本设计要消灭的那种分叉。四条 spawn 路径现已统一带上 `claudeProcessEnvOverrides()`。用户在自己终端跑 `very-happy claude`（本地模式，不经 daemon）**不加 shim**，与该终端里的 `claude` 血统一致。daemon 自身 PATH、web 终端（tmux）、用户 shell 不动。
 - 泄漏面：wrapper env 会被 Claude 的 Bash tool、hooks、`very-happy mcp` 子进程继承，所以 shim **必须**按 `-s` 值过滤，用户/agent 在会话里对自己服务的 `security find-generic-password -s <其它服务>` 原样透传；走 Security.framework 的工具（`git credential-osxkeychain` 等）不受影响。
 - 启动预取 `PEn()` 在 shim 下得到 null，只影响启动提示，无功能影响。
 - `auto` = 现状（不改 PATH）。设置存 `~/.happy/settings.json`（机器级，与 `boardLlm` 同类），RPC `claude-auth-set-store` 修改，改后立即重跑 D1；`claudeAuth.context.credentialStore` 回显生效值。

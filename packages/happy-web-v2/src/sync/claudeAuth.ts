@@ -60,3 +60,18 @@ export function claudeAuthTone(state: ClaudeAuthState, now = Date.now()): Claude
 export function isClaudeAuthStale(state: ClaudeAuthState, now = Date.now()): boolean {
     return now - state.checkedAt > CLAUDE_AUTH_STALE_AFTER_MS;
 }
+
+/**
+ * B-297: diagnoses this web build has copy for. A newer CLI may publish one we
+ * do not know yet (the wire schema keeps `diagnosis` a plain string on purpose),
+ * and `t()` renders an unknown key as the raw dotted key — so anything outside
+ * this set falls back to the CLI's own `detail`, which is always human text.
+ */
+const KNOWN_DIAGNOSES = new Set([
+    'keychain-empty-item', 'store-divergence', 'no-credentials', 'credentials-rejected',
+    'sdk-binary-missing', 'probe-timeout', 'probe-crash',
+]);
+
+export function isKnownClaudeAuthDiagnosis(diagnosis: string): boolean {
+    return KNOWN_DIAGNOSES.has(diagnosis);
+}

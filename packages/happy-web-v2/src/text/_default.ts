@@ -1655,6 +1655,14 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03i: {
+                title: 'An auth failure now says what to do about it',
+                summary: 'When Claude Code could not authenticate, the session showed a grey line of SDK text and a dead end. Now it links straight to the machine’s login status — on every CLI version — and the machine page names the case where credentials exist but are being rejected.',
+                card: 'A Claude authentication failure renders as a real card with a link to that machine’s login status, including on sessions started by an older CLI that never tagged the failure. Previously those sessions only showed "authentication_failed" in grey next to "the agent process exited unexpectedly".',
+                rejected: 'New diagnosis for the most common case: the credentials file has tokens, but Claude Code rejects them here — the refresh token was rotated away by another credential store, or by another machine using a copy of the same credentials. Linux machines used to get no diagnosis at all.',
+                copied: 'The daemon now notices when this machine’s id belongs to a different host — which only happens if ~/.happy was copied here, and which makes two machines fight over one record and take turns invalidating each other’s Claude login. The fix it points at is the command that actually mints a new machine id.',
+                store: 'Pinning credentials to the file store now also applies to resumed and restarted sessions, not just freshly started ones.',
+            },
             sep03h: {
                 title: 'A restarted session stops claiming it is still working',
                 summary: 'After restarting an agent, the last turn could sit there reporting "2094 minutes" forever, because the tool it was running never got a closing result. Also: the instructions for connecting a machine are reachable again once you already have one.',
@@ -2197,6 +2205,7 @@ export const en = {
                 'keychain-empty-item': 'The login keychain holds a Claude Code credentials item with empty tokens; Claude Code prefers it over the valid credentials file.',
                 'store-divergence': 'Keychain and credentials file hold different refresh tokens; one of them will stop working at its next refresh.',
                 'no-credentials': 'No Claude Code credentials found for the daemon context. Log in with `claude` on this machine.',
+                'credentials-rejected': 'Credentials exist but Claude Code rejects them here. The refresh token has most likely been rotated away by another credential store or by another machine using a copy of the same credentials — Claude Code rotates it on every refresh. Log in again with `claude` on this machine.',
                 'sdk-binary-missing': 'The Claude Code binary bundled with the Agent SDK is missing; reinstall very-happy-cli.',
                 'probe-timeout': 'The `claude auth status` check timed out.',
                 'probe-crash': 'The `claude auth status` check returned no usable output.',

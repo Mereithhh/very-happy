@@ -41,6 +41,7 @@ import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { readSettings, writeSettings } from '@/persistence';
+import { describeMachineIdentityConflict, detectMachineIdentityConflict } from './machineIdentityConflict';
 import { ClaudeAuthService } from './claudeAuth/claudeAuthService';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { createMirrorManager, type MirrorManager } from '@/mirror/mirrorManager';
@@ -456,6 +457,9 @@ export async function startDaemon(): Promise<void> {
             cwd: assistantHome(),
             env: {
               ...process.env,
+              // B-297: see the resume/restart paths — every spawn carries the
+              // credentialStore=file shim, not just fresh sessions (B-276 D8).
+              ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
               HAPPY_SESSION_VARIANT: 'assistant',
               HAPPY_RECONNECT_SESSION_ID: assistantSessionId,
               HAPPY_RECONNECT_ENCRYPTION_KEY: s.encryptionKey,
@@ -1062,6 +1066,11 @@ export async function startDaemon(): Promise<void> {
           cwd: launch.cwd,
           env: {
             ...process.env,
+            // B-297: the credentialStore=file shim must ride every spawn path,
+            // not just fresh sessions — a resumed/restarted wrapper that silently
+            // fell back to `auto` reads a different credential store than the
+            // fresh one next to it (B-276 D8).
+            ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
@@ -1233,6 +1242,11 @@ export async function startDaemon(): Promise<void> {
           cwd,
           env: {
             ...process.env,
+            // B-297: the credentialStore=file shim must ride every spawn path,
+            // not just fresh sessions — a resumed/restarted wrapper that silently
+            // fell back to `auto` reads a different credential store than the
+            // fresh one next to it (B-276 D8).
+            ...(claudeAuthServiceRef?.claudeProcessEnvOverrides() ?? {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption.encryptionVariant,
@@ -1446,6 +1460,20 @@ export async function startDaemon(): Promise<void> {
       daemonState: initialDaemonState
     });
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
+
+    // B-297: a machine id is a randomUUID stored in ~/.happy, so a second host can
+    // only ever claim this row if ~/.happy was copied here. `getOrCreateMachine`
+    // returns the row as the server already had it (it never overwrites metadata
+    // for an existing machine), so what comes back is the OTHER machine's facts
+    // whenever that happened. The daemon runs detached, so the log is the surface.
+    const identityConflict = detectMachineIdentityConflict(machine.metadata, {
+      host: initialMachineMetadata.host,
+      platform: initialMachineMetadata.platform,
+      homeDir: initialMachineMetadata.homeDir,
+    });
+    if (identityConflict) {
+      logger.warn(`[DAEMON RUN] machine identity conflict (${identityConflict.confidence}): ${describeMachineIdentityConflict(identityConflict)}`);
+    }
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);

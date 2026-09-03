@@ -18,6 +18,23 @@ describe('presentServiceEvent', () => {
             .toEqual({ kind: 'hidden' });
     });
 
+    // B-297: old CLIs never send `kind: 'claude-auth-failed'`; the raw text is
+    // the only signal, and it used to render as an unactionable grey mono line.
+    it('recognises a Claude auth failure from the raw text alone', () => {
+        expect(presentServiceEvent('authentication_failed')).toEqual({ kind: 'claude-auth' });
+        expect(presentServiceEvent('Claude Code returned an error result: authentication_failed'))
+            .toEqual({ kind: 'claude-auth' });
+        expect(presentServiceEvent('Failed to authenticate: OAuth session expired and could not be refreshed'))
+            .toEqual({ kind: 'claude-auth' });
+        expect(presentServiceEvent('Claude Code returned an error result: Failed to authenticate: OAuth session expired and could not be refreshed'))
+            .toEqual({ kind: 'claude-auth' });
+    });
+
+    it('does not turn an unrelated note that names the error into an auth card', () => {
+        expect(presentServiceEvent('retrying after authentication_failed earlier'))
+            .toEqual({ kind: 'subtle', text: 'retrying after authentication_failed earlier' });
+    });
+
     it('removes EDE diagnostics but preserves an adjacent real failure', () => {
         expect(presentServiceEvent(
             '[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use; permission bridge crashed',
