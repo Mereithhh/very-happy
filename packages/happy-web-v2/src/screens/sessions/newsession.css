@@ -213,6 +213,20 @@
   border-radius: var(--r-md);
   overflow: hidden;
 }
+/* B-301: launcher-level warning that the selected machine's Claude login is
+ * dead. Sits directly under the machine picker, styled as a warning rather than
+ * an error — it never blocks creation. */
+.ns-machine-warn {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-11);
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.ns-machine-warn a {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 .ns-hint {
   margin-top: var(--sp-3);
   font-size: var(--fs-11);

@@ -11,6 +11,7 @@ import { Button, useToast } from '@/ui';
 import { Modal } from '@/modal';
 import { useTranslation } from '@/i18n/useTranslation';
 import { ConnectMachineLink, NoMachinesNotice } from './NoMachinesNotice';
+import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
 import { useImeGuard } from '@/utils/ime';
 import {
   agentSetupInstruction,
@@ -116,6 +117,13 @@ export function NewSessionModal({
   const selectedMachine = online.find((m) => m.id === machineId);
   const homeDir = (selectedMachine as any)?.metadata?.homeDir as string | undefined;
   const selectedAgentAvailability = resolveAgentAvailability(selectedMachine?.metadata, agent);
+  // B-301: the daemon publishes its Claude login state, but until now only the
+  // machine page read it — so the launcher would start a Claude session on a
+  // machine whose login was dead and the user found out when the turn failed.
+  // This warns; it deliberately does NOT block. The state can lag a login the
+  // user just completed, and a launcher that refuses on stale evidence is worse
+  // than one that says what it knows.
+  const selectedClaudeAuth = claudeAuthNotice(selectedMachine, agent);
   const canCreate = !!machineId
     && trimmed.length > 0
     && selectedAgentAvailability.available
@@ -224,10 +232,24 @@ export function NewSessionModal({
             <select className="ns-select" value={machineId} onChange={(e) => setMachineId(e.target.value)}>
               {online.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {machineLabel(m)}
+                  {/* A native <option> can only carry text, so the marker is
+                    * appended to the label rather than rendered as a chip. */}
+                  {hasClaudeAuthNotice(claudeAuthNotice(m, agent))
+                    ? `${machineLabel(m)} · ${t('newSession.claudeAuthOptionSuffix')}`
+                    : machineLabel(m)}
                 </option>
               ))}
             </select>
+            {selectedClaudeAuth.kind !== 'none' && (
+              <div className="ns-machine-warn">
+                {selectedClaudeAuth.kind === 'not-logged-in'
+                  ? t('newSession.claudeAuthWarnNotLoggedIn')
+                  : t('newSession.claudeAuthWarnUnhealthy')}{' '}
+                <Link to={`/machine/${machineId}`} onClick={onClose}>
+                  {t('session.chat.claudeAuthOpenMachine')}
+                </Link>
+              </div>
+            )}
 
             <label className="ns-label">{t('newSession.directory')}</label>
 
