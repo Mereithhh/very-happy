@@ -1657,10 +1657,19 @@ export const en = {
         cliBody: ({ count, version, machines }: { count: number; version: string; machines: string }) =>
             `${count} connected ${count === 1 ? 'machine is' : 'machines are'} below v${version}: ${machines}. This command installs the exact release and safely refreshes the daemon.`,
         commandCopied: 'CLI update command copied',
+        bundleUpdated: 'Updated to the latest version',
         commandCopyFailed: 'Could not copy the CLI update command',
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03t: {
+                title: 'Updates stop stranding you on the loading screen',
+                summary: 'The app updates itself in the background. Sometimes that left you watching the loading animation until you force-refreshed, and when it worked it never said anything at all — so it was hard to tell an update from a glitch.',
+                stall: 'A boot that stalls now recovers by itself. After a deploy, a tab still running the previous version can fail to load the code it needs, and the loading screen used to sit there indefinitely with a hard refresh as the only way in. It now retries once on its own, and if that does not work it shows the app rather than the animation.',
+                notice: 'Release notes are no longer silenced by accident. Pressing Escape or clicking outside the notes dialog used to mark every release as read, which is what stops it from appearing — so one stray keypress meant you never saw release notes again. Only closing or acknowledging it counts now.',
+                draft: 'A background update says so when it lands, and no longer discards a message you were part-way through typing.',
+                cli: 'Machines check for a new CLI every hour instead of every six, so a newly recommended version reaches them the same day.',
+            },
             sep03s: {
                 title: 'A finished session now says so',
                 summary: 'The session list already tracked which conversations had finished a turn while you were looking elsewhere, but it marked them with a dot the same colour as the row\u2019s own text \u2014 so nobody ever saw it. It is red now, and it survives a reload.',

@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-update-path',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.114',
+    titleKey: 'changelog.releases.sep03t.title',
+    summaryKey: 'changelog.releases.sep03t.summary',
+    itemKeys: [
+      'changelog.releases.sep03t.stall',
+      'changelog.releases.sep03t.notice',
+      'changelog.releases.sep03t.draft',
+      'changelog.releases.sep03t.cli',
+    ],
+  },
+  {
     id: '2026-09-03-unread-dot',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

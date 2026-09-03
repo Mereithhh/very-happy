@@ -1625,10 +1625,19 @@ export const zhHans: TranslationStructure = {
         cliBody: ({ count, version, machines }: { count: number; version: string; machines: string }) =>
             `${count} 台在线机器低于 v${version}：${machines}。此命令会安装精确版本并安全刷新 daemon。`,
         commandCopied: 'CLI 更新命令已复制',
+        bundleUpdated: '已更新到最新版本',
         commandCopyFailed: '无法复制 CLI 更新命令',
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03t: {
+                title: '更新不会再把你卡在加载界面',
+                summary: '应用会在后台自动更新。但有时候这会让你一直盯着加载动画、只能强制刷新才进得去；而它成功的时候又什么都不说，于是很难分清是更新了还是卡了。',
+                stall: '启动卡住现在能自愈。发布之后，还在跑旧版本的标签页可能加载不到需要的代码，此前加载界面就会无限停在那里，只能手动强刷。现在它会自己重试一次，如果还不行就直接把应用显示出来，而不是继续转圈。',
+                notice: '更新说明不会再被误关静音。此前按 Esc 或点弹窗外面，会把所有版本标记成已读——而"已读"正是让它不再出现的开关，所以手滑一次之后你就再也看不到任何更新说明了。现在只有真的关闭或点"知道了"才算读过。',
+                draft: '后台更新完成时会明确告诉你，并且不会再吞掉你打了一半的消息。',
+                cli: '机器改成每小时检查一次 CLI 新版本（原来是六小时），新推荐的版本当天就能通知到。',
+            },
             sep03s: {
                 title: '会话跑完了，列表里现在看得出来',
                 summary: '「在你看别处的时候跑完了一轮」这件事，会话列表其实一直有记，只是那个标记点和行内文字同一个颜色——于是从来没人看见过。现在它是红的，而且刷新页面也还在。',

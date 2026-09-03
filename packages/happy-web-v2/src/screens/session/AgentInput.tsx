@@ -17,6 +17,7 @@ import {
     useSetting,
     storage,
 } from '@/sync/storage';
+import { registerDraftFlush } from '@/app/draftFlush';
 import { useTranslation } from '@/i18n/useTranslation';
 import {
     getAvailableModels,
@@ -299,6 +300,13 @@ export function AgentInput({ sessionId }: { sessionId: string }) {
     useEffect(() => () => {
         storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
     }, [sessionId]);
+
+    // B-315: a background auto-update reloads the page without unmounting
+    // anything, so the cleanup above never runs. Register the same flush for
+    // the update path to call on its way out.
+    useEffect(() => registerDraftFlush(() => {
+        storage.getState().updateSessionDraft(sessionId, draftRef.current || null);
+    }), [sessionId]);
 
     const releaseQueuedAttachments = (item: QueuedMessage) => {
         for (const attachment of item.attachments ?? []) {

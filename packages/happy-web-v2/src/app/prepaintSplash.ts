@@ -1,3 +1,10 @@
+import { markProgrammaticReload } from '@/app/programmaticReload';
+import {
+  decideSplashStall,
+  serializeSplashStallGuard,
+  SPLASH_STALL_MS,
+} from '@/app/splashStallPolicy';
+
 /**
  * Fade the HTML pre-paint splash once the selected React root is ready.
  * The loader preview query deliberately keeps it mounted for visual QA.
@@ -30,6 +37,9 @@ export function dismissPrepaintSplashWhenRouteReady(
   createObserver: (callback: MutationCallback) => Pick<MutationObserver, 'observe' | 'disconnect'> =
     (callback) => new MutationObserver(callback),
   dismiss: () => boolean = () => dismissPrepaintSplash(),
+  onStall: () => void = defaultSplashStall,
+  schedule: (callback: () => void, delay: number) => unknown = setTimeout,
+  cancel: (handle: unknown) => void = (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 ): () => void {
   if (!root) {
     dismiss();
@@ -37,9 +47,14 @@ export function dismissPrepaintSplashWhenRouteReady(
   }
 
   let observer: Pick<MutationObserver, 'observe' | 'disconnect'> | null = null;
+  let stallTimer: unknown = null;
+  const stopWaiting = () => {
+    observer?.disconnect();
+    if (stallTimer !== null) { cancel(stallTimer); stallTimer = null; }
+  };
   const releaseIfReady = () => {
     if (root.querySelector(REACT_ROUTE_LOADING_SELECTOR)) return false;
-    observer?.disconnect();
+    stopWaiting();
     dismiss();
     return true;
   };
@@ -49,7 +64,31 @@ export function dismissPrepaintSplashWhenRouteReady(
   observer = createObserver(releaseIfReady);
   observer.observe(root, { childList: true, subtree: true });
   // Close the small race between the initial query and observer attachment.
-  releaseIfReady();
+  if (releaseIfReady()) return () => {};
 
-  return () => observer?.disconnect();
+  // B-315: the observer alone can wait forever. A route whose lazy chunk 404s
+  // after a redeploy never stops rendering its loading marker, and the splash
+  // sat on top of it until the viewer hard-refreshed by hand.
+  stallTimer = schedule(() => {
+    stallTimer = null;
+    stopWaiting();
+    onStall();
+  }, SPLASH_STALL_MS);
+
+  return stopWaiting;
+}
+
+/** Reload once to pick up the current shell; if that already happened, show
+ *  whatever rendered instead of holding the splash up a second time. */
+function defaultSplashStall(): void {
+  const KEY = 'vh-splash-stall-v1';
+  let stored: string | null = null;
+  try { stored = sessionStorage.getItem(KEY); } catch { /* private mode */ }
+  if (decideSplashStall(stored).action === 'reveal') {
+    dismissPrepaintSplash();
+    return;
+  }
+  try { sessionStorage.setItem(KEY, serializeSplashStallGuard({ attemptedAt: Date.now() })); } catch { /* ignore */ }
+  markProgrammaticReload();
+  window.location.reload();
 }
