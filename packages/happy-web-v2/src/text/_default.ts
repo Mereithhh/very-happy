@@ -1658,6 +1658,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03k: {
+                title: 'Two places the interface was quietly misleading you',
+                summary: 'The new-session picker never said whether a machine could actually run Claude, so you found out when the first turn failed. And a turn that failed before it billed anything still printed a cost.',
+                picker: 'The machine picker now shows which machines are not logged in to Claude Code, with a link to that machine’s login status, so you can pick a working one before starting instead of after the first turn comes back with an authentication error. It warns rather than blocks — the check can lag a login you just finished — and it stays quiet whenever it has no real evidence, including on machines that authenticate through Bedrock or an API key.',
+                cost: 'A turn that never billed no longer shows "$0.0000" underneath it. An authentication failure costs nothing, and a row of zeros next to the error read as if zero were a result worth reporting.',
+            },
             sep03j: {
                 title: 'Connect a machine sits in the "+" menu now',
                 summary: 'The guide added in the previous release lived in Settings and in the dialogs\' empty states. It now sits where you actually go to start something.',
