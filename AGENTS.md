@@ -81,6 +81,8 @@ node packages/happy-cli/dist/index.mjs --version
 # 已知环境例外：daemon.integration "second daemon" 用例
 # 在 web 终端（tmux 内）跑 happy-cli 测试前先 `unset TMUX`；任何触碰 tmux 的测试只能走
 # src/testing/isolatedTmux.ts（私有 -S socket），禁止裸 `tmux kill-server`（2026-08-31 两次杀光生产终端）
+# 这套真 tmux 测试**不能两份 vitest 并发跑**：并发会让 webTerminal.userTmuxConf 假红（2026-09-03 实踩，
+# 单独重跑全绿）。同机同时只跑一份 happy-cli 测试，看到它单独失败先排除并发再当回归。
 
 # happy-server：类型 + 测试
 pnpm -C packages/happy-server exec tsc --noEmit
@@ -93,6 +95,10 @@ pnpm -C packages/happy-server exec vitest run
   视觉观感）登记 `docs/verify-queue.md`，下一批开始前 Owner 清账。
 - 窄屏、主题或第三方嵌入组件的视觉改动，除测试/build/tsc 外，还要在受影响的真实浏览器
   视口验证交互、溢出与布局；本地浏览器能验的当批验，只有真机专属项才留 verify queue。
+  **窄屏量尺寸必须按 `pointer: coarse` 的真实控件尺寸量**（`.sb-icon-btn` 38px、`.vh-back` 40px、
+  `.ch-icon` 36px，而不是桌面的 30/32px）：桌面浏览器默认是 fine pointer，直接量会显著低估溢出
+  （B-293 第一遍就少算了约 40%，把「常态就有按钮点不到」误判成「只有连接期才溢出」）。
+  复制真实 CSS 到一次性 harness 量 `scrollWidth - clientWidth` 与每个按钮的越界量，修前修后各留一份。
 - 浏览器判断「发布没生效」前先保留现场：在原标签页记录实际加载的 entry/CSS URL、
   目标元素 computed style 与关键 CSS variable，并对比服务器当前 entry；再用普通 reload
   验证版本迁移。只有证据留存后才 hard refresh / unregister 做恢复；强刷后正常不能单独
@@ -151,7 +157,10 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
 8. **Claude SDK 会话的 Queue / Steer / Stop / permission callback 是不同控制通道**：Queue
    等当前 turn 结束，Steer 注入当前 turn，只有 Stop 才终止；`ExitPlanMode` 的权限回调只完成
    当前审批，不得在响应前嵌套发第二条 SDK control request；内部中断/diagnostic frame 不得
-   渲染成普通 assistant 回复。
+   渲染成普通 assistant 回复。**mode 字段同理分三条通道**（model/permissionMode 活切、其余重启
+   query），改 `claudeRemote*` / `claudeModeHash` 前先读
+   `specs/2026-09-claude-mode-live-vs-relaunch.md`——别因为「SDK 提供了这个 setter」就换过去，
+   先证明它能回报当前真正生效的值（`applyFlagSettings` 对乱填的 effort 也照样 resolve）。
 9. **终端字形渲染三条硬事实**（机制全文见
    `specs/2026-09-terminal-font-and-seamless-rendering.md`，2026-09 连踩 6 个 PR 换来）：
    ①「严丝合缝」=（字体方块字形填满整格）×（`lineHeight` 1.0），**缺一不可**——「字体有该
@@ -174,9 +183,17 @@ phosphor teal（`--accent`）严格只表示 live（focus/活跃/已连接/agent
     `session.metadata.capabilities` 分版本（不是 machine `happyCliVersion`），并假设更新前开着的会话永远跑旧代码；
     Web 侧要有版本无关的兜底。权限模式的唯一执法入口是 `src/sync/yoloEnforcement.ts`（storage 收集决策、
     sync 注入 enforcer；只对明确选过的 yolo 执法，绝不对代码默认执法），出站模式唯一清洗点是
-    `normalizeClaudeOutboundMode`——**选择器/设置里出现 CLI zod 枚举不认识的值会让整条消息被静默丢弃**
-    （`dontAsk` 事故）。普通工具 approve **不得带 `mode`**（0.2.79–0.2.90 会在 canUseTool 内嵌套 control
-    request，失败即 deny）。规则全文见 `specs/2026-08-permission-mode-source-of-truth.md`「Web 代批与执法边界」。
+    `normalizeClaudeOutboundMode`。**CLI 的 `MessageMetaSchema` 有两种静默失败，方向相反，都出过事故**：
+    枚举不认识的值 → 整条消息被丢弃（`dontAsk`）；**schema 里干脆没有那个字段 → zod 直接剥掉，
+    读取侧永远读不到**（`effort` 因此在所有已发布版本上从未生效过，B-292）。加 mode 字段一律用
+    `z.string().nullable().optional()` + 读取侧白名单，不要用 enum。普通工具 approve **不得带 `mode`**
+    （0.2.79–0.2.90 会在 canUseTool 内嵌套 control request，失败即 deny）。
+    **推论——Web 选择器显示的是意图，不是事实**：选完立刻变、不等确认，所以只要 CLI 不发布「当前真正
+    生效的值」，任何没生效都是静默的（permissionMode 有 `metadata.permissionMode`，model 有
+    `metadata.currentModelCode`；新增可选 mode 字段时一并补上对应的回报字段）。规则全文见
+    `specs/2026-08-permission-mode-source-of-truth.md`「Web 代批与执法边界」，各 mode 字段「活切 vs 重启
+    query」的通道契约见 `specs/2026-09-claude-mode-live-vs-relaunch.md`（含「重启 hash 同时是合批键」
+    与「park 必须和 adopt 同一个动作」两个坑）。
 15. **reducer 输入契约：一批消息按 seq 升序**（`sortIncomingBySeq` 在 `storage.applyMessages` 与 `reducer()`
     入口各调一次；乐观消息混批保持到达顺序）。历史回填页是 DESC，绕过它会让 sidechain 子行永久平铺、
     子工具永久 running、plan-mode 误进（B-261）。
