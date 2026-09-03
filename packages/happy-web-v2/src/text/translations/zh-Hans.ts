@@ -1631,10 +1631,18 @@ export const zhHans: TranslationStructure = {
             `${count} 台在线机器低于 v${version}：${machines}。此命令会安装精确版本并安全刷新 daemon。`,
         commandCopied: 'CLI 更新命令已复制',
         bundleUpdated: '已更新到最新版本',
+        updateReady: '有新版本了',
+        updateApply: '刷新',
+        updateApplying: '刷新中…',
         commandCopyFailed: '无法复制 CLI 更新命令',
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03w: {
+                title: '更新前会先问你一句',
+                summary: '此前只要有新版本，页面就会自己重新加载。快是快、也安全，但页面毫无预兆地消失再回来，看着就像出了 bug——所以现在改成先征求你同意。',
+                prompt: '有新版本时会出现一个小小的「刷新」提示，而不是直接在你眼皮底下重载。不理它也没关系：等你切走这个标签页时它会自己完成更新，所以不会长期停在旧版本上。',
+            },
             sep03v: {
                 title: '新建终端不会再按错误的宽度打开',
                 summary: 'Web 终端会等字体就绪之后再开始绘制，这样才能量准一个字符格的宽度。但它等的是字体栈里的**后备**字体（打包进来的那个），不是它真正用来渲染的那个——于是在真字体到达之前就把格子量完了。',

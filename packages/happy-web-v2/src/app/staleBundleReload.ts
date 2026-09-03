@@ -29,6 +29,8 @@
  */
 import { markProgrammaticReload } from '@/app/programmaticReload';
 import { flushPendingDrafts } from '@/app/draftFlush';
+import { getPendingUpdate, setPendingUpdate } from '@/app/pendingUpdate';
+import { decideUpdate } from '@/app/updatePromptPolicy';
 import {
   decideStaleBundleReload,
   serializeStaleBundleReloadGuard,
@@ -107,19 +109,14 @@ async function checkOnce(own: string, force = false): Promise<void> {
       return;
     }
     clearRetry();
-    sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
-      entry: server,
-      attemptedAt: now,
-    }));
-    try {
-      const regs = await navigator.serviceWorker?.getRegistrations?.();
-      await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
-    } catch {
-      // SW update is best-effort; the reload below still fetches the new shell
+    // B-319: a visible tab is offered the update instead of having it applied.
+    // Reloading the page someone is reading looks like a bug — it was reported
+    // as one — so the reload waits for either a click or the tab going away.
+    if (decideUpdate({ hidden: document.hidden }).action === 'prompt') {
+      setPendingUpdate({ entry: server });
+      return;
     }
-    prepareForUpdateReload();
-    markProgrammaticReload(); // don't let the unload guard block auto-update
-    window.location.reload();
+    await applyUpdate(server, now);
   } finally {
     checking = false;
   }
@@ -137,6 +134,28 @@ async function checkOnce(own: string, force = false): Promise<void> {
 function prepareForUpdateReload(): void {
   flushPendingDrafts();
   try { sessionStorage.setItem(UPDATED_NOTICE_KEY, '1'); } catch { /* private mode */ }
+}
+
+
+/**
+ * Take the new shell. Stamps the loop guard first so a genuinely broken deploy
+ * cannot reload forever, refreshes the service worker registration so the next
+ * navigation is served from the new precache, and flushes drafts on the way out.
+ */
+export async function applyUpdate(serverEntry: string, now = Date.now()): Promise<void> {
+  sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
+    entry: serverEntry,
+    attemptedAt: now,
+  }));
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.();
+    await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
+  } catch {
+    // SW update is best-effort; the reload below still fetches the new shell
+  }
+  prepareForUpdateReload();
+  markProgrammaticReload(); // don't let the unload guard block the update
+  window.location.reload();
 }
 
 /** Manual check (Settings → Diagnostics "check for update" button).
@@ -169,7 +188,11 @@ export function installStaleBundleReload(): void {
   const own = ownEntryName();
   if (!own) return; // vite dev / unexpected shell — nothing to compare
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) void checkOnce(own);
+    if (!document.hidden) { void checkOnce(own); return; }
+    // Going to the background is the moment an offered update can be taken
+    // without anyone watching it happen.
+    const waiting = getPendingUpdate();
+    if (waiting) void applyUpdate(waiting.entry);
   });
   setInterval(() => {
     if (!document.hidden) void checkOnce(own);
