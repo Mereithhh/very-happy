@@ -193,10 +193,13 @@ gh workflow run deploy-hwsg.yml --ref main -f target=all -f rollout=switch
 curl -fsS https://veryhappy.dev/v1/version/cli   # must not be source:"unavailable"
 ```
 
-The publish workflow checks this for you afterwards and prints a loud notice
-in the run summary when the relay still recommends something older — it does
-not fail the run, because holding a release back is legitimate, but you will
-not silently forget again. Unset, the relay answers `/v1/version/cli` with nulls, `deriveCliUpdateState`
+The publish workflow's `promote` job checks this for you after it moves the
+dist-tag, and prints a loud notice in the run summary when the fleet still will
+not be offered the release — a pin holding it back, or a `latest` that never
+moved because smoke was red. It does not fail the run, because holding a release
+back is legitimate, but you will not silently forget again.
+
+Unset, the relay answers `/v1/version/cli` with nulls, `deriveCliUpdateState`
 returns null, and every update surface — the global banner, Diagnostics, the
 machine page — stays silent. That is how the whole fleet drifted 24 versions
 behind while the notice machinery from B-040 sat there working perfectly and

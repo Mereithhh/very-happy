@@ -112,10 +112,21 @@ triage（分独立/冲突域）
   本 tag」求差，凡有 feat/fix/perf 提交就必须新增 `CHANGELOG_RELEASES` 条目（CLI 需精确 `cliVersion`），
   `deploy-hwsg.yml` / `publish.yml` 拒发；本地先跑 `scripts/changelog/check-release.mjs`，跳过必须留理由
   （deploy 输入 `changelog_skip_reason` / 附注 tag `[changelog-skip: …]`）。
+  **门禁只查「有没有新增一条」，不查每一行都被覆盖**，所以它放行的批次里可能有提交没人写说明——
+  通过时它会把本次覆盖的提交逐条打出来，照着看一遍。两个由此而来的规矩：
+  - **别替别的会话补条目，除非先确认没有在飞的 changelog PR**。2026-09-04 我为了让门禁「覆盖每一行」
+    替 B-327 代写了一条，同时 owning session 自己也在写——同一版本上线了**两条一模一样的更新说明**，
+    只能再发一次去删。要补就先 `gh pr list --search changelog`，或者干脆只在 PR 里点名「这行还没人写」。
+  - **门禁验不出「条目声称的 `cliVersion` 是否真含它自己的代码」**：条目在打 tag 之前写，写的是预测。
+    2026-09-04 `2026-09-04-pi-and-supervisor-surface` 声称 0.2.116，而它的代码晚于 `v0.2.116`
+    （`git merge-base --is-ancestor <commit> v<version>` 为假）——用户会被告知拿到了并不存在的能力。
+    发完 tag 后对每条声称该版本的条目跑一次这个 merge-base 检查。
 - **版本**：CLI = semver patch（推 tag 自动发 npm）；同一 tag 先发布六个
   `very-happy-tools-<arch>-<os>` 平台包，再发布带精确 optionalDependency 版本的
   `very-happy-cli` 主包，部分成功后 workflow 可幂等重跑；web = bundle salt 随每次部署；server 随源同步。
-- **发布顺序**：默认 server → web → CLI（tag → npm 200 → `vh-update`）；
+- **发布顺序**：默认 server → web → CLI（tag → npm 200 →「等 smoke 绿 → `promote` 移 `latest`」→ relay
+  ≤1h 跟上 → 各机空闲时自动升级）。**推荐版本不再需要手动 pin**（铁律 6 / B-348）；`vh-update` 只用来
+  让某一台机器立刻跟上；
   涉及协议字段时按实现报告里的兼容矩阵定顺序，**双向兼容（旧端忽略新字段）是设计要求**不是可选项。
 - **部署核对**：push 后 ≥20s 再触发 CI；`gh run view --json headSha` 核对构建 sha = 预期 commit
   （踩过构建到旧 commit、push 静默失败两种事故）。
