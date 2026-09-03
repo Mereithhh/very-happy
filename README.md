@@ -390,14 +390,19 @@ See the exact [integration contracts](docs/channels.md).
 | External Todo list | Add `todoProvider` to the machine's `~/.happy/settings.json`; copy the [provider contract and example](docs/channels.md#inbound-todo-provider-external-task-lists-in-the-web-ui). |
 | Account webhook | Open **Settings → Channels**, save one HTTPS endpoint, and select completion / permission events. |
 | Dispatch other sessions | Select an Assistant machine in **Settings → Voice & Assistant**, open **Assistant** (`/assistant`), and review its high-privilege permission setting. See the [Assistant setup](docs/channels.md#inbound-web-assistant--meta-agent). |
-| Script / IM adapter | Run [`very-happy spawn` and `very-happy send`](docs/channels.md#inbound-daemon-control-via-the-cli) on the daemon machine. |
+| Script / IM adapter | Run [`very-happy spawn`, `send` and `sessions`](docs/channels.md#inbound-daemon-control-via-the-cli) on the daemon machine — start work, message it, then list / read / stop / archive what you started. |
 
 ## Compose it into a larger agent system
 
-Very Happy is an execution surface, not a closed automation platform. Generic
-webhooks plus [`very-happy spawn` and `very-happy send`](docs/channels.md) let a
-carefully scoped adapter connect an issue tracker, scheduler, chat system, or
-future provider-aware coordinator.
+Very Happy is an execution surface, not a closed automation platform. The
+coordinator, the roles it dispatches and the policy around them belong in your
+adapter; what this project owns is the execution surface underneath. Generic
+webhooks plus the [CLI's automation commands](docs/channels.md) are that
+contract: `spawn` starts work (with an origin tag, a permission mode and an
+agent of your choosing), `send` continues it, and `sessions` lets the adapter
+see and steer what it started instead of dispatching blind. That is enough to
+connect an issue tracker, scheduler, chat system, or a coordinator of your own
+without teaching the core about any of them.
 
 The adapter must own sender authorization, fixed workspace policy, deduplication,
 rate limits, and least-privilege execution. Incoming messages are input, never

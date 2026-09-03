@@ -72,7 +72,9 @@ flowchart TD
 ```
 
 `src/index.ts` is the CLI router. It:
-- Parses subcommands (`doctor`, `auth`, `connect`, `codex`, `gemini`, and default run flows).
+- Parses subcommands (`doctor`, `auth`, `connect`, `codex`, `gemini`, the
+  automation commands `spawn` / `send` / `sessions` documented in
+  `channels.md`, and default run flows).
 - Ensures auth and machine setup when needed (`authAndSetupMachineIfNeeded`).
 - Starts the daemon or runs an agent directly based on subcommand/context.
 

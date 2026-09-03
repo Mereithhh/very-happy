@@ -38,7 +38,10 @@ release date. “Long-term concept” is product exploration.
   selected machine. Voice entry is available when a compatible voice service is
   configured; both meta-agent modes currently require Claude Code.
 - Provider-style inbound commands and outgoing HTTPS webhooks for connecting
-  external task and notification systems.
+  external task and notification systems. The CLI's automation commands cover
+  the full loop an external coordinator needs — spawn work with an origin tag,
+  permission mode and agent; message it; then list, read, stop or archive it —
+  so a bespoke agent layer can live outside this project rather than inside it.
 
 ### Operation
 
