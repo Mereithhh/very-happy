@@ -24,6 +24,7 @@ There are two directions:
 | Let that script see and steer what it dispatched | [`very-happy sessions`](#very-happy-sessions--inspect-and-control-what-is-running) |
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
+| Give a pi (or other non-Claude) meta agent the session tools | [`very-happy mcp` inside a meta-agent session](#very-happy-mcp-as-the-meta-agent-tool-surface-for-pi-and-other-non-claude-runners) |
 
 ## MCP capability matrix
 
@@ -34,16 +35,20 @@ has the same tool set:
 |---|---|
 | Base managed Claude session | `change_title`, `copy_to_clipboard`, `open_preview`, `report_progress` |
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
-| Assistant/meta-agent variant additions | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
-| User-scoped plain `claude` after explicit setup | `copy_to_clipboard` only |
+| Assistant/meta-agent variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
+| User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
+| User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, e.g. pi started with the new-session dialog's "meta agent" option) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
 
 The first two paths are injected by their managed runners. The assistant-only
 additions can read and mutate sessions, terminals, memory, and journals; treat
 that variant and its prompt/tool permissions as a high-privilege machine
-control surface. The standalone `very-happy mcp` command is deliberately
-narrower and does not expose session spawn/send, provider routing, preview,
-title, or progress tools. External automation should use the explicit CLI
-contracts below.
+control surface. The standalone `very-happy mcp` command is narrower: outside a
+meta-agent session it is clipboard-only, and even inside one it never exposes
+terminal, memory, journal, provider routing, preview, title, or progress
+tools. It also stays clipboard-only under a happy-managed Claude
+(`HAPPY_MANAGED=1`), so a Claude assistant that happens to have the user-scoped
+registration too does not see the session tools twice. External automation
+should use the explicit CLI contracts below.
 
 ## Architecture
 
@@ -305,6 +310,57 @@ forwarded to the local daemon over its 127.0.0.1 control server
 (`POST /clipboard`), relayed
 over the authenticated machine socket, and fanned out to the clipboard of
 every web client the user has open. Payloads over 256KB are truncated.
+
+### `very-happy mcp` as the meta-agent tool surface for pi and other non-Claude runners
+
+The Web Assistant above is Claude-only because its session tools are injected
+in-process by the Claude runner. Any other runner that loads its own MCP config
+gets the same six session tools from the standalone server instead, gated by
+one environment variable the daemon already sets:
+
+1. Register `very-happy mcp` once in the agent's own MCP config. For pi
+   (via [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)) that is
+   `~/.pi/agent/mcp.json`:
+
+   ```jsonc
+   {
+     "mcpServers": {
+       "very-happy": { "command": "very-happy", "args": ["mcp"] }
+     }
+   }
+   ```
+
+   (`~/.agents/mcp.json` and a project `.mcp.json` are read too; the daemon
+   user's PATH must resolve `very-happy`.)
+
+2. Start the session as a meta agent: in the new-session dialog pick the agent
+   and tick **Meta agent**. The Web sends `variant: 'assistant'`; for a
+   non-Claude agent the daemon turns that into exactly one thing —
+   `HAPPY_SESSION_VARIANT=assistant` in the session's environment — and
+   otherwise treats the spawn normally (your directory is used, there is no
+   per-machine singleton, the /assistant screen is unaffected). The runner
+   passes its environment to the agent process, the agent to the MCP servers
+   it starts, and `very-happy mcp` reads the variable when it comes up.
+
+With the variable the server registers `copy_to_clipboard` plus
+`sessions_list`, `session_read`, `session_send`, `session_spawn`,
+`session_kill` and `session_archive` — the same implementations, same
+this-machine scope and same "dispatch returns immediately" semantics as the
+Claude assistant's tools (`session_spawn` starts Claude workers via the local
+daemon). Without it — a plain pi you started in a terminal, any ordinary
+session — the same registration yields clipboard only, so registering it
+user-wide is safe: a session only gains machine-control tools when it was
+deliberately started as a meta agent. Permission approval (`session_approve` /
+`session_deny`) is not part of this surface yet; it arrives with the
+`very-happy sessions approve|deny` CLI.
+
+A Claude session never takes this path: `HAPPY_MANAGED=1` on every
+happy-managed `claude` keeps the standalone server clipboard-only there, since
+the in-process assistant tools already cover it.
+
+Setting `HAPPY_SESSION_VARIANT=assistant` by hand (e.g. in that MCP entry's
+`env`) opts a manually started agent into the same tools; that is the same
+high-privilege surface as the Web Assistant, so do it knowingly.
 
 ---
 
