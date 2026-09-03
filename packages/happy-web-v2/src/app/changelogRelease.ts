@@ -18,8 +18,9 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-03-rate-limit-self-lock',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
-    // Ships in the same CLI release as the entry below it.
-    cliVersion: '0.2.112',
+    // NOT 0.2.112: that tag was published from 249a0639 while this was still in
+    // review, and a published tag is immutable (AGENTS 铁律 6).
+    cliVersion: '0.2.113',
     titleKey: 'changelog.releases.sep03r.title',
     summaryKey: 'changelog.releases.sep03r.summary',
     itemKeys: [
