@@ -795,8 +795,11 @@ export async function machineImportClaudeSession(options: {
     claudeSessionId: string;
     approvedNewDirectoryCreation?: boolean;
     permissionMode?: string;
+    /** B-292: source title, stamped on the new session's metadata by the CLI.
+     *  Old daemons ignore it; the caller sets the title itself as a fallback. */
+    title?: string;
 }): Promise<ImportClaudeSessionResult> {
-    const { machineId, directory, claudeSessionId, approvedNewDirectoryCreation = false, permissionMode } = options;
+    const { machineId, directory, claudeSessionId, approvedNewDirectoryCreation = false, permissionMode, title } = options;
     try {
         await ensureMachineEncryption(machineId);
         const result = await apiSocket.machineRPC<ImportClaudeSessionResult, {
@@ -804,10 +807,11 @@ export async function machineImportClaudeSession(options: {
             claudeSessionId: string;
             approvedNewDirectoryCreation?: boolean;
             permissionMode?: string;
+            title?: string;
         }>(
             machineId,
             'claude-import-session',
-            { directory, claudeSessionId, approvedNewDirectoryCreation, permissionMode },
+            { directory, claudeSessionId, approvedNewDirectoryCreation, permissionMode, title },
             { timeoutMs: 25_000 },
         );
         // A handler that throws comes back as a normal ack carrying `error`

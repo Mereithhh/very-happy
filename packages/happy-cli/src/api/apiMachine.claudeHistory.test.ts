@@ -141,6 +141,15 @@ describe('ApiMachineClient claude-import-session RPC (B-290)', () => {
         expect(await transcriptsInProject()).toHaveLength(2);
     });
 
+    it('stamps the source title on the imported session (B-292)', async () => {
+        const spawnSession = vi.fn().mockResolvedValue({ type: 'success', sessionId: 'happy-1' });
+        const handler = await clientWith(spawnSession);
+
+        await handler({ directory: '/work/app', claudeSessionId: id, title: 'Login bug investigation' });
+
+        expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({ importTitle: 'Login bug investigation' }));
+    });
+
     it('discards the copy when the spawn fails, so a retry cannot pile up orphans', async () => {
         const spawnSession = vi.fn().mockResolvedValue({ type: 'error', errorMessage: 'boom' });
         const handler = await clientWith(spawnSession);

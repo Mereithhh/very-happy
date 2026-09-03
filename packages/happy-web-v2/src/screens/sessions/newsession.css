@@ -318,3 +318,33 @@
   .ns-session { min-height: 44px; }
   .ns-tips-dismiss { min-height: 44px; }
 }
+
+/* B-292: import run feedback — a real loading row, per-row failure tint and a
+   progress counter in the footer. */
+.ns-loading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font-size: var(--fs-12);
+  color: var(--text-dim);
+}
+.ns-session--stack .ns-session-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ns-session.is-failed {
+  border-color: var(--danger);
+}
+.ns-session.is-failed .ns-session-meta {
+  color: var(--danger);
+}
+.ns-progress {
+  margin-right: auto;
+  font-size: var(--fs-11);
+  color: var(--text-faint);
+}

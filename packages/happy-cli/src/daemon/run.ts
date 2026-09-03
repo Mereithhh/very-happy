@@ -56,6 +56,17 @@ import { shellescape } from '@/utils/shellescape';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** B-292: an imported session's title rides an env var into the wrapper, so it
+ *  must be a single sane line — collapse whitespace, drop control characters,
+ *  clamp the length. Returns null when nothing usable is left. */
+export function sanitizeImportTitle(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  // eslint-disable-next-line no-control-regex
+  const collapsed = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (collapsed.length === 0) return null;
+  return collapsed.length > 200 ? `${collapsed.slice(0, 199)}…` : collapsed;
+}
+
 // Prepare initial metadata
 // Suffix host with `-dev` for the HAPPY_VARIANT=dev variant so the dev daemon
 // is visually distinct from the stable one in the machine list (they otherwise
@@ -552,6 +563,10 @@ export async function startDaemon(): Promise<void> {
         }
         if (options.importedFromClaudeSessionId && UUID_RE.test(options.importedFromClaudeSessionId)) {
           extraEnv.HAPPY_IMPORTED_FROM_CLAUDE_SESSION_ID = options.importedFromClaudeSessionId;
+        }
+        const importTitle = sanitizeImportTitle(options.importTitle);
+        if (importTitle) {
+          extraEnv.HAPPY_IMPORT_TITLE = importTitle;
         }
         if (options.resumeCodexThreadId) {
           extraEnv.HAPPY_FORK_CODEX_THREAD_ID = options.resumeCodexThreadId;
