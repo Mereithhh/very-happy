@@ -1722,6 +1722,7 @@ export const en = {
                 pi: 'New sessions can run pi (via the pi-acp adapter) next to Claude, Codex and Gemini. It appears in the launcher only on machines whose daemon reports it. A pi session raising a confirmation through its extension shows up as an ordinary permission card.',
                 approve: '`very-happy sessions list --all` lists every session on the account, with the pending permission requests and how long each has waited for the sessions this machine holds keys for. `very-happy sessions approve` / `deny` answer a request with exactly what the web card would send.',
                 meta: 'The session tools the built-in assistant uses (list, read, send, spawn, kill, archive) are now available to any runner through `very-happy mcp` when a session is started as a meta agent \u2014 pick "Meta agent" when launching pi.',
+                titles: 'pi sessions now get an automatic title like Claude sessions do, and pi can change its own title and reach the same tools (title, progress, clipboard) through the bridge \u2014 including a pi typed by hand inside a web terminal.',
             },
             sep03ab: {
                 title: 'Pick the directory AND the command when you open a terminal',
