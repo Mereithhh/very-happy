@@ -2247,6 +2247,7 @@ export const en = {
                 : `${machine} is on ${current}; update to ${target}.`,
         copyCommand: 'Copy update command',
         handoverHeld: 'Update installed but not running',
+        autoUpdate: 'Automatic update',
         handoverHeldBadge: 'held',
         handoverHeldHelp: 'the daemon kept the previous version rather than restart into one that would not start',
         copied: 'Exact update command copied.',

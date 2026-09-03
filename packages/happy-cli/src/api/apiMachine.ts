@@ -187,6 +187,12 @@ export class ApiMachineClient {
     // recover account material or impersonate a Web client. (Declared before
     // webTerminal so the emit closure can read it.)
     private encTerminals = new Set<string>();
+    /** B-327: an auto-update swaps the process that owns these terminals, so it
+     *  waits until there are none. */
+    hasLiveTerminals(): boolean {
+        try { return this.webTerminal.buildTerminalList().length > 0; } catch { return true; }
+    }
+
     private webTerminal = new WebTerminalManager((event, payload) => {
         let out: any = payload;
         // Encrypt the live byte stream for negotiated terminals. Daemon crypto

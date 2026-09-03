@@ -2149,6 +2149,7 @@ export const zhHans: TranslationStructure = {
                 : `${machine} 当前为 ${current}，请升级到 ${target}。`,
         copyCommand: '复制升级命令',
         handoverHeld: '新版本已安装但没有启用',
+        autoUpdate: '自动更新',
         handoverHeldBadge: '已暂停',
         handoverHeldHelp: 'daemon 保留了旧版本，没有切换到一个起不来的新版本',
         copied: '已复制精确版本的升级命令。',
