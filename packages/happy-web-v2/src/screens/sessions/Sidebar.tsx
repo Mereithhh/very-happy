@@ -354,6 +354,9 @@ export function Sidebar() {
   // sidebarAttention.test.ts.
   const attentionKeys = useMemo(() => attentionKeysOf(boardItems), [boardItems]);
   const unreadIds = storage((s) => s.unreadSessionIds);
+  // B-324: terminals carry the same 未读 dot, owned by the store that observes
+  // their transitions (sync/terminalAgentState.ts).
+  const unreadTerminalIds = useTerminalAgentStates((s) => s.unread);
 
   const statusGroups = useMemo(() => {
     if (view !== 'status' || !rows) return null;
@@ -1020,13 +1023,17 @@ export function Sidebar() {
                           row={r}
                           signal={rowSignalOf({
                             attention: attentionKeys.has(r.key),
-                            // unread is session-only and stays out of the
-                            // archived view (an inactive session's stale flag
-                            // shouldn't mark history).
+                            // Sessions: the flag stays out of the archived view
+                            // (an inactive session's stale mark shouldn't paint
+                            // history). Terminals carry no such gate on purpose
+                            // — see terminalAgentState.ts.
                             unread:
-                              r.kind === 'session' &&
-                              !!r.session?.active &&
-                              unreadIds.has(r.key),
+                              (r.kind === 'session' &&
+                                !!r.session?.active &&
+                                unreadIds.has(r.key)) ||
+                              (r.kind === 'terminal' &&
+                                !!r.terminalId &&
+                                unreadTerminalIds.has(r.terminalId)),
                           })}
                           badge={cmdHeld && i < 9 ? i + 1 : undefined}
                           canMoveUp={i > 0}

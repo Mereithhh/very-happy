@@ -14,6 +14,11 @@ const VOICE_ONBOARDING_PROMPT_LOAD_COUNT_KEY = 'voice-onboarding-prompt-load-cou
 const VOICE_MESSAGE_COUNT_KEY = 'voice-message-count';
 const QUEUED_MESSAGES_KEY = 'queued-messages-v1';
 const UNREAD_SESSIONS_KEY = 'unread-sessions-v1';
+// B-324: web terminals get the same "finished while you were away" dot. Its own
+// key, not a widening of the sessions one: the two are marked by different
+// stores off different signals and cleared by different routes, and merging
+// them would have made an existing user's session marks disappear on upgrade.
+const UNREAD_TERMINALS_KEY = 'unread-terminals-v1';
 
 export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'openclaw';
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -360,21 +365,37 @@ export function clearPersistence() {
  * environment (no `test` block in vite.config.ts) that runs before, or without,
  * installBrowserTestGlobals().
  */
-export function loadUnreadSessionIds(now: number = Date.now()): string[] {
+function loadUnreadIds(key: string, now: number): string[] {
     try {
         if (typeof localStorage === 'undefined') return [];
-        return unreadIdsOf(pruneUnreadRecord(parseUnreadRecord(mmkv.getString(UNREAD_SESSIONS_KEY)), now));
+        return unreadIdsOf(pruneUnreadRecord(parseUnreadRecord(mmkv.getString(key)), now));
     } catch {
         return [];
     }
 }
 
-export function saveUnreadSessionIds(ids: Iterable<string>, now: number = Date.now()) {
+function saveUnreadIds(key: string, ids: Iterable<string>, now: number) {
     try {
         if (typeof localStorage === 'undefined') return;
-        const previous = parseUnreadRecord(mmkv.getString(UNREAD_SESSIONS_KEY));
-        mmkv.set(UNREAD_SESSIONS_KEY, JSON.stringify(nextUnreadRecord(previous, ids, now)));
+        const previous = parseUnreadRecord(mmkv.getString(key));
+        mmkv.set(key, JSON.stringify(nextUnreadRecord(previous, ids, now)));
     } catch {
         // a full / disabled localStorage must not break the session list
     }
+}
+
+export function loadUnreadSessionIds(now: number = Date.now()): string[] {
+    return loadUnreadIds(UNREAD_SESSIONS_KEY, now);
+}
+
+export function saveUnreadSessionIds(ids: Iterable<string>, now: number = Date.now()) {
+    saveUnreadIds(UNREAD_SESSIONS_KEY, ids, now);
+}
+
+export function loadUnreadTerminalIds(now: number = Date.now()): string[] {
+    return loadUnreadIds(UNREAD_TERMINALS_KEY, now);
+}
+
+export function saveUnreadTerminalIds(ids: Iterable<string>, now: number = Date.now()) {
+    saveUnreadIds(UNREAD_TERMINALS_KEY, ids, now);
 }

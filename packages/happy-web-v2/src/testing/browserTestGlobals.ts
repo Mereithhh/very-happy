@@ -69,6 +69,9 @@ export function installBrowserTestGlobals(options: BrowserTestGlobalsOptions = {
         removeEventListener: () => {},
         visibilityState: 'visible',
         hasFocus: () => true,
+        // Writable: the terminal alerting path prefixes the tab title with
+        // "(!) " on every ingest, and reads it back to stay idempotent.
+        title: '',
         // `setDocumentLanguage` guards on `typeof document`, not on
         // `documentElement` — same lesson one level down.
         documentElement: { lang: 'en' },

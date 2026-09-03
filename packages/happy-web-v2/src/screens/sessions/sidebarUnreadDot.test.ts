@@ -51,3 +51,29 @@ describe('sidebar unread dot (B-312)', () => {
         );
     });
 });
+
+/**
+ * B-324: the same dot for web terminals. The store side is behaviour-tested in
+ * sync/terminalUnread.test.ts; what needs pinning here is the wiring, because
+ * a terminal row that never consults the terminal set renders nothing and the
+ * feature is invisible again — exactly how it was reported missing.
+ */
+describe('sidebar unread dot — terminals (B-324)', () => {
+    const sidebar = readFileSync(new URL('./Sidebar.tsx', import.meta.url), 'utf8');
+    const route = readFileSync(new URL('../terminal/WebTerminalRoute.tsx', import.meta.url), 'utf8');
+
+    it('a terminal row reads the terminal set, keyed by terminalId not the row key', () => {
+        // Row.key is `t:<id>` while the store holds bare terminal ids; matching
+        // the two up is the whole bug surface here.
+        expect(sidebar).toMatch(
+            /r\.kind === 'terminal' &&[\s\S]{0,120}?unreadTerminalIds\.has\(r\.terminalId\)/,
+        );
+        expect(sidebar).toContain("useTerminalAgentStates((s) => s.unread)");
+    });
+
+    it('opening a terminal registers it as viewed AND clears its dot', () => {
+        // Only marking it read would let a run finishing under the user's eyes
+        // immediately re-mark it.
+        expect(route).toMatch(/store\.setViewingTerminal\(tid\);\s*\n\s*store\.markTerminalRead\(tid\)/);
+    });
+});
