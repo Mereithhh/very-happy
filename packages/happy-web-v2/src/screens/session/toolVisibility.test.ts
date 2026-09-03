@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolCallMessage } from '@/sync/typesMessage';
-import { isHiddenToolName, visibleToolCalls } from './toolVisibility';
+import { isHiddenToolCall, isHiddenToolName, visibleToolCalls } from './toolVisibility';
 
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 
@@ -24,6 +24,13 @@ describe('tool visibility', () => {
 
     it('keeps unknown MCP tools visible', () => {
         expect(isHiddenToolName('mcp__todo__list_tasks')).toBe(false);
+    });
+
+    it('hides a pi change_title that arrives as other + piTool (B-353)', () => {
+        const piTitle = { ...tool('p', 'other').tool, input: { piTool: 'change_title', rawInput: { title: 'x' } } };
+        expect(isHiddenToolCall(piTitle)).toBe(true);
+        expect(isHiddenToolCall({ ...tool('q', 'other').tool, input: { piTool: 'session_send', rawInput: {} } })).toBe(false);
+        expect(visibleToolCalls([{ ...tool('p', 'other'), tool: piTitle }, tool('2', 'Read')]).map((m) => m.id)).toEqual(['2']);
     });
 
     it('removes hidden calls without swallowing adjacent visible calls', () => {

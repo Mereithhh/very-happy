@@ -1,0 +1,41 @@
+[vh-tick 2026-09-04T10:00:00.000Z] 3 items (1 permission, 1 dispatch) — local machine only
+Decide every item per charter/SUPERVISOR.md. Record each decision with `vh-ledger decide …` before acting on it. End your reply with the decisions JSON block.
+
+## 1. permission — T-001 "Fix flaky test" (autonomy: rule, status: running)
+session: https://x/session/s-att (machine mac-office, state attention)
+title: flaky
+cwd: /w
+pending requests:
+  - r1 (Bash) waiting 12m: git push origin feat/x
+  - fb59032b (tool not reported — see transcript) waiting 3m
+cwd (ledger): /w
+acceptance:
+  0. tests pass 3x
+  1. PR opened
+allowed for tier rule: followup freely; accept or stop only with every acceptance criterion cited with evidence; approve permissions only when the policy would allow them; otherwise escalate
+commands:
+  very-happy sessions read s-att --limit 40
+  very-happy sessions approve s-att r1
+  very-happy sessions deny s-att r1 --reason "<why>"
+  very-happy sessions approve s-att fb59032b
+  very-happy sessions deny s-att fb59032b --reason "<why>"
+  vh-ledger decide T-001 --action approve|deny --request <id> --reason "<why>"
+
+## 2. dispatch — T-002 "Ship it" (autonomy: auto, status: queued)
+cwd (ledger): /w
+acceptance:
+  0. done
+allowed for tier auto: accept / followup / stop on your own; escalate only when unsure
+commands:
+  very-happy spawn --dir /w --spawned-by supervisor --permission-mode default --agent pi --prompt-file <brief> --json
+  vh-ledger bind T-002 <sessionId>
+
+## 3. orphan — untracked session o1
+session: o1 (state running)
+cwd: /o
+commands:
+  very-happy sessions read o1 --limit 20
+  vh-ledger add --goal "<goal>" --cwd /o --acceptance "<criterion>" --autonomy rule --session o1
+
+_1 unchanged item suppressed until their repeat window closes._
+_1 tracked session not decryptable from this machine — skipped, not judged idle or missing: T-002 → cmtforeign000000000000000._

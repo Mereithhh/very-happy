@@ -16,6 +16,7 @@
  * spec D4）。点击是自主行为，等同于在文件浏览器里手动翻进去。
  */
 import type { Message, ToolCall } from '@/sync/typesMessage';
+import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 
 /** 会带文件路径的工具（Claude Code 内建那批）。 */
 const FILE_PATH_TOOLS = new Set([
@@ -30,7 +31,8 @@ function asString(v: unknown): string | null {
  * 一个工具调用指向的文件路径；没有就返回 null。
  * `locations[0].path` 是某些变体的形状（ToolView 已在读它）。
  */
-export function toolFilePathOf(tool: ToolCall): string | null {
+export function toolFilePathOf(rawTool: ToolCall): string | null {
+    const tool = normalizePiToolCall(rawTool);   // B-353: pi read/edit/write → Read/Edit/Write
     if (!FILE_PATH_TOOLS.has(tool.name)) return null;
     const input = (tool.input ?? {}) as Record<string, unknown>;
     const direct = asString(input.file_path);

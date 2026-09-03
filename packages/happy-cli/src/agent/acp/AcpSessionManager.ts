@@ -14,6 +14,25 @@ function buildToolDescription(toolName: string): string {
   return `Running ${toolName}`;
 }
 
+/**
+ * Carry a tool result onto `tool-call-end` only when the runner produced a
+ * text result (today: pi-acp bash output, see acpToolArgs.buildAcpBashResult).
+ * The wire slot already exists (B-260-P2 `result.{text,isError,truncated}`);
+ * other ACP results stay off the wire as before.
+ */
+function toolCallEndResult(result: unknown): { text: string; isError?: boolean; truncated?: boolean } | undefined {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined;
+  const record = result as { text?: unknown; exitCode?: unknown; truncated?: unknown };
+  if (typeof record.text !== 'string') return undefined;
+  const exitCode = typeof record.exitCode === 'number' ? record.exitCode : undefined;
+  const text = exitCode !== undefined && exitCode !== 0 ? `${record.text}${record.text.endsWith('\n') || record.text === '' ? '' : '\n'}[exit code ${exitCode}]` : record.text;
+  return {
+    text,
+    ...(exitCode !== undefined && exitCode !== 0 ? { isError: true } : {}),
+    ...(record.truncated === true ? { truncated: true } : {}),
+  };
+}
+
 function parseThinkingPayload(payload: unknown): { text: string; streaming: boolean } {
   if (typeof payload === 'string') {
     return { text: payload, streaming: false };
@@ -161,9 +180,10 @@ export class AcpSessionManager {
     if (msg.type === 'tool-result') {
       const flushed = this.flush();
       const call = this.ensureSessionCallId(msg.callId);
+      const result = toolCallEndResult(msg.result);
       return [
         ...flushed,
-        createEnvelope('agent', { t: 'tool-call-end', call }, turnOptions(this.currentTurnId, this.nextTime())),
+        createEnvelope('agent', { t: 'tool-call-end', call, ...(result ? { result } : {}) }, turnOptions(this.currentTurnId, this.nextTime())),
       ];
     }
 

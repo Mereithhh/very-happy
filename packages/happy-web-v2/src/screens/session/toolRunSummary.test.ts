@@ -21,4 +21,13 @@ describe('toolRunSummary', () => {
       tool('Read'), tool('Bash'), tool('WebSearch'), tool('mcp__happy__change_title'), tool('Task'),
     ], 3)).toBe('Read · Terminal · Search · +2');
   });
+
+  it('labels pi tool calls by their piTool identity, not the ACP kind (B-353)', () => {
+    const pi = (name: string, input: Record<string, unknown>): ToolCall => ({ ...tool(name), input } as ToolCall);
+    expect(toolRunSummary([
+      pi('execute', { piTool: 'bash', command: 'ls' }),
+      pi('execute', { piTool: 'bash', command: 'pwd' }),
+      pi('read', { piTool: 'read', rawInput: { path: 'a' } }),
+    ])).toBe('Terminal ×2 · Read');
+  });
 });

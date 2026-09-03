@@ -5,7 +5,7 @@
  * collapsible pretty-printed input + output rather than a raw JSON blob.
  */
 import { useId, useState, type ReactNode } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { BookOpen, CheckSquare, ChevronRight, Circle, FileText, Globe, Search, Square } from 'lucide-react';
 import type { ToolCallMessage, ToolCall } from '@/sync/typesMessage';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -24,6 +24,7 @@ import { asCommand, extractError, resultToText } from './toolInfo';
 import { SubagentDetail } from './SubagentDetail';
 import { langForPath } from './langForPath';
 import { FilePathLink } from './FilePathLink';
+import { spawnedSessionIdOf } from './spawnedSessionId';
 
 /** B-145: 工具卡里的文件路径可点 —— sessionId 从路由取（同本文件既有做法）。 */
 function ToolPath({ path }: { path: string }) {
@@ -314,6 +315,23 @@ function QuestionView({ tool }: { tool: ToolCall }) {
     );
 }
 
+// ── B-353: very-happy bridge tools called from a pi session ────────────────────
+function SessionLinkView({ tool }: { tool: ToolCall }) {
+    const { t } = useTranslation();
+    const out = resultToText(tool.result);
+    const targetId = spawnedSessionIdOf(out, tool.input?.sessionId);
+    return (
+        <div className="tv-stack">
+            {targetId && (
+                <div className="tv-path">
+                    <Link to={`/session/${targetId}`} className="tv-badge">{t('message.supervisorOpenSession')} · {targetId}</Link>
+                </div>
+            )}
+            <DefaultView tool={tool} />
+        </div>
+    );
+}
+
 // ── Default (incl. all MCP / unrecognized tools) ─────────────────────────────────
 function DefaultView({ tool }: { tool: ToolCall }) {
     const { t } = useTranslation();
@@ -411,6 +429,14 @@ export function ToolView({ message, abortedAt = null }: { message: ToolCallMessa
             break;
         case 'AskUserQuestion':
             body = <QuestionView tool={tool} />;
+            break;
+        case 'session_spawn':
+        case 'session_send':
+        case 'session_read':
+        case 'session_kill':
+        case 'session_archive':
+            body = <SessionLinkView tool={tool} />;
+            handlesOwnError = true;
             break;
         default:
             // All MCP + unrecognized tools land here with a clean collapsible view.

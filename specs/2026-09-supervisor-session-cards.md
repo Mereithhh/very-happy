@@ -1,6 +1,6 @@
 # 角色感知的会话卡片：supervisor / pi 会话里的 tick、决策、账本与代理工具
 
-> 状态：Draft（Owner 定稿后派实现）
+> 状态：Final（2026-09-04 Owner「按计划继续」即定稿；实现见 B-353 PR）
 > 日期：2026-09-04 ｜ 关联 backlog：B-353 ｜ 出处：Owner 2026-09-04「对于不同角色的 veryhappy session 是不是可以针对性渲染一些卡片视图，我看有一些 toolcall 或者 user input 还是文本或者 json」
 
 ## 背景

@@ -28,7 +28,7 @@ import {
     shouldFollowShrink,
     shouldSmoothJumpToLatest,
 } from './chatFollow';
-import { isHiddenToolName } from './toolVisibility';
+import { isHiddenToolCall } from './toolVisibility';
 import { countRunningSubagentCards, suppressSubagentPills } from './subagentPills';
 import { userAbortedAt } from './subagentAbort';
 import { currentTurnMessages, isAgentWorkLive } from '@/sync/agentLiveness';
@@ -70,7 +70,7 @@ export function ChatList({
     const chronological = useMemo(
         () => suppressSubagentPills([...messages].reverse().filter((message) =>
             message.inputState === undefined &&
-            (message.kind !== 'tool-call' || !isHiddenToolName(message.tool.name)))),
+            (message.kind !== 'tool-call' || !isHiddenToolCall(message.tool)))),
         [messages],
     );
     // B-260-P2: a background sub-agent keeps the turn live after the main

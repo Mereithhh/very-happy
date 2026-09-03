@@ -243,6 +243,22 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   (version, skills, extensions) as the first assistant message of every
   session; set `quietStartup: true` in `~/.pi/agent/settings.json` on the
   daemon machine to silence it.
+  **What a pi tool call carries in the Web (B-353):** the `tool-call` event's
+  `toolName` is still the ACP `kind` (`execute`/`read`/`edit`/`other`, so older
+  Web builds render as before), and its `args` additionally carry the ACP
+  `acpTitle`, `acpKind`, the pass-through `rawInput` (pi's tool arguments; dropped
+  with `rawInputTruncated: true` above 64 KiB) and a derived `piTool`
+  (`execute` → `bash` with `command` = the title; otherwise the title when it is
+  a plain tool identifier such as `read`, `edit`, `write`, `session_spawn`).
+  `acpTitle` / `acpKind` / `rawInput` are generic ACP passthrough (Gemini, OpenCode,
+  `acp -- <cmd>` get them too); `piTool` / `command` are only derived when the
+  agent is `pi`, so the Web may treat `piTool` as evidence that a session is pi.
+  bash output streamed via pi-acp's `_meta.terminal_output` is accumulated and
+  sent as the `tool-call-end` `result.text` (`isError` + `[exit code N]` suffix
+  when non-zero, last 64 KiB kept). The permission request's `arguments` gain
+  `acpTitle` / `acpKind` / `message` from the gate's confirm payload so the ask
+  card can show the rule id and reason instead of a bare `other`. All of these
+  fields are optional; a Web build that does not know them ignores them.
 - `--env KEY=VALUE` — extra environment for the session process; repeatable.
   A `${VAR}` reference is expanded against the daemon's own environment, and an
   unresolved reference fails the spawn rather than starting a session with a

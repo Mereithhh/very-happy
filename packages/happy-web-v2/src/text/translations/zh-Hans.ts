@@ -1647,6 +1647,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep04b: {
+                title: 'pi 的工具调用像工具调用了，监督会话有了卡片',
+                summary: 'pi 会话里每个工具以前都显示成一行光秃秃的 "execute"，监督会话的 tick 报告、决策和账本写入则是整墙的文本和 JSON。现在 CLI 会带上 pi 的工具身份与参数，网页把这两类内容都正经地渲染出来。',
+                tools: 'pi 的 bash / read / write / edit 用与 Claude 相同的 Terminal / Read / Write / Edit 行渲染，带文件链接和 diff；从 Very Happy 代理过来的工具（session_spawn 等）有自己的行并链接到派生出的会话；pi 策略闸弹出的权限卡片现在显示规则与理由，而不是 "other"。',
+                cards: '监督会话里，[vh-tick] 报告变成一组待决事项卡片（类型、任务、验收条目、会话链接）；回复末尾的决策 JSON 变成决策卡片；vh-ledger 调用折叠成一行，例如「ledger: T-012 ← accept」。解析不了的一律回落为原样渲染。',
+            },
             sep04a: {
                 title: '自动更新只会往前走',
                 summary: '如果机器上跑的版本比当前推荐的还新，它有可能去装那个更旧的版本并重启切过去。',
@@ -2301,6 +2307,12 @@ export const zhHans: TranslationStructure = {
         subagentCompleted: ({ name }: { name: string }) => `${name} 已完成`,
         taskNotificationGeneric: '后台任务已结束',
         taskNotificationFailed: ({ summary }: { summary: string }) => `${summary} · 失败`,
+        supervisorTick: ({ count }: { count: number }) => `监督 tick · ${count} 项`,
+        supervisorAcceptance: '验收',
+        supervisorPending: '待审批请求',
+        supervisorDecisions: ({ count }: { count: number }) => `${count} 条决策`,
+        supervisorCited: ({ items }: { items: string }) => `引用 ${items}`,
+        supervisorOpenSession: '打开会话',
         copyMessage: '复制消息',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',

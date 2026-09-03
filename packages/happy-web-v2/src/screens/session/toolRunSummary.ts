@@ -1,9 +1,11 @@
 import type { ToolCall } from '@/sync/typesMessage';
 import { toolLabel } from './toolInfo';
+import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 
 /** Paseo-style overview without hiding the underlying calls: collapse a run
  * into a short, stable activity scan, while each row remains expandable. */
-function activityLabel(tool: ToolCall): string {
+function activityLabel(rawTool: ToolCall): string {
+  const tool = normalizePiToolCall(rawTool);   // B-353: pi bash/read/edit → Terminal/Read/Edit, not Execute/Other
   switch (tool.name) {
     case 'Edit':
     case 'MultiEdit':

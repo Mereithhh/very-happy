@@ -12,6 +12,7 @@ import type { AgentMessage } from '../core';
 import type { TransportHandler } from '../transport';
 import { logger } from '@/ui/logger';
 import { contentLogMetadata } from '@/utils/contentLogMetadata';
+import { appendTerminalOutput, buildAcpBashResult, deriveAcpToolArgs, readAcpTerminalMeta } from './acpToolArgs';
 
 /**
  * Default timeout for idle detection after message chunks (ms)
@@ -60,6 +61,8 @@ export interface HandlerContext {
   toolCallTimeouts: Map<string, NodeJS.Timeout>;
   /** Map of tool call ID to tool name */
   toolCallIdToNameMap: Map<string, string>;
+  /** Streamed bash output per tool call (pi-acp `_meta.terminal_output`), capped */
+  toolCallOutputs: Map<string, string>;
   /** Current idle timeout handle */
   idleTimeout: NodeJS.Timeout | null;
   /** Tool call counter since last prompt */
@@ -277,6 +280,7 @@ export function startToolCall(
       ctx.activeToolCalls.delete(toolCallId);
       ctx.toolCallStartTimes.delete(toolCallId);
       ctx.toolCallTimeouts.delete(toolCallId);
+      ctx.toolCallOutputs.delete(toolCallId);
 
       if (ctx.activeToolCalls.size === 0) {
         logger.debug('[AcpBackend] No more active tool calls after timeout, emitting idle status');
@@ -304,6 +308,9 @@ export function startToolCall(
     args.locations = update.locations;
   }
 
+  // Additive ACP fidelity fields; toolName stays `kind`. piTool/command are pi-only (see deriveAcpToolArgs).
+  Object.assign(args, deriveAcpToolArgs(update, { agentName: ctx.transport.agentName }));
+
   ctx.emit({
     type: 'tool-call',
     toolName: toolKindStr || 'unknown',
@@ -319,7 +326,8 @@ export function completeToolCall(
   toolCallId: string,
   toolKind: string | unknown,
   content: unknown,
-  ctx: HandlerContext
+  ctx: HandlerContext,
+  exitCode?: number
 ): void {
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
   const duration = formatDuration(startTime);
@@ -336,10 +344,14 @@ export function completeToolCall(
 
   logger.debug(`[AcpBackend] Tool call COMPLETED: ${toolCallId} - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`);
 
+  const output = ctx.toolCallOutputs.get(toolCallId);
+  ctx.toolCallOutputs.delete(toolCallId);
+  const bashResult = buildAcpBashResult(output, exitCode);
+
   ctx.emit({
     type: 'tool-result',
     toolName: toolKindStr,
-    result: content,
+    result: bashResult ?? content,
     callId: toolCallId,
   });
 
@@ -390,6 +402,7 @@ export function failToolCall(
   // Cleanup
   ctx.activeToolCalls.delete(toolCallId);
   ctx.toolCallStartTimes.delete(toolCallId);
+  ctx.toolCallOutputs.delete(toolCallId);
 
   const timeout = ctx.toolCallTimeouts.get(toolCallId);
   if (timeout) {
@@ -447,6 +460,15 @@ export function handleToolCallUpdate(
   const toolKind = update.kind || 'unknown';
   let toolCallCountSincePrompt = ctx.toolCallCountSincePrompt;
 
+  // pi-acp streams bash output/exit through `_meta` on updates for an already-tracked call.
+  const terminalMeta = readAcpTerminalMeta(update);
+  if (terminalMeta.outputDelta !== undefined && ctx.activeToolCalls.has(toolCallId)) {
+    ctx.toolCallOutputs.set(
+      toolCallId,
+      appendTerminalOutput(ctx.toolCallOutputs.get(toolCallId) ?? '', terminalMeta.outputDelta)
+    );
+  }
+
   if (status === 'in_progress' || status === 'pending') {
     if (!ctx.activeToolCalls.has(toolCallId)) {
       toolCallCountSincePrompt++;
@@ -455,7 +477,7 @@ export function handleToolCallUpdate(
       logger.debug(`[AcpBackend] Tool call ${toolCallId} already tracked, status: ${status}`);
     }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.content, ctx);
+    completeToolCall(toolCallId, toolKind, update.content, ctx, terminalMeta.exitCode);
   } else if (status === 'failed' || status === 'cancelled') {
     failToolCall(toolCallId, status, toolKind, update.content, ctx);
   }

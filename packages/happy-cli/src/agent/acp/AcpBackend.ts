@@ -108,6 +108,7 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
+import { resolveAcpPermissionRequest } from './acpToolArgs';
 
 /**
  * Extended RequestPermissionRequest with additional fields that may be present
@@ -115,10 +116,13 @@ import {
 type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
   toolCall?: {
     id?: string;
+    toolCallId?: string;
+    title?: string;
     kind?: string;
     toolName?: string;
     input?: Record<string, unknown>;
     arguments?: Record<string, unknown>;
+    rawInput?: Record<string, unknown>;
     content?: Record<string, unknown>;
   };
   kind?: string;
@@ -334,6 +338,9 @@ export class AcpBackend implements AgentBackend {
 
   /** Map from real tool call ID to tool name for auto-approval */
   private toolCallIdToNameMap = new Map<string, string>();
+
+  /** Streamed bash output per tool call (pi-acp `_meta.terminal_output`) */
+  private toolCallOutputs = new Map<string, string>();
 
   /** Track if we just sent a prompt with change_title instruction */
   private recentPromptHadChangeTitle = false;
@@ -568,20 +575,13 @@ export class AcpBackend implements AgentBackend {
           
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
-          let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
-          // Use toolCallId as the single source of truth for permission ID
-          // This ensures mobile app sends back the same ID that we use to store pending requests
-          const toolCallId = toolCall?.id || randomUUID();
-          const permissionId = toolCallId; // Use same ID for consistency!
-          
-          // Extract input/arguments from various possible locations FIRST (before checking toolName)
-          let input: Record<string, unknown> = {};
-          if (toolCall) {
-            input = toolCall.input || toolCall.arguments || toolCall.content || {};
-          } else {
-            // If no toolCall, try to extract from params directly
-            input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
-          }
+          const resolved = resolveAcpPermissionRequest(extendedParams, randomUUID);
+          let toolName = resolved.toolName;
+          // Permission id == the id the web echoes back for pendingPermissions. See
+          // resolveAcpPermissionRequest for why it is never the ACP toolCallId.
+          const toolCallId = resolved.toolCallId;
+          const permissionId = toolCallId;
+          const input = resolved.input;
           
           // If toolName is "other" or "Unknown tool", try to determine real tool name
           const context: ToolNameContext = {
@@ -873,6 +873,7 @@ export class AcpBackend implements AgentBackend {
       toolCallStartTimes: this.toolCallStartTimes,
       toolCallTimeouts: this.toolCallTimeouts,
       toolCallIdToNameMap: this.toolCallIdToNameMap,
+      toolCallOutputs: this.toolCallOutputs,
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
       emit: (msg) => this.emit(msg),
@@ -1339,6 +1340,7 @@ export class AcpBackend implements AgentBackend {
     }
     this.toolCallTimeouts.clear();
     this.toolCallStartTimes.clear();
+    this.toolCallOutputs.clear();
     this.pendingPermissions.clear();
   }
 }

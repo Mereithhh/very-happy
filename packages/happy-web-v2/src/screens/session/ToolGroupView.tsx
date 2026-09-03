@@ -3,7 +3,7 @@
  * collapsible block with a mono font and a teal accent left-spine. The spine
  * color encodes state: teal=running, danger=error, warn=mixed, line=done.
  */
-import { memo, useEffect, useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ChevronRight, AlertTriangle, Bot, Check, PanelRight, Square } from 'lucide-react';
 import type { ToolCallMessage } from '@/sync/typesMessage';
@@ -21,6 +21,7 @@ import { toolRunSummary } from './toolRunSummary';
 import { buildSubagentSummary } from './subagentSummary';
 import { presentedSubagentStatus } from './subagentAbort';
 import { openSubagentPanel } from './subagentPanelState';
+import { normalizePiToolCall } from '@/components/tools/piToolMapping';
 import './toolgroup.css';
 import './subagent.css';
 
@@ -64,7 +65,7 @@ function subagentGlyph(
 }
 
 function ToolRow({
-    message,
+    message: rawMessage,
     defaultOpen,
     collapseOnComplete = false,
     stalled = false,
@@ -79,6 +80,13 @@ function ToolRow({
     abortedAt?: number | null;
 }) {
     const { t } = useTranslation();
+    // B-353: a pi tool call carrying `piTool` is rewritten to its Claude-shaped twin
+    // (bash→Bash, edit→Edit…) once here, so header label/detail and the expanded
+    // ToolView all see the same identity. No `piTool` → same object, today's path.
+    const message = useMemo(() => {
+        const tool = normalizePiToolCall(rawMessage.tool);
+        return tool === rawMessage.tool ? rawMessage : { ...rawMessage, tool };
+    }, [rawMessage]);
     const tool = message.tool;
     // B-260: sub-agent rows are pointers. Their stub tool_result is not a real
     // completion, so they are exempt from collapse-on-complete, keep a neutral

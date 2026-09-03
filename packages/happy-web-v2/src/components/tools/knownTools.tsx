@@ -922,7 +922,15 @@ export const knownTools = {
     'ToolSearch': {
         icon: ICON_SEARCH,
         hidden: true,
-    }
+    },
+    // B-353: very-happy bridge tools a pi session calls by name (keyed by `piTool`, see piToolMapping.ts).
+    'session_spawn': { title: 'Spawn session', icon: ICON_TASK, isMutable: true, input: z.object({}).partial().passthrough() },
+    'session_send': { title: 'Send to session', icon: ICON_TASK, isMutable: true, minimal: true, input: z.object({}).partial().passthrough() },
+    'session_read': { title: 'Read session', icon: ICON_READ, minimal: true, input: z.object({}).partial().passthrough() },
+    'sessions_list': { title: 'List sessions', icon: ICON_SEARCH, minimal: true, input: z.object({}).partial().passthrough() },
+    'session_kill': { title: 'Stop session', icon: ICON_EXIT, isMutable: true, minimal: true, input: z.object({}).partial().passthrough() },
+    'session_archive': { title: 'Archive session', icon: ICON_EXIT, isMutable: true, minimal: true, input: z.object({}).partial().passthrough() },
+    'report_progress': { title: 'Report progress', icon: ICON_TODO, minimal: true, noStatus: true, input: z.object({}).partial().passthrough() },
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
     icon: (size: number, color: string) => React.ReactNode;

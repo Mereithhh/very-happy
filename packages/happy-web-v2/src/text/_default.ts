@@ -1682,6 +1682,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep04b: {
+                title: 'pi tool calls look like tool calls, and supervisor sessions get cards',
+                summary: 'A pi session used to show every tool as a bare "execute" row, and a supervisor session\u2019s tick reports, decisions and ledger writes were walls of text and JSON. The CLI now carries the pi tool identity and arguments, and the Web renders both worlds properly.',
+                tools: 'pi\u2019s bash, read, write and edit render with the same Terminal / Read / Write / Edit rows as Claude, including the file link and diff; tools proxied from Very Happy (session_spawn and friends) get their own rows with a link to the spawned session; a permission card raised by the pi policy gate now shows the rule and its reason instead of "other".',
+                cards: 'In a supervisor session the [vh-tick] report becomes a list of decision items with kind, task, acceptance criteria and session link; the decisions JSON at the end of a reply becomes a decision card; vh-ledger calls collapse to one line such as "ledger: T-012 \u2190 accept". Anything that does not parse falls back to the plain rendering.',
+            },
             sep04a: {
                 title: 'Automatic updates only ever move forward',
                 summary: 'A machine running a newer build than the one currently recommended could have installed the older one and restarted into it.',
@@ -2402,6 +2408,12 @@ export const en = {
         subagentCompleted: ({ name }: { name: string }) => `${name} completed`,
         taskNotificationGeneric: 'Background task finished',
         taskNotificationFailed: ({ summary }: { summary: string }) => `${summary} · failed`,
+        supervisorTick: ({ count }: { count: number }) => `Supervisor tick · ${count} item${count === 1 ? '' : 's'}`,
+        supervisorAcceptance: 'Acceptance',
+        supervisorPending: 'Pending requests',
+        supervisorDecisions: ({ count }: { count: number }) => `${count} decision${count === 1 ? '' : 's'}`,
+        supervisorCited: ({ items }: { items: string }) => `cites ${items}`,
+        supervisorOpenSession: 'Open session',
         copyMessage: 'Copy message',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
