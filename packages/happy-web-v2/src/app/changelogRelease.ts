@@ -18,8 +18,10 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-03-terminal-mirror-bind-retry',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
-    // Ships with B-303/B-304 in the same CLI release.
-    cliVersion: '0.2.109',
+    // NOT 0.2.109: that tag was already published from 598bc632 (B-303/B-304)
+    // while this was still in review, and a published tag is immutable
+    // (AGENTS 铁律 6). This ships in the next one.
+    cliVersion: '0.2.110',
     titleKey: 'changelog.releases.sep03o.title',
     summaryKey: 'changelog.releases.sep03o.summary',
     itemKeys: [
