@@ -1688,6 +1688,13 @@ export const en = {
                 summary: 'When a new CLI is installed, the daemon restarts into it. If that install was incomplete, the daemon used to hand over anyway and the machine simply went offline, with nothing to explain why and nothing to bring it back.',
                 preflight: 'The daemon now runs the new version before trusting it, and keeps serving on the old one if it will not start. The machine page says so when that happens, instead of the machine quietly disappearing.',
             },
+            sep03ab: {
+                title: 'pi joins the launcher, and a script can now approve for you',
+                summary: 'Very Happy is the surface where sessions run and where you watch them. This release opens that surface to an outside supervisor: a third agent to dispatch, a way for automation to see what is waiting for approval, and a way for it to answer.',
+                pi: 'New sessions can run pi (via the pi-acp adapter) next to Claude, Codex and Gemini. It appears in the launcher only on machines whose daemon reports it. A pi session raising a confirmation through its extension shows up as an ordinary permission card.',
+                approve: '`very-happy sessions list --all` lists every session on the account, with the pending permission requests and how long each has waited for the sessions this machine holds keys for. `very-happy sessions approve` / `deny` answer a request with exactly what the web card would send.',
+                meta: 'The session tools the built-in assistant uses (list, read, send, spawn, kill, archive) are now available to any runner through `very-happy mcp` when a session is started as a meta agent \u2014 pick "Meta agent" when launching pi.',
+            },
             sep03aa: {
                 title: 'Terminals get the red dot too',
                 summary: 'A conversation that finished a turn while you were looking elsewhere already carried a red dot in the sidebar. A web terminal running Claude Code did not \u2014 only "waiting for your input" showed there, so a run that simply ended left no trace to come back to.',

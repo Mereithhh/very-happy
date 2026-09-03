@@ -1653,6 +1653,13 @@ export const zhHans: TranslationStructure = {
                 summary: '装了新版 CLI 之后，daemon 会重启切换过去。如果那次安装是残缺的，此前它照样会交接，机器就这么掉线了——没有任何解释，也没有任何东西会把它拉回来。',
                 preflight: '现在 daemon 会先把新版本跑一遍再决定是否信任它，起不来就继续用旧版本服务。发生这种情况时机器页会写明原因，而不是机器悄无声息地消失。',
             },
+            sep03ab: {
+                title: 'pi 进了启动器，脚本也能替你批了',
+                summary: 'very-happy 是会话跑起来、被你盯着的那个面。这个版本把它向外部的「监督者」打开：多一个可派发的 agent，让自动化看得见谁在等审批，也让它答得上来。',
+                pi: '新建会话可以选 pi（经 pi-acp 适配器），与 Claude、Codex、Gemini 并列；只在 daemon 报告装了它的机器上出现。pi 会话通过扩展发起的确认，会以普通权限卡片的形式出现。',
+                approve: '`very-happy sessions list --all` 列出账号下所有会话；本机持有密钥的会话还带待审批请求与各自等了多久。`very-happy sessions approve` / `deny` 用与网页卡片完全相同的内容回应请求。',
+                meta: '内置助手用的那套会话工具（列出、读取、发送、派发、终止、归档）现在任何 runner 都能经 `very-happy mcp` 拿到——启动 pi 时勾「Meta agent」即可。',
+            },
             sep03aa: {
                 title: '终端也有红点了',
                 summary: '在你看别处的时候跑完一轮的对话，侧栏里已经会带一个红点；但**在 web 终端里跑的 Claude Code 没有**——那里只显示「等你输入」，一轮跑完了就什么痕迹也不留。',
