@@ -209,7 +209,7 @@ describe('mirrorManager.reconcile', () => {
         expect(reactivateSession).toHaveBeenCalledTimes(2);
     });
 
-    // ── B-304: a create that failed is retried, not lost ────────────────────
+    // ── B-305: a create that failed is retried, not lost ────────────────────
     // Production evidence (mac-office daemon logs, 33 occurrences over four
     // days): `[MIRROR] hook handling failed … status code 429`. The hook is a
     // one-shot event and adoptPersisted needs a record only a SUCCESSFUL create

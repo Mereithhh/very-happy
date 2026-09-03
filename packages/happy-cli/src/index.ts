@@ -166,6 +166,18 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'sessions') {
+    try {
+      const { handleSessionsCommand } = await import('./commands/sessions');
+      await handleSessionsCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'send') {
     try {
       const { handleSendCommand } = await import('./commands/send');
@@ -763,6 +775,8 @@ ${chalk.bold('Usage:')}
                             print its web URL (for automation; see spawn --help)
   very-happy send              Send a message into an existing session
                             (for automation; see send --help)
+  very-happy sessions          List, read, stop or archive sessions on this
+                            machine (for automation; see sessions --help)
   very-happy codex             Start Codex mode
   very-happy gemini            Start Gemini mode (ACP)
   very-happy acp               Start a generic ACP-compatible agent

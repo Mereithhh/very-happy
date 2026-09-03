@@ -1,5 +1,5 @@
 /**
- * B-304: a mirror bind failure used to reach the daemon log as nothing but
+ * B-305: a mirror bind failure used to reach the daemon log as nothing but
  * "Request failed with status code 429", which does not distinguish the
  * account session CAP (permanent) from the shared write-rate bucket (clears
  * within the minute). The server's documented `error` code must survive into

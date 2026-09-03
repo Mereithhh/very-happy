@@ -24,8 +24,8 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.108**（mac-office daemon 同版本；2026-09-03；B-302 改名机器只报一次身份冲突）；线上 Web/server = `main@59bd8faa`（2026-09-03 蓝绿 green→blue，deploy run 33721986229）。在此之前同日发过 v0.2.107 + `main@8d1d2e2b`（B-294/B-295/B-296/B-297/B-298/B-299/B-300/B-301）。**版本号别照 changelog 想当然**：v0.2.106 是 B-294 那批（tag 在 `2357adb7`，由并行会话发出），害得认证批次的 changelog 一度写错版本；发版前一律先跑 `check-release.mjs --mode cli --version <目标>` 核对。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本。
-- **蓝绿部署的 HTTP 探针是零容忍的**（`/health` 每 200ms 一次，整个发布窗口内**一次**失败就回滚整次发布）。2026-09-01/02/03 各有先例，`/opt/happy/release/http-probe.*` 里非空文件即失败时间戳。遇到 `HTTP probe observed a release-window failure` 先解时间戳、对照 workflow 日志判断它落在切流量之前还是之后：落在切换前 = 打在未改动的旧 slot 上，与本次构建无关，直接重试；回滚是自动的，生产不受影响。
+- 最新 tag / npm `very-happy-cli` = **v0.2.108**（mac-office daemon 同版本；2026-09-03；B-302 改名机器只报一次身份冲突）；线上 Web/server = `main@59bd8faa`（2026-09-03 蓝绿 green→blue，deploy run 33721986229）。同日更早发过 v0.2.107 + `main@8d1d2e2b`（B-294/B-295/B-296/B-297/B-298/B-299/B-300/B-301）。`packages/happy-cli/package.json` 里的 version 不是发布版本（发版脚本按 tag 定），别拿它判断线上版本；**发版前用 `check-release.mjs --mode cli --version <目标>` 核对版本号**，理由见 `docs/PROCESS.md` 编号/版本撞号那几条。
+- 部署报 `HTTP probe observed a release-window failure` 时不要慌：探针零容忍、误报有先例，判读方法（解 `/opt/happy/release/http-probe.*` 的时间戳，看它落在切流量之前还是之后）见 `docs/operations.md`。
 - **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
   **Maple Mono CN**（`/maple-cn/{regular,bold}`，cn-font-split 按 unicode-range 切片，终端路由懒加载；
   旧的 Sarasa 仍留在 `/regular,/bold` 作回滚）。**字体不进仓库**；重新发字体用 `wrangler pages deploy`

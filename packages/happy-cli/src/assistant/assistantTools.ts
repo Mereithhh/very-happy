@@ -16,18 +16,21 @@
  *  - NO console.log anywhere near tool implementations — logger.debug only.
  */
 
-import axios from 'axios'
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { logger } from '@/ui/logger'
-import { configuration } from '@/configuration'
-import { readCredentialsForConfiguredRelay, readPersistedSessions, type PersistedSession } from '@/persistence'
-import { listDaemonSessions, spawnDaemonSession, stopDaemonSession } from '@/daemon/controlClient'
+import { readPersistedSessions, type PersistedSession } from '@/persistence'
+import { spawnDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from '@/commands/sessionMessage'
-import { decodeBase64, decrypt } from '@/api/encryption'
-import { formatTranscript } from './transcript'
+import {
+    archiveSession,
+    listSessions,
+    readSessionTranscript,
+    stopSession,
+    type SessionSummary,
+} from '@/sessions/sessionOps'
 import { isValidSessionId, isValidTerminalId } from './ids'
 import { listVhTerminals, readVhTerminal, sendToVhTerminal } from './terminals'
 import { applyMemorySectionUpdate, journalPathForDate, PERSONAL_MEMORY_SOFT_LIMIT_CHARS } from './memory'
@@ -68,16 +71,24 @@ function describeSession(id: string, persisted: PersistedSession | undefined, ex
     if (meta?.summary?.text) parts.push(`title="${meta.summary.text}"`)
     if (meta?.path) parts.push(`cwd=${meta.path}`)
     if (meta?.flavor) parts.push(`agent=${meta.flavor}`)
+    if (meta?.tags?.length) parts.push(`tags=${meta.tags.join(',')}`)
     if ((meta as any)?.variant === 'assistant') parts.push('(assistant)')
     if (extra?.pid) parts.push(`pid=${extra.pid}`)
     parts.push(sessionWebUrl(id))
     return parts.join(' ')
 }
 
-async function bearerToken(): Promise<string> {
-    const credentials = await readCredentialsForConfiguredRelay()
-    if (!credentials) throw new Error('CLI is not authenticated (no ~/.happy/access.key)')
-    return credentials.token
+/** Same line, rendered from the shared listing shape (B-304). */
+function describeSummary(summary: SessionSummary): string {
+    const parts = [summary.id, summary.live ? '[running]' : '[not running]']
+    if (summary.title) parts.push(`title="${summary.title}"`)
+    if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
+    if (summary.flavor) parts.push(`agent=${summary.flavor}`)
+    if (summary.tags?.length) parts.push(`tags=${summary.tags.join(',')}`)
+    if (summary.variant === 'assistant') parts.push('(assistant)')
+    if (summary.pid !== undefined) parts.push(`pid=${summary.pid}`)
+    parts.push(summary.url)
+    return parts.join(' ')
 }
 
 export function registerAssistantTools(mcp: McpServer): void {
@@ -88,28 +99,13 @@ export function registerAssistantTools(mcp: McpServer): void {
         inputSchema: {},
     }, async () => {
         try {
-            const live = await listDaemonSessions()
-            const persisted = readPersistedSessions()
-            const lines: string[] = []
-            const seen = new Set<string>()
-            for (const child of live) {
-                const id = child.happySessionId as string
-                seen.add(id)
-                lines.push(describeSession(id, persisted[id], { pid: child.pid, live: true }))
-            }
-            const rest = Object.entries(persisted)
-                .filter(([id]) => !seen.has(id))
-                // B-105: terminal-mirror shadow sessions are read-only mirrors
-                // of what the user is ALREADY doing in a terminal — listing
-                // them would make the voice assistant narrate them as tasks.
-                .filter(([, entry]) => entry.metadata?.flavor !== 'terminal-mirror')
-                .sort((a, b) => b[1].savedAt - a[1].savedAt)
-                .slice(0, 15)
-            for (const [id, entry] of rest) {
-                lines.push(describeSession(id, entry, { live: false }))
-            }
-            if (lines.length === 0) return ok('No sessions found on this machine.')
-            return ok(`${lines.length} session(s):\n${lines.join('\n')}`)
+            // Shared with `very-happy sessions list` (B-304): live children +
+            // recently seen, terminal-mirror shadows excluded (B-105 — they are
+            // read-only mirrors of what the user is already doing in a
+            // terminal, and narrating them as tasks is wrong).
+            const sessions = await listSessions()
+            if (sessions.length === 0) return ok('No sessions found on this machine.')
+            return ok(`${sessions.length} session(s):\n${sessions.map(describeSummary).join('\n')}`)
         } catch (error) {
             return fail(`Failed to list sessions: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -125,37 +121,12 @@ export function registerAssistantTools(mcp: McpServer): void {
         },
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
-        const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 20)))
         try {
-            const persisted = readPersistedSessions()[args.sessionId]
-            if (!persisted) {
-                return fail(`No local key for session ${args.sessionId} — it was not spawned by this machine's daemon (or is older than 14 days).`)
-            }
-            const token = await bearerToken()
-            const response = await axios.get(
-                `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(args.sessionId)}/messages`,
-                {
-                    params: { before_seq: 2147483647, limit },
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Happy-Client': `${MCP_CLIENT_TAG}/${configuration.currentCliVersion}` },
-                    timeout: 15_000,
-                },
-            )
-            const messages: Array<{ seq: number; content: { t: string; c: string } }> =
-                Array.isArray(response.data?.messages) ? response.data.messages : []
-            // before_seq returns DESC — flip to chronological order.
-            messages.reverse()
-            const key = decodeBase64(persisted.encryptionKey)
-            const bodies = messages.map((m) => {
-                if (m.content?.t !== 'encrypted') return null
-                try {
-                    return decrypt(key, persisted.encryptionVariant, decodeBase64(m.content.c))
-                } catch {
-                    return null
-                }
-            })
-            const transcript = formatTranscript(bodies)
-            const header = describeSession(args.sessionId, persisted)
-            return ok(`${header}\n--- last ${messages.length} message(s) ---\n${transcript.length > 0 ? transcript : '(no readable conversation content in this range)'}`)
+            const result = await readSessionTranscript(args.sessionId, args.limit ?? 20)
+            const body = result.transcript.length > 0
+                ? result.transcript
+                : '(no readable conversation content in this range)'
+            return ok(`${describeSummary(result.summary)}\n--- last ${result.messageCount} message(s) ---\n${body}`)
         } catch (error) {
             return fail(`Failed to read session: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -230,7 +201,7 @@ export function registerAssistantTools(mcp: McpServer): void {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         try {
             const persisted = readPersistedSessions()[args.sessionId]
-            const success = await stopDaemonSession(args.sessionId)
+            const success = await stopSession(args.sessionId)
             if (!success) return fail(`Session ${args.sessionId} was not found among the daemon's running sessions.`)
             return ok(`Stopped ${describeSession(args.sessionId, persisted)}`)
         } catch (error) {
@@ -248,15 +219,7 @@ export function registerAssistantTools(mcp: McpServer): void {
     }, async (args) => {
         if (!isValidSessionId(args.sessionId)) return fail('Invalid sessionId')
         try {
-            const token = await bearerToken()
-            await axios.post(
-                `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(args.sessionId)}/archive`,
-                {},
-                {
-                    headers: { 'Authorization': `Bearer ${token}`, 'X-Happy-Client': `${MCP_CLIENT_TAG}/${configuration.currentCliVersion}` },
-                    timeout: 10_000,
-                },
-            )
+            await archiveSession(args.sessionId)
             const persisted = readPersistedSessions()[args.sessionId]
             return ok(`Archived ${describeSession(args.sessionId, persisted)}`)
         } catch (error) {

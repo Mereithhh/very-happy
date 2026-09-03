@@ -18,11 +18,37 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     id: '2026-09-03-terminal-mirror-bind-retry',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
+    // Ships with B-303/B-304 in the same CLI release.
+    cliVersion: '0.2.109',
+    titleKey: 'changelog.releases.sep03o.title',
+    summaryKey: 'changelog.releases.sep03o.summary',
+    itemKeys: [
+      'changelog.releases.sep03o.retry',
+    ],
+  },
+  {
+    id: '2026-09-03-sessions-cli',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    // Ships with B-303 in the same CLI release.
+    cliVersion: '0.2.109',
+    titleKey: 'changelog.releases.sep03n.title',
+    summaryKey: 'changelog.releases.sep03n.summary',
+    itemKeys: [
+      'changelog.releases.sep03n.sessions',
+      'changelog.releases.sep03n.scope',
+    ],
+  },
+  {
+    id: '2026-09-03-spawn-origin-tag',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
     cliVersion: '0.2.109',
     titleKey: 'changelog.releases.sep03m.title',
     summaryKey: 'changelog.releases.sep03m.summary',
     itemKeys: [
-      'changelog.releases.sep03m.retry',
+      'changelog.releases.sep03m.tag',
+      'changelog.releases.sep03m.flag',
     ],
   },
   {

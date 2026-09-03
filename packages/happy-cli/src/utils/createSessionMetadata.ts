@@ -52,16 +52,48 @@ export interface SessionMetadataResult {
 }
 
 /**
- * B-091: initial tags for a session dispatched BY the assistant. The daemon's
- * spawn RPC exports HAPPY_SPAWNED_BY (B-069); such sessions are born with the
- * 'assistant' tag so every list shows their origin. The meta-agent itself
- * (HAPPY_SESSION_VARIANT=assistant) is NOT tagged — it is the variant and
- * never joins the lists at all. Pure over `env` for unit tests.
+ * Max length of a spawn-origin tag. Long enough for 'assistant' and adapter
+ * names like 'tanka'/'cron-nightly'; short enough to stay a chip in the web UI.
  */
-export function assistantSpawnTags(env: Record<string, string | undefined> = process.env): string[] | undefined {
-    if (env.HAPPY_SPAWNED_BY !== 'assistant') return undefined;
+const SPAWN_ORIGIN_TAG_MAX = 24;
+
+/**
+ * B-091 / B-303: initial tags derived from the session's spawn origin.
+ *
+ * The daemon's spawn RPC exports HAPPY_SPAWNED_BY (B-069) from the caller's
+ * `spawnedBy`; the session is then born carrying that origin as its tag, so
+ * every list shows where the work came from. Originally (B-091) this only
+ * understood the literal 'assistant'. B-303 generalised it because external
+ * adapters — an IM bridge, a scheduler — need the same legibility, and
+ * `very-happy spawn --spawned-by <name>` now lets them set it.
+ *
+ * Why generalising is safe: nothing in this repo sets `spawnedBy` except the
+ * assistant's own session_spawn, so no existing spawn path changes behaviour.
+ * 'assistant' keeps producing exactly ['assistant'].
+ *
+ * The meta-agent itself (HAPPY_SESSION_VARIANT=assistant) is NOT tagged — it
+ * is the variant and never joins the lists at all.
+ *
+ * The value IS the tag, so it is validated as a display-safe slug
+ * (lowercase alphanumerics plus '-'/'_', <= 24 chars). Anything else yields no
+ * tag rather than a malformed chip. Pure over `env` for unit tests.
+ */
+export function spawnOriginTags(env: Record<string, string | undefined> = process.env): string[] | undefined {
     if (env.HAPPY_SESSION_VARIANT === 'assistant') return undefined;
-    return ['assistant'];
+    const origin = (env.HAPPY_SPAWNED_BY ?? '').trim();
+    if (!origin) return undefined;
+    if (origin.length > SPAWN_ORIGIN_TAG_MAX) return undefined;
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(origin)) return undefined;
+    return [origin];
+}
+
+/**
+ * Is `value` usable as a spawn origin (and therefore as the session's origin
+ * tag)? Shared with the CLI so `very-happy spawn --spawned-by` rejects a bad
+ * value up front instead of silently producing an untagged session.
+ */
+export function isValidSpawnOrigin(value: string): boolean {
+    return spawnOriginTags({ HAPPY_SPAWNED_BY: value }) !== undefined;
 }
 
 /**
@@ -89,7 +121,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         controlledByUser: false,
     };
 
-    const assistantTags = assistantSpawnTags();
+    const originTags = spawnOriginTags();
 
     const metadata: Metadata = {
         path: process.cwd(),
@@ -111,10 +143,10 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         dangerouslySkipPermissions: opts.dangerouslySkipPermissions ?? null,
         ...(opts.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         ...(opts.forkedFromMessageId ? { forkedFromMessageId: opts.forkedFromMessageId } : {}),
-        // B-091: assistant-dispatched sessions carry the 'assistant' tag from
-        // birth (see assistantSpawnTags) — applies to every flavor the daemon
+        // B-091/B-303: dispatched sessions carry their spawn origin as a tag
+        // from birth (see spawnOriginTags) — applies to every flavor the daemon
         // can spawn, since HAPPY_SPAWNED_BY is exported flavor-independently.
-        ...(assistantTags ? { tags: assistantTags } : {}),
+        ...(originTags ? { tags: originTags } : {}),
     };
 
     return { state, metadata };

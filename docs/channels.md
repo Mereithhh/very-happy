@@ -21,6 +21,7 @@ There are two directions:
 | Receive completion / permission notifications | [Account webhook](#outbound-account-webhook), or **Settings → Channels** |
 | Show an external task list in the Todo panel | [Todo provider](#inbound-todo-provider-external-task-lists-in-the-web-ui), in `~/.happy/settings.json` on that machine |
 | Dispatch work from a script, scheduler, or IM bridge | [`very-happy spawn` / `very-happy send`](#inbound-daemon-control-via-the-cli) |
+| Let that script see and steer what it dispatched | [`very-happy sessions`](#very-happy-sessions--inspect-and-control-what-is-running) |
 | Let Very Happy's coordinator dispatch Claude sessions | [Web Assistant / meta-agent](#inbound-web-assistant--meta-agent) |
 | Add clipboard handoff to a plain local Claude | [`very-happy mcp`](#very-happy-mcp--clipboard-tool-for-a-plain-claude) |
 
@@ -172,7 +173,8 @@ message delivery encrypts the user envelope with the session key from
 ### `very-happy spawn` — start a session
 
 ```bash
-very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
+very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
+  [--spawned-by <name>] [--json]
 ```
 
 - `--dir, -d <path>` — working directory for the new session (required; must
@@ -180,8 +182,17 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
 - `--prompt, -p <text>` / `--prompt-file <file>` — optional first user message
   (mutually exclusive; file is read as UTF-8). Without either, the session is
   spawned idle.
-- `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`.
-  Without it, a human-readable line with a clickable session URL is printed.
+- `--spawned-by <name>` — the spawn origin. The session is **born carrying it
+  as its tag**: a chip in the Web list, searchable as `#<name>`, so dispatched
+  work stays distinguishable from sessions the user opened by hand. The value
+  must read as a tag — 1-24 chars of `[a-z0-9]` plus `-`/`_`, starting with a
+  letter or digit — and the CLI rejects anything else up front rather than
+  handing an unattended adapter a healthy but silently untagged session. Omit
+  it and the session is simply untagged. A daemon predating the field strips it
+  and still spawns, so **a missing tag is not a spawn failure**.
+- `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`,
+  plus `"spawnedBy"` when the flag was given. Without it, a human-readable line
+  with a clickable session URL is printed.
 
 Requires the daemon to be running (same semantics as spawning from the web:
 an offline machine cannot spawn). It will **not** auto-start the daemon.
@@ -193,6 +204,40 @@ Exit codes:
 | `0`  | success |
 | `1`  | spawn failed — no session was created |
 | `2`  | session created, but sending the first message failed (the session exists; the URL is still printed) |
+
+### `very-happy sessions` — inspect and control what is running
+
+```bash
+very-happy sessions list [--tag <name>] [--limit <n>] [--json]
+very-happy sessions read <id> [--limit <n>] [--json]
+very-happy sessions stop <id> [--json]
+very-happy sessions archive <id> [--json]
+```
+
+`spawn` and `send` start work; these let an external agent layer *see* it and
+intervene — the same four operations the built-in assistant has over MCP, now
+reachable without being the assistant.
+
+- `list` — running sessions first (in daemon order), then the most recently
+  seen. `--limit` caps only the not-running tail; running sessions are never
+  cut. `--tag <name>` keeps the sessions born with that origin tag, which is
+  how an adapter finds its own work among everything else on the machine.
+  Terminal-mirror shadow sessions are never listed: they mirror what the user
+  is already doing in a terminal and are not dispatchable work.
+- `read` — the tail of a session as a role-tagged transcript (`--limit`
+  messages, default 20, max 100).
+- `stop` — SIGTERM the session's process via the local daemon.
+- `archive` — mark the session inactive server-side; it stays resumable.
+
+Scope is **this machine**: `list`/`stop` ask the local daemon, and `read` needs
+the session key from `~/.happy/sessions.json`, which exists only for sessions
+this machine's daemon spawned and is pruned after 14 days. A session belonging
+to another machine cannot be read or stopped from here — that is a scope limit,
+not a permission error.
+
+Exit codes: `0` success, `1` anything else. Note that `stop` on a session the
+daemon is not running exits `1` — a caller asking to stop something must be
+able to distinguish "stopped it" from "there was nothing to stop".
 
 ### `very-happy send` — message an existing session
 

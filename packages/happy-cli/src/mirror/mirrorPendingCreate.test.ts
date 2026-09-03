@@ -1,5 +1,5 @@
 /**
- * B-304 — retry policy for a mirror bind whose shadow-session create failed.
+ * B-305 — retry policy for a mirror bind whose shadow-session create failed.
  *
  * The production failure these tests encode: the server answered POST
  * /v1/sessions with 429 while a hand-typed claude was starting, the hook was

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
-import { assistantSpawnTags, createSessionMetadata } from './createSessionMetadata';
+import { isValidSpawnOrigin, spawnOriginTags, createSessionMetadata } from './createSessionMetadata';
 
 function createSandboxConfig(overrides: Partial<SandboxConfig> = {}): SandboxConfig {
     return {
@@ -85,19 +85,53 @@ describe('createSessionMetadata', () => {
     });
 });
 
-describe('assistantSpawnTags (B-091)', () => {
-    it("assistant-dispatched session → ['assistant']", () => {
-        expect(assistantSpawnTags({ HAPPY_SPAWNED_BY: 'assistant' })).toEqual(['assistant']);
+describe('spawnOriginTags (B-091, generalised in B-303)', () => {
+    it("assistant-dispatched session → ['assistant'] (B-091 behaviour unchanged)", () => {
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant' })).toEqual(['assistant']);
     });
 
     it('the assistant meta-agent itself is NOT tagged (it is the variant)', () => {
         expect(
-            assistantSpawnTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }),
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }),
         ).toBeUndefined();
     });
 
-    it('ordinary spawns get no tags field at all (never an empty array)', () => {
-        expect(assistantSpawnTags({})).toBeUndefined();
-        expect(assistantSpawnTags({ HAPPY_SPAWNED_BY: 'user' })).toBeUndefined();
+    it('the variant gate wins over any origin, not just "assistant"', () => {
+        expect(
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'tanka', HAPPY_SESSION_VARIANT: 'assistant' }),
+        ).toBeUndefined();
+    });
+
+    // B-303: the origin IS the tag. Before B-303 only the literal 'assistant'
+    // produced one (so this used to assert `'user'` → undefined); external
+    // adapters need the same legibility, and nothing but the assistant's own
+    // session_spawn sets `spawnedBy` inside this repo, so widening it changes
+    // no existing spawn path.
+    it('any adapter origin becomes that session tag', () => {
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'tanka' })).toEqual(['tanka']);
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'cron-nightly' })).toEqual(['cron-nightly']);
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'user' })).toEqual(['user']);
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: '  tanka  ' })).toEqual(['tanka']);
+    });
+
+    it('un-set or blank origin gets no tags field at all (never an empty array)', () => {
+        expect(spawnOriginTags({})).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: '' })).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: '   ' })).toBeUndefined();
+    });
+
+    it('a value that would render as a malformed chip yields no tag', () => {
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'Tanka' })).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'tanka bridge' })).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: '-leading-dash' })).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'x'.repeat(25) })).toBeUndefined();
+        expect(spawnOriginTags({ HAPPY_SPAWNED_BY: '<script>' })).toBeUndefined();
+    });
+
+    it('isValidSpawnOrigin mirrors the tag rule (shared with the CLI flag)', () => {
+        expect(isValidSpawnOrigin('tanka')).toBe(true);
+        expect(isValidSpawnOrigin('x'.repeat(24))).toBe(true);
+        expect(isValidSpawnOrigin('Tanka')).toBe(false);
+        expect(isValidSpawnOrigin('')).toBe(false);
     });
 });

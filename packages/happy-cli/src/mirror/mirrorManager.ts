@@ -112,7 +112,7 @@ export function createMirrorManager(deps: {
     const bindings = new Map<string, MirrorBinding>();
     // design v3 E: terminalId → last end time, for reconcile hysteresis.
     const lastEndedAt = new Map<string, number>();
-    // B-304: terminalId → a SessionStart whose createBinding failed, awaiting a
+    // B-305: terminalId → a SessionStart whose createBinding failed, awaiting a
     // retry on a reconcile tick. See mirrorPendingCreate.ts for why.
     const pendingCreates = new Map<string, PendingMirrorCreate>();
     // Hooks are rare and ordering matters (SessionEnd → SessionStart on
@@ -308,7 +308,7 @@ export function createMirrorManager(deps: {
         deps.onBindingsChanged?.();
     };
 
-    /** B-304: remember a failed create so a reconcile tick can retry it. */
+    /** B-305: remember a failed create so a reconcile tick can retry it. */
     const parkFailedCreate = (event: TerminalHookEvent, reason: unknown): void => {
         const pending = pendingCreateAfterFailure(pendingCreates.get(event.terminalId), event, Date.now());
         pendingCreates.set(event.terminalId, pending);
@@ -341,7 +341,7 @@ export function createMirrorManager(deps: {
         };
         // Random tag ALWAYS (B-051 tombstone: a fixed tag + fresh key mint =
         // undecryptable rows).
-        // B-304: a create that fails here used to be the end of it — the hook is
+        // B-305: a create that fails here used to be the end of it — the hook is
         // a one-shot event, and reconcile's adoptPersisted can only revive a
         // record a SUCCESSFUL create left behind. Both failure shapes (null for
         // 5xx/404, throw for 4xx such as the account-wide 429 write-rate bucket)
@@ -421,7 +421,7 @@ export function createMirrorManager(deps: {
     };
 
     const handleEvent = async (event: TerminalHookEvent): Promise<void> => {
-        // B-304: a fresh hook for this terminal is newer truth than a parked
+        // B-305: a fresh hook for this terminal is newer truth than a parked
         // create — a SessionStart re-parks itself if it fails again, and a
         // SessionEnd for the same claude session means it is gone.
         const parked = pendingCreates.get(event.terminalId);
@@ -490,7 +490,7 @@ export function createMirrorManager(deps: {
                 // Pane back to a shell → end an active binding (pane observation
                 // safety net, same as observeTerminalList).
                 if (item.agentState === 'shell') {
-                    // B-304: claude is gone — a parked create for it is dead.
+                    // B-305: claude is gone — a parked create for it is dead.
                     pendingCreates.delete(item.id);
                     if (binding && binding.status === 'active') {
                         chain = chain.then(() => {
@@ -519,7 +519,7 @@ export function createMirrorManager(deps: {
                         return b && b.status === 'ended' ? reactivateInPlace(b) : undefined;
                     }).catch((e) => logger.debug(`[MIRROR] reconcile in-place reactivate failed for ${item.id}:`, e));
                 } else if (!binding) {
-                    // B-304: a parked create outranks adoptPersisted — it names
+                    // B-305: a parked create outranks adoptPersisted — it names
                     // the claude session running RIGHT NOW, while the newest
                     // persisted record is by definition an older conversation.
                     const pending = pendingCreates.get(item.id);

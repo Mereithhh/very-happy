@@ -14,7 +14,7 @@ import { redactLogValue } from '@/utils/logRedaction';
 import type { ServerSessionSnapshot } from '@/utils/reconnectSession';
 
 /**
- * Human-readable reason a POST /v1/sessions failed (B-304).
+ * Human-readable reason a POST /v1/sessions failed (B-305).
  *
  * Axios' own message is only "Request failed with status code 429", which does
  * not say whether the account hit its session CAP (permanent until sessions are
@@ -155,7 +155,7 @@ export class ApiClient {
         }
       }
 
-      // B-304: "Request failed with status code 429" alone cost an evening —
+      // B-305: "Request failed with status code 429" alone cost an evening —
       // the server distinguishes `limit-reached` (the account is at its session
       // cap) from `session_state_rate_quota_exceeded` (a transient account-wide
       // write-rate bucket) and only the body says which. Carry it into the

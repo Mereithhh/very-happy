@@ -11,7 +11,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { claudeModeHash } from './claudeModeHash';
-import { assistantSpawnTags } from '@/utils/createSessionMetadata';
+import { spawnOriginTags } from '@/utils/createSessionMetadata';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -168,6 +168,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // message), so without this the session shows as "New chat".
     const importTitle = process.env.HAPPY_IMPORT_TITLE;
 
+    const originTags = spawnOriginTags();
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -200,12 +202,13 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         ...(importedFromClaudeSessionId ? { importedFromClaudeSessionId } : {}),
         ...(importTitle ? { summary: { text: importTitle, updatedAt: Date.now() } } : {}),
         ...(isAssistantVariant ? { variant: 'assistant' as const } : {}),
-        // B-091: sessions the assistant dispatched (daemon spawn RPC exports
-        // HAPPY_SPAWNED_BY, B-069) are born with the 'assistant' tag so every
-        // list shows their origin. NOT on the meta-agent itself — that one is
-        // the variant above and never joins the lists at all. (Shared helper:
-        // the other flavors get the same tag via createSessionMetadata.)
-        ...(assistantSpawnTags() ? { tags: assistantSpawnTags()! } : {}),
+        // B-091/B-303: dispatched sessions (daemon spawn RPC exports
+        // HAPPY_SPAWNED_BY, B-069) are born tagged with their spawn origin so
+        // every list shows where the work came from. NOT on the meta-agent
+        // itself — that one is the variant above and never joins the lists at
+        // all. (Shared helper: the other flavors get the same tag via
+        // createSessionMetadata.)
+        ...(originTags ? { tags: originTags } : {}),
     };
 
     // Check for session reconnection env vars (set by daemon for resume-in-place)

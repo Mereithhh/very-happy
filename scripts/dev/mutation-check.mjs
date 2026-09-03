@@ -137,7 +137,7 @@ function mangleLiteral(literal) {
     // Prefer an identifier OUTSIDE any quotes. `foo(x, 'server unreachable')`
     // would otherwise mangle the message string — the call still runs, the test
     // still passes, and the tool cries "NOT CAUGHT" about a line that is in fact
-    // pinned (B-304, real false alarm). A code identifier is what carries the
+    // pinned (B-305, real false alarm). A code identifier is what carries the
     // behaviour; only fall back to a quoted one when the literal is all string.
     const identifiers = [...literal.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*/g)];
     const unquoted = identifiers.filter((m) => !insideQuotes(literal, m.index));

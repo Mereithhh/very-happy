@@ -1,5 +1,5 @@
 /**
- * Terminal mirror (B-304) — retry policy for a shadow session that FAILED to
+ * Terminal mirror (B-305) — retry policy for a shadow session that FAILED to
  * be created.
  *
  * The binding for a hand-typed `claude` can only ever be born from a single
