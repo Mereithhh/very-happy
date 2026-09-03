@@ -1612,6 +1612,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03c: {
+                title: 'A warmer terminal font',
+                summary: 'The terminal now uses Maple Mono CN — a softer, rounder dual-width font that keeps Chinese aligned and the logo/frames pixel-seamless, but reads less thin and tall than before. A small “loading terminal font” hint shows on first open while it downloads.',
+                font: 'Switched the terminal font to Maple Mono CN: same seamless block/box tiling and 2× Chinese width, but a warmer, more open shape (and it eliminates the brief mixed-weight flicker the old font showed while its slices loaded).',
+                loading: 'The first time you open a terminal, a “loading terminal font” hint appears while the font downloads from the CDN, then disappears — the terminal stays usable the whole time, and later opens use the cached font instantly.',
+            },
             sep03b: {
                 title: 'Chinese width fix on more daemon hosts',
                 summary: 'The daemon now forces a UTF-8 locale more robustly, so Chinese in the terminal is treated as double-width (not overlapping) even on hosts started with LC_ALL=C or without a generated en_US.UTF-8 — pair it with the new terminal font by updating the CLI.',
@@ -1832,6 +1838,7 @@ export const en = {
         structuredView: 'Structured view',
         // P1 multi-device: header button to reclaim this viewport's width when
         // another (narrower) device left the shared pane narrow.
+        fontLoading: 'Loading terminal font…',
         refitWidth: 'Refit width',
         refitWidthHint: 'Fit the terminal to this device’s width. Lines already scrolled above keep the width they were printed at — terminals cannot reflow them.',
         selectMode: 'Select / copy mode',

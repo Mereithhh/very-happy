@@ -4,7 +4,7 @@ import { terminalCjkFontLinks, TERMINAL_CJK_FONT_FAMILY } from './terminalCjkFon
 
 describe('terminal CJK font', () => {
     it('exposes the dual-width family used as the primary terminal font', () => {
-        expect(TERMINAL_CJK_FONT_FAMILY).toBe('Sarasa Fixed SC');
+        expect(TERMINAL_CJK_FONT_FAMILY).toBe('Maple Mono CN');
     });
 
     it('builds exactly the Regular + Bold CDN stylesheet links', () => {
@@ -12,8 +12,8 @@ describe('terminal CJK font', () => {
         expect(links).toHaveLength(2);
         expect(links.map((l) => l.weight)).toEqual(['regular', 'bold']);
         expect(links.map((l) => l.href)).toEqual([
-            'https://veryhappy-fonts.pages.dev/regular/result.css',
-            'https://veryhappy-fonts.pages.dev/bold/result.css',
+            'https://veryhappy-fonts.pages.dev/maple-cn/regular/result.css',
+            'https://veryhappy-fonts.pages.dev/maple-cn/bold/result.css',
         ]);
         // Absolute https CDN urls (the woff2 the CSS references are same-origin
         // to the CSS and CORS-enabled), never a bundled/relative path.
@@ -31,16 +31,26 @@ describe('terminal CJK font', () => {
 
     it('TERM_FONT lists the CJK family first in the terminal stack', () => {
         const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
-        expect(screen).toMatch(/const TERM_FONT = "'Sarasa Fixed SC',/);
+        expect(screen).toMatch(/const TERM_FONT = "'Maple Mono CN',/);
         // and the loader is invoked on mount
         expect(screen).toContain('ensureTerminalCjkFont();');
     });
 
-    it('re-measures the cell when the CDN font swaps in (Iosevka 0.5em != Plex 0.6em)', () => {
+    it('shows a font-loading hint only when the slices are not already cached', () => {
+        const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
+        // Guarded on fonts.check so a repeat open (cached) shows nothing.
+        expect(screen).toContain('if (fontsApi?.check && !fontsApi.check(fontQuery)) setCjkFontLoading(true);');
+        // Cleared on load/settle/timeout, and rendered as a chip.
+        expect(screen).toContain('setTimeout(stopHint, 8000)');
+        expect(screen).toContain("t('terminal.fontLoading')");
+    });
+
+    it('re-measures the cell when the CDN font swaps in (Maple advance != Plex 0.6em)', () => {
         const screen = readFileSync(new URL('./WebTerminalScreen.tsx', import.meta.url), 'utf8');
         // document.fonts.ready resolves before the CDN css is fetched, so there
         // MUST be an explicit load-then-remeasure for the CJK family.
-        expect(screen).toContain("fonts?.load?.(`${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`, 'Mgqw0')");
+        expect(screen).toContain("const fontQuery = `${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`;");
+        expect(screen).toContain("fontsApi?.load?.(fontQuery, 'Mgqw0')");
         expect(screen).toContain('renderer.remeasureFont(); scheduleFit();');
     });
 });

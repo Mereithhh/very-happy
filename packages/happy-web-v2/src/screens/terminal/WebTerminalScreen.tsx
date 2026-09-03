@@ -145,11 +145,12 @@ const THEME = {
 // cramped). IBM Plex Mono loads async via @fontsource, so we also re-measure
 // once document.fonts is ready (below) — otherwise the cell size is locked to
 // the fallback metrics and text gets clipped after the real font swaps in.
-// 'Sarasa Fixed SC' FIRST: dual-width (CJK == 2x ASCII) so Chinese doesn't
-// overlap the grid (叠字), and its Iosevka block/box glyphs tile seamlessly.
-// Loaded lazily from the CDN by ensureTerminalCjkFont() on mount; IBM Plex Mono
-// stays as the already-bundled Latin fallback until the slices arrive.
-const TERM_FONT = "'Sarasa Fixed SC', 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
+// 'Maple Mono CN' FIRST: dual-width (CJK == 2x ASCII) so Chinese doesn't overlap
+// the grid (叠字), and its block/box glyphs fill the cell so the logo/TUI frames
+// tile seamlessly. Loaded lazily from the CDN by ensureTerminalCjkFont() on
+// mount; IBM Plex Mono stays as the already-bundled Latin fallback until the
+// slices arrive.
+const TERM_FONT = "'Maple Mono CN', 'IBM Plex Mono', 'SF Mono', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace";
 const TERM_FONT_SIZE_FINE = 13;
 const TERM_FONT_SIZE_COARSE = 12;
 
@@ -308,6 +309,10 @@ export function WebTerminalScreen() {
   const writeHoldRef = useRef<{ begin: () => void; flush: () => void } | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  // First-open hint while the CDN CJK font (Maple Mono CN) is still fetching its
+  // slices — the terminal is usable immediately (fallback), this just sets
+  // expectations so the swap doesn't read as a stall. Never shows once cached.
+  const [cjkFontLoading, setCjkFontLoading] = useState(false);
   const [hasTmuxSession, setHasTmuxSession] = useState(false);
   // File browser drawer (fs-list / fs-read RPCs). Desktop (fine pointer,
   // >860px): an inline SPLIT — the terminal yields width instead of being
@@ -485,7 +490,7 @@ export function WebTerminalScreen() {
     setHasTmuxSession(false);
     setShowHelp(false);
     ensureImeFix();
-    // Start fetching the dual-width CJK terminal font (Sarasa Fixed SC) the
+    // Start fetching the dual-width CJK terminal font (Maple Mono CN) the
     // first time any terminal opens — deferred, terminal-only, CDN-hosted.
     ensureTerminalCjkFont();
     const mount = innerRef.current;
@@ -1054,19 +1059,25 @@ export function WebTerminalScreen() {
     });
     // The CJK terminal font (Sarasa) is fetched from the CDN AFTER the effect
     // mounts, so `document.fonts.ready` above resolves (Plex-only) BEFORE the
-    // CDN css is even fetched — it never sees Sarasa. And Sarasa's ASCII advance
-    // (Iosevka 0.5em) differs from the Plex fallback (0.6em), so when it swaps
-    // in via font-display:swap the cached cell size is wrong and the grid goes
-    // loose. Explicitly load its Latin slice (the cell-defining glyphs) and
-    // re-measure + refit when it lands. CJK slices that arrive later don't move
-    // the cell (Han is 2x by construction), so one re-measure suffices; a CDN
-    // failure just leaves the correct Plex measurement in place.
+    // CDN css is even fetched — it never sees Maple. And Maple's ASCII advance
+    // differs from the Plex fallback (0.6em), so when it swaps in via
+    // font-display:swap the cached cell size is wrong and the grid goes loose.
+    // Explicitly load its Latin slice (the cell-defining glyphs) and re-measure
+    // + refit when it lands. CJK slices that arrive later don't move the cell
+    // (Han is 2x by construction), so one re-measure suffices; a CDN failure
+    // just leaves the correct Plex measurement in place. The same load drives
+    // the "font loading" hint — shown only when the slices aren't already cached.
     try {
       const cjkSize = IS_COARSE_POINTER ? TERM_FONT_SIZE_COARSE : TERM_FONT_SIZE_FINE;
-      (document as any).fonts?.load?.(`${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`, 'Mgqw0')
-        ?.then(() => { if (!disposed) { renderer.remeasureFont(); scheduleFit(); } })
-        ?.catch(() => { /* CDN font unavailable — keep the fallback measurement */ });
-    } catch { /* no fonts API */ }
+      const fontQuery = `${cjkSize}px '${TERMINAL_CJK_FONT_FAMILY}'`;
+      const fontsApi = (document as any).fonts;
+      const stopHint = () => { if (!disposed) setCjkFontLoading(false); };
+      if (fontsApi?.check && !fontsApi.check(fontQuery)) setCjkFontLoading(true);
+      fontsApi?.load?.(fontQuery, 'Mgqw0')
+        ?.then(() => { if (!disposed) { renderer.remeasureFont(); scheduleFit(); } stopHint(); })
+        ?.catch(stopHint);
+      setTimeout(stopHint, 8000); // never leave the hint stuck
+    } catch { setCjkFontLoading(false); }
 
     // Digest an open-terminal result: ALL seq bookkeeping happens synchronously
     // here (so live chunks racing the restore dedup against the right
@@ -2448,6 +2459,7 @@ export function WebTerminalScreen() {
         </span>
         <div className="term-header-right">
           {(connecting || !surfaceReady) && <span className="term-connecting mono">{t('common.loading')}</span>}
+          {cjkFontLoading && <span className="term-connecting mono">{t('terminal.fontLoading')}</span>}
           {/* B-105: structured-view toggle — header-level on purpose (mobile
               must reach it in one glance, never inside a menu). Only exists
               while the daemon reports a mirror session for this terminal. */}
