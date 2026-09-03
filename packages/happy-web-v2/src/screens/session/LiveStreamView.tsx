@@ -21,6 +21,7 @@ import { isAgentWorkLive } from '@/sync/agentLiveness';
 import type { LiveStreamBlock } from '@/sync/liveStream';
 import { Markdown, NoPathLinks } from './Markdown';
 import './livestream.css';
+import { useHeartbeatFresh } from '@/sync/heartbeatLease';
 
 /**
  * Presentational half — takes the blocks directly so it can be rendered (and
@@ -82,10 +83,13 @@ export const LiveStreamBlocks = memo(function LiveStreamBlocks({ blocks: allBloc
 export const LiveStreamView = memo(function LiveStreamView({ sessionId }: { sessionId: string }) {
     const stream = useLiveStream(sessionId);
     const session = useSession(sessionId);
+    // B-322: thinking 是租约不是闩锁（sync/heartbeatLease.ts）。
+    const leaseFresh = useHeartbeatFresh(sessionId);
     const live = isAgentWorkLive({
         presence: session?.presence,
         thinking: session?.thinking,
         runningSubagentsInTurn: 0,
+        heartbeatFresh: leaseFresh,
     });
     // A draft belongs to a turn that is either running, or just finished and
     // still waiting for its persisted message (the armed sweep). Anything else
