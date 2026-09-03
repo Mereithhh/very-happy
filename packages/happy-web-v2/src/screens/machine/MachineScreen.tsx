@@ -224,6 +224,12 @@ export function MachineScreen() {
   // the old code. Surfacing it is the whole point — this used to be a debug log
   // on a machine nobody was looking at. daemonState is untyped on the web, so
   // read it defensively rather than trusting the shape.
+  // B-327: what the machine's auto-update last did. daemonState is untyped on
+  // the web, so read defensively rather than trusting the shape.
+  const rawAuto = (cliUpdateState as { autoUpdate?: unknown } | undefined)?.autoUpdate;
+  const autoUpdate = rawAuto && typeof rawAuto === 'object' && typeof (rawAuto as { state?: unknown }).state === 'string'
+    ? (rawAuto as { state: string; version?: string | null; detail?: string })
+    : null;
   const rawHold = (cliUpdateState as { handoverHold?: unknown } | undefined)?.handoverHold;
   const handoverHold = rawHold && typeof rawHold === 'object' && typeof (rawHold as { reason?: unknown }).reason === 'string'
     ? (rawHold as { reason: string })
@@ -357,6 +363,12 @@ export function MachineScreen() {
                         : t('cliUpdate.current')}
                   </Badge>
                 }
+              />
+            )}
+            {autoUpdate && (
+              <Item
+                title={t('cliUpdate.autoUpdate')}
+                detail={`${String(autoUpdate.state)}${autoUpdate.version ? ` · ${String(autoUpdate.version)}` : ''}${autoUpdate.detail ? ` · ${String(autoUpdate.detail)}` : ''}`}
               />
             )}
             {handoverHold && (
