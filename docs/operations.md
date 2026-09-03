@@ -242,6 +242,26 @@ vh-update
 bash scripts/update-daemon.sh
 ```
 
+`vh-update` can leave the global package HALF-INSTALLED. npm removes the old
+tree before unpacking the new one, and if a leftover directory blocks the rmdir
+it aborts mid-way: `npm error ENOTEMPTY ... rmdir '.../@anthropic-ai/sdk/internal'`
+(hit 2026-09-03 upgrading to 0.2.112). `package.json` then already reports the
+NEW version while `node_modules` is a mix of both, so `very-happy --version`
+itself crashes (`ERR_UNSUPPORTED_DIR_IMPORT` from `es-toolkit/compat`) and
+`daemon status` is unavailable — while the daemon PROCESS keeps serving, because
+its modules were loaded at start. Do not panic-kill it; the machine is still
+online. Recover by discarding the tree instead of retrying npm on top of it:
+
+```bash
+ps -p <daemon pid> -o command   # confirm the old process is still serving
+rm -rf /opt/homebrew/lib/node_modules/very-happy-cli
+npm install -g --allow-scripts=very-happy-cli,node-pty very-happy-cli@<version>
+very-happy --version && very-happy daemon start
+```
+
+Then re-adopt launchd as below — a recovery handover leaves the daemon outside
+launchd exactly like a normal one.
+
 `vh-update` performs a daemon handover; it deliberately does not kill agent
 session wrapper processes that were already running. Those wrappers and their
 active SDK Query keep the CLI code loaded at their own start time. Verify a new
