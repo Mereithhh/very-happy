@@ -602,6 +602,7 @@ export const zhHans: TranslationStructure = {
             defaultModelUnknown: 'CLI 默认',
             defaultModelResolved: ({ model }: { model: string }) => `${model}（默认）`,
             slashCommands: '命令与 Skills',
+            moreActions: '更多会话操作',
             relayRegion: '实时 Relay 地区',
             effortDefault: '默认',
             effortDefaultDesc: '引擎默认（当前=high，部分模型会静默降档）',
@@ -1605,6 +1606,14 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03f: {
+                title: '切换模型这次是真的切了',
+                summary: '对话中途换模型可能被静默忽略，思考深度（effort）在 Claude 会话里更是从来没生效过。两个都修好了；切换改成对运行中的会话原地生效，不再重启 Claude Code。移动端会话 header 也不再把自己的按钮挤出屏幕。',
+                model: '换模型现在从你发出的下一条消息起必定生效（打断注入当前回合的那条仍由当前模型回答）。此前只要这次切换紧跟在上一次模式变更之后就会被丢掉——跑着的 Claude Code 进程仍用旧模型，而界面上没有任何东西提示不一致。切换还改成对运行中的会话原地生效，不再重启进程、重载对话记录。选择器会显示当前真正在跑的模型。',
+                effort: 'Claude 会话的思考深度（effort）选择器生效了。此前它的值在传输途中被丢弃，任何已发布版本都没真正送到 agent。',
+                header: '手机端终端 header：终端连接中或字体加载中时，操作按钮不会再被挤出屏幕——「切到普通视图」按钮就是这么消失的。该按钮留在栏上；便签、选择模式、文件、重新适配宽度、tmux 帮助收进一个「⋯」菜单，触控目标变大，终端标题也不再被压成零宽。',
+                chatHeader: '手机端对话 header：便签、/btw、文件收进同一个「⋯」菜单，把宽度让给会话标题；重命名会话终于有一个能用的输入框，而不是几个像素。',
+            },
             sep03e: {
                 title: '导入列表只留你还没接过来的对话',
                 summary: '导入弹窗此前会列出 Very Happy 已经在跑的对话——在常用的机器上占了三分之一，而且都排在最前面。现在会隐藏这台机器接管过的全部对话，剩下的才是真正可导入的。',
@@ -1841,6 +1850,7 @@ export const zhHans: TranslationStructure = {
         claudeNeedsInputBody: 'Claude 需要你的输入',
         structuredView: '结构化视图',
         fontLoading: '终端字体加载中…',
+        moreActions: '更多终端操作',
         refitWidth: '重新适配宽度',
         refitWidthHint: '让终端按本设备宽度重新适配。上方已滚过的旧内容仍保持当时打印的宽度——终端无法重排它们。',
         selectMode: '选择/复制模式',

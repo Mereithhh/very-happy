@@ -66,6 +66,15 @@ export interface MenuItemDef {
   disabled?: boolean;
   /** draw a separator above this item (section boundary) */
   separatorBefore?: boolean;
+  /**
+   * Present ⇒ this item is a TOGGLE, rendered as a menuitemcheckbox so its
+   * on/off state reaches assistive tech. Needed since B-293 collapsed the
+   * mobile header toggles (select mode, files, /btw) into these menus: as
+   * plain items they carried no state at all on exactly the viewport where
+   * the menu is their only route, having lost the aria-pressed they had as
+   * header buttons.
+   */
+  checked?: boolean;
   onSelect: () => void;
 }
 
@@ -103,13 +112,24 @@ export function ActionDropdownMenu({
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <DropdownMenu.Separator className="vh-menu-sep" />}
-              <DropdownMenu.Item
-                className={itemClass(item)}
-                disabled={item.disabled}
-                onSelect={item.onSelect}
-              >
-                <ItemIcon item={item} /> {item.label}
-              </DropdownMenu.Item>
+              {item.checked === undefined ? (
+                <DropdownMenu.Item
+                  className={itemClass(item)}
+                  disabled={item.disabled}
+                  onSelect={item.onSelect}
+                >
+                  <ItemIcon item={item} /> {item.label}
+                </DropdownMenu.Item>
+              ) : (
+                <DropdownMenu.CheckboxItem
+                  className={itemClass(item)}
+                  disabled={item.disabled}
+                  checked={item.checked}
+                  onSelect={item.onSelect}
+                >
+                  <ItemIcon item={item} /> {item.label}
+                </DropdownMenu.CheckboxItem>
+              )}
             </Fragment>
           ))}
         </DropdownMenu.Content>
@@ -136,13 +156,24 @@ export function ActionContextMenu({
           {items.map((item) => (
             <Fragment key={item.key}>
               {item.separatorBefore && <ContextMenu.Separator className="vh-menu-sep" />}
-              <ContextMenu.Item
-                className={itemClass(item)}
-                disabled={item.disabled}
-                onSelect={item.onSelect}
-              >
-                <ItemIcon item={item} /> {item.label}
-              </ContextMenu.Item>
+              {item.checked === undefined ? (
+                <ContextMenu.Item
+                  className={itemClass(item)}
+                  disabled={item.disabled}
+                  onSelect={item.onSelect}
+                >
+                  <ItemIcon item={item} /> {item.label}
+                </ContextMenu.Item>
+              ) : (
+                <ContextMenu.CheckboxItem
+                  className={itemClass(item)}
+                  disabled={item.disabled}
+                  checked={item.checked}
+                  onSelect={item.onSelect}
+                >
+                  <ItemIcon item={item} /> {item.label}
+                </ContextMenu.CheckboxItem>
+              )}
             </Fragment>
           ))}
         </ContextMenu.Content>

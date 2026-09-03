@@ -66,6 +66,12 @@
   direction: rtl;
   text-align: left;
 }
+/* Renaming takes the whole bar (ChatHeader drops the status pill and the icon
+   cluster while editing). Before that, the input measured 4px wide at 360px:
+   .ch-main is the only shrinkable slot, and the two 36px confirm/cancel buttons
+   plus gaps ate ~80px of an ~84px box. Deliberately NO min-width floor here —
+   with .ch-main at min-width:0 a binding floor would push .ch-rename past the
+   header edge instead, which is the very failure this fixed. */
 .ch-rename {
   display: flex;
   align-items: center;
@@ -107,13 +113,18 @@
   gap: var(--sp-2);
   padding-right: var(--sp-1);
 }
-.ch-relay { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-2); color: var(--text-dim); padding: 1px 7px; font: var(--fs-10)/1.5 var(--font-mono); letter-spacing: .04em; white-space: nowrap; }
+/* Diagnostic chip — it must never outrank the session title, which is the only
+   thing telling you WHICH conversation this is. Clamped like .term-relay. */
+.ch-relay { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--bg-2); color: var(--text-dim); padding: 1px 7px; font: var(--fs-10)/1.5 var(--font-mono); letter-spacing: .04em; white-space: nowrap; max-width: 112px; overflow: hidden; text-overflow: ellipsis; }
 .ch-files-toggle {
   flex: none;
 }
 @media (max-width: 420px) { .ch-relay { padding-inline: 5px; } }
 .ch-files-toggle.is-active,
-.ch-btw-toggle.is-active {
+.ch-btw-toggle.is-active,
+/* the "⋯" trigger inherits the treatment when a collapsed toggle is on, so a
+   panel that is open never looks closed just because its button moved */
+.ch-icon.is-active {
   color: var(--accent-2);
   background: var(--accent-dim);
 }

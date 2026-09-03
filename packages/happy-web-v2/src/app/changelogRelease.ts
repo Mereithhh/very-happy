@@ -15,6 +15,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-model-switch-and-mobile-headers',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.105',
+    titleKey: 'changelog.releases.sep03f.title',
+    summaryKey: 'changelog.releases.sep03f.summary',
+    itemKeys: [
+      'changelog.releases.sep03f.model',
+      'changelog.releases.sep03f.effort',
+      'changelog.releases.sep03f.header',
+      'changelog.releases.sep03f.chatHeader',
+    ],
+  },
+  {
     id: '2026-09-03-import-hides-owned-conversations',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

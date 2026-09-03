@@ -299,6 +299,15 @@ export class MessageQueue2<T> {
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
+                // NEWEST intent wins. Items in a batch share a hash, so they can
+                // differ only in fields the hasher deliberately ignores — for
+                // claude that is `model` (applied live by claudeRemote, see
+                // claudeModeHash) and non-plan permission modes. Keeping the
+                // FIRST item's mode meant a burst that carried a model switch
+                // ran the whole merged turn on the model the user just left
+                // (B-292); same rule rewriteQueuedPermissionMode already applies
+                // to queued permission modes.
+                mode = item.mode;
                 if (item.attachments) collectedAttachments.push(...item.attachments);
             }
             logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);

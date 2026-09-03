@@ -81,6 +81,184 @@ describe('claudeRemote', () => {
         }));
     });
 
+    /**
+     * B-292: the model is the one mode field the SDK can move on a LIVE Query.
+     * Before this, a model change was applied by killing the Claude Code process
+     * and replaying the message into a fresh Query — which is how it ended up
+     * depending on (and silently lost to) the launcher's park-and-replay path.
+     */
+    describe('live model switching', () => {
+        const runTwoTurns = async (opts: {
+            models: Array<string | undefined>;
+            setModel: ReturnType<typeof vi.fn>;
+            onCompletionEvent?: ReturnType<typeof vi.fn>;
+        }) => {
+            // What each turn's prompt saw at the moment it reached the Query.
+            const observed: Array<{ prompt: unknown; afterSwitch: boolean }> = [];
+            let switchResolved = false;
+            const trackedSetModel = vi.fn(async (model?: string) => {
+                await opts.setModel(model);
+                switchResolved = true;
+            });
+
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                setModel: trackedSetModel,
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    const first = await input.next();
+                    observed.push({ prompt: first.value.message.content, afterSwitch: switchResolved });
+                    yield { type: 'result', subtype: 'success' };
+                    // Parks here until the turn-boundary hand-off pushes the next
+                    // prompt — which is exactly the ordering under test.
+                    const second = await input.next();
+                    if (!second.done) {
+                        observed.push({ prompt: second.value.message.content, afterSwitch: switchResolved });
+                    }
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+
+            let n = 0;
+            await claudeRemote({
+                sessionId: null,
+                path: process.cwd(),
+                allowedTools: [],
+                hookSettingsPath: '/tmp/happy-test-settings.json',
+                nextMessage: async () => {
+                    const index = n++;
+                    if (index >= opts.models.length) return null;
+                    return { message: `turn ${index}`, mode: { ...mode, model: opts.models[index] } };
+                },
+                onReady: vi.fn(),
+                canCallTool: async () => ({ behavior: 'allow' }) as any,
+                isAborted: () => false,
+                onSessionFound: vi.fn(),
+                onThinkingChange: vi.fn(),
+                onMessage: vi.fn(),
+                onCompletionEvent: opts.onCompletionEvent,
+            });
+            return observed;
+        };
+
+        it('applies a mid-conversation model change with setModel instead of a respawn', async () => {
+            const setModel = vi.fn(async () => {});
+            await runTwoTurns({ models: ['opus', 'sonnet'], setModel });
+            expect(setModel).toHaveBeenCalledWith('sonnet');
+            // The Query is created ONCE — the switch must not need a new one.
+            expect(vi.mocked(query)).toHaveBeenCalledTimes(1);
+            expect(vi.mocked(query).mock.calls[0][0].options).toEqual(expect.objectContaining({ model: 'opus' }));
+        });
+
+        /**
+         * Ordering is load-bearing: the SDK's input loop writes a queued user
+         * message to Claude Code's stdin eagerly, so a prompt pushed before the
+         * set_model control request lands would be answered by the OLD model —
+         * B-292's symptom, with every other assertion still green.
+         */
+        it('does not hand the next prompt to the Query until the switch has resolved', async () => {
+            const setModel = vi.fn(async () => {});
+            const observed = await runTwoTurns({ models: ['opus', 'sonnet'], setModel });
+            expect(observed).toHaveLength(2);
+            expect(observed[0]).toEqual({ prompt: 'turn 0', afterSwitch: false });
+            expect(observed[1]).toEqual({ prompt: 'turn 1', afterSwitch: true });
+        });
+
+        it('does not touch the model when the next turn keeps it', async () => {
+            const setModel = vi.fn(async () => {});
+            await runTwoTurns({ models: ['opus', 'opus'], setModel });
+            expect(setModel).not.toHaveBeenCalled();
+        });
+
+        it('treats null and undefined as the same "machine default" state', async () => {
+            const setModel = vi.fn(async () => {});
+            await runTwoTurns({ models: [undefined, null as unknown as undefined], setModel });
+            expect(setModel).not.toHaveBeenCalled();
+        });
+
+        it('switching back to the machine default clears the model', async () => {
+            const setModel = vi.fn(async () => {});
+            await runTwoTurns({ models: ['opus', undefined], setModel });
+            expect(setModel).toHaveBeenCalledWith(undefined);
+        });
+
+        it('reports a rejected switch and keeps the turn alive on the previous model', async () => {
+            const setModel = vi.fn(async () => {
+                throw new Error('Model "fable5" is not a recognized model id.');
+            });
+            const onCompletionEvent = vi.fn();
+            const observed = await runTwoTurns({ models: ['opus', 'fable5'], setModel, onCompletionEvent });
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('fable5'));
+            expect(onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('not a recognized model id'));
+            // The turn still runs — on the model that is already loaded.
+            expect(observed.map((o) => o.prompt)).toEqual(['turn 0', 'turn 1']);
+        });
+
+        /**
+         * `model` is out of the relaunch hash, so a Steer carrying a different
+         * model now passes the launcher's gate. A model cannot move mid-turn, so
+         * claudeRemote must keep the RUNNING model on the steer — otherwise the
+         * next turn boundary compares the target against itself, never calls
+         * setModel, and the picked model never loads.
+         */
+        it('keeps the running model through a Steer, so the next turn still switches', async () => {
+            const setModel = vi.fn(async () => {});
+            let controls: any;
+            const observedInputs: string[] = [];
+            let releaseTurn: () => void = () => {};
+            const steered = new Promise<void>((resolve) => { releaseTurn = resolve; });
+
+            vi.mocked(query).mockImplementation((args: any) => ({
+                setPermissionMode: vi.fn(),
+                setModel,
+                interrupt: vi.fn(),
+                async *[Symbol.asyncIterator]() {
+                    const input = args.prompt[Symbol.asyncIterator]();
+                    observedInputs.push((await input.next()).value.message.content);
+                    await steered;
+                    observedInputs.push((await input.next()).value.message.content);
+                    yield { type: 'result', subtype: 'success' };
+                    const next = await input.next();
+                    if (!next.done) observedInputs.push(next.value.message.content);
+                    yield { type: 'result', subtype: 'success' };
+                },
+            } as any));
+
+            const nextMessage = vi.fn()
+                .mockResolvedValueOnce({ message: 'first', mode: { ...mode, model: 'opus' } })
+                .mockResolvedValueOnce({ message: 'after steer', mode: { ...mode, model: 'sonnet' } })
+                .mockResolvedValue(null);
+
+            const running = claudeRemote({
+                sessionId: null,
+                path: process.cwd(),
+                allowedTools: [],
+                hookSettingsPath: '/tmp/happy-test-settings.json',
+                nextMessage,
+                onReady: vi.fn(),
+                canCallTool: async () => ({ behavior: 'allow' }) as any,
+                isAborted: () => false,
+                onSessionFound: vi.fn(),
+                onThinkingChange: vi.fn(),
+                onMessage: vi.fn(),
+                onQueryReady: (queryControls) => { controls = queryControls; },
+            });
+
+            await vi.waitFor(() => expect(observedInputs).toHaveLength(1));
+            // The steer carries the NEW model. It must not be applied mid-turn…
+            controls.steer('adjust direction', { ...mode, model: 'sonnet' });
+            releaseTurn();
+            await running;
+
+            expect(setModel).not.toHaveBeenCalledWith(undefined);
+            // …and the next ordinary turn, which carries the same new model, must
+            // still see it as a change and apply it.
+            expect(setModel).toHaveBeenCalledTimes(1);
+            expect(setModel).toHaveBeenCalledWith('sonnet');
+            expect(observedInputs).toEqual(['first', 'adjust direction', 'after steer']);
+        });
+    });
+
     it('marks assistant messages from /compact as compact summaries', async () => {
         const setPermissionMode = vi.fn();
         vi.mocked(query).mockReturnValue({
