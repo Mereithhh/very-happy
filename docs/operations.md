@@ -319,10 +319,47 @@ edit `/opt/happy/.env` (keep a dated backup), then deploy the current `main`
 with `rollout=switch` so the candidate container reads it. `docker compose
 restart` does not reread `env_file`.
 
+### Check the budget before it bites
+
 ```bash
-ssh vh-us "docker exec happy-postgres psql -U happy -d happy -tAc \
-  'select \"accountId\", count(*) from \"Session\" group by 1 order by 2 desc limit 5;'"
+node scripts/ops/resource-budget.mjs            # 只读；退出码 1 = 有项目 30 天内撞墙
+node scripts/ops/resource-budget.mjs --days 45 --warn 70
 ```
+
+上限从两个事实源读，不在文档里抄第二份：代码 fallback 直接解析
+`configuredResourceLimit()` 调用点，生产覆盖值从**运行中的容器**环境变量读。
+解析不出来的会被点名列出并标成 `unset`——一个被漏掉的上限会让下面的额度总和
+显得**更小**、也就是让风险显得更小，所以它必须吵。
+
+**这个脚本存在的理由**：2026-09-03 一天撞了两次墙，两次都是事后才知道。
+`MAX_SESSIONS_PER_ACCOUNT` 撞 500 之后被改成 100000，没留下理由；`session_state`
+写速率桶把整个账号锁了一小时（B-307），而稳态用量只有上限的 0.7%。问题从来不是
+数字选错，是**撞墙前没有任何东西会吭一声**。
+
+### 两条它揭出来的事实（2026-09-03 实测）
+
+**① 百分比对单调计数器是错的警报。** 消息数在 `MAX_MESSAGES_PER_ACCOUNT`
+（fallback 100000）的 **67.9%**，听起来很宽裕——按最近 14 天约 2,940 条/天的速度
+是 **11 天**。而消息计数只在会话被显式删除时才下降（`sessionDelete.ts`），
+没有任何保留期策略，所以它实际上只增不减。撞上之后消息直接存不进去。
+脚本因此把「预计还有几天」当成主要信号，`--days` 而不是 `--warn` 才是那个闸。
+
+**② 配额是按账号的，而磁盘是按机器的——这两个数以前没有人放在一起看过。**
+vh-us 是 50G 盘、19.6G 可用；每账号 8 项字节额度加起来 **1.2G**；`SIGNUP_MODE=open`
+且 `SIGNUP_MAX_ACCOUNTS=100` → 最坏情况 **121.5G，超售 6.2 倍**。也就是说
+per-account 上限**保护不了这块盘**：少数几个重账号就能在任何一条上限触发之前把它填满。
+当前实际用量离这里很远（库只有 200MB，约 3MB/天），所以这不是今天的火警，
+但它是「加上限」这件事目前唯一没被覆盖的方向。
+
+### 选值原则
+
+- **让字节维度成为约束，计数维度只当失控护栏。** 磁盘才是真实成本；一个消息**条数**
+  上限会因为和成本无关的理由触发（上面 ① 就是）。计数上限要设在字节上限之上很远。
+- **总和必须装得下盘**：`SIGNUP_MAX_ACCOUNTS × 每账号字节额度 ≤ 可用空间的一个明确比例`。
+  调 per-account 数字之前先看这一项——注册模式和账号上限往往是更有效的那个旋钮。
+- 改动是 env 改动，走上面那条 env 规则：改 `/opt/happy/.env`（留带日期的备份），
+  再用 `rollout=switch` 部署当前 `main` 让 candidate 读到它。`docker compose restart`
+  不会重读 `env_file`。**每次改都在这里写下理由**，否则下一个人只会看到一个没来由的数字。
 
 ## Diagnosis
 
