@@ -71,15 +71,21 @@ const SPAWN_ORIGIN_TAG_MAX = 24;
  * assistant's own session_spawn, so no existing spawn path changes behaviour.
  * 'assistant' keeps producing exactly ['assistant'].
  *
- * The meta-agent itself (HAPPY_SESSION_VARIANT=assistant) is NOT tagged — it
- * is the variant and never joins the lists at all.
+ * The Claude meta-agent singleton (flavor 'claude' + HAPPY_SESSION_VARIANT=
+ * assistant, see daemon/assistantSpawn.ts `claude-singleton`) is NOT tagged —
+ * it is the variant and never joins the lists at all. Every other flavor with
+ * that variant is an `env-only` spawn (pi/codex meta-agents): it DOES appear
+ * in `sessions list`, so it keeps its origin tag like any dispatched session.
  *
  * The value IS the tag, so it is validated as a display-safe slug
  * (lowercase alphanumerics plus '-'/'_', <= 24 chars). Anything else yields no
  * tag rather than a malformed chip. Pure over `env` for unit tests.
  */
-export function spawnOriginTags(env: Record<string, string | undefined> = process.env): string[] | undefined {
-    if (env.HAPPY_SESSION_VARIANT === 'assistant') return undefined;
+export function spawnOriginTags(
+    env: Record<string, string | undefined> = process.env,
+    flavor: BackendFlavor | undefined = undefined,
+): string[] | undefined {
+    if (env.HAPPY_SESSION_VARIANT === 'assistant' && flavor === 'claude') return undefined;
     const origin = (env.HAPPY_SPAWNED_BY ?? '').trim();
     if (!origin) return undefined;
     if (origin.length > SPAWN_ORIGIN_TAG_MAX) return undefined;
@@ -121,7 +127,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         controlledByUser: false,
     };
 
-    const originTags = spawnOriginTags();
+    const originTags = spawnOriginTags(process.env, opts.flavor);
 
     const metadata: Metadata = {
         path: process.cwd(),

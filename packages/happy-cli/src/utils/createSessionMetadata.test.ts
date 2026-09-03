@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { SandboxConfig } from '@/persistence';
 import { isValidSpawnOrigin, spawnOriginTags, createSessionMetadata } from './createSessionMetadata';
@@ -90,16 +91,32 @@ describe('spawnOriginTags (B-091, generalised in B-303)', () => {
         expect(spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant' })).toEqual(['assistant']);
     });
 
-    it('the assistant meta-agent itself is NOT tagged (it is the variant)', () => {
+    it('the Claude assistant singleton itself is NOT tagged (it is the variant)', () => {
         expect(
-            spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }),
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }, 'claude'),
         ).toBeUndefined();
     });
 
-    it('the variant gate wins over any origin, not just "assistant"', () => {
+    it('for the Claude singleton the variant gate wins over any origin, not just "assistant"', () => {
         expect(
-            spawnOriginTags({ HAPPY_SPAWNED_BY: 'tanka', HAPPY_SESSION_VARIANT: 'assistant' }),
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'tanka', HAPPY_SESSION_VARIANT: 'assistant' }, 'claude'),
         ).toBeUndefined();
+    });
+
+    // env-only meta-agents (pi over ACP, codex) DO join `sessions list`, so
+    // dropping their origin would leave an untagged row nobody can attribute.
+    it('a non-Claude meta-agent keeps its origin tag', () => {
+        expect(
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'e2e-meta', HAPPY_SESSION_VARIANT: 'assistant' }, 'acp'),
+        ).toEqual(['e2e-meta']);
+        expect(
+            spawnOriginTags({ HAPPY_SPAWNED_BY: 'assistant', HAPPY_SESSION_VARIANT: 'assistant' }, 'codex'),
+        ).toEqual(['assistant']);
+    });
+
+    it('runClaude passes its flavor so the singleton exclusion still applies there', () => {
+        const runClaude = readFileSync(new URL('../claude/runClaude.ts', import.meta.url), 'utf8');
+        expect(runClaude).toContain("spawnOriginTags(process.env, 'claude')");
     });
 
     // B-303: the origin IS the tag. Before B-303 only the literal 'assistant'

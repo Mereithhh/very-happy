@@ -168,7 +168,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // message), so without this the session shows as "New chat".
     const importTitle = process.env.HAPPY_IMPORT_TITLE;
 
-    const originTags = spawnOriginTags();
+    const originTags = spawnOriginTags(process.env, 'claude');
 
     let metadata: Metadata = {
         path: workingDirectory,
