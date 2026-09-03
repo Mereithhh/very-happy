@@ -80,7 +80,7 @@ describe('buildAcpPermissionMeta', () => {
 function makeCtx(): { ctx: HandlerContext; emitted: AgentMessage[] } {
   const emitted: AgentMessage[] = [];
   const ctx: HandlerContext = {
-    transport: {},
+    transport: { agentName: 'pi', getInitTimeout: () => 1000, getToolPatterns: () => [] },
     activeToolCalls: new Set(),
     toolCallStartTimes: new Map(),
     toolCallTimeouts: new Map(),
