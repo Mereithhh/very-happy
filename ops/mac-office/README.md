@@ -21,6 +21,15 @@ pgrep -fl 'very-happy-cli/dist/index.mjs'
 tail -20 ~/.local/state/happy/daemon-launchd.log
 ```
 
+Optional daemon environment (`~/.config/very-happy/daemon.env`):
+
+The launch wrapper sources this file, if present, before `very-happy daemon
+start-sync`. Put non-secret variables there that every session the daemon spawns
+should inherit — for example `PI_ACP_PI_COMMAND` to run pi sessions through the
+vh-supervisor wrapper (permission gate + very-happy bridge). Never put secrets
+in it: the daemon's environment is inherited by every session. A reinstall of
+the LaunchAgent does not touch the file.
+
 Temporary stop:
 
 ```bash
