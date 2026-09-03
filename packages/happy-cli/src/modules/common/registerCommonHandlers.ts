@@ -154,6 +154,11 @@ export interface SpawnSessionOptions {
      */
     importedFromClaudeSessionId?: string;
     /**
+     * B-292: title to stamp on the imported session's metadata (the source
+     * conversation's summary / first prompt). Sanitized daemon-side.
+     */
+    importTitle?: string;
+    /**
      * B-051: spawn the machine's assistant (meta-agent) session. The daemon
      * forces cwd to ~/.happy/assistant (the passed `directory` is ignored),
      * bootstraps that home on first use, injects HAPPY_SESSION_VARIANT=assistant

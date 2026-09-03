@@ -119,3 +119,59 @@ export function formatHistorySize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** Per-row state of a batch import run (B-292). */
+export type ImportRowState =
+    | { kind: 'idle' }
+    | { kind: 'queued' }
+    | { kind: 'running' }
+    | { kind: 'done'; sessionId: string }
+    | { kind: 'failed'; message?: string };
+
+export type ImportRunSummary = {
+    total: number;
+    done: number;
+    failed: number;
+    /** The only session imported in this run, when there is exactly one. */
+    singleSessionId?: string;
+};
+
+/** Click/Enter toggles a row's membership in the selection. */
+export function toggleImportSelection(current: ReadonlyArray<string>, id: string): string[] {
+    return current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+}
+
+/** Selection minus rows that are no longer offered (imported, or filtered out
+ *  by a new search): the footer count must never promise a row the user cannot
+ *  see any more. */
+export function pruneImportSelection(
+    current: ReadonlyArray<string>,
+    visible: ReadonlyArray<{ claudeSessionId: string }>,
+): string[] {
+    const ids = new Set(visible.map((e) => e.claudeSessionId));
+    return current.filter((id) => ids.has(id));
+}
+
+/** Import order = the order shown, so progress reads top-down. */
+export function orderSelectionForImport(
+    selected: ReadonlyArray<string>,
+    visible: ReadonlyArray<ClaudeHistoryEntry>,
+): ClaudeHistoryEntry[] {
+    const wanted = new Set(selected);
+    return visible.filter((e) => wanted.has(e.claudeSessionId));
+}
+
+export function summarizeImportRun(states: ReadonlyMap<string, ImportRowState>): ImportRunSummary {
+    let done = 0;
+    let failed = 0;
+    let singleSessionId: string | undefined;
+    for (const state of states.values()) {
+        if (state.kind === 'done') {
+            done += 1;
+            singleSessionId = done === 1 ? state.sessionId : undefined;
+        } else if (state.kind === 'failed') {
+            failed += 1;
+        }
+    }
+    return { total: states.size, done, failed, ...(singleSessionId ? { singleSessionId } : {}) };
+}

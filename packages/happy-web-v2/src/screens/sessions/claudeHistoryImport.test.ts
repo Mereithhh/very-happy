@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
     filterImportableHistory,
+    orderSelectionForImport,
+    pruneImportSelection,
+    summarizeImportRun,
+    toggleImportSelection,
     formatHistorySize,
     historyEntrypointLabel,
     historyEntryTitle,
@@ -74,5 +78,36 @@ describe('B-290 claudeHistoryImport', () => {
         expect(formatHistorySize(500)).toBe('1 KB');
         expect(formatHistorySize(12 * 1024)).toBe('12 KB');
         expect(formatHistorySize(3.4 * 1024 * 1024)).toBe('3.4 MB');
+    });
+
+    it('B-292 selection helpers: toggle, prune to what is visible, import in list order', () => {
+        expect(toggleImportSelection([], A)).toEqual([A]);
+        expect(toggleImportSelection([A, B], A)).toEqual([B]);
+
+        const visible = [
+            { claudeSessionId: B, cwd: '/w', firstPrompt: 'b', startedAt: 0, updatedAt: 2, sizeBytes: 1 },
+            { claudeSessionId: A, cwd: '/w', firstPrompt: 'a', startedAt: 0, updatedAt: 1, sizeBytes: 1 },
+        ];
+        expect(pruneImportSelection([A, C, B], visible).sort()).toEqual([A, B].sort());
+        // same array identity semantics matter for the effect that prunes: order follows the list
+        expect(orderSelectionForImport([A, B], visible).map((e) => e.claudeSessionId)).toEqual([B, A]);
+        expect(orderSelectionForImport([C], visible)).toEqual([]);
+    });
+
+    it('B-292 summarizes a run and only offers a target session when exactly one imported', () => {
+        expect(summarizeImportRun(new Map())).toEqual({ total: 0, done: 0, failed: 0 });
+        expect(summarizeImportRun(new Map([
+            [A, { kind: 'done', sessionId: 's1' }],
+            [B, { kind: 'failed', message: 'boom' }],
+        ]))).toEqual({ total: 2, done: 1, failed: 1, singleSessionId: 's1' });
+        expect(summarizeImportRun(new Map([
+            [A, { kind: 'done', sessionId: 's1' }],
+            [B, { kind: 'done', sessionId: 's2' }],
+        ]))).toEqual({ total: 2, done: 2, failed: 0 });
+        // a run still in flight is not settled
+        expect(summarizeImportRun(new Map([
+            [A, { kind: 'running' }],
+            [B, { kind: 'queued' }],
+        ]))).toEqual({ total: 2, done: 0, failed: 0 });
     });
 });

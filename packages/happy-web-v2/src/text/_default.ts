@@ -1028,8 +1028,17 @@ export const en = {
         truncated: 'Only the most recent conversations are listed; the search narrows this list, it does not scan older files.',
         copyNote: 'Import copies the conversation: the original stays untouched for the tool that wrote it, and the new chat continues from the full history in the same directory.',
         importing: 'importing…',
+        queued: 'queued',
+        rowDone: 'imported',
+        rowFailed: 'failed',
+        skippedNoDirectory: 'directory was not created',
         imported: 'Conversation imported',
         failed: 'Import failed',
+        // B-292: select any number of conversations and import them in one run.
+        importAction: ({ count }: { count: number }) => count <= 1 ? 'Import' : `Import ${count} conversations`,
+        progress: ({ done, total }: { done: number; total: number }) => `${done}/${total}`,
+        batchImported: ({ count }: { count: number }) => `${count} conversations imported`,
+        batchPartial: ({ done, failed }: { done: number; failed: number }) => `${done} imported, ${failed} failed — the failed rows show why`,
     },
     newTerminalModal: {
         // Used by NewTerminalModal (B-144)
