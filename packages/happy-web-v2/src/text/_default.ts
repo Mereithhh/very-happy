@@ -1694,12 +1694,6 @@ export const en = {
                 frames: 'tmux reports pane output once per write, and a TUI\u2019s opening frame is thousands of tiny ones: pi\u2019s startup measured 1029 chunks with a median of 9 bytes for 12 KB of text. The daemon now merges them into one frame per display tick before sending, which took the same burst from 395 messages to 5 in the regression test.',
                 latency: 'Typing is untouched: the first chunk after any idle moment still goes out immediately, so an echo never waits. Only a genuine burst is merged, and never for longer than one frame.',
             },
-            sep03ah: {
-                title: 'The daemon can update itself while the machine is idle',
-                summary: 'Keeping a machine current meant remembering to run the update by hand. It can now do it on its own, but only in the one window where nothing can be interrupted.',
-                idle: 'An update is only attempted when the machine is genuinely idle \u2014 no agent session and no live web terminal, since updating replaces the process hosting them. Each version is tried once, so a bad install can never become a retry loop.',
-                pinned: 'It installs the version the relay recommends, never whatever is newest on npm, and the new bundle has to start successfully before it takes over. Settings \u2192 the machine page shows the result, and `cliAutoUpdate` turns it off.',
-            },
             sep03ac: {
                 title: 'The refresh button can no longer hang',
                 summary: 'Accepting an update could leave the page on "Refreshing…" and never come back, until you reloaded by hand.',

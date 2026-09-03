@@ -53,18 +53,6 @@ export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
     ],
   },
   {
-    id: '2026-09-03-cli-idle-auto-update',
-    date: '2026-09-03',
-    buildVersion: __APP_VERSION__,
-    cliVersion: '0.2.116',
-    titleKey: 'changelog.releases.sep03ah.title',
-    summaryKey: 'changelog.releases.sep03ah.summary',
-    itemKeys: [
-      'changelog.releases.sep03ah.idle',
-      'changelog.releases.sep03ah.pinned',
-    ],
-  },
-  {
     id: '2026-09-03-refresh-never-hangs',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,
