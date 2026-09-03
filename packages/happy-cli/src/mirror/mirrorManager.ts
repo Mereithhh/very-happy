@@ -40,6 +40,12 @@ import {
     type TerminalHookEvent,
 } from './mirrorProtocol';
 import { createMirrorScanner, type MirrorScanner } from './mirrorScanner';
+import {
+    pendingCreateAfterFailure,
+    pendingCreateSupersededBy,
+    planPendingCreate,
+    type PendingMirrorCreate,
+} from './mirrorPendingCreate';
 import { scrubTmuxClientEnv, tmuxArgs } from '@/terminal/tmuxSocket';
 
 export const TERMINAL_MIRROR_FLAVOR = 'terminal-mirror';
@@ -106,6 +112,9 @@ export function createMirrorManager(deps: {
     const bindings = new Map<string, MirrorBinding>();
     // design v3 E: terminalId → last end time, for reconcile hysteresis.
     const lastEndedAt = new Map<string, number>();
+    // B-304: terminalId → a SessionStart whose createBinding failed, awaiting a
+    // retry on a reconcile tick. See mirrorPendingCreate.ts for why.
+    const pendingCreates = new Map<string, PendingMirrorCreate>();
     // Hooks are rare and ordering matters (SessionEnd → SessionStart on
     // /clear); one global chain serializes all mutations.
     let chain: Promise<void> = Promise.resolve();
@@ -299,6 +308,16 @@ export function createMirrorManager(deps: {
         deps.onBindingsChanged?.();
     };
 
+    /** B-304: remember a failed create so a reconcile tick can retry it. */
+    const parkFailedCreate = (event: TerminalHookEvent, reason: unknown): void => {
+        const pending = pendingCreateAfterFailure(pendingCreates.get(event.terminalId), event, Date.now());
+        pendingCreates.set(event.terminalId, pending);
+        logger.debug(
+            `[MIRROR] mirror bind failed for terminal ${event.terminalId} (attempt ${pending.attempts}, retrying):`,
+            reason,
+        );
+    };
+
     const createBinding = async (event: TerminalHookEvent, replaces?: MirrorBinding): Promise<void> => {
         if (replaces) {
             await teardownBinding(replaces, 'superseded by a fresh conversation');
@@ -322,11 +341,23 @@ export function createMirrorManager(deps: {
         };
         // Random tag ALWAYS (B-051 tombstone: a fixed tag + fresh key mint =
         // undecryptable rows).
-        const response = await deps.api.getOrCreateSession({ tag: randomUUID(), metadata, state: {} });
-        if (!response) {
-            logger.debug(`[MIRROR] server unreachable — dropping mirror bind for terminal ${event.terminalId}`);
+        // B-304: a create that fails here used to be the end of it — the hook is
+        // a one-shot event, and reconcile's adoptPersisted can only revive a
+        // record a SUCCESSFUL create left behind. Both failure shapes (null for
+        // 5xx/404, throw for 4xx such as the account-wide 429 write-rate bucket)
+        // now park the event for a retry on the next reconcile tick.
+        let response: ApiSession | null = null;
+        try {
+            response = await deps.api.getOrCreateSession({ tag: randomUUID(), metadata, state: {} });
+        } catch (error) {
+            parkFailedCreate(event, error);
             return;
         }
+        if (!response) {
+            parkFailedCreate(event, 'server unreachable');
+            return;
+        }
+        pendingCreates.delete(event.terminalId);
         const client = deps.api.sessionSyncClient(response);
         client.skipExistingMessages();
         const binding: MirrorBinding = {
@@ -390,6 +421,11 @@ export function createMirrorManager(deps: {
     };
 
     const handleEvent = async (event: TerminalHookEvent): Promise<void> => {
+        // B-304: a fresh hook for this terminal is newer truth than a parked
+        // create — a SessionStart re-parks itself if it fails again, and a
+        // SessionEnd for the same claude session means it is gone.
+        const parked = pendingCreates.get(event.terminalId);
+        if (parked && pendingCreateSupersededBy(parked, event)) pendingCreates.delete(event.terminalId);
         const binding = bindings.get(event.terminalId) ?? null;
         const decision = decideMirrorBinding(
             event,
@@ -424,6 +460,7 @@ export function createMirrorManager(deps: {
         },
 
         onTerminalClosed(terminalId: string): void {
+            pendingCreates.delete(terminalId);
             const binding = bindings.get(terminalId);
             if (!binding) return;
             chain = chain.then(() => teardownBinding(binding, 'terminal closed')).catch((error) => {
@@ -453,6 +490,8 @@ export function createMirrorManager(deps: {
                 // Pane back to a shell → end an active binding (pane observation
                 // safety net, same as observeTerminalList).
                 if (item.agentState === 'shell') {
+                    // B-304: claude is gone — a parked create for it is dead.
+                    pendingCreates.delete(item.id);
                     if (binding && binding.status === 'active') {
                         chain = chain.then(() => {
                             const b = bindings.get(item.id);
@@ -480,6 +519,25 @@ export function createMirrorManager(deps: {
                         return b && b.status === 'ended' ? reactivateInPlace(b) : undefined;
                     }).catch((e) => logger.debug(`[MIRROR] reconcile in-place reactivate failed for ${item.id}:`, e));
                 } else if (!binding) {
+                    // B-304: a parked create outranks adoptPersisted — it names
+                    // the claude session running RIGHT NOW, while the newest
+                    // persisted record is by definition an older conversation.
+                    const pending = pendingCreates.get(item.id);
+                    if (pending) {
+                        const decision = planPendingCreate(pending, now);
+                        if (decision === 'drop') {
+                            pendingCreates.delete(item.id);
+                            logger.debug(`[MIRROR] giving up on the parked mirror bind for terminal ${item.id}`);
+                        } else if (decision === 'retry') {
+                            chain = chain.then(() => {
+                                // Re-read: a real hook may have landed while we queued.
+                                const still = pendingCreates.get(item.id);
+                                if (!still || still !== pending || bindings.has(item.id)) return undefined;
+                                return createBinding(still.event);
+                            }).catch((e) => logger.debug(`[MIRROR] reconcile create retry failed for ${item.id}:`, e));
+                        }
+                        continue;
+                    }
                     persisted ??= readPersistedSessions();
                     const p = persisted;
                     chain = chain.then(() => {

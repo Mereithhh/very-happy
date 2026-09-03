@@ -1626,6 +1626,11 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03m: {
+                title: '「切到结构化视图」的按钮不再时有时无',
+                summary: '在 Very Happy 终端里手敲 claude，会自动配一个可切换的结构化视图。这个关联只在 claude 启动的那一瞬间建立一次——如果那一秒服务端正忙，这次尝试就被丢掉、而且再也不会重试，那个终端接下来几个小时都没有切换按钮。',
+                retry: '建立失败的尝试现在会被留下来，只要那个面板里 claude 还在跑就继续重试；服务端抖一下的代价从「这个会话彻底没有」变成「晚几秒出现」。已经处于这种状态的终端，下次在里面启动 claude 时就会恢复。',
+            },
             sep03l: {
                 title: '改过名的机器，显示的名字终于跟着变了',
                 summary: 'Very Happy 里显示的机器名，一直是它第一次连上那天的主机名，之后再改名也不会同步——老名字会一直留着。',

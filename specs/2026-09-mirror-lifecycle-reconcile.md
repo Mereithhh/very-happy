@@ -53,3 +53,50 @@ Owner 实报：mac-office 上手敲 `claude` 的终端，Web 里「xterm ↔ 结
 
 ## 改动文件
 `webTerminal.ts`（`isClaudeConfident` + probe 返回 claudeConfident + `mirrorTickObserver`）、`apiMachine.ts`（`onTerminalListTick` 布线）、`run.ts`（路由到 `reconcile`）、`mirrorManager.ts`（`reconcile`/`adoptPersisted`/`reactivateInPlace`/`reactivate` 重试/hysteresis）。纯 CLI/daemon 改动，无 web/server 部署。
+
+---
+
+## 补记（B-304，2026-09-03）：reconciler 救不了「从来没绑上过」的终端
+
+上面那句「会自愈 Owner 那 2 个卡住终端」有一个未写出的前提：**持久化记录在**。
+`adoptPersisted` 复活的是一条**成功创建过**的记录；创建本身失败时，磁盘上什么都没有，
+reconciler 每 10 秒看见一个 claude 正向的面板，却永远无从下手。
+
+现场取证（mac-office，2026-09-03）：12 个 vh-* 面板全部在跑 claude，其中 2 个从来没有过
+绑定，`~/.happy/sessions.json` 里零条记录；日志给出确凿原因——
+
+```
+[02:19:06] [MIRROR] hook handling failed for terminal e26c22d1d079: status code 429
+[10:51:26] [MIRROR] hook handling failed for terminal af794aaa7981: status code 429
+```
+
+近四天 33 次。`createBinding` 的 `getOrCreateSession` 抛错，被 `handleHookPayload` 的
+catch 吞成一行 debug 日志。而 hook 是**一次性事件**：claude 启动那一瞬间发一次，
+不会再来。于是那台终端接下来几个小时都没有 toggle，用户唯一的出路是重开 claude。
+
+429 有两种含义，而当时的日志分不出来——`limit-reached`（账号 500 会话上限，得清理才好）
+与 `session_state_rate_quota_exceeded`（账号级 `session_state` 写速率桶，600 units/min，
+一分钟内自愈）。同一天前后的创建都成功，所以实际是后者：**会话创建与所有会话的 metadata
+抖动共用同一个预算**，终端一多就会互相挤掉。`api.describeSessionCreateError` 现在把服务端
+的 `error` 码带进异常消息，下次一眼可辨。
+
+### 修法
+失败的 hook 事件 park 在内存里，由**同一个** reconcile tick 重试——它本来就每 10s 跑一次、
+本来就按 `claudeConfident` 把门，等于免费拿到「只在那个面板确实还在跑 claude 时才重试」。
+策略是纯函数（`mirror/mirrorPendingCreate.ts`）：退避 10s→30s→60s→120s→300s，30 分钟封顶。
+
+三条不变式：
+- **park 优先于 `adoptPersisted`**。park 指的是**此刻**在跑的那个 claude；持久化记录按定义
+  是更早的对话。反过来会把上一轮对话镜像成这一轮。
+- **面板回到 shell、终端关闭、同终端来了新 hook** 都清掉 park。其中 `SessionEnd` 只有在
+  claude session id 与 park 的一致时才算数——`/clear` 的顺序是 SessionEnd(旧) → SessionStart(新)，
+  一条迟到的旧 end 不能把新对话的 park 扔掉。
+- **两种失败形状都要 park**：4xx 抛异常，5xx/404 返回 `null`。后者原本只打一行
+  「server unreachable — dropping mirror bind」，同样是永久丢失。
+
+### 刻意不做：把 park 落盘
+观测到的失败都是秒级抖动，第一或第二个 tick 就修好。重试窗口内 daemon 重启会丢掉 park
+（那个 claude 直到重启才恢复），但为这种罕见叠加换一个可能自己变陈旧的磁盘状态文件不划算。
+有反例再说。
+
+**存量终端不会自愈**：它们连 park 都没有（daemon 早已重启过），只能等下次在里面启动 claude。

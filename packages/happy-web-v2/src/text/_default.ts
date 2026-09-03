@@ -1658,6 +1658,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03m: {
+                title: 'The structured-view toggle stops going missing',
+                summary: 'Type `claude` in a Very Happy terminal and it gets a structured view you can switch to. That link is set up once, the moment Claude starts — and if the server was busy at that exact second, the attempt was dropped and never made again. The terminal then ran for hours with no toggle at all.',
+                retry: 'A failed setup is now kept and retried while the pane is still visibly running Claude, so a momentary server hiccup costs you a few seconds instead of the whole session. Terminals already in this state pick the toggle up the next time Claude starts in them.',
+            },
             sep03l: {
                 title: 'A renamed machine finally shows its new name',
                 summary: 'The name Very Happy showed for a machine was the hostname it had the day it first connected, and it never changed after that — rename the box and the old name stayed forever.',

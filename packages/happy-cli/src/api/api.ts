@@ -13,6 +13,25 @@ import { NotificationProducer } from '@/claude/notificationProducer';
 import { redactLogValue } from '@/utils/logRedaction';
 import type { ServerSessionSnapshot } from '@/utils/reconnectSession';
 
+/**
+ * Human-readable reason a POST /v1/sessions failed (B-304).
+ *
+ * Axios' own message is only "Request failed with status code 429", which does
+ * not say whether the account hit its session CAP (permanent until sessions are
+ * removed) or the shared session-state WRITE-RATE bucket (clears within the
+ * minute). Only the documented `error` field is copied out — never the whole
+ * body, which can echo request state back.
+ */
+export function describeSessionCreateError(error: unknown): string {
+    const base = error instanceof Error ? error.message : 'Unknown error';
+    if (!axios.isAxiosError(error) || !error.response) return base;
+    const data = error.response.data as unknown;
+    const code = data && typeof data === 'object' && typeof (data as { error?: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : null;
+    return code ? `${base} (${code})` : base;
+}
+
 export class ApiClient {
 
   static async create(credential: Credentials) {
@@ -136,7 +155,12 @@ export class ApiClient {
         }
       }
 
-      throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // B-304: "Request failed with status code 429" alone cost an evening —
+      // the server distinguishes `limit-reached` (the account is at its session
+      // cap) from `session_state_rate_quota_exceeded` (a transient account-wide
+      // write-rate bucket) and only the body says which. Carry it into the
+      // message so the daemon log answers the question on its own.
+      throw new Error(`Failed to get or create session: ${describeSessionCreateError(error)}`);
     }
   }
 

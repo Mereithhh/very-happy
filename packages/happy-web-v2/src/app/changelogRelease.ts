@@ -15,6 +15,17 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-03-terminal-mirror-bind-retry',
+    date: '2026-09-03',
+    buildVersion: __APP_VERSION__,
+    cliVersion: '0.2.109',
+    titleKey: 'changelog.releases.sep03m.title',
+    summaryKey: 'changelog.releases.sep03m.summary',
+    itemKeys: [
+      'changelog.releases.sep03m.retry',
+    ],
+  },
+  {
     id: '2026-09-03-machine-name-follows-rename',
     date: '2026-09-03',
     buildVersion: __APP_VERSION__,

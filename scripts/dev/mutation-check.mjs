@@ -109,6 +109,21 @@ function locate(source, { literal, near, nth }, label) {
  * it renames the first identifier inside it, which destroys the match while
  * keeping the file parseable.
  */
+/** Is `index` inside a '…' / "…" / `…` run within this literal? */
+function insideQuotes(literal, index) {
+    let quote = null;
+    for (let i = 0; i < index; i += 1) {
+        const ch = literal[i];
+        if (quote) {
+            if (ch === '\\') i += 1;
+            else if (ch === quote) quote = null;
+        } else if (ch === "'" || ch === '"' || ch === '`') {
+            quote = ch;
+        }
+    }
+    return quote !== null;
+}
+
 function mangleLiteral(literal) {
     // Corrupt the INTERIOR, never the edges: prefixing (`zzkey: 'x'`) or
     // suffixing leaves the original literal as a substring, so `toContain()`
@@ -118,8 +133,15 @@ function mangleLiteral(literal) {
     //   key: 'connect-machine'   →  key: 'connect-mzzachine'
     //   runningSubagentsInTurn   →  rzzunningSubagentsInTurn
     //   presence !== 'online'    →  presence !== 'ozznline'
+    //
+    // Prefer an identifier OUTSIDE any quotes. `foo(x, 'server unreachable')`
+    // would otherwise mangle the message string — the call still runs, the test
+    // still passes, and the tool cries "NOT CAUGHT" about a line that is in fact
+    // pinned (B-304, real false alarm). A code identifier is what carries the
+    // behaviour; only fall back to a quoted one when the literal is all string.
     const identifiers = [...literal.matchAll(/[A-Za-z_$][A-Za-z0-9_$]*/g)];
-    const target = identifiers.at(-1);
+    const unquoted = identifiers.filter((m) => !insideQuotes(literal, m.index));
+    const target = (unquoted.length ? unquoted : identifiers).at(-1);
     const at = target ? target.index + 1 : 1;
     if (literal.length < 2) return `${literal}zz`;
     return `${literal.slice(0, at)}zz${literal.slice(at)}`;

@@ -209,6 +209,115 @@ describe('mirrorManager.reconcile', () => {
         expect(reactivateSession).toHaveBeenCalledTimes(2);
     });
 
+    // ── B-304: a create that failed is retried, not lost ────────────────────
+    // Production evidence (mac-office daemon logs, 33 occurrences over four
+    // days): `[MIRROR] hook handling failed … status code 429`. The hook is a
+    // one-shot event and adoptPersisted needs a record only a SUCCESSFUL create
+    // leaves behind, so the terminal ran claude for hours with no toggle.
+
+    it('retries a create that failed with a server error, on a later tick', async () => {
+        const getOrCreateSession = vi.fn()
+            .mockRejectedValueOnce(new Error('Failed to get or create session: Request failed with status code 429 (session_state_rate_quota_exceeded)'))
+            .mockResolvedValue({
+                id: 'srv-retried', seq: 0, encryptionKey: new Uint8Array(32), encryptionVariant: 'dataKey',
+                metadata: {}, metadataVersion: 0, agentState: null, agentStateVersion: 0,
+            });
+        const { api } = makeApi({ getOrCreateSession });
+        const mgr = createMirrorManager({ api: api as never, machineId: MID });
+
+        await seedActive(mgr, 't1', 'claude-1');
+        expect(mgr.resolveMirrorSessionId('t1')).toBeUndefined(); // the bind was lost
+
+        // too soon — the backoff has not elapsed
+        vi.setSystemTime(Date.now() + 1_000);
+        mgr.reconcile([item('t1', 'idle', true)]);
+        await flush();
+        expect(getOrCreateSession).toHaveBeenCalledTimes(1);
+
+        vi.setSystemTime(Date.now() + 30_000);
+        mgr.reconcile([item('t1', 'idle', true)]);
+        await flush();
+
+        expect(getOrCreateSession).toHaveBeenCalledTimes(2);
+        expect(mgr.resolveMirrorSessionId('t1')).toBe('srv-retried');
+        expect(mgr.isMirrorInputAllowed('t1')).toBe(true);
+        // the retry replays the ORIGINAL hook event, so it follows that claude
+        // session's transcript — not some newer file picked by guesswork
+        expect(scannerAddFile).toHaveBeenCalledWith(expect.stringContaining('claude-1.jsonl'), 'backfill-tail');
+    });
+
+    it('retries a create the server dropped as unreachable (null response), not only a throw', async () => {
+        const getOrCreateSession = vi.fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValue({
+                id: 'srv-late', seq: 0, encryptionKey: new Uint8Array(32), encryptionVariant: 'dataKey',
+                metadata: {}, metadataVersion: 0, agentState: null, agentStateVersion: 0,
+            });
+        const { api } = makeApi({ getOrCreateSession });
+        const mgr = createMirrorManager({ api: api as never, machineId: MID });
+
+        await seedActive(mgr, 't1', 'claude-1');
+        vi.setSystemTime(Date.now() + 30_000);
+        mgr.reconcile([item('t1', 'idle', true)]);
+        await flush();
+
+        expect(mgr.resolveMirrorSessionId('t1')).toBe('srv-late');
+    });
+
+    it('stops retrying once the pane is back to a shell — that claude is gone', async () => {
+        const getOrCreateSession = vi.fn().mockRejectedValue(new Error('boom'));
+        const { api } = makeApi({ getOrCreateSession });
+        const mgr = createMirrorManager({ api: api as never, machineId: MID });
+
+        await seedActive(mgr, 't1', 'claude-1');
+        mgr.reconcile([item('t1', 'shell', false)]);
+        await flush();
+
+        getOrCreateSession.mockClear();
+        vi.setSystemTime(Date.now() + 300_000);
+        mgr.reconcile([item('t1', 'idle', true)]);
+        await flush();
+        expect(getOrCreateSession).not.toHaveBeenCalled();
+    });
+
+    it('a SessionEnd for the parked conversation stops the retries', async () => {
+        const getOrCreateSession = vi.fn().mockRejectedValue(new Error('429'));
+        const { api } = makeApi({ getOrCreateSession });
+        const mgr = createMirrorManager({ api: api as never, machineId: MID });
+
+        await seedActive(mgr, 't1', 'claude-1');
+        await endViaHook(mgr, 't1', 'claude-1'); // claude exited before we ever bound it
+
+        getOrCreateSession.mockClear();
+        vi.setSystemTime(Date.now() + 300_000);
+        mgr.reconcile([item('t1', 'idle', true)]); // a stale claude footer in the tail
+        await flush();
+        expect(getOrCreateSession).not.toHaveBeenCalled();
+    });
+
+    it('a parked create outranks adoptPersisted — never mirrors the previous conversation', async () => {
+        const getOrCreateSession = vi.fn()
+            .mockRejectedValueOnce(new Error('429'))
+            .mockResolvedValue({
+                id: 'srv-current', seq: 0, encryptionKey: new Uint8Array(32), encryptionVariant: 'dataKey',
+                metadata: {}, metadataVersion: 0, agentState: null, agentStateVersion: 0,
+            });
+        const { api } = makeApi({ getOrCreateSession });
+        const mgr = createMirrorManager({ api: api as never, machineId: MID });
+        // an older conversation for the same terminal IS on disk
+        readPersistedSessions.mockReturnValue({ old: persistedRecord('t1', 'claude-old', 1000) });
+
+        await seedActive(mgr, 't1', 'claude-current');
+        vi.setSystemTime(Date.now() + 30_000);
+        scannerAddFile.mockClear();
+        mgr.reconcile([item('t1', 'idle', true)]);
+        await flush();
+
+        expect(mgr.resolveMirrorSessionId('t1')).toBe('srv-current');
+        expect(scannerAddFile).toHaveBeenCalledWith(expect.stringContaining('claude-current.jsonl'), 'backfill-tail');
+        expect(scannerAddFile).not.toHaveBeenCalledWith(expect.stringContaining('claude-old.jsonl'), expect.anything());
+    });
+
     it('ends an active binding when its pane returns to a shell', async () => {
         const { api } = makeApi();
         const mgr = createMirrorManager({ api: api as never, machineId: MID });
