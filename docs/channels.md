@@ -39,6 +39,7 @@ has the same tool set:
 | Managed Codex / Gemini / ACP bridge | `change_title`, `copy_to_clipboard`, `open_preview` |
 | Assistant/meta-agent variant additions (Claude, in-process) | `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive`, `terminals_list`, `terminal_read`, `terminal_send`, `memory_update`, `journal_append` |
 | User-scoped `very-happy mcp` (plain `claude`, pi, …) | `copy_to_clipboard` only |
+| User-scoped `very-happy mcp` **inside a vh web terminal** (`VH_TERMINAL_ID` set by the daemon's tmux terminal) | + `change_title` (titles that terminal via the daemon's `/terminal-title`) |
 | User-scoped `very-happy mcp` **inside a meta-agent session of a non-Claude runner** (`HAPPY_SESSION_VARIANT=assistant`, e.g. pi started with the new-session dialog's "meta agent" option) | `copy_to_clipboard` + `sessions_list`, `session_read`, `session_send`, `session_spawn`, `session_kill`, `session_archive` |
 
 The first two paths are injected by their managed runners. The assistant-only
@@ -451,6 +452,20 @@ on this surface yet; a meta agent that needs it shells out to
 A Claude session never takes this path: `HAPPY_MANAGED=1` on every
 happy-managed `claude` keeps the standalone server clipboard-only there, since
 the in-process assistant tools already cover it.
+
+#### pi: the two contexts and where its title comes from
+
+pi-acp does not honour the ACP `mcpServers` handoff, so a pi session reaches
+very-happy's tools in one of two ways depending on how it was started:
+
+| Context | How pi is started | Tool path | Title |
+|---|---|---|---|
+| **Managed** | `very-happy pi` / `spawn --agent pi` (ACP runner) | the runner starts the in-process happy MCP server (Streamable HTTP on `127.0.0.1`) and exports **`HAPPY_MCP_URL`** and **`HAPPY_SESSION_ID`** into the pi-acp child env; a pi extension (e.g. vh-supervisor's `very-happy-bridge`) connects to that URL and proxies its tools (`change_title`, `copy_to_clipboard`, `open_preview`, `report_progress`, plus the `sessions_*` tools of the assistant variant). The `mcpServers` handoff is still sent for agents that do honour it. | auto-generated from the first user prompt (same `TitleGenerator` as Claude sessions, one `claude -p --model haiku` call); a title the agent sets via `change_title` first is never overwritten. |
+| **Terminal** | you type `pi` inside a very-happy web terminal | no happy server; pi-mcp-adapter loads the user-wide `very-happy` entry above, and because the daemon set **`VH_TERMINAL_ID`** in that terminal, `very-happy mcp` adds **`change_title`**, which posts `{terminalId, title, ifAbsent?}` to the daemon control server's `POST /terminal-title` (control-token auth, same as `/clipboard`; `200 {status:"ok"}`, `409` when tmux refused, `503` while the daemon is starting). | no auto-title; the agent (or an extension) calls `change_title`. There is no mirror session for terminal pi (pi has no hooks). |
+
+The terminal row needs the `very-happy` entry in `~/.pi/agent/mcp.json`
+(pi-mcp-adapter) — without it a hand-run pi sees no very-happy tools at all. A
+managed pi never sees `VH_TERMINAL_ID`, so the two rows do not overlap.
 
 The variable is inherited down the process tree. Anything a meta agent starts
 from its own shell (a nested `pi`, a hand-typed `claude`, a script) sees
