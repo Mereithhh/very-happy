@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => {
     modeFileState: {
       writes: [] as Array<{ sessionId: string; mode: string }>,
       removes: [] as string[],
+      failWrites: false,
     },
   };
 });
@@ -86,6 +87,9 @@ vi.mock('./sessionModeFile', async () => {
   return {
     ...actual,
     writeSessionModeFile: (sessionId: string, mode: string) => {
+      if (mocks.modeFileState.failWrites) {
+        throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+      }
       mocks.modeFileState.writes.push({ sessionId, mode });
       return { permissionMode: mode, updatedAt: 0 };
     },
@@ -246,6 +250,7 @@ describe('runAcp', () => {
     mocks.titleGeneratorState.seeds = [];
     mocks.modeFileState.writes = [];
     mocks.modeFileState.removes = [];
+    mocks.modeFileState.failWrites = false;
     mocks.backendState.disposeCalls = 0;
     mocks.backendState.constructorArgs = null;
 
@@ -347,6 +352,56 @@ describe('runAcp', () => {
       expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
       expect(mocks.backendState.setModeCalls).toEqual([]);
       expect(mocks.modeFileState.removes).toEqual(['happy-session-1']);
+    });
+
+    it('honours the set-permission-mode RPC the web picker uses while working (yolo alias, invalid rejected)', async () => {
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+      });
+      await vi.waitFor(() => expect(mocks.modeFileState.writes).toHaveLength(1));
+      const setPermissionMode = mocks.sessionHandlers.get('set-permission-mode')!;
+      expect(setPermissionMode).toBeTypeOf('function');
+
+      await expect(setPermissionMode({ mode: 'yolo' })).resolves.toEqual({ mode: 'bypassPermissions' });
+      await expect(setPermissionMode({ mode: 'safe-yolo' })).rejects.toThrow('Invalid permission mode');
+      await expect(setPermissionMode({})).rejects.toThrow('Invalid permission mode');
+      await expect(setPermissionMode({ mode: 'bypassPermissions' })).resolves.toEqual({ mode: 'bypassPermissions' });
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.modeFileState.writes.map((w) => w.mode)).toEqual(['default', 'bypassPermissions']);
+      expect(publishedModes()).toEqual(['default', 'bypassPermissions']);
+      expect(mocks.backendState.setConfigOptionCalls).toEqual([]);
+      expect(mocks.modeFileState.removes).toEqual(['happy-session-1']);
+    });
+
+    it('does not publish a mode it could not write (rule 14: intent is not fact) and skips removal on exit', async () => {
+      mocks.modeFileState.failWrites = true;
+      const runPromise = runAcp({
+        credentials: { token: 'token', encryption: { type: 'legacy', secret: new Uint8Array(32) } },
+        agentName: 'pi',
+        command: 'pi-acp',
+        args: [],
+        permissionMode: 'bypassPermissions',
+      });
+      await vi.waitFor(() => expect(mocks.sessionHandlers.get('set-permission-mode')).toBeTypeOf('function'));
+      await vi.waitFor(() => expect(mocks.backendState.startSessionCalls).toBe(1));
+
+      // Live switch while the file is unwritable: rejected, nothing published.
+      await expect(mocks.sessionHandlers.get('set-permission-mode')!({ mode: 'default' }))
+        .rejects.toThrow('Failed to write session mode file');
+
+      await mocks.getKillHandler()!();
+      await runPromise;
+
+      expect(mocks.modeFileState.writes).toEqual([]);
+      expect(publishedModes()).toEqual([]);
+      expect(mocks.modeFileState.removes).toEqual([]);
+      expect(mocks.backendState.constructorArgs.env.HAPPY_PERMISSION_MODE).toBe('bypassPermissions');
     });
 
     it('stays out of the way when the agent advertises an ACP mode selector (gemini/opencode path unchanged)', async () => {

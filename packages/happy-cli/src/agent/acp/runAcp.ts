@@ -551,20 +551,25 @@ export async function runAcp(opts: {
   // side reads it from the session mode file; the web reads it from metadata
   // (rule 14: publish what is in effect, not the intent).
   const initialPermissionMode: AcpPermissionMode = opts.permissionMode ?? 'default';
+  // Set once startSession has shown there is no ACP mode selector.
+  let fileBackedModeActive = false;
   let fileBackedPermissionMode: AcpPermissionMode | null = null;
-  const publishFileBackedPermissionMode = (mode: AcpPermissionMode) => {
+  // Returns false when the file could not be written: nothing is published
+  // then, so the web keeps showing the mode that is really in effect.
+  const publishFileBackedPermissionMode = (mode: AcpPermissionMode): boolean => {
     if (fileBackedPermissionMode === mode) {
-      return;
+      return true;
     }
     try {
       writeSessionModeFile(session.sessionId, mode);
     } catch (error) {
       logger.debug(`[${opts.agentName}] Failed to write session mode file:`, error);
-      return;
+      return false;
     }
     fileBackedPermissionMode = mode;
     session.updateMetadata((currentMetadata) => ({ ...currentMetadata, permissionMode: mode }));
     logger.debug(`[${opts.agentName}] Published file-backed permission mode: ${mode}`);
+    return true;
   };
 
   // Mirrors runClaude: the daemon injects HAPPY_SESSION_VARIANT=assistant for the
@@ -947,6 +952,27 @@ export async function runAcp(opts: {
   }
 
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
+  // The web picker calls this (instead of message meta) while the session is
+  // working, because pi is presented with the Claude flavor. Only the
+  // file-backed path can honour it; agents with an ACP selector switch via
+  // message meta and never receive this RPC. Rejecting surfaces as an `{error}`
+  // ack the web shows (rule 17) rather than a silently unapplied mode.
+  session.rpcHandlerManager.registerHandler<{ mode?: unknown }, { mode: AcpPermissionMode }>(
+    'set-permission-mode',
+    async (request) => {
+      if (!fileBackedModeActive) {
+        throw new Error(`${opts.agentName} does not support live permission mode changes`);
+      }
+      const mode = typeof request?.mode === 'string' ? normalizeAcpPermissionMode(request.mode) : null;
+      if (!mode) {
+        throw new Error('Invalid permission mode');
+      }
+      if (!publishFileBackedPermissionMode(mode)) {
+        throw new Error('Failed to write session mode file');
+      }
+      return { mode };
+    },
+  );
   registerKillSessionHandler(session.rpcHandlerManager, async () => {
     shouldExit = true;
     messageQueue.close();
@@ -958,6 +984,7 @@ export async function runAcp(opts: {
     const started = await backend.startSession();
     acpSessionId = started.sessionId;
     if (!modeSelector && !legacyModes) {
+      fileBackedModeActive = true;
       publishFileBackedPermissionMode(initialPermissionMode);
     }
     if (verbose) {

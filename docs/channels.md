@@ -225,12 +225,17 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   in the pi-acp child env at spawn, and for live switches (Web picker / `send`
   meta) **`<happy home>/session-modes/<HAPPY_SESSION_ID>.json`**
   (`{ "permissionMode": "...", "updatedAt": ms }`, 0600, atomic rename; written
-  on start and on every switch, removed when the wrapper exits). What is written
-  there is also published as `metadata.permissionMode`, so the Web shows the
-  effective value. Enforcement is entirely the pi-side gate extension's job
-  (vh-supervisor's `permission-gate`, which re-reads the file on every tool
-  call): `bypassPermissions` turns its `ask` rules into `allow`; its `deny` rules
-  are never lifted by any mode. Without such an extension the mode is inert.
+  on start and on every switch, removed when the wrapper exits). The Web picker
+  switches through the same file whether the session is idle (message `meta`)
+  or working (`set-permission-mode` RPC). What is written there is also
+  published as `metadata.permissionMode`, so the Web shows the effective value.
+  Enforcement is entirely the pi-side gate extension's job (vh-supervisor's
+  `permission-gate`, which re-reads the file on every tool call):
+  `bypassPermissions` turns its `ask` rules into `allow`; its `deny` rules are
+  never lifted by any mode. Without such an extension the mode is inert.
+  `metadata.permissionMode` is the value very-happy handed to the gate, not the
+  gate's verdict: an in-session override inside the gate (e.g. `/vh-yolo`) is
+  not reported back and is not visible in the Web.
   pi's approvals surface as ACP `request_permission` cards in the
   Web UI (a pi extension calling `ctx.ui.confirm()` produces one), and
   `PI_ACP_PI_COMMAND` in the daemon's environment lets you point the adapter
