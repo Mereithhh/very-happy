@@ -48,6 +48,11 @@ jobs:
       - run: bash scripts/ci/smoke-server-container.sh
       - name: Gate - blue-green release state machine
         run: bash scripts/ci/test-blue-green-state-machine.sh
+      # B-348: needs the tags, which the default shallow checkout omits.
+      - name: Fetch release tags
+        run: git fetch --tags --force --depth=1 origin
+      - name: Gate - changelog cliVersion is not invented
+        run: node scripts/release/check-changelog-versions.mjs
 
   gates:
     name: quality gates (wire / server / web-v2 / cli)

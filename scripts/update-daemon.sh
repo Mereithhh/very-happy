@@ -47,7 +47,29 @@ echo "==> npm i -g very-happy-cli@$LATEST_VERSION"
 # npm 11 blocks previously unseen install scripts unless they are allowlisted.
 # These are the package's reviewed tool-unpack hook and node-pty's native
 # prebuild hook; allowing only these two preserves the default deny posture.
-npm i -g --allow-scripts=very-happy-cli,node-pty "very-happy-cli@$LATEST_VERSION"
+install_cli() {
+    npm i -g --allow-scripts=very-happy-cli,node-pty "very-happy-cli@$LATEST_VERSION"
+}
+
+# B-348: npm leaves a half-written tree often enough that recovering from it by
+# hand has become routine — twice on 2026-09-03 alone, once as
+# `ENOTEMPTY: rmdir .../node_modules/@modelcontextprotocol` and once as a
+# postinstall that could not find a script npm had not written yet. Retrying npm
+# on top of that tree fails the same way every time; the documented recovery
+# (docs/operations.md) is to delete the package and install it fresh, which is
+# what this now does on its own instead of stopping and waiting for a person.
+#
+# The removal is deliberately narrow: one package directory under the global
+# root, only after an install has already failed, and never the root itself.
+if ! install_cli; then
+    PACKAGE_DIR="$(npm root -g)/very-happy-cli"
+    echo "==> install failed; removing $PACKAGE_DIR and retrying once" >&2
+    case "$PACKAGE_DIR" in
+        */node_modules/very-happy-cli) rm -rf "$PACKAGE_DIR" ;;
+        *) echo "refusing to remove unexpected path: $PACKAGE_DIR" >&2; exit 1 ;;
+    esac
+    install_cli
+fi
 
 INSTALLED_VERSION=$(very-happy --version)
 case "$INSTALLED_VERSION" in
