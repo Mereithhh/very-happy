@@ -1626,6 +1626,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep03p: {
+                title: '脚本起的会话不会再永远等在权限审批上了',
+                summary: '命令行派起来的会话落在「每步先问」的默认档。有人看着时这是对的，没人看着时就是陷阱：会话停在第一个需要问的工具上，然后就一直坐在那儿。',
+                mode: '`very-happy spawn --permission-mode <档位>` 可以显式指定，无人值守的调度器因此能起一个真能跑完的会话。填错的档位现在当场拒绝，而不是悄悄退回「问」——正是这一点让旧的故障特别难发现：只有当任务恰好碰到没被放行的工具时才会出现。',
+                agentEnv: 'daemon 本来就认、CLI 却没透传的另外两个 spawn 参数也补上了：`--agent` 选后端，`--env KEY=VALUE` 给会话加环境变量。会话继承的是 daemon 的环境而不是调用方的，这个口子适配器一直在绕。',
+            },
             sep03o: {
                 title: '「切到结构化视图」的按钮不再时有时无',
                 summary: '在 Very Happy 终端里手敲 claude，会自动配一个可切换的结构化视图。这个关联只在 claude 启动的那一瞬间建立一次——如果那一秒服务端正忙，这次尝试就被丢掉、而且再也不会重试，那个终端接下来几个小时都没有切换按钮。',

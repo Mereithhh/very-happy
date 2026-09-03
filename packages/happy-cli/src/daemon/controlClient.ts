@@ -117,9 +117,26 @@ export async function spawnDaemonSession(
      *  An old daemon's zod body schema strips the unknown key, so it simply
      *  never sees the tag (compatible). */
     spawnedBy?: string;
+    /** B-306: forwarded to the spawned CLI as `--permission-mode <v>` after
+     *  daemon-side allowlist validation. WITHOUT it the session runs in
+     *  `default` and blocks on the first un-allowlisted tool — fatal for an
+     *  unattended dispatcher, since nobody is there to approve. */
+    permissionMode?: string;
+    /** B-306: which backend to run (daemon zod enum; unknown values rejected there). */
+    agent?: string;
+    /** B-306: extra env for the session process. The daemon expands ${VAR}
+     *  against its own env and fails the spawn on an unresolved reference. */
+    environmentVariables?: Record<string, string>;
   }
 ): Promise<any> {
-  const result = await daemonPost('/spawn-session', { directory, sessionId, spawnedBy: opts?.spawnedBy });
+  const result = await daemonPost('/spawn-session', {
+    directory,
+    sessionId,
+    spawnedBy: opts?.spawnedBy,
+    permissionMode: opts?.permissionMode,
+    agent: opts?.agent,
+    environmentVariables: opts?.environmentVariables,
+  });
   return result;
 }
 

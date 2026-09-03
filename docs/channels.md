@@ -174,7 +174,8 @@ message delivery encrypts the user envelope with the session key from
 
 ```bash
 very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
-  [--spawned-by <name>] [--json]
+  [--spawned-by <name>] [--permission-mode <mode>] [--agent <name>] \
+  [--env KEY=VALUE]... [--json]
 ```
 
 - `--dir, -d <path>` — working directory for the new session (required; must
@@ -190,9 +191,24 @@ very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] \
   handing an unattended adapter a healthy but silently untagged session. Omit
   it and the session is simply untagged. A daemon predating the field strips it
   and still spawns, so **a missing tag is not a spawn failure**.
+- `--permission-mode <mode>` — `default`, `acceptEdits`, `plan`, `yolo` or
+  `bypassPermissions`. **Omitting it means `default`**, and a `default` session
+  stops at the first tool that is not already allowed, waiting for a human to
+  approve in the Web UI. For an unattended dispatcher that is a hang, not a
+  prompt: pass `bypassPermissions` (or watch for the `permission` webhook and
+  approve). The CLI rejects an unknown mode instead of passing it on, because
+  the daemon's own behaviour for an invalid mode is to drop it and spawn
+  without the flag — silently giving you `default` again.
+- `--agent <name>` — `claude` (default), `codex`, `gemini` or `openclaw`.
+- `--env KEY=VALUE` — extra environment for the session process; repeatable.
+  A `${VAR}` reference is expanded against the daemon's own environment, and an
+  unresolved reference fails the spawn rather than starting a session with a
+  literal `${VAR}` in its environment. Useful because a spawned session inherits
+  the **daemon's** environment, not the dispatcher's.
 - `--json` — machine-readable output: `{"sessionId": "...", "url": "..."}`,
-  plus `"spawnedBy"` when the flag was given. Without it, a human-readable line
-  with a clickable session URL is printed.
+  plus `"spawnedBy"`, `"permissionMode"` and `"agent"` when those flags were
+  given. Without it, a human-readable line with a clickable session URL is
+  printed.
 
 Requires the daemon to be running (same semantics as spawning from the web:
 an offline machine cannot spawn). It will **not** auto-start the daemon.

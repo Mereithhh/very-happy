@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSpawnArgs, sessionWebUrl } from './spawn'
+import { parseEnvAssignment, parseSpawnArgs, sessionWebUrl } from './spawn'
 import { configuration } from '@/configuration'
 
 describe('parseSpawnArgs', () => {
@@ -55,6 +55,46 @@ describe('parseSpawnArgs', () => {
 
     it('rejects --spawned-by without a value', () => {
         expect(() => parseSpawnArgs(['--dir', '/tmp', '--spawned-by'])).toThrow(/requires a value/)
+    })
+
+    it('parses --permission-mode (B-306)', () => {
+        expect(parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'bypassPermissions']).permissionMode)
+            .toBe('bypassPermissions')
+        expect(parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'plan']).permissionMode).toBe('plan')
+    })
+
+    it('rejects a permission mode the daemon would silently drop', () => {
+        // The daemon logs an invalid mode and spawns WITHOUT the flag, so a typo
+        // would hand an unattended dispatcher a session that blocks on approval.
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'yolo-please'])).toThrow(/--permission-mode/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode', 'read-only'])).toThrow(/--permission-mode/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--permission-mode'])).toThrow(/requires a value/)
+    })
+
+    it('omits permissionMode when the flag is absent (daemon default applies)', () => {
+        expect(parseSpawnArgs(['--dir', '/tmp']).permissionMode).toBeUndefined()
+    })
+
+    it('parses --agent and rejects an unsupported backend', () => {
+        expect(parseSpawnArgs(['--dir', '/tmp', '--agent', 'codex']).agent).toBe('codex')
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--agent', 'gpt'])).toThrow(/--agent must be one of/)
+    })
+
+    it('collects repeated --env pairs', () => {
+        const options = parseSpawnArgs(['--dir', '/tmp', '--env', 'A=1', '--env', 'B=two=three'])
+        expect(options.env).toEqual({ A: '1', B: 'two=three' })
+    })
+
+    it('rejects a malformed --env pair', () => {
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--env', 'NOPE'])).toThrow(/KEY=VALUE/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--env', '=1'])).toThrow(/KEY=VALUE/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--env', '1BAD=x'])).toThrow(/valid variable name/)
+        expect(() => parseSpawnArgs(['--dir', '/tmp', '--env'])).toThrow(/requires a value/)
+    })
+
+    it('parseEnvAssignment keeps everything after the first = as the value', () => {
+        expect(parseEnvAssignment('K=a=b=c')).toEqual(['K', 'a=b=c'])
+        expect(parseEnvAssignment('K=')).toEqual(['K', ''])
     })
 
     it('rejects --prompt together with --prompt-file', () => {

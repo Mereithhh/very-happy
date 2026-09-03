@@ -37,6 +37,7 @@ import { resolve } from 'node:path'
 import { checkIfDaemonRunningAndCleanupStaleState, spawnDaemonSession } from '@/daemon/controlClient'
 import { sendUserMessage, sessionWebUrl, waitForSessionKey } from './sessionMessage'
 import { isValidSpawnOrigin } from '@/utils/createSessionMetadata'
+import { ALLOWED_SPAWN_PERMISSION_MODES, sanitizeSpawnPermissionMode } from '@/daemon/spawnPermissionMode'
 import { logger } from '@/ui/logger'
 
 // Re-exported for back-compat (tests and external imports historically used
@@ -50,11 +51,29 @@ export interface SpawnCommandOptions {
     promptFile?: string
     /** B-303: spawn origin — becomes the new session's tag (e.g. 'tanka'). */
     spawnedBy?: string
+    /** B-306: permission mode for the new session (see SPAWN_AGENTS note). */
+    permissionMode?: string
+    /** B-306: which backend runs the session. */
+    agent?: string
+    /** B-306: extra environment for the session process. */
+    env?: Record<string, string>
     json: boolean
     help: boolean
 }
 
 /** Pure argv parser (exported for tests). Throws on malformed input. */
+/** Backends the daemon's spawn RPC accepts (its zod enum). */
+export const SPAWN_AGENTS = ['claude', 'codex', 'gemini', 'openclaw'] as const
+
+/** Pure parser for one `--env KEY=VALUE` pair (exported for tests). */
+export function parseEnvAssignment(raw: string): [string, string] {
+    const eq = raw.indexOf('=')
+    if (eq <= 0) throw new Error(`--env expects KEY=VALUE, got: ${raw}`)
+    const key = raw.slice(0, eq)
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error(`--env key is not a valid variable name: ${key}`)
+    return [key, raw.slice(eq + 1)]
+}
+
 export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
     const options: SpawnCommandOptions = { json: false, help: false }
     for (let i = 0; i < args.length; i++) {
@@ -81,6 +100,28 @@ export function parseSpawnArgs(args: string[]): SpawnCommandOptions {
                 throw new Error('--spawned-by must be 1-24 chars of [a-z0-9] plus - or _, starting with a letter or digit')
             }
             options.spawnedBy = value
+        } else if (arg === '--permission-mode') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--permission-mode requires a value')
+            // Reject here rather than at the daemon: the daemon logs an invalid
+            // mode and spawns WITHOUT the flag, so a typo would silently hand an
+            // unattended dispatcher a session that blocks on the first prompt.
+            if (sanitizeSpawnPermissionMode(value) === null) {
+                throw new Error(`--permission-mode must be one of: ${ALLOWED_SPAWN_PERMISSION_MODES.join(', ')}`)
+            }
+            options.permissionMode = value
+        } else if (arg === '--agent') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--agent requires a value')
+            if (!(SPAWN_AGENTS as readonly string[]).includes(value)) {
+                throw new Error(`--agent must be one of: ${SPAWN_AGENTS.join(', ')}`)
+            }
+            options.agent = value
+        } else if (arg === '--env') {
+            const value = args[++i]
+            if (value === undefined) throw new Error('--env requires a value')
+            const [key, val] = parseEnvAssignment(value)
+            options.env = { ...(options.env ?? {}), [key]: val }
         } else if (arg === '--json') {
             options.json = true
         } else if (arg === '--help' || arg === '-h') {
@@ -100,7 +141,9 @@ function printHelp() {
 ${chalk.bold('very-happy spawn')} - Spawn a remote session via the local daemon (for automation)
 
 ${chalk.bold('Usage:')}
-  very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>] [--json]
+  very-happy spawn --dir <path> [--prompt <text> | --prompt-file <file>]
+                   [--spawned-by <name>] [--permission-mode <mode>]
+                   [--agent <name>] [--env KEY=VALUE]... [--json]
 
 ${chalk.bold('Options:')}
   --dir, -d <path>       Working directory for the new session (required)
@@ -109,6 +152,17 @@ ${chalk.bold('Options:')}
   --spawned-by <name>    Tag the new session with its origin (e.g. tanka).
                             1-24 chars: [a-z0-9] plus - or _. Shows as a chip in
                             the web list and is searchable as #<name>.
+  --permission-mode <m>  Permission mode for the new session: default,
+                            acceptEdits, plan, yolo, bypassPermissions.
+                            WITHOUT this the session runs in 'default' and stops
+                            at the first un-allowlisted tool waiting for someone
+                            to approve — if nothing is watching, it just hangs.
+                            Unattended dispatchers want bypassPermissions.
+  --agent <name>         Backend to run: claude (default), codex, gemini,
+                            openclaw.
+  --env KEY=VALUE        Extra environment for the session process. Repeatable.
+                            \${VAR} is expanded against the daemon's environment;
+                            an unresolved reference fails the spawn.
   --json                 Machine-readable output: {"sessionId", "url"}
   -h, --help             Show this help
 
@@ -196,9 +250,19 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
     }
 
     logger.debug(`[SPAWN CMD] Spawning session in ${directory}`)
-    // A daemon older than B-069 strips the unknown `spawnedBy` key from its zod
-    // body schema, so the session still spawns — just untagged (铁律 4).
-    const result = await spawnDaemonSession(directory, undefined, { spawnedBy: options.spawnedBy })
+    // A daemon older than the field strips the unknown key from its zod body
+    // schema, so the session still spawns — just without that option (铁律 4).
+    // ⚠️ For --permission-mode that degradation is silent and matters: the
+    // session comes up in 'default' and will block on approval. Version skew is
+    // transient (the daemon runs from this same install and hands over on
+    // update), but a caller that MUST have bypass should check
+    // `very-happy daemon status` after an upgrade.
+    const result = await spawnDaemonSession(directory, undefined, {
+        spawnedBy: options.spawnedBy,
+        permissionMode: options.permissionMode,
+        agent: options.agent,
+        environmentVariables: options.env,
+    })
     if (result?.error || !result?.success || !result?.sessionId) {
         const message = result?.error || 'Daemon returned no session ID'
         console.error(chalk.red('Error:'), `Failed to spawn session: ${message}`)
@@ -221,6 +285,12 @@ export async function handleSpawnCommand(args: string[]): Promise<never> {
         const payload: Record<string, unknown> = { sessionId, url }
         if (options.spawnedBy !== undefined) {
             payload.spawnedBy = options.spawnedBy
+        }
+        if (options.permissionMode !== undefined) {
+            payload.permissionMode = options.permissionMode
+        }
+        if (options.agent !== undefined) {
+            payload.agent = options.agent
         }
         if (prompt !== undefined) {
             payload.promptDelivered = promptError === null
