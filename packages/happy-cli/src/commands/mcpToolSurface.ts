@@ -19,7 +19,12 @@
  * which titles that terminal through the daemon's /terminal-title endpoint —
  * pi has no hooks and no mirror session, so this is the only way a hand-run pi
  * can name its tab. Managed ACP sessions use the in-process happy server
- * (HAPPY_MCP_URL) instead and never see VH_TERMINAL_ID.
+ * (HAPPY_MCP_URL) instead, whose `change_title` names the *session*. The two
+ * DO overlap when `very-happy pi` is typed inside a web terminal (runAcp runs
+ * in that shell, AcpBackend spreads process.env, so the child sees both
+ * variables): HAPPY_MCP_URL wins there and the terminal row is dropped, or a
+ * bridge extension proxying the happy server would register a second
+ * `change_title` next to this one.
  *
  * Claude is the deliberate exception: runClaude injects the assistant tools
  * in-process (startHappyServer) AND stamps HAPPY_MANAGED=1 on the claude child
@@ -33,12 +38,16 @@ import { ASSISTANT_SESSION_TOOL_NAMES } from '@/assistant/assistantTools'
 
 export type McpToolSurface = 'clipboard' | 'assistant'
 
-export type McpSurfaceEnv = { HAPPY_SESSION_VARIANT?: string; HAPPY_MANAGED?: string; VH_TERMINAL_ID?: string }
+export type McpSurfaceEnv = { HAPPY_SESSION_VARIANT?: string; HAPPY_MANAGED?: string; VH_TERMINAL_ID?: string; HAPPY_MCP_URL?: string }
 
 export const TERMINAL_TITLE_TOOL_NAME = 'change_title'
 
-/** The web terminal id this MCP process runs inside, or null when not in a terminal. */
+/**
+ * The web terminal id this MCP process runs inside, or null when not in a
+ * terminal — or when a managed ACP session (HAPPY_MCP_URL) owns `change_title`.
+ */
 export function resolveMcpTerminalId(env: McpSurfaceEnv): string | null {
+    if (env.HAPPY_MCP_URL) return null
     const id = env.VH_TERMINAL_ID
     return id && /^[a-zA-Z0-9_-]{1,64}$/.test(id) ? id : null
 }

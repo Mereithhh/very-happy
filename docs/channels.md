@@ -464,8 +464,20 @@ very-happy's tools in one of two ways depending on how it was started:
 | **Terminal** | you type `pi` inside a very-happy web terminal | no happy server; pi-mcp-adapter loads the user-wide `very-happy` entry above, and because the daemon set **`VH_TERMINAL_ID`** in that terminal, `very-happy mcp` adds **`change_title`**, which posts `{terminalId, title, ifAbsent?}` to the daemon control server's `POST /terminal-title` (control-token auth, same as `/clipboard`; `200 {status:"ok"}`, `409` when tmux refused, `503` while the daemon is starting). | no auto-title; the agent (or an extension) calls `change_title`. There is no mirror session for terminal pi (pi has no hooks). |
 
 The terminal row needs the `very-happy` entry in `~/.pi/agent/mcp.json`
-(pi-mcp-adapter) — without it a hand-run pi sees no very-happy tools at all. A
-managed pi never sees `VH_TERMINAL_ID`, so the two rows do not overlap.
+(pi-mcp-adapter) — without it a hand-run pi sees no very-happy tools at all.
+The two rows overlap in one case: typing `very-happy pi` *inside* a web
+terminal runs the ACP runner in that shell, so the pi-acp child inherits both
+`VH_TERMINAL_ID` and `HAPPY_MCP_URL`. `HAPPY_MCP_URL` wins — `very-happy mcp`
+drops its terminal `change_title` there (`resolveMcpTerminalId`), so only the
+happy server's session `change_title` is registered and a bridge extension
+proxying it never collides with a second tool of the same name.
+
+`very-happy mcp` finds the daemon through `HAPPY_HOME_DIR` (like every other
+`very-happy` command), not the `VH_HAPPY_HOME_DIR` the terminal was created
+with. With two daemons on one machine (e.g. a dev home next to the stable one)
+the `very-happy` on `PATH` inside a dev terminal therefore talks to the stable
+daemon, whose tmux has no such terminal → `409`. Same discovery rule as
+`/clipboard`; export `HAPPY_HOME_DIR` in that terminal if you need it.
 
 The variable is inherited down the process tree. Anything a meta agent starts
 from its own shell (a nested `pi`, a hand-typed `claude`, a script) sees

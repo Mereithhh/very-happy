@@ -3,7 +3,7 @@ import { startDaemonControlServer } from './controlServer';
 
 describe('control server /terminal-title', () => {
     const controlToken = 'test-control-token-with-at-least-256-bits-of-material';
-    const setTerminalTitle = vi.fn((_terminalId: string, _title: string, _ifAbsent: boolean) => true);
+    const setTerminalTitle = vi.fn((_terminalId: string, _title: string, _ifAbsent: boolean): boolean | 'starting' => true);
     let port: number;
     let stop: () => Promise<void>;
 
@@ -52,6 +52,13 @@ describe('control server /terminal-title', () => {
         const res = await post({ terminalId: 'term_gone', title: 'x' });
         expect(res.status).toBe(409);
         expect(await res.json()).toEqual({ error: expect.stringContaining('Failed to set terminal title') });
+    });
+
+    it('returns 503 (not 409) while the wired setter reports the machine client is still starting', async () => {
+        setTerminalTitle.mockReturnValueOnce('starting');
+        const res = await post({ terminalId: 'term_1', title: 'x' });
+        expect(res.status).toBe(503);
+        expect(await res.json()).toEqual({ error: 'daemon is still starting up' });
     });
 
     it.each([

@@ -89,6 +89,13 @@ describe('terminal context (VH_TERMINAL_ID)', () => {
         expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1' })).toBe('clipboard')
         expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1', HAPPY_SESSION_VARIANT: 'assistant' })).toBe('assistant')
     })
+
+    it('yields to the managed happy server when `very-happy pi` runs inside a web terminal (HAPPY_MCP_URL set)', () => {
+        // runAcp in that shell exports HAPPY_MCP_URL and the ACP child inherits VH_TERMINAL_ID too;
+        // the in-process server owns change_title there, so this row must not register a second one.
+        expect(resolveMcpTerminalId({ VH_TERMINAL_ID: 'term_1', HAPPY_MCP_URL: 'http://127.0.0.1:4321/' })).toBeNull()
+        expect(resolveMcpToolSurface({ VH_TERMINAL_ID: 'term_1', HAPPY_MCP_URL: 'http://127.0.0.1:4321/', HAPPY_SESSION_VARIANT: 'assistant' })).toBe('assistant')
+    })
 })
 
 describe('registerMcpTools', () => {

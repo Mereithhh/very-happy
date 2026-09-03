@@ -1530,7 +1530,7 @@ export async function startDaemon(): Promise<void> {
         mirrorManagerRef?.handleHookPayload(body);
       },
       setTerminalTitle: (terminalId: string, title: string, ifAbsent: boolean) => {
-        if (!apiMachineRef) return false;
+        if (!apiMachineRef) return 'starting';
         return apiMachineRef.setTerminalTitle(terminalId, title, ifAbsent);
       }
     });

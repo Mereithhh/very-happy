@@ -48,9 +48,10 @@ export function startDaemonControlServer({
   onTerminalHook?: (body: unknown) => void;
   /** Title a vh web terminal (tmux `@vh_title`) from a local process inside
    *  it (`very-happy mcp` change_title with VH_TERMINAL_ID). Same tmux result
-   *  contract as the `set-terminal-title` machine RPC: false = not landed.
+   *  contract as the `set-terminal-title` machine RPC: false = not landed (409);
+   *  `'starting'` = the machine client does not exist yet (503, retryable).
    *  Optional so older wirings/tests keep working (→ 503). */
-  setTerminalTitle?: (terminalId: string, title: string, ifAbsent: boolean) => boolean;
+  setTerminalTitle?: (terminalId: string, title: string, ifAbsent: boolean) => boolean | 'starting';
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -341,10 +342,11 @@ export function startDaemonControlServer({
       }
     }, async (request, reply) => {
       const { terminalId, title, ifAbsent } = request.body;
-      if (!setTerminalTitle) {
+      const landed = setTerminalTitle ? setTerminalTitle(terminalId, title, !!ifAbsent) : 'starting';
+      if (landed === 'starting') {
         return reply.code(503).send({ error: 'daemon is still starting up' });
       }
-      if (!setTerminalTitle(terminalId, title, !!ifAbsent)) {
+      if (!landed) {
         return reply.code(409).send({ error: 'Failed to set terminal title (tmux unavailable or terminal gone)' });
       }
       return { status: 'ok' as const };

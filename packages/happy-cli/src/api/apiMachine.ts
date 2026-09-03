@@ -243,11 +243,6 @@ export class ApiMachineClient {
     }
 
     /**
-     * Push text to the clipboard of every web client the user has open
-     * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
-     * Encrypted with the per-machine key; the server relays without reading.
-     */
-    /**
      * Title a web terminal from inside it (`very-happy mcp` change_title →
      * daemon /terminal-title → here). Same tmux truthfulness as the
      * `set-terminal-title` RPC.
@@ -256,6 +251,11 @@ export class ApiMachineClient {
         return this.webTerminal.setTitle(terminalId, title, ifAbsent);
     }
 
+    /**
+     * Push text to the clipboard of every web client the user has open
+     * (terminal-path claude → `very-happy mcp` → daemon /clipboard → here).
+     * Encrypted with the per-machine key; the server relays without reading.
+     */
     pushClipboard(text: string): { delivered: boolean; truncated: boolean; totalBytes: number; error?: string } {
         const prepared = prepareClipboardText(text);
         if (!this.socket?.connected) {
