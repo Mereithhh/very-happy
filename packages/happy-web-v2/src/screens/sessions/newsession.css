@@ -9,9 +9,17 @@
   background: var(--scrim);
   backdrop-filter: blur(2px);
 }
+/* The backdrop is `position: fixed` with no scroll of its own, so a card
+   taller than the viewport used to push its own actions row off-screen with
+   no way to reach it (B-334 made this reachable on a short phone: attach
+   list + directory chips + command chips). Scrolling the CARD keeps the
+   coarse-pointer top anchoring above intact — scrolling the BACKDROP would
+   need `margin: auto`, which overrides that anchoring. */
 .ns-card {
   width: 100%;
   max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -145,6 +153,16 @@
   color: var(--accent-2);
   border-color: var(--accent);
   background: var(--accent-dim);
+}
+/* B-334: chips with no delete affordance — the automatically remembered
+   directories (they age out of the MRU by themselves) and the two reserved
+   command choices (the Settings default and "no command"). Dashed for the
+   recents: same pill, lower commitment than something you bookmarked. */
+.ns-preset-plain {
+  padding-right: 10px;
+}
+.ns-preset-recent {
+  border-style: dashed;
 }
 .ns-preset-path {
   overflow: hidden;

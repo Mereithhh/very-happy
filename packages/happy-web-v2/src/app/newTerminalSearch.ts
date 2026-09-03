@@ -4,6 +4,7 @@
  * storage store at module load.
  */
 import { isClaudeSessionId } from '@/sync/closedTerminals';
+import { isStartupSelectionId, STARTUP_DEFAULT_ID } from '@/utils/terminalStartup';
 
 export interface CreateTerminalOptions {
   cwd?: string;
@@ -14,6 +15,10 @@ export interface CreateTerminalOptions {
    *  re-validates both and composes the attach command itself, so a crafted
    *  URL can at most name a session that must already exist. */
   attachTmux?: { id: string; name: string };
+  /** B-334: which saved startup command this create should run. An ID only —
+   *  never the command text (see utils/terminalStartup.ts). Omitted for the
+   *  default, so an unchanged flow produces the exact same URL as before. */
+  startupSelectionId?: string;
 }
 
 /** The `?…` query for a fresh-create navigation. Pure; unit-tested. */
@@ -28,6 +33,16 @@ export function newTerminalSearch(terminalId: string, opts: CreateTerminalOption
   }
   if (opts.cwd) q.set('cwd', opts.cwd);
   if (isClaudeSessionId(opts.resumeClaudeSessionId)) q.set('resume', opts.resumeClaudeSessionId);
+  // `resume` already overrides the startup command for this one open, so a
+  // selection alongside it would be dead weight in the URL.
+  if (
+    !q.has('resume')
+    && opts.startupSelectionId
+    && opts.startupSelectionId !== STARTUP_DEFAULT_ID
+    && isStartupSelectionId(opts.startupSelectionId)
+  ) {
+    q.set('cmd', opts.startupSelectionId);
+  }
   return q;
 }
 

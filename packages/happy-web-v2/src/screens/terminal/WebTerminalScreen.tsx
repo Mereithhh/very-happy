@@ -55,6 +55,7 @@ import { RenameModal } from '@/screens/sessions/RenameModal';
 import { stampLocalActivity } from '@/sync/activityOverlayStore';
 import { activityKeyForTerminal } from '@/sync/activityOverlay';
 import { resumeStartupCommand } from '@/sync/closedTerminals';
+import { resolveStartupCommand } from '@/utils/terminalStartup';
 import { useIsDesktop, useIsTablet, useMediaQuery } from '@/app/useMediaQuery';
 import { planTermHeaderActions, type TermHeaderActionKey } from './termHeaderLayout';
 import { termHeaderStatusChips } from './termHeaderStatus';
@@ -259,6 +260,10 @@ export function WebTerminalScreen() {
   // reattaches (→ never re-run) — the client can't know which it is.
   const startupCommandRef = useRef(settings.terminalStartupCommand);
   startupCommandRef.current = settings.terminalStartupCommand;
+  // B-334: the MRU the `?cmd=` selection is resolved against. Same ref trick —
+  // read at open time, never a dep of the terminal effect.
+  const startupPresetsRef = useRef(settings.terminalStartupPresets);
+  startupPresetsRef.current = settings.terminalStartupPresets;
 
   // `fresh=1` marks the ONE navigation allowed to CREATE the tmux session
   // (the new-terminal flow that just made the optimistic row). Every other
@@ -284,6 +289,12 @@ export function WebTerminalScreen() {
   // `attach` + `attachName` (B-273): create this terminal attached to the
   // user's own tmux session. Rides the create-open only; the daemon
   // re-validates the id/name pair and composes the attach command itself.
+  // `cmd` (B-334): which SAVED startup command this create runs. Rides the
+  // create-open only, like `cwd`. The URL carries an id, never a command line;
+  // resolveStartupCommand looks it up in the user's own list, so an unknown id
+  // can only fall back to the configured default — never run arbitrary text.
+  const createStartupIdRef = useRef<string | undefined>(undefined);
+  createStartupIdRef.current = params.get('cmd') || undefined;
   const createAttachRef = useRef<{ id: string; name: string } | undefined>(undefined);
   createAttachRef.current = (() => {
     const id = params.get('attach') || '';
@@ -297,6 +308,7 @@ export function WebTerminalScreen() {
     next.delete('fresh');
     next.delete('cwd');
     next.delete('resume');
+    next.delete('cmd');
     next.delete('attach');
     next.delete('attachName');
     setSearchParams(next, { replace: true });
@@ -773,6 +785,12 @@ export function WebTerminalScreen() {
     // after term.open (below, in the IS_COARSE_POINTER block).
     let mobileBridge: ReturnType<typeof installMobileInputBridge> = null;
 
+    // The startup command THIS open actually sent (B-334: a per-open selection
+    // can differ from the global setting, "none" included). Set just before
+    // machineOpenTerminal below; the title heuristics that read it only run
+    // once the user types, which is necessarily after that.
+    let openStartupCommand: string | undefined = startupCommandRef.current;
+
     // FALLBACK auto-title from the first typed line — plain-shell terminals
     // only. The PRIMARY auto-title is the daemon following the pane's OSC
     // title into @vh_title (Claude Code's TUI sets it to a live task summary;
@@ -786,7 +804,7 @@ export function WebTerminalScreen() {
     // overridable by the pane-title follow if claude starts later.
     const keyDisp = term.onKey(({ key, domEvent }) => {
       if (titled) return;
-      if (startupCommandRef.current?.trim()) { titled = true; return; }
+      if (openStartupCommand?.trim()) { titled = true; return; }
       if (domEvent.key === 'Enter') {
         const tt = titleBuf.trim();
         if (tt && tid) {
@@ -808,7 +826,7 @@ export function WebTerminalScreen() {
     // accumulates printables — counting `\x7f` here too would double-decrement.
     const noteTitleFromOwnInput = (d: string) => {
       if (titled || d === '') return;
-      if (startupCommandRef.current?.trim()) { titled = true; return; }
+      if (openStartupCommand?.trim()) { titled = true; return; }
       for (const ch of d) if (ch >= ' ' && ch !== '\x7f') titleBuf += ch;
     };
 
@@ -1589,6 +1607,18 @@ export function WebTerminalScreen() {
       // tmux session + Claude's first paint (wrong = frozen-narrow scrollback),
       // so it waits generously; a reattach adopts the daemon's authoritative
       // paneCols anyway, so it waits only briefly.
+      // B-334: on a fresh create the dialog's selection decides (including an
+      // explicit "no command", which the old `||` chain could never express);
+      // every other open keeps sending the global one, as it always has.
+      openStartupCommand = attach
+        ? undefined
+        : isFresh
+          ? (createResumeCmdRef.current ?? resolveStartupCommand({
+              presets: startupPresetsRef.current,
+              selectionId: createStartupIdRef.current,
+              globalCommand: startupCommandRef.current,
+            }))
+          : startupCommandRef.current;
       const fontSize = IS_COARSE_POINTER ? TERM_FONT_SIZE_COARSE : TERM_FONT_SIZE_FINE;
       await awaitTerminalFont(fontSize, isFresh ? FONT_WAIT_FRESH_MS : FONT_WAIT_ATTACH_MS);
       if (disposed) return;
@@ -1602,7 +1632,10 @@ export function WebTerminalScreen() {
         // An attach request (B-273) sends neither — the daemon types the
         // attach line itself and a startup command would land inside the
         // attached session.
-        startupCommand: attach ? undefined : ((isFresh && createResumeCmdRef.current) || startupCommandRef.current),
+        // B-334: on a fresh create the dialog's selection decides (including
+        // an explicit "no command", which `||` could never express); every
+        // other open keeps sending the global one, as it always has.
+        startupCommand: openStartupCommand,
         // Starting directory for the create path only (see createCwdRef).
         cwd: isFresh && !attach ? createCwdRef.current : undefined,
         ...(attach ? { attachTmux: attach } : {}),

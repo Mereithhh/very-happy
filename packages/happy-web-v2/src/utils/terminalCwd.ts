@@ -62,3 +62,49 @@ export function upsertPathPreset(
 export function removePathPreset(list: PathPreset[], id: string): PathPreset[] {
     return list.filter((p) => p.id !== id);
 }
+
+/**
+ * B-334: the directory chips the new-terminal dialog renders — the user's
+ * CURATED presets first (bookmark button, explicit delete), then the
+ * automatically remembered recents for the SAME machine.
+ *
+ * Recents come from `settings.recentMachinePaths`, the MRU that quick-chat
+ * creation already writes and caps at 10; the terminal dialog now feeds it
+ * too, so "the directories I actually work in" is one list across both create
+ * paths instead of two half-populated ones. Recents carry no delete affordance
+ * on purpose — they age out by themselves, and the way to keep one is to
+ * bookmark it (which moves it into the curated list, where it dedupes away).
+ */
+export interface DirectoryChoice {
+    /** Preset id, or `r:<path>` for a recent (stable enough for a React key). */
+    id: string;
+    path: string;
+    label?: string;
+    /** True for curated presets: selectable as an edit target, deletable. */
+    saved: boolean;
+}
+
+export function mergeDirectoryChoices(
+    presets: PathPreset[] | undefined,
+    recents: { machineId: string; path: string }[] | undefined,
+    machineId: string,
+    recentCap = 6,
+): DirectoryChoice[] {
+    const saved: DirectoryChoice[] = (presets ?? []).map((p) => ({
+        id: p.id,
+        path: p.path,
+        label: p.label,
+        saved: true,
+    }));
+    const seen = new Set(saved.map((p) => normalizeCwdInput(p.path)));
+    const out: DirectoryChoice[] = [...saved];
+    for (const r of recents ?? []) {
+        if (r.machineId !== machineId) continue;
+        const path = normalizeCwdInput(r.path);
+        if (!path || seen.has(path)) continue;
+        seen.add(path);
+        out.push({ id: `r:${path}`, path, saved: false });
+        if (out.length - saved.length >= recentCap) break;
+    }
+    return out;
+}
