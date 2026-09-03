@@ -1667,6 +1667,11 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep03v: {
+                title: 'A new terminal no longer opens at the wrong width',
+                summary: 'The web terminal holds its opening paint until its font is ready, so it can measure a character cell correctly. It was waiting on the wrong font in the stack — the bundled fallback, not the one it actually renders with — and measured the cell before the real font arrived.',
+                width: 'A terminal created while the font was still downloading came out with the wrong column count, and that is not something that fixes itself: the width is written into the tmux session and into the agent\u2019s first output, and terminal history never re-wraps. It now waits for every web font in its own stack.',
+            },
             sep03u: {
                 title: 'Sub-agents get a place of their own',
                 summary: 'When the agent launches a sub-agent, the card for it used to unfold its whole briefing and its whole tool log straight into the conversation — dozens of lines of machine-to-machine text between two of your paragraphs. That work now lives in a panel you open from a one-line row.',
