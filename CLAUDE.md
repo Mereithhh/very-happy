@@ -24,10 +24,10 @@ git worktree list                                   # 派工前看清有哪些�
 
 ## 当前状态快照（2026-09-03，会过期；以 backlog/verify-queue 为准）
 
-- 最新 tag / npm `very-happy-cli` = **v0.2.113**；线上 Web/server = `main@b7be5271`。**同一天 0.2.108→0.2.113 由多个
+- 最新 tag / npm `very-happy-cli` = **v0.2.114**；线上 Web/server = `main@aed3d6b7`。**同一天 0.2.108→0.2.114 由多个
   并行会话依次取号**，发版前务必用 `check-release.mjs --mode cli --version <目标>` 核对，别照 changelog 里写好的
   cliVersion 想当然。**B-/V-/changelog key 三家同理**：用 `node scripts/dev/check-ids.mjs` 取号，rebase 后和开 PR 前
-  各 `--claim` 验一次（2026-09-03 又撞一次，B-312 被并行会话同取）。`packages/happy-cli/package.json` 里的 version
+  各 `--claim` 验一次（2026-09-03 撞了三次：B-312、B-315+sep03t、B-316）。`packages/happy-cli/package.json` 里的 version
   不是发布版本。
 - 部署报 `HTTP probe observed a release-window failure` 时：判据已是「**连续** 3 发失败」（B-308），所以这条现在基本等于真事故——先看它说的是 `public` 还是 `origin` 路径，`origin`（绕开 Cloudflare）失败才是我们自己的问题；记录在 `/opt/happy/release/http-probe.{public,origin}.*`，含样本号与 curl 错误文本。机制见 `docs/operations.md`。
 - **终端字体自托管在 Cloudflare Pages**（`veryhappy-fonts.pages.dev`，Owner 的 CF 账号）：现用
@@ -41,8 +41,8 @@ git worktree list                                   # 派工前看清有哪些�
   destroy-unattached 等 + 0x1f 分隔符被 tmux ≤3.5 munge 的存量修复，见 AGENTS 铁律 17）、B-273/280/281/282
   （接入已有 tmux 会话：能力 + 一等入口 + 直达选择器 + 关闭=仅断开/可选彻底关闭，spec
   `specs/2026-09-attach-existing-tmux.md`）、B-275/276（Claude 认证预检/修复）、B-272（session 单写者锁）。
-- `docs/verify-queue.md` 待验证 **111 项**（V-0xx～V-136），远超「下一批前清账」纪律；发新批前请 Owner 清账或明确批准堆积。
-- 门禁基线：web tsc 0 错误、cli 1490+ unit、web 1940+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
+- `docs/verify-queue.md` 待验证 **112 项**（V-0xx～V-137），远超「下一批前清账」纪律；发新批前请 Owner 清账或明确批准堆积。
+- 门禁基线：web tsc 0 错误、cli 1690+ unit、web 2130+ 测试（本地跑一次门禁约 5-10 分钟，首次 install 更久）。
   web 测试在 web 终端里跑要 `env -u HAPPY_SERVER_URL`（终端注入的生产 URL 会让 `installScript.test.ts` 失败，
   CI 不受影响）；happy-cli 的 unit 项目含真实 tmux 测试（CI 也跑，见铁律 17）。
 - 大改动/反复复发的 bug 的方法论先例：先出链路全图（Explore 子代理），再 ≥3 轮对抗 review 子代理
@@ -59,10 +59,14 @@ git worktree list                                   # 派工前看清有哪些�
   `scripts/land-pr.sh` 不受影响。PR 被标 `behind` 时 land-pr 会拒绝：`gh api -X PUT …/pulls/<n>/update-branch` 再 land。
 - 发布前后核对线上 SHA 不用登机器：首页 entry 资产名 `index-<hash>-<sha>.js` 就是生效 release（`check-release.mjs`
   也这么读）；需要看 slot/探针留档再 `ssh vh-us`（只读 `/opt/happy/release/state.env`、`http-probe.*`）。
+- 证明「改动真在线上」用 `node scripts/dev/check-shipped.mjs --needle '<只有新代码才有的串>'`，别手搓 curl
+  （连着三次搓错，每次都读成相反的结论）。它自己读线上 SHA、**传递**遍历 chunk 图、并把 SPA 回退的 HTML
+  当「资产不存在」报出来——**拼出来的 /assets 路径拿到 200 也可能是 index.html**，本地 dist 的 chunk 名
+  更不能照抄（`__APP_VERSION__` 进内容哈希，CI 和本地不同名）。
 - CLI 实验永远用一次性 home：`HAPPY_HOME_DIR=$(mktemp -d) node packages/happy-cli/dist/index.mjs …`，
   **不要动 `~/.happy`**（那是 mac-office 生产 daemon 的状态）。
 - 取号/验号 `node scripts/dev/check-ids.mjs`（B-/V-/changelog key 三家一起，只认 `origin/main`；
-  `--claim <id>…` 撞号即非 0 退出）。纪律见 `docs/PROCESS.md` 编号分配那条。
+  `--claim <id>…` 撞号即非 0 退出）。纪律与撞号后的重编号见 `docs/PROCESS.md` 编号分配那条。
 - **main 受保护，`git push origin main` 会被 repository rule 直接拒**（连一行 docs 也不例外）：
   一律开分支走 PR + `land-pr.sh`。
 - **要 commit 的活一律在自己的 worktree 里做，一行 docs 也是**：主工作树

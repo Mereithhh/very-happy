@@ -207,31 +207,24 @@ curl -fsSI "https://veryhappy.dev${VH_MAIN}" | grep -i '^content-type:.*javascri
 
 A green health check and a matching SHA only prove the right image is serving.
 `AGENTS.md` also requires proof that THIS release's change is in it — grep the
-shipped assets for a string only the new code contains (a CSS rule, an MMKV key,
-a socket event name), rather than asserting it from the workflow being green:
+shipped assets for a string only the new code contains (a CSS rule, a storage
+key, a socket event name). Do not hand-roll that curl; it has been wrong three
+times in three releases, and every one of those failure modes reads as the
+opposite of the truth:
 
 ```bash
-NEEDLE='unread-sessions-v1'   # something only the new code contains
-ENTRY=$(curl -fsS https://veryhappy.dev/ | grep -oE 'assets/index-[^" ]+\.js' | head -1)
-SHA=$(echo "$ENTRY" | grep -oE '[0-9a-f]{40}')   # derive it; do NOT assume your target
-echo "live: $SHA"
-for f in $ENTRY $(curl -fsS "https://veryhappy.dev/$ENTRY" | grep -oE "assets/[A-Za-z0-9_-]+-$SHA\.(js|css)" | sort -u); do
-  [ "$(curl -fsS "https://veryhappy.dev/$f" | grep -c "$NEEDLE")" -gt 0 ] && echo "found in $f"
-done
+node scripts/dev/check-shipped.mjs --needle '.tg-subagent-open' --needle 'vh:subagent-open'
 ```
 
-Three things this shape exists to avoid, all hit in practice:
+It reads the live SHA off the served entry, walks the chunk graph transitively,
+rejects the SPA's HTML fallback (a made-up /assets path returns 200, not 404),
+and exits non-zero on a miss. The traps it exists to absorb are written up in
+its header. When a needle is missing, check ancestry before concluding a
+regression — another session deploying on top of you is the common case:
 
-- **Derive `SHA` from the live entry, never from the SHA you deployed.** Asset
-  names are salted with the serving release, so the moment another session
-  deploys on top of yours the hard-coded pattern matches nothing and reads as
-  "the change is missing". Check ancestry (`git merge-base --is-ancestor <yours>
-  <live>`) instead of concluding a regression.
-- **Search every chunk, match on the needle.** Chunk names are content-hashed
-  and move between releases; a name copied from last time proves nothing.
-- **`grep -c`, not `grep -q`.** `-q` exits at the first hit and leaves curl
-  writing into a closed pipe — `curl: (56)` on stderr and a non-zero loop status
-  even when the needle WAS found.
+```bash
+git merge-base --is-ancestor <your-sha> <live-sha> && echo "yours is in"
+```
 
 For browser acceptance, hard-refresh or unregister the service worker before
 declaring a mixed-version failure. Complete relevant items in
