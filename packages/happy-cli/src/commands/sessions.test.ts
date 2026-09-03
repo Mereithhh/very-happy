@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSessionsArgs } from './sessions'
+import { parseSessionsArgs, permissionFailureRecord } from './sessions'
 
 const ID = 'cmtl3c0x7001vqr29o8nmclno'
 
@@ -102,5 +102,13 @@ describe('parseSessionsArgs — list --all, approve, deny (supervisor lane B)', 
 
     it('lists approve and deny in the unknown-action hint', () => {
         expect(() => parseSessionsArgs(['allow', ID, REQ])).toThrow(/expected list, read, stop, archive, approve, deny/)
+    })
+})
+
+describe('permissionFailureRecord — approve/deny refused before any RPC (review item 1)', () => {
+    it('gives a --json caller a keyed record instead of an empty stdout', () => {
+        expect(permissionFailureRecord(ID, 'req-1', new Error('Request req-1 is not pending on session x')))
+            .toEqual({ sessionId: ID, requestId: 'req-1', error: 'Request req-1 is not pending on session x' })
+        expect(permissionFailureRecord(ID, 'req-1', 'plain string')).toEqual({ sessionId: ID, requestId: 'req-1', error: 'plain string' })
     })
 })

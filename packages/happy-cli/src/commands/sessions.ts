@@ -231,6 +231,7 @@ function formatAccountSummaryLine(summary: AccountSessionSummary): string {
         if (summary.title) parts.push(`title="${summary.title}"`)
         if (summary.flavor) parts.push(`agent=${summary.flavor}`)
         if (summary.tags?.length) parts.push(`tags=${summary.tags.join(',')}`)
+        if (summary.variant) parts.push(`variant=${summary.variant}`)
         if (summary.machineId) parts.push(`machine=${summary.machineId}`)
         if (summary.cwd) parts.push(`cwd=${summary.cwd}`)
         for (const request of summary.pending ?? []) {
@@ -239,6 +240,15 @@ function formatAccountSummaryLine(summary: AccountSessionSummary): string {
     }
     parts.push(summary.url)
     return parts.join(' ')
+}
+
+/**
+ * JSON record for an approve/deny that was refused before any RPC was sent
+ * (no local key, request not pending, session not found). Carries the same
+ * identifying fields as the success record so a script can key on them.
+ */
+export function permissionFailureRecord(sessionId: string, requestId: string, error: unknown): { sessionId: string; requestId: string; error: string } {
+    return { sessionId, requestId, error: error instanceof Error ? error.message : String(error) }
 }
 
 function formatSummaryLine(summary: SessionSummary): string {
@@ -330,7 +340,16 @@ export async function handleSessionsCommand(args: string[]): Promise<never> {
             const verdict: PermissionVerdict = options.action === 'approve'
                 ? { kind: 'approve', forSession: options.forSession }
                 : { kind: 'deny', reason: options.reason }
-            const result = await resolvePermissionRequest(sessionId, requestId, verdict)
+            let result: Awaited<ReturnType<typeof resolvePermissionRequest>>
+            try {
+                result = await resolvePermissionRequest(sessionId, requestId, verdict)
+            } catch (error) {
+                // Pre-check refusals (no local key / not pending / not found)
+                // throw before any RPC. Like `stop`, a --json caller still gets
+                // a record on stdout rather than an empty string + exit 1.
+                if (options.json) console.log(JSON.stringify(permissionFailureRecord(sessionId, requestId, error)))
+                throw error
+            }
             if (result.outcome.status !== 'acknowledged') {
                 if (options.json) console.log(JSON.stringify(result))
                 console.error(chalk.red('Error:'), `${options.action} of ${requestId} on ${sessionId} was not delivered (${result.outcome.status}): ${result.outcome.message}`)
