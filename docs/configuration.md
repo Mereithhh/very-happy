@@ -21,7 +21,7 @@ state. Never commit production values.
 | `AUTH_PAIRING_TTL_MINUTES` | Pairing request lifetime, bounded to 1–60 minutes | `10` |
 | `CLI_RECOMMENDED_VERSION` | Pin the exact `very-happy-cli` version advertised to daemons | The last fully approved release, or unset |
 | `CLI_MINIMUM_VERSION` | Optional exact version below which Web/CLI show a required-update warning | Unset until an actual compatibility/security floor exists |
-| `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `false`; explicitly opt in only if following the dist-tag is intended |
+| `CLI_VERSION_REGISTRY_LOOKUP` | Allow the relay to discover `very-happy-cli/latest` when no recommended version is pinned | `true` since B-348 — `latest` is now promoted only after the 3-OS smoke matrix passes, so following it is the reviewed default. Set `CLI_RECOMMENDED_VERSION` to override it (that pin always wins) |
 | `MAX_PENDING_AUTH_PAIRINGS` | Global unclaimed Terminal + Account pairing rows retained inside the TTL window | `1000` |
 | `MAX_PENDING_GOOGLE_LOGIN_CHALLENGES` | Global outstanding Google nonce rows retained inside their five-minute TTL | `10000` |
 | `ALLOW_LEGACY_KEY_SIGNUP` | Accept the legacy unauthenticated account-key signup route | Unset/`false` on public relays |
@@ -74,8 +74,22 @@ versions and never contains an install command. Registry discovery is off by
 default; when explicitly enabled it is cached by the relay, and failures are
 fail-open without affecting normal API traffic. Daemons check this policy on
 startup and every six hours, then publish it inside their encrypted machine
-state. Pin `CLI_RECOMMENDED_VERSION` after release validation to advance the
-operator-approved target.
+state.
+
+**Which of the two to use (B-348).** `recommendedVersion` is what B-327's
+auto-update installs on an idle machine, so whatever feeds it is the fleet's
+blast radius.
+
+- `CLI_VERSION_REGISTRY_LOOKUP=true` follows npm's `latest` dist-tag. This is
+  safe **because `publish.yml` publishes under `next` and only promotes `latest`
+  after the cross-platform smoke matrix for that exact commit goes green** — so
+  `latest` means "3 OSes installed and ran it", not "npm accepted a tarball".
+  Before that promotion job existed, following the dist-tag meant taking an
+  unverified publish, which is precisely what `decideAutoUpdate`'s "silence is
+  not permission to take whatever npm currently calls latest" refuses to do.
+- `CLI_RECOMMENDED_VERSION` pins an exact version and **overrides the lookup**.
+  It is the brake: set it to hold the fleet at a known-good release (or to roll
+  the recommendation back) without touching npm.
 
 ## Google login
 

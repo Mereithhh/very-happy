@@ -20,6 +20,8 @@
  *   has already left a half-written tree in production once, and hammering it is
  *   how a bad state becomes a permanent one.
  */
+import { compareExactVersions } from './cliUpdate';
+
 export type AutoUpdateDecision =
     | { action: 'install'; version: string }
     | { action: 'skip'; reason: string };
@@ -43,7 +45,15 @@ export function decideAutoUpdate(context: AutoUpdateContext): AutoUpdateDecision
     // Nothing pinned means the operator has not promoted a release yet. Silence
     // is not permission to take whatever npm currently calls latest.
     if (!target) return { action: 'skip', reason: 'no recommended version published' };
-    if (target === context.currentVersion) return { action: 'skip', reason: 'already current' };
+    // B-329: only ever move FORWARD. Comparing for equality was not enough —
+    // a machine running something newer than the recommendation (which is the
+    // normal state right after a release, before the operator promotes it) fell
+    // through and would have installed the older version the next time it was
+    // idle. Auto-update must never be able to downgrade a machine.
+    const ordering = compareExactVersions(context.currentVersion, target);
+    if (ordering === null) return { action: 'skip', reason: 'version numbers not comparable' };
+    if (ordering === 0) return { action: 'skip', reason: 'already current' };
+    if (ordering > 0) return { action: 'skip', reason: `already ahead of the recommended ${target}` };
     if (context.failedVersion === target) {
         return { action: 'skip', reason: `already failed to install ${target} once` };
     }
