@@ -28,7 +28,12 @@
 - `--bg-0..3`、`--line*`、`--text*` 构成普通表面和信息层级。
 - 主 CTA、提交与发送使用 `--text` 填充和 `--bg-0` 前景；hover 只改变中性色阶。
 - `--accent*` 只用于 connected、running、thinking、active/selected、focus 和实时拖放落点。
-- warn、danger 只表达对应状态；组件 CSS/TSX 禁止裸色值。
+- warn 只表达对应状态；组件 CSS/TSX 禁止裸色值。
+- `--danger` = 错误与破坏性操作，**外加一处经审的扩展**：侧边栏「未读」徽点
+  （`.sb-row-signal--unread`）。理由是 accent 已被 live 占死、warn 已被
+  「等待授权」的状态点占死，红点=未读又是全行业公认语义；旧的 `--text` 白点
+  与行内文字同色，Owner 用了数周都没发现这个功能存在（B-312）。除此之外
+  `--danger` 仍然只表达 danger，新增用法要同样在这里登记。
 
 ## 3. 字体
 

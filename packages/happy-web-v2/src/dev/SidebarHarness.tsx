@@ -13,6 +13,7 @@
  *   waiting/permission (×2, different wait ages) · running (session thinking
  *   + terminal working) · waiting/idle (reap) · terminal needs_input ·
  *   completed-today (archived + completedAt) · plain archived.
+ * Plus both row signals: 待处理 (accent, s1/s2/term2) and 未读 (red, s5).
  *
  * Settings writes still go through sync.applySettings → applySettingsLocal,
  * so the committed manual order is observable from the console:
@@ -115,6 +116,9 @@ function seed() {
     fakeSession('s8', 'Hotel archived', 8, { archived: true }),
   ]);
   storage.getState().applyReady();
+  // B-312 红色未读点：s5 跑完一轮而用户当时在看别处（真实产生路径在
+  // applySessions 的 running→idle 检测里，harness 直接调同一个 action）
+  storage.getState().markSessionUnread('s5');
   useTerminalSessions.setState({
     terminals: [
       {
