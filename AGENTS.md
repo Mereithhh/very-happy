@@ -45,7 +45,8 @@ AGENTS.md（事实源；CLAUDE.md 导入）── 入口：门禁 / 铁律 / 热
   → 门禁 → 发布 → 验收 → 沉淀。
 - 需求/bug 当场记 `docs/backlog.md`，不靠记忆；动协议/状态模型/存储语义/跨包的
   改动先出 spec（`specs/`）定稿再实现。
-- 事故修复必附覆盖该机制的回归测试，否则不许合并。
+- 事故修复必附覆盖该机制的回归测试，否则不许合并；源码断言型测试（本仓大量使用）
+  用 `node scripts/dev/mutation-check.mjs` 验一遍它真的钉得住（理由见 docs/PROCESS.md）。
 - 新逻辑尽量抽纯函数模块（`termWriteHold`/`termStreamSync`/`boardTaskOps` 先例）——
   AI 并行开发下测试稳定性的支柱。
 - 常规发布只认 canonical `origin/main` 已合入且必需 quality gates 全绿的精确 SHA；旧

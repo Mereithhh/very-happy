@@ -28,6 +28,10 @@
   两个会话同日各取下一个字母就会选中同一个。2026-09-03 两个会话同时用了 `sep03f`：squash 合并保留了先合的一方，
   **后合的一方代码全在、release 条目却被静默吞掉**（deploy 的 changelog 门禁这才拦下来）。开条目前照 B-id 的做法
   `git fetch` 看 origin/main 上已用到哪个字母；发现被吞就补一个新 key 重发，不要去改对方的条目。
+- **别人的 migration 会挡住你的纯 web 发布**：server/web 是同一个不可变镜像，只要 main 上任何人加了
+  migration，`VH_RELEASE_MIGRATIONS_REVIEWED` 门禁就会拦下整次 deploy（在 `before-switch` 阶段失败并
+  自动还原 active upstream，生产不受影响）。这个确认是 **commit-bound 的生产写入**，不属于「顺手放行」：
+  除非 Owner 明确授权，让加 migration 的那个会话自己发，你的改动随它一起上线。
 
 ## 2. 批次制（Release Train）
 
@@ -58,7 +62,9 @@ triage（分独立/冲突域）
 | happy-server | `tsc --noEmit` + `vitest run` 全绿（**零新 npm 依赖**——bind-mount 约束） |
 
 通用纪律：
-- **事故必附回归测试**：修复不带覆盖该机制的测试不许合并。
+- **事故必附回归测试**：修复不带覆盖该机制的测试不许合并。**源码断言型测试
+  （`expect(source).toContain(…)`，本仓大量使用）必须用 `node scripts/dev/mutation-check.mjs` 验一遍**——
+  被断言的字符串在同一文件里别处也出现时，删掉你真正想钉住的那一处测试照样全绿（B-300 实例）。
 - 纯函数优先：新逻辑尽量抽纯函数模块（`termWriteHold`/`termStreamSync`/`boardTaskOps` 模式），
   这是 AI 并行开发下测试稳定性的支柱。
 - 推公开 remote 前 gitleaks（或等价 secret 扫描）；密钥永不进 repo。
