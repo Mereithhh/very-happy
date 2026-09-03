@@ -69,6 +69,14 @@ export function resolveNewSessionPermissionMode(
     flavor: string | null | undefined,
     reviewFirst: boolean,
 ): string {
+    // pi has no Claude/Codex-style mode: its approvals arrive as ACP
+    // request_permission cards (or are decided by a pi-side policy extension),
+    // and the pi runner drops --permission-mode. Without this branch the
+    // launcher would inherit Claude's `bypassPermissions` default via
+    // normalizeAgentKey and record it on the session as if it were in force.
+    if (flavor === 'pi') {
+        return 'default';
+    }
     const explicitDefault = getAgentDefaultOverride(overrides, flavor).permissionMode;
     if (explicitDefault !== undefined) {
         return explicitDefault;

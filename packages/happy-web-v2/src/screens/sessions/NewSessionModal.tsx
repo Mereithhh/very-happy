@@ -15,6 +15,7 @@ import { claudeAuthNotice, hasClaudeAuthNotice } from './claudeAuthNotice';
 import { useImeGuard } from '@/utils/ime';
 import {
   agentSetupInstruction,
+  isAgentOffered,
   resolveAgentAvailability,
   SESSION_AGENTS,
   type SessionAgent,
@@ -302,7 +303,7 @@ export function NewSessionModal({
 
             <label className="ns-label">{t('newSession.agent')}</label>
             <div className="ns-agents">
-              {SESSION_AGENTS.map((a) => {
+              {SESSION_AGENTS.filter((a) => isAgentOffered(selectedMachine?.metadata, a)).map((a) => {
                 const availability = resolveAgentAvailability(selectedMachine?.metadata, a);
                 const unavailable = !availability.available;
                 const suffix = a === 'claude'
@@ -341,6 +342,7 @@ export function NewSessionModal({
                 {[
                   ...SESSION_AGENTS
                       .filter((candidate): candidate is Exclude<SessionAgent, 'claude'> => candidate !== 'claude')
+                      .filter((candidate) => isAgentOffered(selectedMachine.metadata, candidate))
                       .filter((candidate) => !resolveAgentAvailability(selectedMachine.metadata, candidate).available)
                       .map((candidate) => {
                         const setup = agentSetupInstruction(candidate);

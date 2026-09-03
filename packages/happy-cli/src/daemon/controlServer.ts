@@ -11,6 +11,7 @@ import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import { SPAWN_AGENTS } from '@/utils/spawnAgents';
 import type { AssistantReportEvent } from './assistantReport';
 import { isAuthorizedDaemonControlRequest } from './controlAuth';
 
@@ -194,7 +195,7 @@ export function startDaemonControlServer({
           // ignores it and supplies its own home daemon-side.
           directory: z.string().default(''),
           sessionId: z.string().optional(),
-          agent: z.enum(['claude', 'codex', 'gemini', 'openclaw']).optional(),
+          agent: z.enum(SPAWN_AGENTS).optional(),
           environmentVariables: z.record(z.string(), z.string()).optional(),
           variant: z.enum(['assistant']).optional(),
           // B-051: assistant only — stop the live assistant, purge its

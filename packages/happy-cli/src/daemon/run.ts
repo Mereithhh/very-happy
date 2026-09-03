@@ -8,6 +8,7 @@ import type { ApiMachineClient } from '@/api/apiMachine';
 import { TrackedSession, SessionEncryptionData } from './types';
 import { MachineMetadata, DaemonState, Metadata, CliUpdateState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import { isSpawnAgent } from '@/utils/spawnAgents';
 import { logger } from '@/ui/logger';
 import { pruneLogsDir } from '@/ui/logPrune';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
@@ -707,8 +708,8 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'openclaw' ? 'openclaw' : 'claude'));
+          // Determine agent subcommand; anything the shared list doesn't know falls back to claude
+          const agent = isSpawnAgent(options.agent) ? options.agent : 'claude';
           const resumeId = agent === 'claude'
             ? options.resumeClaudeSessionId
             : (agent === 'codex' ? options.resumeCodexThreadId : undefined);
@@ -817,6 +818,10 @@ export async function startDaemon(): Promise<void> {
               break;
             case 'openclaw':
               agentCommand = 'openclaw';
+              break;
+            case 'pi':
+              // `very-happy pi` = the generic ACP runner with the pi-acp adapter
+              agentCommand = 'pi';
               break;
             default:
               return {

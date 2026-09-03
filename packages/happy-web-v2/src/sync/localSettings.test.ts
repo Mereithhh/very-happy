@@ -29,6 +29,12 @@ describe('new-session permission resolution', () => {
         expect(resolveNewSessionPermissionMode({ codex: { permissionMode: 'safe-yolo' } }, 'codex', false)).toBe('safe-yolo');
     });
 
+    it('never hands pi a Claude permission mode (pi approvals are ACP permission cards)', () => {
+        expect(resolveNewSessionPermissionMode({}, 'pi', false)).toBe('default');
+        expect(resolveNewSessionPermissionMode({}, 'pi', true)).toBe('default');
+        expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'bypassPermissions' } }, 'pi', false)).toBe('default');
+    });
+
     it('lets an explicit persisted default win over the review-first fallback', () => {
         expect(resolveNewSessionPermissionMode({ claude: { permissionMode: 'bypassPermissions' } }, 'claude', true))
             .toBe('bypassPermissions');

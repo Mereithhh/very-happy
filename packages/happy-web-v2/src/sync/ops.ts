@@ -148,7 +148,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw';
+    agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'pi';
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new
      * Happy session attaches to a pre-existing on-disk Claude conversation
@@ -299,7 +299,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw',
+            agent?: 'codex' | 'claude' | 'gemini' | 'openclaw' | 'pi',
             resumeClaudeSessionId?: string,
             resumeCodexThreadId?: string,
             parentSessionId?: string,

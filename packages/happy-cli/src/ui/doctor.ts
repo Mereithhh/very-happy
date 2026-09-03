@@ -287,6 +287,11 @@ export async function runDoctorCommand(): Promise<void> {
     } else {
         console.log(chalk.green(`✓ External agent command${availableAgents.length === 1 ? '' : 's'}: ${availableAgents.map(toolProbeLabel).join(', ')}`));
     }
+    const piProbe = readiness.agents.find(agent => agent.command === 'pi');
+    if (piProbe?.available && !readiness.piAdapter.available) {
+        console.log(chalk.yellow('○ pi found, but the pi-acp adapter is not on PATH — `very-happy pi` and spawning pi from the Web need it'));
+        console.log(chalk.gray('  Install it for the daemon user: npm install -g pi-acp@0.0.33'));
+    }
 
     // Authentication
     console.log(chalk.bold('\n🔐 Authentication'));

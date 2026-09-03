@@ -77,6 +77,7 @@ describe('parseSpawnArgs', () => {
 
     it('parses --agent and rejects an unsupported backend', () => {
         expect(parseSpawnArgs(['--dir', '/tmp', '--agent', 'codex']).agent).toBe('codex')
+        expect(parseSpawnArgs(['--dir', '/tmp', '--agent', 'pi']).agent).toBe('pi')
         expect(() => parseSpawnArgs(['--dir', '/tmp', '--agent', 'gpt'])).toThrow(/--agent must be one of/)
     })
 
