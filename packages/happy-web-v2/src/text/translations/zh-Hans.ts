@@ -440,6 +440,9 @@ export const zhHans: TranslationStructure = {
         title: '开始新会话',
         startSession: '开始会话',
         machineOffline: '设备离线',
+        claudeAuthOptionSuffix: 'Claude 未登录',
+        claudeAuthWarnNotLoggedIn: '这台机器上的 Claude Code 没有登录，在这里开 Claude 会话第一轮就会失败。请在该机器上用 `claude` 登录，或换一台机器。',
+        claudeAuthWarnUnhealthy: 'Very Happy 无法确认这台机器上 Claude Code 的登录状态。',
         switchMachinesHint: '• 点击上方的设备来切换设备',
     },
 

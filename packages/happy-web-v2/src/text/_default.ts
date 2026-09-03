@@ -425,6 +425,9 @@ export const en = {
         title: 'Start New Session',
         startSession: 'Start Session',
         machineOffline: 'Machine is offline',
+        claudeAuthOptionSuffix: 'Claude not logged in',
+        claudeAuthWarnNotLoggedIn: 'Claude Code is not logged in on this machine, so a Claude session started here will fail on its first turn. Log in with `claude` on the machine, or pick another one.',
+        claudeAuthWarnUnhealthy: 'Very Happy could not check Claude Code’s login on this machine.',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
     },
 
