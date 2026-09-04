@@ -1,6 +1,6 @@
 # 长表格折叠 / 表头吸顶 与 mermaid 懒加载渲染
 
-> 状态：Final（v3，两轮对抗式 review 后定稿；语料统计已纠错，CSS 与状态机均经真实浏览器实证）
+> 状态：Shipped（commit `8f2e59da`，2026-09-04；三轮对抗式 review，语料统计已纠错，CSS 与状态机均经真实浏览器实证）
 > 日期：2026-09-04 ｜ 关联 backlog：B-357（表格）、B-358（mermaid）
 > 前身：`specs/2026-09-markdown-engine-and-attachments.md`（B-354/B-355，已 Shipped `e38b8602`）
 > 触发：Owner「markdown 渲染还有啥可以优化」→ 用本机语料定优先级后确认「支持上」，并追加 mermaid（懒加载，以体验为准）
@@ -245,6 +245,19 @@ components.pre
 6. 另外 6 个 `<Markdown>` 调用方（`BtwPanel` / `ToolView` plan / `PermissionCard` /
    `SubagentDetail` / `FsFileViewer`）里，表头会吸在**那个面板自己的滚动视口**上——是想要的
    行为，但只在 transcript 里做过观感确认。
+
+## 上线实证（2026-09-04）
+
+- PR #258 squash 合入 `main@8f2e59da`；deploy run 33841788473（`target=all`、`rollout=switch`）
+  `conclusion=success`；无 migration 变更。
+- `check-shipped` 从**线上 entry 读到的 release SHA = 8f2e59da**，needle
+  `md-tbl-expand` / `md-tbl-body--collapsed` / `mmd-svg` / `saveData` / `slow-2g` /
+  `mermaidLoading` / `suppressErrorRendering` 全部命中；`/health` ok。
+  （注意：`shouldDeferMermaid` 这种**函数名**在生产构建里会被压缩掉，不能当 needle——
+  能钉住的是 CSS 类名与字符串字面量。）
+- CLI `v0.2.119` 同批发布（带的是 B-355 的根因修复），`latest` 已由 promote job 提上去，
+  平台包 `very-happy-tools-arm64-darwin@0.2.119` 在位；relay 的 `recommendedVersion`
+  跟着 registry 走、1h 缓存，会自己跟上。
 
 ## 留真机验证项
 
