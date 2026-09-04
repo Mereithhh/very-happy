@@ -60,7 +60,12 @@ describe('retry is bounded (the loop this replaces hit 200 downloads in 3s)', ()
     it('a failed preview falls back to the file row instead of an empty box', () => {
         const source = require('node:fs').readFileSync(require('node:path').resolve(__dirname, 'UserAttachments.tsx'), 'utf8');
         expect(source).toContain('const previewable = !failed && item.ref !== null && isPreviewableImage(item.mimeType)');
-        // and a download that never produced bytes reports failure too
-        expect(source).toContain('else onFailed();');
+        // a download that never produced bytes gets the SAME single retry (it is
+        // the recoverable failure: a network blip, a 401 that a reconnect fixes)
+        // and only reports failure on the second miss
+        const loader = source.slice(source.indexOf('loadAttachmentUrl(sessionId, ref, mimeType).then'));
+        const body = loader.slice(0, loader.indexOf('});'));
+        expect(body).toContain('if (!retried.current) { retried.current = true; setUrl(null); return; }');
+        expect(body).toContain('onFailed();');
     });
 });

@@ -86,8 +86,14 @@ function Thumbnail({ sessionId, item, onFailed }: {
         // attachmentPreview.ts.
         void loadAttachmentUrl(sessionId, ref, mimeType).then((next) => {
             if (cancelled) return;
-            if (next) setUrl(next);
-            else onFailed();
+            if (next) { setUrl(next); return; }
+            // A null here is the RECOVERABLE failure (network blip, a 401 that
+            // will be fine after a reconnect) while a decode error is the
+            // permanent one, so give this the retry too — the first version had
+            // the priority backwards and locked the recoverable case out
+            // immediately.
+            if (!retried.current) { retried.current = true; setUrl(null); return; }
+            onFailed();
         });
         return () => { cancelled = true; };
     }, [sessionId, ref, mimeType, url, onFailed]);
