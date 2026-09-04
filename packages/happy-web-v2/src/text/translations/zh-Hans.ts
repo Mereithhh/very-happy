@@ -639,6 +639,7 @@ export const zhHans: TranslationStructure = {
             collapseTableRows: '收起表格',
             tableRegion: '表格',
             mermaidRender: '渲染图表',
+            mermaidLoading: '正在加载图表…',
             mermaidSource: '源码',
             mermaidDiagram: '图',
             mermaidFailed: '这张图没能渲染出来，显示源码。',

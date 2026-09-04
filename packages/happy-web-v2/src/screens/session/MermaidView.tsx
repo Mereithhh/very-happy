@@ -63,6 +63,7 @@ export function MermaidView({ code }: { code: string }) {
     // removing itself and leaving the diagram permanently unrendered (measured:
     // renderCalls stayed 0 after the click). It only ever goes false → true, so
     // there is no loop.
+    const [deferred] = useState(shouldDeferMermaid);
     const [armed, setArmed] = useState(() => !shouldDeferMermaid());
     const [state, setState] = useState<State>({ kind: 'idle' });
     const [showSource, setShowSource] = useState(false);
@@ -82,17 +83,23 @@ export function MermaidView({ code }: { code: string }) {
         return () => { cancelled = true; };
     }, [code, themeKey, id, armed]);
 
-    if (!armed) {
+    // The slow-network branch keeps its button through the download instead of
+    // removing it: this path only runs on saveData / 2g-3g (and Chrome reports a
+    // high-latency wifi as 3g), where fetching mermaid can take many seconds. A
+    // button that vanishes on click reads as "nothing happened".
+    if (!armed || (deferred && state.kind === 'idle')) {
+        const loading = armed;
         return (
             <div className="mmd">
                 <CodeView code={code} lang="mermaid" />
                 <button
                     type="button"
                     className="mmd-action"
+                    disabled={loading}
                     onClick={() => setArmed(true)}
                 >
                     <ImageIcon size={13} aria-hidden />
-                    {t('session.chat.mermaidRender')}
+                    {loading ? t('session.chat.mermaidLoading') : t('session.chat.mermaidRender')}
                 </button>
             </div>
         );

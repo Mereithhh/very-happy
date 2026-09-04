@@ -220,20 +220,26 @@ components.pre
 | 弱网降级 | 伪造 `saveData:true / effectiveType:'2g'`：首屏 0 张图 + 「渲染图表」按钮；**点击后 1 张图 + 「源码」切换**（第一版这里是死胡同：点了按钮既不出图、按钮也消失，`renderCalls` 恒 0） |
 | 折叠盒可滚性 | `overflow: clip` 下 `scrollTop = 500` 之后仍是 **0**（`hidden` 时会被滚走，而表格里有可聚焦的链接/路径按钮） |
 | 注入 | 5 种恶意形态注入 detached DOM 后：live `<script>` 0、`<img>` 0、`<iframe>` 0、`on*` 属性 0、`javascript:` href 0 |
+| 慢网中间态 | 点击后按钮**留在原地并 disabled**、文案变「正在加载图表…」，不再是「点一下按钮就消失、然后十几秒什么都没有」 |
+| 折叠 fade | `overflow: clip` 下 fade 仍是 absolute、与盒底齐平；像素上字形亮度沿 fade 由 255→35（深）/ 0→215（浅），渐变真的在起作用 |
 
 ## 已知并接受的残余
 
 1. **Safari 15 及更早**不认 `overflow-x: clip`，会丢弃这条声明退回 `visible`——也就是本 spec
-   想避开的「宽表在 RO 翻类之前越过滚动容器被裁掉半张」。没有可用的 fallback（写 `hidden`
-   会把另一轴强制成 `auto`、杀掉吸顶），所以这是有意接受的降级。这是个 PWA，老 iPad 上确实
-   还有 Safari 15。
+   想避开的「宽表在 RO 翻类之前越过滚动容器被裁掉半张」。`.md-table-wrap` **没有**可用的
+   fallback（写 `hidden` 会把另一轴强制成 `auto`、杀掉吸顶），所以这是有意接受的降级。
+   **但折叠盒有**：它本来就两轴都要裁，所以写成 `overflow: hidden; overflow: clip;` 两行并列
+   ——老引擎拿到 `hidden`（能裁，只是会被焦点/⌘F 滚走），现代引擎取 `clip`。没有这行兜底的话，
+   Safari 15 上折叠会**完全不生效**（30 行表全量铺开，中间浮一条 fade），比不做还差。
 2. **StrictMode 下同一张图会并发渲染两次**（dev only）。已用「每次 effect 递增的 id 后缀」
    把互相抢临时节点的问题关掉；生产不双调用。
 3. **happy-dom 只覆盖到 flowchart**：sequenceDiagram 在测试环境会抛
    `svg element not in render tree`（缺 SVG 排版引擎）。其它图类型只有浏览器验收一处证据，
    CI 挡不住它坏掉——测试文件里已写明。
 4. **mermaid 加载失败只试一次**（`loadFailed`），与附件缩略图的「重试一次」一致；离线时
-   5 张图不会变成 5 次失败请求。
+   5 张图不会变成 5 次失败请求。它是**模块级**的，比附件那边的组件级更严——所以补了一个
+   `online` 监听把标志（连同那个已经 resolve 成 null 的 promise）清掉：这是个常开几小时的
+   PWA，「进一次电梯断网」不该让剩下一整个 session 都没有图。
 5. **手机上的横向问题这批没解决**：>4 列的表占 14.3%，在 390px 下只能横滚。真正的解是
    「全屏看表」，已记 backlog（B-358），它服务的人群比吸顶（1.3%）大一个数量级。
 6. 另外 6 个 `<Markdown>` 调用方（`BtwPanel` / `ToolView` plan / `PermissionCard` /

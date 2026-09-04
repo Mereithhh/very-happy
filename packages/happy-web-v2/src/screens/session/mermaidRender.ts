@@ -22,6 +22,15 @@ type MermaidModule = typeof import('mermaid')['default'];
 
 let modulePromise: Promise<MermaidModule | null> | null = null;
 let loadFailed = false;
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+        if (!loadFailed) return;
+        loadFailed = false;
+        // The failed promise resolved to null and would be handed out forever.
+        modulePromise = null;
+    });
+}
 let initializedTheme: string | null = null;
 
 /** 从 tokens 读色，避免在这里写死颜色（tokens.css 头部：组件里禁止裸色值）。 */
@@ -62,6 +71,9 @@ async function loadMermaid(): Promise<MermaidModule | null> {
     // remaining diagram fetch the 171 kB chunk again — offline with five diagrams
     // is five failed requests, and the second one never succeeds where the first
     // did not. Same "retry once, then fall back" rule as the attachment previews.
+    // The `online` listener below is what keeps that from being permanent: this is
+    // a PWA that stays open for hours, so "went through a tunnel once" must not
+    // cost the rest of the session.
     if (loadFailed) return null;
     if (!modulePromise) {
         modulePromise = import('mermaid')

@@ -214,7 +214,14 @@
      by focus and by find-in-page — measured, `scrollTop = 500` took. Tables contain
      focusable things (B-145 path buttons, links), so Tab into a clipped row would
      jump the box with no way for the user to scroll back. `clip` cannot scroll at
-     all, and clips identically. */
+     all, and clips identically.
+     The `hidden` line before it is the Safari < 16 fallback — that engine drops the
+     whole declaration for a value it does not know, and without a fallback the box
+     would not clip AT ALL (a 30-row table fully expanded with a fade floating in the
+     middle of it). `.md-table-wrap` cannot do the same, because `hidden` there forces
+     `overflow-y` to `auto` and kills the sticky header; a clip box wants both axes
+     clipped anyway. */
+  overflow: hidden;
   overflow: clip;
 }
 .md-tbl-body--collapsed .md-table thead th {

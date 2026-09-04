@@ -638,6 +638,7 @@ export const en = {
             collapseTableRows: 'Collapse table',
             tableRegion: 'table',
             mermaidRender: 'Render diagram',
+            mermaidLoading: 'Loading diagram…',
             mermaidSource: 'Source',
             mermaidDiagram: 'Diagram',
             mermaidFailed: 'This diagram could not be rendered — showing the source.',
