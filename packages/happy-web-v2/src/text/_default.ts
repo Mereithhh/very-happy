@@ -1682,6 +1682,13 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep04c: {
+                title: 'Tables render, and an attached file no longer arrives twice',
+                summary: 'Chat markdown moved to a real GitHub-flavoured parser, and file attachments are now part of your own message instead of looking like a tool the agent ran.',
+                tables: 'A table written straight after a line of text — the way models almost always write one — used to come out as raw pipes and dashes. Tables now render with column alignment, wrap long cells instead of forcing a sideways scroll, and only scroll when the columns genuinely do not fit; a line break inside a cell works too.',
+                gfm: 'Also newly supported: nested lists, task lists, strikethrough, bare URLs, reference links and footnotes. Escaped pipes and short rows no longer shift a table’s columns, and an identifier like foo_bar_baz is no longer half-italic. Images linked from agent text are shown as a chip rather than loaded from a remote server.',
+                attachments: 'Sending a file used to add a second copy of your message full of machine markup, and the file itself showed up as a tool row above it. The duplicate is gone, and attachments now sit with your message — images with a thumbnail you can open.',
+            },
             sep04b: {
                 title: 'pi tool calls look like tool calls, and supervisor sessions get cards',
                 summary: 'A pi session used to show every tool as a bare "execute" row, and a supervisor session\u2019s tick reports, decisions and ledger writes were walls of text and JSON. The CLI now carries the pi tool identity and arguments, and the Web renders both worlds properly.',

@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-markdown-and-attachments',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    titleKey: 'changelog.releases.sep04c.title',
+    summaryKey: 'changelog.releases.sep04c.summary',
+    itemKeys: [
+      'changelog.releases.sep04c.tables',
+      'changelog.releases.sep04c.gfm',
+      'changelog.releases.sep04c.attachments',
+    ],
+  },
+  {
     id: '2026-09-04-role-aware-session-cards',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,
