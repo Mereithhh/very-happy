@@ -15,6 +15,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_RELEASES: readonly ChangelogRelease[] = [
   {
+    id: '2026-09-04-update-actually-updates',
+    date: '2026-09-04',
+    buildVersion: __APP_VERSION__,
+    // web-only: no CLI half.
+    titleKey: 'changelog.releases.sep04d.title',
+    summaryKey: 'changelog.releases.sep04d.summary',
+    itemKeys: [
+      'changelog.releases.sep04d.shell',
+      'changelog.releases.sep04d.retry',
+    ],
+  },
+  {
     id: '2026-09-04-markdown-and-attachments',
     date: '2026-09-04',
     buildVersion: __APP_VERSION__,

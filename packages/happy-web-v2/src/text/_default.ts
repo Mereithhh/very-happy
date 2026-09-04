@@ -1682,6 +1682,12 @@ export const en = {
         version: ({ version }: { version: number }) => `Version ${version}`,
         noEntriesAvailable: 'No changelog entries available.',
         releases: {
+            sep04d: {
+                title: 'The update button now actually changes versions',
+                summary: 'Taking an offered update reloaded the page but could leave you on the very same version — no release notes, and nothing offering the update again for ten minutes.',
+                shell: 'The page is served by its service worker, and the reload used to be issued before the new worker had taken over, so the old worker answered it from its own cache with the old app. The update now waits for the new version to take charge before reloading, and falls back to fetching the page from the server if it does not.',
+                retry: 'If an update still fails to land, the offer comes back instead of going quiet — and the release notes for everything you missed show up once the new version is actually running.',
+            },
             sep04c: {
                 title: 'Tables render, and an attached file no longer arrives twice',
                 summary: 'Chat markdown moved to a real GitHub-flavoured parser, and file attachments are now part of your own message instead of looking like a tool the agent ran.',

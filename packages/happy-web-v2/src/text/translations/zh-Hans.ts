@@ -1647,6 +1647,12 @@ export const zhHans: TranslationStructure = {
         version: ({ version }: { version: number }) => `版本 ${version}`,
         noEntriesAvailable: '没有可用的更新日志条目。',
         releases: {
+            sep04d: {
+                title: '「更新」按钮现在真的会换版本',
+                summary: '点了更新会刷新页面，但可能刷完还停在同一个版本：看不到更新说明，而且十分钟内不会再提示你更新。',
+                shell: '页面是由 service worker 提供的，而以前的刷新发生在新 worker 接管之前，于是旧 worker 用自己的缓存把旧版页面又给了你一遍。现在更新会先等新版本接管再刷新；万一没等到，就绕开缓存直接从服务器取页面。',
+                retry: '如果更新仍然没成功，更新提示会重新出现而不是就此沉默；等新版本真正跑起来，这段时间里错过的更新说明都会一次性弹给你。',
+            },
             sep04c: {
                 title: '表格能正常渲染了，附件也不会再发两遍',
                 summary: '会话里的 markdown 换成了真正的 GitHub 风格解析器；文件附件现在属于你自己那条消息，而不再长得像 agent 跑了个工具。',

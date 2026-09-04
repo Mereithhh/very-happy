@@ -32,7 +32,10 @@ export function UpdatePrompt() {
           // has not, something upstream is wedged — give the button back rather
           // than leaving a dead control on screen, which is exactly what the
           // frozen-page report looked like.
-          setTimeout(() => setApplying(false), 6000);
+          // B-356 raised the ceiling: applyUpdate now waits (bounded) for the
+          // new service worker to take control before reloading, so the button
+          // must outlast that whole handover or it flips back mid-update.
+          setTimeout(() => setApplying(false), 9000);
           void applyUpdate(pending.entry);
         }}
       >

@@ -11,12 +11,17 @@
  *
  * Mechanism: the shell's identity is the hashed entry script
  * (`/assets/index-<hash>-<salt>.js`). We fetch `/index.html` with a
- * cache-busting query — the query defeats both the HTTP cache and the
- * workbox precache match (its ignoreURLParametersMatching only covers utm_*)
- * so the response comes from the network — and compare the entry script name.
- * Mismatch → one guarded reload (plus a SW registration update so the next
- * shell comes from the new precache, mirroring the vite:preloadError guard in
- * main.tsx).
+ * cache-busting query — the query defeats both the HTTP cache and the workbox
+ * precache match (its ignoreURLParametersMatching only covers utm_*), and a
+ * `fetch()` is not a navigation so it also escapes the navigateFallback route;
+ * the response therefore comes from the network — and compare the entry script
+ * name. Mismatch → hand the page over to the new service worker, then one
+ * guarded reload.
+ *
+ * The handover is not optional (B-356): `index.html` IS precached and every
+ * navigation is answered by the controlling worker, so a reload issued while
+ * the outgoing worker is still in charge comes back on the very same shell.
+ * See swTakeover.ts.
  *
  * Checks run when the page becomes visible and on a slow interval — a hidden
  * phone tab checks the moment it wakes up, which is exactly the zombie-client
@@ -35,6 +40,12 @@ import {
   decideStaleBundleReload,
   serializeStaleBundleReloadGuard,
 } from '@/app/staleBundlePolicy';
+import {
+  type CacheStorageLike,
+  type ContainerLike,
+  dropPrecachedShell,
+  takeNewServiceWorker,
+} from '@/app/swTakeover';
 
 const ENTRY_RE = /\/assets\/(index-[A-Za-z0-9_-]+\.js)/;
 const RELOAD_GUARD_KEY = 'vh-stale-bundle-reload-v2';
@@ -106,6 +117,15 @@ async function checkOnce(own: string, force = false): Promise<void> {
     const decision = decideStaleBundleReload(sessionStorage.getItem(RELOAD_GUARD_KEY), server, now);
     if (decision.action === 'wait') {
       scheduleRetry(own, decision.retryAfterMs);
+      // B-356: reaching here means the last attempt DID reload and we are still
+      // on the old entry — the service worker answered the navigation from its
+      // own precache. The guard is right to not auto-reload again, but going
+      // silent for ten minutes is what made this look like "the update button
+      // does nothing": put the offer back so a click can retry, now that the
+      // retry waits for the new worker to take control first.
+      if (decideUpdate({ hidden: document.hidden }).action === 'prompt') {
+        setPendingUpdate({ entry: server });
+      }
       return;
     }
     clearRetry();
@@ -149,26 +169,37 @@ export async function applyUpdate(serverEntry: string, now = Date.now()): Promis
       attemptedAt: now,
     }));
   } catch { /* private mode — the reload matters more than the guard */ }
-  // B-328: refreshing the registration is best-effort, and it used to be
-  // awaited without a bound. `registration.update()` fetches the worker script
-  // over the network; when that hung, the await never settled, the reload never
-  // ran, and the button sat on "Refreshing…" forever — the frozen page people
-  // escaped with a manual hard refresh. The reload alone already fetches the
-  // new shell, so this can never be allowed to gate it.
-  await withTimeout(refreshServiceWorker(), SW_UPDATE_BUDGET_MS);
+  // B-356: hand the page over to the new worker BEFORE reloading. The reload
+  // does NOT "already fetch the new shell" — index.html is precached and every
+  // navigation is answered by the controlling worker, so reloading while the
+  // old one is still in charge returns the old shell (and, since the guard is
+  // now stamped, hides the update for ten minutes).
+  // B-328 still applies: `registration.update()` fetches over the network and
+  // once hung forever, leaving the button on "Refreshing…". Hence two bounds —
+  // takeNewServiceWorker bounds the wait for control, withTimeout bounds the
+  // whole handover — so the reload always happens.
+  await withTimeout(handOverToNewShell(), SW_HANDOVER_BUDGET_MS);
   prepareForUpdateReload();
   markProgrammaticReload(); // don't let the unload guard block the update
   window.location.reload();
 }
 
-const SW_UPDATE_BUDGET_MS = 1500;
+/** How long to wait for the incoming worker to claim this page. */
+const SW_TAKEOVER_BUDGET_MS = 4000;
+/** Outer bound on the whole handover, including a `update()` that never settles. */
+const SW_HANDOVER_BUDGET_MS = 6000;
 
-async function refreshServiceWorker(): Promise<void> {
-  try {
-    const regs = await navigator.serviceWorker?.getRegistrations?.();
-    await Promise.all((regs ?? []).map((r) => r.update().catch(() => {})));
-  } catch {
-    // Unsupported, blocked, or already updating — the reload still works.
+function swContainer(): ContainerLike | undefined {
+  return navigator.serviceWorker as unknown as ContainerLike | undefined;
+}
+
+async function handOverToNewShell(): Promise<void> {
+  const outcome = await takeNewServiceWorker(swContainer(), SW_TAKEOVER_BUDGET_MS);
+  // The new worker never took over. Rather than reload into the same shell,
+  // drop the precached index.html so the stale worker's precache route misses
+  // and falls through to the network for the shell.
+  if (outcome === 'timeout') {
+    await dropPrecachedShell(globalThis.caches as unknown as CacheStorageLike | undefined);
   }
 }
 
@@ -189,7 +220,7 @@ export async function checkForUpdateNow(): Promise<'current' | 'updated' | 'unkn
   const server = await serverEntryName();
   if (!server) return 'unknown';
   if (server === own) return 'current';
-  await withTimeout(refreshServiceWorker(), SW_UPDATE_BUDGET_MS);
+  await withTimeout(handOverToNewShell(), SW_HANDOVER_BUDGET_MS);
   // Manual check = explicit user intent: bypass the reload-loop guard window
   // but still stamp it so the automatic path stays throttled.
   sessionStorage.setItem(RELOAD_GUARD_KEY, serializeStaleBundleReloadGuard({
