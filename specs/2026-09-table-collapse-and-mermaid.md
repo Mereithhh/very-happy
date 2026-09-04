@@ -1,6 +1,6 @@
 # 长表格折叠 / 表头吸顶 与 mermaid 懒加载渲染
 
-> 状态：Draft
+> 状态：Final（v2，一轮对抗式 review 后定稿；语料统计已纠错并复核）
 > 日期：2026-09-04 ｜ 关联 backlog：B-356（表格）、B-357（mermaid）
 > 前身：`specs/2026-09-markdown-engine-and-attachments.md`（B-354/B-355，已 Shipped `e38b8602`）
 > 触发：Owner「markdown 渲染还有啥可以优化」→ 用本机语料定优先级后确认「支持上」，并追加 mermaid（懒加载，以体验为准）
@@ -11,17 +11,24 @@ B-354 换掉手写渲染器之后，剩下的缺口用**本机真实语料**量�
 transcript / 20,984 条 assistant 文本块 / **1,723 张真表格**），结论是「明显该补」的功能
 里大部分不该补，真正的缺口只有一个：**表格没有任何长度上限**。
 
-| 事实 | 数值 |
+> ⚠️ **v1 的行数分位数是错的，已纠正。** 第一版统计把「一条消息里所有 pipe 行」当成一张表，
+> 于是含多张表的消息被合并计数，得出 p90=17 / max=238。改成**按分隔行逐表锚定**后
+> （review 独立复现同一结果）：
+
+| 事实 | 数值（按表锚定，2,547 份 transcript / 20,984 条 assistant 文本块 / **1,726 张表**） |
 |---|---|
 | 出现表格的回答 | 5.8% |
-| 表格行数 | p50 **5** / p90 **17** / p99 **56** / **max 238** |
-| 超过 25 行的表 | **75 张** |
-| 表格列数 | p50 3 / p90 5 / max 10；**>6 列只有 19 张（1.6%）** |
-| `$…$` 数学 | 20 个命中样本**全是假阳性**（`$PODS`、`${tool}`、`$29,612`、`$/月`） |
+| 表格**数据行数** | p50 **4** / p75 6 / p90 **9** / p95 11 / p99 **18** / **max 67** |
+| 行数 >10 / >16 / >20 | 111（6.4%）/ **22（1.3%）** / 8（0.5%） |
+| 表格列数 | p50 3 / p90 5 / max 11；**>4 列 246 张（14.3%）**，>6 列 40 张（2.3%） |
+| `$…$` 数学 | **2,079 处命中，抽样全是假阳性**（`$0.2/$`、`$976,815（环比…）；$`、`${tool}`、`$PODS`） |
 | mermaid / GitHub alerts | **各 0 次** |
 
-⇒ 表格的痛点是**竖着太长**，不是横着太宽。代码块 420px 就折叠，表格一路铺到底：
-238 行 ≈ 10 屏，一条回答就能把 transcript 冲掉。
+⇒ 结论要跟着数据改：**表格的长度问题只在尾部**（>16 行的 22 张，1.3%），最长 67 行 ≈ 3 屏——
+不是「一条回答冲掉整个 transcript」。折叠因此是**给尾部买的保险**，不是普遍收益；
+阈值必须保守到不打扰 p90（9 行）那一批。
+**顺带一个更大的靶子**：14.3% 的表有 >4 列，在手机上真正难受的是**横向**——这条留作
+follow-up（「手机全屏看表」），本批不做，理由见「非目标」。
 
 mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯一的硬要求是它不能进主包**
 ——一个从不出现的功能不该让每个用户多下几百 KB。
@@ -39,6 +46,8 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
 - 不做 KaTeX（数据见上：真数学≈0，装了反而会把 `$29,612`、`${tool}` 吃成公式，净负面）。
 - 不做 GitHub alerts（`> [!NOTE]`，语料 0 次）。
 - 不做表格排序/筛选/导出 CSV。
+- **不做「手机全屏看表」**：它服务的人群（>4 列，14.3%）比吸顶（1.3%）大一个数量级，
+  但它是一个新的 overlay + 手势 + 文案面，与本批的 CSS 改动无关，独立成批更安全。已记 backlog。
 - 不动 B-354 定下的引擎、插件与安全策略。
 
 ## 现状事实（代码已确认）
@@ -60,33 +69,49 @@ mermaid 在本机语料里是 0 次，但 Owner 明确要求支持；因此**唯
 
 ### A. 长表格折叠（B-356）
 
-复用代码块那一套，**不引入嵌套竖向滚动**：
+复用代码块那一套，**不引入嵌套竖向滚动**（铁律：wheel 必须冒泡到 transcript）：
 
-- 阈值：`TABLE_VISIBLE_ROWS = 12`，slack 4（走同一个 `shouldCollapse`）。
-  取 12 的依据：p50=5、p90=17——12 行让一半以上的表完全不受影响，又能把 p90 那批收进折叠。
-- 折叠态给 `.md-table-wrap` 加 `max-height`（约 12 行 + 表头）+ 底部 fade + 「展开（N 行）」按钮，
-  与 `.cv--collapsed` / `.cv-fade` / `.cv-expand` 同形同文案键。
-- **展开态不设 max-height、不设 overflow-y**——保持「一条 transcript 一个滚动容器」。
+- 门：`TABLE_VISIBLE_ROWS = 12` + slack 4（同一个 `shouldCollapse`）⇒ **实际折叠起点是 17 行**。
+  依据：p90=9、p95=11——17 行让 98.7% 的表完全不受影响，只收 22 张尾部表。
+  （`shouldCollapse(n, 12, 4)` 的语义是 `n > 16`，spec v1 只写「阈值 12」会让人以为 13 行就折。）
+- 高度由 CSS 定、行数只做门：折叠盒 `max-height: min(60vh, 480px)`，手机与桌面各自合适。
+  这和代码块「420px cap + 23 行门」是同一套两段式（行数不依赖字体/缩放，像素才决定观感）。
+- 折叠盒是**外层新元素** `.md-tbl--collapsed`，不是 `.md-table-wrap`（见下）。
 
 ### B. 表头吸顶（B-356）
 
-`th { position: sticky; top: 0 }` 要能贴在 **transcript 视口**上，前提是 `.md-table-wrap`
-**不是 Y 方向的滚动容器**。而 `overflow-x: auto` 会让 `overflow-y` 计算值也变成 `auto`
-（CSS overflow 规范：一轴非 visible 时另一轴的 `visible` 计算为 `auto`），于是 sticky 会
-贴到包裹器自己的顶边、而包裹器没有竖向滚动 ⇒ 完全失效。
+**三条实测事实，缺一条方案就不成立**（真实 Chromium + 仓库真 CSS，2026-09-04）：
 
-**做法**：把 `overflow-x: auto` 从**默认**改成**只在真的横向溢出时才加**——`is-scrollable`
-这个信号已经有了。于是：
+| 试的东西 | 结果 |
+|---|---|
+| `.md-table-wrap` 保持 `overflow-x: auto`（现状） | sticky **失效**：`th.top = -349` vs scrollport 0。`overflow-x:auto` 让 `overflow-y` 计算值也变 `auto`，包裹器成了 Y 滚动容器，sticky 贴到它自己顶边而它从不竖滚 |
+| 改 `overflow-x: clip; overflow-y: visible` | computed 停在 `["clip","visible"]`（**不像 `hidden` 那样把另一轴强制成 auto**），sticky **生效**：`th.top = 0`，stuck ✓ |
+| clip 下还能不能测出横向溢出 | **能**：`scrollWidth 627 / clientWidth 388`（390px 视口）。`is-scrollable` 照常翻 ✓ |
+| 把 `max-height` 直接挂在 `.md-table-wrap` 上（v1 的写法） | **折不动**：wrap 302px 而表格仍 1548px，`clipped: false`。`overflow:visible/clip` 的盒子不裁 Y |
+| 外层 `.md-tbl--collapsed{max-height;overflow:hidden}` | 折叠成功（300px vs 1548px）；**展开态不加这个类**时 sticky 仍 stuck ✓ |
 
-| 表格形态 | 占比 | 包裹器 | 表头吸顶 |
-|---|---|---|---|
-| 不需要横滚 | **98.4%** | `overflow: visible` | ✅ 贴 `.cl-scroll` 视口 |
-| 需要横滚 | 1.6% | `overflow-x: auto`（+ 滚动阴影） | 退化成无效（贴包裹器顶边），可接受 |
+于是定死：
 
-**风险与缓解**：`overflow: visible` 时若表格真的过宽，会在 ResizeObserver 把类翻上去之前
-**溢出一帧**。测量改到 `useLayoutEffect`（paint 之前）即可消除；实现时必须在真实浏览器里
-确认「宽表首帧不外溢」。另外要确认 `overflow: visible` 下 `scrollWidth` 仍能报告内容宽度
-（否则 `is-scrollable` 永远不会翻）——**这一条实现前先写探针实测，不能靠推断**。
+```
+.md-table-wrap                 overflow-x: clip; overflow-y: visible   ← 默认（97.7%）
+.md-table-wrap.is-scrollable   overflow-x: auto                        ← 真的横向溢出时（2.3%）
+.md-tbl--collapsed             max-height: min(60vh,480px); overflow: hidden   ← 只在折叠态
+.md-tbl--collapsed th          position: static                        ← 折叠态不吸顶（没有竖滚，没意义）
+```
+
+**为什么是 `clip` 而不是 review 验证的 `visible`**：两者的 sticky 与测量行为实测**完全一致**，
+但失败模式差很多——`visible` 下，在 ResizeObserver 把 `is-scrollable` 翻上去之前，宽表会
+**越过滚动容器 455px**（390px 视口实测）并被 `.cl-scroll{overflow-x:hidden}` 裁掉，用户看到
+「半张表凭空消失」；`clip` 下最坏只是「表格右缘被切一帧」。`clip` 还顺手让
+`border-radius` 正确裁角（`visible` 会让表格四角戳出圆角边框）。
+
+**ResizeObserver 的回调按规范在 paint 之后**，所以「零帧不外溢」做不到；`useLayoutEffect`
+只能覆盖挂载。验收因此写成「挂载首帧不外溢；resize 后一帧内恢复」。
+
+**吸顶的边框**：`border-collapse: collapse` 下边框归表格不归单元格，sticky 的 `th` 一脱离原位
+就把 `border-bottom` 丢在原处——像素实测：吸顶后表头正下方直接是正文底色，没有任何 `--line`。
+改用 `box-shadow: inset 0 -1px 0 var(--line)`（跟着单元格走），实测吸顶时该行像素为 `223`
+（= `--line` 222）✓。**这条必须用像素验收，computed style 看不出来。**
 
 ### C. `scope="col"`（B-356）
 
@@ -108,9 +133,22 @@ components.pre
 | 渲染成功 | SVG + 右上角「源码 / 图」切换 |
 | 语法错误或渲染抛错 | 回落代码块，附一行 `--text-dim` 的说明；**不显示 mermaid 自己的错误图** |
 
-- **懒加载**：`await import('mermaid')` 只在第一次遇到 mermaid 块时执行，落到独立 async chunk
-  （先例 `highlighter.ts`）。验收硬指标：`vite build` 后 mermaid 不得出现在 `AppRoot` chunk 里，
-  且 `AppRoot` 的 gzip 增量 < 5 kB。
+- **API 顺序：先 `parse` 再 `render`**（实测 mermaid 11.17.2）：`parse` **不需要 DOM**、
+  `{ suppressErrors: true }` 时坏语法返回 `false` 而不抛；`render` 需要 `document`。
+  加 `initialize({ suppressErrorRendering: true })` 双保险，否则 `render` 失败会把 mermaid
+  自己的红色错误图插进 DOM。
+- **id 必须 sanitize**：React 19 的 `useId()` 形如 `«r1»`，mermaid 会拿它去 `querySelector` 而抛。
+  用 `useId().replace(/[^a-zA-Z0-9_-]/g, '')`。
+- **懒加载**：`await import('mermaid')` 只在第一次遇到 mermaid 块时执行（先例 `highlighter.ts`）。
+  **「AppRoot gzip 增量 < 5 kB」是同义反复，不能当验收**——动态 import 必然不进 AppRoot
+  （实测 696.25→696.39 kB）。真正要钉的是**运行时代价**，实测（临时接一次 `import('mermaid')` 后
+  `vite build`）：JS chunk **48 → 108**，`dist/assets` **7.1M → 11M**，全部 JS gzip 合计
+  **1551.5 → 2500.6 kB**；首张 flowchart 需要 `mermaid.core` **171.36 kB gzip** 加图类型分包
+  （cytoscape 141.78 / katex 77.25 / sequenceDiagram 31.04 …）。PWA precache 保持 7 entries /
+  16.80 KiB **不变**（若哪天 `globPatterns` 放宽，这 60 个 chunk 会被塞进 service worker，
+  所以这一条也要钉住）。
+- **弱网降级**：`navigator.connection.saveData` 或 `effectiveType` 为 2g/3g 时不自动下载，
+  显示代码块 + 「渲染图表」按钮，把 171 kB 的决定权交给用户。
 - **流式**：`plainCode` 为真时**一律不渲染图**——半截图形必然解析失败，而草稿每秒重渲多次，
   会变成一串失败重试。草稿显示代码块，1.5 秒后落地的持久消息再出图。
 - **主题**：`theme: 'base'` + 从 tokens 读取的 `themeVariables`；主题切换要重渲（订阅现有主题源）。
@@ -118,8 +156,9 @@ components.pre
   渲染产物是 SVG 字符串，只能经 `dangerouslySetInnerHTML` 注入——**这是本仓第二处**
   （第一处是 shiki，`CodeView.tsx:73-76`，理由是 shiki 自己转义内容）。必须在 spec 与代码注释里
   写清为什么可以接受：`securityLevel: 'strict'` + dompurify 已在 mermaid 内部消毒。
-  **实现时要写一条测试**：喂一段带 `<script>`/`onclick` 的 mermaid，断言产物里没有它们。
-- **id 唯一性**：`mermaid.render(id, code)` 的 id 必须每次唯一，否则同页多图互相踩（用 `useId`）。
+  **注入测试**：`mermaid.render` 在 node 下抛 `document is not defined`，而本包 vitest 跑
+  node 环境。因此该测试文件加 `// @vitest-environment happy-dom`（vitest 支持按文件切环境），
+  并把 `happy-dom` 加进 devDependencies；`parse` 那一半仍可在 node 跑。
 - **体验细节**：图宽超过内容列时按比例缩小到 100%（不横滚）；点击图打开全屏查看（复用已有的
   overlay 手法）；`prefers-reduced-motion` 下禁用 mermaid 动画。
 
@@ -131,28 +170,51 @@ components.pre
 
 ## 风险
 
-1. **`overflow: visible` 让宽表首帧外溢**（见 B）。缓解：`useLayoutEffect` 测量 + 真实浏览器验。
-2. **`scrollWidth` 在非滚动容器上的行为**是整个 B 方案的前提。缓解：实现前探针实测，不成立就退回
-   「永远 `overflow-x: auto` + 放弃吸顶」，并在 spec 里记下为什么。
-3. **折叠阈值选错**会让常见的 5 行表也被折叠（比不折叠更烦）。缓解：阈值取自实测分位数，
-   并补一条测试钉住「p50 尺寸的表不折叠」。
-4. **mermaid 进主包**。缓解：验收硬指标（AppRoot gzip 增量 < 5 kB）+ 构建产物断言。
-5. **mermaid 的 SVG 注入**。缓解：`securityLevel: 'strict'` + 注入测试。
-6. **mermaid 渲染在长会话里的成本**：每张图一次 `render()`。缓解：`plainCode` 不渲染；
-   同一份源码在 `MessageView` memo 下只渲染一次。
+1. ~~`overflow: visible` 让宽表首帧外溢~~ → 改用 `overflow-x: clip`，最坏只是右缘被切一帧（见 §B）。
+   RO 回调在 paint 之后是规范行为，零帧做不到，验收按「挂载首帧 + resize 一帧内恢复」写。
+2. ~~`scrollWidth` 在非滚动容器上的行为~~ → **已实测成立**（clip 下 627/388）。
+3. **折叠阈值选错**。缓解：实际起点 17 行，实测只覆盖 1.3%（22 张），p90=9 完全不受影响；
+   补测试钉住「p50/p90 尺寸的表不折叠、17 行折叠」。
+4. **吸顶的收益很小**（1.3%）而代价是改掉 97.7% 表格的 overflow 默认。缓解：`clip` 让失败模式
+   从「半张表消失」降到「切一帧」；且不振荡（实测 12 次测量只翻 1 次，因为水平滚动条吃的是
+   `clientHeight` 不是 `clientWidth`，不构成宽度反馈环）。**如果 Owner 觉得不值，删掉 §B 即可，
+   §A/§C/§D 不依赖它。**
+5. **mermaid 的运行时体积**（首图 171 kB gzip + 图类型分包）。缓解：懒加载 + 弱网降级 +
+   验收回填实测 chunk 清单。
+6. **mermaid 的 SVG 注入**。缓解：`securityLevel: 'strict'` + `suppressErrorRendering` +
+   happy-dom 下的注入测试。
+7. **多张长表同时吸顶**：实测 6 个滚动位 `bothStuck` 恒 false，交接干净，不成立。
+   但 sticky 会紧贴 scrollport 顶边（`.cl-scroll` 无上 padding），需要一点偏移或分隔。
 
 ## 验收标准
 
-- [ ] 5 行表（p50）不折叠；30 行表折叠并显示「展开（30 行）」；展开后无 max-height
-- [ ] 折叠区**没有**嵌套竖向滚动（wheel 冒泡到 transcript）
-- [ ] 展开长表滚动时表头吸在 transcript 顶部（真实浏览器实测，深浅两个主题各一张图）
-- [ ] 宽表（>6 列）首帧**不外溢**，仍有横滚与滚动阴影
+- [ ] 4 行（p50）与 9 行（p90）的表**不折叠**；17 行折叠并显示「展开（N 行）」
+- [ ] 折叠态**确实裁剪**了内容（盒高 < 表高），且**没有**嵌套竖向滚动（wheel 冒泡到 transcript）
+- [ ] 展开态不设 max-height/overflow；滚动时表头吸在 transcript 顶部（真实浏览器，深浅主题各一张图）
+- [ ] **吸顶时表头下边框仍可见**（像素采样对照，computed style 看不出来）
+- [ ] 宽表：**挂载首帧不外溢**（clip），`is-scrollable` 翻上后可横滚且有滚动阴影；resize 后一帧内恢复
 - [ ] `thead th` 带 `scope="col"`
-- [ ] mermaid：正确的图出图；**错误的图无声回落代码块**；流式期间只显示代码块
-- [ ] mermaid 的 `<script>` / `onclick` 注入测试通过
-- [ ] `vite build`：mermaid 不在 `AppRoot` chunk；`AppRoot` gzip 增量 < 5 kB（实测值回填）
-- [ ] 深浅主题下 mermaid 配色坐在 token 台阶上，不是 mermaid 默认色
+- [ ] mermaid：正确的图出图；**坏语法无声回落代码块**（不出现 mermaid 自己的错误图）；
+      流式期间只显示代码块；弱网（`saveData`）时不自动下载
+- [ ] mermaid 注入测试（happy-dom 环境）：`<script>` / `onclick` 不出现在产物里
+- [ ] `vite build` 回填实测：AppRoot gzip 增量、**chunk 数**、`dist/assets` 总体积、
+      **全部 JS gzip 合计**、首张 flowchart 的下载 chunk 清单；**PWA precache 条目数不变**
+- [ ] 深浅主题下 mermaid 配色坐在 token 台阶上
 - [ ] 门禁全绿：web vitest / build / tsc 零错误
+
+## 实测结果（回填）
+
+| 项 | 数值 |
+|---|---|
+| 包体 | `AppRoot` gzip **696.26 → 698.15 kB（+1.89）**——这是折叠/mermaid **组件**的代价，mermaid 本体不在里面 |
+| mermaid 分包 | `mermaid.core` **171.36 kB gzip** 独立 chunk；JS chunk **48 → 108**；`dist/assets` **7.1M → 11M**；全部 JS gzip 合计 **1551.5 → 2512.5 kB** |
+| PWA precache | **7 entries / 16.80 KiB，不变** ✓ |
+| 折叠（真实浏览器 + StrictMode） | 4/9/16 行不折叠；30 行折叠：盒高 **480px** vs 表高 **1109px**，`clipped: true`，`overflow-y: hidden`（无嵌套滚动），按钮「展开全部（30 行）」 |
+| 吸顶 | 展开后滚动：`th.top = 0 == scrollport.top`，**stuck** ✓（900/390px、深浅主题各验） |
+| 吸顶边框 | `box-shadow: inset 0 -1px 0` 实测生效（深 `rgb(48,50,45)`；浅 `rgb(222,223,217)`） |
+| 宽表 | 900px：`overflow: clip`、不滚（放得下）；390px：`is-scrollable` 翻上、`overflow: auto`、**页面横向溢出 0**、越界 -16px（无外溢） |
+| a11y | `th[scope="col"]` ✓ |
+| mermaid | flowchart 与 sequence 各出一张 SVG；**坏语法回落代码块 + 一行说明**，未出现 mermaid 自己的错误图；控制台零错误 |
 
 ## 留真机验证项
 

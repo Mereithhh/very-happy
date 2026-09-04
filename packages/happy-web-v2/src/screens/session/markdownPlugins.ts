@@ -82,6 +82,23 @@ function splitBreaks(node: Element) {
 }
 
 /**
+ * `thead` 里的 `th` 补 `scope="col"`（B-356）。
+ *
+ * `mdast-util-to-hast` 不加它，于是屏幕阅读器读不出「这一格属于哪一列」——GFM 表格
+ * 只有列头，一行 rehype 就能修好。
+ */
+export function rehypeTableScope() {
+    return (tree: Root) => {
+        visit(tree, 'element', (node: Element) => {
+            if (node.tagName !== 'thead') return;
+            visit(node, 'element', (cell: Element) => {
+                if (cell.tagName === 'th') cell.properties = { ...cell.properties, scope: 'col' };
+            });
+        });
+    };
+}
+
+/**
  * 把每个文本节点包成 `<vh-text>`，交给 `components['vh-text']` 渲染。
  *
  * 这是 B-145「正文里的文件路径可点」的接入点。**关键设计约束：这个插件与路径白名单

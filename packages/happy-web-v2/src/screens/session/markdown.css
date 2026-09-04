@@ -195,12 +195,88 @@
  * different bg steps (transcript --bg-0, permission/btw/file panels --bg-1/2),
  * and the scroll-shadow gradient needs one known opaque colour to fade from.
  */
+.md-tbl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+/* The clip box exists ONLY while collapsed. An `overflow: hidden` ancestor pins a
+   sticky header inside itself (measured: th.top = -149 against a scrollport at 0),
+   so the expanded table must have no clipping ancestor at all. */
+.md-tbl-body {
+  position: relative;
+  min-width: 0;
+}
+.md-tbl-body--collapsed {
+  max-height: min(60vh, 480px);
+  overflow: hidden;
+}
+.md-tbl-body--collapsed .md-table thead th {
+  /* nothing to stick to while clipped, and sticky inside the clip box would just
+     float over the fade */
+  position: static;
+}
+.md-tbl-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 56px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg-1) 0%, transparent), var(--bg-1));
+  border-radius: 0 0 var(--r-md) var(--r-md);
+}
+.md-tbl-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.md-tbl-expand:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+
+/* `clip`, not `auto`/`hidden`, is what makes the sticky header work: `overflow-x:auto`
+   computes `overflow-y` to `auto` as well, turning the wrapper into a scroll container
+   that never scrolls vertically — the sticky th then pins to the wrapper's own top edge
+   and does nothing (measured: th.top = -349 against a scrollport at 0). `clip` leaves
+   `overflow-y: visible` alone, so `th` resolves against the transcript scrollport
+   (measured: th.top = 0, stuck). `scrollWidth` still reports the overflow under clip
+   (measured 627 vs 388), so `is-scrollable` keeps working.
+   `clip` over `visible` for the failure mode: before the ResizeObserver flips the class,
+   a wide table under `visible` overflows the transcript by 455px at 390px and gets cut by
+   `.cl-scroll{overflow-x:hidden}` — half the table vanishes. Under `clip` the worst case
+   is a right edge cut for one frame. It also keeps the border radius honest. */
 .md-table-wrap {
-  overflow-x: auto;
+  overflow-x: clip;
+  overflow-y: visible;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   max-width: 100%;
+}
+.md-table-wrap.is-scrollable {
+  overflow-x: auto;
+}
+/* Sticky header for a long table. `border-collapse: collapse` gives the borders to the
+   TABLE, not the cells, so a stuck th leaves its `border-bottom` behind at the original
+   position — measured: the row under a stuck header was body background, no `--line` at
+   all. An inset box-shadow travels with the cell. */
+.md-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 .md-table-wrap:focus-visible {
   outline: 2px solid var(--accent-2);

@@ -24,20 +24,23 @@ import React from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { FileText } from 'lucide-react';
+import { ChevronDown, FileText } from 'lucide-react';
 import { CodeView } from './CodeView';
+import { MermaidView } from './MermaidView';
+import { shouldCollapseTable } from './codeCollapse';
+import { useTranslation } from '@/i18n/useTranslation';
 import './markdown.css';
 import { FilePathLink } from './FilePathLink';
 import { collectSessionFilePaths, findPathHits } from './toolFilePath';
 import { useSessionMessages } from '@/sync/storage';
 import { splitOptionSegments } from './optionsBlock';
-import { rehypeTableCellBreaks, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
+import { rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves, safeUrlTransform } from './markdownPlugins';
 import { streamThrottleMs } from './streamThrottle';
 
 // Stable identities: react-markdown re-runs the whole unified pipeline on every
 // render, and a fresh array here would also invalidate the memo below.
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
-const REHYPE_PLUGINS = [rehypeTableCellBreaks, rehypeTextLeaves];
+const REHYPE_PLUGINS = [rehypeTableCellBreaks, rehypeTableScope, rehypeTextLeaves];
 
 /* ── path links (B-145) ─────────────────────────────────────────────────── */
 
@@ -111,15 +114,65 @@ function useOverflowX<T extends HTMLElement>() {
     return { ref, overflowing };
 }
 
-function MarkdownTable({ children }: { children?: React.ReactNode }) {
+function countBodyRows(node: unknown): number {
+    const walk = (n: unknown): number => {
+        const el = n as { tagName?: string; children?: unknown[] } | undefined;
+        if (!el?.children) return 0;
+        if (el.tagName === 'tbody') {
+            return el.children.filter((c) => (c as { tagName?: string }).tagName === 'tr').length;
+        }
+        return el.children.reduce((sum: number, c) => sum + walk(c), 0);
+    };
+    return walk(node);
+}
+
+/**
+ * 表格：横向按需滚动 + 超长时折叠 + 展开后表头吸顶（B-356）。
+ *
+ * 三条 CSS 事实决定了这个结构（真实 Chromium 实测，见
+ * `specs/2026-09-table-collapse-and-mermaid.md` §B）：
+ *  1. `overflow-x: auto` 会把 `overflow-y` 的计算值也变成 `auto`，包裹器于是成了 Y 滚动容器，
+ *     `position: sticky` 会贴到它自己的顶边（而它从不竖滚）⇒ 吸顶完全失效。所以横滚**只在
+ *     真的溢出时**才开，其余 97.7% 的表用 `overflow-x: clip`（`clip` 不会把另一轴强制成 auto）。
+ *  2. `overflow` 为 `clip`/`visible` 的盒子**不裁 Y**，所以 `max-height` 必须挂在**外层**
+ *     另一个 `overflow: hidden` 的盒子上。
+ *  3. 那个外层盒子只能在**折叠态**存在：`overflow:hidden` 的祖先会把 sticky 钉死在自己里面。
+ */
+function MarkdownTable({ children, node }: { children?: React.ReactNode; node?: unknown }) {
+    const { t } = useTranslation();
     const { ref, overflowing } = useOverflowX<HTMLDivElement>();
+    const [expanded, setExpanded] = React.useState(false);
+    const bodyId = React.useId();
+    const rowCount = React.useMemo(() => countBodyRows(node), [node]);
+    const canCollapse = shouldCollapseTable(rowCount);
+    const collapsed = canCollapse && !expanded;
+
     return (
-        <div
-            ref={ref}
-            className={`md-table-wrap${overflowing ? ' is-scrollable' : ''}`}
-            {...(overflowing ? { tabIndex: 0, role: 'region', 'aria-label': 'table' } : {})}
-        >
-            <table className="md-table">{children}</table>
+        <div className="md-tbl">
+            <div id={bodyId} className={collapsed ? 'md-tbl-body md-tbl-body--collapsed' : 'md-tbl-body'}>
+                <div
+                    ref={ref}
+                    className={`md-table-wrap${overflowing ? ' is-scrollable' : ''}`}
+                    {...(overflowing ? { tabIndex: 0, role: 'region', 'aria-label': 'table' } : {})}
+                >
+                    <table className="md-table">{children}</table>
+                </div>
+                {collapsed && <div className="md-tbl-fade" aria-hidden />}
+            </div>
+            {canCollapse && (
+                <button
+                    type="button"
+                    className="md-tbl-expand vh-disclosure-trigger"
+                    onClick={() => setExpanded((v) => !v)}
+                    aria-expanded={!collapsed}
+                    aria-controls={bodyId}
+                >
+                    <span>{collapsed
+                        ? t('session.chat.expandTableRows', { rows: rowCount })
+                        : t('session.chat.collapseLines')}</span>
+                    <ChevronDown size={13} className={`vh-disclosure-icon${!collapsed ? ' is-open' : ''}`} aria-hidden />
+                </button>
+            )}
         </div>
     );
 }
@@ -149,7 +202,12 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
             const first = (node as { children?: Array<{ properties?: { className?: unknown } }> } | undefined)?.children?.[0];
             const classes = Array.isArray(first?.properties?.className) ? first.properties.className as string[] : [];
             const lang = classes.map((c) => /^language-(.+)$/.exec(c)?.[1]).find(Boolean) ?? null;
-            return <CodeView code={hastText(first).replace(/\n$/, '')} lang={lang} plain={plainCode} />;
+            const code = hastText(first).replace(/\n$/, '');
+            // B-357: a mermaid fence becomes a diagram — but never while streaming.
+            // A half-written diagram cannot parse, and the draft re-renders several
+            // times a second, so it would be a stream of failed renders.
+            if (lang === 'mermaid' && !plainCode) return <MermaidView code={code} />;
+            return <CodeView code={code} lang={lang} plain={plainCode} />;
         },
         code({ children, className }) {
             // Only inline spans reach here now — fenced blocks are consumed by `pre`.
@@ -177,8 +235,8 @@ function buildComponents(plainCode: boolean, trustContent: boolean): Components 
                 </span>
             );
         },
-        table({ children }) {
-            return <MarkdownTable>{children}</MarkdownTable>;
+        table({ children, node }) {
+            return <MarkdownTable node={node}>{children}</MarkdownTable>;
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         'vh-text': ({ node }: any) => <TextLeaf text={hastText(node)} />,

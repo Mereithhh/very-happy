@@ -634,6 +634,11 @@ export const en = {
             // Long-content collapse in the transcript (B-097 code blocks /
             // B-102 user bubbles)
             expandLines: ({ lines }: { lines: number }) => `Show all (${lines} lines)`,
+            expandTableRows: ({ rows }: { rows: number }) => `Show all (${rows} rows)`,
+            mermaidRender: 'Render diagram',
+            mermaidSource: 'Source',
+            mermaidDiagram: 'Diagram',
+            mermaidFailed: 'This diagram could not be rendered — showing the source.',
             collapseLines: 'Collapse details',
             expandMessage: 'Expand full message',
         },
